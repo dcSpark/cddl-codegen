@@ -84,12 +84,12 @@ use crate::generated::ordered_set::OrderedSet;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
-    BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, CustomFieldHolderEncoding,
-    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
-    HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding,
-    NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedMapEncoding, OsetPU64Encoding,
-    PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding, SecondEncoding,
-    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
+    BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
+    CustomFieldHolderEncoding, DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding,
+    FirstEncoding, FooEncoding, HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding,
+    NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedMapEncoding,
+    OsetPU64Encoding, PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding,
+    SecondEncoding, SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
     TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
@@ -390,6 +390,23 @@ pub enum CEnum {
 }
 
 #[derive(Clone, Debug)]
+pub struct CborEnumWrappers {
+    pub bytes_arm: CborPayloadEnum,
+    pub tagged_arm: CborPayloadEnum,
+    pub encodings: Option<CborEnumWrappersEncoding>,
+}
+
+impl CborEnumWrappers {
+    pub fn new(bytes_arm: CborPayloadEnum, tagged_arm: CborPayloadEnum) -> Self {
+        Self {
+            bytes_arm,
+            tagged_arm,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct CborInCbor {
     pub foo_bytes: FooBytes,
     pub uint_bytes: u64,
@@ -406,6 +423,14 @@ impl CborInCbor {
             encodings: None,
         }
     }
+}
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum CborPayloadEnum {
+    I0,
+    I1,
+    I2,
 }
 
 pub type CustomBytes = Vec<u8>;

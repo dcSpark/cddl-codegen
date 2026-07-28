@@ -1,0 +1,308 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for CborEnumHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        let mut bytes_payload_inner_se = Serializer::new_vec();
+        match &self.bytes_payload {
+            PayloadEnum::I0 => bytes_payload_inner_se.write_unsigned_integer_sz(
+                0u64,
+                fit_sz(
+                    0u64,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.bytes_payload_encoding)
+                        .unwrap_or_default(),
+                ),
+            ),
+            PayloadEnum::I1 => bytes_payload_inner_se.write_unsigned_integer_sz(
+                1u64,
+                fit_sz(
+                    1u64,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.bytes_payload_encoding)
+                        .unwrap_or_default(),
+                ),
+            ),
+            PayloadEnum::I2 => bytes_payload_inner_se.write_unsigned_integer_sz(
+                2u64,
+                fit_sz(
+                    2u64,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.bytes_payload_encoding)
+                        .unwrap_or_default(),
+                ),
+            ),
+        }?;
+        let bytes_payload_bytes = bytes_payload_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &bytes_payload_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.bytes_payload_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(bytes_payload_bytes.len() as u64),
+        )?;
+        serializer.write_tag_sz(
+            42u64,
+            fit_sz(
+                42u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.tagged_payload_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        match &self.tagged_payload {
+            PayloadEnum::I0 => serializer.write_unsigned_integer_sz(
+                0u64,
+                fit_sz(
+                    0u64,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.tagged_payload_encoding)
+                        .unwrap_or_default(),
+                ),
+            ),
+            PayloadEnum::I1 => serializer.write_unsigned_integer_sz(
+                1u64,
+                fit_sz(
+                    1u64,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.tagged_payload_encoding)
+                        .unwrap_or_default(),
+                ),
+            ),
+            PayloadEnum::I2 => serializer.write_unsigned_integer_sz(
+                2u64,
+                fit_sz(
+                    2u64,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.tagged_payload_encoding)
+                        .unwrap_or_default(),
+                ),
+            ),
+        }?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for CborEnumHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let (bytes_payload, bytes_payload_bytes_encoding, bytes_payload_encoding) =
+                (|| -> Result<_, DeserializeError> {
+                    let (bytes_payload_bytes, bytes_payload_bytes_encoding) = raw.bytes_sz()?;
+                    let inner_de = &mut Deserializer::from(bytes_payload_bytes);
+                    let initial_position = inner_de.position();
+                    let deser_variant =
+                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                            let (i0_value, i0_encoding) = inner_de.unsigned_integer_sz()?;
+                            if i0_value != 0 {
+                                return Err(DeserializeFailure::FixedValueMismatch {
+                                    found: Key::Uint(i0_value),
+                                    expected: Key::Uint(0),
+                                }
+                                .into());
+                            }
+                            Ok(Some(i0_encoding))
+                        })(inner_de);
+                    match deser_variant {
+                        Ok(bytes_payload_encoding) => {
+                            return Ok((
+                                PayloadEnum::I0,
+                                StringEncoding::from(bytes_payload_bytes_encoding),
+                                bytes_payload_encoding,
+                            ));
+                        }
+                        Err(_) => inner_de.set_position(initial_position).unwrap(),
+                    };
+                    let deser_variant =
+                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                            let (i1_value, i1_encoding) = inner_de.unsigned_integer_sz()?;
+                            if i1_value != 1 {
+                                return Err(DeserializeFailure::FixedValueMismatch {
+                                    found: Key::Uint(i1_value),
+                                    expected: Key::Uint(1),
+                                }
+                                .into());
+                            }
+                            Ok(Some(i1_encoding))
+                        })(inner_de);
+                    match deser_variant {
+                        Ok(bytes_payload_encoding) => {
+                            return Ok((
+                                PayloadEnum::I1,
+                                StringEncoding::from(bytes_payload_bytes_encoding),
+                                bytes_payload_encoding,
+                            ));
+                        }
+                        Err(_) => inner_de.set_position(initial_position).unwrap(),
+                    };
+                    let deser_variant =
+                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                            let (i2_value, i2_encoding) = inner_de.unsigned_integer_sz()?;
+                            if i2_value != 2 {
+                                return Err(DeserializeFailure::FixedValueMismatch {
+                                    found: Key::Uint(i2_value),
+                                    expected: Key::Uint(2),
+                                }
+                                .into());
+                            }
+                            Ok(Some(i2_encoding))
+                        })(inner_de);
+                    match deser_variant {
+                        Ok(bytes_payload_encoding) => {
+                            return Ok((
+                                PayloadEnum::I2,
+                                StringEncoding::from(bytes_payload_bytes_encoding),
+                                bytes_payload_encoding,
+                            ));
+                        }
+                        Err(_) => inner_de.set_position(initial_position).unwrap(),
+                    };
+                    Err(DeserializeError::new(
+                        "PayloadEnum",
+                        DeserializeFailure::NoVariantMatched,
+                    ))
+                })()
+                .map_err(|e| e.annotate("bytes_payload"))?;
+            let (tagged_payload, tagged_payload_tag_encoding, tagged_payload_encoding) =
+                (|| -> Result<_, DeserializeError> {
+                    match raw.tag_sz()? {
+                        (42, tag_enc) => {
+                            let initial_position = raw.position();
+                            let deser_variant =
+                                (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let (i0_value, i0_encoding) = raw.unsigned_integer_sz()?;
+                                    if i0_value != 0 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Uint(i0_value),
+                                            expected: Key::Uint(0),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(i0_encoding))
+                                })(raw);
+                            match deser_variant {
+                                Ok(tagged_payload_encoding) => {
+                                    return Ok((
+                                        PayloadEnum::I0,
+                                        Some(tag_enc),
+                                        tagged_payload_encoding,
+                                    ));
+                                }
+                                Err(_) => raw.set_position(initial_position).unwrap(),
+                            };
+                            let deser_variant =
+                                (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let (i1_value, i1_encoding) = raw.unsigned_integer_sz()?;
+                                    if i1_value != 1 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Uint(i1_value),
+                                            expected: Key::Uint(1),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(i1_encoding))
+                                })(raw);
+                            match deser_variant {
+                                Ok(tagged_payload_encoding) => {
+                                    return Ok((
+                                        PayloadEnum::I1,
+                                        Some(tag_enc),
+                                        tagged_payload_encoding,
+                                    ));
+                                }
+                                Err(_) => raw.set_position(initial_position).unwrap(),
+                            };
+                            let deser_variant =
+                                (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let (i2_value, i2_encoding) = raw.unsigned_integer_sz()?;
+                                    if i2_value != 2 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Uint(i2_value),
+                                            expected: Key::Uint(2),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(i2_encoding))
+                                })(raw);
+                            match deser_variant {
+                                Ok(tagged_payload_encoding) => {
+                                    return Ok((
+                                        PayloadEnum::I2,
+                                        Some(tag_enc),
+                                        tagged_payload_encoding,
+                                    ));
+                                }
+                                Err(_) => raw.set_position(initial_position).unwrap(),
+                            };
+                            Err(DeserializeError::new(
+                                "PayloadEnum",
+                                DeserializeFailure::NoVariantMatched,
+                            ))
+                        }
+                        (tag, _enc) => Err(DeserializeFailure::TagMismatch {
+                            found: tag,
+                            expected: 42,
+                        }
+                        .into()),
+                    }
+                })()
+                .map_err(|e| e.annotate("tagged_payload"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CborEnumHolder {
+                bytes_payload,
+                tagged_payload,
+                encodings: Some(CborEnumHolderEncoding {
+                    len_encoding,
+                    bytes_payload_bytes_encoding,
+                    bytes_payload_encoding,
+                    tagged_payload_tag_encoding,
+                    tagged_payload_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("CborEnumHolder"))
+    }
+}

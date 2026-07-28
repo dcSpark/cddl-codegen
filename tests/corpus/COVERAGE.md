@@ -349,7 +349,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 | construct | Top-level rule body `top-level` | Array element `array-element` | Map member value `map-value` | Map member key `map-key` | Tag content `tag-content` | Choice alternative `choice-member` | Group-choice arm `group-choice-arm` | Occurrence target `occurrence-target` | .cbor / .cborseq payload `cbor-payload` | Generic argument `generic-arg` |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `ctl.cbor` | · |  |  |  |  |  |  |  |  |  |
+| `ctl.cbor` | · | · |  |  |  |  |  |  |  |  |
 | `ctl.default` |  |  | · |  | · |  |  | · |  |  |
 | `ctl.eq` |  | · |  |  |  |  |  |  |  |  |
 | `ctl.ge` | · | · |  |  |  |  |  |  |  |  |
@@ -419,7 +419,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Modelled `(role × feature)` cells: **65** (over 117 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **30**.
-- Exercised by the corpus, modelled by **nothing**: **143** (the `·` cells).
+- Exercised by the corpus, modelled by **nothing**: **144** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **35**.
 
 ## Notable findings
@@ -437,7 +437,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **117** — ✅ 65 covered · ➕ 22 supported-untested · ⚠️ 4 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 86
+- Corpus fixtures: 87
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

@@ -12,11 +12,11 @@ expression: content
 )]
 pub mod collections;
 
-pub use cddl_lib::CEnum;
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
 use cddl_lib::ordered_hash_map::OrderedHashMap;
 use cddl_lib::ordered_set::OrderedSet;
+pub use cddl_lib::{CEnum, CborPayloadEnum};
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
@@ -700,6 +700,53 @@ impl From<C> for cddl_lib::C {
 
 impl AsRef<cddl_lib::C> for C {
     fn as_ref(&self) -> &cddl_lib::C {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborEnumWrappers(pub(crate) cddl_lib::CborEnumWrappers);
+
+#[wasm_bindgen]
+impl CborEnumWrappers {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborEnumWrappers, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn bytes_arm(&self) -> CborPayloadEnum {
+        self.0.bytes_arm
+    }
+
+    pub fn tagged_arm(&self) -> CborPayloadEnum {
+        self.0.tagged_arm
+    }
+
+    pub fn new(bytes_arm: CborPayloadEnum, tagged_arm: CborPayloadEnum) -> Self {
+        Self(cddl_lib::CborEnumWrappers::new(bytes_arm, tagged_arm))
+    }
+}
+
+impl From<cddl_lib::CborEnumWrappers> for CborEnumWrappers {
+    fn from(native: cddl_lib::CborEnumWrappers) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborEnumWrappers> for cddl_lib::CborEnumWrappers {
+    fn from(wasm: CborEnumWrappers) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborEnumWrappers> for CborEnumWrappers {
+    fn as_ref(&self) -> &cddl_lib::CborEnumWrappers {
         &self.0
     }
 }

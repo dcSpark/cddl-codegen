@@ -1,0 +1,34 @@
+; A c-style enum (an all-fixed-value type choice) as the CONTENT of an encoding-carrying wrapper.
+; A c-style enum has no `Deserialize` impl of its own — its try-each-variant sequence is INLINED at
+; every use site, because a fieldless Copy enum has nowhere to store an encoding and the sidecar
+; therefore lives in the owner's encoding struct. That inline dispatch is the one emission site that
+; used `final_exprs` entries as a match PATTERN, and it built the pattern from the wrapper's exprs
+; JOINED with the enum's own encoding-field names — while the per-variant probe closure, generated
+; with a fresh config, returns only the enum's OWN encodings. Under `--preserve-encodings` that was
+; wrong twice over, and both halves are pinned here:
+;   bytes_payload  — `bytes .cbor <c-enum>`. The `.cbor` wrapper pushes a CALL expression
+;                    (`StringEncoding::from({var}_bytes_encoding)`), which is not legal in pattern
+;                    position: E0164 per variant, plus E0308 for the arity.
+;   tagged_payload — `#6.42(<c-enum>)`. The tag pushes `Some(tag_enc)`, a perfectly LEGAL pattern —
+;                    so this rule isolates the arity defect on its own (E0308 per variant), proving
+;                    the break is not specific to `.cbor` payloads.
+; Both spellings compiled fine under the default and json profiles (every wrapper-side push is
+; preserve-gated, so the pattern was empty there and matched the closure's `Ok(())`); the preserve
+; profile is the load-bearing one, which is why this belongs in the all-profile corpus rather than
+; beside `tests/core`'s default-profile `enum_payload`.
+;
+; Homogeneity is structural, not incidental: under `--preserve-encodings` a choice only classifies
+; as a c-style enum when `enum_variants_have_same_encoding_var` holds, so sampling the encoding
+; fields from the first variant is sound. A mixed-kind choice such as `0 / true` becomes an ordinary
+; type-choice enum with its own `Deserialize` impl and never reaches this site.
+;
+; NOT spelled here: an all-special c-enum (`true / null` — the no-encoding-fields edge of the
+; pattern split, where the closure returns `Ok(())` and the pattern is `()`). That shape panics at
+; generation under EVERY profile, wrapper or not (`should not expose Fixed type in member, only
+; needed for serializaiton: Fixed(Bool(true))`), so it pins nothing about this site; the empty-list
+; edge is instead covered by these same rules under the default/json profiles.
+payload_enum = 0 / 1 / 2
+cbor_enum_holder = [
+  bytes_payload: bytes .cbor payload_enum,
+  tagged_payload: #6.42(payload_enum),
+]

@@ -314,3 +314,21 @@ reject_set_preserve = [ s: oset_p_u64 ]
 ; tests/corpus/group_choice_fixed_special.cddl; this fixture is the preserve-only execution half.
 fixed_special_group_choice = { flag: true // absent: null // label: tstr }
 fixed_special_type_choice = true / tstr
+
+; --- a c-style enum under an encoding-carrying wrapper, under --preserve-encodings ---
+; A c-style enum is inlined at every use site (no `Deserialize` impl of its own — a fieldless Copy
+; enum has nowhere to store an encoding, so the sidecar lives in the OWNER's encoding struct). That
+; inline dispatch destructures the per-variant probe closure's `Ok` value, which carries only the
+; enum's OWN encoding field; the wrapper's exprs (`StringEncoding::from(..)` from `.cbor`,
+; `Some(tag_enc)` from the tag) belong to the RETURNED value, not the pattern. Mixing them made both
+; rules below ungeneratable-as-compilable Rust under this flag (E0164 + E0308 for the `.cbor` arm,
+; E0308 for the tagged arm). Here for the ROUND-TRIP half: the emitted tests must carry the enum's
+; own `Sz` AND the wrapper's encoding (the payload's byte-string `StringEncoding`, the tag's `Sz`)
+; through an irregular re-encoding byte-identically — a pattern that merely COMPILED could still
+; bind the wrong slot, and only an executed round-trip rules that out.
+; The default/json profiles of the same two spellings live in tests/corpus/cbor_enum_payload.cddl.
+cbor_payload_enum = 0 / 1 / 2
+cbor_enum_wrappers = [
+  bytes_arm: bytes .cbor cbor_payload_enum,
+  tagged_arm: #6.42(cbor_payload_enum),
+]
