@@ -37,7 +37,7 @@ impl DefaultNeset {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<DefaultNeset, JsError> {
@@ -123,7 +123,7 @@ impl DefaultSet {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<DefaultSet, JsError> {
@@ -209,7 +209,7 @@ impl Holder {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<Holder, JsError> {
@@ -340,7 +340,7 @@ impl OptOut {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<OptOut, JsError> {
@@ -398,7 +398,7 @@ impl SingleArm {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<SingleArm, JsError> {

@@ -1,0 +1,12 @@
+[package]
+name = "arbitrary-precision-crate"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# The ENTIRE point of this crate. Cargo unifies features across a build graph, so a generated crate
+# that merely has this as a dependency gets `serde_json/arbitrary_precision` turned on for its own
+# `serde_json` — without the generated `Cargo.toml` (whose `serde_json` key the tool owns) needing a
+# second, duplicate `serde_json` entry, which would be a TOML duplicate-key error. That is also how
+# the reporting consumer got here: another crate in their workspace turns the feature on.
+serde_json = { version = "1.0.57", features = ["arbitrary_precision"] }

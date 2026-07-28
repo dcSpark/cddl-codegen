@@ -1856,6 +1856,36 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   `bytes .cbor` entry) — means the closure is being carried by hand in more than one emitter, and
   hand-carrying is what produced these four.
 
+- **A cargo FEATURE on a generated crate's dependency can change what emitted code MEANS, and no
+  axis varies dependency features — compounded by every generated `Serialize` only ever being
+  exercised through `serde_json`, the one serializer that cannot observe dishonesty in the serde
+  data model.** Proven instance (consumer-reported, not any gate): under
+  `serde_json/arbitrary_precision`, `serde_json::Number`'s `Serialize` emits a private
+  `$serde_json::private::Number` token struct that only serde_json's own serializer collapses, so
+  every `any`-carrying member's `to_json_value()` shipped a token object to JS at every magnitude —
+  while `to_json()` looked perfect, because `to_json()` IS serde_json. Two independent blind spots
+  produced it. Cargo unifies features across a build graph, so the feature arrives from a crate the
+  generated manifest never names; the manifest merge even asserts it survives regeneration (a
+  correct behaviour — the feature is legitimate), so the tool knowingly preserves a configuration
+  nothing tested. And the assertion "the emitted `Serialize` is honest in the serde data model" is
+  unobservable from serde_json: a second serializer is the only oracle that can see it, which is why
+  the fixture takes `ciborium` (pure Rust, no C deps, no special case for the token) rather than
+  adding another serde_json assertion. Owned meanwhile — one fixture, one feature, one alternate
+  serializer, with liveness assertions in BOTH the rust and wasm crates so the feature-unification
+  indirection cannot silently stop working and leave every other assertion in it vacuous — pinned by
+  `json_arbitrary_precision`. Mechanical layer, when the trigger fires: a dependency-feature axis
+  over the existing fixture corpus — for each generated-crate dependency, the set of its features
+  that can change emitted-code semantics, generated once per (fixture × feature) cell and
+  round-tripped through a non-serde_json serializer, which needs a per-dependency feature datum
+  beside the manifest changeset that already knows every dependency the emitter references
+  (`cargo_manifest.rs`'s `ops_for_*`). Building it now would be over-engineering: exactly one such
+  feature is known to change semantics. Trigger: a consumer reporting a SECOND generated-crate
+  behaviour that changes with a cargo feature they did not put in their own manifest — the party who
+  already has the problem measures it as "my spec and my manifest are unchanged and my generated code
+  behaves differently", which is what makes it reportable at all, and it lies on the axis the cost
+  grows along, since the deferred layer's value scales with how many such features exist rather than
+  with how many consumers hit the one we know about.
+
 ## Deferred features (build when a real consumer needs them)
 
 - **Consumer-side auto-deferral of reject-set wrappers (`--wrapper-requests`).** The dep-side

@@ -36,7 +36,7 @@ impl Int {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<Int, JsError> {
@@ -117,7 +117,7 @@ impl Prelude {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<Prelude, JsError> {
@@ -269,7 +269,7 @@ impl PreludeB64legacy {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeB64legacy, JsError> {
@@ -327,7 +327,7 @@ impl PreludeB64url {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeB64url, JsError> {
@@ -385,7 +385,7 @@ impl PreludeBigfloat {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeBigfloat, JsError> {
@@ -450,7 +450,7 @@ impl PreludeBigint {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeBigint, JsError> {
@@ -543,7 +543,7 @@ impl PreludeBignint {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeBignint, JsError> {
@@ -601,7 +601,7 @@ impl PreludeBiguint {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeBiguint, JsError> {
@@ -659,7 +659,7 @@ impl PreludeDecfrac {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeDecfrac, JsError> {
@@ -724,7 +724,7 @@ impl PreludeEncodedCbor {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeEncodedCbor, JsError> {
@@ -782,7 +782,7 @@ impl PreludeInteger {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeInteger, JsError> {
@@ -871,7 +871,7 @@ impl PreludeMimeMessage {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeMimeMessage, JsError> {
@@ -929,7 +929,7 @@ impl PreludeRegexp {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeRegexp, JsError> {
@@ -987,7 +987,7 @@ impl PreludeTdate {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeTdate, JsError> {
@@ -1045,7 +1045,7 @@ impl PreludeUnsigned {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeUnsigned, JsError> {
@@ -1134,7 +1134,7 @@ impl PreludeUri {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PreludeUri, JsError> {

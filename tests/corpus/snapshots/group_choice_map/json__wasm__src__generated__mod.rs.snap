@@ -37,7 +37,7 @@ impl FixedValueArm {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<FixedValueArm, JsError> {
@@ -118,7 +118,7 @@ impl FixedValueArm0 {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<FixedValueArm0, JsError> {
@@ -182,7 +182,7 @@ impl MixedKeyTypes {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<MixedKeyTypes, JsError> {
@@ -267,7 +267,7 @@ impl MultiFieldArm {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<MultiFieldArm, JsError> {
@@ -348,7 +348,7 @@ impl MultiFieldArm0 {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<MultiFieldArm0, JsError> {
@@ -466,7 +466,7 @@ impl NonemptyArm {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<NonemptyArm, JsError> {
@@ -549,7 +549,7 @@ impl NonemptyArm0 {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<NonemptyArm0, JsError> {
@@ -619,7 +619,7 @@ impl TextKeyed {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<TextKeyed, JsError> {
@@ -704,7 +704,7 @@ impl UintKeyed {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<UintKeyed, JsError> {

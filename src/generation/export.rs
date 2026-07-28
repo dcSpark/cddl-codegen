@@ -170,6 +170,21 @@ fn composed_runtime_static_files(
         ));
     }
 
+    // json_value_ser.rs (the honest `serde_json::Value`/`Number` → serializer walk). Gated on the
+    // FLAG alone and never on spec usage — unlike the runtimes below it, this is a PUBLISHED API for
+    // hand-written `Serialize` impls (`_CDDL_CODEGEN_EXTERN_TYPE_`, `@custom_json`), the exact class
+    // that hits serde_json's dishonest `arbitrary_precision` number rendering, and those consumers do
+    // not necessarily use CDDL `any`. An API whose existence depends on an unrelated spec property is
+    // not an API. `any_cbor_json.rs` also reaches it (`super::json_value_ser`) and appends under the
+    // same flag, so the two can never be out of step.
+    if cli.json_serde_derives {
+        let content = std::fs::read_to_string(cli.static_dir.join("json_value_ser.rs"))?;
+        out.push((
+            "json_value_ser.rs".to_owned(),
+            rustfmt_generated_string(&content)?.into_owned(),
+        ));
+    }
+
     // error.rs — always, verbatim static/error.rs + rustfmt.
     let error_rs = std::fs::read_to_string(cli.static_dir.join("error.rs"))?;
     out.push((

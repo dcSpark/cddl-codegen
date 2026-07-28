@@ -1121,6 +1121,14 @@ impl GenerationScope {
             if cli.json_serde_derives && types.uses_open_struct_rest() {
                 self.rust_lib().raw("pub mod open_struct_rest_json;");
             }
+            // the honest `serde_json::Value`/`Number` serializer walk. Flag-gated, never spec-gated
+            // (like `json_schema_gen` below, unlike the runtimes above): it is a published API for
+            // hand-written `Serialize` impls on extern / `@custom_json` types, which need it whether
+            // or not the spec uses `any`. The `any_cbor` runtime also routes its natural JSON walk
+            // through it.
+            if cli.json_serde_derives {
+                self.rust_lib().raw("pub mod json_value_ser;");
+            }
             // the json-gen crate's row registrar + reference-closure check, which THIS crate never
             // calls — it hosts them so every json-gen crate pointed at this runtime shares one copy.
             // Flag-gated, never spec-gated (unlike the runtimes above): a json-gen crate that imports
@@ -2351,7 +2359,7 @@ fn create_base_wasm_struct<'a>(
                         .ret("Result<JsValue, JsError>")
                         .arg_ref_self()
                         .vis("pub")
-                        .line("serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible()).map_err(|e| JsError::new(&format!(\"to_js_value: {}\", e)))");
+                        .line("serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible()).map_err(|e| JsError::new(&format!(\"to_json_value: {}\", e)))");
                     s_impl.push_fn(to_json_value);
                     s_impl
                         .new_fn("from_json")

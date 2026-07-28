@@ -1,0 +1,32 @@
+// The `@custom_json` half of the fixture: a hand-written `Serialize`/`Deserialize` in exactly the
+// shape a consumer writes for an extern / `@custom_json` type — build a `serde_json::Value`, hand it
+// to the serializer. The ONE thing that differs from the naive version is the final step: it goes
+// through the shipped `json_value_ser` helper instead of `serde::Serialize::serialize(&value, …)`,
+// which is the whole published-API claim under test.
+impl serde::Serialize for CustomNum {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut obj = serde_json::Map::new();
+        obj.insert("int".to_owned(), serde_json::Value::from(u64::from(self.clone())));
+        crate::generated::json_value_ser::serialize_json_value(
+            &serde_json::Value::Object(obj),
+            serializer,
+        )
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for CustomNum {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let value = <serde_json::Value as serde::de::Deserialize>::deserialize(deserializer)?;
+        let n = value
+            .get("int")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| serde::de::Error::custom("expected {\"int\": <uint>}"))?;
+        Ok(CustomNum::new(n))
+    }
+}

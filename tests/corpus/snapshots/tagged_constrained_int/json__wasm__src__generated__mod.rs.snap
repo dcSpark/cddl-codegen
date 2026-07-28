@@ -38,7 +38,7 @@ impl Garm {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<Garm, JsError> {
@@ -125,7 +125,7 @@ impl Holder {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<Holder, JsError> {
@@ -225,7 +225,7 @@ impl TaggedCtlNe {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<TaggedCtlNe, JsError> {
@@ -285,7 +285,7 @@ impl TaggedRangeExcl {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<TaggedRangeExcl, JsError> {
@@ -345,7 +345,7 @@ impl TaggedRangeIncl {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<TaggedRangeIncl, JsError> {
@@ -405,7 +405,7 @@ impl TaggedRangeNint {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<TaggedRangeNint, JsError> {
@@ -465,7 +465,7 @@ impl TaggedRangeUint {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<TaggedRangeUint, JsError> {

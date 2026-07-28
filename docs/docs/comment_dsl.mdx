@@ -481,6 +481,17 @@ behind on a type whose JSON form you own. With `--preserve-encodings`, the `#[se
 attributes on the type's encoding fields are omitted along with the derives (either alone would not
 compile).
 
+### Writing the `Serialize` impl the directive promises
+
+The impl you supply must be honest in the **serde data model**, not merely produce the right JSON
+string — the wasm `to_json_value()` hands your type to `serde-wasm-bindgen`, not to `serde_json`.
+The trap is that the most natural way to write one of these impls (build a `serde_json::Value`, hand
+it to the serializer) is dishonest whenever the `serde_json/arbitrary_precision` cargo feature is on
+anywhere in your build graph: every number then serializes as a private token struct that only
+serde_json's own serializer collapses. Generated crates ship a `json_value_ser` runtime module for
+exactly this, and the full explanation and recipe are in
+[Wasm differences § A hand-written `Serialize` must be honest in the serde data model](./wasm_differences).
+
 ### Writing the `JsonSchema` impl the directive promises
 
 Under `--json-schema-export` the impl you supply is not optional decoration: the json-gen crate

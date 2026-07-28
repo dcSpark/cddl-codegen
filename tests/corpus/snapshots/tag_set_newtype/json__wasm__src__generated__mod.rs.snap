@@ -38,7 +38,7 @@ impl Holder {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<Holder, JsError> {
@@ -231,7 +231,7 @@ impl OptOut {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<OptOut, JsError> {
@@ -289,7 +289,7 @@ impl PlainNesetReject {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PlainNesetReject, JsError> {
@@ -347,7 +347,7 @@ impl PlainReject {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PlainReject, JsError> {
@@ -405,7 +405,7 @@ impl PlainTable {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<PlainTable, JsError> {
@@ -463,7 +463,7 @@ impl SingleArmNeset {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<SingleArmNeset, JsError> {
@@ -549,7 +549,7 @@ impl SingleArmSet {
 
     pub fn to_json_value(&self) -> Result<JsValue, JsError> {
         serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
     }
 
     pub fn from_json(json: &str) -> Result<SingleArmSet, JsError> {

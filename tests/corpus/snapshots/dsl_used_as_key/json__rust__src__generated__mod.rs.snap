@@ -14,6 +14,7 @@ expression: content
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
+pub mod json_value_ser;
 mod key_demand_assertions;
 pub mod serialization;
 
