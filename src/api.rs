@@ -388,6 +388,13 @@ fn first_unknown_annotation_token(content: &str) -> Option<String> {
 /// Augment (never swallow) a checked-parse failure with the `--extern-import` staleness hint: the
 /// declared dep list, their export paths, and what to do when a referenced ident is undefined. The
 /// original parse error stays at the head so its "undefined reference" detail is preserved.
+///
+/// Every remedy named is on the DEPENDENCY's side, because a per-rule hand stub is not reachable for
+/// a dependency this crate imports: a dependency is declared exactly once, so a physical
+/// `EXTERN_DEPS_DIR/<dep>/` beside the import is the double-declaration error, and one under a
+/// different directory name resolves the rules to a different crate — the directory name IS the
+/// crate. The whole-dep stub is still the escape hatch, but taking it means dropping this
+/// dependency's `--extern-import` rather than supplementing it.
 fn extern_import_staleness_error(
     parse_error: String,
     extern_imports: &std::collections::BTreeMap<String, String>,
@@ -404,11 +411,17 @@ fn extern_import_staleness_error(
         .join(", ");
     format!(
         "{parse_error}\n\nnote: --extern-import is in use (declared dependencies: {deps}). If a \
-         referenced identifier is undefined above, it may be recorded as `; unexported:` in the \
-         dependency's export (a rule the dep could not project — hand-stub it), or the export may \
-         predate the dependency's current spec. Regenerate the dependency so its extern-interface \
-         export is fresh, check the export's `; unexported:` records, or hand-stub the missing rule. \
-         Export paths: {paths}."
+         referenced identifier is undefined above, either the export predates the dependency's \
+         current spec, or the rule is recorded as `; unexported:` in it — one the dependency could \
+         not project. Both remedies are on the DEPENDENCY's side. Regenerate the dependency so its \
+         extern-interface export is fresh; if the ident is `; unexported:`, fix the cause in the \
+         dependency's own spec (a type it hand-owns travels once the dependency itself declares it \
+         as _CDDL_CODEGEN_EXTERN_TYPE_) or report the projection limitation. Hand-stubbing the one \
+         missing rule is not available for a dependency you import: a dependency is declared exactly \
+         once, and a stub under any other directory name resolves the rules to a different crate. \
+         The whole-dep stub remains the escape hatch for a dependency you cannot regenerate at all, \
+         and taking it means dropping its --extern-import rather than supplementing it. Export \
+         paths: {paths}."
     )
 }
 
@@ -694,7 +707,7 @@ pub fn with_types<R>(
         // fork's generic "undefined reference" error, which knows nothing about deps. When
         // `--extern-import` is in use, AUGMENT (never swallow) that error with the declared dep list
         // and the "referenced ident may be `; unexported:` in the export, or predate the dep's current
-        // spec — regenerate the dependency / check the export's records / hand-stub" hint.
+        // spec — regenerate the dependency / fix the cause in the dependency's own spec" hint.
         Err(e) if !extern_imports.is_empty() => {
             return Err(extern_import_staleness_error(e, &extern_imports).into());
         }
