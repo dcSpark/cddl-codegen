@@ -1,0 +1,33 @@
+; `--emit-tests` mints table keys consecutively from a base. A key DOMAIN can carry its own value
+; window, and a hardcoded base of `0` is then a key the (correct) generated bounds check rejects
+; with `RangeCheck` — the emitted round-trip vector goes red blaming a decoder that is behaving
+; exactly as the CDDL says. Each table below sits in a RECORD FIELD rather than being a bare
+; top-level rule: a top-level table is a transparent alias with no standalone round-trip test of
+; its own, so it would never reach the minter's map arm.
+;
+; An unbounded `*` table mints at length 1 (not 0), so a single `*`-spelled table genuinely
+; reaches the key path — these are not vacuous.
+
+; `.ne N` parses to Range(N+1, N-1): an INVERTED range encoding an EXCLUSION, not a window.
+holder_ne_zero = [m: {* int .ne 0 => uint}] ; the naive base IS the excluded value
+holder_ne_one = [m: {* int .ne 1 => uint}]  ; the excluded value sits one past the naive base
+
+; A two-sided window that does not contain 0 — the non-inverted arm of the same predicate.
+holder_window = [m: {* 5..9 => tstr}]
+
+; A one-sided window (no upper endpoint).
+holder_ge = [m: {* uint .ge 5 => tstr}]
+
+; A `nint` key: its RUST value is the u64 magnitude `m = |v + 1|`, not the CDDL value, and the
+; magnitude is DECREASING in the value — so the window's endpoints swap on the way in. `.ge -5`
+; becomes a magnitude window `m <= 4` (base 0 is already inside it, so the key spelling stays the
+; pre-base `__i as u64`), while `.le -5` becomes `m >= 4` (base 0 is magnitude 0 = value -1, which
+; violates it, so a non-zero magnitude must be chosen). Choosing or verifying a base in VALUE space
+; here emits `-5 as u64` = 18446744073709551611.
+holder_nint_ge = [m: {* nint .ge -5 => uint}]
+holder_nint_le = [m: {* nint .le -5 => uint}]
+
+; A NON-integer key whose window is a LENGTH (`.size 3`), which the `__i.to_string()` key spelling
+; has no way to steer. The minter must SKIP it loudly (the map mints empty and says why), never
+; mint a violating key and let the emitted vector go red against a correct decoder.
+holder_str_size = [m: {* tstr .size 3 => uint}]

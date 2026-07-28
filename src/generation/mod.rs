@@ -55,7 +55,7 @@ use bounds::{
     nint_arm_needs_width, non_preserve_bounds_fn, prim_window, primitive_non_negative,
     sign_arm_if_block, uint_arm_needs_width, upper_caps, value_bounds_check_line, width_reject,
 };
-pub(crate) use bounds::{bounds_check_expr_rust_type, nint_bounds_to_u64};
+pub(crate) use bounds::{bounds_check_expr_rust_type, bounds_reject_value, nint_bounds_to_u64};
 
 mod deserialize;
 mod serialize;

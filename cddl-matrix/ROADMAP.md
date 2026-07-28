@@ -374,23 +374,25 @@ are ledgered here (that's what the probe/gate error messages point at).
   WRONG constant is refused. The vector shape is the `value.number.hexfloat` precedent in
   `tests/decode_conformance/catalog.toml`: `source = "hand"`, `expect = "reject"`,
   `class = "constraint"`, and an `expect_err` substring of the generated decoder's Display, derived
-  empirically rather than guessed. Ordering constraint that makes this its own delivery: a catalog row
-  is rejected by `project_decode_conformance` unless the matrix already calls its id `supported`, so
-  the vectors can only be authored after a cell is grounded, never in the same change that adds it.
-  Reopening signal on the magnitude axis: a change to the fixed-value mismatch emission (the `Key`
-  rendering, or the emitted verify compare) lands and the local tier stays green — every unvectored
-  fixed-value cell is one more the green cannot speak for, so the person making that change measures
-  the gap directly, at the moment it costs them.
-- **Enumerate the two fixed-value member kinds the rows deliberately skip: NINT and FLOAT.** Both are
-  spellable as members and neither has a containment cell. They are held back because each is already
-  ledgered with its own pin and a row would restate rather than discover: the nint kind generates
-  cleanly in both profiles and its open defect is the message rendering (the entry below), and the
-  float kind's preserve leg rides the `preserve_encodings_supports_floats` stub class plus
-  `tests/corpus/optional_fixed_float.cddl`. The `n*m` marker on the cardinality boundary is likewise
+  empirically rather than guessed. **This is buildable now, not deferred: the ordering constraint is
+  discharged.** A catalog row is rejected by `project_decode_conformance` unless the matrix already
+  calls its id `supported`, which is why the vectors could never be authored in the change that added
+  the cells — and the eleven fixed-value member cells that landed `supported` are grounded, so the
+  precondition those vectors were waiting on is met. The worked precedent for the assertion itself is
+  `tests/core/tests.rs`'s `opt_fixed_member_map`, which reason-asserts the authored spelling for the
+  optional nint member and was confirmed RED before the `Key::Nint` fix; it covers one spelling by
+  hand, and what remains is the same assertion as a `class="constraint"` catalog row on each grounded
+  cell.
+- **Give the NINT fixed-value member its containment cell.** It was held back only while its message
+  rendering was an open defect that a row would have restated rather than discovered; `Key::Nint`
+  landed and that ledger is retired, so the nint kind's member-position verdict is now an ordinary
+  unknown that only a cell can carry. FLOAT stays held back on the same reasoning, because its own
+  ledger has NOT retired: the preserve leg rides the `stub_preserve_encodings_supports_floats` stub
+  class plus `tests/corpus/optional_fixed_float.cddl`. The `n*m` marker on the cardinality boundary is
   omitted rather than deferred — the refusal message names `*` / `+` / `?` / `n*m` from one site, so a
-  fourth row would model the same code path the three markers already reach. Reopening signal: either
-  ledger retires (a signed `Key` variant lands, or preserve-mode floats are implemented), at which
-  point that kind's member-position verdict becomes an ordinary unknown that only a cell can carry.
+  fourth row would model the same code path the three markers already reach. Reopening signal for the
+  FLOAT half: preserve-mode floats are implemented and that stub retires, at which point the float
+  kind's member-position verdict becomes an unknown a cell must carry.
 - **`undefined` in MEMBER position crashes the generator, while its sibling fixed prelude constants
   do not.** `[v: undefined, x: uint]` and `{ k: undefined, j: uint }` both abort (exit 101) at the
   prelude-name lookup in `src/utils.rs`, under the default and `--preserve-encodings` profiles alike,
@@ -419,18 +421,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   signal on the magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the
   count of members its owner must hand-rewrite reaches 1 — today only synthetic probes reach the
   site.
-- **A nint fixed-value mismatch reports the CBOR wire representation, not the authored value** —
-  `Key` (static/error.rs) has no signed variant, so the emitted check for `? neg: -3` renders
-  `FixedValueMismatch { found: Key::Uint((neg_value + 1).unsigned_abs()), expected: Key::Uint(2) }`:
-  a user sees "Expected fixed value 2" for a spec that says `-3` (read-caught during the
-  optional-fixed-value delivery; the mandatory path shares the spelling, so this is the fixed-nint
-  error-rendering convention, not an optional-path bug). Behavior is correct — only the message
-  misleads. Candidate fix: a signed `Key` variant (or signed rendering for the nint arm) so the
-  message names the authored value; any reason-asserted decode vector pinning the current "2"
-  spelling flips loudly with it. Cosmetic until a reason-asserted reject vector or a consumer
-  report makes it user-visible; enumerating a wrong-value reject vector for a nint fixed member is
-  what would surface it systematically (the vector author confronts the rendered message at
-  pin-authoring time).
 - **A bare `any` type-choice arm in a NON-LAST position** (`a = any / tstr`) is a permanent graceful
   rejection, recorded here so the decision is not re-litigated: a bare `any` accepts every CBOR
   item, so any arm after it is unreachable dead code
@@ -439,12 +429,11 @@ are ledgered here (that's what the probe/gate error messages point at).
   is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
   last-position support by `tests/robustness/choice_last_any_arm.cddl`. The matrix has no
   containment cell for the shape, which is the coverage gap the fuzzer exists to find.
-- **Five compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
+- **Three compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
   class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
-  fixed class flips loudly) with THIS entry as its pin — except the one entry below marked
-  UNPINNED, whose pinning composition left the sweep's reach; each is a candidate cddl-codegen fix:
+  fixed class flips loudly) with THIS entry as its pin; each is a candidate cddl-codegen fix:
   - **A non-final `?` optional field in an array record breaks compilation** (E0599:
     `from_cbor_bytes` trait bounds unsatisfied — the `Deserialize` impl is not emitted):
     `a = [ ? f0: uint, f1: uint ]` and any `[? x, …more…]` variant. Optional-LAST array fields
@@ -460,21 +449,53 @@ are ledgered here (that's what the probe/gate error messages point at).
     — a valid-CBOR byte string matches the `.cbor` arm first). Candidate fix: reject duplicate arms
     at generation, or document first-match semantics and have `--emit-tests` skip
     variant-identity asserts for ambiguous choices.
-  - **The `--emit-tests` minter does not respect `.ne` on a table key domain**: for a
-    `*`-spelled table (`gen<{ * int .ne 0 => uint }>`, verified at HEAD) it mints key `0`, which
-    the (correct) emitted decoder rejects with a `RangeCheck` — a minter-side gap, not a decoder
-    bug. UNPINNED at HEAD, the one exception to this family's ledger rule: its `LAYER2_KNOWN_BAD`
-    pin retired because the fuzzer's pinning composition (the no-occurrence spelling
-    `gen<{ int .ne 0 => uint }>`) rejects gracefully at generation under the no-occurrence
-    arrow-entry rejection (`5ef7ed0`; its generic-instantiation reach is pinned by
-    `generic_arg_no_occurrence_table_rejects_gracefully`), while the
-    sweep's `map_key` template has no `*`-spelled variant to re-reach the minter. Re-pin by adding
-    a `*`-spelled map-key template (or a hand `--emit-tests` fixture over
-    `{ * int .ne 0 => uint }`) when this gap is picked up.
-  - **An emitted-test baseline decode failure on a nested shape**: a
-    `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
-    following field — a `.cbor` float payload mis-frames the buffer; still to minimize when picked
-    up).
+- **Make a NESTED `bytes .cbor` payload either generate or refuse.** A `.cbor` payload whose own
+  type carries a `.cbor` control — `bytes .cbor (bytes .cbor uint)`, and equally the named-alias
+  spelling `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the `.cbor` single-alias
+  strip flattens into the same shape — generates Rust that does not compile, on both sides. The
+  serializer emits two `<var>_inner_se = Serializer::new_vec()` bindings at the same name, so the
+  inner `finalize()` moves the binding the outer write then uses (`error[E0382]: borrow of moved
+  value: <var>_inner_se`); the deserializer emits two `let <var>_bytes = raw.bytes()?` reads, both
+  against the OUTER buffer, plus two `inner_de` bindings that shadow. The cause is that the
+  payload-framing bindings are depth-agnostic, where the tag path already threads a `tag_depth` for
+  exactly this reason; a real fix threads a `cbor_depth` the same way. Because the outcome is a hard
+  compile break rather than a silent mis-decode, nothing can ship on top of it, so the cheap
+  intermediate is a graceful generation-time refusal naming the shape — the tool must not emit a
+  crate that cannot build.
+  **Reopening signal:** a CDDL specification a consumer must implement but does not control (a
+  published wire format, not one they can rewrite) contains one or more `bytes .cbor` members whose
+  payload type itself carries a `.cbor` control, directly or through a named alias. That is a `grep`
+  over a spec they already hold, and the count of such members is the size of the hand-written
+  serialization they would have to maintain alongside the generated crate.
+  The recombination sweep does not supply this signal today, but it is one character from doing so,
+  and that is the cheap way to reach the shape rather than a reason it cannot be reached. Its
+  `cbor_payload` builder composes `bytes .cbor {h}` unparenthesized, so a self-composition spells
+  `bytes .cbor bytes .cbor uint` — which is not merely unparsed by our front end but **illegal
+  CDDL**: RFC 8610's grammar is `type1 = type2 [S (rangeop / ctlop) S type2]`, so a control
+  operator's right-hand side is a `type2`, and `bytes .cbor uint` is a `type1`. The parse rejection
+  is the `cddl` crate behaving correctly, not a front-end gap. Parenthesizing that builder
+  (`bytes .cbor ({h})`) makes the RHS a `type2` and the self-composition legal, which would route
+  the shape straight into the execution layer — worth doing deliberately, with the composition churn
+  that implies, rather than treating the shape as unreachable.
+- **Make a `bytes .cbor <c-style enum>` payload under `--preserve-encodings` either generate or
+  refuse.** The shape compiles and round-trips under the default profile (pinned by
+  `cbor_payload_leaves` in `tests/core/tests.rs`), but adding `--preserve-encodings` emits a crate
+  rustc rejects. A c-style enum has no `Deserialize` impl of its own, so its try-each-variant
+  sequence is inlined at the use site and reuses the enclosing `final_exprs` as the `Ok(..)` match
+  pattern of its variant dispatch; the `.cbor` arm has pushed a value EXPRESSION
+  (`StringEncoding::from(<var>_bytes_encoding)`) into those exprs, so the emitted arm reads
+  `Ok((StringEncoding::from(<var>_bytes_encoding), <var>_encoding)) => …` — a call in pattern
+  position. The two roles `final_exprs` serves — a constructor argument and a destructuring
+  pattern — have diverged, and only the encoding-carrying `.cbor` arm makes them differ. As with the
+  nested `.cbor` entry above the outcome is a hard compile break, so a graceful generation-time
+  refusal is the acceptable intermediate: the tool must not emit a crate that cannot build.
+  **Reopening signal:** a consumer who needs `--preserve-encodings` (they must re-emit received
+  bytes unchanged — a ledger or consensus format, not one they may re-encode freely) holds a spec
+  containing one or more `bytes .cbor` members whose payload type is a choice of literal values.
+  Both halves are a `grep` over a spec and a flag they already have, and the count of such members
+  is the size of the hand-written serialization they would maintain beside the generated crate. The
+  profile is why this sat unseen: `tests/core` is default-profile on both of its gates and in the
+  snapshot registry, so no committed vehicle generates this shape under `--preserve-encodings`.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). The abort is gone — every one of those shapes now rejects gracefully

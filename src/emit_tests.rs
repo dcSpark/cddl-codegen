@@ -66,8 +66,8 @@ type Bounds = (Option<i128>, Option<i128>);
 // only as abstract as those two renderers need — deliberately NOT a general codegen IR.
 // ============================================================================================
 
-/// The synthesized-key kind for a minted map (distinct keys `0..count`).
-#[derive(Clone)]
+/// The synthesized-key kind for a minted map (distinct keys `key_base..key_base+count`).
+#[derive(Clone, Debug)]
 pub(crate) enum MapKey {
     /// integer key cast to the map's key primitive: `__i as <prim>`
     Int(Primitive),
@@ -128,6 +128,10 @@ pub(crate) enum MintValue {
     /// (`NonEmptyMap::try_from(map).unwrap()`, the collect target inferred from the sole impl).
     Map {
         key: MapKey,
+        /// the first synthesized key; the `count` keys are `key_base .. key_base + count`. Non-zero
+        /// only when the key domain carries a value window that excludes `0` (see `map_key_base`);
+        /// at `0` every renderer emits exactly the spelling it emitted before bases existed.
+        key_base: i128,
         val: Box<MintValue>,
         count: i128,
         non_empty: bool,
@@ -220,17 +224,13 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
         MintValue::Map {
             key,
+            key_base,
             val,
             count,
             non_empty,
             preserve,
         } => {
-            let k = match key {
-                MapKey::Int(p) => format!("__i as {p}"),
-                MapKey::Str => "__i.to_string()".to_owned(),
-                MapKey::Bytes => "vec![__i as u8]".to_owned(),
-                MapKey::Bool => "__i == 1".to_owned(),
-            };
+            let k = map_key_expr(key, *key_base);
             let v = render_rust(val);
             if *non_empty {
                 // build via `new(first_key, first_value)` + `insert` (flavor-agnostic and
@@ -286,6 +286,38 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         // `widen_float` fidelity class widens; `__AnyCborMint` is the import-glued `AnyCbor` alias
         // `emit_generated_tests` injects at the test module root.
         MintValue::Any => "__AnyCborMint::new_array(vec![__AnyCborMint::new_uint(5), __AnyCborMint::new_float(1.5)])".to_owned(),
+    }
+}
+
+/// The synthesized map key at loop index `__i`, offset by `key_base` (so the `count` keys are
+/// `key_base .. key_base + count`). Owned here rather than duplicated per renderer: the wasm
+/// renderer calls this same function, so the rust and wasm key spellings cannot drift apart.
+///
+/// At `key_base == 0` every arm is the pre-base spelling verbatim, so no already-blessed emitted
+/// test text moves when bases are introduced.
+pub(crate) fn map_key_expr(key: &MapKey, key_base: i128) -> String {
+    match key {
+        MapKey::Int(p) if key_base == 0 => format!("__i as {p}"),
+        // `__i` is a `u64` loop index; widen before offsetting so a negative base is expressible,
+        // then narrow to the key's own primitive (the acceptance check in `map_key_base` has
+        // already proven every key in the run fits that primitive's range).
+        MapKey::Int(p) => format!("({key_base} + __i as i128) as {p}"),
+        MapKey::Str => "__i.to_string()".to_owned(),
+        MapKey::Bytes => "vec![__i as u8]".to_owned(),
+        MapKey::Bool => "__i == 1".to_owned(),
+    }
+}
+
+/// A single synthesized map key at index `i` — the literal form of `map_key_expr`, for the wasm
+/// renderer's explicit-`insert` build where `__i` (a closure param) isn't in scope. Shared for the
+/// same anti-drift reason.
+pub(crate) fn map_key_literal(key: &MapKey, key_base: i128, i: i128) -> String {
+    let i = key_base + i;
+    match key {
+        MapKey::Int(p) => format!("{i} as {p}"),
+        MapKey::Str => format!("{i}.to_string()"),
+        MapKey::Bytes => format!("vec![{i} as u8]"),
+        MapKey::Bool => format!("{i} == 1"),
     }
 }
 
@@ -1860,10 +1892,13 @@ fn materialize_at(
                     return None;
                 }
             };
+            let key_base = map_key_base(&key, k, measure)?;
             let val = valid_value_at(types, v, depth)?;
-            // distinct keys 0..measure; collect() infers the map type from the target position
+            // distinct keys key_base..key_base+measure; collect() infers the map type from the
+            // target position
             Some(MintValue::Map {
                 key,
+                key_base,
                 val: Box::new(val),
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
@@ -1873,6 +1908,90 @@ fn materialize_at(
         }
         _ => None,
     }
+}
+
+/// The first synthesized map key, chosen so that every key in `key_base .. key_base + count` is a
+/// value the emitted decoder ACCEPTS. A key DOMAIN can carry its own value window
+/// (`{ * int .ne 0 => uint }`) and the renderers lay keys down consecutively from a base, so a
+/// hardcoded base of `0` mints a key the (correct) generated bounds check rejects with
+/// `RangeCheck` — a red round-trip vector blaming code that is behaving exactly as specified.
+///
+/// Acceptance is decided by `bounds_reject_value`, which shares `reject_cond` with the emitted
+/// check, so the minter and the decoder can never disagree about what the window means (the `.ne N`
+/// inverted-range encoding in particular is easy to re-derive backwards).
+///
+/// The base is chosen in the KEY'S OWN storage space, which for `nint` is not value space: an
+/// `N64` key is stored as the u64 magnitude `m = |v + 1|`, so its value window has to go through
+/// `nint_bounds_to_u64` (which swaps the endpoints, magnitude being decreasing in the value)
+/// before either the choice or the verification means anything. Both the constructor check
+/// (`value_bounds_check_line`) and the value minter (`valid_value_at`'s `N64` arm) delegate to
+/// that same helper, and the reason to delegate rather than re-derive is written on it: a
+/// hand-rolled copy that drops the swap inverts the window while the deserializer — which checks
+/// the signed value directly — stays correct, so the two silently disagree.
+///
+/// `None` means "skip this map loudly" — this module never silently weakens a vector.
+fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
+    let Some(bounds) = key_ty.config.bounds else {
+        return Some(0);
+    };
+    let MapKey::Int(p) = key else {
+        // A `.size`-bounded tstr/bytes key (or a bounded bool): the window constrains the key's
+        // LENGTH (or nothing at all), which the `__i.to_string()` / `vec![__i as u8]` /
+        // `__i == 1` spellings have no way to steer. Minting anyway emits a vector the generated
+        // decoder rejects and reads as a decoder bug.
+        eprintln!(
+            "cddl-codegen --emit-tests: map key carries bounds {bounds:?} that the {key:?} key spelling cannot honour — the map's key wire path is unexercised"
+        );
+        return None;
+    };
+    if count <= 0 {
+        return Some(0);
+    }
+    // `N64` is the one key primitive whose stored value is not the CDDL value: transform the window
+    // into magnitude space FIRST, so the candidates, the representability guard and the acceptance
+    // check all speak the same language as the emitted key literal.
+    let is_nint = matches!(p, Primitive::N64);
+    let bounds = if is_nint {
+        crate::generation::nint_bounds_to_u64(&bounds)
+    } else {
+        bounds
+    };
+    // The domain the minted literal must fit. `prim_range` answers `(i128::MIN, i128::MAX)` for
+    // `N64` — deliberately, since its callers ask about the CDDL value — which would make this
+    // guard vacuous for exactly the primitive that most needs it (a negative magnitude renders as
+    // `-5 as u64`, i.e. 18446744073709551611). Use the u64 magnitude domain here instead of
+    // widening `prim_range`, whose other caller (`materialize`) depends on the current answer.
+    let (prim_min, prim_max) = if is_nint {
+        (0, u64::MAX as i128)
+    } else {
+        prim_range(p)
+    };
+    // Candidate bases in preference order: the window's lower endpoint (which for the INVERTED
+    // `.ne N` encoding is `N + 1` — the first value above the exclusion), `0` (a window open on
+    // the low side), and the highest run that still fits under the upper endpoint. Each is only a
+    // heuristic; the acceptance loop below is what makes it safe.
+    let candidates = [
+        bounds.0,
+        Some(0),
+        bounds.1.and_then(|max| max.checked_sub(count - 1)),
+    ];
+    for base in candidates.into_iter().flatten() {
+        let Some(last) = base.checked_add(count - 1) else {
+            continue;
+        };
+        if base < prim_min || last > prim_max {
+            continue;
+        }
+        if (0..count).all(|d| !crate::generation::bounds_reject_value(&bounds, base + d)) {
+            return Some(base);
+        }
+    }
+    // `bounds` here is the STORAGE-space window (magnitude, for `N64`) the search actually ran in —
+    // reporting the value-space one would name a window the reader cannot line up with the failure.
+    eprintln!(
+        "cddl-codegen --emit-tests: map key window {bounds:?} has no run of {count} consecutive accepted {p:?} values — the map's key wire path is unexercised"
+    );
+    None
 }
 
 /// The constructor arg list of a choice variant's `new_<variant>` (mirrors `generate_enum`), or

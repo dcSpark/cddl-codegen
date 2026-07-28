@@ -377,6 +377,16 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          wasm surface to differential and the crate is intended NOT to produce a document",
     ),
     (
+        "emit-tests-bounded-key",
+        "rust-only bounded-table-key `--emit-tests` e2e fixture: its integration gate \
+         (`emit_tests_bounded_map_key_execute`) generates --wasm=false and `cargo test`s the rust \
+         crate, because what it proves is that a MINTED map key is a value the emitted decoder \
+         ACCEPTS — a property of the shared `MintValue` derivation, decided before either renderer \
+         runs (the wasm renderer consumes the same `key_base` through the shared `map_key_expr` / \
+         `map_key_literal`), so a wasm leg would re-assert the same key bases against a second API \
+         for no added signal. There is no generated wasm surface here to differential",
+    ),
+    (
         "open-struct-map-e2e",
         "loose-CBOR open struct-map (rest row) e2e round-trip fixture: its integration gate \
          generates --wasm=false (it exercises CBOR round-trip, not the wasm boundary); the wasm rest \

@@ -297,27 +297,96 @@ pub(super) fn bounds_check_if_block(
     location: Option<&str>,
     found_i128: bool,
 ) -> String {
-    let cond = match bounds {
+    format!(
+        "if {} {}",
+        reject_cond(bounds, non_negative).render(e),
+        range_check_err(e, bounds.0, bounds.1, return_err, location, found_i128)
+    )
+}
+
+/// The shape of the reject condition an integer value window imposes, held separately from its
+/// rendering so the same decision can be both EMITTED (into a generated decoder) and EVALUATED
+/// (by the `--emit-tests` minter, which has to pick key/field values the emitted decoder accepts).
+/// Two independent derivations of "is V in range?" drift silently — a minter that re-derives the
+/// `.ne` exclusion encoding wrong mints a key its own generated decoder rejects — so both callers
+/// go through `reject_cond`.
+///
+/// Each variant names the condition under which a value is REJECTED.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RejectCond {
+    /// reject exactly this value (the `.ne N` single-value exclusion)
+    Eq(i128),
+    /// reject everything except this value (a single-value window)
+    Ne(i128),
+    /// reject above this value
+    Gt(i128),
+    /// reject below this value
+    Lt(i128),
+    /// reject outside the inclusive window
+    Outside(i128, i128),
+}
+
+impl RejectCond {
+    /// The emitted rust condition expression over `e`.
+    fn render(&self, e: &str) -> String {
+        match self {
+            RejectCond::Eq(x) => format!("{e} == {x}"),
+            RejectCond::Ne(x) => format!("{e} != {x}"),
+            RejectCond::Gt(x) => format!("{e} > {x}"),
+            RejectCond::Lt(x) => format!("{e} < {x}"),
+            RejectCond::Outside(min, max) => format!("{e} < {min} || {e} > {max}"),
+        }
+    }
+
+    /// Whether `v` is rejected — the evaluating twin of `render`.
+    pub(crate) fn rejects(&self, v: i128) -> bool {
+        match self {
+            RejectCond::Eq(x) => v == *x,
+            RejectCond::Ne(x) => v != *x,
+            RejectCond::Gt(x) => v > *x,
+            RejectCond::Lt(x) => v < *x,
+            RejectCond::Outside(min, max) => v < *min || v > *max,
+        }
+    }
+}
+
+/// Classify an integer value window into its reject condition. `non_negative` asserts the checked
+/// expression is provably `>= 0` (an unsigned primitive or a `len()`), which lets a `min == 0`
+/// lower leg (`e < 0`, dead there and an `unused_comparisons` wart) collapse to the one-sided form;
+/// when unsure a caller passes `false` and keeps the long form. The two agree on every value the
+/// assertion admits, so an evaluating caller that cannot vouch for the sign passes `false`.
+pub(crate) fn reject_cond(bounds: &(Option<i128>, Option<i128>), non_negative: bool) -> RejectCond {
+    match bounds {
         // `.ne N` is encoded as Range(N+1, N-1) (see parsing.rs NE): min > max means an
         // EXCLUSION of the single value between them, not an (unsatisfiable) window
-        (Some(min), Some(max)) if min > max => format!("{e} == {}", min - 1),
+        (Some(min), Some(max)) if min > max => RejectCond::Eq(min - 1),
         // a single-value window (min == max) is one equality, not the redundant `< N || > N`
-        (Some(min), Some(max)) if min == max => format!("{e} != {min}"),
+        (Some(min), Some(max)) if min == max => RejectCond::Ne(*min),
         // `min == 0` on a provably-non-negative expr: the `e < 0` leg can never fire — drop it
-        (Some(0), Some(max)) if non_negative => format!("{e} > {max}"),
-        (Some(min), Some(max)) => format!("{e} < {min} || {e} > {max}"),
-        (None, Some(max)) => format!("{e} > {max}"),
-        (Some(min), None) => format!("{e} < {min}"),
+        (Some(0), Some(max)) if non_negative => RejectCond::Gt(*max),
+        (Some(min), Some(max)) => RejectCond::Outside(*min, *max),
+        (None, Some(max)) => RejectCond::Gt(*max),
+        (Some(min), None) => RejectCond::Lt(*min),
         // `classify_sign_arm` never emits a `Check` with both bounds absent (it returns
         // `Unconstrained` instead), and every other caller passes a real range, so this is
         // unreachable by construction rather than a silent panic on empty windows.
         (None, None) => unreachable!("bounds_check_if_block called with no bounds"),
-    };
-    format!(
-        "if {} {}",
-        cond,
-        range_check_err(e, bounds.0, bounds.1, return_err, location, found_i128)
-    )
+    }
+}
+
+/// Whether an integer value window REJECTS `v`, evaluated through the same `reject_cond` the
+/// emitted check renders. `non_negative` is deliberately NOT a parameter: an evaluating caller
+/// asks about arbitrary candidate values (including negative ones), so it may not assume the
+/// simplification the emitter's `min == 0` arm relies on.
+///
+/// An empty window `(None, None)` accepts everything rather than hitting `reject_cond`'s
+/// `unreachable!`: the emitter can never reach it, but the `--emit-tests` minter asks about key
+/// domains that legitimately carry no window at all.
+pub(crate) fn bounds_reject_value(bounds: &(Option<i128>, Option<i128>), v: i128) -> bool {
+    if bounds.0.is_none() && bounds.1.is_none() {
+        return false;
+    }
+    reject_cond(bounds, false).rejects(v)
 }
 
 /// The two CBOR sign arms a signed int can decode from (unsigned-integer major type vs

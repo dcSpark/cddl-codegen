@@ -636,6 +636,7 @@ pub(super) fn generate_c_style_enum(
     true
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn make_enum_variant_return_if_deserialized(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
@@ -643,6 +644,15 @@ pub(super) fn make_enum_variant_return_if_deserialized(
     no_enum_types: bool,
     len_check: Option<(RustStructCBORLen, Representation)>,
     deser_body: &mut dyn CodeBlock,
+    // The deserializer this variant probe reads from. `"raw"` for an enum's own `deserialize` impl
+    // (where `raw` is the function's parameter); the overload (`inner_de`) when the enum's decode is
+    // INLINED under a `bytes .cbor` payload — a C-style enum has no `Deserialize` impl of its own,
+    // so its try-each-variant sequence is emitted at the use site and must read the payload's cursor.
+    // Both emission branches below must agree on the name: the single-line branch splices the
+    // variant code straight into `deser_body` with nothing shadowing, so its body has to spell the
+    // overload, which in turn forces the closure branch to BIND that same name (a closure parameter
+    // called `raw` around a body spelling `inner_de` would not compile).
+    deserializer_name: &str,
     cli: &Cli,
 ) -> Block {
     let (before, after) = if len_check.is_some() && !no_enum_types {
@@ -655,7 +665,7 @@ pub(super) fn make_enum_variant_return_if_deserialized(
             types,
             (variant.rust_type()).into(),
             DeserializeBeforeAfter::new(before, after, false),
-            DeserializeConfig::new(&variant.name_as_var()),
+            DeserializeConfig::new(&variant.name_as_var()).overload_deserializer(deserializer_name),
             cli,
         );
         if let Some((len_info, rep)) = len_check {
@@ -668,7 +678,7 @@ pub(super) fn make_enum_variant_return_if_deserialized(
             types,
             (variant.rust_type()).into(),
             DeserializeBeforeAfter::new(before, after, true),
-            DeserializeConfig::new(&variant.name_as_var()),
+            DeserializeConfig::new(&variant.name_as_var()).overload_deserializer(deserializer_name),
             cli,
         );
         if let Some((len_info, rep)) = len_check {
@@ -686,10 +696,10 @@ pub(super) fn make_enum_variant_return_if_deserialized(
             ));
         }
         _ => {
-            let mut variant_deser = Block::new(
-                "let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
-            );
-            variant_deser.after(")(raw);");
+            let mut variant_deser = Block::new(format!(
+                "let deser_variant = (|{deserializer_name}: &mut Deserializer| -> Result<_, DeserializeError>"
+            ));
+            variant_deser.after(format!(")({deserializer_name});"));
             variant_deser.push_all(variant_deser_code.content);
             deser_body.push_block(variant_deser);
         }
@@ -1532,6 +1542,8 @@ fn generate_enum(
                                 (len_info, r)
                             }),
                             deser_body,
+                            // this is the enum's OWN `deserialize` impl: `raw` is the fn parameter
+                            "raw",
                             cli,
                         );
                         let names_without_outer = enum_gen_info.names_without_outer();

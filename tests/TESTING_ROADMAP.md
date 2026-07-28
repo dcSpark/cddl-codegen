@@ -172,7 +172,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      rule classifies as a plain alias (`rcN = bytes .cbor {…}`, `bytes .cbor (int .ne N)`) emits its
      wrapper (de)serialize code only at an embed/USE site — a bare alias rule emits none — so the
      layer-2 sweeps never compile that emission surface for alias roots (embedding exists only when
-     such a template lands INNER under another outer, e.g. the ledgered
+     such a template lands INNER under another outer, e.g. the
      `arr_mid inner=cbor_payload` case). Both escapes were preserve-only compile bugs found by
      review/fixture-TDD in the session that fixed their ledgered `tag_content` siblings (tag rules
      AUTO-WRAP into a struct, so those failed standalone and were ledgered; alias roots stayed
@@ -624,6 +624,44 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   point-in-time-inventory-claim entry in this section prescribes. Mechanical layer, on a SECOND
   instance: a `check.ts` listing mode that prints the gates a given tier does NOT run, so a
   deferral rationale can enumerate what it is not evidence about instead of asserting a universal.
+  **That trigger has FIRED — second instance, cycle 3 Lane B**, in a new tier pair and a new
+  direction: not a deferral rationale but a DELEGATION. A lane restricted to `fast` (heavy tiers
+  being serialized centrally) added `tests/emit-tests-bounded-key/`, whose registry is enforced by
+  `wasm_api_parity_axes_and_pins_are_live` — a plain `#[test]`, hence `local`. `fast`'s only cargo
+  TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`, a SUBSTRING filter, so every
+  `#[test]` outside that module is invisible to it. (`fast` does run `cargo fmt`/`cargo clippy`;
+  since `clippy --all-targets` type-checks test code, the precise asymmetry is that `fast` catches a
+  new `#[test]` that fails to COMPILE and never one that FAILS.) The implementer had no signal and
+  shipped the
+  fixture without its registry row, costing a fail-fast `local` run that skipped twelve later gates.
+  Two corrections to this entry's own sketch, measured while the trigger fired: (a) the tier pair
+  that bites is `fast`/`local`, not only `fast`/`full`, and the `fast`/`local` gap is the one an
+  agent-delegation protocol runs into daily; (b) the sketched layer is PARTLY BUILT already — every
+  tier run's summary already prints its `not-in-tier` rows — so what is actually missing is
+  narrower than "a listing mode": a way to answer "which tier enforces the registry governing THIS
+  PATH" without running anything, which is the question a delegation needs answered before it
+  starts. The AUTHORING half is now in force (AGENTS.md § delegation: name the enforcing tier for
+  any registry-governed tree a delegation writes into); the mechanical half is a maintainer call,
+  deliberately not taken mid-cycle because it edits `check.ts` itself.
+  **DEAD END, recorded with its proof, because it is the move anyone reaches for first: do NOT add
+  a hand-authored path-glob per registry gate.** The data needed splits in two, and only one half
+  exists. `gate -> tier` is already machine-readable in `check.ts`'s registry. `gate -> governed
+  paths` exists NOWHERE — `wasm_api_parity_axes_and_pins_are_live` governs `tests/*/input.cddl`, but
+  nothing declares that; it is implicit in a `read_dir` inside the test body. Declaring it by hand
+  manufactures a SECOND registry describing the first, which can drift from the gate it describes
+  while every path in it still resolves — a fresh instance of the precise class this section
+  already records four times over (the `KNOWN_PANIC_CLASSES` citation entry and the
+  point-in-time-inventory entry). A layer built that way would be a new instance of the failure it
+  is meant to prevent, and the drift would be invisible to any resolution check. Deriving the map
+  instead of declaring it does not rescue the approach either: the gates that govern a tree
+  enumerate it AT RUNTIME, so deriving means running them, which is what the layer exists to avoid.
+  UNBUILT SKETCH, not a validated design — offered only so the next attempt starts past the dead
+  end: invert the question. The risk materialises only when a NEW FILE appears under a governed
+  tree, which is a git-visible event, so a new-file trigger ("you added `tests/<newdir>/input.cddl`;
+  the registries enumerating that tree are X, Y, tier Z") needs only the LIST of enumerating gates —
+  no per-gate glob, hence no second registry to drift — and fires exactly when the delegation risk
+  is real rather than requiring someone to think to ask. Nothing about this was prototyped; its own
+  premise (that the set of tree-enumerating gates is small and stable enough to list) is unprobed.
 - **A ruling whose premise is "gate X stays green" must be probed in the state the ruling CREATES,
   not the state that precedes it.** This is the scope-the-claim discipline above applied to the
   ORDER of a probe rather than its breadth, and it is a ruling-protocol rule rather than a quirk of
@@ -776,6 +814,32 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   by a consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a
   party that already has the problem and needs nothing from us to notice it. That count is zero
   today (the instance above has no row at all), so the signal is unmet rather than pre-satisfied.
+- **A fixture certifies only the PROFILES it is generated under, so a shape added to a
+  default-profile fixture is unexamined everywhere else — and no trigger above fires on it.** The
+  PANIC→`ok` compile-leg entry two above is conditioned on a fix turning an abort into generated
+  code (its trigger is a robustness row flipping PANIC→`ok`); this class involves no abort, no flip,
+  and no fix widening a reachable set. The shape always generated. Proven instance: `bytes .cbor <c-style enum>` compiles
+  and round-trips under the default profile — `cbor_payload_leaves` in `tests/core/tests.rs` pins
+  exactly that — and emits a crate rustc rejects under `--preserve-encodings`, because the inlined
+  try-each-variant sequence reuses the enclosing `final_exprs` as its `Ok(..)` match pattern while
+  the `.cbor` arm has pushed a value expression (`StringEncoding::from(<var>_bytes_encoding)`) into
+  them. Established pre-existing by regenerating the same probe spec with the production files
+  stashed, so nothing about it is a consequence of the change that put a reader in front of it.
+  Two properties make it invisible rather than merely unpinned. First, it reaches **rustc** and is
+  rejected there, so it is not the disk-write-seam class (a call in pattern position is
+  syntactically a valid tuple-struct pattern, so rustfmt formats the file happily and generation
+  exits 0 — the defect is a resolution failure, not a parse failure, and no formatter can see it).
+  Second, `tests/core` is default-profile on both of its integration gates and in the snapshot
+  registry, so no committed vehicle generates this shape under `--preserve-encodings` at all.
+  The systematic answer is again to extend an existing gate's INPUT rather than adopt a new
+  contract: `all_supported_constructs_generate_all_profiles` already writes real crates under every
+  profile and is limited only by taking `supported.cddl` as its input, so the work is to get
+  profile-sensitive shapes into that input — not to build a per-profile harness beside it.
+  Trigger, on the axis the cost grows along: **the count of shapes pinned green by a
+  default-profile fixture that fail under another profile.** Today it is one, and a consumer
+  measures it without anything from us — they flip a flag on a spec they already have and their
+  build breaks on a shape our docs list as supported. A SECOND instance means default-profile
+  fixtures are systematically over-claiming, and the input extension stops being optional.
 
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
@@ -1657,6 +1721,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   cargo. Trigger to build rather than defer, on the axis the cost grows along and measurable by
   whoever pays it: a SECOND mis-citation, or the first report from someone who followed a citation
   during triage and reached the wrong site.
+  SECOND FORM of the same class, in a population the detector above cannot reach — the cited thing
+  is a GATE and the claim is that the gate is EVIDENCE for a property. Instance (read-caught in
+  orchestrator review, never committed): a delivery report cited `check.ts fast` as proof that an
+  `--emit-tests` map-key spelling was byte-identical, but the snapshot corpus holds zero `__i as …`
+  key expressions, so no run of that tier could ever have witnessed the property either way. The
+  class property is identical — the citation RESOLVES (the gate exists, it was green), so nothing
+  that checks resolution can fire, and only the claim is false — but the population is prose in
+  reports and handoff docs, which no gate scans, so the ledger detector above does not extend to
+  it and this is NOT its second-instance trigger firing. What DOES transfer is the cheap
+  instrument, which is the same shape as the detector: before citing a gate as evidence for
+  emitted TEXT, grep that gate's corpus for the text. Which corpus covers what is a `tests/README.md`
+  fact, and the emit-tests key-rendering answer now lives there (§ "Authoring standard for a
+  bounded-domain emit-tests fixture"); the general rule is that a tier verdict evidences a property
+  only where that tier's corpus contains an instance of it.
 - **A matrix cell's `note` names the panic site it aborts at, and nothing re-derives that name from
   a run either.** Recorded as a second INSTANCE of the class above, in a different artifact, so a
   cross-artifact evaluation has both in one place. The `note` fields of the `…type2.map` containment
@@ -1729,6 +1807,54 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   "unsupported", "rejects" — in a containment note whose id carries no annotation asserting it): a
   SECOND note found stating a behaviour the annotations contradict, which the next author to reuse
   a note's reasoning measures at the moment they inherit it.
+- **An `--emit-tests` gate that asserts only "the round-trip is green" cannot tell an INTENDED
+  minted value from a wrong one that happens to land in-window.** Proven by the bounded-map-key
+  minter: choosing a `nint` key base in VALUE space emitted that base as a u64 MAGNITUDE, so
+  `{* nint .le -5 => uint}` minted magnitude 18446744073709551611 — wire value about -1.8e19, which
+  SATISFIES `<= -5`, so the emitted round-trip passed. A false green, and the harder half to
+  notice: the sign-mirror `{* nint .ge -5 => uint}` failed loudly on the identical wrong base, so a
+  fixture carrying only ONE sign of the window would have certified the defect in whichever
+  direction it was pointed. The conformance oracle (`--emit-tests-conformance`) cannot see this
+  class either — the minted value is genuinely spec-VALID, merely degenerate — which is why it
+  needs a layer of its own rather than a wider oracle. The standing rule that covers this today is
+  IN FORCE and lives in `tests/README.md` § "Authoring standard for a bounded-domain emit-tests
+  fixture" (both signs/endpoints of the window; the gate pins the minted SPELLING, compared
+  whitespace-stripped, not just the round-trip verdict), with
+  `tests/emit-tests-bounded-key/` as that fixture. What remains future here is only the mechanical
+  layer: a mint-intent assertion — derive each bounded mint's expected
+  literal from the same `MintValue` the renderer consumes and diff the two — so that no bounded
+  mint can be wrong-but-passing. Trigger, on the axis the cost grows along: the COUNT of
+  minted-value sites whose STORAGE space differs from the CDDL value space, measurable by whoever
+  next adds a bounded mint. Today that count is one (the `N64` magnitude, transformed through
+  `nint_bounds_to_u64`); a SECOND such site means the working rule is being carried by hand in more
+  than one place, and hand-carrying is what produced this instance.
+- **Nothing asserts that a recursive emitter's OVERLOADABLE parameter reaches every leaf it
+  emits, so a leaf that hardcodes the default is invisible until a composition happens to reach
+  it.** `generate_deserialize` threads a deserializer name (`raw` by default, `inner_de` under a
+  `bytes .cbor` payload), and four emission sites named `raw` outright: the `bool`/`f32`/`f64`
+  leaves, the indefinite-length break probe, and the INLINED c-style-enum variant sweep (whose
+  helper drops the overload by building a fresh config, and whose OTHER caller is legitimately
+  `raw`-based — the shape that makes a by-eye sweep unreliable). Each emitted a payload decode that
+  read the OUTER buffer, silently mis-framing every member after it. Detection today is entirely
+  by composition luck: the recombination layer-2 sweep found exactly ONE of the four
+  (`arr_mid × cbor_payload × prelude.float64`) because that filler exists; the other three were
+  found only by reading the emitter while fixing the first, and the sweep cannot reach them
+  (`bool` has no `.cbor`-composable filler that lands on the arm, an indefinite inner length is
+  unreachable from an emitter that only writes definite ones, and a c-style enum under `.cbor` is
+  not a composed pair). Detection is also LATE by construction — that sweep is full-tier-only, so
+  the one found instance sat in `LAYER2_KNOWN_BAD` rather than being fixed. All four are now fixed
+  and pinned by `cbor_payload_leaves` / `cbor_payload_indefinite_inner` in `tests/core/tests.rs`,
+  which execute a decode and assert the member AFTER the payload — the assertion a snapshot pin
+  structurally cannot make, since text blessed while the bug was live stays green forever. The
+  mechanical layer, which is a SOURCE lint rather than a fixture and therefore fast-tier-cheap:
+  enumerate the emitting sites reachable from `generate_deserialize` (its own body plus the
+  transitive closure of the helpers it calls) and fail on any emitted string literal containing a
+  bare `raw` token — the default must be spelled through the config accessor, never inline.
+  Trigger, on the axis the cost grows along: the COUNT of emitter parameters that are overloadable
+  in this way. Today it is one (the deserializer name); a SECOND — the serializer side has the
+  same shape latent, since `<var>_inner_se` is depth-agnostic (see cddl-matrix/ROADMAP.md's nested
+  `bytes .cbor` entry) — means the closure is being carried by hand in more than one emitter, and
+  hand-carrying is what produced these four.
 
 ## Deferred features (build when a real consumer needs them)
 
