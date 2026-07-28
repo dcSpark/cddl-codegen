@@ -51,10 +51,14 @@ use std::collections::{BTreeMap, BTreeSet};
 /// One rule of a dependency's export file: its CDDL name, the byte span of its text within that
 /// file, and the identifiers its body references.
 ///
-/// The span comes from the AST rather than from line arithmetic. The export writer stages every
-/// rule as a single formatted line today, but the importer does not depend on that: a rule's span
-/// runs from its own first byte to the first byte of the next rule, so a rule's trailing
-/// `; @rust_name …` annotation travels with the rule it annotates however the writer lays it out.
+/// The span starts where the AST says the rule starts and runs to where the NEXT rule starts (the
+/// end of the file for the last one) — deliberately not to the AST's own end offset, which excludes
+/// a rule's trailing comment for a GROUP rule while including it for a type rule. That comment is
+/// load-bearing: every export row carries its `@rust_name` pin there, so slicing a group row at its
+/// AST end drops the pin AND the newline separating it from the next row. Bounding each rule by its
+/// successor's start makes the partition total — prefix plus every rule's slice is the whole file,
+/// byte for byte — so a rule's annotations travel with it however the writer lays them out, and no
+/// byte can be silently lost between two rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExportRule {
     pub name: String,
@@ -98,20 +102,27 @@ pub struct ConsumerSurface {
 /// which is exactly the tolerance an export file needs.
 pub fn parse_export_file(content: &str) -> Result<ExportFile, String> {
     let cddl = cddl::parser::cddl_from_str(content, false)?;
-    let mut rules = Vec::new();
-    for rule in cddl.rules.iter() {
-        let span = match rule {
-            cddl::ast::Rule::Type { span, .. } => (span.0, span.1),
-            cddl::ast::Rule::Group { span, .. } => (span.0, span.1),
-        };
-        let (_ident, refs) = crate::dep_graph::find_references(rule);
-        rules.push(ExportRule {
-            name: rule.name(),
-            span,
-            refs: refs.into_iter().map(|i| i.ident.to_owned()).collect(),
-        });
-    }
+    let mut rules = cddl
+        .rules
+        .iter()
+        .map(|rule| {
+            let start = match rule {
+                cddl::ast::Rule::Type { span, .. } => span.0,
+                cddl::ast::Rule::Group { span, .. } => span.0,
+            };
+            let (_ident, refs) = crate::dep_graph::find_references(rule);
+            ExportRule {
+                name: rule.name(),
+                // Closed below, once the successor's start is known.
+                span: (start, content.len()),
+                refs: refs.into_iter().map(|i| i.ident.to_owned()).collect(),
+            }
+        })
+        .collect::<Vec<_>>();
     rules.sort_by_key(|r| r.span.0);
+    for i in 0..rules.len().saturating_sub(1) {
+        rules[i].span.1 = rules[i + 1].span.0;
+    }
     let prefix_end = rules.first().map_or(content.len(), |r| r.span.0);
     Ok(ExportFile { prefix_end, rules })
 }
@@ -412,14 +423,21 @@ mod tests {
         assert_eq!(selected(&s, &e, "dep"), set(&["wanted"]));
     }
 
-    /// The file-level reader: rule spans carry each rule's own trailing annotation, the header and
-    /// the `; unexported:` records land in the prefix, and re-emitting every rule after the prefix
-    /// reproduces the file byte for byte.
+    /// The file-level reader: each rule's slice carries its own trailing `@rust_name` pin and its
+    /// newline, the header and the `; unexported:` records land in the prefix, and re-emitting every
+    /// rule after the prefix reproduces the file byte for byte.
+    ///
+    /// The GROUP row (`operational_cert = ( … )`, the CML plain-group shape) is the load-bearing case
+    /// and is deliberately not last: a group rule's AST end offset stops before its trailing comment,
+    /// so bounding a rule by that offset would silently drop the pin and weld the next rule onto it.
+    /// The partition is by successor start for exactly this reason, and the byte-identity assertion
+    /// below is what proves no row loses its annotations.
     #[test]
     fn export_file_spans_partition_the_file() {
         let content = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1\n\
                        ; unexported: pool_params — a reason\n\
                        coin = uint ; @rust_name Coin\n\
+                       operational_cert = (kes_period: uint, sigma: coin) ; @rust_name OperationalCert\n\
                        foo = [c: coin] ; @rust_name Foo\n";
         let parsed = parse_export_file(content).expect("an export file must parse standalone");
         assert_eq!(
@@ -428,12 +446,20 @@ mod tests {
                 .iter()
                 .map(|r| r.name.as_str())
                 .collect::<Vec<_>>(),
-            vec!["coin", "foo"]
+            vec!["coin", "operational_cert", "foo"]
         );
-        assert_eq!(parsed.rules[1].refs, set(&["coin"]));
+        // Prelude names ride in `refs` verbatim — the closure filters them by intersecting with the
+        // export's own rule names, so the reader stays a faithful record of what the body says.
+        assert_eq!(parsed.rules[1].refs, set(&["coin", "uint"]));
+        assert_eq!(parsed.rules[2].refs, set(&["coin"]));
         assert_eq!(
             &content[parsed.rules[0].span.0..parsed.rules[0].span.1],
             "coin = uint ; @rust_name Coin\n"
+        );
+        assert_eq!(
+            &content[parsed.rules[1].span.0..parsed.rules[1].span.1],
+            "operational_cert = (kes_period: uint, sigma: coin) ; @rust_name OperationalCert\n",
+            "a group row must carry its own trailing pin, not stop at the AST's end offset"
         );
         let mut rebuilt = content[..parsed.prefix_end].to_string();
         for rule in &parsed.rules {

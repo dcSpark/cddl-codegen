@@ -1879,3 +1879,36 @@ fn extern_import_raw_bytes_trait_flag_survives_narrowing() {
         );
     }
 }
+
+/// The importer's rule partition must be TOTAL over a minted export: prefix plus every rule's slice
+/// is the file, byte for byte. Run over the fixture dependencies whose exports carry the awkward
+/// shapes — a plain-group row that is not the last rule in its file, opaque rows, transparent
+/// aliases, and records — because that is the shape where a plausible partition silently fails.
+///
+/// A group rule's AST end offset stops BEFORE its trailing comment, so bounding rules by the AST's
+/// own end would drop that row's `@rust_name` pin and weld the following rule onto it — and both
+/// losses are invisible to the byte-identity tests above (a pin that agrees with the derived name
+/// changes nothing when dropped, and the welded text still parses). Only a totality assertion sees
+/// it, so this test asserts totality rather than any downstream symptom.
+#[test]
+fn extern_import_rule_partition_is_total_over_minted_exports() {
+    for (spec, dep, tag) in [
+        (fixture("dep-groups/lib.cddl"), "dep", "part_groups"),
+        (fixture("dep-with-records/lib.cddl"), "dep", "part_records"),
+        (fixture("dep/lib.cddl"), "dep", "part_plain"),
+    ] {
+        let export = mint_export(&spec, dep, tag);
+        for (path, content) in &export {
+            let parsed = crate::extern_narrow::parse_export_file(content)
+                .unwrap_or_else(|e| panic!("{path} must parse standalone: {e}"));
+            let mut rebuilt = content[..parsed.prefix_end].to_string();
+            for rule in &parsed.rules {
+                rebuilt.push_str(&content[rule.span.0..rule.span.1]);
+            }
+            assert_eq!(
+                &rebuilt, content,
+                "the rule partition dropped or duplicated bytes of {path}"
+            );
+        }
+    }
+}
