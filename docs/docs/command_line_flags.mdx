@@ -877,6 +877,8 @@ See [preserving edits](preserving_edits.mdx) for the block syntax, the anchoring
 
 Pass `--no-preserve-comments` to skip the overlay entirely and clobber each generated file with pristine output. With the overlay off, tagged blocks in the prior output are clobbered like any other edit.
 
+**In a config file this is `preserve-comments = false`.** The key is spelled positively because TOML has booleans and a config should not make you write a double negative; omitting it, or setting it to `true`, leaves the overlay on. See [Config file § Booleans](./config_file#booleans).
+
 **Possible values:** the flag takes no value; its presence disables preservation<br></br>
 **Default:** preservation on
 ```bash

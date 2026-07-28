@@ -396,7 +396,11 @@ Verified: running the fixture's config from a directory with no `static/` panics
 `assertion failed: std::path::Path::exists(&cli.static_dir)`.
 
 Writing `static-dir` into the config is not the fix, because its value is a per-machine cache path
-(`$XDG_CACHE_HOME/cml-cddl-codegen…`) that would then be baked into a committed file. Keep the `cd`.
+(`$XDG_CACHE_HOME/cml-cddl-codegen…`) that would then be baked into a committed file. The fix is the
+one command-line exception config mode carries for exactly this shape: pass
+`--static-dir "$WORK/static"` alongside `--config` (it applies to every crate and overrides any
+committed key — `docs/docs/config_file.mdx` § "The one exception: `--static-dir`"), which retires
+the `cd`'s load-bearing role; keeping the `cd` remains a working spelling of the same fact.
 
 ## The manifest entries: three derived, two still by hand
 

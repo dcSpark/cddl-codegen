@@ -23,6 +23,102 @@ config cannot set — a drift gate in the test suite asserts the two sides stay 
 [command line flags](command_line_flags.mdx) remains the one reference for what each key *means*.
 This page covers only where a key's value comes from.
 
+## A complete config
+
+Before the parts, one whole file. This is the shape the feature was designed against —
+[cardano-multiplatform-lib](https://github.com/dcSpark/cardano-multiplatform-lib)'s four generated
+crates, written as the config that replaces its hand-composed flag bundles. Every section below
+explains one piece of it, and [Migrating a generation
+script](#migrating-a-generation-script) maps each piece back to the flags it replaces.
+
+```toml
+# Every key here is a cddl-codegen flag.
+
+[defaults]                      # reaches every crate
+no-synthesized-rust-collection-aliases = true
+json-serde-derives = true
+json-schema-export = true
+wasm = true
+rust-wasm-feature = "used_from_wasm"
+wasm-cbor-json-api-macro = "cml_core_wasm::impl_wasm_cbor_json_api"
+wasm-conversions-macro = "cml_core_wasm::impl_wasm_conversions"
+wasm-list-macro = "cml_core_wasm::impl_wasm_list_needs_into"
+
+# A SUBSET's keys, not everyone's: cip25 has never had the two encoding flags.
+[profiles.encoded]
+preserve-encodings = true
+canonical-form = true
+
+# One static runtime for the whole workspace: written once, imported by every crate.
+[runtime]
+export-static-crate = "core/rust"
+common-import = "cml_core"
+flavor-from = "chain"           # which crate's flavor it is written at
+
+[crates.chain]
+input = "specs/conway"          # a directory input works per-crate
+output = "chain"
+lib-name = "cml-chain"
+profiles = ["encoded"]
+json-schema-scripts = true
+# `cml_core` is hand-written and this config does not generate it, so its wasm face is named by
+# hand rather than derived from an edge.
+extern-wasm-crate = { cml_core = "cml_core_wasm" }
+
+[crates.cip25]
+input = "specs/cip25.cddl"
+output = "cip25"
+lib-name = "cml-cip25"
+# No `profiles`: this is the crate that omits the encoding pair.
+wasm-cbor-json-api-macro = "cml_core_wasm::impl_wasm_cbor_json_api_cbor_event_serialize"
+json-schema-root = ["cml_cip25::utils::CIP25MiniMetadataDetails"]
+
+[crates.cip36]
+input = "specs/cip36"
+output = "cip36"
+lib-name = "cml-cip36"
+profiles = ["encoded"]
+extern-wasm-crate = { cml_crypto = "cml_crypto_wasm", cml_chain = "cml_chain_wasm" }
+
+[crates.multi-era]
+input = "specs/multiera"
+output = "multi-era"
+lib-name = "cml-multi-era"
+profiles = ["encoded"]
+json-schema-scripts = true
+deps = ["chain"]                     # the whole workspace edge, both directions
+wasm-reexports = ["cip25", "cip36"]  # the npm package ships their classes
+json-schema-root = [
+  "cml_multi_era::utils::MultiEraBlockHeader",
+  "cml_multi_era::utils::MultiEraCertificate",
+  "cml_multi_era::utils::MultiEraProtocolParamUpdate",
+]
+```
+
+Four things are worth reading off it before the sections that explain them:
+
+- **`deps = ["chain"]` is the whole workspace edge.** One key derives the extern import, the wrapper
+  index, the rust and wasm manifest entries, the JSON threading, and the two reverse-edge flags that
+  land on `chain` itself. See [Dependencies between crates](#dependencies-between-crates).
+- **Generation order is not the order written.** It is a topological sort over `deps`, dependencies
+  first, ties broken by crate name: `chain`, `cip25`, `cip36`, `multi-era`, followed by the
+  [convergence pass](#generation-order-and-the-convergence-pass).
+- **`flavor-from` is a declaration, not a preference.** `cip25` omits the encoding pair, so no single
+  crate's flavor is the join of all four and the carrier cannot be derived. Naming it accepts
+  generating `cip25` against `chain`'s runtime, and the run states that acceptance back — see
+  [`flavor-from`, when you know](#flavor-from-when-you-know).
+- **One value is deliberately absent.** `static-dir` names where *this machine* keeps cddl-codegen's
+  own hand-written runtime, which is not a property a committed file can state. It is the [one
+  generation flag `--config` accepts](#the-one-exception---static-dir) instead.
+
+Running it is one command, and [seeing what it would do](#seeing-what-a-config-does-without-running-it)
+is the same one with a flag:
+
+```bash
+cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static --print-flags
+cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static
+```
+
 ## One spec, one crate
 
 The floor: a config must not be more ceremony than the flags it replaces.
@@ -72,6 +168,11 @@ directory, or one library.
 
 ## Profiles
 
+A profile here is **not** a Cargo build profile: it says nothing about `dev`/`release` and nothing
+about how the generated crate is compiled. It is also **not** selectable from the command line —
+there is no `--profile` flag, and which profiles a crate applies is stated by that crate's own
+`profiles = [...]` list, in the config, where the rest of its flag set is.
+
 Real projects have grouping axes that do not nest — say every crate shares a base, the *published*
 ones add npm packaging, and the *constrained-device* ones add a depth limit. One `[defaults]` table
 cannot express two overlapping subsets without pushing the flags back down into every crate.
@@ -113,6 +214,22 @@ in the file.
 Profiles are **flat**: a `[profiles.*]` table cannot itself carry `profiles`. Naming a profile that
 has no table, or naming one twice, is a hard error.
 
+### When a profile earns its keep
+
+`[defaults]` and a profile can often express the same grouping, so the question is which one says it
+better. The axis that decides it is whether a shared value can be taken back:
+
+- **A non-boolean key cannot be un-set once shared.** The config has [no spelling for
+  "absent"](#how-each-kind-of-key-merges), so a `rust-wasm-feature` or a `deserialize-depth-limit`
+  that one crate must *not* have cannot go in `[defaults]` at all. A profile is the only place it can
+  go, and that is the case a profile exists for.
+- **Two crate subsets that genuinely overlap** need two profiles, because a crate can list both while
+  one `[defaults]` table cannot be two tables. That is the case above.
+- **A boolean with one deviating crate needs neither.** `false` is a real value, so `[defaults]` plus
+  an explicit `preserve-encodings = false` on the crate that deviates is shorter than a profile plus a
+  `profiles = [...]` line on every other crate — and it states the deviation at the crate that has it,
+  which is where a reader of that crate's table looks for it.
+
 ## How each kind of key merges
 
 Most keys are scalars and the later layer simply wins. Two kinds behave differently, because for
@@ -131,8 +248,9 @@ Boolean keys are unaffected — `false` is a real value, which is how a deviatin
 `preserve-encodings` back off.
 
 So put a value in `[defaults]` only when it is genuinely universal. When it is shared by *most*
-crates, that is what a `[profiles.*]` table is for: the crates that want it list it, and the one that
-does not simply omits it.
+crates, a `[profiles.*]` table is the answer for anything that cannot be un-set: the crates that want
+it list it, and the one that does not simply omits it. For a boolean, [both spellings
+work](#when-a-profile-earns-its-keep) and the shorter one usually wins.
 :::
 
 **Arrays concatenate**, earlier layers first, author order preserved within each layer. `workspace-dep`
@@ -150,6 +268,14 @@ output = "gen/chain"
 json-schema-root = ["cml_chain::byron::ByronAddress"]
 # effective order: AddressContent, then ByronAddress
 ```
+
+Concatenation **never removes**, and that is a deliberate divergence from the layering people arrive
+with: in `tsconfig.json` or a kustomize overlay a later layer's list *replaces* the inherited one, so
+there is a spelling for dropping an entry. Here there is none — a later layer can only add. Both keys
+are additive by nature (one is emission order, the other is workspace membership), so replacement
+would make silently discarding the shared list the easy mistake, and there is no third value a crate
+could write to opt out of one entry. A crate that must not carry an entry keeps it out of the shared
+layer instead.
 
 **`<key>=<value>` flags become sub-tables**, which union per key — a later layer overrides only the
 keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
@@ -169,8 +295,25 @@ upstream_core = "upstream_core_wasm"
 ```
 
 :::caution TOML sub-tables end their parent table
-Everything after a `[crates.<name>.<sub-table>]` header belongs to the sub-table, not to the crate.
-Write a crate's plain keys first and its sub-tables last, or the plain keys land in the wrong place.
+Everything after a `[crates.<name>.<sub-table>]` header belongs to the sub-table, not to the crate,
+and it goes wrong **silently**: a `lib-name` written under that header becomes an entry in the
+mapping, and the crate keeps its default library name with nothing said about it.
+
+So for a short mapping, prefer the **inline table** — it ends where its closing brace does, and the
+keys after it still belong to the crate:
+
+```toml
+[crates.my-extension]
+input = "specs/ext.cddl"
+output = "gen/ext"
+extern-import = { upstream_core = "../upstream-core/extern-interface/upstream_core" }
+extern-wasm-crate = { upstream_core = "upstream_core_wasm" }
+lib-name = "ext"
+```
+
+The two spellings expand to exactly the same flags, so this is a layout choice and never a
+behavioural one. A mapping long enough to want its own header is fine too — write the crate's plain
+keys first and its sub-tables last.
 :::
 
 ## Dependencies between crates
@@ -434,6 +577,11 @@ output = "gen/multi-era"
 deps = ["chain"]                      # the spec references chain's types
 wasm-reexports = ["cip25", "cip36"]   # the package ships their classes; the spec never mentions them
 ```
+
+`wasm-reexports` is named after [the manifest entries](#the-wasm-manifest) it derives, which is the
+half of its effect the name predicts; the other half is this section's — every crate it names has its
+schema rows threaded into *this* crate's document, which is what stops a re-exported class shipping
+untyped.
 
 ### Why the source is the wasm dependency list, not the rust one
 
@@ -932,8 +1080,9 @@ answer *why is this flag here*, and keep the config as the thing that is maintai
 The shape this feature was designed against is a real one: `codegen.sh` in
 [cardano-multiplatform-lib](https://github.com/dcSpark/cardano-multiplatform-lib), which generates
 four crates with a shared flag bundle, a fifth reduced-flavor invocation, a workspace edge, and a
-hand-threaded JSON surface. This section maps that script onto a config so the correspondence is
-greppable from either side.
+hand-threaded JSON surface. That script's config is [the complete example above](#a-complete-config);
+this section maps it back onto the script piece by piece, so the correspondence is greppable from
+either side.
 
 **This is a mapping, not a migration.** Nothing in this feature has been run against CML or any other
 consumer repository — deliberately, since generation rewrites `src/generated/**` in place. Treat what
@@ -950,53 +1099,27 @@ The script keeps three arrays and composes them per invocation:
 | `COMMON` = `--preserve-encodings` + `--canonical-form` + `--json-serde-derives` + `--json-schema-export` + `OVERRIDE` + `WASM_MACROS` | the json pair joins `[defaults]`; the encoding pair becomes a **profile**, because one crate omits exactly those two |
 | `CIP25_WASM_MACROS` — `WASM_MACROS` with a different `--wasm-cbor-json-api-macro` | one per-crate key on that crate, overriding the shared value |
 
-The split between `[defaults]` and the profile is decided by the crate that deviates, not by
-taste: a key every crate sets belongs in `[defaults]`, and a key a *subset* sets belongs in a
-profile. `CIP25_WASM_MACROS` needs neither — a bundle that differs from the shared one in a single
-value is a per-crate key, since [later layers win per key](#how-each-kind-of-key-merges).
-
-```toml
-[defaults]
-no-synthesized-rust-collection-aliases = true
-json-serde-derives = true
-json-schema-export = true
-wasm = true
-rust-wasm-feature = "used_from_wasm"
-wasm-cbor-json-api-macro = "cml_core_wasm::impl_wasm_cbor_json_api"
-wasm-conversions-macro = "cml_core_wasm::impl_wasm_conversions"
-wasm-list-macro = "cml_core_wasm::impl_wasm_list_needs_into"
-
-[profiles.encoded]
-preserve-encodings = true
-canonical-form = true
-```
+A key every crate sets belongs in `[defaults]`, which is where the first two rows land whole. The
+encoding pair is the row with a choice in it, and the `encoded` profile keeps the boundary the script
+already drew — `COMMON` minus what the `cip25` invocation leaves out. For two booleans and a single
+deviating crate, `[defaults]` plus an explicit `preserve-encodings = false` on `cip25` is [the other
+legal spelling](#profiles), and a line shorter; the profile is kept here because it carries the
+script's own name for the axis. `CIP25_WASM_MACROS` needs neither — a bundle that differs from the
+shared one in a single value is a per-crate key, since [later layers win per
+key](#how-each-kind-of-key-merges).
 
 ### The crate that omits the encoding flags
 
 `cip25` is generated without `--preserve-encodings` / `--canonical-form` — it never had them. In the
-config that is simply the crate that does not apply the `encoded` profile:
-
-```toml
-[crates.cip25]
-input = "specs/cip25.cddl"
-output = "cip25"
-lib-name = "cml-cip25"
-wasm-cbor-json-api-macro = "cml_core_wasm::impl_wasm_cbor_json_api_cbor_event_serialize"
-json-schema-root = ["cml_cip25::utils::CIP25MiniMetadataDetails"]
-```
+config that is simply [the crate that does not apply the `encoded`
+profile](#a-complete-config).
 
 That deviation is on two of [the three equality axes](#which-crate-carries-the-export-and-why-it-is-derived),
 so this workspace is the **`flavor-from` case**: no single runtime matches every crate, and the
 carrier cannot be derived. The script already knows this — it places `--export-static-crate` on the
 `chain` invocation with a comment saying cip25's reduced flavor would export a runtime the others
-cannot use. `flavor-from` is that comment turned into a declaration:
-
-```toml
-[runtime]
-export-static-crate = "core/rust"
-common-import = "cml_core"
-flavor-from = "chain"
-```
+cannot use. `flavor-from` is that comment turned into a declaration — the third line of the
+`[runtime]` table above.
 
 What the declaration asserts is narrower than "chain is the right crate". It asserts that you accept
 generating `cip25` against a runtime built at `chain`'s flavor, and the run states the accepted gap
@@ -1007,16 +1130,8 @@ falsify; the statement is what makes that visible on the run that introduces it.
 ### The workspace edge
 
 `multi-era` consumes `chain`. The script spells that with three flags on the consumer
-(`EXTERN_WASM_MULTIERA`) and one on the dependency (`WRAPPER_REQUESTS_CHAIN`):
-
-```toml
-[crates.multi-era]
-input = "specs/multiera"
-output = "multi-era"
-lib-name = "cml-multi-era"
-profiles = ["encoded"]
-deps = ["chain"]
-```
+(`EXTERN_WASM_MULTIERA`) and one on the dependency (`WRAPPER_REQUESTS_CHAIN`); the config spells it
+`deps = ["chain"]` on `[crates.multi-era]`.
 
 That one key derives [the whole edge](#dependencies-between-crates), both directions, where the
 script passes four flags. Three things it does **not** pass come with them, and each is worth knowing
@@ -1058,13 +1173,8 @@ the consumer's *normalized* library name (`cml_multi_era`), where the script wri
 for. `cip36` declares two extern crates by hand, and they are two different cases. `cml_crypto` is
 hand-written and this config does not contain it, so there is no `[crates.cml_crypto]` table for
 `deps` to name and never will be: its stub plus [raw sub-table
-entries](#dependencies-between-crates) is the only spelling there is.
-
-```toml
-[crates.cip36.extern-wasm-crate]
-cml_crypto = "cml_crypto_wasm"
-cml_chain = "cml_chain_wasm"
-```
+entries](#dependencies-between-crates) — `cip36`'s `extern-wasm-crate` mapping [above](#a-complete-config)
+— is the only spelling there is.
 
 `cml_chain` is the other case: the config *does* contain that crate, and cip36 simply keeps its own
 stub for it rather than declaring the edge. That is a second migration unit, decided on its own
@@ -1084,37 +1194,22 @@ spelling at all.
 
 ### `JSON_ROOTS_*`
 
-Each array is a per-crate `json-schema-root` list. Array order is flag order, which is emission
-order, so it is preserved rather than sorted:
+Each array becomes a per-crate `json-schema-root` list — `cip25`'s single entry and `multi-era`'s
+three [above](#a-complete-config). Array order is flag order, which is emission order, so it is
+preserved rather than sorted.
 
-```toml
-[crates.chain]
-input = "specs/conway"
-output = "chain"
-lib-name = "cml-chain"
-profiles = ["encoded"]
-json-schema-scripts = true
-json-schema-root = [
-  "cml_chain::byron::AddressContent",
-  "cml_chain::byron::ByronAddress",
-  # …
-  "cml_crypto::Bip32PublicKey",
-]
-```
+Those four are fewer entries than the script's arrays hold, and the difference is not the config's
+doing. A root's only observable purpose is typing a published wasm class's JSON method, and most of
+the script's entries name classes that declare none; `CML_CONFIG_MIGRATION.md` in this repository
+carries that census. Pruning them is its own reviewable diff, separate from the flag-set change.
 
 ### `JSON_SCHEMA_DEP_MULTIERA`
 
 The script threads three dependencies' row sets into multi-era's schema document, and separately
 hand-declares each of those crates' json-gen packages in `multi-era/wasm/json-gen/Cargo.toml`. Both
 halves are [derived](#the-published-json-surface) from the same two facts — which crates multi-era
-*depends on*, and which crates its npm package *ships*:
-
-```toml
-[crates.multi-era]
-# …
-deps = ["chain"]
-wasm-reexports = ["cip25", "cip36"]
-```
+*depends on*, and which crates its npm package *ships*, which are the `deps` and `wasm-reexports`
+lines on `[crates.multi-era]` [above](#a-complete-config).
 
 `deps` already covers `cml_chain`; `wasm-reexports` declares the other two, which multi-era's package
 ships without its spec referencing them. The derivation emits `--json-schema-dep` in

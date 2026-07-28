@@ -182,6 +182,50 @@ extra = "crate_extra_wasm"
     );
 }
 
+/// A `<k>=<v>` sub-table has two TOML spellings — a `[crates.<name>.<key>]` header, and an inline
+/// table on the crate's own line — and they must expand to the same flags. The inline form is the
+/// one the docs recommend for a short mapping, because it does not end the parent table, so this
+/// pins that the recommendation is a spelling choice and never a behaviour change.
+#[test]
+fn an_inline_sub_table_expands_exactly_as_the_header_spelling_does() {
+    let header = expand_one(
+        r#"
+[crates.demo]
+input = "spec.cddl"
+output = "gen"
+lib-name = "after"
+
+[crates.demo.extern-wasm-crate]
+core = "core_wasm"
+other = "other_wasm"
+"#,
+    );
+    let inline = expand_one(
+        r#"
+[crates.demo]
+input = "spec.cddl"
+output = "gen"
+extern-wasm-crate = { core = "core_wasm", other = "other_wasm" }
+lib-name = "after"
+"#,
+    );
+    // Non-vacuous: both mappings really reached the flag, so the equality below is between two
+    // populated expansions rather than between two empty ones.
+    assert_eq!(
+        header.extern_wasm_crate,
+        vec!["core=core_wasm", "other=other_wasm"],
+        "the header spelling must reach the flag"
+    );
+    assert_eq!(
+        inline.extern_wasm_crate, header.extern_wasm_crate,
+        "the inline spelling must expand to exactly what the header spelling does"
+    );
+    // The whole reason the docs recommend it: a key written AFTER an inline table still belongs to
+    // the crate, where a key written after a `[crates.demo.extern-wasm-crate]` header would not.
+    assert_eq!(inline.lib_name, "after");
+    assert_eq!(header.lib_name, "after");
+}
+
 // ---------------------------------------------------------------------------------------------
 // D2 — the schema, and what it refuses
 // ---------------------------------------------------------------------------------------------
