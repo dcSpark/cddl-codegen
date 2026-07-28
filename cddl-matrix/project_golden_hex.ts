@@ -25,6 +25,7 @@
  */
 import notesToml from "./annotations/golden_hex/cddl_codegen.toml";
 import { featuresIn, NO_DETECTOR } from "./corpus_detect";
+import { preludeAliasClasses } from "./lib";
 
 const HERE = import.meta.dir;
 const GOLDEN = `${HERE}/../tests/golden_hex`;
@@ -335,6 +336,18 @@ for (let mt = 0; mt < 8; mt++) {
 const fixtureCddl = await Bun.file(`${GOLDEN}/input.cddl`).text();
 const detected = featuresIn(fixtureCddl);
 const fixtureFloor = new Set([...detected.rfc, ...detected.ctl, ...detected.dsl]);
+// `featuresIn` matches a construct by NAME, so the scan alone misses a construct the fixture spells
+// under a prelude ALIAS: `input.cddl` writes `tstr`, and `text = tstr` is the same construct under its
+// other name. That equivalence is derivable from the pinned prelude, so it is CORRECTED here rather
+// than disclaimed — a generated number that is wrong for a computable reason is a defect, not a
+// caveat. Strictly plain aliases: a CHOICE-bodied rule (`float = float16-32 / float64`) is a union
+// whose members encode differently, so crediting across one would restore the very over-credit the
+// fixture floor exists to remove.
+const aliasClasses = preludeAliasClasses();
+for (const id of [...fixtureFloor]) {
+  if (!id.startsWith("prelude.")) continue;
+  for (const alias of aliasClasses.get(id.slice("prelude.".length)) ?? []) fixtureFloor.add(`prelude.${alias}`);
+}
 const constructs = matrix.features
   .filter(f => (f.encodings ?? []).length)
   .map(f => {
@@ -359,6 +372,11 @@ const constructs = matrix.features
 // not the fixture, so that must be stated rather than silently rendered.
 if (!fixtureFloor.size)
   throw new Error(`${GOLDEN}/input.cddl detected no constructs — the fixture floor is vacuous, which would mark every construct unexercised`);
+// The alias correction is silent when it finds nothing, so a prelude bump that restructured the plain
+// aliases away would drop it without moving a single visible number — the ✗ rows would simply come
+// back. Fail instead, so the source change has to be looked at.
+if (!aliasClasses.size)
+  throw new Error("the pinned prelude yielded no plain-alias classes — the alias correction to the fixture floor would silently stop applying; re-check sources/cddl.prelude");
 const blind = matrix.features.filter(f => (f.encodings ?? []).length && NO_DETECTOR.has(f.id)).map(f => f.id);
 if (blind.length)
   throw new Error(`construct(s) [${blind.join(", ")}] carry encodings but are in corpus_detect's NO_DETECTOR set — their fixture-floor answer would be a detector artifact; give them a detector or exclude them explicitly`);
@@ -399,21 +417,34 @@ w("`out_of_scope` notes as the summary — and **not** a claim that a cell is re
 w("value where the head argument follows the value: a `uint` reaches `enc.major0.ai27` only at values");
 w("≥ 2^32, and a `bstr` reaches `enc.major2.ai26` only at lengths ≥ 2^16.");
 w();
-w("**Scope limit of the floor.** It is `corpus_detect.ts`'s text scan, which matches a construct by");
-w("NAME. A construct the fixture expresses under a synonym or a wider choice type therefore reads ✗:");
-w("`input.cddl` writes `tstr`, so `prelude.text` (its exact prelude alias) is ✗, and it writes `float`,");
-w("so `prelude.float64` is ✗ even though the `fb…` double vectors exist. Read ✗ as *no golden rule names");
-w("this construct*, which is the honest fact, not as *nothing resembling it is asserted anywhere*.");
+w("**Scope limit of the floor — one case, and it is narrower than it looks.** The floor is");
+w("`corpus_detect.ts`'s text scan, which matches a construct by NAME, then corrected for the prelude's");
+w("plain aliases (`bytes = bstr`, `text = tstr`, `null = nil`, derived from the pinned prelude): the");
+w("fixture writing `tstr` credits `prelude.text` too, because they are one construct under two");
+w("spellings. What is NOT corrected is a construct the fixture reaches by writing a **wider type that");
+w("the generator narrows at emission**: `one_float = [v: float]` asserts `fb…` doubles, so");
+w("`prelude.float64`'s cell is exercised in fact, yet no rule names `float64` and it reads ✗. That is a");
+w("claim about what cddl-codegen picks when it emits a union, not about spec structure — not derivable");
+w("from the prelude, and deliberately not guessed. For those rows read ✗ as *no golden rule names this");
+w("construct*, which is the honest fact, not as *nothing resembling it is asserted anywhere*.");
 w();
 w("Reported, never fatal: this gate's non-zero exit stays reserved for note drift and ➕ (uncovered");
 w("Appendix A vector with no rationale). The coverage this narrows is the same `cellsCovered` behind");
 w("the summary's *emittable but no Appendix A vector lands here* line, which is already a deliberate");
-w("non-failure — failing here would re-litigate that threshold from a different direction. (The two");
-w("counts do not match, and should not: the summary asks whether ANY vector reaches a cell, this asks");
-w("whether one reaches it *for this construct*, so a globally covered cell is still untested here.)");
+w("non-failure — failing here would re-litigate that threshold from a different direction.");
+w();
+w("**These totals do not sum to the summary's, and making them agree would be a regression.** The");
+w("summary asks whether ANY vector reaches a cell; this section asks whether one reaches it *for this");
+w("construct*, so a globally covered cell is still untested here. An earlier draft had the two");
+w("agreeing exactly — that was an artifact of crediting every construct for every other construct's");
+w("vectors, and restoring the agreement would mean restoring the over-credit.");
 w();
 w(`- Exercised by \`input.cddl\`: **${constructs.length - unexercised}** of ${constructs.length} (✗ rows below have their full legal set untested)`);
 w(`- Constructs with at least one untested-and-emittable cell: **${constructsWithGaps}** of ${constructs.length}`);
+w("- Both counts are **conservative in one known direction**: a construct the fixture reaches only");
+w("  through a wider type the generator narrows at emission (`float` → the `float64` cell) counts as");
+w("  ✗ here, so *exercised* is a floor and *with gaps* is a ceiling. Cited alone, they overstate the");
+w("  gap by that margin.");
 w();
 w("| construct | in fixture | legal | covered | never emitted | untested and emittable |");
 w("|-----------|:---------:|-------|---------|---------------|------------------------|");

@@ -78,6 +78,19 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   along — how far the column overstates the actionable set. It is not already met: the width cells
   are writable up to `ai26` (a 64 KiB literal) and only `ai27` is out of reach, so today an author
   writes more than they dismiss.
+- **Narrowing at emission, in the golden fixture floor.** The per-construct section of
+  `tests/golden_hex/COVERAGE.md` marks a construct exercised when a golden rule NAMES it, corrected
+  for the prelude's plain aliases (derivable, so applied rather than disclaimed). Not corrected: a
+  construct the fixture reaches only through a WIDER type that cddl-codegen narrows when it emits.
+  `one_float = [v: float]` asserts `fb…` doubles, so `prelude.float64`'s cell is exercised in fact
+  while no rule names `float64`, and the row reads ✗ with its cell listed untested. Closing it means
+  modelling which arm of a union the generator picks at emission — a claim about the generator, not
+  about spec structure, so it cannot be derived from the pinned prelude and must not be guessed; the
+  honest fixes are a golden rule that names the narrow type, or an emission model. *Reopening
+  signal:* a vector written to close one of these ✗ rows turns out to assert bytes an existing vector
+  already asserts — wasted authoring work, measured by the author who did it, and growing with the
+  number of skewed rows rather than with the number of consumers. The entry records that the case
+  exists; it records nobody having paid for it yet, so the signal can still fire.
 - **F4 (tag registry):** deliberately not pinned/enumerated (cddl-codegen is tag-parametric). Revisit only
   if a *tag-semantic* consumer of the master appears.
 
