@@ -339,6 +339,18 @@ Error: "the committed workspace does not build: `core` does not host `MapU64ToCo
 reads its consumers' committed sidecars, and is always safe."
 ```
 
+**Nonzero, and its own code.** The exit status distinguishes the two failures, because they ask for
+different things:
+
+| exit | what it means |
+|---|---|
+| `0` | the run did what it was asked, and nothing it can see says the workspace is inconsistent (the convergence warning, if it fires, is here — it is an instruction about the run, and re-running satisfies it) |
+| `1` | the **run** failed: a config that would not expand, a spec that would not generate. Fix the input and run it again |
+| `2` | the run **succeeded** — every crate it was asked to generate is generated — and the committed **tree** does not build: the verdict above. Repeating the command changes nothing; the message names the dependency to regenerate |
+
+A CI job wants those apart: `1` is "this commit's inputs are broken", `2` is "this commit's generated
+output and its committed dependency have drifted apart", and the second one names its own remedy.
+
 The two are not two strengths of one signal. "I rewrote a sidecar something had already read" is
 normal, self-clearing, and expected on a first run, so it stays a warning at exit 0. "This tree does
 not build" is neither, and it is true whether or not the dependency was in your run — which is why it
@@ -364,11 +376,41 @@ reads do not exist until its consumers have generated once — and the convergen
 follows it.
 :::
 
+### Selecting a subset, and closing it over dependencies
+
 Selecting a subset does **not** pull in its dependencies. The unselected dependency's committed output
 is trusted exactly as a dependency in another repository's is, which is the same contract the
 cross-crate flags already document; the selected crate still carries the full derived edge, which is
 what makes that committed output reachable. If it was never generated, the flags' own error names the
 missing path.
+
+That default is right when the dependency is settled, and it is what makes the verdict above
+meaningful. But when you have just changed a consumer's spec so that it borrows something new, you
+already know the dependency is affected — the two commands are the verdict and then its own
+instruction:
+
+```bash
+cddl-codegen --config codegen.toml ledger   # exit 2: `core` does not host `MapU64ToCoreThing`…
+cddl-codegen --config codegen.toml core     # what the verdict told you to run
+```
+
+`--with-deps` is that taken up front, in one command:
+
+```bash
+cddl-codegen --config codegen.toml --with-deps ledger   # generates core, then ledger; exit 0
+```
+
+It closes the named selection over `deps`, **transitively** — `--with-deps app` on `app → mid → core`
+runs all three — and the closed selection generates in the config's ordinary generation order, so
+`--with-deps a b` and `--with-deps b a` do the same thing. `--print-flags` composes with it and lists
+the crates the run would contain, dependency included.
+
+Two things it deliberately does not do. It closes over **dependencies only, never consumers**: a
+dependency is pulled in so the named crate's own inputs exist, while a consumer would be regenerated
+because it *might* change — output you did not ask for, and the verdict is how you hear that it needs
+regenerating instead. And it needs at least one crate name to close over: naming no crate already runs
+every crate in the config, so `--with-deps` alone is an error rather than a flag that silently did
+nothing.
 
 ## The published JSON surface
 
@@ -780,8 +822,10 @@ cannot leave the first crate's output half-migrated on disk.
 
 Passing any generation flag alongside `--config` is a hard error naming the flag. There is no
 flags-override-config precedence on purpose: every override would have to define whether it applies
-to one crate or to all of them, and the honest answer differs per flag. Positional crate names are
-the only command-line selector; the config file is the edit loop.
+to one crate or to all of them, and the honest answer differs per flag. Crate names — positionally,
+or closed over `deps` with
+[`--with-deps`](#selecting-a-subset-and-closing-it-over-dependencies) — are the only
+command-line selector; the config file is the edit loop.
 
 Selecting a subset generates only the crates you name. Their order on the command line does not
 matter — the config decides the generation order.

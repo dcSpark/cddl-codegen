@@ -1430,6 +1430,72 @@ impl Config {
         )))
     }
 
+    /// "You named a crate this config does not have", written once.
+    ///
+    /// Every selector answers it identically because it IS the same question — a typo on the command
+    /// line does not become a different mistake depending on which selector carried it.
+    fn unknown_crate(&self, name: &str) -> String {
+        format!(
+            "`{name}` is not a crate in this config. Configured crates: {}",
+            list_or_none(self.crates.keys())
+        )
+    }
+
+    /// `--with-deps`: the selection closed transitively over `deps`, in generation order.
+    ///
+    /// The plain selector trusts an unselected dependency's COMMITTED output, which is the right
+    /// default and the same contract the cross-crate flags document. But it makes the one workflow
+    /// that needs two commands need two commands: change a consumer's spec so it borrows a new
+    /// wrapper, regenerate the consumer, and the committed-state verdict correctly reports that the
+    /// dependency does not host it — the tree needs the dependency re-run, and the user already knew
+    /// that when they typed the consumer's name. This closes the selection instead, so one command
+    /// settles it.
+    ///
+    /// DEPENDENCIES only, never consumers. The two directions are not symmetric: a dependency is
+    /// generated so that the named crate's own inputs exist, while a consumer would be generated
+    /// because it might want to CHANGE — that is output the user did not ask for, and the verdict is
+    /// how they hear about it rather than by having it silently rewritten.
+    ///
+    /// The closure decides WHICH crates run and never in what order: the result is filtered out of
+    /// [`Self::generation_order`], the same total order a full run uses, so `--with-deps a b` and
+    /// `--with-deps b a` generate the same thing in the same sequence.
+    pub fn with_dependencies(&self, selected: &[String]) -> Result<Vec<String>, String> {
+        // Naming nothing already means every crate in the config, which is a superset of any
+        // closure — so this spelling has no meaning to give it, and a flag that silently did nothing
+        // would read as one that had worked.
+        if selected.is_empty() {
+            return Err(
+                "`--with-deps` closes a crate SELECTION over its dependencies, so it needs at least \
+                 one crate name to close over. Naming no crate already runs every crate in the \
+                 config, which no closure can add to: drop the flag, or name the crate whose \
+                 dependencies you want pulled in."
+                    .to_owned(),
+            );
+        }
+        for name in selected {
+            if !self.crates.contains_key(name) {
+                return Err(self.unknown_crate(name));
+            }
+        }
+
+        let mut closed: BTreeSet<String> = BTreeSet::new();
+        let mut pending: Vec<String> = selected.to_vec();
+        while let Some(name) = pending.pop() {
+            // The `closed` guard is what terminates the walk, so it does not depend on `validate`'s
+            // cycle rejection having run — and every `deps` entry names a real crate for the same
+            // reason (`validate` rejects the rest), which is why the indexing below cannot panic.
+            if !closed.insert(name.clone()) {
+                continue;
+            }
+            pending.extend(self.crates[&name].deps.iter().cloned());
+        }
+        Ok(self
+            .generation_order()?
+            .into_iter()
+            .filter(|name| closed.contains(name))
+            .collect())
+    }
+
     /// Expand to the sequence of invocations this config describes, in generation order.
     ///
     /// `selected` empty means every crate. A name with no `[crates.<name>]` table is a hard error
@@ -1440,6 +1506,8 @@ impl Config {
     /// output is trusted exactly as a dependency in another repository's is — the same contract the
     /// cross-crate flags already document — so `--config c.toml ledger` regenerates one crate against
     /// what `core` last wrote, and fails with the flags' own error if `core` never wrote anything.
+    /// [`Self::with_dependencies`] is the opt-in that closes the selection instead; it runs before
+    /// this, so what arrives here is a plain list of names either way.
     pub fn expand(&self, selected: &[String]) -> Result<Vec<(String, Cli)>, String> {
         Ok(self
             .expand_each(selected)?
@@ -1474,10 +1542,7 @@ impl Config {
         } else {
             for name in selected {
                 if !self.crates.contains_key(name) {
-                    return Err(format!(
-                        "`{name}` is not a crate in this config. Configured crates: {}",
-                        list_or_none(self.crates.keys())
-                    ));
+                    return Err(self.unknown_crate(name));
                 }
             }
             // Deduplicated and re-ordered into generation order: the selection picks WHICH crates
@@ -2953,6 +3018,33 @@ impl Convergence {
     }
 }
 
+/// The committed-state verdict ([`Config::committed_verdict`]) as a typed error, so the exit code
+/// can say which KIND of failure this was.
+///
+/// One exit code cannot carry the distinction, and the distinction is the whole point of the verdict.
+/// A failed run — a config that would not expand, a spec that would not generate — means the tool did
+/// not do what it was asked, and re-running it after fixing the input is the whole remedy. The verdict
+/// means the opposite: every file this run was asked to write IS written, and the committed workspace
+/// those files sit in does not build. No repeat of this command settles it; the message names the
+/// dependency that does. An automated caller has to be able to tell "your inputs are wrong, nothing
+/// happened" from "the generation happened and the tree now needs the named regen", and the exit code
+/// is the only channel it reliably reads.
+///
+/// It WRAPS the message rather than restating it: `Display` is the verdict text verbatim, so every
+/// assertion on that text still holds and the exit code is the only new fact. In particular the text
+/// is still deliberately un-prefixed by [`about_the_config`] — the verdict is about the TREE, not
+/// about the document — and this wrapper must not change that.
+#[derive(Debug)]
+pub struct VerdictError(String);
+
+impl std::fmt::Display for VerdictError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for VerdictError {}
+
 /// Run everything a config file describes: expand it, generate each crate in order, then report
 /// whether the run converged.
 ///
@@ -3076,9 +3168,11 @@ pub fn generate(
         .committed_verdict(config_path, selected)
         .map_err(|e| about_the_config(config_path, e))?
     {
-        // The verdict itself is deliberately NOT wrapped. Every other message here is about the
-        // config; this one is about the committed TREE, and it already names the files it read.
-        return Err(verdict.into());
+        // The verdict itself is deliberately NOT wrapped by `about_the_config`. Every other message
+        // here is about the config; this one is about the committed TREE, and it already names the
+        // files it read. It IS wrapped in `VerdictError`, which changes no byte of the text and
+        // carries the one thing the text cannot: the exit code `main` gives it.
+        return Err(VerdictError(verdict).into());
     }
     Ok(())
 }
@@ -3096,6 +3190,22 @@ pub fn generate(
 /// says which crate was running.
 fn about_the_config(config_path: &Path, error: impl std::fmt::Display) -> String {
     format!("--config {}: {error}", config_path.display())
+}
+
+/// `--with-deps`: resolve the command line's crate selection into the one the run uses.
+///
+/// Resolved HERE rather than inside [`generate`], because a closed selection is a plain list of crate
+/// names — indistinguishable from a typed one, and it must be: the run, the `--print-flags` listing,
+/// the convergence warning's "re-run this" command and the committed-state verdict all read the same
+/// `selected`, and a closure applied inside only one of them would make them disagree about what the
+/// run contained.
+///
+/// It costs a second read of the config file (the graph cannot be known without one), which changes
+/// no generated byte: this decides which crates run, exactly as the positional names do.
+pub fn selection_with_deps(config_path: &Path, selected: &[String]) -> Result<Vec<String>, String> {
+    load(config_path)?
+        .with_dependencies(selected)
+        .map_err(|e| about_the_config(config_path, e))
 }
 
 /// [`load`] plus the command-line `--static-dir` override, which is not a config value and so cannot
@@ -3139,7 +3249,7 @@ pub fn print_flags(
     long_about = "Generate the crates a cddl-codegen config file describes.\n\nPaths inside the \
                   config resolve against the CONFIG FILE's directory, not the current one, so the \
                   same command works from anywhere. Naming crates limits the run to those crates; \
-                  naming none runs them all."
+                  naming none runs them all. --with-deps adds what the named crates depend on."
 )]
 pub struct ConfigCli {
     /// Path to the config file.
@@ -3175,6 +3285,15 @@ pub struct ConfigCli {
         value_name = "STATIC_DIR"
     )]
     pub static_dir: Option<PathBuf>,
+
+    /// Also generate everything the named crates depend on, transitively.
+    // Not a generation flag, and so on the same side of [`reject_generation_flags`] as the crate
+    // names it modifies: it chooses WHICH crates run, never what any of them is generated with.
+    //
+    // Dependencies only, never consumers — see [`Config::with_dependencies`] for why the two
+    // directions are not symmetric.
+    #[clap(long = "with-deps", action = clap::ArgAction::SetTrue)]
+    pub with_deps: bool,
 
     /// Generate only these crates (default: every crate in the config).
     #[clap(value_parser, value_name = "CRATE")]
@@ -3240,9 +3359,10 @@ pub fn reject_generation_flags(argv: &[String]) -> Result<(), String> {
                  config file, and mixing the two would need a precedence rule that differs per flag \
                  (does a command-line `{offender}` apply to one crate or all of them?). Set it under \
                  `[defaults]`, a `[profiles.<name>]` table, or the `[crates.<name>]` table it belongs \
-                 to. Positional crate names and `--static-dir` — which names this machine's copy of \
-                 the tool's runtime rather than anything about a crate, so it applies to all of them \
-                 — are the only command-line arguments config mode takes."
+                 to. Config mode's own arguments — positional crate names, `--with-deps`, \
+                 `--print-flags`, and `--static-dir`, which names this machine's copy of the tool's \
+                 runtime rather than anything about a crate, so it applies to all of them — are the \
+                 only command-line arguments it takes."
             ));
         }
     }

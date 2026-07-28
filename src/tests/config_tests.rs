@@ -1468,6 +1468,116 @@ fn print_flags_is_not_a_generation_flag_and_leaves_the_selection_alone() {
     assert!(!without.print_flags, "the default is to generate");
 }
 
+/// `--with-deps` closes the selection over `deps`, transitively, in generation order — and over
+/// DEPENDENCIES only.
+///
+/// The graph it closes over is read off the parsed `Config`, before any expansion: the same `deps`
+/// edges `generation_order` sorts on, which is what lets the selection be resolved once, on the
+/// command line, rather than re-derived by every consumer of it.
+#[test]
+fn with_deps_closes_the_selection_over_dependencies_only() {
+    let config = parse(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gc\"\n\n\
+         [crates.mid]\ninput = \"m.cddl\"\noutput = \"gm\"\ndeps = [\"core\"]\n\n\
+         [crates.app]\ninput = \"a.cddl\"\noutput = \"ga\"\ndeps = [\"mid\"]\n\n\
+         [crates.solo]\ninput = \"s.cddl\"\noutput = \"gs\"\n",
+    );
+
+    // TRANSITIVE: naming the top of a two-edge chain pulls in both levels below it, and the result
+    // is in generation order — dependencies first — because the selection picks WHICH crates run,
+    // never in what order.
+    assert_eq!(
+        config.with_dependencies(&["app".to_owned()]).unwrap(),
+        vec!["core".to_owned(), "mid".to_owned(), "app".to_owned()]
+    );
+    // DEPENDENCIES ONLY: `mid` does not drag in `app`, which depends on it. A consumer would be
+    // output the user did not ask for, and the committed-state verdict is how they hear that it
+    // needs regenerating instead.
+    assert_eq!(
+        config.with_dependencies(&["mid".to_owned()]).unwrap(),
+        vec!["core".to_owned(), "mid".to_owned()]
+    );
+    assert_eq!(
+        config.with_dependencies(&["core".to_owned()]).unwrap(),
+        vec!["core".to_owned()],
+        "a crate with no `deps` closes to itself"
+    );
+    // Two names whose closures overlap produce ONE list, deduplicated and ordered, and the order of
+    // the names on the command line cannot change it.
+    let both = vec!["app".to_owned(), "solo".to_owned()];
+    let reversed = vec!["solo".to_owned(), "app".to_owned()];
+    assert_eq!(
+        config.with_dependencies(&both).unwrap(),
+        vec![
+            "core".to_owned(),
+            "mid".to_owned(),
+            "app".to_owned(),
+            "solo".to_owned()
+        ],
+        "the closure is deduplicated and delivered in generation order"
+    );
+    assert_eq!(
+        config.with_dependencies(&both).unwrap(),
+        config.with_dependencies(&reversed).unwrap(),
+        "the selection picks which crates run, never in what order"
+    );
+
+    // An unknown name is the SAME hard error the positional selector gives it, character for
+    // character — one message, because it is one mistake however it was spelled.
+    let closed = config
+        .with_dependencies(&["nope".to_owned()])
+        .expect_err("an unknown name must be refused");
+    let positional = config
+        .expand(&["nope".to_owned()])
+        .expect_err("an unknown positional name must be refused");
+    assert_eq!(closed, positional);
+    assert!(closed.contains("`nope` is not a crate in this config"));
+
+    // And the flag with nothing to close over is an error that says exactly that, rather than a
+    // silent no-op that reads as having worked.
+    let empty = config
+        .with_dependencies(&[])
+        .expect_err("`--with-deps` with no crate named must be refused");
+    assert!(
+        empty.contains("--with-deps") && empty.contains("every crate in the config"),
+        "the message must name the flag and say why naming nothing has no closure to take, got: \
+         {empty}"
+    );
+}
+
+/// `--with-deps` parses as a selection modifier: it reaches the config parser rather than the
+/// generation-flag rejection, and leaves the positional names alone.
+#[test]
+fn with_deps_is_not_a_generation_flag_and_leaves_the_selection_alone() {
+    use clap::Parser;
+
+    let argv: Vec<String> = [
+        "cddl-codegen",
+        "--config",
+        "c.toml",
+        "--with-deps",
+        "ledger",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    config::reject_generation_flags(&argv)
+        .expect("`--with-deps` chooses which crates run, so it is not a generation flag");
+    let invocation = config::ConfigCli::parse_from(&argv);
+    assert!(invocation.with_deps);
+    assert_eq!(
+        invocation.crates,
+        vec!["ledger".to_owned()],
+        "the crate names stay positional; the flag only says what to do with them"
+    );
+
+    let without = config::ConfigCli::parse_from(["cddl-codegen", "--config", "c.toml", "ledger"]);
+    assert!(
+        !without.with_deps,
+        "the default is the plain selection, which trusts a dependency's committed output"
+    );
+}
+
 /// `--help` and `--version` alongside `--config` reach clap, not the generation-flag rejection.
 ///
 /// They are not `Cli` arguments at all — clap synthesises them at build time, so they never appear
@@ -5150,6 +5260,17 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
          and a fixture where it fires would not be testing the gap. Stale: {:?}",
         bracketing.stale_crates()
     );
+    // The verdict path returns the TYPED error, which is what carries its exit code out to `main`
+    // (pinned at the process level by `the_committed_state_verdict_exits_2_and_other_failures_exit_1`).
+    // Asserted here because this is the one fixture that reaches the verdict path in-process, and a
+    // classification done by message text rather than by type would be one reword away from silently
+    // becoming exit 1.
+    assert!(
+        verdict
+            .downcast_ref::<config::VerdictError>()
+            .is_some_and(|typed| typed.to_string() == verdict.to_string()),
+        "the verdict must arrive as `VerdictError`, displaying the message verbatim, got: {verdict}"
+    );
     let verdict = verdict.to_string();
     for expected in ["`core` does not host", "MapU64ToCoreThing", "`ledger`"] {
         assert!(
@@ -5561,6 +5682,212 @@ fn a_diamond_dependency_graph_converges_in_one_invocation() {
         first_tree_difference("second run", &after_second, "third run", &after_third)
     {
         panic!("a converged diamond must stay converged, but {difference}");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The exit-code contract, and the dependency-closing selector
+// ---------------------------------------------------------------------------------------------
+
+/// The two-crate workspace the binary-level fixtures below run over: `ledger deps core`, with a real
+/// borrow on the edge, written into `dir`. Returns the config path.
+///
+/// Shared rather than copied because both fixtures need the SAME shape — the one the committed-state
+/// verdict fires on — and a drift between them would make the second test's exit 0 mean something
+/// different from the first's exit 2.
+fn borrowing_pair_fixture(dir: &Path) -> std::path::PathBuf {
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/core.cddl"),
+        "core_thing = [a: uint, b: text]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/ledger.cddl"),
+        "ledger_rec = [l: [* core_thing]]\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\
+             lib-name = \"core-lib\"\n\n\
+             [crates.ledger]\ninput = \"specs/ledger.cddl\"\noutput = \"gen/ledger\"\n\
+             lib-name = \"ledger-lib\"\ndeps = [\"core\"]\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+    config_path
+}
+
+/// The committed-state verdict exits **2**. Every other failure exits **1**.
+///
+/// The two say different things to whoever automates this command, and one exit code cannot carry
+/// the difference: `1` means the run did not happen (a config that would not expand, a spec that
+/// would not generate), so fixing the input is the remedy; `2` means the run did exactly what it was
+/// asked and the committed workspace it wrote into does not build — repeating the command settles
+/// nothing, and the message names the dependency that does.
+///
+/// Pinned against the REAL binary, because `main`'s termination is the only place the distinction
+/// exists: every unit-level caller sees one `Err` either way.
+#[test]
+fn the_committed_state_verdict_exits_2_and_other_failures_exit_1() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_exit_codes_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let config_path = borrowing_pair_fixture(&dir);
+    let run = |args: &[&str]| {
+        super::integration_tests::codegen_cmd()
+            .arg("--config")
+            .arg(&config_path)
+            .args(args)
+            .output()
+            .expect("the generator binary must be spawnable")
+    };
+
+    // A converged workspace: the run succeeded and the tree it wrote builds.
+    let converged = run(&[]);
+    assert_eq!(
+        converged.status.code(),
+        Some(0),
+        "a cold config run must converge and exit 0\nstderr:\n{}",
+        String::from_utf8_lossy(&converged.stderr)
+    );
+
+    // The consumer alone gains a borrow the dependency has never been asked for: the run itself
+    // succeeds — every file it was asked to write is written — and the tree no longer builds.
+    std::fs::write(
+        dir.join("specs/ledger.cddl"),
+        "ledger_rec = [l: [* core_thing], m: {* uint => core_thing}]\n",
+    )
+    .unwrap();
+    let verdict = run(&["ledger"]);
+    let stderr = String::from_utf8_lossy(&verdict.stderr);
+    assert_eq!(
+        verdict.status.code(),
+        Some(2),
+        "the verdict is a statement about the TREE, not about the run, so it gets its own exit \
+         code\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("the committed workspace does not build")
+            && stderr.contains("MapU64ToCoreThing"),
+        "and exit 2 must be the verdict rather than some other failure, got:\n{stderr}"
+    );
+
+    // A failure of the RUN, from the same tree in the same state: exit 1. Without this the exit-2
+    // assertion above would pass over a binary that failed everything with 2.
+    let unknown = run(&["nosuchcrate"]);
+    assert_eq!(
+        unknown.status.code(),
+        Some(1),
+        "an expansion failure is a failed run, not a verdict\nstderr:\n{}",
+        String::from_utf8_lossy(&unknown.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&unknown.stderr).contains("is not a crate in this config"),
+        "and it must be the expansion failure it was asked for"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `--with-deps` settles in ONE command what the plain selector reports and leaves for a second.
+///
+/// The workflow this is for: a consumer's spec gains a borrow, and the user regenerates the
+/// consumer. The plain selection is right to trust the dependency's committed output — but here the
+/// user already knows the dependency is affected, and the verdict's own instruction is to run it.
+/// Closing the selection over `deps` is that instruction taken up front.
+///
+/// Binary-level because the closure lives on the command line: it is resolved once, before the run,
+/// the listing and the diagnostics that quote the selection back can disagree about what is in it.
+#[test]
+fn with_deps_settles_the_subset_case_in_one_command() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_with_deps_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let config_path = borrowing_pair_fixture(&dir);
+    let run = |args: &[&str]| {
+        super::integration_tests::codegen_cmd()
+            .arg("--config")
+            .arg(&config_path)
+            .args(args)
+            .output()
+            .expect("the generator binary must be spawnable")
+    };
+    assert_eq!(
+        run(&[]).status.code(),
+        Some(0),
+        "a cold config run must converge and exit 0"
+    );
+
+    // The same edit that makes the plain `ledger` subset run exit 2 (see
+    // `the_committed_state_verdict_exits_2_and_other_failures_exit_1`).
+    std::fs::write(
+        dir.join("specs/ledger.cddl"),
+        "ledger_rec = [l: [* core_thing], m: {* uint => core_thing}]\n",
+    )
+    .unwrap();
+    let closed = run(&["--with-deps", "ledger"]);
+    let stdout = String::from_utf8_lossy(&closed.stdout);
+    assert_eq!(
+        closed.status.code(),
+        Some(0),
+        "one command must settle it — the tree it leaves builds, so there is no verdict\nstdout:\n\
+         {stdout}\nstderr:\n{}",
+        String::from_utf8_lossy(&closed.stderr)
+    );
+    assert!(
+        stdout.contains("[core] generating") && stdout.contains("[ledger] generating"),
+        "the dependency must really have been pulled into the run:\n{stdout}"
+    );
+    let index =
+        std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        index.contains("MapU64ToCoreThing"),
+        "and it must host what the consumer now borrows, which is the whole point of closing the \
+         selection:\n{index}"
+    );
+
+    // Settled, not merely silent: the next run over the same tree changes nothing at all.
+    let settled = tree_bytes(&dir, &["gen"]);
+    assert_eq!(run(&[]).status.code(), Some(0), "the tree must be settled");
+    if let Some(difference) = first_tree_difference(
+        "the --with-deps run",
+        &settled,
+        "the run after it",
+        &tree_bytes(&dir, &["gen"]),
+    ) {
+        panic!("a `--with-deps` run must converge like any other, but {difference}");
+    }
+
+    // And the listing composes with it: `--print-flags` lists the CLOSED selection, and still
+    // generates nothing.
+    let listed = run(&["--print-flags", "--with-deps", "ledger"]);
+    let listing = String::from_utf8_lossy(&listed.stdout);
+    assert_eq!(listed.status.code(), Some(0), "the listing must succeed");
+    assert!(
+        listing.contains("[crates.core]") && listing.contains("[crates.ledger]"),
+        "the listing must show the crates the run would contain, dependency included:\n{listing}"
+    );
+    if let Some(difference) = first_tree_difference(
+        "before --print-flags",
+        &settled,
+        "after --print-flags",
+        &tree_bytes(&dir, &["gen"]),
+    ) {
+        panic!("`--print-flags` must generate nothing, but {difference}");
     }
 
     let _ = std::fs::remove_dir_all(&dir);
