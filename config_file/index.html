@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="en" dir="ltr" class="docs-wrapper plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-config_file" data-has-hydrated="false">
+<head>
+<meta charset="UTF-8">
+<meta name="generator" content="Docusaurus v3.10.1">
+<title data-rh="true">Config file | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/config_file"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Config file | cddl-codegen"><meta data-rh="true" name="description" content="A project that generates one crate is well served by command line flags. A"><meta data-rh="true" property="og:description" content="A project that generates one crate is well served by command line flags. A"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/config_file"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/config_file" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/config_file" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
+<script src="/cddl-codegen/assets/js/runtime~main.3ba4a43f.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/main.24004bc7.js" defer="defer"></script>
+</head>
+<body>
+<svg style="display: none;"><defs>
+<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"/></symbol>
+</defs></svg>
+<script>!function(){var t=function(){try{return new URLSearchParams(window.location.search).get("docusaurus-theme")}catch(t){}}()||function(){try{return window.localStorage.getItem("theme")}catch(t){}}();document.documentElement.setAttribute("data-theme",t||"light"),document.documentElement.setAttribute("data-theme-choice",t||"light")}(),function(){try{const c=new URLSearchParams(window.location.search).entries();for(var[t,e]of c)if(t.startsWith("docusaurus-data-")){var a=t.replace("docusaurus-data-","data-");document.documentElement.setAttribute(a,e)}}catch(t){}}()</script><div id="__docusaurus"><link rel="preload" as="image" href="/cddl-codegen/img/favicon.svg"><div role="region" aria-label="Skip to main content"><a class="skipToContent_fXgn" href="#__docusaurus_skipToContent_fallback">Skip to main content</a></div><nav aria-label="Main" class="theme-layout-navbar navbar navbar--fixed-top"><div class="navbar__inner"><div class="theme-layout-navbar-left navbar__items"><button aria-label="Toggle navigation bar" aria-expanded="false" class="navbar__toggle clean-btn" type="button"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2" d="M4 7h22M4 15h22M4 23h22"></path></svg></button><a class="navbar__brand" href="/cddl-codegen/"><div class="navbar__logo"><img src="/cddl-codegen/img/favicon.svg" alt="dcSpark logo" class="themedComponent_mlkZ themedComponent--light_NVdE"><img src="/cddl-codegen/img/favicon.svg" alt="dcSpark logo" class="themedComponent_mlkZ themedComponent--dark_xIcU"></div><b class="navbar__title text--truncate">cddl-codegen</b></a></div><div class="theme-layout-navbar-right navbar__items navbar__items--right"><div class="navbar__item dropdown dropdown--hoverable dropdown--right"><a href="#" aria-haspopup="true" aria-expanded="false" role="button" class="navbar__link"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" class="iconLanguage_nlXk"><path fill="currentColor" d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"></path></svg>English</a><ul class="dropdown__menu"><li><a href="/cddl-codegen/config_file" target="_self" rel="noopener noreferrer" class="dropdown__link dropdown__link--active" lang="en">English</a></li></ul></div><a href="https://github.com/dcSpark/cddl-codegen" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">GitHub<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a><div class="toggle_vylO colorModeToggle_DEke"><button class="clean-btn toggleButton_gllP toggleButtonDisabled_aARS" type="button" disabled="" title="system mode" aria-label="Switch between dark and light mode (currently system mode)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP lightToggleIcon_pyhR"><path fill="currentColor" d="M12,9c1.65,0,3,1.35,3,3s-1.35,3-3,3s-3-1.35-3-3S10.35,9,12,9 M12,7c-2.76,0-5,2.24-5,5s2.24,5,5,5s5-2.24,5-5 S14.76,7,12,7L12,7z M2,13l2,0c0.55,0,1-0.45,1-1s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S1.45,13,2,13z M20,13l2,0c0.55,0,1-0.45,1-1 s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S19.45,13,20,13z M11,2v2c0,0.55,0.45,1,1,1s1-0.45,1-1V2c0-0.55-0.45-1-1-1S11,1.45,11,2z M11,20v2c0,0.55,0.45,1,1,1s1-0.45,1-1v-2c0-0.55-0.45-1-1-1C11.45,19,11,19.45,11,20z M5.99,4.58c-0.39-0.39-1.03-0.39-1.41,0 c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0s0.39-1.03,0-1.41L5.99,4.58z M18.36,16.95 c-0.39-0.39-1.03-0.39-1.41,0c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0c0.39-0.39,0.39-1.03,0-1.41 L18.36,16.95z M19.42,5.99c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06c-0.39,0.39-0.39,1.03,0,1.41 s1.03,0.39,1.41,0L19.42,5.99z M7.05,18.36c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06 c-0.39,0.39-0.39,1.03,0,1.41s1.03,0.39,1.41,0L7.05,18.36z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP darkToggleIcon_wfgR"><path fill="currentColor" d="M9.37,5.51C9.19,6.15,9.1,6.82,9.1,7.5c0,4.08,3.32,7.4,7.4,7.4c0.68,0,1.35-0.09,1.99-0.27C17.45,17.19,14.93,19,12,19 c-3.86,0-7-3.14-7-7C5,9.07,6.81,6.55,9.37,5.51z M12,3c-4.97,0-9,4.03-9,9s4.03,9,9,9s9-4.03,9-9c0-0.46-0.04-0.92-0.1-1.36 c-0.98,1.37-2.58,2.26-4.4,2.26c-2.98,0-5.4-2.42-5.4-5.4c0-1.81,0.89-3.42,2.26-4.4C12.92,3.04,12.46,3,12,3L12,3z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP systemToggleIcon_QzmC"><path fill="currentColor" d="m12 21c4.971 0 9-4.029 9-9s-4.029-9-9-9-9 4.029-9 9 4.029 9 9 9zm4.95-13.95c1.313 1.313 2.05 3.093 2.05 4.95s-0.738 3.637-2.05 4.95c-1.313 1.313-3.093 2.05-4.95 2.05v-14c1.857 0 3.637 0.737 4.95 2.05z"></path></svg></button></div><div class="navbarSearchContainer_Bca1"><div class="navbar__search searchBarContainer_NW3z" dir="ltr"><input placeholder="Search" aria-label="Search" class="navbar__search-input searchInput_YFbd" value=""><div class="loadingRing_RJI3 searchBarLoadingRing_YnHq"><div></div><div></div><div></div><div></div></div></div></div></div></div><div role="presentation" class="navbar-sidebar__backdrop"></div></nav><div id="__docusaurus_skipToContent_fallback" class="theme-layout-main main-wrapper mainWrapper_z2l0"><div class="docsWrapper_hBAB"><button aria-label="Scroll back to top" class="clean-btn theme-back-to-top-button backToTopButton_sjWU" type="button"></button><div class="docRoot_UBD9"><aside class="theme-doc-sidebar-container docSidebarContainer_YfHR"><div class="sidebarViewport_aRkj"><div class="sidebar_njMd"><nav aria-label="Docs sidebar" class="menu thin-scrollbar menu_SIkG"><ul class="theme-doc-sidebar-menu menu__list"><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/"><span title="Introduction" class="linkLabel_WmDU">Introduction</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/getting_started"><span title="Installation &amp; Getting Started" class="linkLabel_WmDU">Installation &amp; Getting Started</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/command_line_flags"><span title="Command line flags" class="linkLabel_WmDU">Command line flags</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/current_capacities"><span title="Current capacities" class="linkLabel_WmDU">Current capacities</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link menu__link--active" aria-current="page" href="/cddl-codegen/config_file"><span title="Config file" class="linkLabel_WmDU">Config file</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/output_format"><span title="Output format" class="linkLabel_WmDU">Output format</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/preserving_edits"><span title="Preserving edits to generated code" class="linkLabel_WmDU">Preserving edits to generated code</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/wasm_differences"><span title="Wasm Differences" class="linkLabel_WmDU">Wasm Differences</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/comment_dsl"><span title="Comment DSL" class="linkLabel_WmDU">Comment DSL</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/examples"><span title="Examples" class="linkLabel_WmDU">Examples</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/integration-other"><span title="Integration with other cddl-codegen libraries" class="linkLabel_WmDU">Integration with other cddl-codegen libraries</span></a></li></ul></nav></div></div></aside><main class="docMainContainer_TBSr"><div class="container padding-top--md padding-bottom--lg"><div class="row"><div class="col docItemCol_VOVn"><div class="docItemContainer_Djhp"><article><div class="tocCollapsible_ETCw theme-doc-toc-mobile tocMobile_ITEo"><button type="button" class="clean-btn tocCollapsibleButton_TO0P">On this page</button></div><div class="theme-doc-markdown markdown"><header><h1>Config file</h1></header>
+<p>A project that generates one crate is well served by <a class="" href="/cddl-codegen/command_line_flags">command line flags</a>. A
+project that generates several is not: each invocation repeats a long, mostly-identical flag list,
+and the overlap has structure the command line cannot express — flags every crate shares, flags a
+<em>subset</em> shares, and flags that belong to one crate alone.</p>
+<p><code>cddl-codegen --config &lt;file.toml&gt;</code> reads that structure from a TOML file:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml            # generate every crate in the config</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml wire       # generate only `wire`</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml wire core  # generate a subset</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml --print-flags  # say what it would do, generate nothing</span><br></div></code></pre></div></div>
+<p>Every key in the file is a flag. There is no knob that exists only in the config, and no flag that a
+config cannot set — a drift gate in the test suite asserts the two sides stay in bijection — so
+<a class="" href="/cddl-codegen/command_line_flags">command line flags</a> remains the one reference for what each key <em>means</em>.
+This page covers only where a key&#x27;s value comes from.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="a-complete-config">A complete config<a href="#a-complete-config" class="hash-link" aria-label="Direct link to A complete config" title="Direct link to A complete config" translate="no">​</a></h2>
+<p>Before the parts, one whole file. This is the shape the feature was designed against —
+<a href="https://github.com/dcSpark/cardano-multiplatform-lib" target="_blank" rel="noopener noreferrer" class="">cardano-multiplatform-lib</a>&#x27;s four generated
+crates, written as the config that replaces its hand-composed flag bundles. Every section below
+explains one piece of it, and <a href="#migrating-a-generation-script" class="">Migrating a generation
+script</a> maps each piece back to the flags it replaces.</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain"># Every key here is a cddl-codegen flag.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[defaults]                      # reaches every crate</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">no-synthesized-rust-collection-aliases = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-serde-derives = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-schema-export = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">rust-wasm-feature = &quot;used_from_wasm&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm-cbor-json-api-macro = &quot;cml_core_wasm::impl_wasm_cbor_json_api&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm-conversions-macro = &quot;cml_core_wasm::impl_wasm_conversions&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm-list-macro = &quot;cml_core_wasm::impl_wasm_list_needs_into&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># A SUBSET&#x27;s keys, not everyone&#x27;s: cip25 has never had the two encoding flags.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[profiles.encoded]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">preserve-encodings = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">canonical-form = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># One static runtime for the whole workspace: written once, imported by every crate.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[runtime]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">export-static-crate = &quot;core/rust&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">common-import = &quot;cml_core&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">flavor-from = &quot;chain&quot;           # which crate&#x27;s flavor it is written at</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.chain]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/conway&quot;          # a directory input works per-crate</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;chain&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">lib-name = &quot;cml-chain&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">profiles = [&quot;encoded&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-schema-scripts = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># `cml_core` is hand-written and this config does not generate it, so its wasm face is named by</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># hand rather than derived from an edge.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">extern-wasm-crate = { cml_core = &quot;cml_core_wasm&quot; }</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.cip25]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/cip25.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;cip25&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">lib-name = &quot;cml-cip25&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># No `profiles`: this is the crate that omits the encoding pair.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm-cbor-json-api-macro = &quot;cml_core_wasm::impl_wasm_cbor_json_api_cbor_event_serialize&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-schema-root = [&quot;cml_cip25::utils::CIP25MiniMetadataDetails&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.cip36]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/cip36&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;cip36&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">lib-name = &quot;cml-cip36&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">profiles = [&quot;encoded&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">extern-wasm-crate = { cml_crypto = &quot;cml_crypto_wasm&quot;, cml_chain = &quot;cml_chain_wasm&quot; }</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.multi-era]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/multiera&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;multi-era&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">lib-name = &quot;cml-multi-era&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">profiles = [&quot;encoded&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-schema-scripts = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">deps = [&quot;chain&quot;]                     # the whole workspace edge, both directions</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm-reexports = [&quot;cip25&quot;, &quot;cip36&quot;]  # the npm package ships their classes</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-schema-root = [</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  &quot;cml_multi_era::utils::MultiEraBlockHeader&quot;,</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  &quot;cml_multi_era::utils::MultiEraCertificate&quot;,</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  &quot;cml_multi_era::utils::MultiEraProtocolParamUpdate&quot;,</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">]</span><br></div></code></pre></div></div>
+<p>Four things are worth reading off it before the sections that explain them:</p>
+<ul>
+<li class=""><strong><code>deps = [&quot;chain&quot;]</code> is the whole workspace edge.</strong> One key derives the extern import, the wrapper
+index, the rust and wasm manifest entries, the JSON threading, and the two reverse-edge flags that
+land on <code>chain</code> itself. See <a href="#dependencies-between-crates" class="">Dependencies between crates</a>.</li>
+<li class=""><strong>Generation order is not the order written.</strong> It is a topological sort over <code>deps</code>, dependencies
+first, ties broken by crate name: <code>chain</code>, <code>cip25</code>, <code>cip36</code>, <code>multi-era</code>, followed by the
+<a href="#generation-order-and-the-convergence-pass" class="">convergence pass</a>.</li>
+<li class=""><strong><code>flavor-from</code> is a declaration, not a preference.</strong> <code>cip25</code> omits the encoding pair, so no single
+crate&#x27;s flavor is the join of all four and the carrier cannot be derived. Naming it accepts
+generating <code>cip25</code> against <code>chain</code>&#x27;s runtime, and the run states that acceptance back — see
+<a href="#flavor-from-when-you-know" class=""><code>flavor-from</code>, when you know</a>.</li>
+<li class=""><strong>One value is deliberately absent.</strong> <code>static-dir</code> names where <em>this machine</em> keeps cddl-codegen&#x27;s
+own hand-written runtime, which is not a property a committed file can state. It is the <a href="#the-one-exception---static-dir" class="">one
+generation flag <code>--config</code> accepts</a> instead.</li>
+</ul>
+<p>Running it is one command, and <a href="#seeing-what-a-config-does-without-running-it" class="">seeing what it would do</a>
+is the same one with a flag:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static --print-flags</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static</span><br></div></code></pre></div></div>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="editor-support">Editor support<a href="#editor-support" class="hash-link" aria-label="Direct link to Editor support" title="Direct link to Editor support" translate="no">​</a></h3>
+<p>A JSON Schema for this file ships in the repository at
+<code>docs/editor/cddl-codegen-config.schema.json</code>. An editor that reads it completes the key names,
+shows each key&#x27;s type and the flag it stands for, and marks a misspelled or misplaced key where you
+typed it rather than at the next run — the same refusals <a href="#what-the-config-refuses" class="">this file
+lists</a>, only earlier.</p>
+<p>The schema is generated from <code>struct Settings</code>, <code>struct CrateEntry</code> and <code>struct Runtime</code> in
+<code>src/config.rs</code>, and the <code>editor_schema_matches_the_config_surface</code> test fails if the committed copy
+stops matching them. So it describes the version of the tool it was checked out with, not a
+hand-maintained approximation of some version.</p>
+<p>Wiring it is one line at the top of the config, which
+<a href="https://taplo.tamasfe.dev/" target="_blank" rel="noopener noreferrer" class="">taplo</a> and the VS Code extension built on it
+(<strong>Even Better TOML</strong>) both honour:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">#:schema ../cddl-codegen/docs/editor/cddl-codegen-config.schema.json</span><br></div></code></pre></div></div>
+<p>The path is relative to the config file. To associate it without touching the file, taplo takes a
+<code>[[rule]]</code> in <code>.taplo.toml</code> (<code>include = [&quot;**/codegen.toml&quot;]</code>, <code>[rule.schema] path = &quot;…&quot;</code>), and VS
+Code takes an <code>evenBetterToml.schema.associations</code> entry keyed by a filename pattern.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="one-spec-one-crate">One spec, one crate<a href="#one-spec-one-crate" class="hash-link" aria-label="Direct link to One spec, one crate" title="Direct link to One spec, one crate" translate="no">​</a></h2>
+<p>The floor: a config must not be more ceremony than the flags it replaces.</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[crates.address-book]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/address_book.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/address-book&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">preserve-encodings = true</span><br></div></code></pre></div></div>
+<p><code>input</code> and <code>output</code> are required. <code>lib-name</code> defaults to the crate table key — here <code>address-book</code>
+— which is the one place the config is <em>less</em> repetitive than the command line, where <code>--lib-name</code>
+defaults to <code>cddl-lib</code> and so realistically always needs passing. Every other key keeps its flag&#x27;s
+default.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="shared-values">Shared values<a href="#shared-values" class="hash-link" aria-label="Direct link to Shared values" title="Direct link to Shared values" translate="no">​</a></h2>
+<p><code>[defaults]</code> holds any key a crate table holds, and applies to every crate:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[defaults]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">preserve-encodings = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">canonical-form = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-serde-derives = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">static-dir = &quot;vendor/cddl-codegen/static&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.messages]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/messages.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/messages&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.storage]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/storage.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/storage&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.wire]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/wire.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/wire&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm = false                 # internal crate, no bindings</span><br></div></code></pre></div></div>
+<p>A crate&#x27;s own key wins over <code>[defaults]</code>, which wins over the built-in default.</p>
+<p><code>input</code>, <code>output</code>, <code>lib-name</code> and <code>profiles</code> may <strong>not</strong> appear in <code>[defaults]</code> (it is a hard error,
+not a silent skip): a shared value for any of them would point every crate at one spec, one
+directory, or one library.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="profiles">Profiles<a href="#profiles" class="hash-link" aria-label="Direct link to Profiles" title="Direct link to Profiles" translate="no">​</a></h2>
+<p>A profile here is <strong>not</strong> a Cargo build profile: it says nothing about <code>dev</code>/<code>release</code> and nothing
+about how the generated crate is compiled. It is also <strong>not</strong> selectable from the command line —
+there is no <code>--profile</code> flag, and which profiles a crate applies is stated by that crate&#x27;s own
+<code>profiles = [...]</code> list, in the config, where the rest of its flag set is.</p>
+<p>Real projects have grouping axes that do not nest — say every crate shares a base, the <em>published</em>
+ones add npm packaging, and the <em>constrained-device</em> ones add a depth limit. One <code>[defaults]</code> table
+cannot express two overlapping subsets without pushing the flags back down into every crate.</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[defaults]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">preserve-encodings = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[profiles.published]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">package-json = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">emit-tests = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[profiles.hardened]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">deserialize-depth-limit = 128</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.core]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/core.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/core&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.wallet]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/wallet.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/wallet&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">profiles = [&quot;published&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.firmware-msgs]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/firmware.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/firmware-msgs&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">profiles = [&quot;published&quot;, &quot;hardened&quot;]</span><br></div></code></pre></div></div>
+<p>A profile is a named <code>[defaults]</code> table applied by reference, so the merge order is simply:</p>
+<blockquote>
+<p>built-in default → <code>[defaults]</code> → each profile <strong>in the crate&#x27;s listed order</strong> → the crate&#x27;s own
+keys</p>
+</blockquote>
+<p>Later wins. The order in <code>profiles = [...]</code> is the order they apply, not the order they are declared
+in the file.</p>
+<p>Profiles are <strong>flat</strong>: a <code>[profiles.*]</code> table cannot itself carry <code>profiles</code>. Naming a profile that
+has no table, or naming one twice, is a hard error.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="when-a-profile-earns-its-keep">When a profile earns its keep<a href="#when-a-profile-earns-its-keep" class="hash-link" aria-label="Direct link to When a profile earns its keep" title="Direct link to When a profile earns its keep" translate="no">​</a></h3>
+<p><code>[defaults]</code> and a profile can often express the same grouping, so the question is which one says it
+better. The axis that decides it is whether a shared value can be taken back:</p>
+<ul>
+<li class=""><strong>A non-boolean key cannot be un-set once shared.</strong> The config has <a href="#how-each-kind-of-key-merges" class="">no spelling for
+&quot;absent&quot;</a>, so a <code>rust-wasm-feature</code> or a <code>deserialize-depth-limit</code>
+that one crate must <em>not</em> have cannot go in <code>[defaults]</code> at all. A profile is the only place it can
+go, and that is the case a profile exists for.</li>
+<li class=""><strong>Two crate subsets that genuinely overlap</strong> need two profiles, because a crate can list both while
+one <code>[defaults]</code> table cannot be two tables. That is the case above.</li>
+<li class=""><strong>A boolean with one deviating crate needs neither.</strong> <code>false</code> is a real value, so <code>[defaults]</code> plus
+an explicit <code>preserve-encodings = false</code> on the crate that deviates is shorter than a profile plus a
+<code>profiles = [...]</code> line on every other crate — and it states the deviation at the crate that has it,
+which is where a reader of that crate&#x27;s table looks for it.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="how-each-kind-of-key-merges">How each kind of key merges<a href="#how-each-kind-of-key-merges" class="hash-link" aria-label="Direct link to How each kind of key merges" title="Direct link to How each kind of key merges" translate="no">​</a></h2>
+<p>Most keys are scalars and the later layer simply wins. Two kinds behave differently, because for
+them &quot;replace&quot; would be the wrong answer:</p>
+<div class="theme-admonition theme-admonition-caution admonition_xJq3 alert alert--warning"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.893 1.5c-.183-.31-.52-.5-.887-.5s-.703.19-.886.5L.138 13.499a.98.98 0 0 0 0 1.001c.193.31.53.501.886.501h13.964c.367 0 .704-.19.877-.5a1.03 1.03 0 0 0 .01-1.002L8.893 1.5zm.133 11.497H6.987v-2.003h2.039v2.003zm0-3.004H6.987V5.987h2.039v4.006z"></path></svg></span>A shared value can be overridden, but not un-set</div><div class="admonitionContent_BuS1"><p>&quot;Later wins&quot; means a later layer can give a key a <strong>different</strong> value. It cannot take the key back to
+its built-in default, because the config has no spelling for &quot;absent&quot; — and for the keys whose flag
+takes an optional value (<code>static-dir</code>, <code>export-static-crate</code>, <code>rust-wasm-feature</code>,
+<code>deserialize-depth-limit</code>, <code>common-import-override</code>, and the three <code>wasm-*-macro</code> keys) no <em>value</em>
+means &quot;off&quot; either. In particular <code>common-import-override = &quot;&quot;</code> is not an escape hatch: it sets the
+override to the empty string, which still suppresses the crate&#x27;s own static runtime, so you get a
+crate whose runtime files were never written.</p><p>Boolean keys are unaffected — <code>false</code> is a real value, which is how a deviating crate turns
+<code>preserve-encodings</code> back off.</p><p>So put a value in <code>[defaults]</code> only when it is genuinely universal. When it is shared by <em>most</em>
+crates, a <code>[profiles.*]</code> table is the answer for anything that cannot be un-set: the crates that want
+it list it, and the one that does not simply omits it. For a boolean, <a href="#when-a-profile-earns-its-keep" class="">both spellings
+work</a> and the shorter one usually wins.</p></div></div>
+<p><strong>Arrays concatenate</strong>, earlier layers first, author order preserved within each layer. <code>workspace-dep</code>
+and <code>json-schema-root</code> are additive per-item lists, and <code>--json-schema-root</code> is order-significant
+(extra roots emit after every spec-derived row, in flag order), so a crate adding one root must not
+discard the shared list <code>[defaults]</code> exists to hold.</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[defaults]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-schema-root = [&quot;cml_chain::byron::AddressContent&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.chain]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/conway&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/chain&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">json-schema-root = [&quot;cml_chain::byron::ByronAddress&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># effective order: AddressContent, then ByronAddress</span><br></div></code></pre></div></div>
+<p>Concatenation <strong>never removes</strong>, and that is a deliberate divergence from the layering people arrive
+with: in <code>tsconfig.json</code> or a kustomize overlay a later layer&#x27;s list <em>replaces</em> the inherited one, so
+there is a spelling for dropping an entry. Here there is none — a later layer can only add. Both keys
+are additive by nature (one is emission order, the other is workspace membership), so replacement
+would make silently discarding the shared list the easy mistake, and there is no third value a crate
+could write to opt out of one entry. A crate that must not carry an entry keeps it out of the shared
+layer instead.</p>
+<p><strong><code>&lt;key&gt;=&lt;value&gt;</code> flags become sub-tables</strong>, which union per key — a later layer overrides only the
+keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
+are <code>extern-import</code>, <code>extern-wasm-crate</code>, <code>extern-wrapper-index</code>, <code>wrapper-requests</code>,
+<code>key-requests</code>, <code>json-schema-dep</code>, <code>json-gen-dep</code>, <code>wasm-dep</code> and <code>rust-dep</code>:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[crates.my-extension]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/ext.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/ext&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.my-extension.extern-import]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">upstream_core = &quot;../upstream-core/extern-interface/upstream_core&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.my-extension.extern-wasm-crate]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">upstream_core = &quot;upstream_core_wasm&quot;</span><br></div></code></pre></div></div>
+<div class="theme-admonition theme-admonition-caution admonition_xJq3 alert alert--warning"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.893 1.5c-.183-.31-.52-.5-.887-.5s-.703.19-.886.5L.138 13.499a.98.98 0 0 0 0 1.001c.193.31.53.501.886.501h13.964c.367 0 .704-.19.877-.5a1.03 1.03 0 0 0 .01-1.002L8.893 1.5zm.133 11.497H6.987v-2.003h2.039v2.003zm0-3.004H6.987V5.987h2.039v4.006z"></path></svg></span>TOML sub-tables end their parent table</div><div class="admonitionContent_BuS1"><p>Everything after a <code>[crates.&lt;name&gt;.&lt;sub-table&gt;]</code> header belongs to the sub-table, not to the crate,
+and it goes wrong <strong>silently</strong>: a <code>lib-name</code> written under that header becomes an entry in the
+mapping, and the crate keeps its default library name with nothing said about it.</p><p>So for a short mapping, prefer the <strong>inline table</strong> — it ends where its closing brace does, and the
+keys after it still belong to the crate:</p><div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[crates.my-extension]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/ext.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/ext&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">extern-import = { upstream_core = &quot;../upstream-core/extern-interface/upstream_core&quot; }</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">extern-wasm-crate = { upstream_core = &quot;upstream_core_wasm&quot; }</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">lib-name = &quot;ext&quot;</span><br></div></code></pre></div></div><p>The two spellings expand to exactly the same flags, so this is a layout choice and never a
+behavioural one. A mapping long enough to want its own header is fine too — write the crate&#x27;s plain
+keys first and its sub-tables last.</p></div></div>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="dependencies-between-crates">Dependencies between crates<a href="#dependencies-between-crates" class="hash-link" aria-label="Direct link to Dependencies between crates" title="Direct link to Dependencies between crates" translate="no">​</a></h2>
+<p>The sub-tables above are how you name a dependency the config does <strong>not</strong> contain. When both crates
+are in one config, <code>deps</code> names the edge and every <code>&lt;name&gt;=&lt;path&gt;</code> pair is derived from it:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[defaults]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">preserve-encodings = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.core]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/core&quot;                 # a directory input works per-crate</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/core&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.ledger]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/ledger.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/ledger&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">deps = [&quot;core&quot;]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.governance]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/governance.cddl&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/governance&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">deps = [&quot;core&quot;]</span><br></div></code></pre></div></div>
+<p>Every value the edge expands to is one the config already holds, which is the point: hand-maintaining
+the pairs means two invocations that must agree about a third crate&#x27;s <code>output</code> and <code>lib-name</code>, and
+nothing checks that they do.</p>
+<p>On the <strong>consumer</strong> (<code>ledger</code>), from the dependency&#x27;s own entry:</p>
+<table><thead><tr><th>derived flag</th><th>where the value comes from</th></tr></thead><tbody><tr><td><code>--extern-import core=gen/core/extern-interface/core</code></td><td>the dependency&#x27;s <code>output</code>, plus its <code>lib-name</code> — which is both the directory its export lands in and the crate name the generated <code>use</code> line carries</td></tr><tr><td><code>--extern-wasm-crate core=core_wasm</code></td><td>the dependency&#x27;s <code>lib-name</code></td></tr><tr><td><code>--extern-wrapper-index core=gen/core/wasm/src/generated/collections.rs</code></td><td>the dependency&#x27;s <code>output</code></td></tr><tr><td><code>--workspace-dep core</code></td><td>being in this config is what &quot;co-generated workspace member&quot; means</td></tr><tr><td><code>--wasm-dep core=../../core/rust</code> and <code>--wasm-dep core-wasm=../../core/wasm</code></td><td>the dependency&#x27;s <code>lib-name</code> verbatim — the cargo <strong>package</strong> names — plus the paths from your wasm crate to its two crates. See <a href="#the-wasm-manifest" class="">The wasm manifest</a></td></tr><tr><td><code>--rust-dep core=../../core/rust</code></td><td>the same package name, plus the path from your <strong>rust</strong> crate to the dependency&#x27;s. See <a href="#the-rust-manifest" class="">The rust manifest</a></td></tr></tbody></table>
+<p>On the <strong>dependency</strong> (<code>core</code>), one pair per consumer, in consumer order:</p>
+<table><thead><tr><th>derived flag</th><th>where the value comes from</th></tr></thead><tbody><tr><td><code>--wrapper-requests ledger=gen/ledger/wasm/src/generated/borrowed_collections.rs</code></td><td>the consumer&#x27;s <code>output</code></td></tr><tr><td><code>--key-requests ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs</code></td><td>the consumer&#x27;s <code>output</code></td></tr></tbody></table>
+<p>Two things vary the paths, and both are read from the <em>other</em> crate&#x27;s own settings rather than
+assumed:</p>
+<ul>
+<li class="">
+<p><strong><code>wasm = false</code> on the dependency</strong> derives <code>--extern-import</code>, plus the one <code>--wasm-dep</code> naming its
+rust package (it keeps that crate name for both of your passes, since there is no wasm crate to
+route the boundary through). The other three are all about a wasm face it does not have — and
+<code>--workspace-dep</code> is not merely pointless without one, it is a hard error without an
+<code>--extern-wasm-crate</code> mapping. The reverse edges go with them, since the sidecars a consumer emits
+exist only because it has a workspace dependency to record. (A <code>wasm = false</code> <em>consumer</em> still gets
+<code>--key-requests</code>: that sidecar is a rust-crate concern and is written in either mode. It gets no
+<code>--wasm-dep</code> at all, having no manifest for one to land in — but it does get <code>--rust-dep</code>, which
+follows the rust crate every run generates rather than the wasm face.)</p>
+<p>Worth knowing before you set it: because <code>--workspace-dep</code> requires a wasm crate to exist, a
+dependency with <code>wasm = false</code> also loses the <strong>map-key-derive channel</strong> that rides on it. If a
+consumer keys a map on one of that dependency&#x27;s types, the dependency never learns it must derive
+<code>Eq</code>/<code>Ord</code>/<code>PartialOrd</code> there, and the consumer fails to build with an <code>E0277</code> naming the type.
+The remedy is to give the dependency a wasm crate, or to declare the key demand in the
+dependency&#x27;s own spec with <a class="" href="/cddl-codegen/comment_dsl"><code>@used_as_key</code></a>.</p>
+</li>
+<li class="">
+<p><strong><code>package-json = true</code></strong> moves a crate&#x27;s cargo crates one level down, to
+<code>&lt;output&gt;/rust/rust</code> and <code>&lt;output&gt;/rust/wasm</code>, leaving the output root to the npm package. Every
+derived path <em>into</em> a crate follows that layout. The <code>extern-interface/</code> export does <strong>not</strong> move:
+it is emitted in every mode, rust-only included, as a sibling of the crate directories.</p>
+</li>
+</ul>
+<p>A hand-written sub-table entry for the same key always wins, silently — an explicit value is you
+overriding the sugar for a case it does not cover, not a conflict. Only the key it names is
+overridden; the rest of the edge still derives.</p>
+<p><code>deps</code> is per-crate only. A shared edge is not a graph: it would make every crate depend on every
+crate named, itself included.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="generation-order-and-the-convergence-pass">Generation order, and the convergence pass<a href="#generation-order-and-the-convergence-pass" class="hash-link" aria-label="Direct link to Generation order, and the convergence pass" title="Direct link to Generation order, and the convergence pass" translate="no">​</a></h3>
+<p>Generation order is a <strong>topological sort over <code>deps</code>, dependencies first</strong>, ties broken by crate name
+so the order is total and reproducible. A cycle is a hard error that names it (<code>a → b → c → a</code>), as
+are a <code>deps</code> entry naming an unknown crate, a crate naming itself, and a name listed twice.</p>
+<p>That order settles a genuine conflict rather than a technicality. The two edge kinds want opposite
+orders:</p>
+<ul>
+<li class=""><code>--extern-import</code> / <code>--extern-wrapper-index</code> want the <strong>dependency</strong> generated first — the consumer
+reads files the dependency writes;</li>
+<li class=""><code>--wrapper-requests</code> / <code>--key-requests</code> want the <strong>consumer</strong> generated first — the dependency reads
+sidecars the consumer writes.</li>
+</ul>
+<p>No single ordered pass satisfies both. Dependencies-first is chosen, so the reverse edges read each
+consumer&#x27;s <strong>committed</strong> sidecar, exactly as <a class="" href="/cddl-codegen/command_line_flags">their own
+documentation</a> specifies — and a pass that <em>rewrites</em> a sidecar leaves the
+dependency that read it a pass behind.</p>
+<p>So the run does not stop there. After the first pass it <strong>re-runs exactly the crates whose consumed
+sidecars that pass rewrote</strong>, in the same generation order, and says which and why:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[converge] re-running `core`: it read sidecars before this run rewrote them</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">(gen/ledger/wasm/src/generated/borrowed_collections.rs, …), so what it generated is a pass behind</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">what its consumers now ask for.</span><br></div></code></pre></div></div>
+<p><strong>One invocation therefore leaves a workspace that builds, and the next invocation over it is
+byte-identical.</strong> That is not a convenience — it is what makes <em>run twice = run once = clean run</em>
+true of a config run at all. Without the pass, run 1 and run 2 of a cold tree produce different bytes
+by construction, which is the property failing rather than being protected.</p>
+<p>One extra pass, not a loop to a fixpoint, because a second has nothing to do. The only cross-crate
+input the pass can change is a dependency&#x27;s <code>collections.rs</code> wrapper index; a consumer&#x27;s output
+depends on that index through exactly one decision (whether to defer an <strong>ownerless</strong> collection
+wrapper, since a wrapper owned by one <code>deps</code> dependency defers unconditionally); and every wrapper
+the pass adds to an index was <em>requested</em> by a consumer, which makes it all-one-dep-owned and so
+never an ownerless name. The sidecars themselves depend only on a crate&#x27;s own spec and its
+dependencies&#x27; <code>extern-interface/</code> exports, neither of which the pass touches — so they are already
+final when it starts.</p>
+<p>That last step is where <strong>export non-transitivity</strong> does the work, and it is what keeps the argument
+true at any <code>deps</code> depth: <a class="" href="/cddl-codegen/integration-other">a dependency&#x27;s own deps never travel through its
+export</a>, so a crate&#x27;s sidecars are a function of its own spec and its
+<strong>direct</strong> dependencies&#x27; exports, however long the chain above it runs. In <code>app → mid → core</code>, the
+pass re-runs <code>mid</code>, and <code>mid</code>&#x27;s own sidecars cannot move — nothing <code>core</code> gained in the pass reaches
+<code>app</code> through <code>mid</code>&#x27;s export. Make exports transitive and this is the argument that has been
+invalidated; a fixpoint loop would be required, and this pass would be one iteration of it.</p>
+<p>The convergence warning below is that reasoning kept as a measurement rather than an assumption.
+What it measures is the <strong>sidecar</strong> channel, across every crate in the run — not only the crates the
+pass re-runs, so the measurement still covers a dependency sitting below a re-run middle crate. The
+wrapper-index channel is deliberately <em>not</em> watched: the pass rewrites an index by design (hosting
+the requested wrappers is its purpose), so an instrument watching it would fire on every successful
+convergence. That channel is covered by the argument above, whose bound is export non-transitivity.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-convergence-warning">The convergence warning<a href="#the-convergence-warning" class="hash-link" aria-label="Direct link to The convergence warning" title="Direct link to The convergence warning" translate="no">​</a></h3>
+<p>If a sidecar moves <em>again</em> across the convergence pass, the run says so and stays at exit 0:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">warning: a sidecar changed during this run, so `core` generated against a stale one (it is one run</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">behind). … Re-run `cddl-codegen --config codegen.toml` to converge.</span><br></div></code></pre></div></div>
+<p>A full run should never print it. What it covers is what the pass cannot: a <strong>subset</strong> run, where the
+crate that would need re-running was not in the run to begin with.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-verdict-on-the-committed-tree">The verdict on the committed tree<a href="#the-verdict-on-the-committed-tree" class="hash-link" aria-label="Direct link to The verdict on the committed tree" title="Direct link to The verdict on the committed tree" translate="no">​</a></h3>
+<p>The warning above is an <em>instruction about the run</em>, and it is bounded by what the run touched: it
+compares the sidecars this run <strong>consumed</strong>, before and after. A run that does not include the
+dependency therefore has nothing to compare — which is precisely the dangerous case. Regenerate one
+crate so that it starts borrowing a new wrapper, and the dependency is left not hosting it while the
+run prints nothing at all.</p>
+<p>So there is a second check, and it is a <em>verdict about the tree</em>. After generating, over every <code>deps</code>
+edge touching this run — the crates you named <strong>and their declared counterparties</strong> — it reads the
+consumer&#x27;s committed <code>borrowed_collections.rs</code> and the dependency&#x27;s committed <code>collections.rs</code>
+wrapper index. Every row of that sidecar compiles to a <code>use &lt;dep&gt;_wasm::collections::&lt;Name&gt;;</code> line,
+so a name the index does not re-export is a workspace that does not build. That one <strong>exits nonzero</strong>:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">Error: &quot;the committed workspace does not build: `core` does not host `MapU64ToCoreThing` borrowed by</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">`ledger`. … Run `cddl-codegen --config codegen.toml core` to host them: a dependency-alone regen</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">reads its consumers&#x27; committed sidecars, and is always safe.&quot;</span><br></div></code></pre></div></div>
+<p><strong>Nonzero, and its own code.</strong> The exit status distinguishes the two failures, because they ask for
+different things:</p>
+<table><thead><tr><th>exit</th><th>what it means</th></tr></thead><tbody><tr><td><code>0</code></td><td>the run did what it was asked, and nothing it can see says the workspace is inconsistent (the convergence warning, if it fires, is here — it is an instruction about the run, and re-running satisfies it)</td></tr><tr><td><code>1</code></td><td>the <strong>run</strong> failed: a config that would not expand, a spec that would not generate. Fix the input and run it again</td></tr><tr><td><code>2</code></td><td>the run <strong>succeeded</strong> — every crate it was asked to generate is generated — and the committed <strong>tree</strong> does not build: the verdict above. Repeating the command changes nothing; the message names the dependency to regenerate</td></tr></tbody></table>
+<p>A CI job wants those apart: <code>1</code> is &quot;this commit&#x27;s inputs are broken&quot;, <code>2</code> is &quot;this commit&#x27;s generated
+output and its committed dependency have drifted apart&quot;, and the second one names its own remedy.</p>
+<p>The two are not two strengths of one signal. &quot;I rewrote a sidecar something had already read&quot; is
+normal, self-clearing, and expected on a first run, so it stays a warning at exit 0. &quot;This tree does
+not build&quot; is neither, and it is true whether or not the dependency was in your run — which is why it
+names the <strong>dependency</strong> to re-run rather than telling you to repeat what you just did.</p>
+<p>A <strong>full</strong> run should never reach it: the convergence pass has already re-run the dependencies whose
+demands changed, so by the time the verdict is computed the tree it examines is the settled one. What
+it exists for is the run the pass cannot settle — a subset that leaves the dependency out, and a
+counterparty in another repository, neither of which this command can regenerate.</p>
+<p>Both checks read generated files and neither changes one. What is <em>generated</em> depends on neither; the
+convergence check decides which crates run a second time, and the verdict&#x27;s only effect is the exit
+code.</p>
+<div class="theme-admonition theme-admonition-note admonition_xJq3 alert alert--secondary"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M6.3 5.69a.942.942 0 0 1-.28-.7c0-.28.09-.52.28-.7.19-.18.42-.28.7-.28.28 0 .52.09.7.28.18.19.28.42.28.7 0 .28-.09.52-.28.7a1 1 0 0 1-.7.3c-.28 0-.52-.11-.7-.3zM8 7.99c-.02-.25-.11-.48-.31-.69-.2-.19-.42-.3-.69-.31H6c-.27.02-.48.13-.69.31-.2.2-.3.44-.31.69h1v3c.02.27.11.5.31.69.2.2.42.31.69.31h1c.27 0 .48-.11.69-.31.2-.19.3-.42.31-.69H8V7.98v.01zM7 2.3c-3.14 0-5.7 2.54-5.7 5.68 0 3.14 2.56 5.7 5.7 5.7s5.7-2.55 5.7-5.7c0-3.15-2.56-5.69-5.7-5.69v.01zM7 .98c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.12-7-7 3.14-7 7-7z"></path></svg></span>Migrating from a script that runs consumers first</div><div class="admonitionContent_BuS1"><p>A hand-written <code>codegen.sh</code> may well run its crates in the <em>other</em> order — consumers before
+dependencies — and accept staleness on the <code>--extern-import</code> side instead. Converting it to a config
+flips which of your two edges is the stale one, and then settles it: the <a href="#generation-order-and-the-convergence-pass" class="">convergence
+pass</a> re-runs the dependencies whose sidecars the run
+rewrote, so one command converges a brand-new workspace. You will still see one round of the
+per-flag &quot;no sidecar there yet&quot; notice on stderr during the first pass — the sidecars a dependency
+reads do not exist until its consumers have generated once — and the convergence pass is what
+follows it.</p></div></div>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="selecting-a-subset-and-closing-it-over-dependencies">Selecting a subset, and closing it over dependencies<a href="#selecting-a-subset-and-closing-it-over-dependencies" class="hash-link" aria-label="Direct link to Selecting a subset, and closing it over dependencies" title="Direct link to Selecting a subset, and closing it over dependencies" translate="no">​</a></h3>
+<p>Selecting a subset does <strong>not</strong> pull in its dependencies. The unselected dependency&#x27;s committed output
+is trusted exactly as a dependency in another repository&#x27;s is, which is the same contract the
+cross-crate flags already document; the selected crate still carries the full derived edge, which is
+what makes that committed output reachable. If it was never generated, the flags&#x27; own error names the
+missing path.</p>
+<p>That default is right when the dependency is settled, and it is what makes the verdict above
+meaningful. But when you have just changed a consumer&#x27;s spec so that it borrows something new, you
+already know the dependency is affected — the two commands are the verdict and then its own
+instruction:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml ledger   # exit 2: `core` does not host `MapU64ToCoreThing`…</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml core     # what the verdict told you to run</span><br></div></code></pre></div></div>
+<p><code>--with-deps</code> is that taken up front, in one command:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml --with-deps ledger   # generates core, then ledger; exit 0</span><br></div></code></pre></div></div>
+<p>It closes the named selection over <code>deps</code>, <strong>transitively</strong> — <code>--with-deps app</code> on <code>app → mid → core</code>
+runs all three — and the closed selection generates in the config&#x27;s ordinary generation order, so
+<code>--with-deps a b</code> and <code>--with-deps b a</code> do the same thing. <code>--print-flags</code> composes with it and lists
+the crates the run would contain, dependency included.</p>
+<p>Two things it deliberately does not do. It closes over <strong>dependencies only, never consumers</strong>: a
+dependency is pulled in so the named crate&#x27;s own inputs exist, while a consumer would be regenerated
+because it <em>might</em> change — output you did not ask for, and the verdict is how you hear that it needs
+regenerating instead. And it needs at least one crate name to close over: naming no crate already runs
+every crate in the config, so <code>--with-deps</code> alone is an error rather than a flag that silently did
+nothing.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-published-json-surface">The published JSON surface<a href="#the-published-json-surface" class="hash-link" aria-label="Direct link to The published JSON surface" title="Direct link to The published JSON surface" translate="no">​</a></h2>
+<p>Under <code>json-schema-export</code>, each crate&#x27;s json-gen crate writes <strong>one document</strong>
+(<code>schemas/&lt;lib&gt;.schema.json</code>), and <code>run-json2ts.js</code> compiles it into the <code>.d.ts</code> the npm package
+ships. A published class whose type that document does not declare fails the npm step — so the
+document has to cover everything the <em>package</em> ships, not everything the <em>spec</em> describes.</p>
+<p>Two things bridge that gap, and only one of them is derivable:</p>
+<ul>
+<li class=""><strong><code>json-schema-root</code></strong> names a hand-written Rust type no CDDL rule describes. It is emitted verbatim
+and cannot be derived — the config cannot tell <code>byron::ByronAddress</code> (a module of <em>this</em> crate)
+from <code>cml_crypto::Bip32PublicKey</code> (another crate entirely) without inventing a marker.</li>
+<li class=""><strong>Threading another generated crate&#x27;s rows</strong> is derived, because the list it needs is one the
+project already maintains for the crate to link.</li>
+</ul>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[crates.multi-era]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">input = &quot;specs/multiera&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">output = &quot;gen/multi-era&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">deps = [&quot;chain&quot;]                      # the spec references chain&#x27;s types</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm-reexports = [&quot;cip25&quot;, &quot;cip36&quot;]   # the package ships their classes; the spec never mentions them</span><br></div></code></pre></div></div>
+<p><code>wasm-reexports</code> is named after <a href="#the-wasm-manifest" class="">the manifest entries</a> it derives, which is the
+half of its effect the name predicts; the other half is this section&#x27;s — every crate it names has its
+schema rows threaded into <em>this</em> crate&#x27;s document, which is what stops a re-exported class shipping
+untyped.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="why-the-source-is-the-wasm-dependency-list-not-the-rust-one">Why the source is the wasm dependency list, not the rust one<a href="#why-the-source-is-the-wasm-dependency-list-not-the-rust-one" class="hash-link" aria-label="Direct link to Why the source is the wasm dependency list, not the rust one" title="Direct link to Why the source is the wasm dependency list, not the rust one" translate="no">​</a></h3>
+<p>The crates a document must thread are the ones whose <strong>wasm classes ship in this crate&#x27;s package</strong>.
+That is the crate&#x27;s <em>wasm-side</em> dependency list, and it is not the same list as the rust one.</p>
+<p>With one document per crate, everything this crate&#x27;s own types <em>reference</em> is already present through
+the reference closure. What a thread adds is a dependency&#x27;s <strong>unreferenced roots</strong> — an address, a
+hash, a transaction that a consumer of your package holds directly but nothing in <em>your</em> spec points
+at. Those are exactly the types a package re-exports without naming.</p>
+<p>CML&#x27;s tree is where this was measured. Its two crates that are published npm packages — <code>multi-era</code>
+and the hand-written <code>cml</code> umbrella — each thread precisely their wasm dependencies that are
+generated crates. Its two crates with no <code>package.json</code> (<code>cip25</code>, <code>cip36</code>) thread nothing while
+depending on <code>chain</code>; their documents are never consumed, so the missing thread has never cost
+anything. The rule holds wherever it is observable.</p>
+<p>So the derivation is <code>deps ∪ wasm-reexports</code>: <code>deps</code> covers the wasm dependencies that exist because
+the spec references them, <code>wasm-reexports</code> the ones that exist only because the package ships them.
+Crates outside the config drop out on their own — they have no json-gen crate to call.</p>
+<p><code>wasm-reexports</code> creates <strong>no</strong> rust/extern edge and <strong>no</strong> generation-order edge. It is a packaging
+fact and nothing else; <code>deps</code> is what declares a real dependency. The one other thing it does derive
+is the manifest entry that makes the packaging fact true — see <a href="#the-wasm-manifest" class="">The wasm
+manifest</a> below.</p>
+<div class="theme-admonition theme-admonition-note admonition_xJq3 alert alert--secondary"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M6.3 5.69a.942.942 0 0 1-.28-.7c0-.28.09-.52.28-.7.19-.18.42-.28.7-.28.28 0 .52.09.7.28.18.19.28.42.28.7 0 .28-.09.52-.28.7a1 1 0 0 1-.7.3c-.28 0-.52-.11-.7-.3zM8 7.99c-.02-.25-.11-.48-.31-.69-.2-.19-.42-.3-.69-.31H6c-.27.02-.48.13-.69.31-.2.2-.3.44-.31.69h1v3c.02.27.11.5.31.69.2.2.42.31.69.31h1c.27 0 .48-.11.69-.31.2-.19.3-.42.31-.69H8V7.98v.01zM7 2.3c-3.14 0-5.7 2.54-5.7 5.68 0 3.14 2.56 5.7 5.7 5.7s5.7-2.55 5.7-5.7c0-3.15-2.56-5.69-5.7-5.69v.01zM7 .98c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.12-7-7 3.14-7 7-7z"></path></svg></span>Why not read the generated <code>wasm/Cargo.toml</code>, where the fact already is?</div><div class="admonitionContent_BuS1"><p>Because that manifest is co-owned prior output — the tool writes it through a merge, and your
+hand-added lines survive. Reading it back to decide <em>which rows to emit</em> would make generated code
+depend on prior output, which is the one thing the determinism contract does not bend on. Declaring
+the same fact in the config makes it an input.</p></div></div>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-two-derived-flags">The two derived flags<a href="#the-two-derived-flags" class="hash-link" aria-label="Direct link to The two derived flags" title="Direct link to The two derived flags" translate="no">​</a></h3>
+<p>Each threaded crate expands to <strong>two</strong> flags, both read off that crate&#x27;s own entry so a <code>lib-name</code> or
+<code>output</code> rename propagates and nothing can drift:</p>
+<table><thead><tr><th>derived flag</th><th>where the value comes from</th></tr></thead><tbody><tr><td><code>--json-schema-dep=cml_chain=cml_chain_json_schema_gen</code></td><td>the dependency&#x27;s <code>lib-name</code>, underscored — the rust <strong>lib path</strong> of its json-gen crate</td></tr><tr><td><code>--json-gen-dep=cml-chain-json-schema-gen=../../../chain/wasm/json-gen</code></td><td>the dependency&#x27;s <code>lib-name</code> verbatim — the cargo <strong>package</strong> name — plus the path from your json-gen crate to its</td></tr></tbody></table>
+<p>The two spellings are opposite on purpose, and writing either the other way round is the mistake whose
+error names neither cause. Deriving them removes the choice.</p>
+<p><strong>The path is relative, and that is a determinism requirement.</strong> It is one of the two derived paths
+in this file that are <em>written into a committed file</em> rather than read at generation time (the other
+is <a href="#the-wasm-manifest" class="">the wasm manifest</a>&#x27;s) — it becomes a cargo path dependency in
+<code>wasm/json-gen/Cargo.toml</code>. An absolute value would bake your checkout location
+into a file your project commits, so the same config would produce different bytes in a different
+clone. It is counted from the consumer&#x27;s json-gen directory to the dependency&#x27;s, and both endpoints
+follow their own crate&#x27;s <code>package-json</code> setting.</p>
+<p><strong>How the two endpoints are spelled does not reach the manifest.</strong> <code>.</code> and <code>..</code> are resolved before
+the paths are diffed, so <code>./gen/core</code> and <code>gen/sub/../core</code> derive exactly what <code>gen/core</code> derives —
+that resolution is lexical, since these directories need not exist yet, and so it assumes a component
+a <code>..</code> cancels is not a symlink. When the two endpoints do not share a frame — one <code>output</code> absolute
+and the other relative, or a relative one climbing above the config file&#x27;s own directory — the
+process directory supplies the missing frame. That is not a CWD dependence in the derived value: it
+reconstructs the location the relative <code>output</code> already denoted, so writing the same two directories
+out as absolute paths, or running the same config from anywhere else, gives a byte-identical manifest
+entry. The only requirement is that the process directory be readable.</p>
+<p>An absolute <code>output</code> still costs you something, just not this. It bakes a machine path into <strong>the
+config file</strong>, which the manifest entry no longer inherits — so it is the config, not the generated
+crate, that stops being portable.</p>
+<p>A crate with <code>json-schema-export = false</code> on <strong>either</strong> end of a derived edge contributes nothing,
+silently: a dependency with no json-gen crate has no <code>add_schemas</code> to call, and a consumer with no
+document has nowhere for the rows to land. That silence is what lets one config hold both kinds of
+crate.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="overriding-the-derivation">Overriding the derivation<a href="#overriding-the-derivation" class="hash-link" aria-label="Direct link to Overriding the derivation" title="Direct link to Overriding the derivation" translate="no">​</a></h3>
+<p><code>json-schema-deps</code> <strong>replaces</strong> the derivation for that crate entirely — <code>deps</code> and <code>wasm-reexports</code>
+then contribute no threading at all, and <code>json-schema-deps = []</code> threads nothing while leaving the
+edges themselves intact. It is the escape hatch for a crate whose package composition and dependency
+list genuinely diverge.</p>
+<p>The raw <code>[crates.&lt;name&gt;.json-schema-dep]</code> and <code>[crates.&lt;name&gt;.json-gen-dep]</code> sub-tables remain the
+only way to thread a crate that is <strong>not</strong> in this config. They union on top of whatever the
+derivation or the override produced; an entry naming a key the derivation would also produce wins,
+silently and per half, like every other hand-written sub-table entry.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-wasm-manifest">The wasm manifest<a href="#the-wasm-manifest" class="hash-link" aria-label="Direct link to The wasm manifest" title="Direct link to The wasm manifest" translate="no">​</a></h2>
+<p>The same two edge keys derive the <code>[dependencies]</code> entries the generated <code>wasm/Cargo.toml</code> needs, as
+<code>--wasm-dep</code> values. Without them a config-generated workspace emits <code>use &lt;dep&gt;_wasm::…</code> into a crate
+whose manifest never names <code>&lt;dep&gt;_wasm</code>, which is a call, an <code>E0433</code> and a TODO rather than a
+feature.</p>
+<p>The two keys contribute different entries, because they state different facts:</p>
+<ul>
+<li class=""><strong><code>deps</code></strong> means your spec references the dependency&#x27;s types, and the wasm pass writes two kinds of
+reference to such a type — <code>use &lt;dep&gt;_wasm::…</code> at the wasm boundary, and the dependency&#x27;s plain
+<strong>rust</strong> type as the inner storage of a wrapper this crate mints itself (a mixed-dep collection is
+minted here, since no single dependency can host it). So a <code>deps</code> edge derives <strong>both</strong> of the
+dependency&#x27;s packages. A dependency with <code>wasm = false</code> keeps its rust crate name for both passes,
+so that edge derives the rust entry alone.</li>
+<li class=""><strong><code>wasm-reexports</code></strong> means nothing generated here names the crate at all and its classes ship in
+your package anyway. So it derives the <strong>wasm</strong> package alone — precisely the lines a project
+maintains by hand under a comment like <em>&quot;not actual dependencies but we re-export these for the
+wasm builds&quot;</em>, which is what the key is named after.</li>
+</ul>
+<p>Paths are counted from the consumer&#x27;s wasm directory to the dependency&#x27;s, following each crate&#x27;s own
+<code>package-json</code> layout, and are always relative — the value lands in a committed manifest, so an
+absolute one would make the same config produce different bytes in a different clone.</p>
+<p>A crate with <code>wasm = false</code> derives nothing here: it generates no wasm crate, so there is no manifest
+for an entry to land in.</p>
+<p>The raw <code>[crates.&lt;name&gt;.wasm-dep]</code> sub-table names a crate the config does <strong>not</strong> contain, or
+overrides a derived package (a vendored checkout, a registry version beside the path). A hand-written
+entry wins per package, silently, like every other sub-table entry.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-rust-manifest">The rust manifest<a href="#the-rust-manifest" class="hash-link" aria-label="Direct link to The rust manifest" title="Direct link to The rust manifest" translate="no">​</a></h2>
+<p><code>deps</code> alone derives the <code>[dependencies]</code> entry the generated <code>rust/Cargo.toml</code> needs, as a
+<code>--rust-dep</code> value. An imported dependency&#x27;s types are emitted into your rust source as
+<code>use &lt;dep&gt;::&lt;Type&gt;;</code>, in every flavor — the rust crate is the one crate every run generates — so this
+derivation has no <code>wasm</code> gate on either end and contributes exactly one entry per edge: the
+dependency&#x27;s <strong>rust</strong> package, the only package the rust pass can name.</p>
+<p><code>wasm-reexports</code> contributes nothing here, and that asymmetry is the key&#x27;s meaning rather than an
+omission: it says a dependency&#x27;s wasm classes ship in your package while your spec references none of
+its types, so no rust line names the crate.</p>
+<p>Paths are counted from the consumer&#x27;s rust directory to the dependency&#x27;s, following each crate&#x27;s own
+<code>package-json</code> layout, and are always relative, for the reason the wasm ones are.</p>
+<p>The raw <code>[crates.&lt;name&gt;.rust-dep]</code> sub-table names a crate the config does <strong>not</strong> contain, or
+overrides a derived package. A hand-written entry wins per package, silently, like every other
+sub-table entry.</p>
+<p>One entry a <code>deps</code> edge needs is still <strong>not</strong> derived and remains a hand edit: under <code>[runtime]</code>,
+each crate&#x27;s dependency on the shared runtime crate, which <code>--common-import-override</code> documents as
+your line — an override is a Rust path prefix (<code>crate::common</code> is a legal value), so no package name
+can be derived from it.</p>
+<div class="theme-admonition theme-admonition-note admonition_xJq3 alert alert--secondary"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 14 16"><path fill-rule="evenodd" d="M6.3 5.69a.942.942 0 0 1-.28-.7c0-.28.09-.52.28-.7.19-.18.42-.28.7-.28.28 0 .52.09.7.28.18.19.28.42.28.7 0 .28-.09.52-.28.7a1 1 0 0 1-.7.3c-.28 0-.52-.11-.7-.3zM8 7.99c-.02-.25-.11-.48-.31-.69-.2-.19-.42-.3-.69-.31H6c-.27.02-.48.13-.69.31-.2.2-.3.44-.31.69h1v3c.02.27.11.5.31.69.2.2.42.31.69.31h1c.27 0 .48-.11.69-.31.2-.19.3-.42.31-.69H8V7.98v.01zM7 2.3c-3.14 0-5.7 2.54-5.7 5.68 0 3.14 2.56 5.7 5.7 5.7s5.7-2.55 5.7-5.7c0-3.15-2.56-5.69-5.7-5.69v.01zM7 .98c3.86 0 7 3.14 7 7s-3.14 7-7 7-7-3.12-7-7 3.14-7 7-7z"></path></svg></span>An umbrella package still needs a hand-written exporter</div><div class="admonitionContent_BuS1"><p>Every <code>[crates.&lt;name&gt;]</code> table needs an <code>input</code>, so a config cannot describe a crate that generates
+<em>only</em> a schema document. That is the shape an <strong>umbrella npm package</strong> takes — one that re-exports
+several generated crates&#x27; wasm classes without having a spec of its own. Its document must cover the
+union of what it ships, and the config has no entry for it.</p><p>Until it does, that package keeps a small hand-written json-gen crate: a <code>main.rs</code> calling each
+generated crate&#x27;s <code>add_schemas</code> in turn through one <code>schemars::SchemaGenerator</code>, then the same
+document assembly and reference-closure check a generated one performs. The registration order is
+yours to choose there, and the reasoning is the one above — register the crate whose names you would
+rather keep stable <strong>first</strong>.</p><p>The blocker is not the document. An input-less run already emits the right <code>add_schemas</code>; it also
+emits a vestigial rust crate that the json-gen manifest then depends on, whose package name collides
+with the umbrella crate you are trying to serve.</p></div></div>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="order-and-which-crate-a-collision-blames">Order, and which crate a collision blames<a href="#order-and-which-crate-a-collision-blames" class="hash-link" aria-label="Direct link to Order, and which crate a collision blames" title="Direct link to Order, and which crate a collision blames" translate="no">​</a></h3>
+<p><code>--json-schema-dep</code> is order-significant: flag order is registration order, and registration order
+decides which of two crates publishing one schema name keeps it. Dependency calls are emitted before
+your own rows, so on a cross-crate collision it is <strong>your</strong> row that the injectivity guard blames —
+the side whose owner can rename it.</p>
+<p>A TOML sub-table is unordered: it deserializes into a map, so the raw <code>json-schema-dep</code> entries emit
+in <strong>name</strong> order. That is deterministic but not author-controlled. <strong>Where order matters, use the
+arrays</strong> — <code>deps</code>, <code>wasm-reexports</code> and <code>json-schema-deps</code> keep the order you wrote. Derived entries
+are emitted before raw ones.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-this-refuses">What this refuses<a href="#what-this-refuses" class="hash-link" aria-label="Direct link to What this refuses" title="Direct link to What this refuses" translate="no">​</a></h3>
+<p>All of it before any crate generates:</p>
+<ul>
+<li class=""><strong><code>json-schema-deps</code> naming a crate with <code>json-schema-export = false</code></strong> — hard error naming both
+crates. You asked for a call into a crate that generates no json-gen crate for it to reach; without
+the check, the failure is a cargo path-resolution error naming a directory that was simply never
+written. A <em>derived</em> edge onto such a crate is the silent skip above — that is the difference
+between &quot;the config filtered it out for you&quot; and &quot;you asked for something impossible&quot;.</li>
+<li class=""><strong><code>json-schema-deps</code> on a crate with <code>json-schema-export = false</code></strong> — hard error: there is no
+document for the threaded rows to land in. (<code>json-schema-deps = []</code> is not a request and stays
+legal.)</li>
+<li class=""><strong><code>wasm-reexports</code> naming a crate with <code>wasm = false</code></strong> — hard error naming both crates. The key
+says your package ships that crate&#x27;s wasm classes; a crate that generates no wasm crate has none,
+so the declaration cannot be about anything. Without the check it is <em>silent</em> rather than wrong —
+the threading derivation filters on <code>json-schema-export</code>, a different axis, so such a name produced
+no diagnostic and no effect.</li>
+<li class=""><strong><code>wasm-reexports</code> or <code>json-schema-deps</code> naming an unknown crate</strong> — hard error listing the
+configured crates. Both derived values come from the named crate&#x27;s own entry, so a crate outside
+this config cannot be sugar.</li>
+<li class=""><strong>A crate naming itself</strong> in either — hard error: its own rows are already in its own document.</li>
+<li class=""><strong>A crate in both <code>deps</code> and <code>wasm-reexports</code></strong> — hard error. The edge exists once; the duplicate
+would derive the thread twice, which the flag itself rejects as one label under two mappings.</li>
+<li class=""><strong>A name listed twice in any of the arrays</strong> — hard error, for the same reason.</li>
+<li class=""><strong><code>wasm-reexports</code> or <code>json-schema-deps</code> in <code>[defaults]</code> or a <code>[profiles.*]</code> table</strong> — hard error.
+They are edges, and a shared edge is not a graph.</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-this-does-and-does-not-buy">What this does and does not buy<a href="#what-this-does-and-does-not-buy" class="hash-link" aria-label="Direct link to What this does and does not buy" title="Direct link to What this does and does not buy" translate="no">​</a></h3>
+<p>It does <strong>not</strong> make a forgotten <em>root</em> impossible — only the npm step can see a hand-written type
+that no rule describes, and <code>json-ts-types.js</code> already does. It does make a forgotten <em>thread</em>
+impossible, because the thread now follows from a list the project maintains anyway for the crate to
+link.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="one-shared-runtime-crate">One shared runtime crate<a href="#one-shared-runtime-crate" class="hash-link" aria-label="Direct link to One shared runtime crate" title="Direct link to One shared runtime crate" translate="no">​</a></h2>
+<p>Many generated crates in one workspace usually want <strong>one</strong> copy of the static rust runtime
+(<code>error.rs</code>, the <code>serialization.rs</code> prelude, <code>ordered_hash_map.rs</code>, the <code>NonEmpty*</code> types, …) rather
+than one each. On the command line that is two flags — <code>--export-static-crate</code> writes the runtime,
+<code>--common-import-override</code> points crates at it (both in
+<a class="" href="/cddl-codegen/command_line_flags">Command line flags</a>) — and the first belongs on exactly one invocation. The
+<code>[runtime]</code> table states it once:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[runtime]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">export-static-crate = &quot;crates/cddl-runtime&quot;   # where the shared runtime is written</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">common-import = &quot;cddl_runtime&quot;                # applied to every crate</span><br></div></code></pre></div></div>
+<ul>
+<li class=""><code>common-import</code> expands to <code>--common-import-override &lt;value&gt;</code> on <strong>every</strong> crate. It is the
+lowest layer in the merge, so an explicit <code>common-import-override</code> in <code>[defaults]</code>, a profile, or
+a crate table wins for the crates it reaches — that is one crate importing a different runtime,
+which is legitimate rather than a conflict.</li>
+<li class=""><code>export-static-crate</code> is carried by exactly <strong>one</strong> crate&#x27;s invocation, chosen by the derivation
+below, and resolves against the config file&#x27;s directory like every other path key.</li>
+<li class="">A second <code>export-static-crate</code> in any layer alongside <code>[runtime].export-static-crate</code> is a hard
+error. Two exports would race for one role, and letting either win would make which runtime
+survives depend on generation order.</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="which-crate-carries-the-export-and-why-it-is-derived">Which crate carries the export, and why it is derived<a href="#which-crate-carries-the-export-and-why-it-is-derived" class="hash-link" aria-label="Direct link to Which crate carries the export, and why it is derived" title="Direct link to Which crate carries the export, and why it is derived" translate="no">​</a></h3>
+<p><code>--export-static-crate</code> exports <strong>the exporting crate&#x27;s flavor</strong>. Choose the wrong crate and the
+runtime cannot serve the others — so the choice is not a preference, it is whichever crate&#x27;s flag
+set the shared runtime must have. A config already knows every crate&#x27;s flavor, so it derives the
+carrier rather than asking you to get it right.</p>
+<p>Five keys change a byte of what is exported, in two groups that behave differently. The compiler
+errors behind each rule are spelled out under <code>--export-static-crate</code> in
+<a class="" href="/cddl-codegen/command_line_flags">Command line flags</a>:</p>
+<table><thead><tr><th>key</th><th>rule</th><th>why</th></tr></thead><tbody><tr><td><code>preserve-encodings</code></td><td>must be <strong>identical</strong> in every crate</td><td>the preserve runtime&#x27;s <code>NonEmptyMap</code> is backed by <code>OrderedHashMap</code>, so a non-preserve crate holding a <code>{+ K =&gt; V}</code> cannot build against it</td></tr><tr><td><code>canonical-form</code></td><td>must be <strong>identical</strong> in every crate</td><td>the canonical and non-canonical preludes differ in the arity of <code>fit_sz</code> / <code>to_len_sz</code> / <code>SerializeEmbeddedGroup</code>, and in which crate defines <code>Serialize</code></td></tr><tr><td><code>deserialize-depth-limit</code></td><td>must be <strong>identical</strong>, and <em>unset</em> counts as a value</td><td>the limit is baked <strong>by value</strong> into the exported <code>AnyCbor</code> guard, so a mismatch compiles cleanly while guarding one crate&#x27;s <code>any</code> values at another crate&#x27;s limit</td></tr><tr><td><code>json-serde-derives</code></td><td>the <strong>maximum</strong> wins</td><td>the serde companions are appended to the runtime types, so a runtime carrying them serves a crate that does not</td></tr><tr><td><code>json-schema-export</code></td><td>the <strong>maximum</strong> wins</td><td>likewise for the schemars companions</td></tr></tbody></table>
+<p>The carrier is the first crate whose flavor is that join. Any crate matching it writes byte-identical
+files, so which one is picked cannot be observed in the output — but the run says which it was:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[runtime] `chain` carries --export-static-crate: its flavor is the join of every crate&#x27;s, so the</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">runtime it writes serves all of them.</span><br></div></code></pre></div></div>
+<p><strong>A subset that leaves the carrier out does not refresh the runtime.</strong> The export rides the carrier&#x27;s
+invocation, so <code>cddl-codegen --config c.toml cip25</code> uses the committed runtime as it stands — the run
+says so instead, naming the carrier. That is the same &quot;a subset trusts committed output&quot; contract the
+dependency edges follow, and it is usually what you want; the case to know about is a <em>fresh</em>
+workspace, where the runtime has never been written and every crate in the subset is pointed at it by
+<code>--common-import-override</code>. Generate once without a selection first.</p>
+<p>Two configurations have no carrier, and both are hard errors rather than a silently inadequate
+runtime:</p>
+<ul>
+<li class=""><strong>The crates disagree on an identical-value key.</strong> The error names each such key and which crates
+hold which value.</li>
+<li class=""><strong>No single crate has the join</strong> — one crate sets <code>json-serde-derives</code>, another sets
+<code>json-schema-export</code>, and neither sets both. <code>--export-static-crate</code> exports the flag set of one
+invocation, so a runtime nobody&#x27;s flags describe cannot be written at all; the error names which
+crate supplies each key.</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="flavor-from-when-you-know"><code>flavor-from</code>, when you know<a href="#flavor-from-when-you-know" class="hash-link" aria-label="Direct link to flavor-from-when-you-know" title="Direct link to flavor-from-when-you-know" translate="no">​</a></h3>
+<p>A workspace can legitimately want one runtime for crates that do not all agree — a reduced-flavor
+crate whose spec happens to use none of the constructs that would break. Naming the carrier by hand
+accepts that:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[runtime]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">export-static-crate = &quot;crates/cddl-runtime&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">common-import = &quot;cml_core&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">flavor-from = &quot;chain&quot;</span><br></div></code></pre></div></div>
+<p><code>flavor-from</code> must name a crate in this config, and requires <code>export-static-crate</code> (there is
+otherwise nothing to carry). It fires no per-run warning — you have declared this, and a warning
+that repeats on every run trains people to ignore warnings — but the run <strong>states once</strong> what was
+accepted:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[runtime] `chain` carries --export-static-crate, declared by `flavor-from`.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[runtime] Generated at a flavor the shared runtime does not match: `cip25`. They compile against it</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">only while their specs hold no `{+ K =&gt; V}` (whose `NonEmptyMap` is backed by `OrderedHashMap` under</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">--preserve-encodings) and no `any` (whose `AnyCbor` serialize arity follows --canonical-form), and a</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">crate whose --deserialize-depth-limit differs has its `any` values guarded at `chain`&#x27;s limit rather</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">than its own.</span><br></div></code></pre></div></div>
+<p>That is the substantive difference from placing the flag by hand: the same single declaration, plus
+a named hazard the run repeats back to you.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="paths-resolve-against-the-config-file">Paths resolve against the config file<a href="#paths-resolve-against-the-config-file" class="hash-link" aria-label="Direct link to Paths resolve against the config file" title="Direct link to Paths resolve against the config file" translate="no">​</a></h2>
+<p>Every path-valued key — <code>input</code>, <code>output</code>, <code>static-dir</code>, <code>export-static-crate</code>, and the right-hand
+sides of <code>extern-import</code>, <code>extern-wrapper-index</code>, <code>wrapper-requests</code> and <code>key-requests</code> — resolves
+against <strong>the directory holding the config file</strong>, never the current working directory. A config
+checked into a repository therefore means the same command works from anywhere, which is what
+retires the trap where <code>--static-dir static</code> silently picks up whichever checkout you happen to be
+standing in.</p>
+<p>Absolute paths pass through untouched.</p>
+<p>Five right-hand sides are deliberately <em>not</em> resolved. Two of them are not paths at all:
+<code>extern-wasm-crate</code> names a crate, and <code>json-schema-dep</code> names a Rust module path that lands
+verbatim in generated code.</p>
+<p><code>json-gen-dep</code>, <code>wasm-dep</code> and <code>rust-dep</code> are the other three, and they are the ones worth stating:
+their right-hand sides <strong>are</strong> paths, and are still passed through verbatim. Each becomes a cargo
+<em>path dependency</em> — in <code>&lt;output&gt;/wasm/json-gen/Cargo.toml</code>, <code>&lt;output&gt;/wasm/Cargo.toml</code> and
+<code>&lt;output&gt;/rust/Cargo.toml</code> respectively — and cargo resolves such a path against the manifest holding
+it, so rewriting it against the config file&#x27;s directory would point it somewhere cargo never looks.
+Count each from the crate whose manifest it lands in, exactly as you would writing the entry by hand.
+(For a dependency this config contains you do not write any of them at all: the <a href="#the-published-json-surface" class="">threading
+derivation</a>, <a href="#the-wasm-manifest" class="">the wasm manifest</a> and <a href="#the-rust-manifest" class="">the rust
+manifest</a> compute those relative paths for you.)</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="booleans">Booleans<a href="#booleans" class="hash-link" aria-label="Direct link to Booleans" title="Direct link to Booleans" translate="no">​</a></h2>
+<p>Booleans are TOML booleans, never the <code>--flag true</code> string form:</p>
+<div class="language-toml codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-toml codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">preserve-encodings = true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">wasm = false</span><br></div></code></pre></div></div>
+<p>One key is spelled positively where its flag is negated: <code>--no-preserve-comments</code> becomes
+<code>preserve-comments = false</code>. TOML has booleans, so the config does not make you write a double
+negative; omitting the key, or setting it to <code>true</code>, leaves
+<a class="" href="/cddl-codegen/preserving_edits">edit preservation</a> on as it is by default.</p>
+<p><code>deserialize-depth-limit</code> is a TOML integer.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-the-config-refuses">What the config refuses<a href="#what-the-config-refuses" class="hash-link" aria-label="Direct link to What the config refuses" title="Direct link to What the config refuses" translate="no">​</a></h2>
+<p>The config file is checked before <strong>any</strong> crate generates, so a mistake in the last crate&#x27;s table
+cannot leave the first crate&#x27;s output half-migrated on disk.</p>
+<ul>
+<li class=""><strong>An unknown key is a hard error naming it</strong>, at every level — crate table, <code>[defaults]</code>,
+<code>[profiles.*]</code>, and the top-level tables. This is the config-file equivalent of a misspelled flag,
+which is already rejected; letting a typo fall back to a default would ship a crate built with the
+wrong flag set and no diagnostic at all.</li>
+<li class=""><strong>A flag COMBINATION the generator refuses is rejected up front too</strong>, against the crate whose
+merged settings produced it. These are the generator&#x27;s own rules — <code>json-schema-scripts</code> without
+<code>json-schema-export</code>, <code>canonical-form</code> without <code>preserve-encodings</code>, a <code>json-gen-dep</code> package named
+twice — and every one of them is reachable from a shared key, where the crate that trips it is
+usually not the crate you wrote the key in.</li>
+<li class=""><strong>A value the flag itself rejects is reported against the config key that produced it</strong>, so you
+are pointed at the TOML line you wrote rather than at a flag you never typed.</li>
+<li class=""><strong>An unknown crate name on the command line is a hard error</strong> listing the configured crates,
+rather than a run that generates nothing and exits successfully.</li>
+<li class=""><strong>Two crates cannot generate into one <code>output</code></strong>, nor one inside another&#x27;s. A crate&#x27;s output is
+regenerated as a whole, so the crate running second would erase the first&#x27;s generated tree while
+the first&#x27;s seed-once <code>lib.rs</code> survived — a crate root belonging to one spec sitting over a
+generated tree belonging to another, with the run reporting success. It is also the copy-paste
+mistake this file invites most: duplicate a <code>[crates.*]</code> block, change <code>input</code>, forget <code>output</code>.
+Sibling directories that merely share a name prefix (<code>gen/alpha</code> and <code>gen/alphabet</code>) are fine.</li>
+<li class=""><strong>A <code>[runtime]</code> no single static runtime can serve is a hard error</strong> naming the keys the crates
+disagree on, or the crate each missing key comes from. Selecting a subset does not soften it:
+which crate can carry the shared runtime is a property of the config, so
+<code>cddl-codegen --config c.toml one-crate</code> rejects exactly what a full run rejects.</li>
+<li class=""><strong><code>export-static-crate</code> may reach at most one crate</strong>, from whichever layer it comes and whether
+or not there is a <code>[runtime]</code> table. It is an ordinary shared key, so one <code>[defaults]</code> line is a
+single layer and one export site <em>per crate</em> — and two crates exporting into one directory is not
+two writes of the same bytes. At differing flavors the second export does not replace the first:
+the exported crate is outside the stale-file bookkeeping so the first flavor&#x27;s files linger, the
+manifest merge accumulates both flavors&#x27; dependencies, and the comment-preservation overlay
+cannot classify the previous flavor&#x27;s output, so it injects a fresh <code>compile_error!</code> block every
+run. Measured on a two-crate config differing only in <code>preserve-encodings</code>: the exported
+<code>any_cbor.rs</code> grew 62 → 143 → 224 → 305 <code>compile_error!</code> blocks over four runs of one unchanged
+config, exit 0 each time. Put the key on the one crate whose flavor the runtime should have, or
+hoist it to <code>[runtime].export-static-crate</code> and let the config
+<a href="#one-shared-runtime-crate" class="">derive the carrier</a>.</li>
+</ul>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="generation-itself-is-not-transactional-across-crates">Generation itself is not transactional across crates<a href="#generation-itself-is-not-transactional-across-crates" class="hash-link" aria-label="Direct link to Generation itself is not transactional across crates" title="Direct link to Generation itself is not transactional across crates" translate="no">​</a></h3>
+<p>What is checked up front is the <strong>config</strong>. Once the first crate starts generating, the run is a
+sequence of independent regenerations, and a crate whose CDDL spec fails to generate stops the run
+where it stands: the crates ordered before it are on disk in their regenerated form, the failing
+crate&#x27;s own output may be partly written, and the crates after it are untouched. This is not a
+rollback the tool can perform — each crate&#x27;s output is a committed directory it clobbers in place.</p>
+<p>So the failure says exactly that instead, naming the crate that failed and listing the crates the run
+had already finished:</p>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">[crates.ledger] failed to generate: &lt;the spec&#x27;s own error&gt;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">1 crate was already regenerated in this run before this failure: core. Generation is not</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">transactional across crates: ...</span><br></div></code></pre></div></div>
+<p>Generated output is committed, which is what makes the undo ordinary: <code>git checkout</code> on the listed
+crates&#x27; output directories restores them.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="--config-cannot-be-mixed-with-generation-flags"><code>--config</code> cannot be mixed with generation flags<a href="#--config-cannot-be-mixed-with-generation-flags" class="hash-link" aria-label="Direct link to --config-cannot-be-mixed-with-generation-flags" title="Direct link to --config-cannot-be-mixed-with-generation-flags" translate="no">​</a></h2>
+<p>Passing any generation flag alongside <code>--config</code> is a hard error naming the flag. There is no
+flags-override-config precedence on purpose: every override would have to define whether it applies
+to one crate or to all of them, and the honest answer differs per flag. Crate names — positionally,
+or closed over <code>deps</code> with
+<a href="#selecting-a-subset-and-closing-it-over-dependencies" class=""><code>--with-deps</code></a> — are the only
+command-line selector; the config file is the edit loop.</p>
+<p>Selecting a subset generates only the crates you name. Their order on the command line does not
+matter — the config decides the generation order.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-one-exception---static-dir">The one exception: <code>--static-dir</code><a href="#the-one-exception---static-dir" class="hash-link" aria-label="Direct link to the-one-exception---static-dir" title="Direct link to the-one-exception---static-dir" translate="no">​</a></h3>
+<p><code>--static-dir</code> (short <code>-s</code>) is accepted alongside <code>--config</code> and applies to <strong>every crate in the
+run</strong>:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static</span><br></div></code></pre></div></div>
+<p>It is exempt because it is the one flag with nothing per-crate to decide. It names where <em>this
+machine</em> keeps cddl-codegen&#x27;s own hand-written serialization runtime — a property of a checkout, not
+of any crate — so &quot;one crate or all of them?&quot;, the question that rules every other flag out, has a
+single answer here. It is also the one value a committed config cannot get right by itself.</p>
+<p>A command-line value <strong>wins over a <code>static-dir</code> key</strong>, silently and everywhere: the key is a
+committed default and this is the per-machine override of it, so a conflict here is the intended use
+rather than a mistake to report. <code>--print-flags</code> shows which one is in force — the overriding value
+is listed with the provenance <code>command line</code> instead of a config key.</p>
+<p>Unlike every key inside the config, the command-line value is <strong>not</strong> resolved against the config
+file&#x27;s directory: it did not come from the config file, so a relative <code>--static-dir vendor/static</code>
+means what it means on any other command line — relative to the current directory. Prefer an
+absolute path in a script that may run from anywhere.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="seeing-what-a-config-does-without-running-it">Seeing what a config does, without running it<a href="#seeing-what-a-config-does-without-running-it" class="hash-link" aria-label="Direct link to Seeing what a config does, without running it" title="Direct link to Seeing what a config does, without running it" translate="no">​</a></h2>
+<p><code>--print-flags</code> prints the flag list each crate would be generated with, and generates nothing:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml --print-flags        # every crate, in generation order</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">cddl-codegen --config codegen.toml --print-flags core   # just this one</span><br></div></code></pre></div></div>
+<div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain"># The flags each crate WOULD be generated with, and the config key each one comes from.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># This is a listing, not a command line: the left column is a config key rather than an</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># argument, nothing is shell-quoted, and a copy of it stops being true at the next edit of</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"># the config. Nothing was generated.</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.core]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  input                        --input=specs/core.cddl</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  output                       --output=gen/core</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  lib-name                     --lib-name=core-lib</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  preserve-encodings           --preserve-encodings=true</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  deps (from [crates.ledger])  --wrapper-requests=ledger=gen/ledger/wasm/src/generated/borrowed_collections.rs</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  deps (from [crates.ledger])  --key-requests=ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain" style="display:inline-block"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">[crates.ledger]</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  input                        --input=specs/ledger.cddl</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  …</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  deps                         --workspace-dep=core</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  deps                         --extern-import=core=gen/core/extern-interface/core</span><br></div></code></pre></div></div>
+<p>Every line leads with <strong>the config key that produced it</strong>, which is the question worth answering:
+whether a <code>[defaults]</code> key reached a crate, or a <code>deps</code> edge derived the path you expected, is
+otherwise visible only by generating and reading the output tree. Every flag an edge derives is
+tagged <code>deps</code> rather than with its own flag name, since those name no line in your file. A
+reverse-edge flag lands on a <em>dependency</em>&#x27;s block but comes from a consumer&#x27;s <code>deps</code> — a table the
+dependency does not have — so those read <code>deps (from [crates.&lt;consumer&gt;])</code>, naming the file&#x27;s line
+you would actually go and edit. A sub-table entry you wrote by hand keeps the key you wrote it under,
+and a value overridden from the command line is tagged <code>command line</code>.</p>
+<p>Each flag is one token, <code>--name=value</code>, rather than two. That is what lets a value begin with a <code>-</code>
+(a directory named <code>-out</code>, a library named <code>-x</code>): everything after the first <code>=</code> is taken verbatim,
+so a <code>&lt;k&gt;=&lt;v&gt;</code> sub-table value such as <code>--extern-import=core=gen/core/…</code> survives it unchanged.</p>
+<p>The expansion behind the listing is the real one: every path resolution, every derivation and every
+validation. A config a run would refuse is refused here, with the same message.</p>
+<div class="theme-admonition theme-admonition-caution admonition_xJq3 alert alert--warning"><div class="admonitionHeading_Gvgb"><span class="admonitionIcon_Rf37"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.893 1.5c-.183-.31-.52-.5-.887-.5s-.703.19-.886.5L.138 13.499a.98.98 0 0 0 0 1.001c.193.31.53.501.886.501h13.964c.367 0 .704-.19.877-.5a1.03 1.03 0 0 0 .01-1.002L8.893 1.5zm.133 11.497H6.987v-2.003h2.039v2.003zm0-3.004H6.987V5.987h2.039v4.006z"></path></svg></span>It is a listing, not a second invocation to keep</div><div class="admonitionContent_BuS1"><p>Deliberately not shell-quoted, and deliberately not a token sequence any shell accepts. A pasted
+flag list is accurate on the day it is copied and silently stops being so at the next edit of the
+config — which is the duplication this feature exists to remove, not to mint more of. Use it to
+answer <em>why is this flag here</em>, and keep the config as the thing that is maintained.</p></div></div>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="migrating-a-generation-script">Migrating a generation script<a href="#migrating-a-generation-script" class="hash-link" aria-label="Direct link to Migrating a generation script" title="Direct link to Migrating a generation script" translate="no">​</a></h2>
+<p>The shape this feature was designed against is a real one: <code>codegen.sh</code> in
+<a href="https://github.com/dcSpark/cardano-multiplatform-lib" target="_blank" rel="noopener noreferrer" class="">cardano-multiplatform-lib</a>, which generates
+four crates with a shared flag bundle, a fifth reduced-flavor invocation, a workspace edge, and a
+hand-threaded JSON surface. That script&#x27;s config is <a href="#a-complete-config" class="">the complete example above</a>;
+this section maps it back onto the script piece by piece, so the correspondence is greppable from
+either side.</p>
+<p><strong>This is a mapping, not a migration.</strong> Nothing in this feature has been run against CML or any other
+consumer repository — deliberately, since generation rewrites <code>src/generated/**</code> in place. Treat what
+follows as the translation to start from, not as a result someone has already reproduced.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-flag-bundles">The flag bundles<a href="#the-flag-bundles" class="hash-link" aria-label="Direct link to The flag bundles" title="Direct link to The flag bundles" translate="no">​</a></h3>
+<p>The script keeps three arrays and composes them per invocation:</p>
+<table><thead><tr><th>script</th><th>becomes</th></tr></thead><tbody><tr><td><code>OVERRIDE</code> — <code>--common-import-override=cml_core</code>, <code>--no-synthesized-rust-collection-aliases=true</code></td><td>the first flag is <code>[runtime] common-import</code>; the second is a <code>[defaults]</code> key</td></tr><tr><td><code>WASM_MACROS</code> — <code>--wasm</code>, <code>--rust-wasm-feature</code>, the three macro flags</td><td><code>[defaults]</code> keys</td></tr><tr><td><code>COMMON</code> = <code>--preserve-encodings</code> + <code>--canonical-form</code> + <code>--json-serde-derives</code> + <code>--json-schema-export</code> + <code>OVERRIDE</code> + <code>WASM_MACROS</code></td><td>the json pair joins <code>[defaults]</code>; the encoding pair becomes a <strong>profile</strong>, because one crate omits exactly those two</td></tr><tr><td><code>CIP25_WASM_MACROS</code> — <code>WASM_MACROS</code> with a different <code>--wasm-cbor-json-api-macro</code></td><td>one per-crate key on that crate, overriding the shared value</td></tr></tbody></table>
+<p>A key every crate sets belongs in <code>[defaults]</code>, which is where the first two rows land whole. The
+encoding pair is the row with a choice in it, and the <code>encoded</code> profile keeps the boundary the script
+already drew — <code>COMMON</code> minus what the <code>cip25</code> invocation leaves out. For two booleans and a single
+deviating crate, <code>[defaults]</code> plus an explicit <code>preserve-encodings = false</code> on <code>cip25</code> is <a href="#profiles" class="">the other
+legal spelling</a>, and a line shorter; the profile is kept here because it carries the
+script&#x27;s own name for the axis. <code>CIP25_WASM_MACROS</code> needs neither — a bundle that differs from the
+shared one in a single value is a per-crate key, since <a href="#how-each-kind-of-key-merges" class="">later layers win per
+key</a>.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-crate-that-omits-the-encoding-flags">The crate that omits the encoding flags<a href="#the-crate-that-omits-the-encoding-flags" class="hash-link" aria-label="Direct link to The crate that omits the encoding flags" title="Direct link to The crate that omits the encoding flags" translate="no">​</a></h3>
+<p><code>cip25</code> is generated without <code>--preserve-encodings</code> / <code>--canonical-form</code> — it never had them. In the
+config that is simply <a href="#a-complete-config" class="">the crate that does not apply the <code>encoded</code>
+profile</a>.</p>
+<p>That deviation is on two of <a href="#which-crate-carries-the-export-and-why-it-is-derived" class="">the three equality axes</a>,
+so this workspace is the <strong><code>flavor-from</code> case</strong>: no single runtime matches every crate, and the
+carrier cannot be derived. The script already knows this — it places <code>--export-static-crate</code> on the
+<code>chain</code> invocation with a comment saying cip25&#x27;s reduced flavor would export a runtime the others
+cannot use. <code>flavor-from</code> is that comment turned into a declaration — the third line of the
+<code>[runtime]</code> table above.</p>
+<p>What the declaration asserts is narrower than &quot;chain is the right crate&quot;. It asserts that you accept
+generating <code>cip25</code> against a runtime built at <code>chain</code>&#x27;s flavor, and the run states the accepted gap
+back to you by name — that <code>cip25</code> compiles against that runtime only while its spec holds no
+<code>{+ K =&gt; V}</code> and no <code>any</code>. It is a claim about cip25&#x27;s <em>spec</em>, and one that a future spec change can
+falsify; the statement is what makes that visible on the run that introduces it.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-workspace-edge">The workspace edge<a href="#the-workspace-edge" class="hash-link" aria-label="Direct link to The workspace edge" title="Direct link to The workspace edge" translate="no">​</a></h3>
+<p><code>multi-era</code> consumes <code>chain</code>. The script spells that with three flags on the consumer
+(<code>EXTERN_WASM_MULTIERA</code>) and one on the dependency (<code>WRAPPER_REQUESTS_CHAIN</code>); the config spells it
+<code>deps = [&quot;chain&quot;]</code> on <code>[crates.multi-era]</code>.</p>
+<p>That one key derives <a href="#dependencies-between-crates" class="">the whole edge</a>, both directions, where the
+script passes four flags. Three things it does <strong>not</strong> pass come with them, and each is worth knowing
+before you make the edge:</p>
+<ul>
+<li class="">
+<p><strong><code>--extern-import</code></strong> is derived, and it is where the migration is. CML declares its extern
+dependencies by hand, in <code>_CDDL_CODEGEN_EXTERN_DEPS_DIR_/cml_chain</code> under the consumer&#x27;s spec
+directory, and passes no <code>--extern-import</code>. <code>deps</code> points the flag at the dependency&#x27;s <em>generated</em>
+<code>extern-interface/</code> export instead, and the two are alternatives rather than layers: a dependency
+named by <code>deps</code> — or by a hand-written <code>extern-import</code> entry — that the consumer <em>also</em> declares as
+a stub directory is a <strong>hard error</strong>, naming the key that declared the edge and the stub directory
+it collides with, during expansion and so before any crate generates. <strong>Adopting <code>deps</code> therefore
+means deleting that stub tree</strong>, which is a regen with a reviewable diff rather than a no-op;
+<code>CML_MIGRATION.md</code> in this repository carries the measured steps and the diff classes for exactly
+this edge.</p>
+<p>What makes the deletion safe is that the import is <strong>narrowed</strong>: only the export rules your spec
+reaches — closed over the export&#x27;s own rule bodies — enter your document, so an export rule nothing
+reaches is inert, including one whose name your spec defines itself. multi-era&#x27;s own
+<code>block = _CDDL_CODEGEN_EXTERN_TYPE_</code> and chain&#x27;s exported <code>block</code> therefore coexist, the first
+resolving to multi-era&#x27;s hand-owned re-export and the second never entering the document at all.
+See <a class="" href="/cddl-codegen/command_line_flags"><code>--extern-import</code></a> for the closure and for the two cases that stay hard
+errors.</p>
+</li>
+<li class="">
+<p><strong><code>--key-requests</code></strong> is derived too, and the script passes none. It is the dependency-side half of
+the map-key-derive channel: the dependency starts reading the consumer&#x27;s
+<code>borrowed_key_types.rs</code> sidecar and deriving <code>Eq</code>/<code>Ord</code> where the consumer keys a map on one of its
+types. Additive, but it is a change to the dependency&#x27;s generated code.</p>
+</li>
+<li class="">
+<p><strong>The manifest entries</strong> (<code>--rust-dep</code>, <code>--wasm-dep</code>, and <code>--json-gen-dep</code> where the JSON surface
+applies) are derived, and CML hand-maintains the same entries today. They are asserted, never
+removed: an entry that already exists keeps the fields the derivation does not set — a <code>version =</code>
+pin and any <code>features</code> survive — while <code>path</code> is re-asserted at the derived value. See <a href="#the-wasm-manifest" class="">The wasm
+manifest</a> and <a href="#the-rust-manifest" class="">The rust manifest</a>.</p>
+</li>
+</ul>
+<p>One smaller diff to expect in the regen: the reverse edges&#x27; left-hand side is a label that lands in
+the dependency&#x27;s <code>/// Generated at the request of: …</code> attribution comments, and the derived label is
+the consumer&#x27;s <em>normalized</em> library name (<code>cml_multi_era</code>), where the script writes <code>cml-multi-era</code>.</p>
+<p><strong>A dependency with no export is not a <code>deps</code> edge at all</strong>, and that is what the raw sub-tables are
+for. <code>cip36</code> declares two extern crates by hand, and they are two different cases. <code>cml_crypto</code> is
+hand-written and this config does not contain it, so there is no <code>[crates.cml_crypto]</code> table for
+<code>deps</code> to name and never will be: its stub plus <a href="#dependencies-between-crates" class="">raw sub-table
+entries</a> — <code>cip36</code>&#x27;s <code>extern-wasm-crate</code> mapping <a href="#a-complete-config" class="">above</a>
+— is the only spelling there is.</p>
+<p><code>cml_chain</code> is the other case: the config <em>does</em> contain that crate, and cip36 simply keeps its own
+stub for it rather than declaring the edge. That is a second migration unit, decided on its own
+terms — giving cip36 <code>deps = [&quot;chain&quot;]</code> means deleting cip36&#x27;s chain stub the same way multi-era&#x27;s
+goes, so the mapping above leaves it alone rather than folding two migrations into one.</p>
+<p>What there is deliberately <strong>no</strong> spelling for is keeping a stub <em>and</em> declaring the edge. Holding on
+to a stub means not writing <code>deps</code>, and that costs the whole edge rather than just the import: every
+row of <a href="#dependencies-between-crates" class="">the derivation table</a> becomes a hand-written sub-table entry on
+<strong>both</strong> crates&#x27; tables, the two reverse edges included — and those are the ones whose omission is
+silent, since a dependency that never reads a consumer&#x27;s sidecars simply does not host the wrappers
+and key derives that consumer borrows, which is a workspace that does not build for any consumer that
+borrows one. <code>deps</code> is also what the <a href="#generation-order-and-the-convergence-pass" class="">generation
+order</a> and the <a href="#the-verdict-on-the-committed-tree" class="">committed-state
+verdict</a> are computed from, and neither of those has a per-key
+spelling at all.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="json_roots_"><code>JSON_ROOTS_*</code><a href="#json_roots_" class="hash-link" aria-label="Direct link to json_roots_" title="Direct link to json_roots_" translate="no">​</a></h3>
+<p>Each array becomes a per-crate <code>json-schema-root</code> list — <code>cip25</code>&#x27;s single entry and <code>multi-era</code>&#x27;s
+three <a href="#a-complete-config" class="">above</a>. Array order is flag order, which is emission order, so it is
+preserved rather than sorted.</p>
+<p>Those four are fewer entries than the script&#x27;s arrays hold, and the difference is not the config&#x27;s
+doing. A root&#x27;s only observable purpose is typing a published wasm class&#x27;s JSON method, and most of
+the script&#x27;s entries name classes that declare none; <code>CML_CONFIG_MIGRATION.md</code> in this repository
+carries that census. Pruning them is its own reviewable diff, separate from the flag-set change.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="json_schema_dep_multiera"><code>JSON_SCHEMA_DEP_MULTIERA</code><a href="#json_schema_dep_multiera" class="hash-link" aria-label="Direct link to json_schema_dep_multiera" title="Direct link to json_schema_dep_multiera" translate="no">​</a></h3>
+<p>The script threads three dependencies&#x27; row sets into multi-era&#x27;s schema document, and separately
+hand-declares each of those crates&#x27; json-gen packages in <code>multi-era/wasm/json-gen/Cargo.toml</code>. Both
+halves are <a href="#the-published-json-surface" class="">derived</a> from the same two facts — which crates multi-era
+<em>depends on</em>, and which crates its npm package <em>ships</em>, which are the <code>deps</code> and <code>wasm-reexports</code>
+lines on <code>[crates.multi-era]</code> <a href="#a-complete-config" class="">above</a>.</p>
+<p><code>deps</code> already covers <code>cml_chain</code>; <code>wasm-reexports</code> declares the other two, which multi-era&#x27;s package
+ships without its spec referencing them. The derivation emits <code>--json-schema-dep</code> in
+<code>deps</code>-then-<code>wasm-reexports</code> order, which is the order the script writes by hand — and it emits
+<code>--json-gen-dep</code> alongside, which is what retires the hand-maintained <code>[dependencies]</code> entries in the
+json-gen manifest. The relative path in those entries is computed for you.</p>
+<p>The same two lines also retire the hand-maintained <code>cml-cip25-wasm</code> / <code>cml-cip36-wasm</code> entries in
+<code>multi-era/wasm/Cargo.toml</code> — the ones under the <em>&quot;not actual multi-era dependencies but we re-export
+these for the wasm builds&quot;</em> comment — plus <code>cml-chain</code> and <code>cml-chain-wasm</code> from the <code>deps</code> edge. See
+<a href="#the-wasm-manifest" class="">The wasm manifest</a>. The <code>deps</code> edge also retires the <code>cml-chain</code> entry in
+<code>multi-era/rust/Cargo.toml</code>, which is <a href="#the-rust-manifest" class="">the rust manifest</a>.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-generation-order-flips">The generation order flips<a href="#the-generation-order-flips" class="hash-link" aria-label="Direct link to The generation order flips" title="Direct link to The generation order flips" translate="no">​</a></h3>
+<p>This is the change a migrating project feels first. The script runs <strong>multi-era before chain</strong>, and
+says why: multi-era rewrites its sidecar, chain reads it fresh. A config sorts topologically with
+<strong>dependencies first</strong>, so it runs chain, cip25, cip36, then multi-era.</p>
+<p>That is not a better order, it is <a href="#generation-order-and-the-convergence-pass" class="">the opposite side of the same
+conflict</a>. The two edge kinds want opposite
+orders and no single ordered pass satisfies both. Running the consumer first means the consumer reads
+the dependency&#x27;s <em>previous</em> output; running the dependency first means the dependency reads the
+consumer&#x27;s <em>previous</em> sidecar. What the config adds on top of the order is the convergence pass: it
+re-runs the dependencies whose sidecars the pass rewrote, so a full run resolves the trade rather
+than merely picking a side of it. The staleness that remains is the one no single command can fix — a
+<strong>subset</strong> run, where multi-era <strong>adds</strong> a borrow and chain was not in the run. There the
+<a href="#the-verdict-on-the-committed-tree" class="">committed-state verdict</a> names the crate, fails the run, and
+prints the command that converges it.</p>
+<p>CML&#x27;s hand-rolled <code>check_convergence</code> reads the same two files against each other — multi-era&#x27;s
+<code>borrowed_collections.rs</code> against chain&#x27;s <code>collections.rs</code> — and fails the script the same way. The
+built-in verdict is that check generalised to every <code>deps</code> edge the config declares, so it covers the
+single-crate regen the script&#x27;s own comment names as the scenario it guards.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-does-not-move">What does not move<a href="#what-does-not-move" class="hash-link" aria-label="Direct link to What does not move" title="Direct link to What does not move" translate="no">​</a></h3>
+<p>A config replaces the flags. It does not replace the wrapper script, and a project deciding whether
+to migrate should count on keeping one:</p>
+<ul>
+<li class=""><strong>The tool pin, and fetching it.</strong> <code>CDDL_CODEGEN_PINNED_REV</code>, the cached clone, the
+<code>git archive</code> extraction of a rev, the <code>CARGO_TARGET_DIR</code> tuning — all of it is about <em>which
+cddl-codegen runs</em>, and a config file is an input to a cddl-codegen that is already running.</li>
+<li class=""><strong><code>cargo fmt --all</code> and the clippy gate.</strong> These run over the whole repository after generation,
+hand-written code included, and one of them is a policy decision the script documents at length
+(check only, never <code>--fix</code>, because a fix under <code>src/generated/</code> is reverted by the next regen).</li>
+<li class=""><strong>The dirty-tree warning</strong>, and everything else about <em>how</em> the project reviews a regen — in CML&#x27;s
+case, regenerating in place and reading <code>git diff</code>.</li>
+<li class=""><strong>Opt-in passes that generate a second spec set into an existing crate.</strong> CML&#x27;s <code>byron</code> pass
+targets the same output and the same <code>lib-name</code> as <code>multi-era</code> from a different spec directory. Two
+crate tables cannot share a library name — that is a hard error — so this stays a flag invocation.
+It cannot be <em>added</em> to the config command either, since the only generation flag <code>--config</code>
+accepts is <a href="#the-one-exception---static-dir" class=""><code>--static-dir</code></a>; it stays its own <code>cddl-codegen</code> call
+in the script, beside the <code>--config</code> one.</li>
+</ul>
+<p>What the config removes from the script is the part that was duplicated and unchecked: the flag
+bundles, the cross-crate paths that two invocations had to agree about, and the ordering comment
+explaining which invocation had to come first.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/current_capacities"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Current capacities</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/output_format"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Output format</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#a-complete-config" class="table-of-contents__link toc-highlight">A complete config</a><ul><li><a href="#editor-support" class="table-of-contents__link toc-highlight">Editor support</a></li></ul></li><li><a href="#one-spec-one-crate" class="table-of-contents__link toc-highlight">One spec, one crate</a></li><li><a href="#shared-values" class="table-of-contents__link toc-highlight">Shared values</a></li><li><a href="#profiles" class="table-of-contents__link toc-highlight">Profiles</a><ul><li><a href="#when-a-profile-earns-its-keep" class="table-of-contents__link toc-highlight">When a profile earns its keep</a></li></ul></li><li><a href="#how-each-kind-of-key-merges" class="table-of-contents__link toc-highlight">How each kind of key merges</a></li><li><a href="#dependencies-between-crates" class="table-of-contents__link toc-highlight">Dependencies between crates</a><ul><li><a href="#generation-order-and-the-convergence-pass" class="table-of-contents__link toc-highlight">Generation order, and the convergence pass</a></li><li><a href="#the-convergence-warning" class="table-of-contents__link toc-highlight">The convergence warning</a></li><li><a href="#the-verdict-on-the-committed-tree" class="table-of-contents__link toc-highlight">The verdict on the committed tree</a></li><li><a href="#selecting-a-subset-and-closing-it-over-dependencies" class="table-of-contents__link toc-highlight">Selecting a subset, and closing it over dependencies</a></li></ul></li><li><a href="#the-published-json-surface" class="table-of-contents__link toc-highlight">The published JSON surface</a><ul><li><a href="#why-the-source-is-the-wasm-dependency-list-not-the-rust-one" class="table-of-contents__link toc-highlight">Why the source is the wasm dependency list, not the rust one</a></li><li><a href="#the-two-derived-flags" class="table-of-contents__link toc-highlight">The two derived flags</a></li><li><a href="#overriding-the-derivation" class="table-of-contents__link toc-highlight">Overriding the derivation</a></li></ul></li><li><a href="#the-wasm-manifest" class="table-of-contents__link toc-highlight">The wasm manifest</a></li><li><a href="#the-rust-manifest" class="table-of-contents__link toc-highlight">The rust manifest</a><ul><li><a href="#order-and-which-crate-a-collision-blames" class="table-of-contents__link toc-highlight">Order, and which crate a collision blames</a></li><li><a href="#what-this-refuses" class="table-of-contents__link toc-highlight">What this refuses</a></li><li><a href="#what-this-does-and-does-not-buy" class="table-of-contents__link toc-highlight">What this does and does not buy</a></li></ul></li><li><a href="#one-shared-runtime-crate" class="table-of-contents__link toc-highlight">One shared runtime crate</a><ul><li><a href="#which-crate-carries-the-export-and-why-it-is-derived" class="table-of-contents__link toc-highlight">Which crate carries the export, and why it is derived</a></li><li><a href="#flavor-from-when-you-know" class="table-of-contents__link toc-highlight"><code>flavor-from</code>, when you know</a></li></ul></li><li><a href="#paths-resolve-against-the-config-file" class="table-of-contents__link toc-highlight">Paths resolve against the config file</a></li><li><a href="#booleans" class="table-of-contents__link toc-highlight">Booleans</a></li><li><a href="#what-the-config-refuses" class="table-of-contents__link toc-highlight">What the config refuses</a><ul><li><a href="#generation-itself-is-not-transactional-across-crates" class="table-of-contents__link toc-highlight">Generation itself is not transactional across crates</a></li></ul></li><li><a href="#--config-cannot-be-mixed-with-generation-flags" class="table-of-contents__link toc-highlight"><code>--config</code> cannot be mixed with generation flags</a><ul><li><a href="#the-one-exception---static-dir" class="table-of-contents__link toc-highlight">The one exception: <code>--static-dir</code></a></li></ul></li><li><a href="#seeing-what-a-config-does-without-running-it" class="table-of-contents__link toc-highlight">Seeing what a config does, without running it</a></li><li><a href="#migrating-a-generation-script" class="table-of-contents__link toc-highlight">Migrating a generation script</a><ul><li><a href="#the-flag-bundles" class="table-of-contents__link toc-highlight">The flag bundles</a></li><li><a href="#the-crate-that-omits-the-encoding-flags" class="table-of-contents__link toc-highlight">The crate that omits the encoding flags</a></li><li><a href="#the-workspace-edge" class="table-of-contents__link toc-highlight">The workspace edge</a></li><li><a href="#json_roots_" class="table-of-contents__link toc-highlight"><code>JSON_ROOTS_*</code></a></li><li><a href="#json_schema_dep_multiera" class="table-of-contents__link toc-highlight"><code>JSON_SCHEMA_DEP_MULTIERA</code></a></li><li><a href="#the-generation-order-flips" class="table-of-contents__link toc-highlight">The generation order flips</a></li><li><a href="#what-does-not-move" class="table-of-contents__link toc-highlight">What does not move</a></li></ul></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
+</body>
+</html>
