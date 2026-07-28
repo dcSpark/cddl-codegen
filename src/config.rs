@@ -2516,11 +2516,14 @@ fn build_cli(
 /// favour, which leaves the reverse edges reading last run's sidecars.
 ///
 /// So this records each consumed sidecar's bytes BEFORE the run and compares them after. A change
-/// means the crate that read it generated against a stale one and is now a run behind. It is
-/// strictly a diagnostic: it runs after every file is written, changes no output byte, and feeds
-/// nothing back into what is generated — deliberately NOT an automatic re-run, which would need a
-/// divergence bound and would muddy "run twice = run once = clean run", where a warning makes the
-/// two-run case explicit and self-documenting.
+/// means the crate that read it generated against a stale one and is now a run behind.
+///
+/// [`generate`] asks that question twice, for two different purposes. Around the first pass it is
+/// the TRIGGER for [`generate`]'s convergence pass — the crates it names are exactly the ones re-run,
+/// which is what settles a cold invocation without a second command. Around that pass it is the
+/// residual DIAGNOSTIC: a sidecar still moving afterwards would be a feedback path the fixed pass
+/// did not bound, and the warning is what says so. It changes no output byte in either role; what it
+/// decides is which crates run again, never what any of them generates.
 pub struct Convergence {
     /// `(the crate that read it, the sidecar's path, its bytes before the run)`. `None` for bytes
     /// means the file did not exist — a workspace whose consumer has never generated, which converges
@@ -2536,8 +2539,18 @@ impl Convergence {
     /// a derived one. A sidecar whose owner is NOT in this run cannot change, so it never fires and
     /// needs no special case.
     pub fn capture(expanded: &[(String, Cli)]) -> Self {
+        Self::capture_within(expanded, None)
+    }
+
+    /// [`Self::capture`] restricted to `only` — the crates the convergence pass is about to re-run,
+    /// so the residual check watches exactly the sidecars that pass consumes rather than every
+    /// sidecar the whole invocation did.
+    fn capture_within(expanded: &[(String, Cli)], only: Option<&BTreeSet<String>>) -> Self {
         let mut entries = Vec::new();
         for (name, cli) in expanded {
+            if only.is_some_and(|only| !only.contains(name)) {
+                continue;
+            }
             let consumed = cli
                 .wrapper_requests()
                 .into_values()
@@ -2553,14 +2566,46 @@ impl Convergence {
 
     /// The crates whose consumed sidecars differ now from when they read them.
     pub fn stale_crates(&self) -> BTreeSet<String> {
+        self.stale_entries().map(|(name, _)| name.clone()).collect()
+    }
+
+    /// `(the crate that read it, the sidecar that moved under it)` for every changed entry — what
+    /// the convergence pass prints, so a second generation of the same crate is never silent about
+    /// the file that caused it.
+    fn stale_entries(&self) -> impl Iterator<Item = (&String, &PathBuf)> {
         self.entries
             .iter()
             .filter(|(_, path, before)| std::fs::read(path).ok() != *before)
-            .map(|(name, _, _)| name.clone())
+            .map(|(name, path, _)| (name, path))
+    }
+
+    /// The per-crate lines the convergence pass prints before re-running, in crate order.
+    pub fn rerun_notes(&self) -> Vec<String> {
+        let mut by_crate: BTreeMap<&String, BTreeSet<&PathBuf>> = BTreeMap::new();
+        for (name, path) in self.stale_entries() {
+            by_crate.entry(name).or_default().insert(path);
+        }
+        by_crate
+            .into_iter()
+            .map(|(name, paths)| {
+                let files: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+                format!(
+                    "[converge] re-running `{name}`: it read {} before this run rewrote {} \
+                     ({}), so what it generated is a pass behind what its consumers now ask for.",
+                    if files.len() == 1 {
+                        "a sidecar"
+                    } else {
+                        "sidecars"
+                    },
+                    if files.len() == 1 { "it" } else { "them" },
+                    files.join(", "),
+                )
+            })
             .collect()
     }
 
-    /// The re-run instruction, or `None` when the run converged.
+    /// The residual warning: a sidecar that moved AGAIN across the convergence pass, which the pass
+    /// therefore did not settle. `None` when the run converged.
     pub fn warning(&self, config_path: &Path, selected: &[String]) -> Option<String> {
         let stale = self.stale_crates();
         if stale.is_empty() {
@@ -2617,24 +2662,69 @@ pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn s
             );
         }
     }
-    let convergence = Convergence::capture(&expanded);
-    for (name, cli) in &expanded {
-        // A per-crate banner, NOT a per-line prefix: the generator's progress output is consumed
-        // as-is by humans and by tests, so this adds a line rather than rewriting the existing ones.
-        println!(
-            "\n[{name}] generating from {} into {}",
-            cli.input.display(),
-            cli.output.display()
-        );
-        crate::api::generate_to_disk(cli)?;
-    }
-    if let Some(warning) = convergence.warning(config_path, selected) {
+    let generate_pass =
+        |names: Option<&BTreeSet<String>>| -> Result<(), Box<dyn std::error::Error>> {
+            for (name, cli) in &expanded {
+                if names.is_some_and(|names| !names.contains(name)) {
+                    continue;
+                }
+                // A per-crate banner, NOT a per-line prefix: the generator's progress output is consumed
+                // as-is by humans and by tests, so this adds a line rather than rewriting the existing
+                // ones.
+                println!(
+                    "\n[{name}] generating from {} into {}",
+                    cli.input.display(),
+                    cli.output.display()
+                );
+                crate::api::generate_to_disk(cli)?;
+            }
+            Ok(())
+        };
+
+    let first = Convergence::capture(&expanded);
+    generate_pass(None)?;
+
+    // The convergence pass. One extra pass, over exactly the crates whose consumed sidecars this run
+    // rewrote, in the same generation order — and then the run is settled.
+    //
+    // ONE pass rather than a loop to a fixpoint, because a second one provably has nothing to do.
+    // The only cross-crate input whose content can change here is a dependency's `collections.rs`
+    // wrapper index, and a consumer's output depends on that index through exactly one decision: the
+    // OWNERLESS collection-wrapper deferral (`generation::collections::try_defer_wrapper`), since
+    // every `deps` edge also derives `--workspace-dep` and an all-one-dep wrapper therefore defers
+    // without consulting any index. What this pass adds to a dependency's index is the wrappers its
+    // consumers requested, and a requested wrapper is by construction all-one-dep — it names one of
+    // the dependency's own types, so it is never an ownerless name. (A requested shape nesting an
+    // ownerless collection is a hard error in the dependency's own run, not a silent index
+    // addition.) The consumer's other cross-crate input, the `extern-interface/<dep>/**` export, is
+    // a pure projection of the dependency's own finalized IR and carries none of the request
+    // channel's demands — so the sidecars themselves, being a function of a crate's spec and its
+    // dependencies' exports, are already final after the first pass and this one cannot make a new
+    // crate stale.
+    //
+    // The residual convergence check below is what states that reasoning as a measurement rather
+    // than an assumption: it is captured AROUND this pass, so a sidecar that did move again would
+    // print the warning instead of being assumed away.
+    let stale = first.stale_crates();
+    let residual = if stale.is_empty() {
+        first
+    } else {
+        for note in first.rerun_notes() {
+            println!("{note}");
+        }
+        let residual = Convergence::capture_within(&expanded, Some(&stale));
+        generate_pass(Some(&stale))?;
+        residual
+    };
+
+    if let Some(warning) = residual.warning(config_path, selected) {
         eprintln!("{warning}");
     }
     // Both signals can fire on one run and they say different things, so neither replaces the other:
-    // the warning above is an instruction about THIS run ("run me again"), which is a normal part of
-    // a first run and stays at exit 0; the verdict below is about the TREE ("this does not build"),
-    // which no repeat of this command settles. Only the second is a reason to fail.
+    // the warning above is an instruction about THIS run ("run me again"), which after the
+    // convergence pass means a feedback path no single extra pass settles, and stays at exit 0; the
+    // verdict below is about the TREE ("this does not build"), which no repeat of this command
+    // settles. Only the second is a reason to fail. A full run should now trip neither.
     if let Some(verdict) = config.committed_verdict(config_path, selected)? {
         return Err(verdict.into());
     }

@@ -1782,17 +1782,10 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
     )
     .unwrap();
 
-    // A cold run writes everything and then reports that what it wrote is one pass from converged:
-    // `core` generated before `ledger` had recorded the wrapper it borrows, so `core` does not host
-    // it yet. Everything asserted below is about the files, which are written before the verdict is
-    // reached; the verdict itself is pinned by
-    // [`a_config_run_converges_and_then_repeats_byte_for_byte`].
-    let cold = config::generate(&config_path, &[])
-        .expect_err("a cold run leaves the dependency not hosting the borrowed wrapper");
-    assert!(
-        cold.to_string().contains("does not build"),
-        "the cold run must fail with the committed-state verdict, not something else: {cold}"
-    );
+    // ONE cold run, and it settles: the convergence pass re-runs `core` after `ledger` has recorded
+    // the wrapper it borrows, so the invocation exits 0 over a workspace that hosts it. The
+    // idempotence half is pinned by [`a_config_run_converges_and_then_repeats_byte_for_byte`].
+    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
 
     let dep_export = dir.join("gen/core/extern-interface/core/mod.cddl");
     assert!(
@@ -1811,7 +1804,7 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
         "the derived --workspace-dep must make the consumer emit the sidecar its dependency reads"
     );
 
-    // A second run has every sidecar in place, which is what convergence means here.
+    // A second run has nothing left to do, which is what convergence means here.
     config::generate(&config_path, &[]).expect("a warm config run must generate");
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -3476,6 +3469,12 @@ fn a_hand_written_rust_dep_entry_wins_per_package() {
 /// A `[runtime]` table is not decoration here: without one shared runtime each crate defines its own
 /// `Serialize`/`Deserialize`, and a consumer cannot serialize a dependency's type no matter what its
 /// manifest says. That is a flavor fact, independent of every entry under test.
+///
+/// It is also the **headline proof of the convergence pass**, because the workspace it compiles is
+/// what ONE invocation leaves on a cold tree. Before that pass this test needed two `generate` calls
+/// and threw the first one's result away; a cold tree genuinely did not build until the dependency
+/// had heard what its consumer borrows. So the single call, the byte-identity of a second call, and
+/// the `cargo check` are one claim in three parts rather than three tests.
 #[test]
 fn a_config_generated_workspace_builds_with_wasm_on() {
     let dir = std::env::temp_dir().join(format!(
@@ -3505,10 +3504,28 @@ fn a_config_generated_workspace_builds_with_wasm_on() {
     )
     .unwrap();
 
-    // A cold run leaves the dependency not yet hosting the wrapper its consumer borrows, which the
-    // committed-state verdict reports; the second run is the converged tree this test compiles.
-    let _ = config::generate(&config_path, &[]);
-    config::generate(&config_path, &[]).expect("a warm config run must generate");
+    // ONE invocation, on a cold tree. The convergence pass inside it is what makes the workspace
+    // this test compiles the output of a single command rather than of a second one — so the two
+    // halves of the headline claim are asserted here together: these bytes are what one invocation
+    // leaves, a second invocation leaves the same bytes, and they compile.
+    //
+    // The idempotence half is taken BEFORE the hand edits below, so what it compares is the tool's
+    // own output rather than the merge of a hand-edited manifest (which the manifest convergence
+    // tests pin separately, and which would confound the claim being made here).
+    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
+    let after_first = tree_bytes(&dir, &["gen", "runtime"]);
+    config::generate(&config_path, &[]).expect("the second run must generate");
+    if let Some(difference) = first_tree_difference(
+        "first run",
+        &after_first,
+        "second run",
+        &tree_bytes(&dir, &["gen", "runtime"]),
+    ) {
+        panic!(
+            "one invocation must settle the workspace, so a second changes nothing, but \
+             {difference}"
+        );
+    }
 
     // The entries under test, before anything is built: both of the dependency's packages, by
     // relative path, in the consumer's WASM manifest — and the third entry, the dependency's rust
@@ -4177,17 +4194,23 @@ fn a_whole_config_generates_what_the_hand_written_flags_generate() {
         }
     }
 
-    // The config run writes every file and then reports that the cold tree it wrote is a pass from
-    // converged — `ledger` borrows a wrapper `core` generated before hearing about. That verdict is
-    // about the workspace rather than about the bytes, and the hand invocations (which are not a
-    // config run) do not reach it; the trees compared below are written either way.
-    let cold = config::generate(&config_path, &[])
-        .expect_err("the cold acceptance workspace is one pass from converged");
-    assert!(
-        cold.to_string().contains("does not build"),
-        "the cold run must fail with the committed-state verdict, not something else: {cold}"
-    );
-    for (name, argv) in &hand {
+    // ONE config run over a cold tree, and it exits 0: the convergence pass inside it re-runs the
+    // dependencies whose sidecars the run rewrote.
+    config::generate(&config_path, &[])
+        .expect("one cold config run over the acceptance fixture must converge and exit 0");
+
+    // The hand-written side has to model that pass, or the two trees differ for a reason that is not
+    // a defect. `core` is the crate the config re-runs — the only one carrying reverse edges
+    // (`--wrapper-requests` / `--key-requests`), so the only one whose input this run changed — and
+    // the re-run is its OWN invocation, unchanged, which is exactly what the config does: the
+    // convergence pass re-runs a crate, it does not generate it differently.
+    const RERUN: &str = "core";
+    let rerun = hand
+        .iter()
+        .find(|(name, _)| *name == RERUN)
+        .map(|(_, argv)| argv.clone())
+        .unwrap_or_else(|| panic!("the hand list must contain `{RERUN}` to model the re-run"));
+    for (name, argv) in hand.iter().chain(std::iter::once(&(RERUN, rerun))) {
         crate::api::generate_to_disk(&Cli::parse_from(argv)).unwrap_or_else(|e| {
             panic!("the hand-written invocation for `{name}` must generate: {e}")
         });
@@ -4226,26 +4249,29 @@ fn a_whole_config_generates_what_the_hand_written_flags_generate() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Idempotence across a multi-crate run: once converged, running the same config again over the same
-/// output directory changes nothing.
+/// **One invocation settles a cold workspace, and the next one is a no-op** — the property the
+/// convergence pass exists for, and the one the config feature could not previously claim.
 ///
-/// The single-crate "run twice = run once" contract is long established. What is new here is that a
-/// config run INTERLEAVES crates that read each other's output — the dependency reads the sidecars
-/// its consumers emit — so this is where a cross-crate feedback path would show up, and the
-/// assertion has to be stated at the right run.
+/// The two edge kinds want opposite generation orders, so no single ordered pass satisfies both: on
+/// the first pass `core` reads a `borrowed_collections.rs` that `ledger` writes afterwards. That is
+/// not engineered away — it is settled INSIDE the invocation, by re-running exactly the crates whose
+/// consumed sidecars the first pass rewrote.
 ///
-/// It is deliberately NOT "run 1 equals run 2". A cold workspace cannot converge in one run and is
-/// not supposed to: generation order resolves the two edge directions in the DEPENDENCY's favour, so
-/// on run 1 `core` reads a `borrowed_collections.rs` that does not exist yet and `ledger` writes it
-/// afterwards. That is the documented one-run-stale case, and the convergence checks are what report
-/// it rather than something to engineer away. So the shape asserted is: run 1 both warns and returns
-/// the committed-state verdict, run 2 does neither, and run 3 is byte-identical to run 2. A feedback
-/// path that genuinely did not converge would fail at the second or third of those.
+/// What is asserted, in order:
 ///
-/// Both signals firing on run 1 is the point rather than a redundancy: they say different things,
-/// and only the second is a verdict. The warning is about the RUN ("I rewrote a sidecar `core` had
-/// already read"); the verdict is about the TREE ("`core` does not host what `ledger` borrows"), and
-/// on run 1 both happen to be true of the same cold workspace.
+/// 1. **Run 1 exits 0 over a cold tree.** That is the committed-state verdict pinned directly: it
+///    reports a workspace whose consumer imports a wrapper its dependency does not host, and after
+///    the convergence pass there is no such wrapper.
+/// 2. **The convergence pass really ran**, evidenced on the file it changes: `core`'s wrapper index
+///    hosts `CoreThingList`, which it can only do having been generated AFTER `ledger` recorded the
+///    borrow. Without this the test would pass over a fixture whose edge carries no payload — the
+///    guard the old `assert_ne!(cold, warm)` provided before run 1 and run 2 became the same tree.
+/// 3. **Run 2 is byte-identical, and consumes no changed sidecar.** This is also what pins the
+///    absence of the residual convergence WARNING on run 1, rather than a proxy for it: that warning
+///    fires only if a sidecar moved across run 1's convergence pass, and a crate that read a moved
+///    sidecar would generate different bytes when run 2 re-ran it against the settled one. A
+///    byte-identical run 2 is therefore incompatible with the warning having fired.
+/// 4. **Run 3 too**, so the fixed point is a fixed point rather than a two-cycle.
 #[test]
 fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     let dir = std::env::temp_dir().join(format!(
@@ -4279,66 +4305,144 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     .unwrap();
     let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
 
-    // Run 1, cold: `core` reads a sidecar `ledger` has not written yet, so the run is one behind and
-    // says so.
+    // (1) One cold run, exit 0. The bracketing check still reports `core` — the sidecars it consumed
+    // went from absent to present across the whole invocation, which is true and is precisely what
+    // triggered the convergence pass. What it does NOT mean any more is "run this again".
     let cold = config::Convergence::capture(&expanded);
-    let verdict = config::generate(&config_path, &[])
-        .expect_err("a cold workspace does not build once every file is written");
+    config::generate(&config_path, &[])
+        .expect("one cold config run must converge inside the invocation and exit 0");
     assert_eq!(
         cold.stale_crates(),
         ["core".to_owned()].into_iter().collect(),
-        "a cold workspace cannot converge in one run: the dependency read a sidecar this run then \
-         wrote, and the convergence check is what tells the user to run again"
+        "the fixture must exercise the reverse edge: `core` has to be the crate whose consumed \
+         sidecars this run wrote, or there is nothing for the convergence pass to trigger on"
     );
-    // The verdict names the crate that must change and the wrapper it is missing, and prints the
-    // command that settles it — a DEPENDENCY-alone regen, which is the command a subset run leaves
-    // the user needing and the bracketing warning never says.
-    let verdict = verdict.to_string();
-    for expected in [
-        "does not build",
-        "`core` does not host",
-        "CoreThingList",
-        "`ledger`",
-    ] {
-        assert!(
-            verdict.contains(expected),
-            "the verdict must carry {expected:?}, got: {verdict}"
-        );
-    }
-    assert!(
-        verdict.contains(&format!("--config {} core", config_path.display())),
-        "and must print the dependency-alone regen that hosts it, got: {verdict}"
-    );
-    let after_cold = tree_bytes(&dir, &["gen"]);
+    let after_first = tree_bytes(&dir, &["gen"]);
 
-    // Run 2: every sidecar is in place before anything reads it, so both signals go quiet.
+    // (2) The pass ran, on the file only it can write: the wrapper `ledger` borrows.
+    let index =
+        std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        index.contains("CoreThingList"),
+        "one invocation must leave the dependency hosting what its consumer borrows — `core`'s \
+         index can only carry this having been generated after `ledger` recorded the borrow:\n{index}"
+    );
+    let sidecar =
+        std::fs::read_to_string(dir.join("gen/ledger/wasm/src/generated/borrowed_collections.rs"))
+            .unwrap();
+    assert!(
+        sidecar.contains("use core_lib_wasm::collections::CoreThingList;"),
+        "and the consumer must be the one asking for it:\n{sidecar}"
+    );
+
+    // (3) Run 2: nothing to do, nothing changed.
     let warm = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[]).expect("the warm run must generate");
+    config::generate(&config_path, &[]).expect("the second run must generate");
     assert!(
         warm.stale_crates().is_empty(),
-        "the second run must converge — a sidecar still changing here means the cross-crate edges \
-         feed back into each other, which no number of re-runs would settle. Stale: {:?}",
+        "a settled workspace must consume no sidecar this run rewrites — one still moving here \
+         means the cross-crate edges feed back into each other, which one extra pass cannot bound. \
+         Stale: {:?}",
         warm.stale_crates()
     );
-    let after_warm = tree_bytes(&dir, &["gen"]);
-    assert_ne!(
-        after_cold, after_warm,
-        "the fixture must actually exercise the cross-crate read: if the converged tree equals the \
-         cold one, nothing was borrowed and this test is asserting idempotence over an edge that \
-         carries no payload"
+    assert_eq!(
+        warm.warning(&config_path, &[]),
+        None,
+        "and the warning the run prints from that same check must be silent on a full run — it is \
+         retained for the subset case the convergence pass cannot reach, not for this one"
     );
-
-    // Run 3: the converged state is a fixed point.
-    config::generate(&config_path, &[]).expect("the repeat run must generate");
-    let after_repeat = tree_bytes(&dir, &["gen"]);
+    let after_second = tree_bytes(&dir, &["gen"]);
     if let Some(difference) =
-        first_tree_difference("converged", &after_warm, "repeat", &after_repeat)
+        first_tree_difference("first run", &after_first, "second run", &after_second)
     {
         panic!(
-            "a converged config run must be a fixed point — run it twice, get the same bytes, but \
+            "a cold config run must settle the workspace, so the next one changes nothing, but \
              {difference}"
         );
     }
+
+    // (4) And the fixed point is a fixed point.
+    config::generate(&config_path, &[]).expect("the repeat run must generate");
+    let after_third = tree_bytes(&dir, &["gen"]);
+    if let Some(difference) =
+        first_tree_difference("second run", &after_second, "third run", &after_third)
+    {
+        panic!("a converged config run must stay converged, but {difference}");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A second generation of the same crate inside one invocation must never be silent about why.
+///
+/// The convergence pass is the one place a config run generates a crate twice, and a log that showed
+/// `[core] generating …` twice with nothing between them would be baffling — the reader cannot tell
+/// a re-run from a bug. So the pass prints, per crate, the sidecars that moved under it, and this
+/// pins that text on the same [`config::Convergence`] the run itself reads it from.
+#[test]
+fn the_convergence_pass_says_which_crate_it_re_runs_and_why() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_rerun_notes_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/core.cddl"),
+        "core_thing = [a: uint, b: text]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/ledger.cddl"),
+        "ledger_rec = [l: [* core_thing]]\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\
+             lib-name = \"core-lib\"\n\n\
+             [crates.ledger]\ninput = \"specs/ledger.cddl\"\noutput = \"gen/ledger\"\n\
+             lib-name = \"ledger-lib\"\ndeps = [\"core\"]\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+    let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
+
+    let cold = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
+    let notes = cold.rerun_notes();
+    assert_eq!(
+        notes.len(),
+        1,
+        "one crate reads sidecars here, so the pass has exactly one crate to announce: {notes:?}"
+    );
+    for expected in [
+        "[converge]",
+        "re-running `core`",
+        "borrowed_collections.rs",
+        "borrowed_key_types.rs",
+        "a pass behind",
+    ] {
+        assert!(
+            notes[0].contains(expected),
+            "the note must carry {expected:?} — the crate, the files that moved, and why it is \\
+             being generated again — got: {}",
+            notes[0]
+        );
+    }
+
+    // A settled workspace announces nothing: no crate is re-run, so there is no line to print.
+    let warm = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[]).expect("the second run must generate");
+    assert!(
+        warm.rerun_notes().is_empty(),
+        "a converged run must print no convergence line at all: {:?}",
+        warm.rerun_notes()
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -4384,9 +4488,8 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
     )
     .unwrap();
 
-    // Converge: run 1 leaves `core` not yet hosting `CoreThingList`, run 2 hosts it.
-    config::generate(&config_path, &[]).expect_err("a cold workspace does not build");
-    config::generate(&config_path, &[]).expect("the second run converges it");
+    // Converge, in one invocation: the convergence pass leaves `core` hosting `CoreThingList`.
+    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
 
     // Now the case. The consumer's spec gains a map over the dependency's type, so it borrows a
     // wrapper the dependency has never been asked for, and only the consumer is regenerated.
