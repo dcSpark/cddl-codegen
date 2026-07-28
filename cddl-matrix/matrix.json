@@ -5771,7 +5771,7 @@
     },
     {
       "alt": "number",
-      "desc": "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the radix axis; member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0x10]",
       "id": "value.number.hex",
       "production": "value",
@@ -5781,7 +5781,7 @@
     },
     {
       "alt": "number",
-      "desc": "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the radix axis (§ findings); member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the radix axis; member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0b1010]",
       "id": "value.number.bin",
       "production": "value",
@@ -5791,7 +5791,7 @@
     },
     {
       "alt": "number",
-      "desc": "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) rather than the base row's top-level form, which would hit the orthogonal pinned top-level-Fixed panic and hide the lexeme axis (§ findings); member position isolates it. Verdict genuinely unknown — float fixed values as members may not generate — so the probe records the outcome honestly either way. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the lexeme axis; member position isolates it. Verdict genuinely unknown — float fixed values as members may not generate — so the probe records the outcome honestly either way. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0x1.8p+1]",
       "id": "value.number.hexfloat",
       "production": "value",
