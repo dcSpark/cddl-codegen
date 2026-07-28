@@ -697,6 +697,54 @@ control-constrained signed-int member
 fields on a 32-bit target — the class where `isize` fields overflowed the `i64::MIN`/`MAX`
 literals, which 64-bit host builds can never see.
 
+### Hand-vector suites (`tests/<dir>/tests.rs`) — the assertions no other layer can make
+
+Each fixture dir's `tests.rs` is appended into the generated crate and `cargo test`ed, so it runs
+against a real generated API with real wire bytes. That makes it the only home for four assertion
+shapes, each of which a snapshot, a compile gate and a round-trip mint all structurally miss. Write
+new hand vectors in these shapes; a vector that merely EXERCISES the code certifies nothing.
+
+1. **Assert the member AFTER the thing under test.** A framing/cursor bug inside a nested decode is
+   invisible in the nested value itself — it shows up as the FOLLOWING member reading garbage. So a
+   vector for a nested decode pins the value of the member that comes after it. Exemplars:
+   `cbor_payload_leaves` / `cbor_payload_collections` in `tests/core/tests.rs`, whose final assert is
+   the `tail` member — the four `bytes .cbor` leaves that read the OUTER buffer instead of the
+   payload's own cursor all decoded their own payload correctly and mis-framed everything after it.
+   **A snapshot pin cannot make this assertion at all:** text blessed while such a bug is live stays
+   green forever, because the emitted text is exactly what the generator (wrongly) intends.
+2. **Hand-build wire bytes the emitted serializer can never produce.** A round-trip mint only reaches
+   encodings the generator writes, so decoder branches gated on any other encoding are unreachable by
+   construction. Exemplar: `cbor_payload_indefinite_inner` (`tests/core/tests.rs`) hand-writes an
+   INDEFINITE-length array and map inside a `bytes .cbor` payload — the emitted serializer only ever
+   writes definite lengths, so the payload's break probe has no other way to be reached.
+3. **Assert the REASON a rejection gives, not just that it rejects.** `is_err()` passes for every
+   reason, including the wrong one. Exemplar: `opt_fixed_member_map` (`tests/core/tests.rs`) feeds a
+   present `nint` key carrying the wrong constant and asserts the message reads
+   `Expected fixed value -7 found -8` — the value the CDDL AUTHORED, on both sides. Routing the nint
+   through its CBOR wire form (`-1-N`) instead rendered the same vector as "Expected fixed value 6
+   found 7": arithmetically correct and findable nowhere in the spec the user wrote.
+4. **Extend the value anchors when the type grows a field.** A suite that decodes new data while
+   asserting nothing about it keeps passing and quietly goes vacuous for its own shape. A change that
+   adds fields to a type appearing in an existing hand-vector suite extends that suite's anchors and
+   its serialize side in the same change, and review walks the suite's assert list against the type's
+   new field list. (Mutation scoring cannot substitute: a generator mutant breaking the new behaviour
+   dies to any OTHER fixture asserting the same arm.)
+
+Two fixture dirs exist purely to carry such vectors across profiles rather than to add a shape:
+`tests/recursive-collection-ref/` runs a nominal reference to a collection typedef under BOTH the
+default and preserve profiles (`recursive_collection_ref` / `recursive_collection_ref_preserve`),
+because the encoding-sidecar half of that shape exists only under `--preserve-encodings`; and
+`tests/emit-tests-bounded-key/` carries both signs of a bounded map-key window (see § "Authoring
+standard for a bounded-domain emit-tests fixture").
+
+**A new `tests/<dir>/input.cddl` owes the wasm-parity registry an entry.** The corpus axis of
+`wasm_api_parity` enumerates `tests/*/input.cddl` at runtime and requires every dir to be in either
+its corpus table or its exclusion table; the guard lives in
+`wasm_parity_tests::wasm_api_parity_axes_and_pins_are_live`, a plain `#[test]` and therefore
+**local** tier. `fast`'s only cargo test invocation is `cargo test --bin cddl-codegen snapshot_tests`,
+so `fast` catches a new `#[test]` that fails to COMPILE and never one that FAILS — adding a fixture
+dir under a `fast`-only workflow will not surface the missing row.
+
 ### Workspace mode (`--workspace-dep` / `--wrapper-requests` / `--key-requests`)
 
 One cross-crate system: dep-owned placement of all-one-dep collection wrappers via request
@@ -1860,6 +1908,20 @@ generates with `--emit-tests` and `cargo test`s **both** the rust and the wasm c
 construct must round-trip, not just compile, on both the rust and the wasm side. (`cargo check`
 never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or runs the emitted
 `cddl_generated_wasm_tests` module below; the preserve/json profiles and json-gen stay check-only.)
+
+**Why `tests/corpus/` is the input of record for a shape whose defect is not visible in-process.**
+Each cell SHELLS the real CLI (a subprocess writing a real crate to a scratch dir), so it exercises
+`export()`'s whole disk-write path — including the rustfmt post-pass, whose non-0/3 exit is fatal by
+design, so an emission rustfmt refuses is a non-zero generation exit and a red cell. That seam does
+not exist for `api::generated_strings`, the in-process library API every other suite drives — the
+snapshot corpus, the panic/reject catalogs, `wasm_api_parity`, and
+`all_supported_constructs_generate_all_profiles` (which is generation-only over
+`tests/matrix_supported/` and writes nothing, despite taking an `--output`). Combined with the
+three-profile sweep here and the full-tier execution sweep
+`feature_corpus_roundtrips_nondefault_profiles`, that makes a corpus fixture the cheapest way to
+cover the three classes an in-process suite structurally cannot: an emission rustfmt rejects, an
+emission rustc rejects, and an emission that is only wrong under a non-default profile. Promote such
+a shape into `tests/corpus/`; do not build a harness beside it.
 A fixture that deliberately reaches a tracked unimplemented path under ONE profile is ledgered
 per-profile in the gate's `EXPECTED_GENERATION_FAIL` (`(stem, profile, reason)` — e.g.
 `optional_fixed_float`/preserve, which aborts at the native-float preserve stub), stale-guarded
@@ -2418,7 +2480,8 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > catalogs, one per matrix verdict class: **supported** (`all_supported_constructs_generate` — must
 > generate clean), **panic** (`unsupported_construct_panic_catalog` — tracked-known generator panics),
 > and **reject** (`unsupported_construct_reject_catalog` — the rows the matrix marks off-limits that mint
-> no other test: parse-rejected control ops, generates-but-doesn't-compile shapes like `prelude.any`, and
+> no other test: parse-rejected control ops, constructs with no standalone Rust representation such as
+> top-level fixed-value rules (`value.number`, `prelude.true`) and the `#` any-type (`type2.any`), and
 > out-of-profile constructs). Containment cells (`contain.*`) are included in this projection; spec-disallowed
 > cells without annotation rows are naturally absent, while supported/reject/panic cells get generated
 > fixtures and subsume the older hand pins for map-key spelling/arity, group-choice-arm, and

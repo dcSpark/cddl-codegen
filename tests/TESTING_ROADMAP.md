@@ -400,7 +400,21 @@ entry's "data-lossy but non-crashing" premise (the silent drop was real only for
 other dynamic-length optionals — an ISOLATED one FAILED generation loudly, so the entry's
 certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks; delivered by
 `tests/corpus/optional_fixed_float.cddl` + the float presence-field arms, residue owned by
-`preserve_encodings_supports_floats`).
+`preserve_encodings_supports_floats`). A fourth is on record and is the reason a cited GATE counts as
+a premise too: two entries named `all_supported_constructs_generate_all_profiles` as the disk-writing
+gate their remedy would extend, and it writes nothing — it drives `api::generated_strings` in-process
+over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is built on, not its name.
+
+**Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
+section's recur-first premise stays honest.** Five at present, each cited by its own exact title (the
+full record stays in place below): "Regenerating over prior output with a rule DELETION is exercised
+as a gate for only two files"; "A `no gate demands this` premise probed against ONE gate is not
+evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
+`check.ts` itself); "`--extern-wrapper-index` deferral-boundaries"; "The recombination sweep's
+outcome counts are enforced only by vacuity floors"; and "A rule-position directive is SILENTLY
+DROPPED on every rule shape or spelling whose parse path does not carry it to a marking site". A
+sixth is fired on its own stated axis but not yet re-scoped by a measurement — see "Nothing asserts
+that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 
 - **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
   extern-interface projection — the cross-crate skew class, invisible to every single-crate
@@ -485,10 +499,9 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   pending `cargo-mutants` sweep (§ "Pending maintainer action") covers this class only PARTIALLY:
   a generator mutant breaking the new behavior dies to any OTHER fixture asserting the same arm
   (here the corpus fixture's emitted tests), so mutation scoring cannot see that one hand suite's
-  anchors went vacuous for its own distinct shape. Working rule meanwhile: a change that adds
-  fields to a type appearing in an existing hand-vector suite extends that suite's value anchors
-  in the same change, and the review walks the suite's assert list against the type's new field
-  list. Mechanical layer on a SECOND instance: a per-suite anchor-completeness check (each
+  anchors went vacuous for its own distinct shape. The working rule is current state in
+  `tests/README.md` § "Hand-vector suites", as the fourth of that section's assertion shapes.
+  Mechanical layer on a SECOND instance: a per-suite anchor-completeness check (each
   round-tripped type's public fields ⊆ the fields its suite's asserts mention — buildable as a
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
 - **Regenerating over prior output with a rule DELETION is exercised as a gate for only two files,
@@ -587,7 +600,13 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   the USER-DOCS home has no arm — a parallel limitation-claims arm on `lint_doc_citations` (every
   known-limitation-classed paragraph outside a generated span carries a resolvable tracking
   citation, or folds into a projected span — the matrix north star's "more docs follow") remains
-  unbuilt, since the two homes have different scanners and neither arm sees the other's prose.
+  unbuilt, since the two homes have different scanners and neither arm sees the other's prose. That
+  half needs its own signal rather than inheriting the parent's second-instance trigger, which four
+  recorded instances have already met: on the axis its cost grows along, it is **the count of
+  known-limitation paragraphs in `docs/docs/*.mdx` that name no tracking artifact** — measured by the
+  next author who greps `docs/` before shipping a fix, which the working rule below already requires
+  them to do, so the count arrives as a by-product of work someone is doing anyway. Build the arm
+  when that grep returns a set too large to walk by hand; until then the grep IS the arm.
   Working rules meanwhile: a limitation recorded in user docs names its tracking artifact (the
   reject/panic fixture, pin, or ledger entry) in the same paragraph; a fixing session greps `docs/`
   for the limitation's key phrases before shipping; and the prose that CLOSES a stale finding
@@ -634,6 +653,9 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   new `#[test]` that fails to COMPILE and never one that FAILS.) The implementer had no signal and
   shipped the
   fixture without its registry row, costing a fail-fast `local` run that skipped twelve later gates.
+  That one fact is now current state where an author will meet it — `tests/README.md` § "Hand-vector
+  suites" ends with the fixture-dir obligation, the enforcing test, and its tier — which retires the
+  instance without retiring the class.
   Two corrections to this entry's own sketch, measured while the trigger fired: (a) the tier pair
   that bites is `fast`/`local`, not only `fast`/`full`, and the `fast`/`local` gap is the one an
   agent-delegation protocol runs into daily; (b) the sketched layer is PARTLY BUILT already — every
@@ -772,74 +794,82 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   by the catalog test alongside the category) is a SECOND instance where an un-shadowed deeper
   site goes unnoticed past its converting commit; building it now would trade the catalogs'
   deliberate refactor-stability for a fingerprint that churns on every panic-message edit.
-- **A panic fix lands on the FIRST site that dispatches on a shape, not the last: the sites behind
-  it ask the same question and each answers it in its own code.** Proven instance: the `cbor_types`
-  `_ => panic!()` over a nominal reference to a collection typedef (`RustStructType::Table`/`Array`,
-  which emit a rust typedef and no impls). Fixing the panic arm let the shape GENERATE and produced
-  a crate rustc rejected, because `generate_serialize`/`generate_deserialize` emitted
-  `.serialize()`/`::deserialize()` on a `BTreeMap`, and — under `--preserve-encodings` ONLY —
-  `encoding_fields_impl` minted no encoding sidecar for a member whose serialize read one. Three
-  further sites, one of them profile-gated, all reachable from the single input the panic fix
-  unblocked. No outcome catalog can see this: `tests/robustness/` is generate-only BY DESIGN, so a
-  PANIC row flipped to `ok` asserts nothing about the emitted crate. The standing rule that covers
-  this today is IN FORCE and lives in `tests/README.md` § the `lint_doc_citations` conventions
-  list (`cargo check` the emitted crate under EVERY profile when a fix turns an abort into
-  generated code, plus a per-shape integration fixture —
-  `recursive_collection_ref`/`recursive_collection_ref_preserve` are that fixture). What remains
-  future here is only the mechanical layer. The trigger for a mechanical
-  layer (a compile leg on robustness `ok` rows, or a promotion path from a flipped PANIC row into
-  the integration corpus) is a SECOND instance where a robustness row flips PANIC→`ok` and the
-  emitted crate does not compile; building it now would put a per-profile nested cargo build behind
-  a catalog whose whole value is running in seconds on every `cargo test`.
-
-- **A defect whose only manifestation is in the DISK-WRITE seam is invisible to every in-process
-  test, including the compile leg the entry above would build.** This is that entry's sibling, not a
-  duplicate: there the emitted crate reached rustc and was rejected, so any compile leg would catch
-  it. Here the emitted code never reaches rustc at all — it fails in `export`'s rustfmt post-pass,
-  and `api::generated_strings` (the library API every in-process suite drives) does not run that
-  seam. A compile leg built on `generated_strings` would therefore stay green on this class while it
-  shipped. Proven instance: a bool or null fixed value in a map-representation group-choice arm
-  emits Rust that rustfmt rejects (`expected pattern, found '='`) under `--preserve-encodings`. It
-  reproduces against the parent of the fixed-value-arm support commit, so it predates that change;
-  making the default profile generate the uint spelling is what put a reader in front of it. It has
-  no pin today precisely because the failure has nowhere in-process to be observed — a robustness
-  row would record `ok` and mean nothing.
-  The systematic answer is cheaper than a new test layer and should not be mistaken for one: a
-  disk-writing gate ALREADY exists — `all_supported_constructs_generate_all_profiles` writes real
-  crates under every profile — and its only limitation is that its INPUT is `supported.cddl`.
-  Extending an existing gate's input beats adopting a new contract, so the work is to route
-  robustness `ok` rows through that gate's disk-write path per profile, not to build an export-test
-  harness beside it. Reopening signal, on the magnitude axis the deferred cost actually grows along:
-  **the count of `ok`-recording robustness rows whose emitted crate fails at export** — measurable
-  by a consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a
-  party that already has the problem and needs nothing from us to notice it. That count is zero
-  today (the instance above has no row at all), so the signal is unmet rather than pre-satisfied.
-- **A fixture certifies only the PROFILES it is generated under, so a shape added to a
-  default-profile fixture is unexamined everywhere else — and no trigger above fires on it.** The
-  PANIC→`ok` compile-leg entry two above is conditioned on a fix turning an abort into generated
-  code (its trigger is a robustness row flipping PANIC→`ok`); this class involves no abort, no flip,
-  and no fix widening a reachable set. The shape always generated. Proven instance: `bytes .cbor <c-style enum>` compiles
-  and round-trips under the default profile — `cbor_payload_leaves` in `tests/core/tests.rs` pins
-  exactly that — and emits a crate rustc rejects under `--preserve-encodings`, because the inlined
-  try-each-variant sequence reuses the enclosing `final_exprs` as its `Ok(..)` match pattern while
-  the `.cbor` arm has pushed a value expression (`StringEncoding::from(<var>_bytes_encoding)`) into
-  them. Established pre-existing by regenerating the same probe spec with the production files
-  stashed, so nothing about it is a consequence of the change that put a reader in front of it.
-  Two properties make it invisible rather than merely unpinned. First, it reaches **rustc** and is
-  rejected there, so it is not the disk-write-seam class (a call in pattern position is
-  syntactically a valid tuple-struct pattern, so rustfmt formats the file happily and generation
-  exits 0 — the defect is a resolution failure, not a parse failure, and no formatter can see it).
-  Second, `tests/core` is default-profile on both of its integration gates and in the snapshot
-  registry, so no committed vehicle generates this shape under `--preserve-encodings` at all.
-  The systematic answer is again to extend an existing gate's INPUT rather than adopt a new
-  contract: `all_supported_constructs_generate_all_profiles` already writes real crates under every
-  profile and is limited only by taking `supported.cddl` as its input, so the work is to get
-  profile-sensitive shapes into that input — not to build a per-profile harness beside it.
-  Trigger, on the axis the cost grows along: **the count of shapes pinned green by a
-  default-profile fixture that fail under another profile.** Today it is one, and a consumer
-  measures it without anything from us — they flip a flag on a spec they already have and their
-  build breaks on a shape our docs list as supported. A SECOND instance means default-profile
-  fixtures are systematically over-claiming, and the input extension stops being optional.
+- **Three defect classes that no IN-PROCESS test can see, sharing one remedy: extend the corpus's
+  INPUT.** `api::generated_strings` is the library API every in-process suite drives — the snapshot
+  corpus, the robustness/panic/reject catalogs, `wasm_api_parity`, and
+  `all_supported_constructs_generate_all_profiles`. It returns emitted source as STRINGS: it never
+  runs `export()`'s disk-write path (and so never the rustfmt post-pass whose non-0/3 exit is fatal),
+  and it never hands anything to rustc. So a defect landing at either of those seams — or landing
+  only under a profile no committed vehicle generates the shape under — is invisible to all of them
+  at once, and a catalog row recording `ok` discharges exactly one claim: generation exited 0.
+  The remedy for all three is an INPUT extension, not a new layer. `tests/corpus/*.cddl` is the input
+  of `feature_corpus_compiles`, which shells the real CLI per cell (so `export()` runs, rustfmt
+  included — a rustfmt-rejected emission is a non-zero exit and a red cell) and then `cargo check`s
+  the rust + wasm + json-gen crates under all three profiles, with
+  `feature_corpus_roundtrips_nondefault_profiles` (full tier) executing the emitted round-trips under
+  preserve and json. Both gates are described as current state in `tests/README.md` § "Generated-test
+  harness (`--emit-tests`, `src/emit_tests.rs`)". So the work each class implies is: promote the
+  shape into `tests/corpus/` — never build an export-test or per-profile harness beside it.
+  **Correction to this entry's own earlier remedy, probed rather than reasoned.** Two of these
+  classes previously named `all_supported_constructs_generate_all_profiles` as "a disk-writing gate
+  that already exists, limited only by taking `supported.cddl` as its input". Both halves are false:
+  it reads `tests/matrix_supported/`, and it calls `api::generated_strings` in-process against an
+  `--output` path it never writes (its own doc comment says "generation-only … no compile"). Routing
+  rows through it would have reproduced precisely the blindness these entries exist to record — which
+  is why a cited gate's mechanism is probed before a remedy is built on it.
+  The three classes stay distinct in WHERE the failure lands, and each keeps its own trigger:
+  - ***rustc, after a PANIC→`ok` flip: a panic fix lands on the FIRST site that dispatches on a
+    shape, not the last — the sites behind it ask the same question and each answers it in its own
+    code.*** Proven instance: the `cbor_types` `_ => panic!()` over a nominal reference to a
+    collection typedef (`RustStructType::Table`/`Array`, which emit a rust typedef and no impls).
+    Fixing the panic arm let the shape GENERATE and produced a crate rustc rejected, because
+    `generate_serialize`/`generate_deserialize` emitted `.serialize()`/`::deserialize()` on a
+    `BTreeMap`, and — under `--preserve-encodings` ONLY — `encoding_fields_impl` minted no encoding
+    sidecar for a member whose serialize read one. Three further sites, one of them profile-gated,
+    all reachable from the single input the panic fix unblocked. The standing rule that covers this
+    today is IN FORCE and current state in `tests/README.md` (§ "Running everything", the
+    catalogs-are-generate-only paragraph): `cargo check` the emitted crate under EVERY profile when a
+    fix turns an abort into generated code, plus a per-shape integration fixture —
+    `tests/recursive-collection-ref/` is that fixture, run both profiles by
+    `recursive_collection_ref` / `recursive_collection_ref_preserve`. Trigger for the mechanical
+    layer (a promotion path from a flipped PANIC row into `tests/corpus/`, or a compile leg on
+    robustness `ok` rows): a SECOND instance where a robustness row flips PANIC→`ok` and the emitted
+    crate does not compile. Building it now would put a per-profile nested cargo build behind a
+    catalog whose whole value is running in seconds on every `cargo test`.
+  - ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there
+    the emitted crate reached rustc and was rejected, so any compile leg would catch it; here
+    generation itself fails in `export`'s rustfmt post-pass, and a compile leg built on
+    `generated_strings` would stay green on this class while it shipped. Proven instance: a bool or
+    null fixed value in a map-representation group-choice arm emits Rust that rustfmt rejects
+    (`expected pattern, found '='`) under `--preserve-encodings`. It reproduces against the parent of
+    the fixed-value-arm support commit, so it predates that change; making the default profile
+    generate the uint spelling is what put a reader in front of it. It has no pin today precisely
+    because the failure has nowhere in-process to be observed — a robustness row would record `ok`
+    and mean nothing. Reopening signal, on the magnitude axis the deferred cost grows along: **the
+    count of `ok`-recording robustness rows whose emitted crate fails at export** — measurable by a
+    consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a party
+    that already has the problem and needs nothing from us to notice it. That count is zero today
+    (the instance above has no row at all), so the signal is unmet rather than pre-satisfied.
+  - ***another profile, with no flip, no abort and no fix widening a reachable set — the shape always
+    generated.*** A fixture certifies only the PROFILES it is generated under, so a shape added to a
+    default-profile fixture is unexamined everywhere else. Proven instance:
+    `bytes .cbor <c-style enum>` compiles and round-trips under the default profile —
+    `cbor_payload_leaves` in `tests/core/tests.rs` pins exactly that — and emits a crate rustc
+    rejects under `--preserve-encodings`, because the inlined try-each-variant sequence reuses the
+    enclosing `final_exprs` as its `Ok(..)` match pattern while the `.cbor` arm has pushed a value
+    expression (`StringEncoding::from(<var>_bytes_encoding)`) into them. Established pre-existing by
+    regenerating the same probe spec with the production files stashed, so nothing about it is a
+    consequence of the change that put a reader in front of it. Two properties make it invisible
+    rather than merely unpinned. First, it reaches **rustc** (a call in pattern position is
+    syntactically a valid tuple-struct pattern, so rustfmt formats the file happily and generation
+    exits 0 — the defect is a resolution failure, not a parse failure). Second, `tests/core` is
+    default-profile on both of its integration gates and in the snapshot registry, so no committed
+    vehicle generates this shape under `--preserve-encodings` at all — which is exactly what
+    promoting the shape into `tests/corpus/` fixes. Trigger: **the count of shapes pinned green by a
+    default-profile fixture that fail under another profile.** Today it is one, and a consumer
+    measures it without anything from us — they flip a flag on a spec they already have and their
+    build breaks on a shape our docs list as supported. A SECOND instance means default-profile
+    fixtures are systematically over-claiming, and the input extension stops being optional.
 
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
@@ -914,7 +944,12 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (`bholder = [<ty> // 1, uint]`) over a curated shape subset (the Record-resolving shapes
   `struct`/`mstruct`/`ralias` are the discriminating cells), same participation-pin idiom as
   `anonForm`/`EXPECTED_ANON_SHAPES` — the group-ctor class still rests on the single hand vector
-  rather than a matrix row.
+  rather than a matrix row. Its own signal, since the two positions this entry already delivered
+  have met the parent's escape-driven one: **the count of Record-resolving shapes reachable through
+  a group-choice ctor that the single hand vector does not cover**, which is what the next author
+  touching `EnumVariant::group_ctor_record_fields` reads off the shape list — one vector standing in
+  for three discriminating cells is tolerable, and stops being so the moment a fourth shape resolves
+  through that path.
 - **Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no
   machinery yet.** The robustness/matrix reject catalogs snapshot the OUTCOME label only
   (`error (graceful)`), so a fixture stays green when a NEW, earlier rejection absorbs the one it
@@ -1416,27 +1451,28 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   pin time; the alternative that keeps the ledger honest same-commit is to land the row ACTIVE with a
   hand-derived accept vector so its skip entry is immediately valid.
 
-- **A rule-position directive reaches only the rule SHAPES whose parse path happens to carry a
-  marking site, and a shape that bypasses every site is a SILENT drop — no gate covers the
-  directive×rule-shape reachability product.** Two proven instances at the same seam, one of them
-  twice: `parse_rule`'s `Rule::Group` arm reaches neither `parse_type` nor `parse_type_choices`, so
-  `@rust_name` was silently dropped on plain groups until a marking site was added there, and
-  `@no_json_schema_export` shipped inheriting exactly the same hole (a SPLICED plain group does
-  register a rust struct and therefore does get a schema-registration row, so the directive was live
-  and dead at once). Caught only by an orchestrator hand-probing a shape no fixture contained.
-  `cddl-matrix/no_silent_directive.ts` cannot see this class for a JSON-surface directive: it
-  generates rust-only, where the suppressed artifact does not exist, so every cell is byte-identical
-  and allowlisted regardless of whether the marking site fires. Owned meanwhile by the
-  twin-pair convention in `snapshot_tests::json_gen_extern_schema_rows` (each annotated rule paired
-  with an unannotated same-shape control, under the flags where the effect is visible) plus the
-  accepted/rejected shape table in
-  `robustness_tests::no_json_schema_export_misuse_rejects_gracefully`. Mechanical layer, on the
-  THIRD instance (or the next directive whose valid placement spans more than one parse path):
-  enumerate the rule shapes once — type rule (single-choice, multi-choice, tagged, parenthesized),
-  plain group, generic definition, generic instance, extern, raw-bytes — and drive every
-  rule-position directive across the product, asserting each cell is one of {effect visible,
-  loudly rejected}, never {accepted and inert}. The shape list is the expensive part and it is
-  already written down: the sweep table in the `@no_json_schema_export` delivery's review thread.
+- **A rule-position directive is SILENTLY DROPPED on every rule shape or spelling whose parse path
+  does not carry it to a marking site — THREE proven seams, and no gate sweeps the
+  directive×rule-shape reachability product. The sweep's trigger has FIRED; it is a work item, not a
+  recur-first deferral.** The three seams are enumerated as sub-bullets below with their own
+  seam-specific remedies; what they share is the verdict a sweep would render on all of them —
+  {accepted and inert} — and the fact that each was found by a human hand-probing a shape no fixture
+  contained, never by a run. `cddl-matrix/no_silent_directive.ts` cannot see the class for a
+  JSON-surface directive: it generates rust-only, where the suppressed artifact does not exist, so
+  every cell is byte-identical and allowlisted regardless of whether the marking site fires. Owned
+  meanwhile by the twin-pair convention in `snapshot_tests::json_gen_extern_schema_rows` (each
+  annotated rule paired with an unannotated same-shape control, under the flags where the effect is
+  visible) plus the accepted/rejected shape table in
+  `robustness_tests::no_json_schema_export_misuse_rejects_gracefully` — both of which pin the shapes
+  someone already thought of, which is the property the sweep exists to stop relying on.
+  The layer to build: enumerate the rule shapes once — type rule (single-choice, multi-choice,
+  tagged, parenthesized), plain group, generic definition, generic instance, extern, raw-bytes — and
+  drive every rule-position directive across the product, asserting each cell is one of {effect
+  visible, loudly rejected}, never {accepted and inert}. The shape list is the expensive part and it
+  is already written down: the sweep table in the `@no_json_schema_export` delivery's review thread.
+  A seam whose fix is upstream (the parser-discard seam below) is not an exception to the sweep — it
+  becomes an allowlisted inert cell carrying the upstream pointer, which is the honest inventory the
+  design's third point describes.
   Four design points, each the answer to a way the obvious build would inherit the blindness it
   exists to remove:
   - **Each directive needs a WITNESS PROFILE — the minimal flag set under which its surface
@@ -1464,47 +1500,50 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     owns the {byte-identical, acknowledged, allowlisted} verdict logic, and it is the file whose
     blindness this item is about.
 
-- **The `T / null` -> `Option<T>` collapse reads a different metadata slot from every other
-  type-rule path, so a rule-position directive written on such a rule is silently dropped.**
-  `parse_type_choices`' optional-inner branch builds its `RuleMetadata` from the INNER type1's own
-  `comments_after_type`, while its sibling branch (and `parse_type`) merge the rule-position slots a
-  trailing `; @x` actually lands in. So `opt = null / uint ; @duplicates reject` generates exit-0
-  with the directive dropped — confirmed empirically as the CURRENT behaviour for `@duplicates`, and
-  the same for `@ignore` and `@no_json_schema_export`, all three of which have a rejection at that
-  site that therefore never fires. Unlike the group-rule parser entry above this one IS fixable
-  here: the comment is present in the AST, just read from the wrong slot. Owned meanwhile by
-  nothing — the drop is invisible. The fix is to merge the same rule-position slots the non-optional
-  branch merges before the branch splits, which turns each of the three directives into the loud
-  rejection its site already spells; do it behind a vector per directive, since a spec relying on
-  today's silence would start failing (correctly) at generation. Trigger: any consumer report of a
-  directive "doing nothing" on a nullable rule, or the next directive added with a rule-position
-  rejection.
+  The three seams, each with the remedy that is specific to it:
+  - ***Seam 1 — a parse arm with no marking site at all.*** `parse_rule`'s `Rule::Group` arm reaches
+    neither `parse_type` nor `parse_type_choices`, so `@rust_name` was silently dropped on plain
+    groups until a marking site was added there, and `@no_json_schema_export` shipped inheriting
+    exactly the same hole (a SPLICED plain group does register a rust struct and therefore does get a
+    schema-registration row, so the directive was live and dead at once). Remedy: a marking site per
+    arm, which is what the `@rust_name` fix did — the residual is that nothing forces the NEXT
+    directive to acquire one, which is the sweep's job.
+  - ***Seam 2 — a marking site that reads the WRONG metadata slot: the `T / null` -> `Option<T>`
+    collapse.*** `parse_type_choices`' optional-inner branch builds its `RuleMetadata` from the INNER
+    type1's own `comments_after_type`, while its sibling branch (and `parse_type`) merge the
+    rule-position slots a trailing `; @x` actually lands in. So `opt = null / uint ; @duplicates
+    reject` generates exit-0 with the directive dropped — confirmed empirically as the CURRENT
+    behaviour for `@duplicates`, and the same for `@ignore` and `@no_json_schema_export`, all three
+    of which have a rejection at that site that therefore never fires. Owned meanwhile by nothing:
+    the drop is invisible. This seam IS fixable here — the comment is present in the AST, just read
+    from the wrong slot — by merging the same rule-position slots the non-optional branch merges
+    before the branch splits, which turns each of the three directives into the loud rejection its
+    site already spells. Do it behind a vector per directive, since a spec relying on today's silence
+    would start failing (correctly) at generation.
+  - ***Seam 3 — the comment never reaches the AST, so no marking site can exist.*** The CDDL parser
+    leaves every AST comment slot `None` (verified by dumping the AST) for a group rule whose closing
+    paren is on its own line (`grp = (\n a: uint\n) ; @x`), and when the last group entry's own
+    trailing slot is already occupied by a field-position `@name` — the two positions share that
+    slot, and only one comment survives. Affects `@rust_name` and `@no_json_schema_export`
+    identically; no extraction in `parsing.rs` can recover what the parser never recorded. Owned
+    meanwhile by `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs
+    section, both of which name the single-line spelling as the supported one. The fix is upstream —
+    and upstream here is the **dcSpark fork** of `cddl` pinned by git rev in `Cargo.toml` (version
+    0.10.6 at that rev), not the crates.io crate, so the patch lands in a repo we control. It would
+    have the parser bind the comment to `Rule::Group`'s `comments_after_rule`, which today has
+    exactly two construction sites (`pest_bridge.rs`) and both hardcode `None` — which is why reading
+    that field from `parsing.rs` is dead code rather than a workaround. Design constraint the fix
+    must respect, so it is not rediscovered: for the SUPPORTED single-line spelling the comment
+    already binds to the last group entry's trailing slot, so populating `comments_after_rule` must
+    be ADDITIVE — only for the spellings nothing else captures — or `group_rule_pin_metadata`
+    double-counts and a field-position `@name` on the last entry stops renaming its field. Adopting
+    the bump also needs a vector per affected directive, since a spec relying on today's silence
+    starts behaving differently (correctly) after it. Build a LOCAL workaround only if a consumer
+    spec cannot use the single-line form — a pre-parse source scan attributing a trailing comment to
+    the group rule by line position would be a second, drift-prone comment parser, so it needs a real
+    consumer to justify it.
 
-- **A group rule's trailing comment is DISCARDED by the CDDL parser in two spellings, so every
-  rule-position directive on a plain group is silently dropped there.** The parser leaves every
-  AST comment slot `None` (verified by dumping the AST) when a group rule's closing paren is on its
-  own line (`grp = (\n a: uint\n) ; @x`), and when the last group entry's own trailing slot is
-  already occupied by a field-position `@name` — the two positions share that slot, and only one
-  comment survives. Affects `@rust_name` and `@no_json_schema_export` identically; no extraction in
-  `parsing.rs` can recover what the parser never recorded. Owned meanwhile by
-  `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs section, both of
-  which name the single-line spelling as the supported one. The fix is upstream — and upstream here
-  is the **dcSpark fork** of `cddl` pinned by git rev in `Cargo.toml` (version 0.10.6 at that rev),
-  not the crates.io crate, so the patch lands in a repo we control. It would have the parser bind the
-  comment to `Rule::Group`'s `comments_after_rule`, which today has exactly two construction sites
-  (`pest_bridge.rs`) and both hardcode `None` — which is why reading that field from `parsing.rs` is
-  dead code rather than a workaround. Design constraint the fix must respect, so it is not
-  rediscovered: for the SUPPORTED single-line spelling the comment already binds to the last group
-  entry's trailing slot, so populating `comments_after_rule` must be ADDITIVE — only for the
-  spellings nothing else captures — or `group_rule_pin_metadata` double-counts and a field-position
-  `@name` on the last entry stops renaming its field. Adopting the bump also needs a vector per
-  affected directive, since a spec relying on today's silence starts behaving differently
-  (correctly) after it. Build a local workaround only if a consumer
-  spec cannot use the single-line form — a pre-parse source scan that attributes a trailing comment
-  to the group rule by line position would be a second, drift-prone comment parser, so it needs a
-  real consumer to justify it.
-
-- **The arm-position axis of the directive×shape sweep is covered by two cells, not by enumeration.**
+- **The arm-position axis of the directive-drop family is covered by two cells, not by enumeration.**
   A rule-level directive on a non-last arm of a multi-choice type rule is now rejected at parse
   (`parsing::parse_type_choices`, keyed on `comment_ast::RuleMetadata::non_variant_directives`), and
   the rejection is pinned by `dsl_position_tests`' `type-choice-non-last-arm` cell with
@@ -1513,9 +1552,9 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   control. What is NOT enumerated is the directive axis at that position: one directive stands in
   for thirteen, and the exclusion set is asserted through the classifier's exhaustive destructuring
   (a new `RuleMetadata` field fails to compile until classified) rather than through a cell per
-  directive. Note this axis is orthogonal to the shape sweep planned above: that sweep treats
-  "multi-choice type rule" as ONE shape and would place the directive at rule position, where it
-  works — so it can never see this. Fold the arm axis in when that sweep is built; until then the
+  directive. Note this axis is orthogonal to the reachability sweep in the entry above: that sweep
+  treats "multi-choice type rule" as ONE shape and would place the directive at rule position, where
+  it works — so it can never see this. Fold the arm axis in when that sweep is built; until then the
   classifier's compile-time forcing function is the load-bearing part, and losing it (e.g. replacing
   the destructuring with a hand list) is the regression to watch for.
   Reopening signal for building the enumeration early: a directive whose rejection at this position
@@ -1792,12 +1831,15 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   it again), at which point a user cannot tell one refusal from several.
 - **A containment note's stated REASON can go false without any gate noticing — the note carries a
   behavioural claim, and only its `spec` and (via the annotation) its support verdict are checked.**
-  Proven instance: four rows in `cddl-matrix/containment/map-value.toml` justify their two-field
-  examples with "a single-field struct hits an orthogonal cddl-codegen panic", but `m = { k: 5 }`
-  generates exit 0 under both the default and `--preserve-encodings` profiles, and
-  `cddl-matrix/annotations/corpus/cddl_codegen.toml` separately records single-field struct maps as
-  supported — so the note and the annotation contradict each other in the same repo. Nothing
-  connects them: `project_corpus`'s note↔support check (E) reads the corpus nuance overlay's
+  Proven instance, since fixed: six containment notes justified their two-field examples with "a
+  single-field struct hits an orthogonal cddl-codegen panic", a panic that was gone — `m = { k: 5 }`
+  and every other shape those notes were attached to generate exit 0, and
+  `cddl-matrix/annotations/corpus/cddl_codegen.toml` separately recorded single-field struct maps as
+  supported, so the note and the annotation had been contradicting each other in the same repo. The
+  notes now state the file's two-field example CONVENTION instead of a causal claim about a defect,
+  and the absence of the panic is pinned by `tests/corpus/single_field_map.cddl` — the shape a note
+  must take when its reason would otherwise be an unowned behavioural claim. Nothing connected them
+  and nothing does now: `project_corpus`'s note↔support check (E) reads the corpus nuance overlay's
   `[[note]]` entries, not containment `note` prose, and `verify.ts` corroborates only the `example`
   against `spec`. The class is bounded — a containment note is prose, and most of it (grammar
   anchors, sibling relationships) is not machine-checkable — so the meanwhile rule is narrower than
@@ -1845,16 +1887,24 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   the one found instance sat in `LAYER2_KNOWN_BAD` rather than being fixed. All four are now fixed
   and pinned by `cbor_payload_leaves` / `cbor_payload_indefinite_inner` in `tests/core/tests.rs`,
   which execute a decode and assert the member AFTER the payload — the assertion a snapshot pin
-  structurally cannot make, since text blessed while the bug was live stays green forever. The
-  mechanical layer, which is a SOURCE lint rather than a fixture and therefore fast-tier-cheap:
-  enumerate the emitting sites reachable from `generate_deserialize` (its own body plus the
-  transitive closure of the helpers it calls) and fail on any emitted string literal containing a
-  bare `raw` token — the default must be spelled through the config accessor, never inline.
-  Trigger, on the axis the cost grows along: the COUNT of emitter parameters that are overloadable
-  in this way. Today it is one (the deserializer name); a SECOND — the serializer side has the
-  same shape latent, since `<var>_inner_se` is depth-agnostic (see cddl-matrix/ROADMAP.md's nested
-  `bytes .cbor` entry) — means the closure is being carried by hand in more than one emitter, and
-  hand-carrying is what produced these four.
+  structurally cannot make, since text blessed while the bug was live stays green forever. That
+  assertion shape is current state in `tests/README.md` § "Hand-vector suites"; what remains future
+  here is only the mechanical layer, which is a SOURCE lint rather than a fixture and therefore
+  fast-tier-cheap: enumerate the emitting sites reachable from `generate_deserialize` (its own body
+  plus the transitive closure of the helpers it calls) and fail on any emitted string literal
+  containing a bare `raw` token — the default must be spelled through the config accessor, never
+  inline.
+  **The stated trigger — the COUNT of overloadable emitter parameters, on the axis the cost grows
+  along — is MET, and this entry's own premise about it was falsified by reading the emitter.** It
+  read "today it is one (the deserializer name); the serializer side has the same shape latent". The
+  serializer side is not latent: `SerializeConfig::serializer_name_overload`
+  (`src/generation/serialize.rs`) exists today with the same default-or-overload shape as
+  `DeserializeConfig::deserializer_name`, and two call sites already use it — the `.cbor` payload's
+  `<var>_inner_se` and the canonical map-key `buf`. So the closure IS being carried by hand in two
+  emitters, which is exactly the condition the trigger names. Build the lint over BOTH accessors (a
+  bare `raw` token under `generate_deserialize`, a bare `serializer` token under
+  `generate_serialize`), and let its arming run — not this entry — decide whether the serializer side
+  has live leaves, since no probe has yet asked that question of the serializer's four-leaf analogue.
 
 - **A cargo FEATURE on a generated crate's dependency can change what emitted code MEANS, and no
   axis varies dependency features — compounded by every generated `Serialize` only ever being
@@ -1885,6 +1935,52 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   behaves differently", which is what makes it reportable at all, and it lies on the axis the cost
   grows along, since the deferred layer's value scales with how many such features exist rather than
   with how many consumers hit the one we know about.
+
+- **A DOCUMENTED flag pairing can be broken while every fixture stays green, because a fixture
+  satisfies the pairing's preconditions by accident.** Proven instance (found by reading the fixture,
+  not by any gate; consumer-reported first): `command_line_flags.mdx`'s own `--extern-wasm-crate`
+  example (`--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`) panicked
+  at startup validation for every PURE consumer — one whose override crate is not also a declared
+  extern dep — from the `Int`-override feature's ship until the report, because `extern_deps_wasm`'s
+  override crate doubles as a declared dep and so satisfied the key check by accident. The exact cell
+  the doc example describes was never executed. Standing coverage now: `common_override_wasm_int`
+  pins the pure-consumer cell. Working rule meanwhile: a flag pairing added to the user docs names
+  the cell that executes it, and a cell whose fixture satisfies a precondition incidentally is not
+  that cell. Mechanical layer, on a SECOND documented pairing found broken: a sweep executing each
+  `command_line_flags.mdx` example invocation verbatim against a minimal spec that assumes only what
+  the example's own prose states, asserting generation exits zero. It is the documented-VALID
+  complement of the class-level validation-smoke sweep in § Declined's flag-powerset entry (which
+  asserts documented-INVALID values reject), and the two should be built together if either is.
+- **A documented failure SHAPE that no cell exercises is prose — the cross-crate `Int` channel has
+  three, plus a hand mirror nothing cross-checks.** The shipped
+  `Int`-under-`--common-import-override` coverage proves the positive paths and asserts row-ABSENCE
+  on the degraded path, but none of the three failure shapes documented in
+  `command_line_flags.mdx`'s `--common-import-override` section is compile-proven by a standing cell:
+  (a) the consumer's `_borrowed_key_types_self_check` going RED when the common crate's `Int` lacks
+  the demanded flavor (needs a de-flavored fixture variant); (b) the unresolved-import failure when
+  the common crate exposes no `Int`/`IntError` (the existence contract's loud half); (c) `E0277` at
+  the consumer's own map sites when the override is not a `--workspace-dep` (today only the no-row
+  half is asserted, by `int_key_via_common_import_override_sidecar`). Related mirror exposure, to
+  close alongside (a): `tests/extern-dep-crate`'s hand-written `Int` mirrors generated `Int`'s
+  preserve-encodings wire format and encoding-insensitive key semantics, but `extern_deps` serializes
+  AND deserializes through the fixture's own impls, so a generated-`Int` divergence passes silently —
+  unlike the `tests/wasm-macro-crate` mirror, which compilation enforces. The cheap drift gate:
+  cross-serialize one vector between a generated `Int` (any no-override cell's output) and the
+  fixture's, asserting byte equality both ways. Reopening signal on the axis the cost grows along,
+  measurable by the party who has the problem: a consumer hitting any of the three failure shapes and
+  reporting that the error they got was not the one the docs describe — or a generated-`Int` wire
+  change landing while `extern_deps` stays green.
+- **`dsl_position_tests` is string-level by design, so a cell can be GREEN while the emitted crate is
+  broken.** Proven instance (caught by a hand-run end-to-end repro during review, not by any gate):
+  the `@custom_json` record-struct cell first landed passing while the generated struct kept its
+  serde derives against a now-unskipped `encodings` field (E0277). The landed mitigation is paired
+  anchors — the cell asserts the derive line AND the skip attribute, on both the directive and
+  control sides — which covers known failure modes only. Working rule meanwhile: a cell whose
+  expectation is compile-relevant asserts every attribute the compile outcome depends on, not just
+  the one the directive names. Mechanical layer on a SECOND green-but-uncompilable cell: a
+  `cargo check` probe over the compile-relevant cells only. Weigh it against the sweep's whole
+  premise of cheapness (it runs in ~1 s today; a compile leg is nested-cargo-priced and would need
+  the gate cache), which is why the probe is scoped to those cells rather than to the grid.
 
 ## Deferred features (build when a real consumer needs them)
 
@@ -2459,46 +2555,6 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (`--wasm-cbor-json-api-macro`), and — for `--canonical-form=true` without `--preserve-encodings`,
   which emitted a non-compiling crate — a CLI rejection (`api::with_types`, pinned by
   `flag_value_rejects_canonical_without_preserve`).
-- **Documented-example execution sweep for `command_line_flags.mdx`.** A documented flag pairing
-  can be broken while every fixture stays green when the fixtures satisfy its preconditions by
-  accident: the doc's own `--extern-wasm-crate` example
-  (`--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`) panicked at
-  startup validation for every PURE consumer (override crate not also a declared extern dep) from
-  the `Int`-override feature's ship until a consumer report, because `extern_deps_wasm`'s override
-  crate doubles as a declared dep and so satisfied the key check by accident — the exact cell the
-  doc example describes was never executed (found by reading the fixture, not by any gate; now
-  pinned by `common_override_wasm_int`). Systematic layer: a sweep that executes each
-  `command_line_flags.mdx` example invocation verbatim against a minimal spec assuming only what
-  the example's own prose states, asserting generation exits zero — so a doc-example/validation
-  divergence fails a gate instead of shipping prose-only. Complements the class-level
-  validation-smoke sweep above (that one asserts documented-INVALID values reject; this one asserts
-  documented-VALID pairings run).
-- **Negative failure-SHAPE vectors + the fixture-`Int` mirror gate for the cross-crate `Int`
-  channel.** The shipped `Int`-under-`--common-import-override` coverage proves the positive paths
-  and asserts row-ABSENCE on the degraded path, but none of the three documented failure shapes is
-  compile-proven by a standing cell: (a) the consumer's `_borrowed_key_types_self_check` going RED
-  when the common crate's `Int` lacks the demanded flavor (needs a de-flavored fixture variant);
-  (b) the unresolved-import failure when the common crate exposes no `Int`/`IntError` (the
-  existence contract's loud half); (c) `E0277` at the consumer's own map sites when the override is
-  not a `--workspace-dep` (today only the no-row half is asserted, by
-  `int_key_via_common_import_override_sidecar`). Each is the documented contract in
-  `command_line_flags.mdx`'s `--common-import-override` section — a contract whose failure shape no
-  gate exercises is prose-only. Related mirror exposure to close with (a): the
-  `tests/extern-dep-crate` hand-written `Int` mirrors generated `Int`'s preserve-encodings wire
-  format and encoding-insensitive key semantics, but the `extern_deps` round-trips serialize AND
-  deserialize through the fixture's own impls, so a generated-`Int` divergence passes silently —
-  unlike the `tests/wasm-macro-crate` mirror, which compilation enforces. A cheap drift gate:
-  cross-serialize one vector between a generated `Int` (any no-override cell's output) and the
-  fixture's, asserting byte equality both ways. The sweep is
-  string-level by design, so a cell can be GREEN while the emitted crate is broken: the
-  `@custom_json` record-struct cell first landed passing while the generated struct kept its
-  serde derives against a now-unskipped `encodings` field (E0277) — caught only by a hand-run
-  end-to-end repro during review, not by any gate. The landed mitigation is paired anchors
-  (the cell asserts the derive line AND the skip attribute, on both the directive and control
-  sides), which covers known failure modes only; a `cargo check` probe over the cells whose
-  expectation is compile-relevant would close the class. Weigh against the sweep's cheapness
-  (it currently runs in ~1s; a compile leg is nested-cargo-priced and would need the gate
-  cache).
 - **`quickcheck` alongside `proptest`; `goldenfile`/`expect-test` as a second corpus engine;
   `no-panic` lints; coverage instrumentation of *generated* code; `trybuild` for whole-crate
   compile-pass** (the corpus `cargo check` is simpler and broader).
