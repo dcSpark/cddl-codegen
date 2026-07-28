@@ -158,54 +158,62 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "82f41844"
+hex = "82f4188d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f419026e"
+hex = "82f41903b0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f41903e1"
+hex = "82f4190508"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f4190541"
+hex = "82f4190695"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f4190549"
+hex = "82f4190831"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f4190ac6"
+hex = "82f419099e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f4190b02"
+hex = "82f41909a2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f4190cee"
+hex = "82f4190b35"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f4190f60"
+hex = "82f4190f24"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f419112c"
+hex = "82f4190f64"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "82f51844"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value true is not the fixed value false — violates the fixed-value array member `v: false` in `a = [v: false, x: uint]` (FixedValueMismatch); the instance is a spec-valid `[false, 68]` with ONLY the constant byte flipped (`f4`->`f5`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value false found true"
 
 [[row]]
 id = "contain.array-element.prelude.null"
@@ -216,52 +224,60 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "82f6184f"
+hex = "82f4184f"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value false is not null — violates the fixed-value array member `v: null` in `a = [v: null, x: uint]` (ExpectedNull: for null the constant IS the type, so the member check is a type check); the instance is a spec-valid `[null, 79]` with ONLY the constant byte flipped (`f6`->`f4`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected null, found other type"
+
+[[row.vector]]
+hex = "82f619016b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f619036d"
+hex = "82f619026a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f6190445"
+hex = "82f6190289"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f61905f7"
+hex = "82f6190600"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f619078c"
+hex = "82f61907c9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f6190cc8"
+hex = "82f6190a7b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f6190fc3"
+hex = "82f6190cec"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f6190ff7"
+hex = "82f6190d5f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f61910c8"
+hex = "82f6190ea1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f61911ee"
+hex = "82f6190f12"
 source = "ruby-generate"
 expect = "accept"
 
@@ -274,52 +290,60 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "82f51902cf"
+hex = "82f41902cf"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value false is not the fixed value true — violates the fixed-value array member `v: true` in `a = [v: true, x: uint]` (FixedValueMismatch); the instance is a spec-valid `[true, 719]` with ONLY the constant byte flipped (`f5`->`f4`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value true found false"
+
+[[row.vector]]
+hex = "82f5190332"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f519050a"
+hex = "82f5190390"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f51906b1"
+hex = "82f51906d1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f5190a31"
+hex = "82f51906e8"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f5190b94"
+hex = "82f519070b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f5190d48"
+hex = "82f51908e7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f5190df0"
+hex = "82f5190a6e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f51910a6"
+hex = "82f5190c5e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f5191124"
+hex = "82f5190dfb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82f5191186"
+hex = "82f5191240"
 source = "ruby-generate"
 expect = "accept"
 
@@ -564,52 +588,60 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "8219014f05"
+hex = "82189c05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8219028d05"
+hex = "8218db05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8219056705"
+hex = "8219014f06"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not the fixed value 5 — violates the fixed-value array member `v: 5` in `a = [w: uint, v: 5]` (FixedValueMismatch); the instance is a spec-valid `[335, 5]` with ONLY the constant byte flipped (`05`->`06`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value 5 found 6"
+
+[[row.vector]]
+hex = "8219022c05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8219073505"
+hex = "8219067a05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "821907a405"
+hex = "8219075d05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8219091d05"
+hex = "8219088105"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82190ae205"
+hex = "82190a4805"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82190c5605"
+hex = "82190aa305"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82190eb105"
+hex = "82190abe05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "821911cd05"
+hex = "82190b5805"
 source = "ruby-generate"
 expect = "accept"
 
@@ -622,54 +654,62 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "8205188a"
+hex = "82051904e9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8205190223"
+hex = "8205190743"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820519037c"
+hex = "82051908b4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8205190644"
+hex = "8205190900"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8205190bc3"
+hex = "82051909b5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8205190c4c"
+hex = "82051909b7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8205190ee0"
+hex = "8205190a88"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8205191112"
+hex = "8205190e78"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8205191209"
+hex = "8205190ea0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820519120b"
+hex = "8205191241"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "8206188a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not the fixed value 5 — violates the bare (unkeyed) fixed-value array member `5` in `a = [5, x: uint]` (FixedValueMismatch); the instance is a spec-valid `[5, 138]` with ONLY the constant byte flipped (`05`->`06`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value 5 found 6"
 
 [[row]]
 id = "contain.array-element.value.number"
@@ -684,6 +724,14 @@ hex = "8105"
 source = "ruby-generate"
 expect = "accept"
 
+[[row.vector]]
+hex = "8106"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not the fixed value 5 — violates the fixed-value array member `v: 5` in `a = [v: 5]` (FixedValueMismatch); the instance is the spec-valid `[5]` with ONLY the constant byte flipped (`05`->`06`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value 5 found 6"
+
 [[row]]
 id = "contain.array-element.value.text"
 axis = "containment"
@@ -696,6 +744,14 @@ type_name = "A"
 hex = "816178"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "816179"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the text \"y\" is not the fixed value \"x\" — violates the fixed-value array member `v: \"x\"` in `a = [v: \"x\"]` (FixedValueMismatch); the instance is the spec-valid `[\"x\"]` with ONLY the constant payload byte flipped (`78`->`79`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value \"x\" found \"y\""
 
 [[row]]
 id = "contain.cbor-payload.type.choice"
@@ -2175,54 +2231,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616bf4616a190438"
+hex = "a2616bf4616a18e5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a190803"
+hex = "a2616bf4616a1902df"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a190933"
+hex = "a2616bf4616a1902e6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a190b51"
+hex = "a2616bf4616a190579"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a190ceb"
+hex = "a2616bf4616a19058f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a190dbb"
+hex = "a2616bf4616a1905f4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a191044"
+hex = "a2616bf4616a1907a3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a19106a"
+hex = "a2616bf4616a1908bc"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a1911c4"
+hex = "a2616bf4616a190995"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf4616a1911e5"
+hex = "a2616bf4616a1909ba"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a190438"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value true is not the fixed value false — violates the fixed-value map member `k: false` in `m = { k: false, j: uint }` (FixedValueMismatch); the instance is a spec-valid `{\"k\": false, \"j\": 1080}` with ONLY the constant byte flipped (`f4`->`f5`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value false found true"
 
 [[row]]
 id = "contain.map-value.prelude.null"
@@ -2233,52 +2297,60 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616bf6616a18cb"
+hex = "a2616bf4616a18cb"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value false is not null — violates the fixed-value map member `k: null` in `m = { k: null, j: uint }` (ExpectedNull: for null the constant IS the type, so the member check is a type check); the instance is a spec-valid `{\"k\": null, \"j\": 203}` with ONLY the constant byte flipped (`f6`->`f4`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected null, found other type"
+
+[[row.vector]]
+hex = "a2616bf6616a19013e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a190173"
+hex = "a2616bf6616a190151"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a19050d"
+hex = "a2616bf6616a19028c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a1905f5"
+hex = "a2616bf6616a1902b9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a190814"
+hex = "a2616bf6616a1902ed"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a190b4a"
+hex = "a2616bf6616a1904cb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a190cbc"
+hex = "a2616bf6616a190766"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a190f21"
+hex = "a2616bf6616a1909f9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a191105"
+hex = "a2616bf6616a190cd5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf6616a1911e8"
+hex = "a2616bf6616a190e52"
 source = "ruby-generate"
 expect = "accept"
 
@@ -2291,52 +2363,60 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616bf5616a184b"
+hex = "a2616bf4616a184b"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value false is not the fixed value true — violates the fixed-value map member `k: true` in `m = { k: true, j: uint }` (FixedValueMismatch); the instance is a spec-valid `{\"k\": true, \"j\": 75}` with ONLY the constant byte flipped (`f5`->`f4`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value true found false"
+
+[[row.vector]]
+hex = "a2616bf5616a190320"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a190130"
+hex = "a2616bf5616a190600"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a1901fc"
+hex = "a2616bf5616a190853"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a19053b"
+hex = "a2616bf5616a190872"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a1906e4"
+hex = "a2616bf5616a1908aa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a190730"
+hex = "a2616bf5616a19094d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a190b7d"
+hex = "a2616bf5616a190f3f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a190dce"
+hex = "a2616bf5616a190fd2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a190dd4"
+hex = "a2616bf5616a191174"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bf5616a190f95"
+hex = "a2616bf5616a19121b"
 source = "ruby-generate"
 expect = "accept"
 
@@ -2581,52 +2661,60 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616a18c7616b05"
+hex = "a2616a18c0616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a1901f4616b05"
+hex = "a2616a18c7616b06"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not the fixed value 5 — violates the fixed-value map member `k: 5` in `m = { j: uint, k: 5 }` (FixedValueMismatch); the instance is a spec-valid `{\"j\": 199, \"k\": 5}` with ONLY the constant byte flipped (`05`->`06`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value 5 found 6"
+
+[[row.vector]]
+hex = "a2616a190106616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a190319616b05"
+hex = "a2616a19025c616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a19081a616b05"
+hex = "a2616a190320616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a1908bd616b05"
+hex = "a2616a190763616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a190ac1616b05"
+hex = "a2616a19078b616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a190ba8616b05"
+hex = "a2616a190d1a616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a190d9d616b05"
+hex = "a2616a190e42616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a190fcf616b05"
+hex = "a2616a190f2a616b05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616a191258616b05"
+hex = "a2616a19121f616b05"
 source = "ruby-generate"
 expect = "accept"
 
@@ -2639,54 +2727,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616b05616a190169"
+hex = "a2616b05616a18a5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a1901f7"
+hex = "a2616b05616a18df"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a1902fb"
+hex = "a2616b05616a19028a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a19058a"
+hex = "a2616b05616a1904a3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190601"
+hex = "a2616b05616a190525"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190801"
+hex = "a2616b05616a19052a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190d31"
+hex = "a2616b05616a19060b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190ddd"
+hex = "a2616b05616a190716"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190e03"
+hex = "a2616b05616a190be9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190e13"
+hex = "a2616b05616a190f11"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a2616b06616a190169"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not the fixed value 5 — violates the fixed-value map member `k: 5` in `m = { k: 5, j: uint }` (FixedValueMismatch); the instance is a spec-valid `{\"k\": 5, \"j\": 361}` with ONLY the constant byte flipped (`05`->`06`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value 5 found 6"
 
 [[row]]
 id = "contain.map-value.value.text"
@@ -2697,54 +2793,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616b6178616a190347"
+hex = "a2616b6178616a18a3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a1906bf"
+hex = "a2616b6178616a19085e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a190995"
+hex = "a2616b6178616a1909f8"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a190998"
+hex = "a2616b6178616a190cc7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a190ab8"
+hex = "a2616b6178616a190de1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a190b3f"
+hex = "a2616b6178616a190fac"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a190f79"
+hex = "a2616b6178616a1911cb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a19100f"
+hex = "a2616b6178616a1911ed"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a191211"
+hex = "a2616b6178616a19121a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b6178616a19123c"
+hex = "a2616b6178616a191259"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6179616a190347"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the text \"y\" is not the fixed value \"x\" — violates the fixed-value map member `k: \"x\"` in `m = { k: \"x\", j: uint }` (FixedValueMismatch); the instance is a spec-valid `{\"k\": \"x\", \"j\": 839}` with ONLY the constant payload byte flipped (`78`->`79`), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value \"x\" found \"y\""
 
 [[row]]
 id = "contain.occurrence-target.grpent.groupname"
@@ -3169,52 +3273,60 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "8218df6a63726f7373626f6e6573"
+hex = "8219037d68706c656173696e67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "821902b366776f6d626174"
+hex = "8219065866726576697665"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82190337686e6f746174696f6e"
+hex = "82190a21676f726465726c79"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "821905bf69617264756f75736c79"
+hex = "82190c556a6170706c617564696e67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82190add6f6765726f6e746f6c6f676973742773"
+hex = "8319011e05687665737469676573"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8219124266737475666673"
+hex = "8319034d066c646973617373656d626c6564"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not the fixed value 5 — violates the OPTIONAL fixed-value array member `? v: 5` in `a = [x: uint, ? v: 5, label: tstr]` when it is PRESENT (FixedValueMismatch); the instance is a spec-valid PRESENT-shape `[845, 5, \"disassembled\"]` with ONLY the constant byte flipped (`05`->`06`) — present-wrong on purpose, since ABSENCE is a legal accept shape and would evidence nothing; both oracles certify the violation"
+expect_err = "Expected fixed value 5 found 6"
+
+[[row.vector]]
+hex = "8319051505656375726c79"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8319034d056c646973617373656d626c6564"
+hex = "83190657056877617274686f6773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "831904f7056a416c656d626572742773"
+hex = "831907d8056b756e72656c656e74696e67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8319079505686f7574636f6d6573"
+hex = "83190fb20566646566616365"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "83190f0705696c696e65616d656e74"
+hex = "83191195056b67616e67706c616e6b2773"
 source = "ruby-generate"
 expect = "accept"
 
@@ -3227,54 +3339,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a1616a1905e9"
+hex = "a1616a190b80"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616a19090e"
+hex = "a1616a190dec"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616a190cf3"
+hex = "a2616b05616a19021a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616a190ff7"
+hex = "a2616b05616a19046b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a18ee"
+hex = "a2616b05616a190473"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a1903cb"
+hex = "a2616b05616a19080d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a19060c"
+hex = "a2616b05616a1909bd"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190a69"
+hex = "a2616b05616a190ad5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a190eb3"
+hex = "a2616b05616a190ff4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b05616a1910e7"
+hex = "a2616b05616a19117d"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a2616b06616a18ee"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 6 is not the fixed value 5 — violates the OPTIONAL fixed-value map member `? k: 5` in `m = { ? k: 5, j: uint }` when it is PRESENT (FixedValueMismatch); the instance is a spec-valid PRESENT-shape `{\"k\": 5, \"j\": 238}` with ONLY the constant byte flipped (`05`->`06`) — present-wrong on purpose, since ABSENCE is a legal accept shape and would evidence nothing; both oracles certify the violation"
+expect_err = "Expected fixed value 5 found 6"
 
 [[row]]
 id = "contain.tag-content.type.choice"

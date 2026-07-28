@@ -362,9 +362,30 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       `value.number.{hex,bin}` carry hand wrong-fixed-value violations ([0] — the silent-zero
   //       radix-conversion trap — plus an off-by-one/truncated-digit guard each), rejected as
   //       FixedValueMismatch; both oracles certify.
+  //   (d) The fixed-value MEMBER cells — the 15 supported `contain.{array-element,map-value,
+  //       occurrence-target}` cells whose member is a constant (`v: 5`, `k: "x"`, `v: true/false/null`,
+  //       the bare unkeyed `5`, and the two OPTIONAL `? v: 5` forms). Each carries one WRONG-CONSTANT
+  //       instance derived from one of the row's own accepts by mutating ONLY the constant's byte(s),
+  //       so the constant is the sole difference (same outer head, same key order, same siblings) — the
+  //       vector that makes the row's green test the CONSTANT and not just the shape. The uint/text/bool
+  //       cells reject as FixedValueMismatch (`Expected fixed value 5 found 6`, `… "x" found "y"`,
+  //       `… true found false`); the two null cells pin `ExpectedNull` instead, because for null the
+  //       constant IS the type, so the member's check is a type check — the vector still catches a
+  //       decoder that stops checking the member. The optional cells' instances are PRESENT-wrong
+  //       (absence is a legal accept shape), which routes through the optional peek path and still
+  //       lands on the constant check. Both oracles certify every one.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
-    "contain.occurrence-target.memberkey.type1.plus_table", "memberkey.cut",
+    "contain.array-element.prelude.false", "contain.array-element.prelude.null",
+    "contain.array-element.prelude.true", "contain.array-element.type2.value",
+    "contain.array-element.type2.value.bare_exactly_once", "contain.array-element.value.number",
+    "contain.array-element.value.text",
+    "contain.map-value.prelude.false", "contain.map-value.prelude.null",
+    "contain.map-value.prelude.true", "contain.map-value.type2.value",
+    "contain.map-value.value.number", "contain.map-value.value.text",
+    "contain.occurrence-target.memberkey.type1.plus_table",
+    "contain.occurrence-target.type2.value.optional_keyed_array",
+    "contain.occurrence-target.type2.value.optional_keyed_map", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper", "occur.one_or_more",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
     "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
