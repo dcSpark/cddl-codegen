@@ -9,7 +9,7 @@ id = "contain.map-value.type.choice"
 role = "role.map-value"
 feature = "type.choice"
 spec = "allowed"
-note = "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice. RFC8610 §3.5.1, §2.2.2; ABNF grpent (memberkey type) -> type-choice. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)"
+note = "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice. RFC8610 §3.5.1, §2.2.2; ABNF grpent (memberkey type) -> type-choice. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)"
 example = "m = { k: int / tstr, j: uint }"
 
 [[contain]]
@@ -25,7 +25,7 @@ id = "contain.map-value.type2.tag"
 role = "role.map-value"
 feature = "type2.tag"
 spec = "allowed"
-note = "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grpent value -> type2 tagged-data. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)"
+note = "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grpent value -> type2 tagged-data. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)"
 example = "m = { k: #6.10(int), j: uint }"
 
 [[contain]]
@@ -33,7 +33,7 @@ id = "contain.map-value.prelude.false"
 role = "role.map-value"
 feature = "prelude.false"
 spec = "allowed"
-note = "The prelude constant `false` as a fixed map-member value (`{ k: false }`) — supported as a member; the top-level `foo = false` type is not. RFC8610 §2.1, §3.5.1. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)"
+note = "The prelude constant `false` as a fixed map-member value (`{ k: false }`) — supported as a member; the top-level `foo = false` type is not. RFC8610 §2.1, §3.5.1. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)"
 example = "m = { k: false, j: uint }"
 
 [[contain]]
@@ -41,7 +41,7 @@ id = "contain.map-value.type2.unwrap"
 role = "role.map-value"
 feature = "type2.unwrap"
 spec = "allowed"
-note = "`~name` (unwrap) as a member value. Unsupported because type2.unwrap is unsupported at all (not a context effect). RFC8610 §3.5.1, §3.7. (2-field map to avoid the orthogonal single-field-map panic.)"
+note = "`~name` (unwrap) as a member value. Unsupported because type2.unwrap is unsupported at all (not a context effect). RFC8610 §3.5.1, §3.7. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)"
 example = "arr = [int]\nm = { k: ~arr, j: uint }"
 
 # Fixed-value MEMBER enumeration in map-value position — the map-representation half of the sweep whose

@@ -9,7 +9,7 @@ id = "contain.tag-content.type2.map"
 role = "role.tag-content"
 feature = "type2.map"
 spec = "allowed"
-note = "The content of #6.n(...) is any `type`, so a map may be tagged. NOTE: a tag accepts an INLINE anonymous map (supported) — unlike a choice/array/map-value position, which requires the nested composite to be named. RFC8610 §3.6, §3.5. (2-field map: a single-field struct hits an orthogonal panic.)"
+note = "The content of #6.n(...) is any `type`, so a map may be tagged. NOTE: a tag accepts an INLINE anonymous map (supported) — unlike a choice/array/map-value position, which requires the nested composite to be named. RFC8610 §3.6, §3.5. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)"
 example = "t = #6.10({a: int, c: uint})"
 
 [[contain]]

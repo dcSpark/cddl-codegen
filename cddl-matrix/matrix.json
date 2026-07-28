@@ -3299,7 +3299,7 @@
       "example": "m = { k: int / tstr, j: uint }",
       "feature": "type.choice",
       "id": "contain.map-value.type.choice",
-      "note": "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice. RFC8610 §3.5.1, §2.2.2; ABNF grpent (memberkey type) -> type-choice. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)",
+      "note": "A member's value is a `type`, which is a `/` type-choice, so the value may be a choice. RFC8610 §3.5.1, §2.2.2; ABNF grpent (memberkey type) -> type-choice. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
@@ -3315,7 +3315,7 @@
       "example": "m = { k: #6.10(int), j: uint }",
       "feature": "type2.tag",
       "id": "contain.map-value.type2.tag",
-      "note": "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grpent value -> type2 tagged-data. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)",
+      "note": "A tagged type (#6.n) as a member value. RFC8610 §3.5.1, §3.6; ABNF grpent value -> type2 tagged-data. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
@@ -3323,7 +3323,7 @@
       "example": "m = { k: false, j: uint }",
       "feature": "prelude.false",
       "id": "contain.map-value.prelude.false",
-      "note": "The prelude constant `false` as a fixed map-member value (`{ k: false }`) — supported as a member; the top-level `foo = false` type is not. RFC8610 §2.1, §3.5.1. (2-field map: a single-field struct hits an orthogonal cddl-codegen panic.)",
+      "note": "The prelude constant `false` as a fixed map-member value (`{ k: false }`) — supported as a member; the top-level `foo = false` type is not. RFC8610 §2.1, §3.5.1. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
@@ -3331,7 +3331,7 @@
       "example": "arr = [int]\nm = { k: ~arr, j: uint }",
       "feature": "type2.unwrap",
       "id": "contain.map-value.type2.unwrap",
-      "note": "`~name` (unwrap) as a member value. Unsupported because type2.unwrap is unsupported at all (not a context effect). RFC8610 §3.5.1, §3.7. (2-field map to avoid the orthogonal single-field-map panic.)",
+      "note": "`~name` (unwrap) as a member value. Unsupported because type2.unwrap is unsupported at all (not a context effect). RFC8610 §3.5.1, §3.7. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
@@ -3627,7 +3627,7 @@
       "example": "t = #6.10({a: int, c: uint})",
       "feature": "type2.map",
       "id": "contain.tag-content.type2.map",
-      "note": "The content of #6.n(...) is any `type`, so a map may be tagged. NOTE: a tag accepts an INLINE anonymous map (supported) — unlike a choice/array/map-value position, which requires the nested composite to be named. RFC8610 §3.6, §3.5. (2-field map: a single-field struct hits an orthogonal panic.)",
+      "note": "The content of #6.n(...) is any `type`, so a map may be tagged. NOTE: a tag accepts an INLINE anonymous map (supported) — unlike a choice/array/map-value position, which requires the nested composite to be named. RFC8610 §3.6, §3.5. (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)",
       "role": "role.tag-content",
       "spec": "allowed"
     },
@@ -3675,7 +3675,7 @@
       "example": "m = { outer: { a: int, c: uint } }",
       "feature": "type2.map",
       "id": "contain.map-value.type2.map",
-      "note": "A map as a member value (nested map / table-as-value). (2-field inner map: a single-field struct hits an orthogonal panic.)",
+      "note": "A map as a member value (nested map / table-as-value). (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)",
       "role": "role.map-value",
       "spec": "allowed"
     },
