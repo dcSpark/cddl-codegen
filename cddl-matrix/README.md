@@ -40,8 +40,7 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > `tests/recomb/ingredients.json` (drift-gated by check.ts `project_recombination_check`), the
 > ingredient set the shape-recombination fuzzer composes from (`tests/README.md`
 > § "Shape-recombination fuzzer"). **Every consumer query Q1–Q6 is answered by a standing script**
-> (`QUERIES.md` § "Definition of done"). Any "seed / only `type2` worked" or "renderer is the
-> remaining piece" framing below this line is historical.
+> (`QUERIES.md` § "Definition of done").
 
 ## What is a feature?
 
@@ -63,8 +62,8 @@ comprehensive" below): forward (every grammar alternative is covered by some fea
 (every feature resolves to some real source). Neither direction alone is sufficient — forward-only
 admits invented features; backward-only admits coverage holes.
 
-**Why the CBOR tag registry is *not* a fourth source (F4 decision).** A generic codegen would need to
-individuate tags (tag 0/2/24 are different tasks). cddl-codegen, however, is **tag-parametric**:
+**Why the CBOR tag registry is *not* a fourth source (a decided scope boundary).** A generic codegen
+would need to individuate tags (tag 0/2/24 are different tasks). cddl-codegen, however, is **tag-parametric**:
 `#6.n(T)` emits the same wrap/unwrap code for any `n` (it does not implement per-tag *semantics* like
 datetime or bignum decoding), so the tag *number* is a parameter of one feature (`type2.tag`), not a
 distinct construct. The few tags that *are* codegen-distinct here (because the prelude assigns them a
@@ -197,16 +196,10 @@ dominating `yes`/`unverified`/`n/a`. Its evidence is a `class="over-acceptance"`
 spec-INVALID CBOR (both oracles reject at mint, the same inverse gate as `class="constraint"`) the
 generated decoder CURRENTLY (wrongly) ACCEPTS. At HEAD the set is **empty** — asserted exactly by
 `query_q4_directional.ts --check`'s `EXPECTED_ENFORCE_OVERACCEPTS` pin (`[]`), the decay twin of the
-green/unverified sets — but the vector class stays armed for the next certified instance. The worked
-precedent is the widened-occurrence-marker table class (`ROADMAP.md` § findings): a COUNT-PERMITTING
-occurrence marker (`+` / `?` / `n*m`) on a single non-literal arrow map entry once table-detected to
-the same unbounded 0..N `BTreeMap` as `{ * k => v }` (`HomogenousMap` carried no bounds), so
-`contain.occurrence-target.memberkey.type1.plus_table` carried a certified out-of-window empty-map pin
-while the bug stood. It demonstrates BOTH branches the pins encode: the `+` marker was FIXED (honored
-as `NonEmptyMap`), so its over-acceptance vector was **promoted** to `class="constraint"` (+
-`expect_err`) and the row moved to the enforce-green set; the `?` / `n*m` spellings were closed by
-graceful rejection at generation, dropping their rows and pins — like the seed instance, the
-no-occurrence type-domain arrow widening `contain.map-key.memberkey.type1.tstr_arrow_nooccur`.
+green/unverified sets — but the vector class stays armed for the next certified instance. Why the
+class exists at all, and the worked precedent that exercised both of its exits, are in § "Gotchas"
+(the over-acceptance bullet) — an over-acceptance is by construction the class a round-trip cannot
+see, so its rationale belongs next to that blindness rather than here.
 
 Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 (⚠️ parsed-but-not-honored): they are validation concerns a round-trip cannot observe.
@@ -214,8 +207,9 @@ Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 ## Upstream oracle gaps (rust `cddl` CLI)
 
 None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
-what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
-§ findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
+what "certified" means per vector family (§ Q4 above) and what the prunes in `ROADMAP.md`
+§ "Upstream close-outs (waiting on external releases)" wait on. The sibling checkout's
+`local-fixes` branch (`~/Documents/git/cddl`, commit
 `ac1b98e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
 cddl-codegen's own parser share it) carries fixes for gaps 1–7 and 9–10 (gaps 8 and 11 are OPEN at
 that rev — gap 8 keeps one containment row's decode-foreign minting `pinned_reason`-vectorless, and
@@ -402,10 +396,38 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   per-(feature, role) verdict genuinely differs, which is the whole point. An inline parenthesized
   group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
   gracefully (not a panic — `ROADMAP.md` § findings), with the same "name the group" remedy.
+- **Fixed values flip on MEMBER position — and two kinds do not flip with the rest.** Every
+  fixed-value feature row is `unsupported` at the TOP level (`x = true`, `x = 5`, `x = "v"` are
+  rejected as a rule body), yet the same constants are `supported` as array elements and map values:
+  `a = [v: true, x: uint]`, `m = { k: 5, j: uint }`, the bare unkeyed `a = [5, x: uint]`, and the
+  optional keyed forms `[x: uint, ? v: 5, label: tstr]` / `{ ? k: 5, j: uint }`. So a reader who
+  generalizes the *feature-row* verdict to member position generalizes wrongly — which is what the
+  per-cell (role × feature) verdict is for. Two kinds break the pattern in the other direction and
+  are the reason the cells exist: `undefined` and a byte-string literal (`h'0102'`) **abort the
+  generator** (exit 101) in BOTH member positions, and for the bytes literal the top level is
+  *better* (a graceful exit-1 refusal), so member position is strictly worse there. Cardinality is a
+  third, independent splitter: an occurrence marker over an UNKEYED fixed value (`[* 5]`, `[? 5]`,
+  `[+ 5]`, `{ * uint => 5 }`) is unsupported while the keyed optional forms above generate — which is
+  why `type2.value` × `role.occurrence-target` renders ◐ in the grid. Grounding these 19 cells landed
+  11 supported / 8 unsupported, and the two panic classes are ledgered as candidate fixes
+  (`ROADMAP.md` § findings).
 - **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` /
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs
   a name), with no single-field-map shape to confound it.
+- **Some `unsupported` rows are PERMANENT by decision, not pending — don't re-litigate them.** Three
+  graceful rejections are boundaries the matrix keeps deliberately, so a row flipping green would be
+  a regression, not progress. (1) A bare `any` type-choice arm in a NON-LAST position
+  (`a = any / tstr`): a bare `any` accepts every CBOR item, so any arm after it is unreachable dead
+  code, and the rejection says so ("`any` arm makes later arms unreachable — move it last"); a
+  LAST-position bare `any` arm IS supported (forced-backtracking dispatch), and a tagged `any` arm
+  (`#6.n(any)`) is not a catch-all and is allowed in any position (pinned by
+  `tests/robustness/choice_any_arm.cddl` and `tests/robustness/choice_last_any_arm.cddl`). (2) `.ne`
+  over a float — the integer min>max exclusion hack has no principled float encoding. (3) A decimal
+  bound on an integer-primitive head (`uint .le 10.5`) — silently flooring it onto the int head would
+  mis-enforce. The last two route through `record_rejection` and are pinned alongside the float-window
+  enforcement in the `tests/core` `float_bounds` fixtures. Everything else in this section's
+  neighbourhood is a candidate fix, and lives in `ROADMAP.md` § findings.
 - **Execution-gate exemptions.** 7 user-code features stay `supported` via the documented
   `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code (or pin a dependency-crate
   name), so they can't compile (or test) standalone: `ext.extern`, `ext.raw_bytes`,
@@ -427,10 +449,20 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `project_corpus.ts` verifies a role-keyed `[[cover]]` against the AST role floor AND the per-cell
   support verdict (check H), so it can't claim ✅ on an unsupported cell. The same floor is taken over
   the WHOLE corpus and joined onto the containment relation into `tests/corpus/COVERAGE.md`
-  § "Role × feature containment grid" — whose point is the `·` cell: one the corpus exercises and no
-  containment row models. The two sides are at different granularities (the floor is feature-granular,
-  a containment row is shape-granular), so the grid reports both and deliberately cross-checks
-  neither; the grid is informational and kept honest by the `coverage_md_diff` gate, not by a verdict.
+  § "Role × feature containment grid": one row per construct, one column per `roles.toml` role in
+  grammar order, carrying the matrix's own per-cell verdicts — ✅ every probed shape in the cell is
+  supported, ➖ none is, **◐ the probed shapes disagree** (a support boundary *inside* one cell), `?`
+  a spec-allowed row still awaiting a `verify.ts` grounding run, ✗ modelled only as spec-disallowed —
+  plus `·` for a cell the corpus exercises and no containment row models, and blank for neither. The
+  `◐` mark is what makes an intra-cell boundary legible rather than averaged away: `type2.value` ×
+  `role.occurrence-target` reads ◐ because two keyed optional fixed-value forms generate where four
+  unkeyed occurrence forms refuse — cardinality, not wrapping, splits that cell. **Do not cross-check
+  the `·` cells against their ➖ siblings**: the floor is feature-granular ("an array appears in
+  array-element role") and a containment row is shape-granular (its example is an *anonymous inline*
+  array), so the two sides are different shapes and never a contradiction. The grid is informational
+  and kept honest by the `coverage_md_diff` gate, not by a verdict; its denominator is observed
+  (modelled ∪ exercised), which is why a blank cell claims nothing at all — see `ROADMAP.md` for the
+  grammar-derived denominator that would make "nothing has an opinion here" a rendered state.
 - **Failure-claim findings must carry a resolvable pin (check I).** A corpus-overlay `[[finding]]`
   that states a defect ("Bug —"/"Gap —" or "Candidate cddl-codegen fix") must name at least one
   backtick-quoted tracking artifact that resolves against the tree (a `tests/…` file or a
