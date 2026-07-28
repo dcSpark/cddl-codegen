@@ -19,12 +19,21 @@ pub(crate) mod wrapper_requests;
 use clap::Parser;
 use cli::Cli;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Errors are printed with `Display`, not by returning them from `main`: the default `Result`
+/// termination renders through `Debug`, which wraps a `String` message in quotes, backslash-escapes
+/// every `"` inside it, and prints embedded newlines as literal `\n` — mangling exactly the
+/// multi-sentence diagnostics this tool writes.
+fn main() {
     let argv: Vec<String> = std::env::args().collect();
-    if config::is_config_mode(&argv) {
-        return generate_from_config(&argv);
+    let result = if config::is_config_mode(&argv) {
+        generate_from_config(&argv)
+    } else {
+        api::generate_to_disk(&Cli::parse())
+    };
+    if let Err(error) = result {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
     }
-    api::generate_to_disk(&Cli::parse())
 }
 
 /// `cddl-codegen --config <file.toml> [CRATE...]`: the command-line half of config mode.

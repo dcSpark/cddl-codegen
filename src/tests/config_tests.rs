@@ -714,6 +714,89 @@ fn path_keys_resolve_against_the_config_file_not_the_process_cwd() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `load` pins the config's directory to an ABSOLUTE path before anything resolves against it, so
+/// the process CWD participates exactly once — in locating the config file itself, where it is the
+/// definition of what a relative argument means — and never again. Without this, a relatively-named
+/// config mixing an absolute `output` with a relative one sent `manifest_relative_path` down its
+/// current-directory fallback, making a COMMITTED `Cargo.toml` byte a function of where the tool
+/// was invoked from.
+#[test]
+fn load_resolves_a_relative_config_path_to_absolute_keys() {
+    let dir = std::env::temp_dir().join(format!("cddl_config_absolutize_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("codegen.toml"),
+        "[crates.demo]\ninput = \"spec.cddl\"\noutput = \"gen\"\n",
+    )
+    .unwrap();
+
+    let cwd = std::env::current_dir().unwrap();
+    let relative = pathdiff::diff_paths(dir.join("codegen.toml"), &cwd)
+        .expect("both endpoints are absolute, so a relative path between them exists");
+    assert!(
+        relative.is_relative(),
+        "the premise: the config file is named RELATIVELY, so resolving it consults the CWD"
+    );
+
+    let config = config::load(&relative).unwrap();
+    let cli = config.expand(&[]).unwrap().remove(0).1;
+    assert_eq!(cli.input, dir.join("spec.cddl"));
+    assert_eq!(cli.output, dir.join("gen"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The binary prints errors through `Display`. Returning the error from `main` renders a
+/// `String`-backed error's `Debug`: the message arrives wrapped in quotes, every `"` inside it
+/// backslash-escaped, and each newline as a literal `\n` — mangling exactly the multi-sentence
+/// diagnostics this feature writes. Pinned end to end against the real binary because no unit test
+/// sees `main`'s termination path.
+#[test]
+fn binary_errors_print_the_message_verbatim_not_debug_escaped() {
+    let dir = std::env::temp_dir().join(format!("cddl_config_display_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // `preserve-encodings = "yes"` draws a serde type error whose message contains both a quoted
+    // string and a newline (`…string "yes", expected a boolean\nin `preserve-encodings``) — one
+    // probe covers every Debug-escaping symptom at once.
+    std::fs::write(
+        dir.join("codegen.toml"),
+        "[crates.demo]\ninput = \"spec.cddl\"\noutput = \"gen\"\npreserve-encodings = \"yes\"\n",
+    )
+    .unwrap();
+
+    let out = super::integration_tests::codegen_cmd()
+        .arg("--config")
+        .arg(dir.join("codegen.toml"))
+        .output()
+        .expect("the generator binary must be spawnable");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a config error is an ordinary failure, not a panic"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.starts_with("Error: "),
+        "the failure must be labelled, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("preserve-encodings"),
+        "the failing key must be named, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("\"yes\"") && !stderr.contains("\\\""),
+        "a quote inside the message must arrive unescaped, got: {stderr}"
+    );
+    assert!(
+        stderr.trim_end().contains('\n') && !stderr.contains("\\n"),
+        "a newline inside the message must break the line, not print as a literal `\\n`, got: {stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// An absolute path passes through untouched — a config may name a vendored runtime by absolute
 /// path, and joining it onto the config's directory would corrupt it.
 #[test]
@@ -1513,6 +1596,11 @@ fn two_crates_with_one_library_name_are_a_hard_error() {
 ///
 /// The last case is the one a naive string prefix gets wrong: `gen/alphabet` starts with the TEXT of
 /// `gen/alpha` while being its sibling, not its child, so it must be accepted.
+///
+/// A `.` or `..` in an `output` is a SPELLING of the same directory, not a different one (the
+/// derivations already treat it so), so the guard compares normalized paths — otherwise
+/// `./gen/x` vs `gen/x` walks past the copy-paste check and the second crate silently erases the
+/// first's generated tree, which is the exact destruction this guard exists for.
 #[test]
 fn two_crates_cannot_generate_into_one_directory() {
     let config = |a: &str, b: &str| {
@@ -1542,6 +1630,23 @@ fn two_crates_cannot_generate_into_one_directory() {
     );
 
     parse(&config("gen/alpha", "gen/alphabet"));
+
+    assert!(
+        error(&config("./gen/shared", "gen/shared")).contains("both generate into"),
+        "a leading `./` must not disguise an identical output"
+    );
+    assert!(
+        error(&config("gen/extra/../shared", "gen/shared")).contains("both generate into"),
+        "a `..` spelling must not disguise an identical output"
+    );
+    // `.` is the config's own directory, which contains every relative output. Checked under an
+    // absolute base directory because that is what `load` now guarantees every real run has.
+    assert!(
+        config::parse_str(&config(".", "gen/beta_out"), Path::new("/cfgroot"))
+            .expect_err("`.` contains every relative output")
+            .contains("contains"),
+        "an output of `.` must be caught as containing its sibling crates' outputs"
+    );
 }
 
 /// Selecting a subset picks WHICH crates run, never in what order, and never pulls in a dependency:
