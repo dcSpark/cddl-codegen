@@ -256,3 +256,28 @@ These constructs work as their own rule but are unsupported in the listed nestin
 The following construct post-dates cddl-codegen's target profile, so it is not counted as a support gap: Tagged data item, type-valued tag number (#6.&lt;T&gt;) (`t = #6.<n>(int); n = uint`, RFC9682).
 
 {/* END GENERATED q1-limitations */}
+
+### Reading the Behavior column: it is scoped to the top-level spelling
+
+Every row of "Unsupported constructs" above is probed as a **rule body** (`x = <construct>`), and its
+Behavior is that probe's outcome. Member position is a different question with a different answer, in
+both directions, so read a row as "unsupported *as a rule body*" rather than "unusable":
+
+* **Better as a member.** The fixed prelude constants `true`, `false`, `null` / `nil` are listed
+  above as rejected, yet they are fully supported as fixed-value members — `[x: uint, ? v: true]`,
+  `{? k: false, x: uint}` — which is what "Optional fixed-value members" at the top of this page
+  describes. A constant carries no information, so there is nothing to store as a rule body; as a
+  member it is read and verified on deserialize.
+* **Worse as a member.** A byte-string literal is listed above as rejected gracefully, and that
+  holds for `x = h'0102'` (exit 1, with a message). In member position — `[v: h'0102', x: uint]`,
+  the unkeyed `[h'0102', x: uint]`, and `{k: h'0102', j: uint}` — the generator instead **aborts**
+  (exit 101). That is a defect, not a design boundary; it is tracked in `cddl-matrix/ROADMAP.md`
+  under "A byte-string literal as a fixed MEMBER value crashes the generator".
+
+`undefined` is the one constant with no such split: it aborts in every position, which is what its
+row already reports.
+
+The "Contextual gaps" table covers only the constructs that are supported as a rule body *and*
+unsupported in some nesting role. A construct unsupported in both places appears once, above, and its
+per-role behaviour lives in the containment cells of
+[`cddl-matrix/matrix.json`](https://github.com/dcSpark/cddl-codegen/tree/master/cddl-matrix).
