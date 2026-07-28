@@ -234,6 +234,15 @@ pub struct IntermediateTypes<'a> {
     // time (`api::with_types`, alongside `mark_scope`) so the conformance oracle can root its
     // validator at the PROVABLE source rule rather than a lossy snake↔camel guess.
     rule_source_names: BTreeMap<RustIdent, String>,
+    // Idents claimed by a multi-arm group-choice arm whose record SURVIVES parsing (the
+    // non-embeddable arms — an embeddable arm's record is pulled straight back out by
+    // `remove_rust_struct` and never occupies the name). Value = the source name of the rule that
+    // owns the arm, so a later claimant's rejection can name both sides. Read together with
+    // `is_toplevel_rule` this is the full set of claimants on a Rust struct ident, which is what
+    // makes the arm-ident collision check in `parse_group_choice` order-INDEPENDENT: rule idents are
+    // all scope-marked up front (`api::with_types`, before the parse loop), and two arms claiming one
+    // name reject symmetrically whichever is parsed first.
+    group_choice_arm_claims: BTreeMap<RustIdent, String>,
     // Deferred rejections: constructs the parse walk (which returns `()` and so can't surface an
     // `Err`) recognizes as unsupported-by-design but must reject GRACEFULLY rather than `panic!`.
     // Each entry is a human-actionable message; `finalize` drains them into a single `Err` before
@@ -278,6 +287,7 @@ impl<'a> IntermediateTypes<'a> {
             rust_name_pins: BTreeMap::new(),
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
+            group_choice_arm_claims: BTreeMap::new(),
             rejections: Vec::new(),
             root_scope: ROOT_SCOPE.clone(),
         }
@@ -3595,6 +3605,48 @@ impl<'a> IntermediateTypes<'a> {
     /// the validator's synthetic root, so synthesized structs get no conformance call.
     pub fn is_toplevel_rule(&self, ident: &RustIdent) -> bool {
         self.scopes.contains_key(ident)
+    }
+
+    /// Record that a non-embeddable multi-arm group-choice arm in rule `owner` (source name) has
+    /// taken `ident` as the name of a struct that will be EMITTED. See the
+    /// `group_choice_arm_claims` field doc.
+    pub fn claim_group_choice_arm_ident(&mut self, ident: RustIdent, owner: String) {
+        self.group_choice_arm_claims.insert(ident, owner);
+    }
+
+    /// Which already-parsed rule, if any, owns an emitted group-choice arm struct named `ident`.
+    pub fn group_choice_arm_claimant(&self, ident: &RustIdent) -> Option<&str> {
+        self.group_choice_arm_claims.get(ident).map(|s| s.as_str())
+    }
+
+    /// An ident guaranteed not to name anything the IR already knows, derived deterministically from
+    /// `base`.
+    ///
+    /// A multi-arm group-choice arm's record must be built through the normal
+    /// [`Self::register_rust_struct`] path, which means occupying a name in the global maps for the
+    /// duration. When the arm's own name is already claimed, borrowing it would clobber the real
+    /// owner (and, for an embeddable arm, `remove_rust_struct` would then DELETE it), so the arm
+    /// borrows one of these instead. Nothing is ever emitted under a synthesized name: an embeddable
+    /// arm removes it again immediately, and a non-embeddable arm that needed one has, by
+    /// construction, also recorded a rejection that aborts before emission.
+    pub fn fresh_synthesized_ident(&self, base: &str) -> RustIdent {
+        let taken = |ident: &RustIdent| {
+            self.rust_structs.contains_key(ident)
+                || self.plain_groups.contains_key(ident)
+                || self.scopes.contains_key(ident)
+                || self.generic_instances.contains_key(ident)
+                || self.group_choice_arm_claims.contains_key(ident)
+                || self
+                    .type_aliases
+                    .contains_key(&AliasIdent::Rust(ident.clone()))
+        };
+        let mut candidate = RustIdent::new(CDDLIdent::new(base));
+        let mut suffix = 0u32;
+        while taken(&candidate) {
+            suffix += 1;
+            candidate = RustIdent::new(CDDLIdent::new(format!("{base}_{suffix}")));
+        }
+        candidate
     }
 
     // we need to do this for some generated intermediate structures as the parsing code

@@ -2101,6 +2101,35 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   `cargo check` probe over the compile-relevant cells only. Weigh it against the sweep's whole
   premise of cheapness (it runs in ~1 s today; a compile leg is nested-cargo-priced and would need
   the gate cache), which is why the probe is scoped to those cells rather than to the grid.
+- **Nothing asserts that two IR sites cannot mint the SAME `RustIdent`: `register_rust_struct` ends
+  in a bare map insert, so a second claimant silently overwrites the first.** Proven instance
+  (reported by a consumer as a panic, root-caused here): a multi-arm group-choice arm registers its
+  record under the arm's own name while parsing, so an arm named for an existing rule took that
+  rule's slot — then, if the arm was embeddable, `remove_rust_struct` DELETED the rule outright and
+  generation panicked at the first lookup of it. The louder half was not the panic: for a
+  non-embeddable arm the overwrite STOOD, so the rule vanished from the emitted crate, references to
+  it retargeted onto the arm's record, and two arms sharing a name emitted one struct carrying the
+  other's fields AND the other's fixed tag — a wrong-wire-shape crate that compiled clean with no
+  diagnostic. Which of the four outcomes fired was decided purely by topological rule order, so an
+  unrelated reference edge added elsewhere in the spec flipped a working spec to a broken one.
+  Standing coverage now: `arm_ident_collision` (order-independent — rule idents are all scope-marked
+  before the parse loop, and two arms reject symmetrically), the structural-equivalence door that
+  keeps benign same-shape name reuse generating, and the
+  `group_choice_arm_ident_collision_rejects_gracefully` /
+  `identical_group_choice_arms_in_different_rules_share_one_struct` /
+  `embeddable_group_choice_arm_may_share_a_rule_name` trio. That detector is arm-specific by
+  construction: the OTHER synthesizing sites (collection wrappers, generic instances, the
+  `prelude_*` rules) mint into the same namespace and are guarded, if at all, by their own bespoke
+  per-kind detectors. Working rule meanwhile: a change that mints a `RustIdent` from anything other
+  than a rule name states what it collides with and how that is detected. The mechanical layer — a
+  debug-time uniqueness assertion inside `register_rust_struct`, overwrite = panic against an
+  allowlist of the legitimate re-registration seams (`set_rep_if_plain_group` and the `finalize`
+  resolution passes rewrite in place by design) — should be armed as a DETECTOR first and its
+  allowlist sized from that arming run, since "how many overwrites are legitimate today" is exactly
+  the premise nobody has measured. Reopening signal, on the dimension the cost actually grows: a
+  THIRD minting site needing its own bespoke collision detector (two are on record — this one and
+  the wasm wrapper-name family), or any consumer reporting a declared rule absent from, or
+  wrong-shaped in, its generated crate.
 
 ## Deferred features (build when a real consumer needs them)
 
