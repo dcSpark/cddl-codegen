@@ -150,6 +150,64 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.array-element.prelude.false"
+axis = "containment"
+example = "a = [v: false, x: uint]"
+spec = "a = [v: false, x: uint]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "82f41844"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f419026e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f41903e1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f4190541"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f4190549"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f4190ac6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f4190b02"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f4190cee"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f4190f60"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82f419112c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.array-element.prelude.null"
 axis = "containment"
 example = "a = [v: null, x: uint]"
@@ -552,6 +610,64 @@ expect = "accept"
 
 [[row.vector]]
 hex = "821911cd05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.array-element.type2.value.bare_exactly_once"
+axis = "containment"
+example = "a = [5, x: uint]"
+spec = "a = [5, x: uint]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "8205188a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8205190223"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820519037c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8205190644"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8205190bc3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8205190c4c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8205190ee0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8205191112"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8205191209"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820519120b"
 source = "ruby-generate"
 expect = "accept"
 
@@ -2109,6 +2225,122 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.map-value.prelude.null"
+axis = "containment"
+example = "m = { k: null, j: uint }"
+spec = "m = { k: null, j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616bf6616a18cb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a190173"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a19050d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a1905f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a190814"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a190b4a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a190cbc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a190f21"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a191105"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf6616a1911e8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-value.prelude.true"
+axis = "containment"
+example = "m = { k: true, j: uint }"
+spec = "m = { k: true, j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616bf5616a184b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a190130"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a1901fc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a19053b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a1906e4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a190730"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a190b7d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a190dce"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a190dd4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bf5616a190f95"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.map-value.type.choice"
 axis = "containment"
 example = "m = { k: int / tstr, j: uint }"
@@ -2221,6 +2453,296 @@ expect = "accept"
 
 [[row.vector]]
 hex = "a2616bca390299616a190f49"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-value.type2.tag.fixed_bool"
+axis = "containment"
+example = "m = { k: #6.11(true), j: uint }"
+spec = "m = { k: #6.11(true), j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616bcbf5616a190136"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a1904ef"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a19070e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a190a34"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a190c2a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a190cab"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a19101c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a191042"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a19118b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bcbf5616a191226"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-value.type2.tag.fixed_null"
+axis = "containment"
+example = "m = { k: #6.1(null), j: uint }"
+spec = "m = { k: #6.1(null), j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616bc1f6616a184a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a190469"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a1905e8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a190794"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a19081c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a190895"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a190ad9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a190b66"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a190ce0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616bc1f6616a190f0c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-value.type2.value"
+axis = "containment"
+example = "m = { j: uint, k: 5 }"
+spec = "m = { j: uint, k: 5 }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616a18c7616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a1901f4616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a190319616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a19081a616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a1908bd616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a190ac1616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a190ba8616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a190d9d616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a190fcf616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616a191258616b05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-value.value.number"
+axis = "containment"
+example = "m = { k: 5, j: uint }"
+spec = "m = { k: 5, j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616b05616a190169"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a1901f7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a1902fb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a19058a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190601"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190801"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190d31"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190ddd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190e03"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190e13"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-value.value.text"
+axis = "containment"
+example = "m = { k: \"x\", j: uint }"
+spec = "m = { k: \"x\", j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616b6178616a190347"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a1906bf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a190995"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a190998"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a190ab8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a190b3f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a190f79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a19100f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a191211"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b6178616a19123c"
 source = "ruby-generate"
 expect = "accept"
 
@@ -2635,6 +3157,122 @@ expect = "accept"
 
 [[row.vector]]
 hex = "8200a46b776f726b666f7263652773190f2c6e70726f7068796c61637469632773190bf06b6865696e6f75736e6573731902db6a61647665727469736573190ebf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.type2.value.optional_keyed_array"
+axis = "containment"
+example = "a = [x: uint, ? v: 5, label: tstr]"
+spec = "a = [x: uint, ? v: 5, label: tstr]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "8218df6a63726f7373626f6e6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821902b366776f6d626174"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190337686e6f746174696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821905bf69617264756f75736c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190add6f6765726f6e746f6c6f676973742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219124266737475666673"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8319034d056c646973617373656d626c6564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "831904f7056a416c656d626572742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8319079505686f7574636f6d6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "83190f0705696c696e65616d656e74"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.type2.value.optional_keyed_map"
+axis = "containment"
+example = "m = { ? k: 5, j: uint }"
+spec = "m = { ? k: 5, j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a1616a1905e9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1616a19090e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1616a190cf3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1616a190ff7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a18ee"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a1903cb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a19060c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190a69"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a190eb3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616b05616a1910e7"
 source = "ruby-generate"
 expect = "accept"
 

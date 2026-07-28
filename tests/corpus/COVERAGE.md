@@ -385,20 +385,20 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.bytes` | · | · |  | · |  | · |  |  |  |  |
 | `prelude.decfrac` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.encoded-cbor` |  | · |  |  |  |  |  |  |  |  |
-| `prelude.false` |  | ? | ✅ |  |  |  |  | · |  |  |
+| `prelude.false` |  | ✅ | ✅ |  |  |  |  | · |  |  |
 | `prelude.float64` |  | · |  |  |  |  |  | · |  |  |
 | `prelude.int` | · | · | · | · | · | · |  | · | · |  |
 | `prelude.integer` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.mime-message` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.nint` | · | · |  |  |  | · |  |  |  |  |
-| `prelude.null` |  | ✅ | ? |  | · | ✅ |  | · |  |  |
+| `prelude.null` |  | ✅ | ✅ |  | · | ✅ |  | · |  |  |
 | `prelude.regexp` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.tdate` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.text` | · | · | · | · | · | · |  | · |  | · |
-| `prelude.true` |  | ✅ | ? |  | · |  |  | · |  |  |
+| `prelude.true` |  | ✅ | ✅ |  | · |  |  | · |  |  |
 | `prelude.tstr` |  | · | · | · |  | · |  | · |  | · |
 | `prelude.uint` | · | · | · | · | · | · |  | · |  | · |
-| `prelude.undefined` |  | ? | ? |  |  |  |  |  |  |  |
+| `prelude.undefined` |  | ➖ | ➖ |  |  |  |  |  |  |  |
 | `prelude.unsigned` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.uri` |  | · |  |  |  |  |  |  |  |  |
 | `rangeop.exclusive` |  | · |  |  | · |  |  |  |  |  |
@@ -409,13 +409,13 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `type2.array` | · | ➖ | ➖ | ➖ | ✅ | ➖ |  | ➖ | ➖ |  |
 | `type2.map` | · | ➖ | ➖ | · | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
 | `type2.parenthesized` | · | · |  |  |  |  |  |  | · |  |
-| `type2.tag` | · | ✅ | ? | ✅ | ➖ | ✅ |  | · | ✅ |  |
+| `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ✅ |  | · | ✅ |  |
 | `type2.typename` | · | · | · | · | · | · |  | · | · | · |
 | `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
-| `type2.value` | · | ? | ? | · | · | · | ✅ | ? | · | · |
-| `value.bytes` |  | ? | ? |  |  |  |  |  |  |  |
-| `value.number` | · | ✅ | ? | · | · | · |  | · | · | · |
-| `value.text` |  | ✅ | ? | · |  |  |  | · |  |  |
+| `type2.value` | · | ✅ | ✅ | · | · | · | ✅ | ◐ | · | · |
+| `value.bytes` |  | ➖ | ➖ |  |  |  |  |  |  |  |
+| `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
+| `value.text` |  | ✅ | ✅ | · |  |  |  | · |  |  |
 
 - Modelled `(role × feature)` cells: **65** (over 117 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **28**.
