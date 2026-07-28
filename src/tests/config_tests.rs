@@ -860,7 +860,7 @@ fn positional_crate_names_select_a_subset_in_config_order() {
 /// The fixture is built so both halves of that sentence can fail. `zeta` depends on `alpha`, so the
 /// generation order is `alpha` then `zeta` while the crate tables (and every `BTreeMap` behind them)
 /// are in the opposite order — a listing that simply walked the config would print them backwards.
-/// And the edge's six derived flags are ones no key in the file is NAMED after: attributing them to
+/// And every flag the edge derives is one no key in the file is NAMED after: attributing them to
 /// `extern-import`/`workspace-dep`/… would point at TOML lines that do not exist, which is the exact
 /// question the key column answers.
 #[test]
