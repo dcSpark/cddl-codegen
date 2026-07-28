@@ -504,6 +504,77 @@ fn extern_interface_v2_header_conditional_on_any() {
     }
 }
 
+/// The seam's own spelling must round-trip for a windowless `i64` — the one primitive for which it
+/// did not. A bare `int` re-parses as the reserved big-`Int` extern class (only an `int`-HEADED
+/// control op maps the spelling to the i64 primitive), so an export that spelled a dependency's
+/// `i64` alias `int` handed the consumer a DIFFERENT type than the dependency has. This is the CML
+/// `mint` shape in miniature: a full-range i64 alias in the dependency, used by the consumer as a
+/// nested map value. Pinned end to end — the dependency's own type is `i64`, the export carries the
+/// explicit full range, and the consumer that imports it types the map value through that same
+/// `i64` alias and mints no `Int` class of its own.
+#[test]
+fn extern_import_full_range_i64_round_trips_as_i64_not_int() {
+    let dep_spec = "holder = [n: non_zero_int_64]\n\
+non_zero_int_64 = -9223372036854775808..9223372036854775807\n";
+
+    // What the dependency's own crate calls the rule — the type the consumer must agree with.
+    let dep_root = scratch("i64seam_dep");
+    write(&dep_root, "lib.cddl", dep_spec);
+    let dep_rust = generate(&dep_root.join("lib.cddl"), &[]).expect("dep generation must succeed");
+    assert!(
+        dep_rust["rust/src/generated/mod.rs"].contains("pub type NonZeroInt64 = i64;"),
+        "the dependency's full-range alias is an i64: {}",
+        dep_rust["rust/src/generated/mod.rs"]
+    );
+
+    let export = mint_export(dep_spec, "dep", "i64seam");
+    let root = &export["extern-interface/dep/mod.cddl"];
+    assert!(
+        root.contains(
+            "non_zero_int_64 = -9223372036854775808..9223372036854775807 ; @rust_name NonZeroInt64"
+        ),
+        "a windowless i64 must export its explicit full range, never the bare `int` that re-parses \
+         as the big-`Int` class: {root}"
+    );
+
+    // The consumer: `{* uint => {* bytes => non_zero_int_64}}`, CML's `mint` in miniature.
+    let cons_root = scratch("i64seam_cons");
+    write(
+        &cons_root,
+        "lib.cddl",
+        "my_mint = {* uint => {* bytes => non_zero_int_64}}\n",
+    );
+    let export_dir = scratch("i64seam_export");
+    for (path, content) in &export {
+        write(&export_dir, path, content);
+    }
+    let import_arg = format!(
+        "dep={}",
+        export_dir.join("extern-interface/dep").to_str().unwrap()
+    );
+    let consumer = generate(
+        &cons_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("--extern-import generation must succeed");
+    let src = &consumer["rust/src/generated/mod.rs"];
+
+    let _ = std::fs::remove_dir_all(&dep_root);
+    let _ = std::fs::remove_dir_all(&cons_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+
+    assert!(
+        src.contains("use dep::NonZeroInt64;")
+            && src.contains("pub type MyMint = BTreeMap<u64, BTreeMap<Vec<u8>, NonZeroInt64>>;"),
+        "the consumer must type the map value through the dependency's i64 alias: {src}"
+    );
+    assert!(
+        !src.contains("pub enum Int {"),
+        "reading the export must not make the consumer mint the big-`Int` class — that is the \
+         bare-`int` misparse this spelling exists to prevent: {src}"
+    );
+}
+
 /// The plain-group acceptance criterion (the proposal's, CML-shaped): a consumer that hand-copied a
 /// dependency's plain groups swaps to `--extern-import` with ZERO generated-output diff. The dep
 /// (`dep-groups`) carries a record-member plain group, three group-choice-variant plain groups with

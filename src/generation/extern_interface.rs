@@ -424,7 +424,18 @@ fn render_primitive(rule: &str, p: Primitive, config: &RustTypeSerializeConfig) 
         Primitive::I32 => fixed_width_int(rule, "-2147483648..2147483647", bounds),
         // The wide/named integer types carry an explicit (inclusive-normalized) window.
         Primitive::U64 => render_int_bounds(rule, "uint", bounds),
-        Primitive::I64 => render_int_bounds(rule, "int", bounds),
+        // A WINDOWLESS i64 is the one primitive whose bare prelude spelling does not round-trip:
+        // `int` with no control operator re-parses as the reserved big-`Int` extern class, not as
+        // `i64` (only an `int`-HEADED range/control op maps the spelling through
+        // `ident_to_primitive` to the i64 primitive). So spell the full range explicitly — the same
+        // provably-equivalent literal-range form I8/I16/I32 use above, which the consumer's
+        // `range_to_primitive` collapses straight back to a windowless i64. A WINDOWED i64 already
+        // round-trips through the `int .ge`/`.le`/literal-range forms, so it keeps the shared path
+        // (which `uint`/`nint`, whose bare spellings DO round-trip, keep for every window).
+        Primitive::I64 => match bounds {
+            None | Some((None, None)) => Ok(format!("{}..{}", i64::MIN, i64::MAX)),
+            _ => render_int_bounds(rule, "int", bounds),
+        },
         Primitive::N64 => render_int_bounds(rule, "nint", bounds),
     }
 }
@@ -1361,7 +1372,6 @@ mod tests {
         assert_eq!(ok(&prim(Primitive::Bool), &t), "bool");
         assert_eq!(ok(&prim(Primitive::U64), &t), "uint");
         assert_eq!(ok(&prim(Primitive::N64), &t), "nint");
-        assert_eq!(ok(&prim(Primitive::I64), &t), "int");
         assert_eq!(ok(&prim(Primitive::Str), &t), "tstr");
         assert_eq!(ok(&prim(Primitive::Bytes), &t), "bytes");
         assert_eq!(ok(&prim(Primitive::F32), &t), "float32");
@@ -1379,6 +1389,39 @@ mod tests {
         assert_eq!(ok(&prim(Primitive::I8), &t), "-128..127");
         assert_eq!(ok(&prim(Primitive::I16), &t), "-32768..32767");
         assert_eq!(ok(&prim(Primitive::I32), &t), "-2147483648..2147483647");
+        // i64 joins them: its bare prelude spelling is taken by the `Int` class, so a WINDOWLESS
+        // i64 spells its range explicitly too (see `windowless_i64_renders_full_range_not_int`).
+        assert_eq!(
+            ok(&prim(Primitive::I64), &t),
+            "-9223372036854775808..9223372036854775807"
+        );
+    }
+
+    /// The seam's one non-round-tripping spelling, pinned from both sides. A windowless
+    /// `Primitive::I64` must NOT render bare `int`: the consumer re-parses an un-operated `int` as
+    /// the reserved big-`Int` extern class, so the dependency's `i64` would silently become an
+    /// `Int` across the crate boundary. The full-range literal re-parses to a windowless i64
+    /// (`range_to_primitive` collapses exactly this window). The `Int` class itself keeps rendering
+    /// bare `int` — that spelling is CORRECT for it — so the two must not converge.
+    #[test]
+    fn windowless_i64_renders_full_range_not_int() {
+        let t = IntermediateTypes::new();
+        assert_eq!(
+            ok(&prim(Primitive::I64), &t),
+            format!("{}..{}", i64::MIN, i64::MAX)
+        );
+        let int_class = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "Int",
+        ))));
+        assert_eq!(ok(&int_class, &t), "int");
+        // a WINDOWED i64 is unaffected — those forms already round-trip through an `int`-headed op
+        assert_eq!(
+            ok(&prim(Primitive::I64).with_bounds((Some(-10), None)), &t),
+            "int .ge -10"
+        );
+        // and the two spellings whose bare prelude names DO round-trip stay bare
+        assert_eq!(ok(&prim(Primitive::U64), &t), "uint");
+        assert_eq!(ok(&prim(Primitive::N64), &t), "nint");
     }
 
     // --- Integer value bounds ------------------------------------------------------------------
