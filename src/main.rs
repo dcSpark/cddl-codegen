@@ -32,7 +32,19 @@ fn main() {
     };
     if let Err(error) = result {
         eprintln!("Error: {error}");
-        std::process::exit(1);
+        // Two failures a caller must be able to tell apart, which one exit code cannot. `1` says the
+        // RUN failed: a config that would not expand, a spec that would not generate — the tool did
+        // not do what it was asked, and fixing the input is the remedy. `2` says the run did exactly
+        // what it was asked and the committed TREE it wrote into does not build; the message names
+        // the dependency to regenerate, and repeating this command settles nothing. A CI job
+        // legitimately treats those differently, and the exit code is the only channel it reads.
+        // Downcast rather than a message match, so the classification is the error's own type: a
+        // future second exit-2 condition declares itself the same way instead of by wording.
+        std::process::exit(if error.downcast_ref::<config::VerdictError>().is_some() {
+            2
+        } else {
+            1
+        });
     }
 }
 
@@ -44,10 +56,17 @@ fn generate_from_config(argv: &[String]) -> Result<(), Box<dyn std::error::Error
     config::reject_generation_flags(argv)?;
     let invocation = config::ConfigCli::parse_from(argv);
     let static_dir = invocation.static_dir.as_deref();
+    // `--with-deps` is resolved into the selection before anything else sees it, so the run, the
+    // listing, and the diagnostics that quote the selection back all mean the same set of crates.
+    let selected = if invocation.with_deps {
+        config::selection_with_deps(&invocation.config, &invocation.crates)?
+    } else {
+        invocation.crates.clone()
+    };
     if invocation.print_flags {
-        return config::print_flags(&invocation.config, &invocation.crates, static_dir);
+        return config::print_flags(&invocation.config, &selected, static_dir);
     }
-    config::generate(&invocation.config, &invocation.crates, static_dir)
+    config::generate(&invocation.config, &selected, static_dir)
 }
 
 #[cfg(test)]
