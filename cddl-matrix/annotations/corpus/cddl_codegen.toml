@@ -483,8 +483,8 @@ code_anchor = "unsupported cddl prelude type"
 [[note]]
 id = "prelude.undefined"
 status = "unsupported"
-reason = "the `undefined` simple value is rejected"
-code_anchor = "unsupported cddl prelude type"
+reason = "the `undefined` simple value has no `FixedValue` and no generated representation, so it is rejected gracefully in every position — member and rule body alike"
+code_anchor = "the CDDL prelude type `undefined`"
 
 # fixed-value simple-value types (true/false/nil) — same standalone Fixed-type gap as `null`/value literals.
 # These REJECT GRACEFULLY (they used to panic; the graceful path landed with the top-level fixed-value

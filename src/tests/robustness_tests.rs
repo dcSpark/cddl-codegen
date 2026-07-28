@@ -559,6 +559,70 @@ fn inline_group_choice_arm_rejects_gracefully() {
     }
 }
 
+/// The CDDL prelude constant `undefined` (major type 7, simple value 23) is rejected BY DESIGN, via
+/// a GRACEFUL `Err`, never a `panic!` — in EVERY position, member and rule-body alike. Unlike
+/// `null`/`true`/`false` it has no `FixedValue`, so there is no value for a member to hold and no
+/// type for a rule to name.
+///
+/// The refusal lives at `IntermediateTypes::new_type`'s unresolved-reserved fallback, the one seam
+/// every position funnels through, which is also why the message is ROLE-NEUTRAL: that seam knows
+/// the NAME, never the position it was written in. So this asserts one message text across all
+/// three vectors rather than a per-role wording.
+///
+/// The remedy it advertises is asserted honest by `all_supported_constructs_generate` (the matrix's
+/// `prelude.any` row) and by `tests/robustness/any_member.cddl` — `any` really does carry an
+/// arbitrary CBOR item, `undefined` included, in member position.
+///
+/// The top-level vector additionally emits a SECOND, cascade line: the inert `Fixed(Null)`
+/// placeholder the refusal returns reaches the bare-fixed-rule guard in `register_type_alias`. That
+/// is accepted deliberately — the `undefined` diagnosis leads, and suppressing the cascade would
+/// need either a non-inert placeholder (which cascades WORSE in a type-choice arm) or a
+/// cross-seam flag. This asserts the ORDER, so a future change that buries the real cause fails.
+#[test]
+fn undefined_prelude_rejects_gracefully_in_every_position() {
+    let vectors = [
+        ("undef_elem", "a = [v: undefined, x: uint]\n"),
+        ("undef_map_val", "m = { k: undefined, j: uint }\n"),
+        ("undef_rule_body", "x = undefined\n"),
+    ];
+    for (tag, spec) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(tag, spec, extra);
+            assert!(
+                msg.contains(
+                    "the CDDL prelude type `undefined` (major type 7, simple value 23) is \
+                              unsupported"
+                ),
+                "rejection should name the `undefined` prelude type ({tag}, {extra:?}), got: {msg}"
+            );
+            assert!(
+                msg.contains("the supported `any` type"),
+                "rejection should point at the `any` remedy ({tag}, {extra:?}), got: {msg}"
+            );
+            // The role-neutral seam can NOT name the position, so it must not pretend to.
+            assert!(
+                !msg.contains("as a member") && !msg.contains("as a rule body"),
+                "role-neutral message must not claim a position it cannot know ({tag}, {extra:?}), \
+                 got: {msg}"
+            );
+        }
+    }
+
+    // Cascade order for the rule-body vector: the real cause first, the placeholder's follow-on
+    // second.
+    let body_msg = expect_graceful_rejection("undef_rule_body_order", "x = undefined\n", &[]);
+    let cause = body_msg
+        .find("prelude type `undefined`")
+        .expect("undefined rejection must be present");
+    let cascade = body_msg
+        .find("bare fixed value")
+        .expect("the placeholder's bare-fixed cascade is expected on the rule-body vector");
+    assert!(
+        cause < cascade,
+        "the `undefined` diagnosis must lead the placeholder's cascade, got: {body_msg}"
+    );
+}
+
 /// A heterogeneous anonymous inline ARRAY in a position that requires a TYPE (`a = [[int]]`, a
 /// `.cbor` payload, a `/` choice alternative, a map key, a map value, an occurrence target) is
 /// rejected BY DESIGN — a GRACEFUL `Err`, never a `panic!`. This is the BRACKET sibling of

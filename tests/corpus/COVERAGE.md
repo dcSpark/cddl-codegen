@@ -158,7 +158,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.true` | ➖ | true | the fixed boolean `true` used as a standalone top-level type is rejected gracefully (it used to panic); a fixed value has no standalone type representation, only meaning as a struct/array member — which DOES work (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.true.cddl`. Same Fixed-type gap as `null`.  [`a top-level rule whose entire body is a bare fixed value`] |
 | `prelude.tstr` | ✅ | tstr | `prelude.cddl` |
 | `prelude.uint` | ✅ | uint | `primitives.cddl` |
-| `prelude.undefined` | ➖ | undefined | the `undefined` simple value is rejected  [`unsupported cddl prelude type`] |
+| `prelude.undefined` | ➖ | undefined | the `undefined` simple value has no `FixedValue` and no generated representation, so it is rejected gracefully in every position — member and rule body alike  [`the CDDL prelude type `undefined``] |
 | `prelude.unsigned` | ✅ | unsigned | `prelude.cddl` |
 | `prelude.uri` | ✅ | uri | `prelude.cddl` |
 

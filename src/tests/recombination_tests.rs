@@ -854,7 +854,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // entry can key on them.
     (
         "unsupported cddl prelude type:",
-        "unsupported prelude types (eb64url/eb64legacy/eb16/cbor-any/undefined); pinned by tests/matrix_panic/prelude.eb64url.cddl and siblings",
+        "unsupported prelude types (eb64url/eb64legacy/eb16/cbor-any); pinned by tests/matrix_panic/prelude.eb64url.cddl and siblings. `undefined` is NO LONGER in this class: it is refused gracefully one level up, at `new_type`'s unresolved-reserved fallback (pinned by `undefined_prelude_rejects_gracefully_in_every_position` and tests/robustness/undefined_member.cddl), so it never reaches this panic arm",
     ),
     (
         "should be handled by the alias system instead",

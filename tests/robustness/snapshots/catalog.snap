@@ -53,6 +53,7 @@ single_bareword_map_field  ok
 tagged_literal             error (graceful)
 tagged_prelude_constant    error (graceful)
 undefined_generic          error (graceful)
+undefined_member           error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)
 whitespace_only            ok

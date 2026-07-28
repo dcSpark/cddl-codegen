@@ -1849,6 +1849,30 @@ impl<'a> IntermediateTypes<'a> {
                     // We define an Int rust struct in prelude.rs
                     ConceptualRustType::Rust(RustIdent::new(raw.clone())).into()
                 }
+                // The CDDL prelude constant `undefined` (major type 7, simple value 23). Unlike
+                // `null`/`true`/`false` it has no `FixedValue` and no Rust value to store, so there
+                // is nothing for a member, an element, or a rule body to hold — refuse instead of
+                // aborting. Intercepted HERE, at the same unresolved-reserved fallback as the `any`
+                // arm above, because that is the one seam every position funnels through: a user
+                // rule literally named `undefined` still shadows it (a registered alias resolves in
+                // `resolve_alias` above and never reaches this arm), and the refusal needs the
+                // `IntermediateTypes` handle that `cddl_prelude` — a pure `&str -> Option<&str>` —
+                // does not have. The consequence is that the message is ROLE-NEUTRAL by
+                // construction: this seam knows the name, never the position it was written in.
+                // The `Fixed(FixedValue::Null)` placeholder is the inert stand-in the sibling
+                // rejections in `rust_type_from_type2` use, so the walk continues and `finalize`
+                // reports this alongside anything else it finds.
+                AliasIdent::Reserved(reserved) if reserved == "undefined" => {
+                    self.record_rejection(
+                        "the CDDL prelude type `undefined` (major type 7, simple value 23) is \
+                         unsupported — it has no representation in generated code. A position that \
+                         only needs to carry an arbitrary CBOR item (`undefined` included) can use \
+                         the supported `any` type; constraining a position specifically to \
+                         `undefined` is not supported."
+                            .to_string(),
+                    );
+                    ConceptualRustType::Fixed(FixedValue::Null).into()
+                }
                 AliasIdent::Reserved(reserved) => {
                     // we auto-include only the parts of the cddl prelude necessary (and supported)
                     cddl_prelude(reserved).unwrap_or_else(|| {
