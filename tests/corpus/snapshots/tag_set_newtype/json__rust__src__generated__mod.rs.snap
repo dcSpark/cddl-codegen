@@ -11,13 +11,17 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod non_empty;
 pub mod ordered_set;
-impl std::ops::Deref for OptOut {
+impl core::ops::Deref for OptOut {
     type Target = Vec<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -25,7 +29,7 @@ impl std::ops::Deref for OptOut {
     }
 }
 
-impl std::ops::DerefMut for OptOut {
+impl core::ops::DerefMut for OptOut {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -33,7 +37,7 @@ impl std::ops::DerefMut for OptOut {
 
 impl<'a> IntoIterator for &'a OptOut {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -42,14 +46,14 @@ impl<'a> IntoIterator for &'a OptOut {
 
 impl IntoIterator for OptOut {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl std::ops::Deref for SingleArmNeset {
+impl core::ops::Deref for SingleArmNeset {
     type Target = NonEmptyOrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -57,7 +61,7 @@ impl std::ops::Deref for SingleArmNeset {
     }
 }
 
-impl std::ops::DerefMut for SingleArmNeset {
+impl core::ops::DerefMut for SingleArmNeset {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -65,7 +69,7 @@ impl std::ops::DerefMut for SingleArmNeset {
 
 impl<'a> IntoIterator for &'a SingleArmNeset {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -74,7 +78,7 @@ impl<'a> IntoIterator for &'a SingleArmNeset {
 
 impl IntoIterator for SingleArmNeset {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -105,7 +109,7 @@ impl SingleArmNeset {
     }
 }
 
-impl std::ops::Deref for SingleArmSet {
+impl core::ops::Deref for SingleArmSet {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -113,7 +117,7 @@ impl std::ops::Deref for SingleArmSet {
     }
 }
 
-impl std::ops::DerefMut for SingleArmSet {
+impl core::ops::DerefMut for SingleArmSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -121,7 +125,7 @@ impl std::ops::DerefMut for SingleArmSet {
 
 impl<'a> IntoIterator for &'a SingleArmSet {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -130,7 +134,7 @@ impl<'a> IntoIterator for &'a SingleArmSet {
 
 impl IntoIterator for SingleArmSet {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -163,7 +167,6 @@ pub mod serialization;
 
 use crate::generated::error::*;
 use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Holder {
@@ -229,8 +232,8 @@ impl<'de> serde::de::Deserialize<'de> for OptOut {
 }
 
 impl schemars::JsonSchema for OptOut {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("OptOut")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("OptOut")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -287,8 +290,8 @@ impl<'de> serde::de::Deserialize<'de> for PlainNesetReject {
 }
 
 impl schemars::JsonSchema for PlainNesetReject {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PlainNesetReject")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PlainNesetReject")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -345,8 +348,8 @@ impl<'de> serde::de::Deserialize<'de> for PlainReject {
 }
 
 impl schemars::JsonSchema for PlainReject {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PlainReject")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PlainReject")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -403,8 +406,8 @@ impl<'de> serde::de::Deserialize<'de> for PlainTable {
 }
 
 impl schemars::JsonSchema for PlainTable {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PlainTable")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PlainTable")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -457,8 +460,8 @@ impl<'de> serde::de::Deserialize<'de> for SingleArmNeset {
 }
 
 impl schemars::JsonSchema for SingleArmNeset {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("SingleArmNeset")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("SingleArmNeset")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -511,8 +514,8 @@ impl<'de> serde::de::Deserialize<'de> for SingleArmSet {
 }
 
 impl schemars::JsonSchema for SingleArmSet {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("SingleArmSet")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("SingleArmSet")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

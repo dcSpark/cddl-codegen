@@ -1642,7 +1642,7 @@ fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() 
     for (label, line) in [
         (
             "allowlisted",
-            "warning: unused import: `std::collections::BTreeMap`\n --> src/generated/mod.rs:3:5",
+            "warning: unused import: `alloc::collections::BTreeMap`\n --> src/generated/mod.rs:3:5",
         ),
         (
             "cross-scope user type",
@@ -1701,7 +1701,7 @@ fn unused_generated_variable_scan_flags_named_binding() {
     );
     assert!(unused_generated_variable_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
     assert!(
-        unused_generated_variable_lines("warning: unused import: `std::collections::BTreeMap`")
+        unused_generated_variable_lines("warning: unused import: `alloc::collections::BTreeMap`")
             .is_empty()
     );
 }

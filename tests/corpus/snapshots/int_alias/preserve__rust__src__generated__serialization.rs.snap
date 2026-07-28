@@ -35,14 +35,14 @@ impl Deserialize for Int {
                         value: x,
                         encoding: Some(enc),
                     })
-                    .map_err(std::convert::Into::into),
+                    .map_err(core::convert::Into::into),
                 cbor_event::Type::NegativeInteger => raw
                     .negative_integer_sz()
                     .map(|(x, enc)| Self::Nint {
                         value: (-1 - x) as u64,
                         encoding: Some(enc),
                     })
-                    .map_err(std::convert::Into::into),
+                    .map_err(core::convert::Into::into),
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()

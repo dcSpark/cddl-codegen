@@ -11,6 +11,9 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
@@ -20,7 +23,6 @@ pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use cbor_encodings::CborPayloadNestedEncoding;
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct CborPayloadNested {

@@ -11,6 +11,10 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod any_cbor;
 pub mod error;
 mod extern_interface_check;
@@ -18,7 +22,6 @@ pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod serialization;
 
-use std::collections::BTreeMap;
 
 impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
     fn from(wrapper: Tagged) -> Self {
@@ -201,8 +204,8 @@ impl<'de> serde::de::Deserialize<'de> for Tagged {
 }
 
 impl schemars::JsonSchema for Tagged {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("Tagged")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("Tagged")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

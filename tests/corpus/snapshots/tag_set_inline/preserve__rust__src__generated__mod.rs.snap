@@ -11,12 +11,15 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 pub mod ordered_set;
 extern crate derivative;
 mod extern_interface_check;
-impl std::ops::Deref for SetText {
+impl core::ops::Deref for SetText {
     type Target = OrderedSet<String>;
 
     fn deref(&self) -> &Self::Target {
@@ -24,7 +27,7 @@ impl std::ops::Deref for SetText {
     }
 }
 
-impl std::ops::DerefMut for SetText {
+impl core::ops::DerefMut for SetText {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -32,7 +35,7 @@ impl std::ops::DerefMut for SetText {
 
 impl<'a> IntoIterator for &'a SetText {
     type Item = &'a String;
-    type IntoIter = std::slice::Iter<'a, String>;
+    type IntoIter = core::slice::Iter<'a, String>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -41,7 +44,7 @@ impl<'a> IntoIterator for &'a SetText {
 
 impl IntoIterator for SetText {
     type Item = String;
-    type IntoIter = std::vec::IntoIter<String>;
+    type IntoIter = alloc::vec::IntoIter<String>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<String>::from(self.inner).into_iter()
@@ -70,7 +73,7 @@ impl SetText {
     }
 }
 
-impl std::ops::Deref for SetU64 {
+impl core::ops::Deref for SetU64 {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -78,7 +81,7 @@ impl std::ops::Deref for SetU64 {
     }
 }
 
-impl std::ops::DerefMut for SetU64 {
+impl core::ops::DerefMut for SetU64 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -86,7 +89,7 @@ impl std::ops::DerefMut for SetU64 {
 
 impl<'a> IntoIterator for &'a SetU64 {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -95,7 +98,7 @@ impl<'a> IntoIterator for &'a SetU64 {
 
 impl IntoIterator for SetU64 {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()

@@ -11,6 +11,9 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
@@ -26,7 +29,6 @@ use cbor_encodings::{
     ClippyWrappedMapEncoding, DeeplyNestedEncoding, FooEncoding, MixedLenKeysEncoding,
     PlainEncoding, String32Encoding, String64Encoding, TableArrMembersEncoding, TaggedTextEncoding,
 };
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct Bar {

@@ -12,14 +12,21 @@ use super::ordered_hash_map::OrderedHashMap;
 pub mod natural_any_cbor_orderedmap {
     use super::OrderedHashMap;
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
-    use std::collections::BTreeMap;
+    // `super::alloc`, not `alloc`: a file-top `extern crate alloc;` binds the crate name in the
+    // FILE's module, and a nested inline module does not inherit that binding (a bare
+    // `use alloc::…` here is E0433). This is the bounded hand-written exception to "static
+    // sources carry no alloc imports" — the alloc-import injector deliberately does not scan
+    // nested module bodies, because a file-top import it added for them would be unused at file
+    // scope and still would not resolve in here. The injector DOES count this `super::alloc`
+    // reference when deciding to emit the file-top `extern crate alloc;` this resolves through.
+    use super::alloc::collections::BTreeMap;
 
     pub fn serialize<K, S>(
         value: &OrderedHashMap<K, AnyCbor>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
-        K: serde::Serialize + std::hash::Hash + Eq + Ord,
+        K: serde::Serialize + core::hash::Hash + Eq + Ord,
         S: serde::Serializer,
     {
         let sorted: BTreeMap<&K, NaturalAnyCborSer> =
@@ -29,7 +36,7 @@ pub mod natural_any_cbor_orderedmap {
 
     pub fn deserialize<'de, K, D>(deserializer: D) -> Result<OrderedHashMap<K, AnyCbor>, D::Error>
     where
-        K: serde::Deserialize<'de> + std::hash::Hash + Eq + Ord,
+        K: serde::Deserialize<'de> + core::hash::Hash + Eq + Ord,
         D: serde::Deserializer<'de>,
     {
         let map =
@@ -43,14 +50,14 @@ pub mod natural_any_cbor_orderedmap {
 pub mod natural_any_cbor_opt_orderedmap {
     use super::OrderedHashMap;
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
-    use std::collections::BTreeMap;
+    use super::alloc::collections::BTreeMap;
 
     pub fn serialize<K, S>(
         value: &Option<OrderedHashMap<K, AnyCbor>>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
-        K: serde::Serialize + std::hash::Hash + Eq + Ord,
+        K: serde::Serialize + core::hash::Hash + Eq + Ord,
         S: serde::Serializer,
     {
         match value {
@@ -67,7 +74,7 @@ pub mod natural_any_cbor_opt_orderedmap {
         deserializer: D,
     ) -> Result<Option<OrderedHashMap<K, AnyCbor>>, D::Error>
     where
-        K: serde::Deserialize<'de> + std::hash::Hash + Eq + Ord,
+        K: serde::Deserialize<'de> + core::hash::Hash + Eq + Ord,
         D: serde::Deserializer<'de>,
     {
         let opt = <Option<BTreeMap<K, NaturalAnyCborDe>> as serde::Deserialize>::deserialize(

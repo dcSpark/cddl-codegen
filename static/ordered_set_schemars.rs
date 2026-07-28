@@ -1,5 +1,5 @@
 impl<T: schemars::JsonSchema> schemars::JsonSchema for OrderedSet<T> {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
         format!("OrderedSet<{}>", T::schema_name()).into()
     }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -16,7 +16,7 @@ impl<T: schemars::JsonSchema> schemars::JsonSchema for OrderedSet<T> {
 }
 
 impl<T: schemars::JsonSchema> schemars::JsonSchema for NonEmptyOrderedSet<T> {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
         format!("NonEmptyOrderedSet<{}>", T::schema_name()).into()
     }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

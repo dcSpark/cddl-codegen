@@ -10,8 +10,8 @@ pub enum Key {
     Bool(bool),
 }
 
-impl std::fmt::Display for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Key {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Key::Str(x) => write!(f, "\"{}\"", x),
             Key::Uint(x) => write!(f, "{}", x),
@@ -40,7 +40,7 @@ pub enum DeserializeFailure {
         limit: usize,
     },
     /// Invalid internal structure imposed on top of the CBOR format
-    InvalidStructure(Box<dyn std::error::Error>),
+    InvalidStructure(Box<dyn core::error::Error>),
     MandatoryFieldMissing(Key),
     NoVariantMatched,
     NoVariantMatchedWithCauses(Vec<DeserializeError>),
@@ -96,8 +96,8 @@ impl DeserializeError {
         }
     }
 
-    fn fmt_indent(&self, f: &mut std::fmt::Formatter<'_>, indent: u32) -> std::fmt::Result {
-        use std::fmt::Display;
+    fn fmt_indent(&self, f: &mut core::fmt::Formatter<'_>, indent: u32) -> core::fmt::Result {
+        use core::fmt::Display;
         for _ in 0..indent {
             write!(f, "\t")?;
         }
@@ -157,10 +157,10 @@ impl DeserializeError {
     }
 }
 
-impl std::error::Error for DeserializeError {}
+impl core::error::Error for DeserializeError {}
 
-impl std::fmt::Display for DeserializeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.fmt_indent(f, 0)
     }
 }

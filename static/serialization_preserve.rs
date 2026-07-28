@@ -146,9 +146,9 @@ impl From<cbor_event::StringLenSz> for StringEncoding {
 /// canonical key merge all call it, and it is the runtime twin of the
 /// codegen-time `RustRecord::canonical_ordering` (pinned to agree by a divergence test vector, e.g.
 /// key `24` = `0x1818` vs `10` = `0x0a`, where the shorter encoding is bytewise-greater).
-pub fn cbor_canonical_key_cmp(lhs: &[u8], rhs: &[u8]) -> std::cmp::Ordering {
+pub fn cbor_canonical_key_cmp(lhs: &[u8], rhs: &[u8]) -> core::cmp::Ordering {
     match lhs.len().cmp(&rhs.len()) {
-        std::cmp::Ordering::Equal => lhs.cmp(rhs),
+        core::cmp::Ordering::Equal => lhs.cmp(rhs),
         diff_ord => diff_ord,
     }
 }

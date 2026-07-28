@@ -251,9 +251,12 @@ fn composed_runtime_static_files(
             )?);
         }
         if cli.preserve_encodings {
+            // The first pattern is a BYTE-EXACT match on an import line in
+            // `static/non_empty_map.rs` — the two must move together or this silently becomes a
+            // no-op and the flavored file keeps an import of a type it no longer names.
             non_empty_map_rs = non_empty_map_rs
                 .replace(
-                    "use std::collections::BTreeMap;",
+                    "use alloc::collections::BTreeMap;",
                     "use super::ordered_hash_map::OrderedHashMap;",
                 )
                 .replace("K: Ord", "K: Ord + core::hash::Hash + Eq")
@@ -753,6 +756,10 @@ impl GenerationScope {
             {
                 files.insert(path, rustfmt_generated_string(&pruned)?.into_owned());
             }
+            // The rebuild REPLACED `generated_files`' already-injected serialization.rs with a
+            // version carrying the static prelude, so its alloc imports have to be recomputed
+            // against that content (the prelude is most of what needs them).
+            crate::alloc_import_inject::inject_generated_files(&mut files);
         }
 
         // Manifests merge into whatever is already on disk (the declarative changeset) rather than
@@ -848,6 +855,12 @@ impl GenerationScope {
             {
                 files.insert(path, rustfmt_generated_string(&pruned)?.into_owned());
             }
+            // Recompute the alloc imports too: a `cddl-codegen:replace` block can remove the last
+            // user of a name (orphaning an import — an unused-import warning) or introduce a new one
+            // (a missing import — an error). The injector's lines are exact known strings, so this
+            // recompute both ADDS and REMOVES soundly, which is what lets it cover the trait
+            // imports the pruner must never touch.
+            crate::alloc_import_inject::inject_generated_files(&mut files);
         }
 
         // Every generated-tree `.rs` written this run, so the stale-file scan below can tell an
@@ -930,8 +943,17 @@ impl GenerationScope {
         // `[+ T]` / `{+ k => v}`. `--wrapper-requests`: a dep hosting a requested NonEmpty wrapper
         // needs the runtime file even when its own spec has none. These composed statics are NOT in
         // the generated-file `files` map, so they miss the map-level overlay + re-prune above and get
-        // their comment preservation per file here via `write_rs_with_preserve` — sound because they
-        // carry no prunable imports (nothing to re-prune), so per-file preservation is complete.
+        // their comment preservation per file here via `write_rs_with_preserve`. That per-file
+        // preservation is complete because they carry no PRUNABLE imports — nothing here can orphan
+        // an import in a sibling, which is the only thing the map-level re-prune exists for.
+        //
+        // They DO carry alloc imports, but those are not prunable state: the injector below owns
+        // them and recomputes them from each file's own final composed content, immediately before
+        // the write. The `static/*.rs` sources therefore hold no hand-written alloc imports of their
+        // own (with one bounded exception — the nested inline `natural_any_cbor_*` adapters, which a
+        // file-top import cannot reach; see the injector's module docs). A consumer edit that
+        // orphans one of these imports surfaces as an unused-import warning in THEIR crate, which is
+        // the documented limit for this write path.
         if cli.export_static_files() {
             let runtime_files = composed_runtime_static_files(
                 cli,
@@ -945,7 +967,8 @@ impl GenerationScope {
             for (filename, content) in &runtime_files {
                 let rel_path = format!("rust/src/generated/{filename}");
                 let path = rust_dir.join(&rel_path);
-                write_rs_with_preserve(&path, &rel_path, content, cli.preserve_comments)?;
+                let content = crate::alloc_import_inject::inject(content);
+                write_rs_with_preserve(&path, &rel_path, &content, cli.preserve_comments)?;
                 written_generated_rs.insert(path);
             }
         }
@@ -1023,7 +1046,11 @@ impl GenerationScope {
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
                 let is_new = !path.exists();
-                write_rs_with_preserve(&path, filename, content, cli.preserve_comments)?;
+                // Same injection as the in-crate write above: these files land in a HAND-OWNED
+                // crate root that this tool never writes, so they cannot rely on a root
+                // `extern crate alloc;` and must carry their own alloc imports as written output.
+                let content = crate::alloc_import_inject::inject(content);
+                write_rs_with_preserve(&path, filename, &content, cli.preserve_comments)?;
                 warn_new_static_file(is_new, filename);
             }
             // serialization.rs — the static prelude only. `export_raw_bytes_encoding_trait` is
@@ -1041,6 +1068,9 @@ impl GenerationScope {
                  use cbor_event::se::Serializer;\n\n{}",
                 Self::serialization_prelude(true, cli)?
             );
+            let prelude =
+                crate::alloc_import_inject::inject(rustfmt_generated_string(&prelude)?.as_ref())
+                    .into_owned();
             let serialization_path = export_dir.join("serialization.rs");
             let serialization_is_new = !serialization_path.exists();
             write_rs_with_preserve(
@@ -2044,6 +2074,12 @@ impl GenerationScope {
             let formatted = rustfmt_generated_string(&pruned)?.into_owned();
             out.insert(path, formatted);
         }
+
+        // Alloc-import injection, AFTER the prune: the injector is a pure function of the FINAL
+        // content, and running it last means the prune never sees injector-owned lines (their
+        // conditions are disjoint either way — see the injector's module docs — so this is about
+        // keeping each pass's input obvious, not about avoiding a fight).
+        crate::alloc_import_inject::inject_generated_files(&mut out);
 
         Ok(out)
     }

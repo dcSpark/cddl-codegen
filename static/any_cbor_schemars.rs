@@ -8,7 +8,7 @@
 // compiles under `--json-schema-export` even when `--json-serde-derives` is off (serde_json is only
 // a direct dep under the serde flag).
 impl schemars::JsonSchema for AnyCbor {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
         "AnyCbor".into()
     }
 

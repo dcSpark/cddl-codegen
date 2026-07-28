@@ -1,5 +1,5 @@
 impl<T: schemars::JsonSchema> schemars::JsonSchema for NonEmptyVec<T> {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
         format!("NonEmptyVec<{}>", T::schema_name()).into()
     }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

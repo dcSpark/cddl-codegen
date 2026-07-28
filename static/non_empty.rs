@@ -72,13 +72,13 @@ impl<T> NonEmptyVec<T> {
         &self.0[0]
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.0.iter()
     }
 
     /// Mutable iteration over elements. A slice iterator cannot change the length, so the invariant
     /// is preserved (the largest mutable view the invariant cannot see).
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+    pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
         self.0.iter_mut()
     }
 
@@ -121,7 +121,7 @@ impl<T> AsRef<[T]> for NonEmptyVec<T> {
     }
 }
 
-impl<T> std::ops::Index<usize> for NonEmptyVec<T> {
+impl<T> core::ops::Index<usize> for NonEmptyVec<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -129,7 +129,7 @@ impl<T> std::ops::Index<usize> for NonEmptyVec<T> {
     }
 }
 
-impl<T> std::ops::IndexMut<usize> for NonEmptyVec<T> {
+impl<T> core::ops::IndexMut<usize> for NonEmptyVec<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
@@ -137,7 +137,7 @@ impl<T> std::ops::IndexMut<usize> for NonEmptyVec<T> {
 
 impl<'a, T> IntoIterator for &'a NonEmptyVec<T> {
     type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
+    type IntoIter = core::slice::Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()

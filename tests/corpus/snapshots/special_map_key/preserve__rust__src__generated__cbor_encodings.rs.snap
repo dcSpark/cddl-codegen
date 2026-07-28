@@ -5,8 +5,9 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
 use crate::generated::serialization::LenEncoding;
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
 pub struct BkeyHolderEncoding {

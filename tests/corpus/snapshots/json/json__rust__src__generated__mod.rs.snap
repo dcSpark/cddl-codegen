@@ -11,6 +11,11 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -26,7 +31,6 @@ use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_set::OrderedSet;
 use crate::generated::pair_map::{NonEmptyPairMap, PairMap};
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct BytesWrapper(pub(crate) Vec<u8>);
@@ -75,8 +79,8 @@ impl<'de> serde::de::Deserialize<'de> for BytesWrapper {
 }
 
 impl schemars::JsonSchema for BytesWrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("BytesWrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("BytesWrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -163,8 +167,8 @@ impl<'de> serde::de::Deserialize<'de> for I16Wrapper {
 }
 
 impl schemars::JsonSchema for I16Wrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("I16Wrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("I16Wrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -232,8 +236,8 @@ impl<'de> serde::de::Deserialize<'de> for I64Wrapper {
 }
 
 impl schemars::JsonSchema for I64Wrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("I64Wrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("I64Wrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -266,15 +270,15 @@ impl<'de> serde::de::Deserialize<'de> for Int {
         D: serde::de::Deserializer<'de>,
     {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        std::str::FromStr::from_str(&s).map_err(|_e| {
+        core::str::FromStr::from_str(&s).map_err(|_e| {
             serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid Int")
         })
     }
 }
 
 impl schemars::JsonSchema for Int {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("Int")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("Int")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -297,8 +301,8 @@ impl Int {
     }
 }
 
-impl std::fmt::Display for Int {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Uint(x) => write!(f, "{}", x),
             Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
@@ -306,7 +310,7 @@ impl std::fmt::Display for Int {
     }
 }
 
-impl std::str::FromStr for Int {
+impl core::str::FromStr for Int {
     type Err = IntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -316,7 +320,7 @@ impl std::str::FromStr for Int {
 }
 
 impl TryFrom<i128> for Int {
-    type Error = std::num::TryFromIntError;
+    type Error = core::num::TryFromIntError;
 
     fn try_from(x: i128) -> Result<Self, Self::Error> {
         if x >= 0 {
@@ -335,8 +339,8 @@ impl From<IntWrapper> for Int {
 
 #[derive(Clone, Debug)]
 pub enum IntError {
-    Bounds(std::num::TryFromIntError),
-    Parsing(std::num::ParseIntError),
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
 }
 
 #[derive(Clone, Debug)]
@@ -378,8 +382,8 @@ impl<'de> serde::de::Deserialize<'de> for IntWrapper {
 }
 
 impl schemars::JsonSchema for IntWrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("IntWrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("IntWrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -466,8 +470,8 @@ impl<'de> serde::de::Deserialize<'de> for NintWrapper {
 }
 
 impl schemars::JsonSchema for NintWrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("NintWrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("NintWrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -545,8 +549,8 @@ impl<'de> serde::de::Deserialize<'de> for StrWrapper {
 }
 
 impl schemars::JsonSchema for StrWrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("StrWrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("StrWrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -603,8 +607,8 @@ impl<'de> serde::de::Deserialize<'de> for StructWrapper {
 }
 
 impl schemars::JsonSchema for StructWrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("StructWrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("StructWrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -674,8 +678,8 @@ impl<'de> serde::de::Deserialize<'de> for U64Wrapper {
 }
 
 impl schemars::JsonSchema for U64Wrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("U64Wrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("U64Wrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -743,8 +747,8 @@ impl<'de> serde::de::Deserialize<'de> for U8Wrapper {
 }
 
 impl schemars::JsonSchema for U8Wrapper {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("U8Wrapper")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("U8Wrapper")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

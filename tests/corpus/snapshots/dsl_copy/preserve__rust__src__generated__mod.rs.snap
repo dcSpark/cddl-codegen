@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
@@ -26,7 +28,6 @@ pub use crate::Hash;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::StringEncoding;
 use cbor_encodings::RecordEncoding;
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub enum Choice {

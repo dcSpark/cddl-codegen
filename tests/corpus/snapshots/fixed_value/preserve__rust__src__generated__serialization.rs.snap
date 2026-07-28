@@ -5,6 +5,8 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+extern crate alloc;
+use alloc::string::String;
 use super::cbor_encodings::*;
 use super::*;
 use crate::generated::error::*;

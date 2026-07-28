@@ -1,5 +1,5 @@
 impl<K: Ord + schemars::JsonSchema, V: schemars::JsonSchema> schemars::JsonSchema for NonEmptyMap<K, V> {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
         format!("NonEmptyMap<{}, {}>", K::schema_name(), V::schema_name()).into()
     }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

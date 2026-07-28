@@ -11,12 +11,15 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod any_cbor;
 pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-use std::collections::BTreeMap;
 
 impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
     fn from(wrapper: Tagged) -> Self {

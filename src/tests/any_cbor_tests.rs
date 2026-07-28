@@ -955,6 +955,13 @@ mod json_non_preserve {
         () => {};
     }
     include!("../../static/any_cbor_non_preserve.rs");
+    // The composed `any_cbor.rs` these fragments model gets a file-top `extern crate alloc;` from
+    // the alloc-import injector at write time; this harness module is assembled by `include!`
+    // instead, so it declares the same binding by hand. It is load-bearing, not cosmetic: the
+    // fragment's nested `natural_any_cbor_*` adapters resolve their collections through
+    // `super::alloc`, which needs an `alloc` item in THIS module (a crate-root `extern crate` does
+    // not satisfy a `super::`-qualified path).
+    extern crate alloc;
     include!("../../static/any_cbor_json.rs");
 
     fn j(v: &AnyCbor) -> String {
@@ -1460,6 +1467,13 @@ mod json_preserve {
     }
     include!("../../static/any_cbor_preserve.rs");
     include!("../../static/any_cbor_preserve_force_canonical.rs");
+    // The composed `any_cbor.rs` these fragments model gets a file-top `extern crate alloc;` from
+    // the alloc-import injector at write time; this harness module is assembled by `include!`
+    // instead, so it declares the same binding by hand. It is load-bearing, not cosmetic: the
+    // fragment's nested `natural_any_cbor_*` adapters resolve their collections through
+    // `super::alloc`, which needs an `alloc` item in THIS module (a crate-root `extern crate` does
+    // not satisfy a `super::`-qualified path).
+    extern crate alloc;
     include!("../../static/any_cbor_json.rs");
 
     /// Encodings NEVER appear in JSON: two representationally-UNEQUAL preserve values (`0x01` vs

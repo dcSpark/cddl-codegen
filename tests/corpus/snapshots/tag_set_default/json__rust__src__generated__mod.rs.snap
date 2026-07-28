@@ -11,13 +11,15 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod non_empty;
 pub mod ordered_set;
-impl std::ops::Deref for DefaultNeset {
+impl core::ops::Deref for DefaultNeset {
     type Target = NonEmptyOrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -25,7 +27,7 @@ impl std::ops::Deref for DefaultNeset {
     }
 }
 
-impl std::ops::DerefMut for DefaultNeset {
+impl core::ops::DerefMut for DefaultNeset {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -33,7 +35,7 @@ impl std::ops::DerefMut for DefaultNeset {
 
 impl<'a> IntoIterator for &'a DefaultNeset {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -42,7 +44,7 @@ impl<'a> IntoIterator for &'a DefaultNeset {
 
 impl IntoIterator for DefaultNeset {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -71,7 +73,7 @@ impl DefaultNeset {
     }
 }
 
-impl std::ops::Deref for DefaultSet {
+impl core::ops::Deref for DefaultSet {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -79,7 +81,7 @@ impl std::ops::Deref for DefaultSet {
     }
 }
 
-impl std::ops::DerefMut for DefaultSet {
+impl core::ops::DerefMut for DefaultSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -87,7 +89,7 @@ impl std::ops::DerefMut for DefaultSet {
 
 impl<'a> IntoIterator for &'a DefaultSet {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -96,7 +98,7 @@ impl<'a> IntoIterator for &'a DefaultSet {
 
 impl IntoIterator for DefaultSet {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -125,7 +127,7 @@ impl DefaultSet {
     }
 }
 
-impl std::ops::Deref for OptOut {
+impl core::ops::Deref for OptOut {
     type Target = Vec<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -133,7 +135,7 @@ impl std::ops::Deref for OptOut {
     }
 }
 
-impl std::ops::DerefMut for OptOut {
+impl core::ops::DerefMut for OptOut {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -141,7 +143,7 @@ impl std::ops::DerefMut for OptOut {
 
 impl<'a> IntoIterator for &'a OptOut {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -150,14 +152,14 @@ impl<'a> IntoIterator for &'a OptOut {
 
 impl IntoIterator for OptOut {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl std::ops::Deref for SingleArm {
+impl core::ops::Deref for SingleArm {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -165,7 +167,7 @@ impl std::ops::Deref for SingleArm {
     }
 }
 
-impl std::ops::DerefMut for SingleArm {
+impl core::ops::DerefMut for SingleArm {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -173,7 +175,7 @@ impl std::ops::DerefMut for SingleArm {
 
 impl<'a> IntoIterator for &'a SingleArm {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -182,7 +184,7 @@ impl<'a> IntoIterator for &'a SingleArm {
 
 impl IntoIterator for SingleArm {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -257,8 +259,8 @@ impl<'de> serde::de::Deserialize<'de> for DefaultNeset {
 }
 
 impl schemars::JsonSchema for DefaultNeset {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("DefaultNeset")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("DefaultNeset")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -311,8 +313,8 @@ impl<'de> serde::de::Deserialize<'de> for DefaultSet {
 }
 
 impl schemars::JsonSchema for DefaultSet {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("DefaultSet")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("DefaultSet")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -379,8 +381,8 @@ impl<'de> serde::de::Deserialize<'de> for OptOut {
 }
 
 impl schemars::JsonSchema for OptOut {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("OptOut")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("OptOut")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -433,8 +435,8 @@ impl<'de> serde::de::Deserialize<'de> for SingleArm {
 }
 
 impl schemars::JsonSchema for SingleArm {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("SingleArm")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("SingleArm")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

@@ -585,7 +585,18 @@ pub fn ops_for_rust(
         key_path(&["dependencies", "linked-hash-map"]),
         ManifestOp::Remove,
     ));
-    ops.push(dep("derivative", "\"2.2.0\"", cli.preserve_encodings));
+    // `use_core`: derivative's default expansions hardcode `::std::` paths, so the derived
+    // `Eq`/`PartialEq`/`Ord`/`PartialOrd`/`Hash` impls the `@used_as_key` flavors emit do not
+    // resolve in a crate without `std` in scope. The feature switches those expansions to
+    // `::core::`, and it is safe to ship UNCONDITIONALLY: `::core::` resolves identically in a
+    // plain-std crate, so no consumer sees a behaviour change. Probed on the complete set of
+    // derivative attribute forms this generator emits (7 attribute bodies × 3 `#[derive]` lines),
+    // green on both a no-std target and the host.
+    ops.push(dep(
+        "derivative",
+        "{ version = \"2.2.0\", features = [\"use_core\"] }",
+        cli.preserve_encodings,
+    ));
     ops.push(dep(
         "serde",
         "{ version = \"1.0\", features = [\"derive\"] }",
@@ -927,12 +938,16 @@ anyhow = \"1\"
 [dependencies]
 cbor_event = \"2.4.0\"
 hashlink = \"0.12.1\"
-derivative = \"2.2.0\"
+derivative = { version = \"2.2.0\", features = [\"use_core\"] }
 ";
         // now regenerated WITHOUT the flag: those deps become Remove ops
         let ops = vec![
             dep("hashlink", "\"0.12.1\"", false),
-            dep("derivative", "\"2.2.0\"", false),
+            dep(
+                "derivative",
+                "{ version = \"2.2.0\", features = [\"use_core\"] }",
+                false,
+            ),
         ];
         let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
         assert!(!out.contains("hashlink"));

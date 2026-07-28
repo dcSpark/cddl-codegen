@@ -121,7 +121,7 @@ struct AnyCborJsonVisitor;
 impl<'de> serde::de::Visitor<'de> for AnyCborJsonVisitor {
     type Value = AnyCbor;
 
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.write_str("a single-key CBOR-tagged JSON object (e.g. {\"uint\": 5})")
     }
 
@@ -238,8 +238,8 @@ use super::json_value_ser::{serialize_json_value, JsonValueSer};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnyToNaturalJsonError(pub String);
 
-impl std::fmt::Display for AnyToNaturalJsonError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for AnyToNaturalJsonError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(
             f,
             "AnyCbor value has no natural JSON representation: {}",
@@ -248,7 +248,7 @@ impl std::fmt::Display for AnyToNaturalJsonError {
     }
 }
 
-impl std::error::Error for AnyToNaturalJsonError {}
+impl core::error::Error for AnyToNaturalJsonError {}
 
 /// The natural-JSON string form of an `any` MAP KEY (used both for a key's object-property name and
 /// for collision detection): text verbatim, uint/nint in decimal. Any other kind (bytes, array,
@@ -308,7 +308,7 @@ pub fn to_natural_json(value: &AnyCbor) -> Result<serde_json::Value, AnyToNatura
             // Determinism + collision detection: a `BTreeSet` of stringified keys. Two keys that
             // stringify identically (uint `12` + text `"12"`, or two equal keys) are a collision →
             // strict-fail (RFC 8949 §6.1's "danger of key collision"): our JSON feeds a symmetric read.
-            let mut seen = std::collections::BTreeSet::new();
+            let mut seen = alloc::collections::BTreeSet::new();
             for (key, val) in pairs {
                 let key_string = any_cbor_natural_key_string(key)?;
                 if !seen.insert(key_string.clone()) {
@@ -481,7 +481,14 @@ pub mod natural_any_cbor_seq {
 /// only the VALUE flips to natural. Generic over `K` so one module serves every key type.
 pub mod natural_any_cbor_btreemap {
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
-    use std::collections::BTreeMap;
+    // `super::alloc`, not `alloc`: a file-top `extern crate alloc;` binds the crate name in the
+    // FILE's module, and a nested inline module does not inherit that binding (a bare
+    // `use alloc::…` here is E0433). This is the bounded hand-written exception to "static
+    // sources carry no alloc imports" — the alloc-import injector deliberately does not scan
+    // nested module bodies, because a file-top import it added for them would be unused at file
+    // scope and still would not resolve in here. The injector DOES count this `super::alloc`
+    // reference when deciding to emit the file-top `extern crate alloc;` this resolves through.
+    use super::alloc::collections::BTreeMap;
 
     pub fn serialize<K, S>(value: &BTreeMap<K, AnyCbor>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -534,7 +541,7 @@ pub mod natural_any_cbor_opt_seq {
 /// `Option<BTreeMap<K, AnyCbor>>`), paired with `#[serde(default)]`.
 pub mod natural_any_cbor_opt_btreemap {
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
-    use std::collections::BTreeMap;
+    use super::alloc::collections::BTreeMap;
 
     pub fn serialize<K, S>(
         value: &Option<BTreeMap<K, AnyCbor>>,

@@ -11,12 +11,14 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 pub mod ordered_set;
 extern crate derivative;
 mod extern_interface_check;
-impl std::ops::Deref for ElemTagged {
+impl core::ops::Deref for ElemTagged {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -24,7 +26,7 @@ impl std::ops::Deref for ElemTagged {
     }
 }
 
-impl std::ops::DerefMut for ElemTagged {
+impl core::ops::DerefMut for ElemTagged {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -32,7 +34,7 @@ impl std::ops::DerefMut for ElemTagged {
 
 impl<'a> IntoIterator for &'a ElemTagged {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -41,7 +43,7 @@ impl<'a> IntoIterator for &'a ElemTagged {
 
 impl IntoIterator for ElemTagged {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()
@@ -70,7 +72,7 @@ impl ElemTagged {
     }
 }
 
-impl std::ops::Deref for HeterogeneousSet {
+impl core::ops::Deref for HeterogeneousSet {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -78,7 +80,7 @@ impl std::ops::Deref for HeterogeneousSet {
     }
 }
 
-impl std::ops::DerefMut for HeterogeneousSet {
+impl core::ops::DerefMut for HeterogeneousSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -86,7 +88,7 @@ impl std::ops::DerefMut for HeterogeneousSet {
 
 impl<'a> IntoIterator for &'a HeterogeneousSet {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -95,7 +97,7 @@ impl<'a> IntoIterator for &'a HeterogeneousSet {
 
 impl IntoIterator for HeterogeneousSet {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()
@@ -124,7 +126,7 @@ impl HeterogeneousSet {
     }
 }
 
-impl std::ops::Deref for HomogeneousInner {
+impl core::ops::Deref for HomogeneousInner {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -132,7 +134,7 @@ impl std::ops::Deref for HomogeneousInner {
     }
 }
 
-impl std::ops::DerefMut for HomogeneousInner {
+impl core::ops::DerefMut for HomogeneousInner {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -140,7 +142,7 @@ impl std::ops::DerefMut for HomogeneousInner {
 
 impl<'a> IntoIterator for &'a HomogeneousInner {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -149,7 +151,7 @@ impl<'a> IntoIterator for &'a HomogeneousInner {
 
 impl IntoIterator for HomogeneousInner {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()

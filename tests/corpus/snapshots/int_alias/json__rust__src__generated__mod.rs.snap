@@ -11,13 +11,16 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::string::ToString;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod serialization;
 
-use std::collections::BTreeMap;
 
 pub type BareInt = Int;
 
@@ -46,15 +49,15 @@ impl<'de> serde::de::Deserialize<'de> for Int {
         D: serde::de::Deserializer<'de>,
     {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        std::str::FromStr::from_str(&s).map_err(|_e| {
+        core::str::FromStr::from_str(&s).map_err(|_e| {
             serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid Int")
         })
     }
 }
 
 impl schemars::JsonSchema for Int {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("Int")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("Int")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -77,8 +80,8 @@ impl Int {
     }
 }
 
-impl std::fmt::Display for Int {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Uint(x) => write!(f, "{}", x),
             Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
@@ -86,7 +89,7 @@ impl std::fmt::Display for Int {
     }
 }
 
-impl std::str::FromStr for Int {
+impl core::str::FromStr for Int {
     type Err = IntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -96,7 +99,7 @@ impl std::str::FromStr for Int {
 }
 
 impl TryFrom<i128> for Int {
-    type Error = std::num::TryFromIntError;
+    type Error = core::num::TryFromIntError;
 
     fn try_from(x: i128) -> Result<Self, Self::Error> {
         if x >= 0 {
@@ -109,6 +112,6 @@ impl TryFrom<i128> for Int {
 
 #[derive(Clone, Debug)]
 pub enum IntError {
-    Bounds(std::num::TryFromIntError),
-    Parsing(std::num::ParseIntError),
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
 }

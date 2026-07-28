@@ -11,6 +11,9 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod non_empty;
 pub mod non_empty_map;
@@ -24,7 +27,6 @@ use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use cbor_encodings::HolderEncoding;
-use std::collections::BTreeMap;
 
 pub type DomNonemptyMap = OrderedHashMap<NonEmptyMap<u64, u64>, String>;
 
