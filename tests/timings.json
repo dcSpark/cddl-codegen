@@ -230,14 +230,18 @@
     },
     {
       "gate": "ir_conformance_corpus",
-      "warm_ms": 136000,
+      "warm_ms": 164000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 136000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 164000
         }
       ]
     },
@@ -507,7 +511,7 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 19000,
+      "warm_ms": 24000,
       "n": 20,
       "measured": "2026-07-28",
       "machine": "86216c55",
@@ -523,6 +527,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 19000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 24000
         }
       ]
     },
@@ -722,9 +730,9 @@
     },
     {
       "tier": "full",
-      "wall_ms": 2512000,
-      "n": 15,
-      "measured": "2026-07-27",
+      "wall_ms": 1984000,
+      "n": 16,
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
@@ -734,6 +742,10 @@
         {
           "date": "2026-07-27",
           "warm_ms": 2512000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 1984000
         }
       ]
     }
