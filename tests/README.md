@@ -11,13 +11,15 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | ~55s |
-| `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | ~5.5 min |
-| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~70 min |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~28s<!-- /gen:sh:tests-tier-fast --> |
+| `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~3.3 min<!-- /gen:sh:tests-tier-local --> |
+| `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~33 min<!-- /gen:sh:tests-tier-full --> |
 
-Those three are **medians of the last 20 runs on the dev machine**, read off `tests/timings.json` —
-not estimates. See "Measured gate durations" below for where that file comes from and why a warm
-gate cache does not make `full` cheap.
+Those three are **sliding-window medians (up to 20 runs) on the dev machine**, projected off
+`tests/timings.json` by generated spans (`project_status_headers.ts` — hand-corrected stale twice
+before being projected, which is that doc-rot class's trigger to derive rather than re-audit). See
+"Measured gate durations" below for where that file comes from and why a warm gate cache does not
+make `full` cheap.
 
 `fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
 policy below). `local` is "run before considering work done" — the heavy correctness gates (full

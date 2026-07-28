@@ -127,6 +127,26 @@ const enforceGreenRowCount = enforceGreenRows.size;
 // --- check.ts registry: the manual (non-stub) #[ignore]d gate roll-call ---------------------------
 const ignoredGates = REGISTRY.filter(g => g.kind !== "stub" && g.ignoredTest).map(g => g.ignoredTest!);
 
+// --- tests/timings.json: measured tier wall-time medians (warm) -----------------------------------
+// The tier table in tests/README.md § "Running everything" says its numbers are read off
+// tests/timings.json, not estimated; these spans make that literally true. (This is the rot class
+// the matrix ROADMAP's Maintenance section names — a hand-written MEASURED quantity that nothing
+// re-measures — and the tier walls were hand-corrected stale twice before being projected here.)
+const TIMINGS_REL = "../tests/timings.json";
+interface TierRow { tier?: unknown; wall_ms?: unknown }
+const timingsJson = JSON.parse(readFileSync(pathOf(TIMINGS_REL), "utf8")) as { tiers?: TierRow[] };
+const tierWall = new Map<string, number>();
+for (const t of timingsJson.tiers ?? [])
+  if (typeof t.tier === "string" && typeof t.wall_ms === "number") tierWall.set(t.tier, t.wall_ms);
+function humanTierWall(tier: string): string {
+  const ms = tierWall.get(tier);
+  if (ms === undefined) return "unmeasured";
+  const s = ms / 1000;
+  if (s < 60) return `~${Math.round(s)}s`;
+  const m = Math.round((s / 60) * 10) / 10;
+  return m < 10 ? `~${m} min` : `~${Math.round(m)} min`;
+}
+
 // English count word for 0–13, numeral above (matches the hand prose's "the five gates" spelling).
 const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen"];
 function countWord(n: number): string { return n >= 0 && n < WORDS.length ? WORDS[n]! : String(n); }
@@ -151,6 +171,11 @@ const SPANS: Span[] = [
   // 3. tests/README.md — the manual `#[ignore]`d-gate roll-call (count word + backticked name list).
   { file: TESTS_README_REL, id: "tests-ignored-gates", render: () =>
       `the ${countWord(ignoredGates.length)} \`#[ignore]\`d gates ${ignoredGates.map(g => `\`${g}\``).join(" / ")}` },
+
+  // 4. tests/README.md — the tier table's measured warm wall times (from tests/timings.json).
+  { file: TESTS_README_REL, id: "tests-tier-fast", render: () => humanTierWall("fast") },
+  { file: TESTS_README_REL, id: "tests-tier-local", render: () => humanTierWall("local") },
+  { file: TESTS_README_REL, id: "tests-tier-full", render: () => humanTierWall("full") },
 ];
 
 // --- span mechanics -------------------------------------------------------------------------------
@@ -224,6 +249,8 @@ if (isCheck) {
   if (constraintVectors < 1) problems.push(`no class="constraint" reject vectors found (expected >= 1) — the catalog read looks broken`);
   if (enforceGreenRowCount < 1) problems.push(`no enforce-green rows found (expected >= 1) — the catalog read looks broken`);
   if (ignoredGates.length < 1) problems.push(`no manual #[ignore]d gates found in the registry (expected >= 1) — the check.ts import looks broken`);
+  for (const tier of ["fast", "local", "full"])
+    if (!tierWall.has(tier)) problems.push(`tier '${tier}' has no wall_ms row in tests/timings.json — the timings read looks broken (the tier table would render "unmeasured")`);
 
   // Marker counts + byte-exact drift per span.
   for (const file of filesInOrder) {
