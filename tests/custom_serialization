@@ -36,12 +36,40 @@ pub fn write_hex_string<'se>(
     serializer.write_text(hex::encode(bytes))
 }
 
+// `hex::FromHexError` cannot be boxed as `Box<dyn Error>` directly. The generated crate depends on
+// `hex` in ALLOC MODE (`default-features = false`), and hex's `Error` impl is gated on ITS `std`
+// feature, so the raw error no longer satisfies the boxed bound. This local newtype supplies the
+// impl — and this file is the in-repo exemplar of that consumer migration: hand code that boxed a
+// dependency's error type is exactly what the reshape breaks, and a newtype is the fix, not
+// re-enabling the dependency's default features.
+//
+// `Debug` and `Display` are hand-written and delegate VERBATIM rather than derived, mirroring the
+// runtime's own `FromHexErrorCore`: `DeserializeFailure` renders a boxed error inline, so a derived
+// `Debug` would insert a `HexDecodeError(..)` layer into every rendered message. The wrapper is
+// deliberately invisible in output.
+struct HexDecodeError(hex::FromHexError);
+
+impl core::fmt::Debug for HexDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl core::fmt::Display for HexDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl core::error::Error for HexDecodeError {}
+
 // reads hex text to bytes
 pub fn read_hex_string(
     raw: &mut cbor_event::de::Deserializer,
 ) -> Result<Vec<u8>, DeserializeError> {
     let text = raw.text()?;
-    hex::decode(text).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
+    hex::decode(text)
+        .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(HexDecodeError(e))).into())
 }
 
 // must include the tag since @custom_serialize at field-level overrides everything
