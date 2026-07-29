@@ -28,6 +28,13 @@
  * the verdict is `exit == 0` AND every `warning:` line falling in an allowed class (see
  * `classifyWarning`). Anything else fails, printing the offending lines and the full stderr.
  *
+ * # The one inverted cell
+ *
+ * `--deserialize-depth-limit` output is deliberately NOT no_std-capable (its recursion guard is
+ * `thread_local!`-based), so that profile's shim cell asserts a FAILURE carrying the pinned
+ * `compile_error!` text instead. Each cell therefore carries its own accept predicate (see
+ * `Accept`), and the cache stores cell-SUCCESS rather than cargo-exit-0.
+ *
  * Standalone-invocable — `check.ts` has no single-gate selector, so the way to run this alone is
  * `bun run cddl-matrix/no_std_check.ts [fast|local|full]` (default `local`).
  */
@@ -44,8 +51,22 @@ const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script li
 const TARGET = "thumbv7m-none-eabi";
 const GATE = "no_std_check";
 /** Bump on any change to the VERDICT logic (not to the profiles' bytes, which the tree hash covers). */
-const VERDICT_MARKER = "no-std-check-v1";
+const VERDICT_MARKER = "no-std-check-v2";
 const CARGO_TIMEOUT_S = 900;
+
+/**
+ * The leading substring of the `compile_error!` a `--deserialize-depth-limit` crate carries for
+ * `not(feature = "std")` builds. LOCKSTEP with `generation::export::DEPTH_LIMIT_REQUIRES_STD` (the
+ * Rust const that composes it into the serialization prelude, whose doc comment names this file) and
+ * with the `--deserialize-depth-limit` info block in `docs/docs/command_line_flags.mdx` /
+ * the attribution carve-out in `docs/docs/output_format.mdx`.
+ *
+ * Only the LEADING substring, deliberately: the full sentence carries remediation prose that may be
+ * reworded, while these words are the identity a consumer greps and this gate asserts. A Rust-side
+ * reword reds the `depth_limit.shim_thumb_expect_fail` cell below — the acceptable direction, since
+ * the alternative is a cell that quietly accepts any failure at all.
+ */
+const DEPTH_LIMIT_REQUIRES_STD_SUBSTRING = "--deserialize-depth-limit output requires the `std` feature";
 
 // ---- outcome ------------------------------------------------------------------------------------
 // Mirrors check.ts's `Outcome` without importing it: this script is the standalone entry point, and
@@ -144,13 +165,63 @@ function touchTree(root: string): void {
 }
 
 /**
+ * What a cell's raw cargo result has to look like for the cell to have SUCCEEDED. Not the same thing
+ * as "cargo succeeded": one cell class here asserts a compile FAILURE, and it must cache on that
+ * failure exactly as the green cells cache on exit 0 — a cache that only stores exit-0 would rerun
+ * the expected-fail cell forever and, worse, would make "cached" mean "was green" for some cells and
+ * "was correct" for others.
+ */
+type CellVerdict = { ok: boolean; why?: string; detail?: string[] };
+type Accept = (r: { exit: number; stderr: string }) => CellVerdict;
+
+/**
+ * The default: cargo exited 0 and every `warning:` line is in an allowed class. Every cell that
+ * asserts a crate BUILDS uses this one.
+ */
+const acceptClean: Accept = r => {
+  if (r.exit !== 0) return { ok: false, why: `cargo exit ${r.exit}` };
+  const bad = disallowedWarnings(r.stderr);
+  if (bad.length > 0)
+    return { ok: false, why: `${bad.length} warning(s) outside the allowed set`, detail: bad };
+  return { ok: true };
+};
+
+/**
+ * The expected-FAIL class, used by exactly one cell: a `--deserialize-depth-limit` crate's shim.
+ * That crate's serialization prelude carries a `#[cfg(not(feature = "std"))] compile_error!` because
+ * the recursion guard is `thread_local!`-based, and the shim depends on the crate with
+ * `default-features = false` — so the check MUST fail, and a green one means the guard silently
+ * stopped being std-gated.
+ *
+ * Success = nonzero exit AND the pinned message present. No warning policy applies: a failing
+ * compilation emits whatever resolution noise the missing `std` produces (that noise is the reason
+ * the `compile_error!` exists), and asserting anything about it would pin rustc diagnostics.
+ */
+const acceptDepthLimitRefusal: Accept = r => {
+  if (r.exit === 0)
+    return {
+      ok: false,
+      why: "cargo exit 0 — a --deserialize-depth-limit crate must NOT build with default-features = false (its depth guard is thread_local-based); the std gating regressed",
+    };
+  if (!r.stderr.includes(DEPTH_LIMIT_REQUIRES_STD_SUBSTRING))
+    return {
+      ok: false,
+      why: `the build failed, but not with the pinned compile_error! — stderr does not contain \`${DEPTH_LIMIT_REQUIRES_STD_SUBSTRING}\``,
+    };
+  return { ok: true };
+};
+
+/**
  * One cacheable cargo cell. `manifests` are the manifests THIS cell actually checks — each gets a
  * `cargo generate-lockfile` before the tree is hashed, so a lockfile cargo would write during the
  * run cannot change the tree out from under its own key.
+ *
+ * `accept` decides both the verdict and what gets cached (see [`Accept`]).
  */
 function cacheableCell(
   cell: string, argv: string[], manifests: string[], treeRoot: string, env: Record<string, string>,
-): { exit: number; cached: boolean; stderr: string; ms: number } {
+  accept: Accept = acceptClean,
+): CellVerdict & { cached: boolean; ms: number; stderr?: string } {
   let key: string | null = null;
   let entryBase: Omit<GateCacheEntry, "cell" | "created"> | null = null;
   if (GATE_CACHE_ENABLED && manifests.every(m => run(["cargo", "generate-lockfile", "--manifest-path", m], CODEGEN_DIR).exit === 0)) {
@@ -166,7 +237,7 @@ function cacheableCell(
     if (readGateCacheEntry(key, CODEGEN_DIR)) {
       stats.cached++;
       console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
-      return { exit: 0, cached: true, stderr: "", ms: 0 };
+      return { ok: true, cached: true, ms: 0 };
     }
   }
   touchTree(treeRoot);
@@ -174,9 +245,10 @@ function cacheableCell(
   const t0 = performance.now();
   const r = run(argv, CODEGEN_DIR, env);
   const ms = performance.now() - t0;
-  if (r.exit === 0 && key && entryBase)
+  const verdict = accept(r);
+  if (verdict.ok && key && entryBase)
     writeGateCacheEntry(key, { ...entryBase, cell, created: new Date().toISOString() }, CODEGEN_DIR);
-  return { exit: r.exit, cached: false, stderr: r.stderr, ms };
+  return { ...verdict, stderr: r.stderr, cached: false, ms };
 }
 
 // ---- profiles -----------------------------------------------------------------------------------
@@ -193,6 +265,16 @@ interface Profile {
   /** Whether this profile also gets the host-target std-arm hasher tripwire (profile A only —
    *  `MapHashBuilder` exists only under `--preserve-encodings`). */
   hostStdArm?: boolean;
+  /** `--deserialize-depth-limit` output: the shim cell INVERTS — the crate's `thread_local!` guard
+   *  is std-only, so a `default-features = false` build must fail carrying the pinned
+   *  `compile_error!`. The profile trades its `shim_thumb` cell for `shim_thumb_expect_fail` plus a
+   *  `host_default_check` proving the flag is inert under the (default-on) `std` feature. */
+  depthLimitRefusal?: boolean;
+  /** `--emit-tests` output: the emitted `#[cfg(test)]` module is invisible to every shim cell (test
+   *  code is not compiled when a crate is built as a DEPENDENCY, and the shim cells `cargo check`),
+   *  so this profile adds a host `cargo test --no-default-features --lib` that actually compiles and
+   *  RUNS it under the `not(std)` crate root. */
+  hostTestNoStd?: boolean;
 }
 
 const PROFILES: Profile[] = [
@@ -266,6 +348,42 @@ const PROFILES: Profile[] = [
     libName: "nostd-json",
     flags: ["--preserve-encodings=true", "--json-serde-derives=true", "--json-schema-export=true"],
     cddl: ["inner = [ a: uint, b: text ]", "tbl = { * uint => text }", "outer = [ i: inner, t: tbl, ? o: bytes ]", ""].join("\n"),
+  },
+  {
+    // The ONE flag whose output is deliberately not no_std-capable. `--deserialize-depth-limit`
+    // emits a `thread_local!`-based recursion guard, so the serialization prelude also carries a
+    // `#[cfg(not(feature = "std"))] compile_error!` — and the shim, which every export emits and
+    // which depends with `default-features = false`, is what a consumer will see it through. Both
+    // halves of that contract are cells: the refusal must FIRE with the pinned message (a green
+    // shim would mean the std gating silently regressed), and it must be INERT on a normal build
+    // (the `std` feature is default-on, so `--deserialize-depth-limit` costs a std consumer
+    // nothing). A recursive rule so the guard is actually threaded into a deserializer.
+    id: "depth_limit",
+    libName: "nostd-depth",
+    depthLimitRefusal: true,
+    flags: ["--deserialize-depth-limit", "64"],
+    cddl: ["tree = [value: uint, children: [* tree]]", ""].join("\n"),
+  },
+  {
+    // `--emit-tests` output, whose std usage (`std::env`/`std::fs` dump hook, `format!`, `vec!`,
+    // `eprintln!`) lives in a `#[cfg(test)]` module that the generated crate restores `std` for
+    // itself. Two cells for two independent reasons: `shim_thumb` guards the direction where that
+    // restore LEAKS out of the test module into crate-scope code (the shim would stop building),
+    // and `host_test_nostd` is the only cell in this gate that compiles the test module at all —
+    // `#[cfg(test)]` code is not built when a crate is a dependency, and every other cell is a
+    // `cargo check`. Preserve-encodings is on so the nested `cddl_encoding_fidelity` module, which
+    // carries its own hand-written copy of the restore, is in the compile.
+    id: "emit_tests",
+    libName: "nostd-emittests",
+    hostTestNoStd: true,
+    flags: ["--emit-tests=true", "--preserve-encodings=true"],
+    cddl: [
+      "hash28 = bytes .size 28",
+      "inner = [ a: uint, b: text ]",
+      "tbl = { * uint => text }",
+      "outer = [ h: hash28, i: inner, t: tbl, ? o: bytes ]",
+      "",
+    ].join("\n"),
   },
 ];
 
@@ -362,20 +480,16 @@ function writeHostConsumer(p: Profile, out: string): void {
   ].join("\n"));
 }
 
-function reportCell(cell: string, r: { exit: number; cached: boolean; stderr: string; ms: number }): boolean {
+function reportCell(cell: string, r: CellVerdict & { cached: boolean; ms: number; stderr?: string }): boolean {
   if (r.cached) return true;
-  const bad = disallowedWarnings(r.stderr);
-  if (r.exit === 0 && bad.length === 0) {
+  if (r.ok) {
     console.log(`  ${cell}: PASS  [${(r.ms / 1000).toFixed(1)}s]`);
     return true;
   }
-  if (r.exit !== 0) console.log(`  ${cell}: FAIL — cargo exit ${r.exit}  [${(r.ms / 1000).toFixed(1)}s]`);
-  else {
-    console.log(`  ${cell}: FAIL — ${bad.length} warning(s) outside the allowed set  [${(r.ms / 1000).toFixed(1)}s]`);
-    for (const l of bad) console.log(`      ${l}`);
-  }
+  console.log(`  ${cell}: FAIL — ${r.why}  [${(r.ms / 1000).toFixed(1)}s]`);
+  for (const l of r.detail ?? []) console.log(`      ${l}`);
   console.log(`  ---- full stderr for ${cell} ----`);
-  console.log(r.stderr);
+  console.log(r.stderr ?? "");
   console.log(`  ---- end stderr for ${cell} ----`);
   return false;
 }
@@ -395,15 +509,52 @@ export function runNoStdCheckGate(tier: string): NoStdOutcome {
   try {
     for (const p of PROFILES) {
       const { out } = generateProfile(p);
+      const rustManifest = join(out, "rust", "Cargo.toml");
       const shimManifest = join(out, "no-std-check", "Cargo.toml");
+      // The shim cell, in one of its two directions. `depthLimitRefusal` inverts the verdict rather
+      // than skipping the cell: "this crate must NOT build without std" is a property with the same
+      // regression risk as its opposite, and the only way to state it is a cell that fails on green.
+      const shimName = p.depthLimitRefusal ? "shim_thumb_expect_fail" : "shim_thumb";
       const shimCell = cacheableCell(
-        `${p.id}.shim_thumb`,
+        `${p.id}.${shimName}`,
         ["cargo", "check", "--manifest-path", shimManifest, "--target", TARGET],
         [shimManifest],
         out,
         { CARGO_TARGET_DIR: cargoTarget },
+        p.depthLimitRefusal ? acceptDepthLimitRefusal : acceptClean,
       );
-      if (!reportCell(`${p.id}.shim_thumb`, shimCell)) ok = false;
+      if (!reportCell(`${p.id}.${shimName}`, shimCell)) ok = false;
+
+      if (p.depthLimitRefusal) {
+        // The other half of the contract: the refusal is confined to `not(feature = "std")`. `std`
+        // is default-on, so a plain host check of the SAME crate must be clean — otherwise the
+        // `compile_error!`'s cfg is wrong and the flag broke every ordinary consumer.
+        const hostCell = cacheableCell(
+          `${p.id}.host_default_check`,
+          ["cargo", "check", "--manifest-path", rustManifest],
+          [rustManifest],
+          out,
+          { CARGO_TARGET_DIR: cargoTarget },
+        );
+        if (!reportCell(`${p.id}.host_default_check`, hostCell)) ok = false;
+      }
+
+      if (p.hostTestNoStd) {
+        // `--lib` is not tidiness — it is what makes this cell possible. The generated crate
+        // declares `crate-type = ["cdylib", "rlib"]`, and a cdylib is LINKED on a host target; with
+        // `--no-default-features` the crate is `#![no_std]`, so that link wants a `#[global_allocator]`
+        // and a `#[panic_handler]` and fails before any test runs. (On the no-std TARGET cargo drops
+        // the cdylib with a warning instead, which is why the shim cells never meet this.) `--lib`
+        // builds only the lib TEST binary, which links std through the test module's own restore.
+        const testCell = cacheableCell(
+          `${p.id}.host_test_nostd`,
+          ["cargo", "test", "--manifest-path", rustManifest, "--no-default-features", "--lib"],
+          [rustManifest],
+          out,
+          { CARGO_TARGET_DIR: cargoTarget },
+        );
+        if (!reportCell(`${p.id}.host_test_nostd`, testCell)) ok = false;
+      }
 
       if (p.hostStdArm) {
         const hostManifest = join(out, "host-consumer", "Cargo.toml");

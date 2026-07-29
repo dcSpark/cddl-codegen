@@ -514,10 +514,38 @@ pub fn emit_generated_tests(
         String::new()
     };
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{any_import}{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n{STD_RESTORE}    use super::*;\n    use super::serialization::*;\n{any_import}{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
         fns.join("\n")
     ))
 }
+
+/// The emitted test module's own `std` restore, so `cargo test --no-default-features --lib` works on
+/// a generated crate.
+///
+/// **Why it is needed.** The seeded crate root carries `#![cfg_attr(not(feature = "std"), no_std)]`,
+/// so under `--no-default-features` the language prelude is `core`'s — and this module's bodies use
+/// `std::env`/`std::fs` (the minted-bytes dump hook), `format!`, `vec!`, `eprintln!`, `String` and
+/// `.to_string()`, none of which resolve there. Tests always run on a host, where `std` exists to be
+/// linked, so the module restores it for itself instead of the combination being unsupported.
+///
+/// **Why it is module-local.** A non-crate-root `extern crate` does not reach a nested inline `mod`
+/// body, and this module is exactly that — nested inside `generated/mod.rs`. Delivering it from the
+/// crate root is not available either: that root is seed-once, so a new line there would never reach
+/// an already-generated consumer tree. `static/emit_tests_encoding_fidelity.rs`'s own nested
+/// `mod cddl_encoding_fidelity` carries its own copy of this pair for the same reason, and says so.
+///
+/// **Why it is unconditional.** Single-variant emission is what the snapshot corpus, the
+/// comment-preservation overlay and the determinism invariants all want. Under default features
+/// `std` IS the prelude, so the glob re-imports the same items and neither line warns (`use` globs
+/// never warn; `unused_extern_crates` is allow-by-default).
+///
+/// **Why `use std::panic;` is here.** `std::panic!` and `core::panic!` are DIFFERENT macros, so
+/// under `not(std)` the prelude glob alone makes every emitted `panic!` (the preserve-encodings
+/// fidelity loop's `unwrap_or_else`) ambiguous with the core prelude's —
+/// `ambiguous_panic_imports`, a future-incompatibility warning slated to become a hard error. An
+/// explicit import is the disambiguation rustc itself suggests; the `#[allow(unused_imports)]`
+/// covers the emissions that mint no `panic!` at all (any non-preserve crate).
+const STD_RESTORE: &str = "    extern crate std;\n    #[allow(unused_imports)]\n    use std::panic;\n    use std::prelude::rust_2024::*;\n";
 
 /// The source CDDL rule name naming `ident`'s minted bytes for the conformance oracles, or `None` if
 /// this type can't be soundly rooted. Only a top-level rule qualifies (a synthesized struct —
