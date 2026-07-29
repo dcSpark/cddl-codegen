@@ -1285,6 +1285,14 @@ exactly that topology). Calibrate on one detail:
 that gate runs in the repo's `local` and `full` tiers, which are a run-before-shipping discipline
 rather than a continuous one (its CI runs the `fast` tier only).
 
+**Reading a red check — the one thing that voids all of the above.** Cargo stops at the first crate
+that fails, so everything after it, the crate under test included, is never compiled at all. A red
+check whose failure is in a *dependency* is a verdict about that dependency and clears nothing behind
+it; none of the attribution above applies to it, because nothing about the generated crate has been
+checked yet. The generated crate was actually reached only if a `Checking <name>` line for it appears
+in cargo's output, and the rest becomes visible once the first failure is fixed. Both of the shim's
+own files carry this caveat too, next to the attribution sentence.
+
 - **Always-clobbered and tool-owned**, the same class as `extern-interface/`: the whole directory is
   delete-and-recreated each run, so hand edits inside it do not survive. It is outside every
   per-crate system — no seed-once file, no [`Cargo.toml` merge](#generated-cargotoml-merge-not-clobber),

@@ -303,8 +303,10 @@ pure fetch, no assertions behind it); if it fails all attempts the run stops bef
 
 The generated rust crate is `no_std`-capable, and the tool emits a `no-std-check/` shim crate into
 every output root plus a pointer to it in the seeded crate root. That pointer is a promise: a red
-shim in a consumer's tree attributes to *their* hand-written additions. This gate is what makes the
-promise true of tool output.
+shim in a consumer's tree attributes to *their* hand-written additions — once the generated crate has
+actually been reached, since cargo aborts at the first failing crate and a broken dependency reds the
+check without ever compiling what it is about (the emitted shim's own two files carry that caveat).
+This gate is what makes the promise true of tool output.
 
 `cddl-matrix/no_std_check.ts`, driven by a `fn` registry entry and also invocable on its own as
 `bun run cddl-matrix/no_std_check.ts [tier]` (`check.ts` has no single-gate selector). It generates
