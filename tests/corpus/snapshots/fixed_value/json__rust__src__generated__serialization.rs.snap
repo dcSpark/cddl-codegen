@@ -6,9 +6,9 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use alloc::string::String;
 use super::*;
 use crate::generated::error::*;
+use alloc::string::String;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 

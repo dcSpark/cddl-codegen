@@ -177,20 +177,31 @@ pub(crate) fn is_rust_crate_destined(path: &str) -> bool {
     path.ends_with(".rs") && path.starts_with("rust/src/generated/")
 }
 
-/// Inject into every rust-crate-destined entry of a `files` map, in place.
+/// Inject into every rust-crate-destined entry of a `files` map, in place, and return the paths
+/// this pass actually changed.
+///
+/// **The caller MUST rustfmt every returned path.** This pass places its block in source order, not
+/// in rustfmt's `use`-sort order, so injected content is not rustfmt-stable on its own — and every
+/// surface the tool writes has to be rustfmt-stable or the comment-preservation overlay traps
+/// comments on the next unchanged regeneration (that invariant is what
+/// `comment_preservation_static_files_rustfmt_stable` pins). Returning the paths rather than
+/// formatting here keeps this module free of the rustfmt plumbing, which lives in `generation`.
 ///
 /// Idempotent, and safe to re-run after the comment-preservation overlay: [`inject`] removes this
 /// pass's own lines before recomputing, so a `cddl-codegen:replace` block that deleted the last
 /// user of a name drops its import too, and one that introduced a new user gains it.
-pub(crate) fn inject_generated_files(files: &mut BTreeMap<String, String>) {
+pub(crate) fn inject_generated_files(files: &mut BTreeMap<String, String>) -> Vec<String> {
+    let mut changed = Vec::new();
     for (path, content) in files.iter_mut() {
         if !is_rust_crate_destined(path) {
             continue;
         }
         if let Cow::Owned(injected) = inject(content) {
             *content = injected;
+            changed.push(path.clone());
         }
     }
+    changed
 }
 
 /// Inject into one rust-crate-destined source. Returns `Borrowed` when nothing changed.
@@ -343,6 +354,15 @@ fn references_alloc_crate(source: &str) -> bool {
 /// Inner attributes (`#![allow(…)]`, which the generated root `mod.rs` opens with) MUST precede
 /// every item in their module, so an item injected above one is a hard error. Comments may precede
 /// them, which is why the codegen banner can stay at the very top.
+///
+/// **A reserved `// cddl-codegen:` comment is a HARD STOP.** Those markers are structural: the
+/// comment-preservation reader recognizes a fail-loudly block only while its
+/// `cddl-codegen:unpreserved-comment` line sits IMMEDIATELY above its `compile_error!(…)`, and a
+/// `cddl-codegen:keep` marker likewise claims the run directly below it. Skipping past one would
+/// land this pass's block between a marker and the thing it owns, dissolving the structure — the
+/// reader then meets a marker it cannot classify and hard-errors on its own emitted output. Placing
+/// the block ABOVE such a marker is always safe: it is still after the banner and the inner
+/// attributes, which is all the language requires.
 fn insertion_line(lines: &[&str]) -> usize {
     let mut i = 0;
     let mut depth = 0i32;
@@ -352,6 +372,14 @@ fn insertion_line(lines: &[&str]) -> usize {
             depth += bracket_delta(trimmed);
             i += 1;
             continue;
+        }
+        if trimmed.starts_with("//")
+            && trimmed
+                .trim_start_matches('/')
+                .trim_start()
+                .starts_with("cddl-codegen:")
+        {
+            break;
         }
         if trimmed.is_empty() || trimmed.starts_with("//") {
             i += 1;
@@ -672,6 +700,76 @@ mod tests {
             ],
             "extern crate first, then the use lines in sorted order:\n{out}"
         );
+    }
+
+    /// A reserved `// cddl-codegen:` marker is a HARD STOP for placement: the injected block goes
+    /// ABOVE it, never between the marker and the thing it owns.
+    ///
+    /// This is structural, not cosmetic. `comment_preserve`'s reader recognizes a fail-loudly block
+    /// only while its `unpreserved-comment` line sits IMMEDIATELY above its `compile_error!(…)`;
+    /// splitting them dissolves the structure, and the reader then meets a marker it cannot classify
+    /// and hard-errors on the tool's OWN emitted output (the live failure this pins). A `keep` marker
+    /// claims the comment run directly below it, and `insert-start`/`replace-start` open user blocks
+    /// — all the same class.
+    #[test]
+    fn a_reserved_marker_is_a_hard_stop_for_placement() {
+        let cases = [
+            (
+                "unpreserved-comment",
+                "// cddl-codegen:unpreserved-comment (delete this block after review)\ncompile_error!(\"stale\");\npub struct S { f: String }\n",
+            ),
+            (
+                "keep",
+                "// cddl-codegen:keep\n/// user doc\npub struct S { f: String }\n",
+            ),
+            (
+                "insert-start",
+                "// cddl-codegen:insert-start\npub fn mine() {}\n// cddl-codegen:insert-end\npub struct S { f: String }\n",
+            ),
+            (
+                "replace-start",
+                "// cddl-codegen:replace-start\npub struct S { f: String }\n// cddl-codegen:replaces\n// pub struct S;\n// cddl-codegen:replace-end\n",
+            ),
+        ];
+        for (label, src) in cases {
+            let out = inj(src);
+            let lines: Vec<&str> = out.lines().collect();
+            let marker = lines
+                .iter()
+                .position(|l| l.trim_start().starts_with("// cddl-codegen:"))
+                .unwrap_or_else(|| panic!("{label}: marker vanished:\n{out}"));
+            let injected = lines
+                .iter()
+                .position(|l| *l == "extern crate alloc;")
+                .unwrap_or_else(|| panic!("{label}: nothing injected:\n{out}"));
+            assert!(
+                injected < marker,
+                "{label}: the injected block must sit ABOVE the reserved marker, not inside the \
+                 structure it owns:\n{out}"
+            );
+            // The user/tool block itself travels untouched: same lines, same order, nothing dropped.
+            for original in src.lines() {
+                assert!(
+                    out.lines().any(|l| l == original),
+                    "{label}: line {original:?} was disturbed:\n{out}"
+                );
+            }
+        }
+    }
+
+    /// The other half of the hard-stop rule: an ORDINARY leading comment (the codegen banner) is
+    /// still skipped, so the banner keeps leading the file and the block lands below it.
+    #[test]
+    fn an_ordinary_leading_comment_is_not_a_hard_stop() {
+        let src = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n\npub struct S { f: String }\n";
+        let out = inj(src);
+        let lines: Vec<&str> = out.lines().collect();
+        assert!(lines[0].starts_with("// This file was code-generated"));
+        let injected = lines
+            .iter()
+            .position(|l| *l == "extern crate alloc;")
+            .unwrap();
+        assert!(injected > 1, "block must land below the banner:\n{out}");
     }
 
     #[test]

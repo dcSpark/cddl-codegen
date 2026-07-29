@@ -23,7 +23,6 @@ pub mod json_value_ser;
 mod key_demand_assertions;
 pub mod serialization;
 
-
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct EnumKeyHolder {
     pub choice_keyed: EnumKeyed,

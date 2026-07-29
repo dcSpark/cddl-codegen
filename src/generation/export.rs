@@ -759,7 +759,10 @@ impl GenerationScope {
             // The rebuild REPLACED `generated_files`' already-injected serialization.rs with a
             // version carrying the static prelude, so its alloc imports have to be recomputed
             // against that content (the prelude is most of what needs them).
-            crate::alloc_import_inject::inject_generated_files(&mut files);
+            for path in crate::alloc_import_inject::inject_generated_files(&mut files) {
+                let formatted = rustfmt_generated_string(&files[&path])?.into_owned();
+                files.insert(path, formatted);
+            }
         }
 
         // Manifests merge into whatever is already on disk (the declarative changeset) rather than
@@ -860,7 +863,10 @@ impl GenerationScope {
             // (a missing import — an error). The injector's lines are exact known strings, so this
             // recompute both ADDS and REMOVES soundly, which is what lets it cover the trait
             // imports the pruner must never touch.
-            crate::alloc_import_inject::inject_generated_files(&mut files);
+            for path in crate::alloc_import_inject::inject_generated_files(&mut files) {
+                let formatted = rustfmt_generated_string(&files[&path])?.into_owned();
+                files.insert(path, formatted);
+            }
         }
 
         // Every generated-tree `.rs` written this run, so the stale-file scan below can tell an
@@ -967,7 +973,9 @@ impl GenerationScope {
             for (filename, content) in &runtime_files {
                 let rel_path = format!("rust/src/generated/{filename}");
                 let path = rust_dir.join(&rel_path);
-                let content = crate::alloc_import_inject::inject(content);
+                let content =
+                    rustfmt_generated_string(crate::alloc_import_inject::inject(content).as_ref())?
+                        .into_owned();
                 write_rs_with_preserve(&path, &rel_path, &content, cli.preserve_comments)?;
                 written_generated_rs.insert(path);
             }
@@ -1049,7 +1057,9 @@ impl GenerationScope {
                 // Same injection as the in-crate write above: these files land in a HAND-OWNED
                 // crate root that this tool never writes, so they cannot rely on a root
                 // `extern crate alloc;` and must carry their own alloc imports as written output.
-                let content = crate::alloc_import_inject::inject(content);
+                let content =
+                    rustfmt_generated_string(crate::alloc_import_inject::inject(content).as_ref())?
+                        .into_owned();
                 write_rs_with_preserve(&path, filename, &content, cli.preserve_comments)?;
                 warn_new_static_file(is_new, filename);
             }
@@ -2079,7 +2089,13 @@ impl GenerationScope {
         // content, and running it last means the prune never sees injector-owned lines (their
         // conditions are disjoint either way — see the injector's module docs — so this is about
         // keeping each pass's input obvious, not about avoiding a fight).
-        crate::alloc_import_inject::inject_generated_files(&mut out);
+        // rustfmt every file it changed: the injector places its block in source order, not in
+        // rustfmt's `use`-sort order, and EVERY surface the tool writes must be rustfmt-stable or
+        // the overlay traps comments on the next unchanged regeneration.
+        for path in crate::alloc_import_inject::inject_generated_files(&mut out) {
+            let formatted = rustfmt_generated_string(&out[&path])?.into_owned();
+            out.insert(path, formatted);
+        }
 
         Ok(out)
     }

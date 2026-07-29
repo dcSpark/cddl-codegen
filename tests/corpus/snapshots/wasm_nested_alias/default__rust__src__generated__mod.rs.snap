@@ -19,7 +19,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-
 pub type NestedArr = Vec<Nums>;
 
 pub type Nums = Vec<u64>;

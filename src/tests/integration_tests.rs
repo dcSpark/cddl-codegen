@@ -18770,14 +18770,22 @@ fn comment_preservation_replace_orphans_import_same_file() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// Delivery-B regression (family flavor — why the re-prune is map-level, not per-file): the replace
-/// block lives in a DESCENDANT (serialization.rs) and orphans an import in the PARENT (mod.rs). Under
-/// --preserve-encodings, mod.rs's blindly-pushed `use std::collections::BTreeMap;` is named by
-/// NOTHING in mod.rs's own body (the map field is `OrderedHashMap`); its sole consumer is
-/// serialization.rs's two `BTreeMap::new()` encoding maps, reached through `use super::*;` (the
-/// sibling cbor_encodings.rs carries its OWN `use BTreeMap`, so it does not protect the parent). A
-/// replace block removing serialization.rs's uses must orphan — and re-prune — the parent import,
-/// which only a whole-map re-prune can see.
+/// A `cddl-codegen:replace` block that deletes the LAST user of an import must take the import with
+/// it, across a full write/regenerate cycle on disk.
+///
+/// **Retargeted in D1, same teeth.** This previously watched the import in the PARENT (`mod.rs`)
+/// while the replace block edited a DESCENDANT (`serialization.rs`) — the map-level re-prune's
+/// family flavor. D1 moved where that import LIVES: the alloc-import injector makes each generated
+/// module self-sufficient for the ten names it owns, so `serialization.rs` now binds `BTreeMap`
+/// itself and `mod.rs` carries no copy at all (a copy would be a dead import — the
+/// `feature_corpus_compiles` warning wall fails on those). The orphaning property is therefore
+/// watched where the import now is, and it exercises the strictly harder mechanism: the
+/// POST-OVERLAY alloc-import recompute, which must both ADD and REMOVE, and which covers the trait
+/// imports the pruner's name-scan model can never see.
+///
+/// The pruner's parent/descendant family model is pinned shape-independently by the
+/// `import_prune::tests::keeps_parent_import_consumed_by_child_via_super_glob` family of unit
+/// tests; do not re-target this fixture back onto a parent-held import to re-test it.
 #[test]
 fn comment_preservation_replace_in_descendant_orphans_parent_import() {
     use clap::Parser;
@@ -18802,21 +18810,19 @@ fn comment_preservation_replace_in_descendant_orphans_parent_import() {
     let mod_rs = out.join("rust/src/generated/mod.rs");
     let ser_rs = out.join("rust/src/generated/serialization.rs");
 
-    // Run 1: fresh. mod.rs imports BTreeMap but never names it (the field is OrderedHashMap); the sole
-    // consumer is serialization.rs, via super.
+    // Run 1: fresh. serialization.rs binds BTreeMap itself for its two encoding maps; mod.rs never
+    // names it (the field is OrderedHashMap) and so carries no copy.
     crate::api::generate_to_disk(&cli).unwrap();
     let mod_first = std::fs::read_to_string(&mod_rs).unwrap();
     assert!(
-        import_line_present(&mod_first, "BTreeMap"),
-        "fresh mod.rs must import BTreeMap:\n{mod_first}"
-    );
-    assert_eq!(
-        mod_first.matches("BTreeMap").count(),
-        1,
-        "mod.rs's body must not itself name BTreeMap — its import is protected only by the \
-         serialization.rs descendant:\n{mod_first}"
+        !import_line_present(&mod_first, "BTreeMap"),
+        "fresh mod.rs must NOT import BTreeMap — it never names it, so a copy would be dead:\n{mod_first}"
     );
     let ser_first = std::fs::read_to_string(&ser_rs).unwrap();
+    assert!(
+        import_line_present(&ser_first, "BTreeMap"),
+        "fresh serialization.rs must bind BTreeMap itself:\n{ser_first}"
+    );
     let l1 = "let mut m_key_encodings = BTreeMap::new();";
     let l2 = "let mut m_value_encodings = BTreeMap::new();";
     let start = ser_first
@@ -18840,16 +18846,21 @@ fn comment_preservation_replace_in_descendant_orphans_parent_import() {
     );
     std::fs::write(&ser_rs, ser_first.replacen(&span, &block, 1)).unwrap();
 
-    // Run 2: the descendant no longer names BTreeMap, so the whole-map re-prune drops the parent's
-    // now-orphaned import; the replace block in serialization.rs survives.
+    // Run 2: the file no longer names BTreeMap, so the POST-OVERLAY alloc-import recompute drops its
+    // now-orphaned import; the replace block itself survives.
     crate::api::generate_to_disk(&cli).unwrap();
     let mod_second = std::fs::read_to_string(&mod_rs).unwrap();
+    let ser_second = std::fs::read_to_string(&ser_rs).unwrap();
+    assert!(
+        !import_line_present(&ser_second, "BTreeMap"),
+        "serialization.rs's BTreeMap import must be removed once the replace block deleted its last \
+         user — an orphaned import is exactly the unused-import warning the recompute exists to \
+         prevent:\n{ser_second}"
+    );
     assert!(
         !import_line_present(&mod_second, "BTreeMap"),
-        "the parent mod.rs BTreeMap import must be pruned once its sole descendant consumer is \
-         replaced away:\n{mod_second}"
+        "mod.rs must still carry no BTreeMap import:\n{mod_second}"
     );
-    let ser_second = std::fs::read_to_string(&ser_rs).unwrap();
     assert!(
         ser_second.contains("// cddl-codegen:replace-start")
             && ser_second.contains("let mut m_key_encodings = Vec::new();"),
@@ -19423,6 +19434,114 @@ fn comment_preservation_broken_existing_file_hard_errors() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// EVERY surface the exporter writes must be rustfmt-stable, not just the composed statics its
+/// sibling above covers. The alloc-import injector places its block in source order rather than in
+/// rustfmt's `use`-sort order, so each of the five injection points has to rustfmt AFTER injecting;
+/// missing one leaves that file a token off its canonical form, and the comment-preservation overlay
+/// then traps a comment in a `compile_error!` on the next unchanged regeneration with no input
+/// change. The five: (i) the `files`-map keys from `generated_files`, (ii) the serialization.rs
+/// rebuild, (iii) the post-overlay recompute, (iv) the composed runtime statics, and (v) the
+/// `--export-static-crate` outputs including the standalone serialization prelude.
+///
+/// The spec is chosen to populate all of them at once: `[+ T]` and `{+ k => v}` pull in the NonEmpty
+/// runtimes, a table field gives serialization.rs its encoding maps (the injected `BTreeMap`), and
+/// `--export-static-crate` exercises the out-of-tree writes. Generation runs TWICE and the second
+/// run must be byte-identical, which is the fixed point the overlay depends on.
+#[test]
+fn every_written_surface_is_rustfmt_stable() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_allfmt_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "nev = [+ uint]\nnem = {+ uint => uint}\nfoo = [ tbl: { * uint => text }, n: nev, m: nem ]\n",
+    )
+    .unwrap();
+    let out = scratch.join("crate");
+    let static_crate = scratch.join("runtime");
+    std::fs::create_dir_all(static_crate.join("src")).unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+        "--preserve-encodings=true",
+        "--export-static-crate",
+        static_crate.to_str().unwrap(),
+    ]);
+    crate::api::generate_to_disk(&cli).unwrap();
+
+    let mut checked = 0usize;
+    let mut roots = vec![out.join("rust/src/generated"), static_crate.join("src")];
+    while let Some(dir) = roots.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                roots.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path).unwrap();
+            let formatted = crate::generation::rustfmt_generated_string(&content).unwrap();
+            assert_eq!(
+                formatted.as_ref(),
+                content,
+                "{} was written non-rustfmt-stable — an injection site is missing its rustfmt pass",
+                path.display()
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 8,
+        "expected the spec to populate every write surface; only {checked} files were checked"
+    );
+
+    // The whole point of the invariant: an unchanged regeneration must be a byte-identical no-op.
+    let before: Vec<(std::path::PathBuf, String)> = {
+        let mut v = Vec::new();
+        let mut roots = vec![out.join("rust/src/generated"), static_crate.join("src")];
+        while let Some(dir) = roots.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    roots.push(path);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    let c = std::fs::read_to_string(&path).unwrap();
+                    v.push((path, c));
+                }
+            }
+        }
+        v.sort();
+        v
+    };
+    crate::api::generate_to_disk(&cli).unwrap();
+    for (path, old) in &before {
+        let now = std::fs::read_to_string(path).unwrap();
+        assert_eq!(
+            *old,
+            now,
+            "{} changed on an unchanged regeneration",
+            path.display()
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// Every statically-sourced `.rs` under the generated trees must be written rustfmt-stable: a
 /// preserve-rewrite is written rustfmt'd, so if export hands the overlay content whose rustfmt
 /// form differs by even one token (the raw static's block-arm trailing comma was the live case),
@@ -19477,13 +19596,28 @@ fn import_line_present(content: &str, ty: &str) -> bool {
         .any(|l| l.trim_start().starts_with("use ") && l.contains(ty))
 }
 
-/// The usage-derived import prune (`import_prune::prune_generated_files`, run over the whole file
-/// map in `generated_files`) must be SOUND across the `use super::*;` glob: a struct `mod.rs` whose
-/// own body never names `BTreeMap` still needs its blindly-pushed `BTreeMap` import when the sibling
-/// `serialization.rs` uses it (encoding maps under `--preserve-encodings`) and reaches it via
-/// `use super::*;`. Removing it would compile-fail the crate (E0433) — the regression this pins. A
-/// per-file prune would wrongly strip it; the whole-crate union keeps it because the ident is used
-/// elsewhere in the crate. `--wasm=false` keeps this to the string-emit path (no static dir needed).
+/// PER-FILE SELF-SUFFICIENCY for the alloc-import injector's names, end to end.
+///
+/// **What this used to guard, and why it changed.** This test formerly asserted the pruner's FAMILY
+/// MODEL through real output: `mod.rs`'s blindly-pushed `BTreeMap` import, named by nothing in its
+/// own body, had to survive because the sibling `serialization.rs` consumed it via `use super::*;`.
+/// D1 deliberately changed that OUTPUT SHAPE for the ten names the alloc-import injector owns:
+/// per-file self-sufficiency is the whole premise of alloc-name resolution (a generated module must
+/// carry its own `extern crate alloc;` + imports, because the seed-once crate root cannot deliver
+/// them), so `serialization.rs` now BINDS `BTreeMap` itself and the parent copy would be a dead
+/// import — an `unused_imports` warning, which `feature_corpus_compiles` fails on.
+///
+/// **The family model is still guarded — at unit level, where it is shape-independent:**
+/// `import_prune::tests::keeps_parent_import_consumed_by_child_via_super_glob` (keep direction),
+/// `prunes_when_ident_absent_across_module_family` (drop direction), and
+/// `descendant_direct_import_does_not_protect_ancestor_copy` (the disqualifier that makes the
+/// post-D1 arrangement correct) drive `prune_generated_files` on a hand-built file map, so they pin
+/// the model without depending on any shape the generator happens to emit.
+///
+/// **Do not "restore" this to assert a parent-held `BTreeMap` import.** That shape no longer occurs:
+/// a sweep of four representative `--preserve-encodings` specs found ZERO glob-only imports of ANY
+/// name, because a file that names a collection type also imports it. Re-adding the parent copy
+/// would reintroduce the unused-import warning this delivery removed.
 #[test]
 fn integration_prune_keeps_import_used_via_super_glob() {
     use clap::Parser;
@@ -19521,7 +19655,8 @@ fn integration_prune_keeps_import_used_via_super_glob() {
         .map(|(_, c)| c.clone())
         .expect("no serialization.rs");
 
-    // Precondition sanity: mod.rs does not itself name BTreeMap, but serialization.rs does.
+    // Precondition sanity (unchanged): mod.rs's own body never names BTreeMap — the map field is an
+    // OrderedHashMap — while serialization.rs uses it for the per-entry encoding maps.
     assert!(
         !mod_rs
             .lines()
@@ -19532,10 +19667,18 @@ fn integration_prune_keeps_import_used_via_super_glob() {
         serialization_rs.contains("BTreeMap"),
         "test premise broken: serialization.rs should use BTreeMap"
     );
-    // The fix: mod.rs must retain the BTreeMap import so the child's `use super::*;` resolves.
+    // The consumer BINDS THE NAME ITSELF rather than reaching through `use super::*;` — the
+    // property that makes each generated module compile on its own under `no_std`.
     assert!(
-        import_line_present(&mod_rs, "BTreeMap"),
-        "mod.rs must keep its BTreeMap import (used by serialization.rs via super::*):\n{mod_rs}"
+        import_line_present(&serialization_rs, "BTreeMap"),
+        "serialization.rs must bind BTreeMap itself (per-file self-sufficiency):\n{serialization_rs}"
+    );
+    // ...and the parent therefore carries NO copy: one would be unused, and an unused import in a
+    // 100%-generated crate fails the `feature_corpus_compiles` warning wall.
+    assert!(
+        !import_line_present(&mod_rs, "BTreeMap"),
+        "mod.rs must NOT carry a BTreeMap import — nothing in its family needs it now that the \
+         consumer self-binds, so it would be a dead import:\n{mod_rs}"
     );
 }
 

@@ -18,7 +18,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-
 pub type BareInt = Int;
 
 pub type CborInt = Int;

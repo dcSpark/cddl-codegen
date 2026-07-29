@@ -6,13 +6,13 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use crate::generated::serialization::*;
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
-use super::*;
-use crate::generated::error::*;
-use crate::generated::serialization::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 

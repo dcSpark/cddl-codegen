@@ -6,10 +6,10 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use alloc::collections::BTreeMap;
-use alloc::vec::Vec;
 use super::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 pub type HolderDmKeyEncodings = BTreeMap<
     NonEmptyMap<u64, u64>,

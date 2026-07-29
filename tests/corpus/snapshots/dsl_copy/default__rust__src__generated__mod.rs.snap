@@ -23,7 +23,6 @@ pub mod serialization;
 pub use crate::Ext;
 pub use crate::Hash;
 
-
 #[derive(Clone, Debug)]
 pub enum Choice {
     Hash(Hash),
