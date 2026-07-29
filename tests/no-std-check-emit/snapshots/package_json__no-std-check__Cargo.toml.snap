@@ -16,6 +16,12 @@ expression: "files[\"no-std-check/Cargo.toml\"]"
 # crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate
 # takes with `default-features = false` is named by its own `std` feature, so turning `std` off here
 # turns it off all the way down.
+#
+# One caveat when reading a RED check: cargo stops at the first crate that fails, so everything after
+# it — the crate under test included — is never compiled at all. A failure in a dependency is a
+# verdict about that dependency and clears nothing behind it. A crate was actually reached only if a
+# `Checking <name>` line for it appears in the output; the rest becomes visible once the first
+# failure is fixed.
 
 [package]
 name = "cddl-lib-no-std-check"
