@@ -4455,3 +4455,136 @@ fn identical_group_choice_arms_in_different_rules_share_one_struct() {
         "the synthesized registration ident must never be emitted, got:\n{src}"
     );
 }
+
+/// The arms of one group choice all name variants of ONE generated enum, so their names share a
+/// single namespace and two arms landing on the same one is a Rust `E0428` — a crate that does not
+/// compile, with no diagnostic from this tool. When BOTH claimants are names the author spelled
+/// (`; @name`), that is an authoring error and is rejected GRACEFULLY (`record_rejection` → drained
+/// by `finalize`), naming both arms and the remedy: a variant name is public API of the generated
+/// crate, so renaming one would silently ship a name nobody asked for.
+///
+/// This is the VARIANT-namespace sibling of
+/// `group_choice_arm_ident_collision_rejects_gracefully`, which guards the STRUCT namespace. The two
+/// are genuinely distinct seams and the vectors below are exactly the arms the struct-side check
+/// cannot see: an EMBEDDABLE arm is pulled back out of the IR and inlined, so it registers no struct
+/// and claims no struct ident — only its variant name survives. Structurally IDENTICAL arms are the
+/// sharpest case: the struct side deliberately lets them SHARE one generated struct (see
+/// `identical_group_choice_arms_in_different_rules_share_one_struct`), which is right across rules
+/// but within ONE rule still leaves the enum declaring the variant twice.
+#[test]
+fn group_choice_arm_variant_name_collision_rejects_gracefully() {
+    let vectors = [
+        (
+            // Two EMBEDDABLE arms (1 non-fixed field each, so no struct is ever registered) — the
+            // struct-namespace check never fires and the enum got two `Foo::A` variants.
+            "embeddable_arms",
+            "foo = [ ; @name a\n x: uint, tag: 0 //\n ; @name a\n y: text, tag: 1 ]\n",
+        ),
+        (
+            // The single-entry arm branch: no record is built at all, the arm's type goes straight
+            // into the variant. Its own name is likewise only ever a variant name.
+            "single_entry_arms",
+            "foo = [ ; @name a\n uint //\n ; @name a\n text ]\n",
+        ),
+        (
+            // MIXED: an embeddable arm and a non-embeddable one under one name. The embeddable arm
+            // claims no struct ident, so the non-embeddable one sees a free name and emits
+            // `A(A)` — a struct that is fine and a variant name that is already taken.
+            "embeddable_vs_non_embeddable",
+            "foo = [ ; @name a\n x: uint, tag: 0 //\n ; @name a\n y: text, w: uint ]\n",
+        ),
+        (
+            // Structurally identical arms in ONE rule: the struct side shares the single `A` struct
+            // by design, which leaves `A(A)` declared twice.
+            "identical_arms_one_rule",
+            "foo = [ ; @name a\n x: uint, z: text //\n ; @name a\n x: uint, z: text ]\n",
+        ),
+        (
+            // The two spellings camel-case to one variant name, so the collision is real even
+            // though the source names differ — the check must key on the GENERATED name.
+            "differing_spellings_one_variant",
+            "foo = [ ; @name my_arm\n uint //\n ; @name myArm\n text ]\n",
+        ),
+    ];
+    for (tag, spec) in vectors {
+        let err = expect_graceful_rejection(tag, spec, &[]);
+        assert!(
+            err.contains("Two variants cannot share one name"),
+            "[{tag}] rejection must explain the conflict, got:\n{err}\nspec:\n{spec}"
+        );
+        assert!(
+            err.contains("rule `foo`"),
+            "[{tag}] rejection must name the owning rule, got:\n{err}"
+        );
+    }
+}
+
+/// A group-choice arm the author did NOT name carries a name the GENERATOR derived — from the arm's
+/// sole member key, from its type, or from the arm's position (`{rule}{index}`). There is no
+/// authorial intent behind such a name, so when it collides it yields: it takes a numeric suffix,
+/// exactly as the type-choice path (`create_variants_from_type_choices`) already does for its own
+/// derived names. Rejecting here would refuse a spec whose author named nothing.
+///
+/// Which of a colliding explicit/derived pair keeps the plain name is decided BEFORE the arm loop
+/// runs — every arm's `@name` is reserved up front — so it never depends on the order the author
+/// happened to write the two arms in. The author's name always wins.
+#[test]
+fn derived_group_choice_arm_variant_names_deduplicate() {
+    let vectors = [
+        (
+            // Two arms whose names both come from their member key: nothing was authored, so both
+            // are free to be renumbered and the spec must still generate.
+            "member_key_derived",
+            "foo = [ x: uint // x: text ]\n",
+            vec!["X(u64)", "X2(String)"],
+        ),
+        (
+            // An explicit `@name x` against a derived `x:` sibling — the authored name is kept and
+            // the derived one moves.
+            "explicit_beats_derived",
+            "foo = [ ; @name x\n uint //\n x: text ]\n",
+            vec!["X(u64)", "X2(String)"],
+        ),
+        (
+            // Reversed source order, same outcome: reserving the `@name`s before the loop is what
+            // makes the authored name win from either position.
+            "explicit_beats_derived_reordered",
+            "foo = [ x: text //\n ; @name x\n uint ]\n",
+            vec!["X2(String)", "X(u64)"],
+        ),
+        (
+            // The positional name a multi-entry arm gets (`{rule}{index}`) is derived too, so an
+            // `@name` that happens to spell it keeps it and the positional one moves.
+            "explicit_beats_positional",
+            "foo = [ ; @name foo1\n x: uint, tag: 0 //\n y: text, tag: 1 ]\n",
+            vec!["Foo1(u64)", "Foo12(String)"],
+        ),
+    ];
+    for (tag, spec, expected) in vectors {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_variant_dedup_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let out = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "variant_dedup_unused",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let src = out
+            .unwrap_or_else(|e| panic!("[{tag}] derived names must dedup, not reject: {e}\n{spec}"))
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        for variant in expected {
+            assert!(
+                src.contains(variant),
+                "[{tag}] expected variant `{variant}` in the generated enum, got:\n{src}"
+            );
+        }
+    }
+}
