@@ -327,14 +327,18 @@
     },
     {
       "gate": "no_std_check",
-      "warm_ms": 2000,
-      "n": 3,
+      "warm_ms": 4000,
+      "n": 16,
       "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-29",
           "warm_ms": 2000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 4000
         }
       ]
     },
@@ -509,14 +513,18 @@
     },
     {
       "gate": "recombination_json_crates_execute",
-      "warm_ms": 63000,
+      "warm_ms": 102000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 63000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 102000
         }
       ]
     },
@@ -539,14 +547,18 @@
     },
     {
       "gate": "recombination_wasm_crates_check",
-      "warm_ms": 59000,
+      "warm_ms": 75000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 59000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 75000
         }
       ]
     },
