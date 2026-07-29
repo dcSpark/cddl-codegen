@@ -194,6 +194,36 @@ Depth is the only hostile-input class that needs an opt-in flag. The other class
   dots cannot map to Rust identifiers; only un-prefixed expansion is consumable today. Other
   `;# `-prefixed comment lines warn; `;#####` banner comments stay plain comments.
 
+## `no_std` support (which flags are `std`-gated)
+
+The generated **rust** crate builds without `std`: it declares a default-on `std` cargo feature and
+a `no_std` consumer depends on it with `default-features = false`. There is no mode flag — one set
+of emitted bytes serves both. The contract, what the feature gates, and the one-time changes an
+existing crate meets on upgrade are in
+[Output format § The `std` feature](./output_format#the-std-feature-building-without-std) and
+[§ Upgrading a crate generated before the `no_std` output](./output_format#upgrading-a-crate-generated-before-the-no_std-output).
+
+Two flags interact with it, and only one is a limitation:
+
+- **[`--deserialize-depth-limit`](./command_line_flags) makes the crate `std`-only.** The guard's
+  counter is a `thread_local!`, which has no `core`/`alloc` equivalent. Rather than leaking `std`
+  silently, such a crate carries a `compile_error!` for `not(feature = "std")` builds reading
+  ``--deserialize-depth-limit output requires the `std` feature``, and the
+  [`no-std-check` shim](./output_format#the-no-std-check-shim-crate) it emits is red by design. The
+  `std` feature is default-on, so an ordinary consumer is unaffected; the two are simply not
+  combinable today. A depth guard that works without `std` is not built because nobody has needed
+  the combination — the loud refusal is what makes that demand visible rather than latent.
+- **[`--emit-tests`](./command_line_flags) output works under `no_std`.** The emitted
+  `#[cfg(test)]` module restores `std` for itself (tests run on a host, where `std` exists to be
+  linked), so `cargo test --no-default-features --lib` passes on a generated crate. `--lib` is
+  required: the crate's `cdylib` crate-type is *linked* on a host target and a `#![no_std]` cdylib
+  wants an allocator and a panic handler.
+
+The **wasm** and **json-gen** crates stay `std` by nature (`wasm-bindgen`, and writing schema files
+to disk) and consume the rust crate with default features on. They are out of scope rather than
+incomplete: a `no_std` target reached *through* one of those surfaces would mean the layering is
+wrong for that consumer, not merely unfinished.
+
 {/* BEGIN GENERATED q1-limitations — regenerate with: cd cddl-matrix && bun run query_q1_gaps.ts --write */}
 
 ## Limitations
