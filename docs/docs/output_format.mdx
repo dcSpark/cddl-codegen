@@ -1158,11 +1158,63 @@ crate — for borrowed dependency types, the dependency's real module path (see
 > does **not** clear it — sentinel blocks are carried forward by design — so delete that one block by hand
 > once; every regen afterwards stays clean.
 
+## The `std` feature (building without `std`)
+
+The generated **rust** crate is `no_std`-capable by default. There is no mode flag and no second
+output variant: one set of emitted bytes serves both consumers, because the `core::`/`alloc::` paths
+it uses are equally valid in a `std` crate.
+
+```toml
+# rust/Cargo.toml, emitted on every run whatever the flags
+[features]
+default = ["std"]
+std = []
+```
+
+A `no_std` consumer takes the crate with `default-features = false`; a `std` consumer changes
+nothing and notices nothing. Three pieces make that work:
+
+- **Emitted code is `core`/`alloc`-pathed unconditionally**, and each generated module file carries
+  its own `extern crate alloc;`. Per-file rather than crate-root, because the crate root is
+  [seeded once and then yours](#generated-crate-roots-thin-root-seed-once) — the tool cannot deliver
+  a new line there to a crate it has already generated, and `use alloc::…` does not resolve without
+  a binding in scope.
+- **The seeded root carries `#![cfg_attr(not(feature = "std"), no_std)]`** (see the thin-root
+  listing above). Fresh exports get it automatically; a crate generated before this line existed
+  keeps compiling as plain `std` until you add it by hand — one line, once.
+- **A default-on `std` feature**, emitted unconditionally so the manifest shape is uniform.
+
+**What the feature actually gates is small, and deliberately so.** Under `--preserve-encodings`,
+`OrderedHashMap`'s hash builder is `std::collections::hash_map::RandomState` with the feature on and
+`hashlink`'s default builder without it — an alias (`MapHashBuilder`) rather than a type change, so
+no public type name moves. Wire bytes are identical either way: iteration order is insertion order
+under both builders and iteration order is what the serializer writes, so the difference is
+HashDoS resistance on attacker-chosen keys, not output. The only other `std` dependence in the
+generated crate is [`--deserialize-depth-limit`](./command_line_flags), whose `thread_local!`-based
+guard has no `core`/`alloc` equivalent and which therefore refuses a `no_std` build outright rather
+than gating itself away — see the carve-out below.
+
+**The `std` feature does not forward to dependency features.** It is `std = []`, an in-crate `cfg`
+only, and the crate's dependencies stay in alloc mode permanently: `hex` with
+`default-features = false, features = ["alloc"]`, and `serde` / `serde_json` / `schemars` likewise
+`default-features = false` with only the features the emitted code needs. Forwarding
+(`std = ["hex/std", …]`) is not available: those dependencies are flag- and type-conditional, and a
+feature referencing a dependency that this flag set did not emit is a cargo manifest error. If your
+hand code wants a dependency's `std` features, add them to that dependency's entry — the
+[manifest merge](#generated-cargotoml-merge-not-clobber) unions features and keeps yours.
+
+**Scope is the rust crate.** The `wasm` and `wasm/json-gen` crates stay `std` by nature
+(`wasm-bindgen`, and writing schema files to disk); they consume the rust crate with default
+features on and are unaffected. The [`--export-static-crate`](./command_line_flags) target declares
+the same `std` feature — it receives `ordered_hash_map.rs`, whose `cfg` would otherwise silently
+select the `no_std` hasher there, since an undeclared feature is always false — but that manifest's
+dependency specs are co-owned and deliberately not reshaped, so the feature is an in-crate switch
+and does not by itself make that crate buildable with `--no-default-features`.
+
 ## The `no-std-check` shim crate
 
-The generated **rust** crate is `no_std`-capable: it declares a default-on `std` cargo feature, and a
-`no_std` consumer depends on it with `default-features = false`. Everything under `src/generated/**`
-is generated `no_std`-clean. The crate root `src/lib.rs`, however, is
+Everything under `src/generated/**` is generated `no_std`-clean, and this repository's own gate is
+what keeps that true (below). The crate root `src/lib.rs`, however, is
 [seeded once and then yours](#generated-crate-roots-thin-root-seed-once) — so hand-added utils (and
 anything they pull in) are the one thing that can take a generated crate out of `no_std`, and nothing
 in the generator can see that happen.
@@ -1232,6 +1284,121 @@ rather than a continuous one (its CI runs the `fast` tier only).
   is precisely what fires it. The shim is still emitted (a directory that silently disappears under
   one flag is a worse surprise than an explained failure) and its header paragraph says so, quoting
   the message. Drop the flag if you need a `no_std` build of that crate.
+
+## Upgrading a crate generated before the `no_std` output
+
+Everything here is a **one-time**, consumer-visible change on the first regeneration after the
+upgrade. They are listed together because each is loud where it lands — a compile error, a
+`compile_error!` block, or a new directory — and the useful thing is knowing which of them you are
+looking at, not discovering it. A brand-new output tree meets only the last two.
+
+**1. Dependency specs are reshaped to alloc mode.** `hex`, `serde`, `serde_json` and `schemars` are
+now asserted with `default-features = false` plus the explicit feature list the emitted code needs.
+Your pins, extra features and `optional` flags survive the
+[merge](#generated-cargotoml-merge-not-clobber) as always. One shape does **not** survive: a
+hand-written `default-features = true` is a field the tool sets, so it is overwritten back to
+`false` on every regeneration. Name the features you want instead — those the merge unions in and
+keeps.
+
+The sharpest instance is hand code that **boxes a dependency's error type**. `hex::FromHexError`'s
+`Error` impl is gated on hex's own `std` feature, so `Box::new(e)` into
+`DeserializeFailure::InvalidStructure` stops compiling once `hex` is in alloc mode. The fix is a
+local newtype, not re-enabling the dependency's defaults — `tests/custom_serialization` in this
+repository is the worked exemplar:
+
+```rust
+struct HexDecodeError(hex::FromHexError);
+
+impl core::fmt::Debug for HexDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl core::fmt::Display for HexDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl core::error::Error for HexDecodeError {}
+```
+
+`Debug` and `Display` are hand-written and delegate verbatim rather than derived on purpose:
+`DeserializeFailure` renders a boxed error inline, so a derived `Debug` would insert a
+`HexDecodeError(..)` layer into every rendered message. The wrapper stays invisible in output.
+
+**"It still compiles for me" is not evidence that your hand code is migrated.** Cargo unifies
+features across the whole dependency graph, so any *other* dependency anywhere in your tree that
+pulls `hex` (or serde/serde_json/schemars) with default features turns their `std` feature back on
+for everyone, and the boxing keeps compiling. This is not hypothetical — it happens inside this
+repository: the preserve fixture takes the `cddl` oracle as a test dependency, which pulls `hex`
+with default features, and its identical `Box::new(FromHexError)` compiled green while the core
+fixture's — same line, no such dependency — failed. Check the crate built standalone, which is
+exactly what the [`no-std-check` shim](#the-no-std-check-shim-crate) does with its empty
+`[workspace]`.
+
+**2. Preserved comments attached to a rewritten `use` line surface as
+`cddl-codegen:unpreserved-comment` blocks.** The `std::` → `core::`/`alloc::` rewrite moves the
+token anchors those comments are re-placed against, so a `keep`-marked comment on an import the
+rewrite touched cannot be re-anchored and is trapped in a `compile_error!` block instead of being
+dropped. That is [the overlay working as designed](./preserving_edits); resolve each block once and
+regeneration stays clean afterwards.
+
+**3. `"std"` cannot be durably removed from `features.default`.** That list is
+[merged, not replaced](#generated-cargotoml-merge-not-clobber), and the merge is one-way: delete the
+entry and the next regeneration adds it back. This is not a workaround for anything — the supported
+way to build without `std` is `default-features = false` at the *depending* crate, which no
+manifest edit in the generated crate can interfere with.
+
+**4. `OrderedHashMap`'s backing crate changed — a semver-major break for
+`--preserve-encodings` crates.** `linked-hash-map` has no `no_std` mode upstream, and
+`OrderedHashMap` is the public API type of every preserve-encodings crate, so the type could not
+hide behind the `std` feature; it is now built on `hashlink`. Three consumer-visible consequences:
+
+- the `Deref` target and `take()`'s return type name the backing crate
+  (`hashlink::LinkedHashMap<K, V, MapHashBuilder>`);
+- `Entry` imports move from `linked_hash_map::Entry` to the generated crate's
+  `ordered_hash_map::Entry` — a thin wrapper whose `or_insert`/`or_insert_with` deliberately leave
+  an occupied entry's **position** unchanged, which is what keeps wire order identical across the
+  swap (`hashlink`'s own entry API refreshes it to the back);
+- Deref-exposed methods with no `hashlink` equivalent (`get_refresh`, `entries`) are gone, as loud
+  compile errors.
+
+`insert` is unchanged in both spelling and semantics (both crates move an existing key to the back
+on overwrite), and generated deserializers reject duplicate keys, so the surface this affects is
+hand-written mutation code.
+
+**5. A `linked-hash-map` dependency entry is removed on every regeneration.** The manifest changeset
+carries a permanent tombstone for that key so an upgraded manifest does not keep a stale entry
+beside `hashlink`. If your hand code still wants that crate, it cannot live under its own name — use
+a renamed dependency key, which the tombstone never sees:
+
+```toml
+lhm = { package = "linked-hash-map", version = "0.5.3" }
+```
+
+**6. A new top-level `no-std-check/` directory appears in every output root.** Whether to commit it
+or gitignore it is your call — it is tool-owned and reproducible, like `extern-interface/`, which is
+the committed precedent. Its empty `[workspace]` table guarantees it cannot disturb a workspace that
+does not list it, but a CI step that inventories the top level of your output tree will see it.
+
+**7. The [`--export-static-crate`](./command_line_flags) target gains a `std` feature too**, and it
+means less than it looks like: that manifest is co-owned, so its dependency specs are deliberately
+left alone. Declaring the feature is what keeps the exported `ordered_hash_map.rs` on `RandomState`
+instead of silently selecting the `no_std` hasher; it does not by itself make that crate buildable
+with `--no-default-features`.
+
+**8. An existing crate opts into `no_std` with one hand-added line.** The crate root is seeded once
+and never rewritten, so the tool cannot deliver the attribute to a tree it has already generated.
+Add it yourself, at the top of `rust/src/lib.rs`:
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+```
+
+Until you do, the crate is plain `std` and still compiles — nothing forces the migration. Afterwards,
+`no-std-check` tells you whether the rest of that root came along.
 
 ## Generated `Cargo.toml` (merge, not clobber)
 
