@@ -52,6 +52,27 @@ pub fn write_hex_string<'se>(
     serializer.write_text_sz(hex_text, str_len_sz)
 }
 
+// `hex::FromHexError` cannot be boxed as `Box<dyn Error>` directly — the preserve-flavored twin of
+// the newtype in `tests/custom_serialization`, and the same consumer migration: the generated crate
+// depends on `hex` in ALLOC MODE (`default-features = false`), and hex's `Error` impl is gated on
+// ITS `std` feature. `Debug`/`Display` delegate VERBATIM rather than being derived, so the wrapper
+// never shows up in a rendered `DeserializeFailure`.
+struct HexDecodeError(hex::FromHexError);
+
+impl core::fmt::Debug for HexDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl core::fmt::Display for HexDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl core::error::Error for HexDecodeError {}
+
 // reads hex text to bytes
 pub fn read_hex_string(
     raw: &mut cbor_event::de::Deserializer,
@@ -59,7 +80,7 @@ pub fn read_hex_string(
     let (text, text_enc) = raw.text_sz()?;
     hex::decode(text)
         .map(|bytes| (bytes, text_enc.into()))
-        .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
+        .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(HexDecodeError(e))).into())
 }
 
 // must include the tag since @custom_serialize at field-level overrides everything

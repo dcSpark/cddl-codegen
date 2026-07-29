@@ -1555,6 +1555,39 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   suite per re-exposed surface, enumerated from the public-API type graph (which dep types appear
   in `pub` signatures/Deref targets), so the pin obligation is discovered by a gate rather than
   remembered by a rule.
+- **A fixture cell's verdict can be an accident of cargo feature unification: harness-spliced
+  hand code needing a feature a dep reshape disabled stays green whenever a SIBLING dep in the
+  same fixture graph re-enables that feature — so the red arrives on a later graph change, not on
+  the change that broke the code.** Proven instance (D2, the alloc-mode dep reshape): two
+  committed hand fragments (`tests/custom_serialization`, `tests/custom_serialization_preserve`,
+  spliced into fixture crates by the integration harness) boxed `hex::FromHexError` as
+  `Box<dyn Error>` — an impl hex gates on ITS `std` feature, which the reshape's
+  `default-features = false` dropped. The non-preserve fragment failed three `local`-tier cells
+  immediately (`core_no_wasm`/`core_with_wasm`/`emit_wasm_tests_execute` — the net that works,
+  and the third instance of the owning-family lesson: the owning family of a DEP RESHAPE includes
+  every fixture whose hand code uses that dep, a set not enumerable from the ops table, so the
+  reshape delivery now sweeps the committed hand-file set as part of its battery). The preserve
+  twin stayed green PRE-fix for a reason that had nothing to do with the code: its fixture graph
+  carries the `cddl` conformance-oracle dep, whose own transitive `hex` uses default features, and
+  cargo unifies features per graph — so `hex/std` was back on and the missing impl restored
+  (`cargo tree` evidence in the fix-forward log). Both fragments were fixed the consumer way (a
+  local newtype with verbatim-delegating `Debug`/`Display` + `core::error::Error` — the in-repo
+  migration exemplar cited by the no_std workstream's D5 notes) rather than by re-enabling the
+  dep's defaults, precisely so the fixtures model the post-reshape world; but the masked-pass
+  CLASS remains: any spliced hand fragment whose compile needs a reshaped-away feature is
+  invisible while some oracle-carrying sibling re-unifies it. Coverage boundary, stated so the
+  deferral is scoped: the no_std drift gate (workstream D3) structurally covers the TOOL-PRODUCT
+  half — fresh standalone crates checked through `default-features = false` shims with no oracle
+  in the graph — and never the fixture-hand-code half, because its profiles deliberately exclude
+  the harness appendages. Machinery on a trigger, not now (the class has exactly the two members,
+  both fixed): a `cargo check --lib`-only cell per spliced-hand-fragment fixture family —
+  lib-only checking keeps dev/oracle deps out of the unification graph, so the fragment must
+  compile on the fixture's own declared features. *Reopening signal:* a third instance — a
+  fixture cell flipped red by a dep-graph or oracle-version change with no edit to the fixture
+  itself, or a reshape delivery's hand-file sweep finding a fragment that compiles only under
+  unification. Measurable by exactly the party who hits it (the tier runner reading the E0277
+  against an unchanged fixture), on the dimension the cost grows (the count of spliced hand
+  fragments using reshaped-dep surfaces).
 - **Comment-residue false matches in text scans over emitted/prior `.rs` output — one proven
   instance, no machinery yet.** Any diagnostic or decision that SCANS generated (or user-edited
   prior) Rust text for a code pattern shares one trap: the comment-preservation overlay and the
