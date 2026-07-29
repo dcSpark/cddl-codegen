@@ -3334,7 +3334,7 @@ one schema name and asserts the injectivity guard names the consumer's row.
 
 ## Design rules (review-owned; each with a shipped exemplar)
 
-Four rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
+Five rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
 Review is their current owner; the conditional mechanical layers (built only if a class recurs) are a
 `tests/TESTING_ROADMAP.md` item.
 
@@ -3379,6 +3379,15 @@ Review is their current owner; the conditional mechanical layers (built only if 
   `every_written_surface_is_rustfmt_stable`'s per-root reached assertions (added when the emitted
   `no-std-check/src` surface joined the walk and the old floor's "cannot be met without the
   original roots" claim turned out to be unverified arithmetic).
+- **A delivery that ships a gate covering its own regression classes needs no per-bug ledger
+  entries for those classes.** When the failure analysis for a pre-ship catch shows the
+  delivery's own gate would have gone red on it, record the coverage fact once and stop —
+  per-instance roadmap entries for self-caught classes are noise that dilutes the ledger's
+  recur-first signal. The analysis still runs per catch (that's how you learn the gate would
+  have caught it); only the ledgering collapses. Shipped exemplar: the `no_std_check` gate's own
+  cells cover the emitted-shim shape and warning-class regressions found while building it, so
+  those probe catches produced no entries — where the same delivery's cache-closure near-miss,
+  which NO gate covered, did.
 
 ## Coverage
 
