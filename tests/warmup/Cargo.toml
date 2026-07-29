@@ -33,6 +33,10 @@ derivative = { version = "2.2.0", features = ["use_core"] }
 serde = { version = "1.0", features = ["derive", "alloc"] }
 serde_json = { version = "1.0.57", features = ["alloc", "float_roundtrip"] }
 schemars = { version = "1.2.1", features = ["derive"] }
-hex = { version = "0.4.3", features = ["alloc"] }
+# The `hex` KEY takes the `const-hex` PACKAGE in the generated crates, so the warm-up has to name the
+# package too — a key-only match would pre-fetch the wrong crate and every offline nested-cargo cell
+# would fail resolving `const-hex`. Plain `hex 0.4.3` is still reached offline through the workspace's
+# own fetch (the `cddl` oracle depends on it), so nothing here needs to name it.
+hex = { package = "const-hex", version = "1.19.1", features = ["alloc", "core-error"] }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6.5"

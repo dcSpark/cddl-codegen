@@ -10,7 +10,7 @@ edition = "2024"
 
 [dependencies]
 cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
-hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+hex = { package = "const-hex", version = "1.19.1", default-features = false, features = ["alloc", "core-error"] }
 
 [features]
 default = ["std"]

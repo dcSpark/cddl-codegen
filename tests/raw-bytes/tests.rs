@@ -89,11 +89,13 @@ mod tests {
     }
 
     // Wire pin 3: a `0x` / `0X` PREFIX is REJECTED — the accepted grammar is bare hex digits only,
-    // with the prefix character reported as an invalid character at index 1 (i.e. the decoder gives
-    // a leading `0x` no special treatment whatsoever). This is the pin a more lenient hex
-    // implementation flips from Err to Ok, widening the accepted input grammar of a shipped public
-    // surface while `to_raw_hex` keeps emitting the unprefixed form — an asymmetry no round-trip
-    // test can see.
+    // with the prefix character reported as an invalid character at index 1. This is the pin a more
+    // lenient hex implementation flips from Err to Ok, widening the accepted input grammar of a
+    // shipped public surface while `to_raw_hex` keeps emitting the unprefixed form — an asymmetry no
+    // round-trip test can see. The backing decoder IS one of those lenient implementations: it
+    // strips the prefix and accepts the rest, so `from_raw_hex` checks for one itself and answers
+    // the error the grammar has always answered. That the verdict and the error SHAPE are unchanged
+    // across that swap is what this pin holds; only the rendered wording moved (pin 4).
     #[test]
     fn raw_bytes_hex_prefix_rejected() {
         let body = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
@@ -110,7 +112,7 @@ mod tests {
             assert_eq!(
                 err,
                 format!(
-                    "Deserialization: Invalid internal structure: Invalid character '{ch}' at position 1"
+                    "Deserialization: Invalid internal structure: invalid character '{ch}' at position 1"
                 )
             );
         }
@@ -126,12 +128,12 @@ mod tests {
         // non-hex character: reported with the offending character and its 0-based position
         assert_eq!(
             PubKey::from_raw_hex("a1g2").err().unwrap().to_string(),
-            "Deserialization: Invalid internal structure: Invalid character 'g' at position 2"
+            "Deserialization: Invalid internal structure: invalid character 'g' at position 2"
         );
         // odd digit count: reported as a whole-string shape error, carrying no position
         assert_eq!(
             PubKey::from_raw_hex("abc").err().unwrap().to_string(),
-            "Deserialization: Invalid internal structure: Odd number of digits"
+            "Deserialization: Invalid internal structure: odd number of digits"
         );
     }
 }

@@ -52,11 +52,13 @@ pub fn write_hex_string<'se>(
     serializer.write_text_sz(hex_text, str_len_sz)
 }
 
-// `hex::FromHexError` cannot be boxed as `Box<dyn Error>` directly — the preserve-flavored twin of
-// the newtype in `tests/custom_serialization`, and the same consumer migration: the generated crate
-// depends on `hex` in ALLOC MODE (`default-features = false`), and hex's `Error` impl is gated on
-// ITS `std` feature. `Debug`/`Display` delegate VERBATIM rather than being derived, so the wrapper
-// never shows up in a rendered `DeserializeFailure`.
+// The preserve-flavored twin of the newtype in `tests/custom_serialization`, carrying the same
+// consumer migration: hand code that BOXES an alloc-mode dependency's error type needs a local
+// newtype whenever that dependency's `Error` impl is gated on its own `std` feature. The `hex` key's
+// package (`const-hex`, with `core-error`) impls `core::error::Error` unconditionally, so this is
+// the shape rather than a requirement here — see the twin for the full note. `Debug`/`Display`
+// delegate VERBATIM rather than being derived, so the wrapper never shows up in a rendered
+// `DeserializeFailure`.
 struct HexDecodeError(hex::FromHexError);
 
 impl core::fmt::Debug for HexDecodeError {

@@ -36,17 +36,21 @@ pub fn write_hex_string<'se>(
     serializer.write_text(hex::encode(bytes))
 }
 
-// `hex::FromHexError` cannot be boxed as `Box<dyn Error>` directly. The generated crate depends on
-// `hex` in ALLOC MODE (`default-features = false`), and hex's `Error` impl is gated on ITS `std`
-// feature, so the raw error no longer satisfies the boxed bound. This local newtype supplies the
-// impl — and this file is the in-repo exemplar of that consumer migration: hand code that boxed a
-// dependency's error type is exactly what the reshape breaks, and a newtype is the fix, not
-// re-enabling the dependency's default features.
+// The in-repo exemplar of the consumer migration an ALLOC-MODE dependency forces on hand code that
+// BOXES that dependency's error type: a dependency whose `Error` impl is gated on its own `std`
+// feature stops satisfying `Box<dyn Error>` the moment the generated crate takes it with
+// `default-features = false`, and a local newtype supplying the impl is the fix — not re-enabling
+// the dependency's default features.
 //
-// `Debug` and `Display` are hand-written and delegate VERBATIM rather than derived, mirroring the
-// runtime's own `FromHexErrorCore`: `DeserializeFailure` renders a boxed error inline, so a derived
-// `Debug` would insert a `HexDecodeError(..)` layer into every rendered message. The wrapper is
-// deliberately invisible in output.
+// The `hex` KEY is no longer such a dependency: it takes the `const-hex` package with `core-error`,
+// which impls `core::error::Error` unconditionally, so `Box::new(e)` compiles here without the
+// newtype. It is kept because the shape is what a dependency lacking that impl still requires, and
+// this file is where the shape is written down and compiled.
+//
+// `Debug` and `Display` are hand-written and delegate VERBATIM rather than derived:
+// `DeserializeFailure` renders a boxed error inline, so a derived `Debug` would insert a
+// `HexDecodeError(..)` layer into every rendered message. The wrapper is deliberately invisible in
+// output.
 struct HexDecodeError(hex::FromHexError);
 
 impl core::fmt::Debug for HexDecodeError {

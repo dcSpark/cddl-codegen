@@ -852,11 +852,16 @@ pub fn ops_for_rust(
             });
     // Alloc mode, on the same terms as the JSON deps above (and forwarded by `features.std` the same
     // way). `alloc` is what `hex::encode`/`decode` need — they return owned `String`/`Vec`.
-    // `hex`'s std-only `Error` impl on `FromHexError` is already handled independently of the spec,
-    // by the runtime's `FromHexErrorCore` newtype in `static/raw_bytes_encoding.rs`.
+    //
+    // A RENAMED dependency: the package is `const-hex`, taken under the `hex` KEY. The key is what
+    // every `hex::` path in the static runtime and in the emitted code resolves through, so keeping
+    // it makes the package swap invisible to both — and, because the key is unchanged, needs no
+    // tombstone on an already-written manifest. `core-error` is the second feature: it supplies an
+    // unconditional `core::error::Error` impl on `FromHexError`, which is what lets `from_raw_hex`
+    // box the decode error directly instead of through a local newtype.
     ops.push(dep(
         "hex",
-        "{ version = \"0.4.3\", default-features = false, features = [\"alloc\"] }",
+        "{ package = \"const-hex\", version = \"1.19.1\", default-features = false, features = [\"alloc\", \"core-error\"] }",
         needs_hex,
     ));
 
@@ -894,6 +899,11 @@ pub fn ops_for_rust(
     // asserted above, and why `hashlink` and `cbor_event` contribute nothing (neither declares a
     // `std` feature at all — the fork is unconditionally `#![no_std]`), nor does the proc-macro
     // `derivative` (its spec keeps default features) or the wasm-only optional `wasm-bindgen`.
+    //
+    // A forward names the `[dependencies]` KEY, never the package behind it — cargo resolves
+    // `<key>/<feature>` against the table, so the `hex` entry keeps forwarding across the
+    // `const-hex` rename with no change here. It still forwards to a real feature on the other side:
+    // `const-hex` declares `std` (and defaults to it), which is the second half of the iff.
     //
     // The path-dep entries come first and sorted; the third-party ones follow in the fixed order
     // their dep ops are pushed, so the rendered array reads the way the function does.
@@ -1124,7 +1134,8 @@ pub fn ops_for_static_runtime(cli: &Cli) -> std::io::Result<Vec<(KeyPath, Manife
 
     // The computed `std` feature, after every dependencies op (see `std_feature_op`). `hex` is
     // unconditional here because the log asserts the dep unconditionally; the other three follow
-    // their own conditions exactly.
+    // their own conditions exactly. As on the generated rust crate, `hex/std` names the
+    // `[dependencies]` KEY — the package behind it is `const-hex`, which declares its own `std`.
     //
     // The set-or-SKIP posture above interacts with the merge's absent-dep prune the right way round:
     // a dep this flavor stops needing is never removed from this manifest, so its `<dep>/std` entry
@@ -1848,7 +1859,7 @@ hex = { version = \"0.4.3\" }
         );
         assert_eq!(
             line("hex"),
-            "hex = { version = \"0.4.3\", features = [\"alloc\"], default-features = false }"
+            "hex = { version = \"1.19.1\", features = [\"alloc\", \"core-error\"], package = \"const-hex\", default-features = false }"
         );
 
         // Normalization is a fixed point, so a re-merge rewrites nothing.
@@ -1958,6 +1969,65 @@ wasm-bindgen = { version = \"0.2.126\", optional = true }
             line.contains("\"serde\""),
             "the user's feature must survive the overwrite: {line}"
         );
+    }
+
+    /// The `hex` KEY is a RENAMED dependency (`package = "const-hex"`), which puts a field the merge
+    /// has never had to carry before into the tool's spec — and the three shapes a consumer manifest
+    /// can be in when it arrives are exactly the three that could each go wrong differently: a bare
+    /// version string predating the rename (the `package` field has to be ADDED and the version must
+    /// not be floored at a requirement from the other package's number line), the alloc-mode table
+    /// the tool itself wrote before the rename (same, plus a features union), and a hand-written
+    /// const-hex spec a consumer already migrated to ahead of us (nothing may move).
+    ///
+    /// The property under test in all three is the same one: whatever the base, the merged entry
+    /// names `const-hex` and carries a version that resolves against `const-hex`'s versions.
+    /// `0.4.3` surviving anywhere would be a version requirement read off the WRONG package.
+    #[test]
+    fn the_renamed_hex_spec_merges_onto_every_pre_rename_shape() {
+        let op = || set(&["dependencies", "hex"], &alloc_mode_spec("hex"));
+        for (label, existing) in [
+            ("bare version string", "[dependencies]\nhex = \"0.4.3\"\n"),
+            (
+                "the pre-rename alloc-mode table",
+                "[dependencies]\nhex = { version = \"0.4.3\", default-features = false, features = [\"alloc\"] }\n",
+            ),
+            (
+                "a hand-migrated const-hex spec",
+                "[dependencies]\nhex = { package = \"const-hex\", version = \"1.19.1\", features = [\"core-error\", \"alloc\"], default-features = false }\n",
+            ),
+        ] {
+            let out = apply(&[op()], Some(existing), "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            let line = out
+                .lines()
+                .find(|l| l.trim_start().starts_with("hex = "))
+                .unwrap_or_else(|| panic!("`hex` missing after merging onto {label}:\n{out}"))
+                .to_owned();
+            assert!(
+                line.contains("package = \"const-hex\""),
+                "the renamed package must land, merging onto {label}: {line}"
+            );
+            assert!(
+                line.contains("1.19.1") && !line.contains("0.4.3"),
+                "the version must be const-hex's, not a floor read off the old package, \
+                 merging onto {label}: {line}"
+            );
+            for feature in ["alloc", "core-error"] {
+                assert!(
+                    line.contains(feature),
+                    "`{feature}` must be named once defaults are off, merging onto {label}: {line}"
+                );
+            }
+            assert!(
+                line.contains("default-features = false"),
+                "alloc mode must survive, merging onto {label}: {line}"
+            );
+            let second = apply(&[op()], Some(&out), "rust/Cargo.toml").unwrap();
+            assert_eq!(
+                out, second,
+                "the renamed-dep merge must be a fixed point, merging onto {label}:\n{out}"
+            );
+        }
     }
 
     // ---- `features.default` merge-union ------------------------------------------------------
@@ -2751,7 +2821,7 @@ used_from_wasm = [\"wasm-bindgen\"]
         );
         assert!(
             out.contains(
-                "hex = { version = \"0.4.3\", default-features = false, features = [\"alloc\"] }"
+                "hex = { package = \"const-hex\", version = \"1.19.1\", default-features = false, features = [\"alloc\", \"core-error\"] }"
             ),
             "and ship `hex` in alloc mode, or the forward switches nothing:\n{out}"
         );
@@ -2859,6 +2929,20 @@ used_from_wasm = [\"wasm-bindgen\"]
                 dep_version(entry),
                 dep_version(spec),
                 "warmup version req for `{name}` drifted from the manifest ops"
+            );
+            // A RENAMED dep is fetched by its PACKAGE, not by the table key, so a warm-up entry
+            // matching only the key pre-fetches the wrong crate and every offline cell fails
+            // resolving the right one — invisible to the version and feature checks around this.
+            let package = |item: &Item| {
+                item.as_table_like()
+                    .and_then(|t| t.get("package"))
+                    .and_then(Item::as_str)
+                    .map(str::to_owned)
+            };
+            assert_eq!(
+                package(entry),
+                package(spec),
+                "warmup `package` for `{name}` drifted from the manifest ops"
             );
             let have = dep_feature_names(entry);
             for f in dep_feature_names(spec) {
