@@ -114,7 +114,7 @@ Names the cargo feature the generated **rust** crate's only `#[wasm_bindgen]` at
 
 The name is only relevant to consumers who compile the rust crate into their own wasm-bindgen build without going through the generated wasm crate — set it to match the feature their manifest already gates `wasm-bindgen` on (e.g. `--rust-wasm-feature=used_from_wasm`).
 
-The value must be a valid cargo feature name (non-empty, characters in `[A-Za-z0-9_+.-]`).
+The value must be a valid cargo feature name (non-empty, characters in `[A-Za-z0-9_+.-]`), and may not be `std` or `default` — the generated rust crate's `[features]` table already owns those two keys, and this flag's key is written last, so a same-named value would silently overwrite one of them.
 
 **Default:** wasm
 ```bash

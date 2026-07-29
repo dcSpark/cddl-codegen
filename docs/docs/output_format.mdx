@@ -40,7 +40,7 @@ pub enum Language { PlutusV1, PlutusV2, PlutusV3 }
 The feature name (`wasm` above) is set by [`--rust-wasm-feature`](./command_line_flags). Correspondingly, in `rust/Cargo.toml`:
 
 - `wasm-bindgen` is an **optional** dependency (`{ version = "0.2", optional = true }`), present only when the spec has at least one c-style enum.
-- the `[features]` table **always** carries the feature under `--wasm` — `wasm = ["dep:wasm-bindgen"]` when a c-style enum exists, otherwise `wasm = []`. It exists even in the empty case so the wasm crate can reference it unconditionally without knowing whether the spec has a c-style enum. The `dep:` form means the optional dependency introduces no implicit same-named feature.
+- the `[features]` table **always** carries the feature under `--wasm` — `wasm = ["dep:wasm-bindgen"]` when a c-style enum exists, otherwise `wasm = []`. It exists even in the empty case so the wasm crate can reference it unconditionally without knowing whether the spec has a c-style enum. The `dep:` form means the optional dependency introduces no implicit same-named feature. (The table also carries `default = ["std"]` and `std = []`, written on every run whatever the flags — see [Cargo.toml merge](#generated-cargotoml-merge-not-clobber); `--rust-wasm-feature` may not be named `std` or `default` for that reason.)
 
 The generated `wasm/Cargo.toml`'s path dependency on the rust crate enables the feature — `cddl-lib = { path = "../rust", features = ["wasm"] }` — so building the wasm crate compiles the `#[wasm_bindgen]` attribute in exactly as before; nothing about wasm builds changes.
 
@@ -660,15 +660,22 @@ halves so your hand edits to the crate root survive regeneration:
   text on tool-documented items is tool-owned (it flows from your CDDL/`@doc`; hand edits to it
   are dropped, so edit the CDDL instead).
 - **User-owned: the crate root `src/lib.rs` (seeded once, then never touched).** On a first export the
-  tool seeds a thin root:
+  tool seeds a thin root — the **rust** crate's, verbatim:
 
   ```rust
   // Seeded by cddl-codegen on first export; never overwritten after that.
   // All regenerated code lives in the `generated` module. Add your own
   // modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+  // Hand-added code should stay no_std-clean or be gated on `feature = "std"` —
+  // verify with the emitted no-std-check crate (generated beside this crate):
+  //   cargo check --manifest-path <output-root>/no-std-check/Cargo.toml --target thumbv7m-none-eabi
+  #![cfg_attr(not(feature = "std"), no_std)]
   mod generated;
   pub use generated::*;
   ```
+
+  The wasm and json-gen crate roots are the same thin root without the last three comment lines and
+  the `cfg_attr` (those two crates are std by nature).
 
   If `src/lib.rs` already exists, the tool leaves it **byte-for-byte untouched** — an existence check
   only, never a read of its contents to decide what to emit (the same bounded exception the
@@ -1185,10 +1192,11 @@ Every key falls into one of three categories:
   than stranding them — note the removal deletes the whole entry, including any fields you added to it.
   For the same reason, **regenerate with the same flags every time**: a regen that accidentally omits
   a flag (e.g. forgetting `--wasm`) reads as "condition off" and removes that flag's conditional deps
-  from your manifest. Pin the full command in a script or Makefile. One `[features]` entry is also
-  tool-owned: under `--wasm` the [`--rust-wasm-feature`](./command_line_flags) key (default `wasm`) is
+  from your manifest. Pin the full command in a script or Makefile. Three `[features]` entries are also
+  tool-owned. Under `--wasm` the [`--rust-wasm-feature`](./command_line_flags) key (default `wasm`) is
   set at the leaf level to `["dep:wasm-bindgen"]` or `[]` (see [the feature gate above](#wasm-feature-gate-for-c-style-enums)),
-  and dropping `--wasm` removes exactly that key. Because the op addresses the single
+  and dropping `--wasm` removes exactly that key. `std = []` is written on every run whatever the
+  flags (`default = ["std"]` is its own case, below). Because each op addresses a single
   `features.<name>` leaf, your **other** `[features]` entries are untouched. Note that `package.edition` is
   pinned to `2024` on purpose — the generated code relies on `TryFrom`/`TryInto` being in the
   edition-2021+ prelude rather than importing them, so a consumer that reverts the manifest to an
@@ -1208,9 +1216,14 @@ Every key falls into one of three categories:
 - **Seeded once.** `package.version` is written only if it's absent. After the initial `0.1.0`
   (`0.0.1` for the json-gen crate) the tool has no opinion — bump it and it stays bumped across
   regenerations.
+- **Merged, not replaced.** `features.default` — the tool's entries are added to whatever list is
+  already there rather than overwriting it: your entries keep their order (and come first) and the
+  tool's are appended. The consequence worth knowing before you meet it is that the merge is one-way
+  — an entry the tool asserts cannot be durably deleted from this list, because the next
+  regeneration adds it back.
 - **Preserved (never touched).** Any key no changeset op mentions: your own dependencies,
-  `[profile]` tables, the rest of the `[features]` table (every entry but the tool-owned
-  `--rust-wasm-feature` key above), workspace inheritance lines, etc.
+  `[profile]` tables, the rest of the `[features]` table (every entry but the three tool-owned keys
+  above), workspace inheritance lines, etc.
 
 The tool also writes a `package.metadata.cddl-codegen.generated-with` stamp recording the
 cddl-codegen version. It is write-only — the tool never reads it back (reading prior output would
