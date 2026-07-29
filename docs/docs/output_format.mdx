@@ -272,7 +272,7 @@ differing only in encoding render identically.
 |---|---|
 | uint | `{"uint": 5}` (JSON number, u64 range) |
 | nint | `{"nint": -3}` when it fits `i64`, else `{"nint": "-18446744073709551616"}` (decimal string; the nint domain exceeds `i64`). Read accepts both. |
-| bytes | `{"bytes": "a1b2"}` (written lowercase; this codec's reader is case-INSENSITIVE — see [Hex text](#hex-text-the-canonical-grammar), which contrasts it with the stricter bytes-newtype surface) |
+| bytes | `{"bytes": "a1b2"}` — canonical hex, read as well as written (see [Hex text](#hex-text-the-canonical-grammar)) |
 | text | `{"text": "…"}` |
 | array | `{"array": [ … ]}` (recursive) |
 | map | `{"map": [[K, V], …]}` — an array of pairs, so wire order and duplicate/non-string keys survive |
@@ -298,13 +298,14 @@ The wasm wrapper for `any` is documented under [wasm differences](wasm_differenc
 
 ## Hex text: the canonical grammar
 
-Two consumer-facing surfaces render bytes as hex text, and both accept exactly the grammar they
-emit: **bare, even-length, lowercase** — no `0x`/`0X` prefix, no uppercase digit, no separators.
+Three consumer-facing surfaces render bytes as hex text, and all three accept exactly the grammar
+they emit: **bare, even-length, lowercase** — no `0x`/`0X` prefix, no uppercase digit, no separators.
 
 - `RawBytesEncoding::to_raw_hex` / `from_raw_hex`, the raw-bytes trait every
   `_CDDL_CODEGEN_RAW_BYTES_TYPE_` implements;
 - the JSON representation of a `bytes` newtype under `--json-serde-derives` (a rule like
-  `hash = bytes ; @newtype`), whose hand-written serde impls write and read that same text.
+  `hash = bytes ; @newtype`), whose hand-written serde impls write and read that same text;
+- the [`AnyCbor` value codec](#the-anycbor-value-codec-tagged)'s `{"bytes": "…"}` form.
 
 **Canonical in, canonical out**, and the property that buys: for every string the reader accepts,
 re-encoding the decoded bytes reproduces that string byte for byte. The accepted grammar and the
@@ -312,37 +313,35 @@ emitted grammar are the same grammar, so no accepted spelling exists that this c
 itself have written. A reader wider than its writer could only offer the weaker bytes-level round
 trip, and would leave the wire format under-specified in a direction nothing observes.
 
-Both surfaces read through one function, `decode_canonical_hex`, exported from the generated
+The first two surfaces read through one function, `decode_canonical_hex`, exported from the generated
 `serialization.rs` (or from the shared runtime crate under
-[`--common-import-override`](./command_line_flags)). Rejections differ only in how much detail the
-surface can carry:
+[`--common-import-override`](./command_line_flags)). The third carries its own copy of the grammar
+inside the `any_cbor` runtime, because a crate emitting `AnyCbor` does not necessarily take the `hex`
+dependency at all — same accepted grammar, separate code. What differs between the three is only how
+much detail a refusal can carry:
 
-| Input | `from_raw_hex` | JSON bytes newtype |
-|---|---|---|
-| `"a1b2"` | `Ok` | `Ok` |
-| `"A1B2"` | `Err` — `invalid character 'A' at position 0` | `Err` — `invalid hex bytes` |
-| `"a1B2"` (mixed) | `Err` — `invalid character 'B' at position 2` (the FIRST offending digit) | `Err` — `invalid hex bytes` |
-| `"0xa1b2"` | `Err` — `invalid character 'x' at position 1` | `Err` — `invalid hex bytes` |
-| `"0Xa1b2"` | `Err` — `invalid character 'X' at position 1` | `Err` — `invalid hex bytes` |
-| `"abc"` | `Err` — `odd number of digits` | `Err` — `invalid hex bytes` |
+| Input | `from_raw_hex` | JSON bytes newtype | `AnyCbor` `{"bytes": …}` |
+|---|---|---|---|
+| `"a1b2"` | `Ok` | `Ok` | `Ok` |
+| `"A1B2"` | `Err` — `invalid character 'A' at position 0` | `Err` — `invalid hex bytes` | `Err` — `invalid hex nibble 'A'` |
+| `"a1B2"` (mixed) | `Err` — `invalid character 'B' at position 2` (the FIRST offending digit) | `Err` — `invalid hex bytes` | `Err` — `invalid hex nibble 'B'` |
+| `"0xa1b2"` | `Err` — `invalid character 'x' at position 1` | `Err` — `invalid hex bytes` | `Err` — `invalid hex nibble 'x'` |
+| `"0Xa1b2"` | `Err` — `invalid character 'X' at position 1` | `Err` — `invalid hex bytes` | `Err` — `invalid hex nibble 'X'` |
+| `"abc"` | `Err` — `odd number of digits` | `Err` — `invalid hex bytes` | `Err` — `odd-length hex string (len 3)` |
 
 The raw-bytes surface boxes the hex error into `DeserializeFailure::InvalidStructure`, which renders
 it inline (the texts above appear after that failure's own prefix), so the offending character and
 its 0-based index reach consumer output. The prefix needs no rule of its own — `x`/`X` are simply
-outside the canonical alphabet, so the same scan that rejects an uppercase digit names them. The JSON surface is
-verdict-only by construction: serde's `invalid_value` carries one wording for every refusal, so a
-reader cannot tell which check declined the string.
+outside the canonical alphabet, so the same scan that rejects an uppercase digit names them. The
+bytes-newtype JSON surface is verdict-only by construction: serde's `invalid_value` carries one
+wording for every refusal, so a reader cannot tell which check declined the string. The `AnyCbor`
+codec's own messages reach you through serde's `Error::custom`, so they arrive with serde_json's
+` at line L column C` position appended; that routine checks the digit count first, so a string that
+is both odd-length and non-canonical reports the length where the other two name the character.
 
 If you hold hex produced elsewhere, lowercase it at the call site
 (`s.to_ascii_lowercase()`) — see the [upgrade note](#upgrading-a-crate-generated-before-the-no_std-output)
 for what changed and when.
-
-**The `AnyCbor` tagged codec is a separate surface.** Its `{"bytes": "…"}` form is decoded by a
-self-contained routine inside the `any_cbor` runtime rather than by the function above, because a
-crate emitting `AnyCbor` does not necessarily take the `hex` dependency at all. It writes lowercase
-like everything else, but its reader accepts uppercase and mixed case (it still rejects an odd digit
-count and any non-hex character, prefix included). Only the two surfaces named at the top of this
-section carry the canonical guarantee.
 
 ## Open struct-maps (rest rows)
 
@@ -1540,26 +1539,30 @@ Until you do, the crate is plain `std` and still compiles — nothing forces the
 
 **9. Hex input is read canonically — uppercase is no longer accepted.** This one is a WIRE-facing
 narrowing, and the only entry here that can change what your program accepts at runtime rather than
-whether it compiles. The two hex-reading surfaces — `RawBytesEncoding::from_raw_hex` and the JSON
-representation of a `bytes` newtype — used to take uppercase and mixed-case digits and normalize
-them to lowercase on the way out. They now accept only the grammar they emit: bare, even-length,
-lowercase (full statement: [Hex text](#hex-text-the-canonical-grammar)).
+whether it compiles. All three hex-reading surfaces — `RawBytesEncoding::from_raw_hex`, the JSON
+representation of a `bytes` newtype, and the `AnyCbor` codec's `{"bytes": "…"}` form — used to take
+uppercase and mixed-case digits and normalize them to lowercase on the way out. They now accept only
+the grammar they emit: bare, even-length, lowercase (full statement:
+[Hex text](#hex-text-the-canonical-grammar)).
 
 *Who breaks:* any caller feeding hex it did not get from this crate — a value pasted from a block
 explorer, a hash rendered uppercase by another library, a JSON document produced by a non-Rust
-peer. Lowercase input, which is everything this crate ever wrote, is unaffected.
+peer, an `AnyCbor` document hand-written or emitted by a peer implementation. Lowercase input, which
+is everything this crate ever wrote, is unaffected.
 
 *What you see:* `from_raw_hex` returns a `DeserializeError` rendering
 `Invalid internal structure: invalid character 'A' at position 0` — the first offending digit and
 its 0-based index. The JSON side returns serde's `invalid hex bytes`, the same wording it already
 gave for any other bad hex, so a bytes newtype that silently accepted uppercase before now rejects
-the document.
+the document. `AnyCbor` rejects with its own `invalid hex nibble 'A'`, plus serde_json's position.
 
 *What to do:* lowercase at the call site, `PubKey::from_raw_hex(&s.to_ascii_lowercase())`, or
 normalize the field before handing the document to `serde_json`. There is no flag to restore the old
 leniency: the point of the narrowing is that the accepted grammar and the emitted grammar are the
-same one, which is what makes `from_raw_hex(s)?.to_raw_hex() == s` hold for every accepted `s`.
-`0x`/`0X`-prefixed input was already rejected and still is, with the same error.
+same one, which is what makes `from_raw_hex(s)?.to_raw_hex() == s` hold for every accepted `s` — and
+the same round trip hold on an `AnyCbor` `{"bytes": …}` document.
+`0x`/`0X`-prefixed input was already rejected on every one of them and still is, with the same
+error.
 
 ## Generated `Cargo.toml` (merge, not clobber)
 
