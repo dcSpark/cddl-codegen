@@ -308,16 +308,19 @@ promise true of tool output.
 
 `cddl-matrix/no_std_check.ts`, driven by a `fn` registry entry and also invocable on its own as
 `bun run cddl-matrix/no_std_check.ts [tier]` (`check.ts` has no single-gate selector). It generates
-three crates **fresh** into `mkdtemp` scratch — the `tests/<dir>/export*` trees are unusable here
+five crates **fresh** into `mkdtemp` scratch — the `tests/<dir>/export*` trees are unusable here
 because the integration harness splices module-scope `println!` helpers into them outside
-`#[cfg(test)]`, so they would fail for reasons that are not the tool's — then `cargo check`s each
-emitted shim on `thumbv7m-none-eabi`:
+`#[cfg(test)]`, so they would fail for reasons that are not the tool's — then runs each profile's
+cells: every profile's emitted shim gets a `thumbv7m-none-eabi` `cargo check` (inverted for one
+profile — see the table), and three profiles carry a host-side cell beside it:
 
 | Profile | Flags | Surface it exists for |
 |---|---|---|
 | `preserve_canonical` | `--preserve-encodings --canonical-form` | `OrderedHashMap`/`MapHashBuilder`, the derivative-derived key traits in all four `@used_as_key` flavors, a bytes wrapper. No float member — `--preserve-encodings` aborts generation on one |
 | `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `FromHexErrorCore` newtype and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus |
 | `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives |
+| `depth_limit` | `--deserialize-depth-limit 64` + a recursive rule | The one flag whose output is deliberately **not** `no_std`-capable (`thread_local!` guard). Its shim cell INVERTS: expected FAIL carrying the pinned ``--deserialize-depth-limit output requires the `std` feature`` substring (LOCKSTEP with `generation::export::DEPTH_LIMIT_REQUIRES_STD`); a `host_default_check` `cargo check` beside it proves the refusal is confined to `not(std)` |
+| `emit_tests` | `--emit-tests --preserve-encodings` | The emitted `#[cfg(test)]` module, which no shim cell can see (test code is not compiled when a crate is built as a dependency): `host_test_nostd` runs `cargo test --no-default-features --lib` on the generated crate, compiling and RUNNING the module — including its module-local `std` restore and the nested fidelity mod's hand-carried copy — under the `not(std)` root; the shim cell beside it guards restore-leakage into crate scope |
 
 Profile `preserve_canonical` also gets a **host**-target cell: a consumer crate carrying
 `fn _h(h: MapHashBuilder) -> std::collections::hash_map::RandomState { h }`. `MapHashBuilder` is a
@@ -335,8 +338,13 @@ re-enabled transitively for a shared dependency — which masked a real break in
 sibling cell failed. Any future convenience refactor that moves these checks into an oracle-carrying
 tree silently voids the gate's verdict.
 
-**Allowed-warning contract.** The verdict is `exit == 0` **and** every `warning:` line falling in one
-of three classes: the cdylib drop (the generated crate's `crate-type` includes `cdylib`, which cargo
+**Per-cell verdicts, via accept predicates.** Every cell that asserts a crate *builds* requires
+`exit == 0` **and** every `warning:` line falling in one of three classes (below). The one inverted
+cell (`depth_limit.shim_thumb_expect_fail`) requires nonzero exit **and** the pinned
+`compile_error!` substring in stderr, with no warning policy at all — a failing compilation emits
+whatever resolution noise the missing `std` produces, and that noise is the reason the
+`compile_error!` exists. The cache stores cell-SUCCESS, not cargo-exit-0, so the inverted cell
+memoizes like any other. The three allowed warning classes: the cdylib drop (the generated crate's `crate-type` includes `cdylib`, which cargo
 drops with a warning on a no-std target rather than erroring), the documented `Serialize` trait
 residue (matched on the backticked path's *leaf*, exactly as `integration_tests`'
 `UNUSED_IMPORT_TRAIT_RESIDUE` scanner does, since rustc renders it both fully-qualified and as a bare
@@ -351,10 +359,10 @@ attribution guarantee with nothing else positioned to notice, and CI runs `fast`
 
 **Cache participation:** each cell goes through the shared gate cache (key = tree hash over the whole
 scratch output root + `rustc -vV` + RUSTFLAGS + path-normalized argv carrying the verdict marker
-`no-std-check-v1`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
+`no-std-check-v2`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
 Both hand-written crates the gate writes live INSIDE the hashed output root, so editing either
 invalidates the key rather than serving a stale PASS. Bump the verdict marker on any change to the
-allowed-warning logic. Because keys are content-derived (scratch paths normalized out), a
+VERDICT logic — the warning classifier or an accept predicate, not just the allowed-warning set. Because keys are content-derived (scratch paths normalized out), a
 standalone `bun run cddl-matrix/no_std_check.ts` primes the same cache a tier run reads — a gate's
 maiden in-tier run may legitimately serve every cell cached, and trusting that is sound exactly
 because the red/green landing proof showed a content change MISSES (the injected-`std::` run
