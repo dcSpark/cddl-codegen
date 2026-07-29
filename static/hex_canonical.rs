@@ -11,12 +11,8 @@
 /// writer never produces could only offer the weaker bytes-level round trip, and would leave a read
 /// side quietly wider than the write side.
 ///
-/// **This NARROWS what this surface used to accept, by maintainer decision.** Uppercase and
-/// mixed-case input (`"A1B2"`, `"a1B2"`) was accepted and normalized to lowercase on the way out;
-/// it is now rejected as an invalid character at the first uppercase digit. Callers holding hex
-/// produced elsewhere lowercase it themselves (`s.to_ascii_lowercase()`) before handing it over.
-/// The `0x`/`0X` prefix stays rejected exactly as before — it needs no check of its own, because
-/// `x` is outside the canonical alphabet and so `"0x…"` still reports `'x'` at index 1.
+/// Callers holding hex  produced elsewhere lowercase it themselves (`s.to_ascii_lowercase()`) before
+/// handing it over.
 ///
 /// The scan is what makes the grammar ours rather than the backing decoder's: that decoder has no
 /// strict mode — its `decode` strips a `0x` prefix and accepts either case, and its `check_raw`

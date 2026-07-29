@@ -601,10 +601,7 @@ fn any_cbor_hex_encode(bytes: &[u8]) -> String {
 /// own error surface: `String` messages rendered through serde's `Error::custom`, with odd length
 /// reported BEFORE any bad nibble (the shared door reports the first offending character first).
 ///
-/// **This narrows what this surface used to accept, by maintainer decision.** Uppercase and
-/// mixed-case input was decoded and normalized to lowercase on the way out; it is now an invalid
-/// nibble at the first uppercase digit. Callers holding hex produced elsewhere lowercase it
-/// themselves before handing it over. The full rationale lives on `decode_canonical_hex`.
+/// Full rationale lives on `decode_canonical_hex`.
 fn any_cbor_hex_decode(s: &str) -> Result<Vec<u8>, String> {
     /// The canonical alphabet, i.e. exactly what `any_cbor_hex_encode` writes. `char::to_digit(16)`
     /// would also take `A`–`F`, which is the leniency this surface no longer has.
