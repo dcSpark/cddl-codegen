@@ -49,7 +49,9 @@
 //!   `natural_any_cbor`/`natural_any_cbor_opt` name no alloc type at all). Their content is static
 //!   and unconditional within their fragment, so they cannot hit the duplicate-import hazard that
 //!   hand imports elsewhere in `static/` would. The full rationale for the `super::alloc` spelling
-//!   is the canonical comment on `natural_any_cbor_btreemap`'s import; the other five point at it.
+//!   is the canonical comment on `natural_any_cbor_btreemap`'s import (repeated on the preserve
+//!   file's first import, since a cross-file pointer would not resolve); the two seq imports
+//!   point at it.
 //!   A hand import MISSED here is invisible under `std` and an E0425 without it, so the systematic
 //!   net is the `json_schema` profile of `cddl-matrix/no_std_check.ts`, whose CDDL carries one
 //!   member of every adapter shape.
