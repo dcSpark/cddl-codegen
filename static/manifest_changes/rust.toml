@@ -44,3 +44,28 @@ set = '"3.2.0"'
 id = 7
 path = "dependencies.cbor_event"
 set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }'
+
+# The generated crate's `std` feature: default-ON and emitted UNCONDITIONALLY, so every crate this
+# tool writes has the same manifest shape and a plain `cargo build` is unchanged. It gates the few
+# genuinely-std pieces of the runtime from inside the crate; a no_std consumer depends on the crate
+# with `default-features = false`.
+#
+# `std = []` forwards to NO dependency std feature, deliberately. Forwarding (`std = ["hex/std", …]`)
+# is impossible while the feature is unconditional: the deps it would name are flag- and
+# type-conditional, and a feature referencing an absent dependency is a cargo manifest error. The
+# dependency specs therefore stay in alloc mode permanently, and a consumer wanting a dep's std
+# features adds them to that dep's own spec, where the field-level dep merge preserves them.
+#
+# `features.default` is the one NON-dependency path `apply` merges instead of replacing (union, the
+# user's entries first), so a hand-customized default list keeps its entries and gains `"std"`. That
+# union is monotone — `"std"` cannot be durably removed here, which is exactly why the supported
+# no_std path is `default-features = false` at the DEPENDANT rather than an edit to this list.
+[[change]]
+id = 8
+path = "features.default"
+set = '["std"]'
+
+[[change]]
+id = 9
+path = "features.std"
+set = '[]'

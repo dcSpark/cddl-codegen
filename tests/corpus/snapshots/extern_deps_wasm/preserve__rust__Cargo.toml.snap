@@ -19,4 +19,6 @@ hashlink = "0.12.1"
 derivative = { version = "2.2.0", features = ["use_core"] }
 
 [features]
+default = ["std"]
+std = []
 wasm = []

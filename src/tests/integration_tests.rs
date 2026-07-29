@@ -9665,6 +9665,48 @@ fn json_schema_root_input_contract() {
     );
 }
 
+/// `--rust-wasm-feature`'s reserved-name guard. The rust manifest's `[features]` table owns two keys
+/// the tool writes unconditionally (`default`, `std` — `static/manifest_changes/rust.toml`), and this
+/// flag's `[features]` op is pushed AFTER the change-log ops, so it applies last: a value naming one
+/// of them would overwrite that key with `["dep:wasm-bindgen"]` or `[]`, turning the generated crate
+/// `no_std` on a plain build (or emptying its default features) with nothing to report it. Generation
+/// can't detect the collision after the fact — both keys are legitimately present — so the value
+/// parser is the only place it can be caught, and this pins that it is.
+#[test]
+fn rust_wasm_feature_rejects_the_manifests_own_feature_names() {
+    use clap::Parser;
+
+    let parse = |value: &str| {
+        crate::cli::Cli::try_parse_from([
+            "cddl-codegen",
+            "--input=tests/core/input.cddl",
+            "--output=unused",
+            value,
+        ])
+    };
+
+    for reserved in ["std", "default"] {
+        let err = parse(&format!("--rust-wasm-feature={reserved}"))
+            .expect_err(&format!("`{reserved}` must be rejected"))
+            .to_string();
+        assert!(
+            err.contains("reserved feature name") && err.contains(reserved),
+            "the rejection must name the colliding feature, got: {err}"
+        );
+    }
+
+    // Not a blanket ban on names containing them: only the exact keys collide.
+    for accepted in ["wasm", "used_from_wasm", "std-ish", "defaults"] {
+        assert_eq!(
+            parse(&format!("--rust-wasm-feature={accepted}"))
+                .unwrap_or_else(|e| panic!("`{accepted}` must be accepted, got: {e}"))
+                .rust_wasm_feature,
+            accepted,
+            "an accepted name must reach the CLI verbatim"
+        );
+    }
+}
+
 /// The cheap (no nested cargo) halves of `--json-schema-dep`'s input contract, modelled directly on
 /// `json_schema_root_input_contract`. The success direction — a dep's registrar actually running and
 /// landing its unreferenced roots in the document — is the nested-cargo `json_schema_dep_threading`;

@@ -15,8 +15,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
-hex = "0.4.3"
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
+default = ["std"]
+std = []
 wasm = ["dep:wasm-bindgen"]

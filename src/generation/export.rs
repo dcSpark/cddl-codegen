@@ -1,14 +1,42 @@
 use super::*;
 
-/// The seed-once thin root written to each generated crate's `src/lib.rs` on the first export only
-/// (rust, wasm, and json-gen all share this same content). All regenerated code lives under
-/// `src/generated/**` (a subtree the tool always clobbers); this root is user-owned after its first
-/// write and never overwritten (existence-only, mirroring `ManifestOp::SeedOnce`), so hand-added
-/// modules/re-exports/attrs survive every regeneration.
+/// The seed-once thin root written to a generated crate's `src/lib.rs` on the first export only.
+/// All regenerated code lives under `src/generated/**` (a subtree the tool always clobbers); this
+/// root is user-owned after its first write and never overwritten (existence-only, mirroring
+/// `ManifestOp::SeedOnce`), so hand-added modules/re-exports/attrs survive every regeneration.
+///
+/// This is the WASM and json-gen crates' root. The rust crate's is
+/// [`SEEDED_RUST_CRATE_ROOT`] — same shape plus the `no_std` opt-in, which is the rust crate's
+/// alone (wasm-bindgen and the json-gen runner are std by nature).
 const SEEDED_CRATE_ROOT: &str = "\
 // Seeded by cddl-codegen on first export; never overwritten after that.
 // All regenerated code lives in the `generated` module. Add your own
 // modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+mod generated;
+pub use generated::*;
+";
+
+/// The rust crate's seed-once thin root: [`SEEDED_CRATE_ROOT`] plus the crate-level attribute that
+/// makes the crate `no_std` when its `std` feature is off.
+///
+/// The attribute has to live HERE and nowhere else — a crate-level inner attribute is only legal in
+/// the crate root, which is the one file the tool cannot deliver a new line to on a regeneration.
+/// So an already-generated crate opts in by hand-adding this single line (until then it is plain
+/// std, and still compiles); a fresh export gets it for free. Everything the generated subtree
+/// needs beyond it (`extern crate alloc;` and the alloc imports) is emitted per file, precisely
+/// because those files ARE re-written every run.
+///
+/// The comment names the check command because this is the file a consumer opens before adding
+/// their own code, and hand-added code is the only thing that can break `no_std` here — the
+/// generated subtree is held clean by this repo's own gates.
+const SEEDED_RUST_CRATE_ROOT: &str = "\
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+// Hand-added code should stay no_std-clean or be gated on `feature = \"std\"` —
+// verify with the emitted no-std-check crate (generated beside this crate):
+//   cargo check --manifest-path <output-root>/no-std-check/Cargo.toml --target thumbv7m-none-eabi
+#![cfg_attr(not(feature = \"std\"), no_std)]
 mod generated;
 pub use generated::*;
 ";
@@ -1260,7 +1288,7 @@ impl GenerationScope {
         // it, but `export`'s write loop skips it when the file already exists so user edits survive.
         out.insert(
             "rust/src/lib.rs".to_owned(),
-            rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
+            rustfmt_generated_string(SEEDED_RUST_CRATE_ROOT)?.into_owned(),
         );
 
         // serialization.rs (generated impls only; export prepends the static prelude to the root)

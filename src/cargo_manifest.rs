@@ -12,12 +12,19 @@
 //! The three op kinds are the per-field collision rules:
 //! * [`ManifestOp::Set`] — tool-owned key: written every run, overwriting whatever is there. User
 //!   edits to these are overwritten by design (the dep set is version-coupled to the emitted code).
-//!   The **one** exception is a `Set` whose path is exactly `["dependencies", <name>]`: those merge
-//!   FIELD-LEVEL into an existing entry ([`merge_dep_spec`]) instead of replacing it, so a user's
-//!   `optional`/`default-features`/extra features and a compatible version pin survive a regen while
-//!   the tool still owns the version floor, its required features, and any field it sets (e.g.
-//!   `path`). See [`merge_dep_spec`] for the exact merge contract. Every other `Set` path hard-
-//!   replaces as before.
+//!   **Two** path classes are exceptions, both merging into the existing value instead of replacing
+//!   it:
+//!   - `["dependencies", <name>]` merges FIELD-LEVEL ([`merge_dep_spec`]), so a user's
+//!     `optional`/`default-features`/extra features and a compatible version pin survive a regen
+//!     while the tool still owns the version floor, its required features, and any field it sets
+//!     (e.g. `path`). See [`merge_dep_spec`] for the exact merge contract.
+//!   - `["features", "default"]` merges as a UNION ([`merge_default_features`]): the user's list
+//!     survives verbatim and tool entries it lacks are appended. A whole-value replace would
+//!     silently drop a consumer's customized default-feature list, and the key is not one the tool
+//!     can decline to write — the generated crate's `std` feature has to be on by default for a
+//!     plain `cargo build` to keep working.
+//!
+//!   Every other `Set` path hard-replaces as before.
 //! * [`ManifestOp::SeedOnce`] — written only if the key is absent (existence check only, never a
 //!   content read), so it stays on the safe side of the determinism line. `package.version` is the
 //!   one seeded key: the tool has no opinion on it after the initial `0.1.0`/`0.0.1`.
@@ -106,15 +113,16 @@ pub fn apply(
     for (path, op) in ops {
         match op {
             ManifestOp::Set(item) => {
-                // A `[dependencies].<name>` Set merges field-level into any existing entry (keeping
-                // the user's dep-spec shape); every other Set path hard-replaces.
-                let value = if is_dependency_entry(path) {
-                    match item_at(doc.as_table(), path) {
-                        Some(existing) => merge_dep_spec(existing, item),
-                        None => item.clone(),
+                // Two Set paths merge into what is already there rather than replacing it: a
+                // `[dependencies].<name>` entry (field-level, keeping the user's dep-spec shape) and
+                // `features.default` (union, keeping the user's default-feature list). Every other
+                // Set path hard-replaces.
+                let value = match item_at(doc.as_table(), path) {
+                    Some(existing) if is_dependency_entry(path) => merge_dep_spec(existing, item),
+                    Some(existing) if is_default_feature_list(path) => {
+                        merge_default_features(existing, item)
                     }
-                } else {
-                    item.clone()
+                    _ => item.clone(),
                 };
                 set_leaf(&mut doc, path, value);
             }
@@ -213,6 +221,14 @@ fn remove_leaf(table: &mut Table, path: &[String]) {
 /// keep replace semantics.
 fn is_dependency_entry(path: &[String]) -> bool {
     path.len() == 2 && path[0] == "dependencies"
+}
+
+/// Is `path` exactly `["features", "default"]` — the other path class whose `Set` merges (as a
+/// union, [`merge_default_features`]) rather than hard-replacing? Sibling feature keys
+/// (`features.std`, the `--rust-wasm-feature` leaf) are tool-NAMED and keep replace semantics;
+/// `default` is the one feature key whose value a consumer legitimately owns a share of.
+fn is_default_feature_list(path: &[String]) -> bool {
+    path.len() == 2 && path[0] == "features" && path[1] == "default"
 }
 
 /// The version field of a dep spec: the string itself for a plain-string shorthand (`"1.0"` is
@@ -385,6 +401,33 @@ fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
         }
     }
     base
+}
+
+/// Merge the tool's `features.default` list (`tool`) onto the user's existing one (`existing`, the
+/// BASE — its entries, order and decor survive verbatim); every tool entry the user's list does not
+/// already name is appended. Mirrors [`merge_dep_spec`]'s features union, for the same reason: the
+/// tool owns the entries it needs present, never the ones it doesn't know about.
+///
+/// Safe fallback when either side is not an array (a user who wrote `default = "std"`, or any shape
+/// this can't reason about): take the tool's value verbatim, the same posture
+/// [`user_satisfies_tool`] takes on a version it cannot parse.
+///
+/// The union is MONOTONE by construction — a consumer cannot durably remove an entry the tool
+/// asserts, because the next regeneration re-adds it. That is the accepted cost of the key being
+/// unconditionally written: the supported way to build without the `std` feature is for the
+/// DOWNSTREAM dependant to pass `default-features = false`, not to edit this list.
+fn merge_default_features(existing: &Item, tool: &Item) -> Item {
+    let (Some(user_list), Some(tool_list)) = (existing.as_array(), tool.as_array()) else {
+        return tool.clone();
+    };
+    let mut merged = user_list.clone();
+    let have: Vec<&str> = user_list.iter().filter_map(Value::as_str).collect();
+    for feature in tool_list.iter().filter_map(Value::as_str) {
+        if !have.contains(&feature) {
+            merged.push(feature);
+        }
+    }
+    Item::Value(Value::Array(merged))
 }
 
 // ---- op builders ----------------------------------------------------------------------------
@@ -597,9 +640,16 @@ pub fn ops_for_rust(
         "{ version = \"2.2.0\", features = [\"use_core\"] }",
         cli.preserve_encodings,
     ));
+    // The JSON deps run in ALLOC MODE (`default-features = false` + explicit features), because the
+    // crate's own `std` feature cannot forward to a dep's (the deps are conditional; a feature
+    // naming an absent dep is a manifest error — see the `features.std` entry in the change log).
+    // So the specs the tool asserts have to be the ones that work with the feature OFF, and they are
+    // the same specs a std build gets: alloc mode is a subset, not a different library. `alloc`
+    // restores what `default-features = false` removed on the surface the generated code uses
+    // (owned `String`/`Vec`, the `to_string`/`from_str` entry points).
     ops.push(dep(
         "serde",
-        "{ version = \"1.0\", features = [\"derive\"] }",
+        "{ version = \"1.0\", default-features = false, features = [\"derive\", \"alloc\"] }",
         cli.json_serde_derives,
     ));
     // `float_roundtrip`: serde_json's default (fast) f64 parse loses 1 ULP; the feature switches to
@@ -611,10 +661,16 @@ pub fn ops_for_rust(
     // reference-closure check walks a `serde_json::Value`.
     ops.push(dep(
         "serde_json",
-        "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
+        "{ version = \"1.0.57\", default-features = false, features = [\"alloc\", \"float_roundtrip\"] }",
         cli.json_serde_derives || cli.json_schema_export,
     ));
-    ops.push(dep("schemars", "\"1.2.1\"", cli.json_schema_export));
+    // schemars has no `alloc` feature to restore; `derive` is what its default set contributed that
+    // the emitted `#[derive(JsonSchema)]` needs, so naming it explicitly is the whole reshape.
+    ops.push(dep(
+        "schemars",
+        "{ version = \"1.2.1\", default-features = false, features = [\"derive\"] }",
+        cli.json_schema_export,
+    ));
 
     // type-conditional deps (mirrors the old `rust_cargo_toml` conditions exactly)
     let needs_hex = export_raw_bytes_encoding_trait
@@ -631,7 +687,15 @@ pub fn ops_for_rust(
                 }
                 _ => false,
             });
-    ops.push(dep("hex", "\"0.4.3\"", needs_hex));
+    // Alloc mode, on the same terms as the JSON deps above (the crate's `std` feature cannot forward
+    // to a dep's). `alloc` is what `hex::encode`/`decode` need — they return owned `String`/`Vec`.
+    // `hex`'s std-only `Error` impl on `FromHexError` is already handled independently of the spec,
+    // by the runtime's `FromHexErrorCore` newtype in `static/raw_bytes_encoding.rs`.
+    ops.push(dep(
+        "hex",
+        "{ version = \"0.4.3\", default-features = false, features = [\"alloc\"] }",
+        needs_hex,
+    ));
 
     let needs_wasm_bindgen = cli.wasm
         && types
@@ -1320,6 +1384,268 @@ linked-hash-map = \"0.5.6\"
         );
     }
 
+    // ---- alloc-mode dep specs (the reshaped JSON/hex specs) ----------------------------------
+
+    /// The four specs `ops_for_rust` asserts in alloc mode, keyed by dep name. Read from the
+    /// PRODUCTION function rather than restated, so a spec that drifts fails the merge tests below
+    /// instead of leaving them asserting a form the tool no longer emits. Every flag that gates one
+    /// of them is on, and `export_raw_bytes_encoding_trait` forces `hex`.
+    fn alloc_mode_spec(name: &str) -> String {
+        use clap::Parser;
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input=unused",
+            "--output=unused",
+            concat!("--static-dir=", env!("CARGO_MANIFEST_DIR"), "/static"),
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ]);
+        let ops = ops_for_rust(&IntermediateTypes::new(), true, &cli).unwrap();
+        let op = op_at(&ops, &["dependencies", name])
+            .unwrap_or_else(|| panic!("`{name}` is not in the rust changeset"));
+        match op {
+            ManifestOp::Set(item) => item.to_string().trim().to_owned(),
+            other => panic!("`{name}` is {other:?}, expected a Set"),
+        }
+    }
+
+    /// Every reshaped dep really is in alloc mode in the shipped changeset. The merge tests below
+    /// are only meaningful while this holds, and it is the one property a snapshot bless could
+    /// silently ratify away.
+    #[test]
+    fn the_json_and_hex_deps_are_asserted_in_alloc_mode() {
+        for (name, feature) in [
+            ("serde", "alloc"),
+            ("serde_json", "alloc"),
+            ("hex", "alloc"),
+            // schemars has no `alloc` feature; `derive` is what its default set contributed.
+            ("schemars", "derive"),
+        ] {
+            let spec = alloc_mode_spec(name);
+            assert!(
+                spec.contains("default-features = false"),
+                "`{name}` must be asserted with default features off, got: {spec}"
+            );
+            assert!(
+                spec.contains(feature),
+                "`{name}` must name `{feature}` explicitly once defaults are off, got: {spec}"
+            );
+        }
+    }
+
+    /// The user-customization contract for each reshaped dep (the `cml_shaped_manifest` family's
+    /// question, asked once per spec that changed shape): a consumer who pinned a version, added
+    /// features, or set `optional` keeps all of it, and gains `default-features = false` plus the
+    /// tool's features. Driven by the PRODUCTION spec via `alloc_mode_spec`.
+    #[test]
+    fn alloc_mode_specs_merge_onto_user_customized_entries() {
+        // One base carrying a customization of every reshaped dep: extra features (serde,
+        // serde_json), a concrete pin (all four), and `optional` (schemars, hex).
+        let existing = "\
+[dependencies]
+serde = { version = \"1.0.152\", features = [\"derive\", \"rc\"] }
+serde_json = { version = \"1.0.60\", features = [\"arbitrary_precision\"] }
+schemars = { version = \"1.2.1\", optional = true }
+hex = { version = \"0.4.3\", optional = true }
+";
+        let ops: Vec<_> = ["serde", "serde_json", "schemars", "hex"]
+            .into_iter()
+            .map(|name| set(&["dependencies", name], &alloc_mode_spec(name)))
+            .collect();
+        let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap();
+
+        let line = |name: &str| {
+            out.lines()
+                .find(|l| l.trim_start().starts_with(&format!("{name} = ")))
+                .unwrap_or_else(|| panic!("`{name}` missing from merge output:\n{out}"))
+                .to_owned()
+        };
+
+        // Every user-only field survives, in every entry.
+        assert!(
+            line("serde").contains("1.0.152") && line("serde").contains("\"rc\""),
+            "serde's pin and extra feature must survive: {}",
+            line("serde")
+        );
+        assert!(
+            line("serde_json").contains("1.0.60")
+                && line("serde_json").contains("arbitrary_precision"),
+            "serde_json's pin and extra feature must survive: {}",
+            line("serde_json")
+        );
+        assert!(
+            line("schemars").contains("optional = true"),
+            "schemars' `optional` must survive: {}",
+            line("schemars")
+        );
+        assert!(
+            line("hex").contains("optional = true"),
+            "hex's `optional` must survive: {}",
+            line("hex")
+        );
+
+        // And every entry gains the alloc-mode fields the tool asserts.
+        for (name, feature) in [
+            ("serde", "alloc"),
+            ("serde_json", "alloc"),
+            ("schemars", "derive"),
+            ("hex", "alloc"),
+        ] {
+            let l = line(name);
+            assert!(
+                l.contains("default-features = false"),
+                "`{name}` did not gain `default-features = false`: {l}"
+            );
+            assert!(
+                l.contains(feature),
+                "`{name}` did not gain `{feature}`: {l}"
+            );
+        }
+
+        // Fixed point: merging the same specs onto the output changes nothing.
+        let second = apply(&ops, Some(&out), "rust/Cargo.toml").unwrap();
+        assert_eq!(
+            out, second,
+            "alloc-mode merge must be a fixed point:\n{out}"
+        );
+    }
+
+    /// The documented consequence of the reshape, pinned so it is a decision rather than a surprise:
+    /// `default-features` is a field the TOOL sets, so a user who deliberately wrote
+    /// `default-features = true` has it overwritten to `false` on the next regeneration (the
+    /// field-wise overwrite in `merge_dep_spec`'s contract). The supported way back to a dep's std
+    /// surface is to name the features wanted, which the union preserves — not to re-enable defaults.
+    #[test]
+    fn a_user_default_features_true_is_overwritten_by_the_alloc_mode_spec() {
+        let existing = "[dependencies]\nhex = { version = \"0.4.3\", default-features = true, features = [\"serde\"] }\n";
+        let out = apply(
+            &[set(&["dependencies", "hex"], &alloc_mode_spec("hex"))],
+            Some(existing),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        let line = out
+            .lines()
+            .find(|l| l.trim_start().starts_with("hex = "))
+            .unwrap()
+            .to_owned();
+        assert!(
+            line.contains("default-features = false"),
+            "the tool-set field must win: {line}"
+        );
+        assert!(
+            !line.contains("default-features = true"),
+            "the user's value must not survive beside ours: {line}"
+        );
+        // The user's own feature is untouched by any of that.
+        assert!(
+            line.contains("\"serde\""),
+            "the user's feature must survive the overwrite: {line}"
+        );
+    }
+
+    // ---- `features.default` merge-union ------------------------------------------------------
+
+    /// The tool's `features.default` op, as the change log spells it.
+    fn default_features_op() -> (KeyPath, ManifestOp) {
+        set(&["features", "default"], "[\"std\"]")
+    }
+
+    #[test]
+    fn default_features_union_keeps_the_user_list_and_appends_ours() {
+        let existing = "\
+[features]
+# the consumer's own default set
+default = [\"my-feature\"]
+my-feature = []
+";
+        let out = apply(&[default_features_op()], Some(existing), "rust/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap();
+        assert!(
+            out.contains("default = [\"my-feature\", \"std\"]"),
+            "the user's entry must come first and ours be appended:\n{out}"
+        );
+        assert!(
+            out.contains("# the consumer's own default set"),
+            "the key's decor must survive the merge:\n{out}"
+        );
+        assert!(
+            out.contains("my-feature = []"),
+            "unrelated feature keys must be untouched:\n{out}"
+        );
+    }
+
+    #[test]
+    fn default_features_union_is_a_noop_when_ours_is_already_present() {
+        let existing = "[features]\ndefault = [\"std\"]\n";
+        let out = apply(&[default_features_op()], Some(existing), "rust/Cargo.toml").unwrap();
+        assert_eq!(
+            existing, out,
+            "a list that already names our entry must come back byte-identical:\n{out}"
+        );
+    }
+
+    #[test]
+    fn default_features_non_array_takes_the_tool_value() {
+        // Not a shape the union can reason about — fall back to the tool's value verbatim, the same
+        // safe posture `user_satisfies_tool` takes on a version it cannot parse.
+        let existing = "[features]\ndefault = \"std\"\n";
+        let out = apply(&[default_features_op()], Some(existing), "rust/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap();
+        assert!(
+            out.contains("default = [\"std\"]"),
+            "a non-array default must be replaced by the tool's list:\n{out}"
+        );
+    }
+
+    /// The `rerun_is_byte_identical` property, extended to cover the second merging path with a
+    /// user-customized list in play: a regeneration over our own output must be a fixed point, and
+    /// the union must not keep re-appending or re-ordering.
+    #[test]
+    fn rerun_is_byte_identical_with_a_customized_default_list() {
+        let existing = "\
+[features]
+default = [\"my-feature\"]
+my-feature = []
+";
+        let ops = vec![
+            default_features_op(),
+            set(&["features", "std"], "[]"),
+            set(&["dependencies", "cbor_event"], "\"2.4.0\""),
+        ];
+        let first = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+        assert!(
+            first.contains("default = [\"my-feature\", \"std\"]"),
+            "setup: the union must have happened:\n{first}"
+        );
+        let second = apply(&ops, Some(&first), "rust/Cargo.toml").unwrap();
+        assert_eq!(
+            first, second,
+            "the extended merge must reach a fixed point:\n{first}"
+        );
+        let third = apply(&ops, Some(&second), "rust/Cargo.toml").unwrap();
+        assert_eq!(second, third, "and stay there:\n{second}");
+    }
+
+    /// The union is exactly ONE more path: a sibling `features.*` key is tool-NAMED, so it keeps
+    /// hard-replace semantics (this is what repairs a stale `--rust-wasm-feature` list, per
+    /// `feature_gate_custom_name_repairs_legacy_feature_list`).
+    #[test]
+    fn sibling_feature_keys_still_hard_replace() {
+        let existing = "[features]\nstd = [\"something-stale\"]\n";
+        let out = apply(
+            &[set(&["features", "std"], "[]")],
+            Some(existing),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert!(
+            out.contains("std = []") && !out.contains("something-stale"),
+            "`features.std` must hard-replace like every other tool-named key:\n{out}"
+        );
+    }
+
     // ---- change-log reader ------------------------------------------------------------------
 
     /// Assemble a change log from `(path, action)` pairs, numbering ids contiguously from 1.
@@ -1593,8 +1919,15 @@ wasm = [\"dep:wasm-bindgen\"]
                 "wasm-bindgen dep not tombstoned under --wasm=false:\n{out}"
             );
             assert!(
-                !out.contains("[features]") && !out.contains("wasm ="),
+                !out.contains("wasm ="),
                 "feature entry not tombstoned under --wasm=false:\n{out}"
+            );
+            // `[features]` itself is NOT GC'd with it — the table still holds the unconditional
+            // `std` feature keys, which no flag removes. (Before those existed the tombstone emptied
+            // the table and the header went with it.)
+            assert!(
+                out.contains("default = [\"std\"]") && out.contains("std = []"),
+                "the unconditional std feature must survive the wasm tombstone:\n{out}"
             );
             // an unrelated user dep the tool has no opinion on survives
             assert!(out.contains("anyhow = \"1\""), "{out}");
@@ -1684,6 +2017,78 @@ used_from_wasm = [\"wasm-bindgen\"]
                 "substituted lib-name dep key did not gain the feature:\n{out}"
             );
         });
+    }
+
+    // ---- the unconditional `std` feature -----------------------------------------------------
+
+    /// The shipped contract, read off the real change log rather than a hand-built op list: every
+    /// generated rust manifest declares a default-ON `std` feature, whatever the flags. Ordering is
+    /// part of it — `default` before `std`, cargo's convention, which falls out of the change log's
+    /// first-mention order and would silently invert if the entries were appended the other way.
+    #[test]
+    fn std_feature_is_declared_default_on_under_every_flag_combination() {
+        for extra in [
+            &[][..],
+            &["--wasm", "false"][..],
+            &["--preserve-encodings", "true"][..],
+            &[
+                "--json-serde-derives",
+                "true",
+                "--json-schema-export",
+                "true",
+            ][..],
+        ] {
+            with_manifest_ops("foo = [x: uint]\n", extra, |rust, _| {
+                let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains("[features]"),
+                    "no [features] table for {extra:?}:\n{out}"
+                );
+                assert!(
+                    out.contains("default = [\"std\"]"),
+                    "`std` is not a default feature for {extra:?}:\n{out}"
+                );
+                assert!(
+                    out.contains("std = []"),
+                    "`std` is not declared (an undeclared feature is always FALSE, which would flip \
+                     the crate to its no_std arm on a plain build) for {extra:?}:\n{out}"
+                );
+                let default_at = out.find("default = [\"std\"]").unwrap();
+                let std_at = out.find("\nstd = []").unwrap();
+                assert!(
+                    default_at < std_at,
+                    "`default` must precede `std` in the table for {extra:?}:\n{out}"
+                );
+            });
+        }
+    }
+
+    /// The same two keys on the `--export-static-crate` target's manifest — asserted for a reason
+    /// beyond uniformity: `ordered_hash_map.rs` is exported into that crate and selects its hash
+    /// builder on `#[cfg(feature = "std")]`, and an UNDECLARED feature is always false. Without this
+    /// declaration the export would silently move that crate off std's `RandomState`.
+    #[test]
+    fn the_static_runtime_manifest_declares_the_std_feature_too() {
+        use clap::Parser;
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input=unused",
+            "--output=unused",
+            concat!("--static-dir=", env!("CARGO_MANIFEST_DIR"), "/static"),
+            "--preserve-encodings=true",
+        ]);
+        let out = apply(
+            &ops_for_static_runtime(&cli).unwrap(),
+            None,
+            "runtime/Cargo.toml",
+        )
+        .unwrap();
+        out.parse::<DocumentMut>().unwrap();
+        assert!(
+            out.contains("default = [\"std\"]") && out.contains("std = []"),
+            "the exported runtime crate must declare the same default-on std feature:\n{out}"
+        );
     }
 
     /// `tests/warmup/Cargo.toml` must cover every crates-io dep the manifest ops can emit:
