@@ -7,8 +7,10 @@
 // round-trip loop feeds each variant back through `from_cbor_bytes` and asserts the preserve
 // contract (byte-identical re-encode) and, under `--canonical-form`, the canonical differential.
 //
-// Pure `std`, no `HashMap`, no randomness — the transforms are structural, so output is a
-// deterministic function of the input bytes (reproducibility invariant).
+// No `HashMap`, no randomness — the transforms are structural, so output is a deterministic
+// function of the input bytes (reproducibility invariant). Its `std` names arrive through the
+// module's own restore pair below, which is what lets a generated crate's
+// `cargo test --no-default-features --lib` compile this.
 //
 // The seven classes (see `variants`): `widen_step`, `widen_max` (non-minimal header arguments),
 // `widen_float` (widen a major-type-7 float head to the next IEEE width — f16→f32, f32→f64; an f64
@@ -43,6 +45,19 @@
 #[allow(dead_code)]
 #[allow(clippy::all)]
 mod cddl_encoding_fidelity {
+    // This module's own `std` restore, and the one hand-written copy of the pair `emit_tests.rs`
+    // emits for the enclosing `cddl_generated_tests` module (see `STD_RESTORE` there for the full
+    // rationale). It is hand-carried because a non-crate-root `extern crate` does not reach a
+    // NESTED inline `mod` body — the same constraint that makes the four `natural_any_cbor_*` serde
+    // adapters in `static/any_cbor_json*.rs` hand-carry their `use super::alloc::…`. Without it,
+    // this module's `Vec`/`vec!`/`Box` are unresolved in a `--no-default-features` build of a
+    // generated crate, whose root is `#![cfg_attr(not(feature = "std"), no_std)]`.
+    //
+    // No disambiguating `use std::panic;` here: nothing in this module uses `panic!` (its
+    // assertions are core-prelude `assert*!`, whose std and core spellings are the same item).
+    extern crate std;
+    use std::prelude::rust_2024::*;
+
     /// A parsed CBOR item. `Str` holds the payload bytes verbatim (text is valid UTF-8, but the
     /// splitter only needs the bytes); `Other` holds a major-7 head verbatim (no children).
     enum Item {

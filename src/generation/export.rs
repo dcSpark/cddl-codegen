@@ -176,6 +176,25 @@ pub(crate) fn new_static_file_notice(filename: &str) -> String {
     )
 }
 
+/// The `compile_error!` body a `--deserialize-depth-limit` crate carries for `not(feature = "std")`
+/// builds, composed into the serialization prelude by
+/// [`GenerationScope::serialization_prelude`] (which is also where the reason it is composed rather
+/// than written into `static/serialization_depth_guard.rs` is recorded).
+///
+/// A const rather than a literal at the seam so the text is unit-pinnable without a nested export
+/// run, exactly like [`new_static_file_notice`].
+///
+/// LOCKSTEP: two readers quote the leading substring
+/// ``--deserialize-depth-limit output requires the `std` feature`` and would silently stop matching
+/// if this were reworded — `cddl-matrix/no_std_check.ts`'s `DEPTH_LIMIT_REQUIRES_STD_SUBSTRING`
+/// (whose expected-FAIL cell asserts it in cargo's stderr) and the `--deserialize-depth-limit`
+/// info block in `docs/docs/command_line_flags.mdx` plus the attribution carve-out in
+/// `docs/docs/output_format.mdx`. The gate cell reds on a drift, which is the acceptable direction;
+/// reword all four together.
+pub(crate) const DEPTH_LIMIT_REQUIRES_STD: &str = "--deserialize-depth-limit output requires the `std` feature (the depth guard is \
+     thread_local-based): build with default features (std is default-on), or regenerate without \
+     the flag";
+
 fn composed_runtime_static_files(
     cli: &Cli,
     include_non_empty_vec: bool,
@@ -1282,7 +1301,26 @@ impl GenerationScope {
         if cli.deserialize_depth_limit.is_some() {
             serialize_paths.push(cli.static_dir.join("serialization_depth_guard.rs"));
         }
-        concat_files(&serialize_paths)
+        let mut prelude = concat_files(&serialize_paths)?;
+        // …and, on the same condition, the no_std incompatibility that guard carries. The guard is
+        // `thread_local!`-based and there is no core/alloc equivalent, so a `--deserialize-depth-limit`
+        // crate built with `--no-default-features` cannot work; this turns that into one accurate
+        // sentence instead of a wall of `cannot find macro thread_local` resolution noise.
+        //
+        // Composed HERE rather than written into `static/serialization_depth_guard.rs`, and the
+        // difference is not stylistic: this repo's own test harness `include!`s that file into the
+        // `cddl-codegen` bin crate (`tests/any_cbor_tests.rs`'s `depth_guard` module), whose feature
+        // set has no `std` key — so a `#[cfg(not(feature = "std"))] compile_error!` living in the
+        // file would fire on every build of THIS crate. The per-flag `any_cbor_recursion_guard!`
+        // macro a few hundred lines up is composed at this same seam for the same class of reason.
+        // The guard's own items stay ungated: under `not(std)` the message is present among the
+        // resolution noise either way, and gating them could not silence the generated call sites.
+        if cli.deserialize_depth_limit.is_some() {
+            prelude.push_str(&format!(
+                "\n#[cfg(not(feature = \"std\"))]\ncompile_error!(\n    \"{DEPTH_LIMIT_REQUIRES_STD}\"\n);\n"
+            ));
+        }
+        Ok(prelude)
     }
 
     /// Single producer for every generated source file (post-rustfmt), keyed by path relative to

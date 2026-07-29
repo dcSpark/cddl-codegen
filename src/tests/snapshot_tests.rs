@@ -1934,6 +1934,58 @@ fn no_std_check_emit_package_json() {
     });
 }
 
+/// `--deserialize-depth-limit` output is the one shape whose shim CANNOT go green: the crate's
+/// recursion guard is `thread_local!`-based, so its serialization prelude carries a
+/// `#[cfg(not(feature = "std"))] compile_error!` and the shim's `default-features = false` dependency
+/// is exactly what fires it. The shim keeps being emitted (always-emit) and instead explains itself,
+/// quoting the message cargo will print — otherwise the header immediately above that paragraph
+/// ("caused by hand-written additions") reads as an accusation. Bless with
+/// `INSTA_UPDATE=always cargo test no_std_check_emit_depth_limit`.
+///
+/// The `Cargo.toml` half is deliberately NOT snapshotted here: the note belongs to the file a
+/// consumer opens after a red check, and asserting the manifest is byte-identical to the default
+/// one is the stronger statement (a flag that leaked into the dependency edge would fail here).
+#[test]
+fn no_std_check_emit_depth_limit() {
+    let base = std::path::Path::new(NO_STD_CHECK_INPUTS);
+    let files = crate::api::no_std_check_strings(&cli_for(
+        base,
+        &["--wasm", "false", "--deserialize-depth-limit", "64"],
+    ));
+    let default = crate::api::no_std_check_strings(&cli_for(base, &["--wasm", "false"]));
+
+    assert_eq!(
+        files["no-std-check/Cargo.toml"], default["no-std-check/Cargo.toml"],
+        "the flag changes what the CHECK will say, not what the shim depends on — the manifest must \
+         stay byte-identical to the default one"
+    );
+    assert!(
+        files["no-std-check/src/lib.rs"]
+            .contains(crate::generation::export::DEPTH_LIMIT_REQUIRES_STD),
+        "the shim must quote the compile_error! text verbatim, so a consumer searching the message \
+         cargo printed lands on the explanation:\n{}",
+        files["no-std-check/src/lib.rs"]
+    );
+    assert!(
+        !default["no-std-check/src/lib.rs"].contains("FAILS BY DESIGN"),
+        "a crate generated without the flag must carry no such note:\n{}",
+        default["no-std-check/src/lib.rs"]
+    );
+
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/no-std-check-emit/snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        insta::assert_snapshot!(
+            "depth_limit__no-std-check__src__lib.rs",
+            files["no-std-check/src/lib.rs"]
+        );
+    });
+}
+
 /// Under `--common-import-override` the runtime modules are not emitted (`Cli::export_static_files`
 /// is `common_import_override.is_none()`), so there is no `error::DeserializeError` to name and the
 /// shim falls back to naming the crate itself. Bless with

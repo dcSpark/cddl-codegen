@@ -827,6 +827,10 @@ When `--preserve-encodings` is also set, each round-trip case additionally runs 
 
 When `--wasm=true` is also set, a matching `#[cfg(test)] mod cddl_generated_wasm_tests` is emitted into the generated **wasm** crate. It renders each minted value twice — through the wasm wrapper API and through the `cddl_lib::` rust API the wasm crate path-depends on — and asserts a **cross-crate byte differential** (both `to_cbor_bytes()` byte-equal, catching a wrong wasm-boundary conversion the rust half can't see), a wire round-trip, accessor read-back against the minted literals, and boundary *acceptance*. It shares the same `--to-from-bytes-methods` requirement (the wasm CBOR methods it drives), and is additionally skipped when a `--wasm-*-macro` flag is set (those macros replace the per-type wrapper method surface it targets). Shapes with no faithful wasm build — wrapper/collection ctor args, `@newtype`/tag wrappers, flatten points — are loud-skipped the same way. `cargo check` never compiles `#[cfg(test)]` code, so the emitted module only runs under a `cargo test` of the wasm crate.
 
+**The emitted tests work in a `no_std` build of the crate**, i.e. `cargo test --no-default-features --lib` on a host. The test module restores `std` for itself (`extern crate std;` plus the std prelude, emitted at the top of `mod cddl_generated_tests` and again in the nested encoding-fidelity module), which it must do locally: the crate root carries `#![cfg_attr(not(feature = "std"), no_std)]` and is [seeded once and then yours](./output_format#generated-crate-roots-thin-root-seed-once), so the tool cannot deliver that line from there. Tests always run on a host, where `std` exists to be linked; the restore is emitted unconditionally and is a no-op under default features. This combination is covered by a cell of the repo's own `no_std_check` gate (`emit_tests.host_test_nostd`), which generates a crate fresh and runs exactly that command.
+
+Two details of that invocation are load-bearing. **`--lib`**: the generated crate declares `crate-type = ["cdylib", "rlib"]`, and a cdylib is *linked* on a host target — with `--no-default-features` the crate is `#![no_std]`, so that link asks for a `#[global_allocator]` and a `#[panic_handler]` and fails before any test runs. `--lib` builds only the lib test binary. And **the tests are not what the [`no-std-check` shim](./output_format#the-no-std-check-shim-crate) proves**: `#[cfg(test)]` code is never compiled when a crate is built as a dependency, which is the direction that shim checks.
+
 **Possible values:** true, false<br></br>
 **Default:** false
 ```bash
@@ -858,6 +862,14 @@ Opt-in recursion depth guard for the generated deserializers. Generated composit
 When set to `N`, every generated composite `deserialize` acquires an RAII depth guard at entry (a thread-local counter, decremented on every return path including `?`-propagation); once nesting exceeds `N`, deserialization returns a graceful `DeserializeError` (`DeserializeFailure::DepthLimitExceeded`) instead of recursing further. The limit is baked into the generated crate at generation time. The guard also covers the `AnyCbor` runtime type's recursive decoder (the lowering of CDDL `any` — the position most likely to receive hostile nesting, since it accepts arbitrary CBOR): its recursion seam acquires the same thread-local guard with the same baked limit, so declared and undeclared nesting are bounded uniformly.
 
 **This rejects any document nested deeper than `N`, including spec-valid ones** — that is the point of it being opt-in. cddl-codegen must not invent a data limit the spec doesn't have, so there is no default guard: leaving the flag off produces output byte-identical to a build without it. Enable it when your consumer deserializes untrusted input (e.g. on-chain data), where the unbounded default's stack-overflow abort is a DoS. Choose `N` above the deepest nesting any legitimate document reaches.
+
+**This flag makes the generated crate `std`-only.** The guard's counter is a `thread_local!`, which has no `core`/`alloc` equivalent, so a crate generated with it cannot be built with `default-features = false`. Rather than leaking `std` silently, the generated `serialization.rs` carries a `compile_error!` for that build:
+
+```
+--deserialize-depth-limit output requires the `std` feature (the depth guard is thread_local-based): build with default features (std is default-on), or regenerate without the flag
+```
+
+The `std` feature is default-on, so this costs an ordinary consumer nothing — the message only appears in a build that explicitly asked for no `std`. **The [`no-std-check` shim](./output_format#the-no-std-check-shim-crate) such a crate emits is therefore red by design**, since that check *is* a `default-features = false` build; its own header paragraph says so and quotes the same message, and the attribution guarantee carves this case out by name. Drop the flag if you need a `no_std` build.
 
 **Possible values:** any unsigned integer (unset = off)<br></br>
 **Default:** off (no guard)

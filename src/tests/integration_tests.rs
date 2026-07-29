@@ -13934,6 +13934,81 @@ fn workspace_regen_two_consumer_contract() {
     }
 }
 
+/// `--deserialize-depth-limit` output is std-only, and the incompatibility is stated at the
+/// emission seam rather than left to a wall of `cannot find macro thread_local` noise: the
+/// serialization prelude carries a `#[cfg(not(feature = "std"))] compile_error!` whose body is
+/// `generation::export::DEPTH_LIMIT_REQUIRES_STD`.
+///
+/// Unit-pinned here (no nested cargo) for three separate properties a rewording or a misplacement
+/// would each break silently:
+///   1. the block is emitted exactly once, only under the flag, and its `cfg` is
+///      `not(feature = "std")` — a `feature = "std"` typo would fire on every std build;
+///   2. the STATIC file stays free of it. `src/tests/any_cbor_tests.rs` `include!`s
+///      `static/serialization_depth_guard.rs` into the `cddl-codegen` bin crate, whose `[features]`
+///      have no `std` key — an undeclared feature is always false, so a `compile_error!` living in
+///      that file would fail THIS crate's own build. That is the whole reason the message is
+///      composed at the seam, and it is worth an assertion rather than a comment alone;
+///   3. the leading substring the gate and the docs quote (`cddl-matrix/no_std_check.ts`'s
+///      `DEPTH_LIMIT_REQUIRES_STD_SUBSTRING`, `command_line_flags.mdx`, `output_format.mdx`) is
+///      still a prefix of the message — the LOCKSTEP half that a Rust-side reword would otherwise
+///      only break in a TypeScript gate cell.
+#[test]
+fn depth_limit_output_declares_its_std_requirement_at_the_seam() {
+    use clap::Parser;
+    const SUBSTRING: &str = "--deserialize-depth-limit output requires the `std` feature";
+
+    let prelude_for = |extra: &[&str]| {
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            "tests/corpus/recursive.cddl",
+            "--output",
+            "unused_in_memory_generation",
+        ];
+        args.extend_from_slice(extra);
+        crate::generation::GenerationScope::serialization_prelude(
+            false,
+            &crate::cli::Cli::parse_from(args),
+        )
+        .unwrap()
+    };
+
+    let with = prelude_for(&["--deserialize-depth-limit=64"]);
+    assert_eq!(
+        with.matches("compile_error!").count(),
+        1,
+        "the depth-limit prelude must carry exactly one compile_error! block:\n{with}"
+    );
+    assert!(
+        with.contains(&format!(
+            "#[cfg(not(feature = \"std\"))]\ncompile_error!(\n    \"{}\"\n);",
+            crate::generation::export::DEPTH_LIMIT_REQUIRES_STD
+        )),
+        "the block must be the rustfmt-canonical cfg+compile_error! pair carrying the const \
+         verbatim:\n{with}"
+    );
+    assert!(
+        crate::generation::export::DEPTH_LIMIT_REQUIRES_STD.starts_with(SUBSTRING),
+        "the gate and the docs quote `{SUBSTRING}` — the message must still start with it, or a \
+         reword lands as a red no_std_check cell instead of a failure here"
+    );
+
+    let without = prelude_for(&[]);
+    assert!(
+        !without.contains("compile_error!") && !without.contains(SUBSTRING),
+        "no-flag output must carry neither the block nor the message (byte-identical default):\n{without}"
+    );
+
+    let static_file = std::fs::read_to_string("static/serialization_depth_guard.rs").unwrap();
+    assert!(
+        !static_file.contains("compile_error!"),
+        "static/serialization_depth_guard.rs is include!d into this crate's own test build \
+         (any_cbor_tests' `depth_guard` module), whose features have no `std` key — a \
+         compile_error! here would fail cddl-codegen itself, which is why the message is composed \
+         at the emission seam instead"
+    );
+}
+
 /// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type
 /// (`tests/corpus/recursive.cddl`: `tree = [value: uint, children: [* tree]]`) compiles a
 /// recursive-descent deserializer with no intrinsic depth bound — ~100k-deep hostile CBOR recurses

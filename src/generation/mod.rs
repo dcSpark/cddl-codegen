@@ -30,7 +30,9 @@ use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_c
 /// read by the `#[cfg(test)]` parity gate directly (no LOCKSTEP duplicate of the string).
 pub(crate) const SYNTHESIZED_INSTANCE_ALIAS_DOC: &str = "Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).";
 
-mod export;
+// `pub(crate)` on the same terms as `layout`/`extern_interface`/`no_std_check` below: a pinned
+// message const in here (`DEPTH_LIMIT_REQUIRES_STD`) is read by a test outside `generation/`.
+pub(crate) mod export;
 use export::declare_modules;
 
 // The generated workspace's shared layout facts (the paths and package-name suffixes `config.rs`

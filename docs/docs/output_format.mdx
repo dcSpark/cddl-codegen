@@ -1182,9 +1182,18 @@ utils.
 **What that lets you conclude.** Generated output is held `no_std`-clean by a drift gate in this
 tool's own repository, which generates representative crates fresh and runs exactly this check
 against them. So a red `no-std-check` over an unmodified generated crate is a bug in the tool —
-report it — and otherwise it attributes to hand-written additions. Calibrate on one detail: that gate
-runs in the repo's `local` and `full` tiers, which are a run-before-shipping discipline rather than a
-continuous one (its CI runs the `fast` tier only).
+report it — **with one carve-out, which announces itself**: a crate generated with
+[`--deserialize-depth-limit`](./command_line_flags) is std-only by design, and its check stops at
+
+```
+--deserialize-depth-limit output requires the `std` feature
+```
+
+If that is the failure you are looking at, it is the documented incompatibility rather than a defect
+(the shim's own header says so too, in that crate's `no-std-check/src/lib.rs`). Any other red over an
+unmodified crate is ours; otherwise it attributes to hand-written additions. Calibrate on one detail:
+that gate runs in the repo's `local` and `full` tiers, which are a run-before-shipping discipline
+rather than a continuous one (its CI runs the `fast` tier only).
 
 - **Always-clobbered and tool-owned**, the same class as `extern-interface/`: the whole directory is
   delete-and-recreated each run, so hand edits inside it do not survive. It is outside every
@@ -1216,6 +1225,13 @@ continuous one (its CI runs the `fast` tier only).
   its shim cannot go green until you have added that dependency to `rust/Cargo.toml` by hand. The
   shim is still emitted there; it just inherits the same one-time manifest edit the crate itself
   needs.
+- **One shape that can never go green:** a crate generated with
+  [`--deserialize-depth-limit`](./command_line_flags). Its recursion guard is built on
+  `thread_local!`, which has no `core`/`alloc` equivalent, so the crate carries a `compile_error!`
+  for `not(feature = "std")` builds and this check — which is a `default-features = false` build —
+  is precisely what fires it. The shim is still emitted (a directory that silently disappears under
+  one flag is a worse surprise than an explained failure) and its header paragraph says so, quoting
+  the message. Drop the flag if you need a `no_std` build of that crate.
 
 ## Generated `Cargo.toml` (merge, not clobber)
 
