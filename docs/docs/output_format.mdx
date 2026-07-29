@@ -1210,7 +1210,9 @@ the tool's dependencies are flag- and type-conditional, and a feature naming a d
 set did not emit is a manifest cargo rejects. That is exactly why it is computed by the run that
 writes the manifest, which knows every dependency it wrote, rather than fixed in advance.
 `hashlink` and the pinned `cbor_event` fork never appear: neither declares a `std` feature (the fork
-is unconditionally `#![no_std]`), so there is nothing to forward to.
+is unconditionally `#![no_std]`), so there is nothing to forward to. An entry names the
+`[dependencies]` **key**, which is what cargo resolves it against — `hex/std` reaches the `std`
+feature of `const-hex`, the package that key takes (see the merge rules below).
 
 Without the forwarding, `default-features = false` at your dependant would stop at this crate: its
 dependencies would still be built with their defaults, their `std` would still be on, and the
@@ -1346,43 +1348,57 @@ hand-written `default-features = true` is a field the tool sets, so it is overwr
 `false` on every regeneration. Name the features you want instead — those the merge unions in and
 keeps.
 
-The sharpest instance is hand code that **boxes a dependency's error type**. `hex::FromHexError`'s
-`Error` impl is gated on hex's own `std` feature, so `Box::new(e)` into
-`DeserializeFailure::InvalidStructure` stops compiling once `hex` is in alloc mode. The fix is a
-local newtype, not re-enabling the dependency's defaults — `tests/custom_serialization` in this
-repository is the worked exemplar:
+The sharpest instance is hand code that **boxes a dependency's error type**. Many crates gate their
+`impl Error` on their own `std` feature, and `Box::new(e)` into
+`DeserializeFailure::InvalidStructure` needs `core::error::Error` — so the moment that dependency is
+taken with `default-features = false`, the boxing stops compiling. The fix is a local newtype
+supplying the impl, not re-enabling the dependency's defaults. `impl Error` for a foreign type is
+blocked by the orphan rule for *everyone*, so this is a shape to write, not a wrapper to hunt for:
 
 ```rust
-struct HexDecodeError(hex::FromHexError);
+struct TheirErrorCore(their_crate::Error);
 
-impl core::fmt::Debug for HexDecodeError {
+impl core::fmt::Debug for TheirErrorCore {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Debug::fmt(&self.0, f)
     }
 }
 
-impl core::fmt::Display for HexDecodeError {
+impl core::fmt::Display for TheirErrorCore {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Display::fmt(&self.0, f)
     }
 }
 
-impl core::error::Error for HexDecodeError {}
+impl core::error::Error for TheirErrorCore {}
 ```
 
 `Debug` and `Display` are hand-written and delegate verbatim rather than derived on purpose:
 `DeserializeFailure` renders a boxed error inline, so a derived `Debug` would insert a
-`HexDecodeError(..)` layer into every rendered message. The wrapper stays invisible in output.
+`TheirErrorCore(..)` layer into every rendered message. The wrapper stays invisible in output.
+`tests/custom_serialization{,_preserve}` in this repository are the worked exemplars, compiled on
+every run. The runtime itself carried one of these for its hex decode errors and no longer needs to:
+the `hex` key's package supplies a `core::error::Error` impl unconditionally (below), so
+`from_raw_hex` boxes the error directly.
+
+**Which dependency needs this is a property of the dependency, not of alloc mode.** A crate that
+offers an unconditional `core::error::Error` impl — often behind a feature this tool then enables —
+needs no wrapper at all. The `hex` key is one: the package behind it is `const-hex`, taken with
+`core-error`, which impls `core::error::Error` whether or not `std` is on. `serde_json`'s `Error`
+is the other direction, gated on its `std` feature. Check the dependency before writing the newtype.
 
 **"It still compiles for me" is not evidence that your hand code is migrated.** Cargo unifies
 features across the whole dependency graph, so any *other* dependency anywhere in your tree that
-pulls `hex` (or serde/serde_json/schemars) with default features turns their `std` feature back on
-for everyone, and the boxing keeps compiling. This is not hypothetical — it happens inside this
-repository: the preserve fixture takes the `cddl` oracle as a test dependency, which pulls `hex`
-with default features, and its identical `Box::new(FromHexError)` compiled green while the core
-fixture's — same line, no such dependency — failed. Check the crate built standalone, which is
-exactly what the [`no-std-check` shim](#the-no-std-check-shim-crate) does with its empty
-`[workspace]`.
+pulls `serde`, `serde_json` or `schemars` with default features turns their `std` feature back on
+for everyone, and the boxing keeps compiling. This is not hypothetical — it happened inside this
+repository while `hex` still named the `hex` package: the preserve fixture takes the `cddl` oracle
+as a test dependency, which pulls `hex` with default features, and its identical
+`Box::new(FromHexError)` compiled green while the core fixture's — same line, no such dependency —
+failed. Unification keys on the **package**, not on your `[dependencies]` key, which is why that
+particular masking can no longer occur for `hex`: the oracle's `hex` and this tool's `const-hex` are
+different packages and never unify. The mechanism is untouched for every dependency you and someone
+else name the same way. Check the crate built standalone, which is exactly what the
+[`no-std-check` shim](#the-no-std-check-shim-crate) does with its empty `[workspace]`.
 
 **2. Preserved comments attached to a rewritten `use` line surface as
 `cddl-codegen:unpreserved-comment` blocks.** The `std::` → `core::`/`alloc::` rewrite moves the
@@ -1493,7 +1509,8 @@ Every key falls into one of three categories:
   field-level**, not clobbered: the tool owns the version *floor* (a compatible pin you wrote is kept
   verbatim — caret semantics — while an incompatible one is bumped up to the tool's requirement), the
   features it requires (unioned into your list, order preserved), and any field it sets (e.g. the
-  `path` on the wasm crate's path dep). Everything else on the entry — `optional`,
+  `path` on the wasm crate's path dep, and the `package` on `hex`, which is a RENAMED dependency:
+  the key is `hex`, the package it takes is `const-hex`). Everything else on the entry — `optional`,
   `default-features`, extra features, a `version` you added beside our `path` for publishing — is
   preserved, and the entry keeps its existing shape (a plain-string dep stays a plain string unless a
   merged field forces a table). This means, e.g., `wasm-bindgen = { version = "0.2.126", optional =
