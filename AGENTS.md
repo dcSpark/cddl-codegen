@@ -21,12 +21,16 @@ Pipeline — `CDDL text → AST → IR → emitted source`:
 1. The `cddl` crate parses the spec to an AST.
 2. `parsing.rs` walks the AST and builds the intermediate representation
 3. `intermediate/` has the IR data structures that everything else works against — split into `mod.rs` (`IntermediateTypes` + scopes), `idents.rs`, `rust_type.rs` (`RustType`/`ConceptualRustType`), and `structs.rs` (`RustStruct`/`RustRecord`/`EnumVariant`/generics).
-3. `generation/` walks the IR and emits the per-type Rust/WASM/JSON source (Rust built with the `codegen` builder crate). It's the largest area of the codebase — split by concern into `mod.rs` (the `GenerationScope` orchestration) plus `serialize`, `deserialize`, `records`, `enums`, `wrappers`, `collections`, `requests`, `bounds`, and `export`.
+3. `generation/` walks the IR and emits the per-type Rust/WASM/JSON source (Rust built with the `codegen` builder crate). It's the largest area of the codebase — split by concern into `mod.rs` (the `GenerationScope` orchestration) plus `serialize`, `deserialize`, `records`, `enums`, `wrappers`, `collections`, `requests`, `bounds`, `export`, and `no_std_check` (the always-emitted `no-std-check/` shim crate).
 4. `api.rs` orchestrates the pipeline; `main.rs` is the CLI entry, `lib.rs` the library entry.
 5. Other modules:
     1. `cli.rs` (flags)
     2. `comment_ast.rs` (the `@name`/`@doc`/`@newtype` comment DSL)
     3. `dep_graph.rs` (rule ordering)
+    4. `alloc_import_inject.rs` (the usage-derived `alloc`/`core` import injector for generated
+       files — the emitted rust crate is no_std-capable, so generated code uses `core::`/`alloc::`
+       paths with per-file `extern crate alloc;`; shares its ident tokenizer with
+       `import_prune.rs`)
 
 **Which "tests" are which.** The app's own test suite lives under `src/tests/` (bin-crate-only,
 `#[cfg(test)]`); everything else in `src/` is production — including `emit_tests.rs` /
@@ -68,12 +72,17 @@ changing the *runtime behaviour* of generated code usually means editing `static
     (`cddl-codegen:unpreserved-comment` compile_error blocks and `cddl-codegen:replace`/`insert`/`keep`
     user blocks), and (b) removing exactly the token span that a replace block's recorded original
     identifies — never any other code token, in either direction. The overlay is applied to the
-    in-memory file map before the write loop, then the usage-derived import prune (`import_prune.rs`)
-    reruns once over the post-overlay map: a `use` import whose last user a replace block removed is
-    dropped too. That drop is a pure function of the FINAL (post-overlay) content — not an extra
-    prior-output read — so the bound on what prior output ITSELF contributes (comment bytes, tagged
-    regions, the recorded replace-span removal) is unchanged, and "same inputs → same bytes" still
-    holds (default on, `--no-preserve-comments` disables it). Four diagnostic-only stderr warnings read prior output but change no output bytes: the
+    in-memory file map before the write loop, then the post-overlay recompute runs over the
+    post-overlay map: the usage-derived import prune (`import_prune.rs`) reruns once — a `use`
+    import whose last user a replace block removed is dropped too — then the alloc-import
+    injector (`alloc_import_inject.rs`) recomputes its own `use alloc::…`/`extern crate alloc;`
+    block (strip-then-recompute, so it both adds and removes), and every written surface is
+    rustfmt'd after injection (rustfmt-stable output is load-bearing for the overlay's
+    second-regen behavior). Each recompute is a pure function of the FINAL (post-overlay)
+    content — not an extra prior-output read — so the bound on what prior output ITSELF
+    contributes (comment bytes, tagged regions, the recorded replace-span removal) is unchanged,
+    and "same inputs → same bytes" still holds (default on, `--no-preserve-comments` disables
+    it). Four diagnostic-only stderr warnings read prior output but change no output bytes: the
     legacy-root
     check (missing `mod generated;`), the stale-file scan (orphaned `.rs` under the generated
     trees), the missing-crate-root-re-export warning (a seed-skipped `lib.rs` lacking a name the
@@ -223,7 +232,12 @@ Rules:
   run before): (1) `./fuzz/generate.sh` — the workspace manifest references the gitignored
   `fuzz/generated` crates, and the warm-up `cargo fetch` needs them to exist BEFORE the fuzz gate
   that would regenerate them; (2) `bun install` in `cddl-matrix/` — `matrix_typecheck` fails on
-  the absent `node_modules`.
+  the absent `node_modules`. A third prerequisite usually self-provisions: the `no_std_check`
+  gate (`local` tier) needs the `thumbv7m-none-eabi` target, which `rust-toolchain.toml`
+  declares (rustup-managed checkouts install it automatically). In a non-rustup environment run
+  `rustup target add thumbv7m-none-eabi` under the PINNED toolchain — targets install
+  per-toolchain, and adding it to the wrong one reads as installed while the gate still can't
+  find `core` (the gate skips loudly at `local`, fails at `full`).
 - **When generating crates e2e outside the repo root, pass `--static-dir <checkout>/static`
   explicitly.** The default is the RELATIVE path `static`, resolved against the process CWD — a
   session whose CWD is a different checkout silently generates with THAT checkout's runtime
