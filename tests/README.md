@@ -320,7 +320,7 @@ carry a host-side cell beside it:
 | Profile | Flags | Surface it exists for |
 |---|---|---|
 | `preserve_canonical` | `--preserve-encodings --canonical-form` | `OrderedHashMap`/`MapHashBuilder`, the derivative-derived key traits in all four `@used_as_key` flavors, a bytes wrapper. No float member — `--preserve-encodings` aborts generation on one |
-| `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `FromHexErrorCore` newtype and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus |
+| `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, its `0x`-prefix guard and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus. Also the only cell that compiles the `hex` key's package (`const-hex`) for a bare-metal target |
 | `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives — plus the `any` × `--json-serde-derives` composition, which no flag list alone reaches: `any_cbor.rs` is emitted only when the finalized IR holds `any`, and only then is the whole of `static/any_cbor_json.rs` appended to it. Its spec therefore carries an `any_members` rule with one member of every nested `natural_any_cbor_*` adapter shape (plain, optional, seq, optional seq, table, optional table), because those nested inline modules carry their alloc imports BY HAND and a missed one is invisible under `std` |
 | `depth_limit` | `--deserialize-depth-limit 64` + a recursive rule | The one flag whose output is deliberately **not** `no_std`-capable (`thread_local!` guard). Its shim cell INVERTS: expected FAIL carrying the pinned ``--deserialize-depth-limit output requires the `std` feature`` substring (LOCKSTEP with `generation::export::DEPTH_LIMIT_REQUIRES_STD`); a `host_default_check` `cargo check` beside it proves the refusal is confined to `not(std)` |
 | `split_config` | a `--config` tree: two crates joined by a `deps` edge over a shared `[runtime]` runtime crate | The only profile where `default-features = false` has more than one package to reach. The `std` feature has to FORWARD across each hop — consumer → dependency → runtime — or it stops at the first, and on a target with no `std` at all a leaked `std` feature anywhere in the chain is a compile error. It is therefore the reachability proof for the runtime crate's `not(std)` hasher arm through a real topology, and it covers both forwarding derivations at once (`deps` and `[runtime].lib-name`). Its `host_std_arm` cell is the tripwire below, pointed at the runtime crate, which owns the cfg pair in this layout |
@@ -738,14 +738,17 @@ so no node/wasm-pack is needed).
 
 The spliced hand files (each dir's `tests.rs`/`tests_wasm.rs` and shared fragments like
 `tests/custom_serialization{,_preserve}`) are CONSUMER-shaped code: they compile against the
-generated crate's own dependency features, so they must model the post-reshape world (e.g. `hex` in
-alloc mode has no `std::error::Error` on `FromHexError` — the two `custom_serialization` fragments
-carry the local-newtype migration exemplar). A delivery that reshapes a dep's features therefore
+generated crate's own dependency features, so they must model the post-reshape world (a dependency
+whose `Error` impl is gated on its own `std` feature cannot be boxed as `Box<dyn Error>` once the
+crate takes it with `default-features = false` — the two `custom_serialization` fragments carry the
+local-newtype migration exemplar). A delivery that reshapes a dep's features therefore
 sweeps the committed hand-file set as part of its battery — the reshape's owning family includes
 every fixture whose hand code uses that dep, which no ops-table enumeration can produce. And a
 green compile inside a fixture tree is weak evidence for that sweep: the oracle-carrying trees
 unify features graph-wide (the `cddl` dep's own `hex` re-enabled `hex/std` in the preserve tree and
-masked one of the two instances), the same unification caveat
+masked one of the two instances — unification keys on the PACKAGE, so that particular masking ended
+when the `hex` key moved to the `const-hex` package, while the mechanism stands for every dep two
+manifests name identically), the same unification caveat
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards against below — full class
 ledger in `TESTING_ROADMAP.md` § Standing-system residuals. `tests/core/tests_wasm.rs` (default profile) and
 `tests/canonical/tests_wasm.rs` (preserve-encodings/canonical, whose map wrappers wrap
@@ -873,7 +876,10 @@ new hand vectors in these shapes; a vector that merely EXERCISES the code certif
    RENDERED ERROR TEXT, which round-trips are equally blind to (they only feed back what the
    encoder produced): the hex wire pins in `tests/raw-bytes/tests.rs` and `tests/json/tests.rs`
    pin case handling, `0x`-prefix rejection, and the error Display texts a `DeserializeError`
-   renders, committed green against the incumbent before any hex-crate swap.
+   renders, committed green against the incumbent before the `hex` key moved to the `const-hex`
+   package. That swap is what the shape is for: the pins held the grammar (the new decoder's
+   `0x` leniency became an explicit guard at both sites rather than a silent widening) and flipped
+   loudly on the one thing that did move, the Display casing.
    When to write these: any change to the version floor or identity of
    a dependency whose types the generated public API re-exposes lands pins of the incumbent's
    consumer-reachable behavior first, in their own commit (the full working rule and its trigger
