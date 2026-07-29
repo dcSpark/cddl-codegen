@@ -36,8 +36,9 @@
 //! COLLECTION ctor arg (`FooList`/`FooMap`, or an aliased `nums = [* uint]` -> `&Nums`) is built as a
 //! block expression through the wrapper's `new`/`add`/`insert` API (`wasm_collection_build`).
 //!
-//! **Loud skips (never silent):** every shape this renderer can't faithfully express emits an
-//! `eprintln!("cddl-codegen --emit-tests: ...")` and is dropped — extern / raw-bytes ctor args
+//! **Loud skips (never silent):** every shape this renderer can't faithfully express emits a
+//! `crate::warn!("cddl-codegen --emit-tests: ...")` — stderr, visible at the default verbosity — and
+//! is dropped: extern / raw-bytes ctor args
 //! (user-supplied types with no generated conversion) and the macro-API flag configurations (whole
 //! module). Optional-nullable flatten points need no skip: optional fields are not ctor args, so no
 //! mint ever constructs a present-null state (the three-state write/read surface is covered by the
@@ -85,7 +86,7 @@ pub fn emit_generated_wasm_tests(
     submodules: &[String],
 ) -> Option<String> {
     if !cli.to_from_bytes_methods {
-        eprintln!(
+        crate::warn!(
             "cddl-codegen --emit-tests: wasm module skipped (requires --to-from-bytes-methods, which is off)"
         );
         return None;
@@ -96,7 +97,7 @@ pub fn emit_generated_wasm_tests(
         || cli.wasm_conversions_macro.is_some()
         || cli.wasm_list_macro.is_some()
     {
-        eprintln!(
+        crate::warn!(
             "cddl-codegen --emit-tests: wasm module skipped (a --wasm-*-macro flag replaces the wrapper method surface)"
         );
         return None;
@@ -407,7 +408,7 @@ fn wasm_named(
         }
         // extern / raw-bytes reference user-supplied types with no generated conversion to lean on
         RustStructType::Extern | RustStructType::RawBytesType => {
-            eprintln!(
+            crate::warn!(
                 "cddl-codegen --emit-tests: no wasm build for {name} ctor arg (extern/raw-bytes — user-supplied type)"
             );
             None
@@ -619,7 +620,7 @@ fn wasm_record_roundtrip(
         return None;
     };
     let Some(wasm_build) = wasm_named(types, ident, &entry_mv, scoped, cli) else {
-        eprintln!(
+        crate::warn!(
             "cddl-codegen --emit-tests: no wasm round-trip for {name} (a ctor arg has no wasm build — wrapper/collection field)"
         );
         return None;
@@ -682,7 +683,7 @@ fn wasm_choice_roundtrip(
         let Some(wasm_build) =
             wasm_choice_value(types, name, variants, group_choice, &choice_mv, scoped, cli)
         else {
-            eprintln!(
+            crate::warn!(
                 "cddl-codegen --emit-tests: no wasm round-trip for {name}::new_{var} (a variant arg has no wasm build)"
             );
             continue;
@@ -786,7 +787,7 @@ fn wasm_wrapper_roundtrip(
     // wasm build (extern / raw-bytes class), fall back to decoding the rust twin's bytes with a loud
     // skip of the ctor differential — the wire round-trip still runs.
     let Some(inner_expr) = wasm_arg(types, inner, wrapped, scoped, cli) else {
-        eprintln!(
+        crate::warn!(
             "cddl-codegen --emit-tests: no wasm ctor build for {name} (inner is extern/raw-bytes); building via from_cbor_bytes, ctor differential skipped"
         );
         return Some(format!(

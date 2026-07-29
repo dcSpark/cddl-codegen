@@ -1629,7 +1629,7 @@ pub(super) fn codegen_struct(
                             .filter(|f| !f.rust_type.is_fixed_value())
                             .any(|f| f.name == has_name);
                         if collides {
-                            eprintln!(
+                            crate::warn!(
                                 "cddl-codegen --wasm: {name}: presence accessor `{has_name}()` for \
                                  optional-nullable field `{}` collides with a sibling field of the \
                                  same name — skipping the accessor (the flattening getter still \

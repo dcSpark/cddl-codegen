@@ -1039,7 +1039,7 @@ pub fn read_request_sidecar(flag: &str, consumer: &str, path: &str) -> Option<St
     match std::fs::read_to_string(path) {
         Ok(contents) => Some(contents),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
+            crate::warn!(
                 "warning: {flag} {consumer}={path}: no sidecar there yet, so `{consumer}` is treated \
                  as borrowing nothing from this crate. That is what a consumer which has never been \
                  generated records. If `{consumer}` HAS been generated, the path is wrong — check it, \

@@ -2544,7 +2544,7 @@ impl<'a> IntermediateTypes<'a> {
             // change (loose historical bytes with duplicate elements now fail `DuplicateKey`). Notice
             // it once per minted nominal, naming the type and the hoist-to-named-rule opt-out (inline
             // positions have no comment slot for `@duplicates`).
-            println!(
+            crate::warn!(
                 "Inline #6.258 set occurrence nominalized to `{ident}` (defaults to @duplicates reject, IANA set semantics) — hoist it to a named rule with `; @duplicates preserve` to opt out"
             );
             self.register_rust_struct(parent_visitor, nominal, cli);
@@ -3782,39 +3782,44 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    /// The IR dump: `trace` only, and the caller in `api::generate_to_disk` ALSO guards the call.
+    /// Both guards are wanted. These lines are `trace!` so the function stays correct if another
+    /// caller appears; the call-site guard is what skips the `{:?}` formatting of every registered
+    /// struct, which is the actual cost (215 KB on a 501-line spec) — `trace!` evaluates its
+    /// arguments lazily per line, but the traversal and the per-line calls still happen.
     pub fn print_info(&self) {
         if !self.plain_groups.is_empty() {
-            println!("\n\nPlain groups:");
+            crate::trace!("\n\nPlain groups:");
             for plain_group in self.plain_groups.iter() {
-                println!("{}", plain_group.0);
+                crate::trace!("{}", plain_group.0);
             }
         }
 
         if !self.type_aliases.is_empty() {
-            println!("\n\nAliases:");
+            crate::trace!("\n\nAliases:");
             for (alias_name, alias_info) in self.type_aliases.iter() {
-                println!("{alias_name:?} -> {alias_info:?}");
+                crate::trace!("{alias_name:?} -> {alias_info:?}");
             }
         }
 
         if !self.generic_defs.is_empty() {
-            println!("\n\nGeneric Definitions:");
+            crate::trace!("\n\nGeneric Definitions:");
             for (ident, def) in self.generic_defs.iter() {
-                println!("{ident} -> {def:?}");
+                crate::trace!("{ident} -> {def:?}");
             }
         }
 
         if !self.generic_instances.is_empty() {
-            println!("\n\nGeneric Instances:");
+            crate::trace!("\n\nGeneric Instances:");
             for (ident, def) in self.generic_instances.iter() {
-                println!("{ident} -> {def:?}");
+                crate::trace!("{ident} -> {def:?}");
             }
         }
 
         if !self.rust_structs.is_empty() {
-            println!("\n\nRustStructs:");
+            crate::trace!("\n\nRustStructs:");
             for (ident, rust_struct) in self.rust_structs.iter() {
-                println!("{ident} -> {rust_struct:?}\n");
+                crate::trace!("{ident} -> {rust_struct:?}\n");
             }
         }
     }

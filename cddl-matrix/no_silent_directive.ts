@@ -207,11 +207,19 @@ const ALLOWLIST: Record<string, string> = {
 };
 
 /** The `@`-prefixed directive token used to detect an acknowledging notice/rejection
- *  (`@duplicates preserve` → `@duplicates`). MUST keep the leading `@`: the generator dumps its full IR
- *  to stdout, and that dump names struct fields `duplicates:` / `newtype:` (no `@`) on EVERY run — so a
- *  bare-keyword match would be vacuous (always "mentioned"). Genuine notices/rejections always spell the
- *  directive with its `@` (`defaulting to @duplicates reject`, `@newtype on rule …`), which the IR dump
- *  never does. */
+ *  (`@duplicates preserve` → `@duplicates`). MUST keep the leading `@`, on precision grounds: a genuine
+ *  notice or rejection always spells the directive WITH its `@` (`defaulting to @duplicates reject`,
+ *  `@newtype on rule …`), so the `@` is exactly what distinguishes an acknowledgement from any other
+ *  appearance of the word. The generator's IR dump is the concrete counter-example the requirement is
+ *  measured against — it names struct fields `duplicates:` / `newtype:` (no `@`), so a bare-keyword
+ *  match would read that as an acknowledgement. The dump is `--verbosity trace`-only and this gate runs
+ *  at the default level, so it does not reach these runs today; the requirement stands regardless,
+ *  because "the word appears somewhere in the output" was never evidence that the directive was
+ *  honored, and one `--verbosity` change away the dump is back.
+ *
+ *  What the gate DOES depend on is that the acknowledging notices themselves are default-visible: the
+ *  `@duplicates` notices are `warn!`/`note!`, and `output` below reads stdout AND stderr combined, so
+ *  neither the level gate nor a stream move can hide one from this match. */
 function directiveKeyword(directive: string): string {
   return "@" + directive.replace(/^@/, "").split(/\s+/)[0];
 }

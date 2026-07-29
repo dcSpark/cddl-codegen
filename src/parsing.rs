@@ -580,7 +580,10 @@ fn with_well_known_tag_default(
     {
         effective.duplicates = Some(default);
         if let Some(notice) = notice {
-            println!("{notice}");
+            // A diagnostic, not progress: it announces a decode-behaviour change the spec did not ask
+            // for (loose historical bytes with duplicate elements now fail), so stderr and the default
+            // level.
+            crate::warn!("{notice}");
         }
     }
     effective
@@ -851,12 +854,18 @@ fn parse_type_choices(
             } else {
                 "a transparent optionally-tagged collection"
             };
+            // The two branches are different KINDS, so they take different macros. The defaulted one
+            // announces a decode-behaviour change the spec did not ask for — a diagnostic, on stderr
+            // at the default level. The other reports only what the collapse did, with nothing
+            // changed behind the user's back: progress, on stdout at `info`.
             if defaulted {
-                println!(
+                crate::warn!(
                     "Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}; defaulting to @duplicates reject (IANA set semantics) — write `; @duplicates preserve` on the rule to opt out"
                 );
             } else {
-                println!("Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}");
+                crate::info!(
+                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}"
+                );
             }
             let effective_metadata =
                 with_well_known_tag_default(&rule_metadata, set_tag, is_array, None);

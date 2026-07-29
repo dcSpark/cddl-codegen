@@ -68,15 +68,21 @@ impl Verbosity {
     }
 
     /// The inverse of the `as u8` cast the atomic stores. Total by construction — every value the
-    /// atomic can hold was written by [`set`], which only ever writes a `Verbosity` — so an
-    /// out-of-range byte is a bug in this module rather than an input to validate.
+    /// atomic can hold was written by [`set`], which only ever writes a `Verbosity` — so the
+    /// catch-all is unreachable rather than an input to validate.
+    ///
+    /// It still has to pick a direction, and it picks the QUIET one: an impossible byte falls back to
+    /// [`Verbosity::Warn`], the documented default, rather than to `Trace`. A bug in this module must
+    /// not be able to turn on the 215 KB IR dump — failing quiet leaves the run's own output
+    /// readable, and the missing warnings are recoverable by re-running with an explicit level.
     fn from_u8(raw: u8) -> Verbosity {
         match raw {
             0 => Verbosity::Error,
             1 => Verbosity::Warn,
             2 => Verbosity::Info,
             3 => Verbosity::Debug,
-            _ => Verbosity::Trace,
+            4 => Verbosity::Trace,
+            _ => Verbosity::Warn,
         }
     }
 }
@@ -94,20 +100,12 @@ impl Verbosity {
 static LEVEL: AtomicU8 = AtomicU8::new(Verbosity::Warn as u8);
 
 /// The level in force right now.
-//
-// `allow(dead_code)`, here and on `enabled` below, because the BIN crate reaches both only through
-// the six exported macros, and rustc's dead-code pass does not expand a macro nothing invokes: a
-// level accessor every macro body calls still reads as unused until some module in this crate
-// invokes one. (The lib crate exports them, so there they are public API either way.) Drop the
-// attribute once a call site does.
-#[allow(dead_code)]
 pub fn verbosity() -> Verbosity {
     Verbosity::from_u8(LEVEL.load(Ordering::Relaxed))
 }
 
 /// Is a message at `at_least` shown? What every macro below tests, and what a site gating an
 /// expensive format (the IR dump) tests by hand.
-#[allow(dead_code)]
 pub fn enabled(at_least: Verbosity) -> bool {
     verbosity() >= at_least
 }

@@ -41,7 +41,10 @@ fn main() {
         api::generate_to_disk(&Cli::parse())
     };
     if let Err(error) = result {
-        eprintln!("Error: {error}");
+        // `err!`, so "no level ever gates this" is an explicit classification rather than an absence:
+        // it expands to a bare `eprintln!`, and the terminal error path is the exit path rather than
+        // logging — `--verbosity error` hides warnings, never failure.
+        crate::err!("Error: {error}");
         // Two failures a caller must be able to tell apart, which one exit code cannot. `1` says the
         // RUN failed: a config that would not expand, a spec that would not generate — the tool did
         // not do what it was asked, and fixing the input is the remedy. `2` says the run did exactly

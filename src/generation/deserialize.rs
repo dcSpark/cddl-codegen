@@ -2531,9 +2531,11 @@ impl GenerationScope {
 
     pub fn print_structs_without_deserialize(&self) {
         for (name, reasons) in &self.no_deser_reasons {
-            eprintln!("Not generating {name}::deserialize() - reasons:");
+            // Header AND reasons on stderr: the pair is one diagnostic, and splitting the streams
+            // meant `2>/dev/null` kept the reasons and dropped what they were reasons FOR.
+            crate::warn!("Not generating {name}::deserialize() - reasons:");
             for reason in reasons {
-                println!("\t{reason}");
+                crate::warn!("\t{reason}");
             }
         }
     }

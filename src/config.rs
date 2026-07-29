@@ -3293,14 +3293,15 @@ pub fn generate(
         // where it has never been written that is a crate that cannot build.
         if expanded.iter().any(|(name, _)| name == &choice.carrier) {
             for note in &choice.notes {
-                println!("{note}");
+                crate::note!("{note}");
             }
         } else {
-            println!(
+            crate::note!(
                 "[runtime] `{}` carries --export-static-crate and is not in this run, so the \
                  runtime is NOT refreshed here — the committed one is used as it stands. Run \
                  without a crate selection, or name `{}`, to refresh it.",
-                choice.carrier, choice.carrier
+                choice.carrier,
+                choice.carrier
             );
         }
     }
@@ -3318,7 +3319,7 @@ pub fn generate(
                 // A per-crate banner, NOT a per-line prefix: the generator's progress output is consumed
                 // as-is by humans and by tests, so this adds a line rather than rewriting the existing
                 // ones.
-                println!(
+                crate::note!(
                     "\n[{name}] generating from {} into {}",
                     cli.input.display(),
                     cli.output.display()
@@ -3378,7 +3379,7 @@ pub fn generate(
         first
     } else {
         for note in first.rerun_notes() {
-            println!("{note}");
+            crate::note!("{note}");
         }
         let residual = Convergence::capture(&expanded);
         generate_pass(Some(&stale))?;
@@ -3386,7 +3387,7 @@ pub fn generate(
     };
 
     if let Some(warning) = residual.warning(config_path, selected) {
-        eprintln!("{warning}");
+        crate::warn!("{warning}");
     }
     // Both signals can fire on one run and they say different things, so neither replaces the other:
     // the warning above is an instruction about THIS run ("run me again"), which after the
@@ -3514,6 +3515,9 @@ pub fn print_flags(
     let listing = config
         .flag_listing(selected)
         .map_err(|e| about_the_config(config_path, e))?;
+    // Deliberately an unconditional `print!` and NOT one of the `log` macros: this is the output of
+    // a COMMAND, like `--help`, rather than logging. `--verbosity error` must not suppress the very
+    // thing the invocation asked for.
     print!("{listing}");
     Ok(())
 }
