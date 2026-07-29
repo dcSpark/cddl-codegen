@@ -51,7 +51,10 @@
 //! What remains of the old ownership heuristics survives only as SUPPRESSION, never as insertion,
 //! so each can now fail in the loud direction only: positional self-cancel (an old comment `new`
 //! carries at the same anchor is the generator's), insertion-point dedup (a comment re-anchoring to
-//! where `new` already carries the identical text is a shifted generator comment — skip), and doc
+//! where `new` already carries the identical text is a shifted generator comment — skip),
+//! text-presence dedup (an own-line comment `new` carries ANYWHERE is this run's output whatever
+//! its position — the anchor-free answer for a cross-version regen, which shifts and rewrites the
+//! code a comment annotates and so defeats both anchored checks), and doc
 //! ownership (an anchor `new` documents is tool-owned: an old `///`/`//!` block there is stale tool
 //! output — and an UNPLACEABLE doc block drops the same way, so deleting a documented type never
 //! traps the tool's own docs in compile_error blocks; the user channel for doc text is the
@@ -1729,6 +1732,25 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         .filter(|c| c.own_line)
         .map(|c| (c.anchor, c.text))
         .collect();
+    // Every own-line comment text `new` carries ANYWHERE, keyed by text alone. The anchored sets
+    // above cancel a generator comment only where the two sides agree on position, which a
+    // CROSS-VERSION regen breaks: a run that both adds code tokens (`extern crate alloc;`, the
+    // `use alloc::…` block) and rewrites others (`::std::borrow::Cow` → `alloc::borrow::Cow`)
+    // shifts every anchor and drifts the items the rewrite touched, so a comment the fresh
+    // emission carries VERBATIM traps as unclassified — a `compile_error!` asserting a comment was
+    // lost while sitting a few lines above that same comment. Text presence is the anchor-free
+    // answer: this run emits the comment, so it is this run's output whatever its position. Same
+    // bound as the anchored sets and the trailing cancellation above — a pure function of
+    // (old, new) that can only SUPPRESS a trap, never insert a comment or cause one — and the same
+    // residual class: a USER comment textually identical to tool output elsewhere in the file is
+    // dropped silently rather than trapped. Matching is per LINE, so a multi-line run suppresses
+    // exactly those of its lines the fresh emission carries.
+    let new_own_line_texts: BTreeSet<&str> = new_lex
+        .comments
+        .iter()
+        .filter(|c| c.own_line)
+        .map(|c| c.text)
+        .collect();
     // Trailing comments whose text `new` also carries somewhere cancel silently. INVARIANT: the
     // generator must emit NO trailing (end-of-line) comment on any row a spec change can delete —
     // such a comment would be stranded on the deleted row and re-injected here as a
@@ -1979,6 +2001,13 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                             order += 1;
                             continue;
                         }
+                        // Text-presence dedup: `new` carries this exact own-line comment somewhere,
+                        // so it is this run's own output even though neither anchor agreed (a
+                        // cross-version regen that rewrote the code the comment annotates).
+                        if new_own_line_texts.contains(cm.text) {
+                            order += 1;
+                            continue;
+                        }
                         // Doc ownership: `new` documents this anchor, so an old doc block here is
                         // stale tool output (the user channel for doc text is the CDDL/`@doc` DSL).
                         if is_doc_comment(cm.text) && new_doc_anchors.contains(&t) {
@@ -1993,6 +2022,10 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                             noun: "comment",
                         });
                     }
+                    // The same text-presence dedup on the unplaceable path: the tiers could not
+                    // re-anchor this comment (its annotated statement was itself rewritten), but
+                    // `new` carries it verbatim, so there is nothing to report.
+                    Err(_) if new_own_line_texts.contains(cm.text) => {}
                     // Doc ownership extends to UNPLACEABLE doc comments: deleting a documented type
                     // must not trap the tool's own `///` lines (which anchor to the vanished item) in
                     // compile_error blocks — doc text's channel is the CDDL/`@doc` DSL, so doc blocks

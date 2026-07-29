@@ -1407,6 +1407,25 @@ hide behind the `std` feature; it is now built on `hashlink`. Three consumer-vis
 on overwrite), and generated deserializers reject duplicate keys, so the surface this affects is
 hand-written mutation code.
 
+**The search that finds every affected site** is four categories, in this order — learned from the
+first consumer's executed migration, where an import-and-annotation survey missed two site classes
+that only turned up as compile errors:
+
+1. `linked_hash_map::` **path references** — `use` lines and qualified paths, in every file, not
+   just the files where imports cluster.
+2. `LinkedHashMap<` **type annotations, including public struct fields.** A public field's type is
+   published API, so retyping it to `OrderedHashMap` is a breaking change for *your* downstream
+   consumers — worth releasing deliberately, not discovering.
+3. **`.entry(` call sites on an `OrderedHashMap`, resolved by TYPE, not by text.** A call that
+   reads `map.deref_mut().entry(k)` looks like it reaches the backing crate's entry view, but
+   `OrderedHashMap::entry` is an inherent method, and an inherent method shadows `Deref` — the call
+   lands on the wrapper, whose surface is the whole surface (`or_insert`, `or_insert_with`,
+   `or_default`, `and_modify`, `key`). No text search settles where an `.entry(` call resolves;
+   check the receiver's type.
+4. `linked-hash-map` **in every `Cargo.toml` in the repo**, including hand-owned crates. The
+   permanent tombstone (next entry below) removes it only from manifests the tool writes; a stale
+   entry in a hand-owned manifest keeps the retired crate in your `Cargo.lock` indefinitely.
+
 **5. A `linked-hash-map` dependency entry is removed on every regeneration.** The manifest changeset
 carries a permanent tombstone for that key so an upgraded manifest does not keep a stale entry
 beside `hashlink`. If your hand code still wants that crate, it cannot live under its own name — use
@@ -1471,6 +1490,15 @@ Every key falls into one of three categories:
   preserved, and the entry keeps its existing shape (a plain-string dep stays a plain string unless a
   merged field forces a table). This means, e.g., `wasm-bindgen = { version = "0.2.126", optional =
   true }` survives regeneration with its `optional` intact instead of collapsing to `"0.2"`.
+  Two things about how a merged entry *reads*. Its inline table is re-spaced to the canonical
+  `{ a = 1, b = 2 }` form — merging moves fields around, and the spacing a field carried in its old
+  position is wrong in its new one — except in an entry whose braces hold a comment or a line break,
+  which is left exactly as you wrote it. And a dependency the tool **adds** to a `[dependencies]`
+  table that already existed gets a `# cddl-codegen` marker on its line: it can only be appended at
+  the end of the table, which is wherever your last section comment happens to reach, so it says
+  whose it is rather than reading as if that comment scoped it. A manifest the tool writes from
+  scratch is wholly tool-owned and gets no markers, and an entry you wrote yourself is merged into
+  and gets none either.
   One exception to field preservation: a tool spec that pins a **git source** — as the interim
   `cbor_event` fork pin currently does — asserts the dep's *source axis*, so source-axis keys the
   tool spec does not itself re-specify (`version`, `rev`, `branch`, `tag`, `path`, `registry`) are

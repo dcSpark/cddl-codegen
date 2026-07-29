@@ -110,8 +110,16 @@ Scope notes:
   trailing comment fails loudly with a hint to move it to its own line.
 - **Doc text on tool-documented items is tool-owned**: `///` flows from your CDDL and the
   [`@doc` comment DSL](comment_dsl.mdx), so edit it there. A hand edit to a tool-emitted doc
-  block is dropped on regeneration (the one deliberate silent-drop class). To add doc text where
+  block is dropped on regeneration. To add doc text where
   the tool does *not* document, use a bare `keep` marker above the `///` lines.
+- **A comment this run also emits is never reported**, wherever the two copies sit. This is what
+  keeps a tool UPGRADE quiet: an upgrade rewrites generated code across a whole file, so the
+  position a comment anchored to no longer exists, and without this rule a comment the new output
+  carries verbatim would be trapped anyway — a `compile_error!` claiming a comment was lost while
+  that comment sits a few lines below it. The rule is matched per line and by text alone, which is
+  the second deliberate silent-drop class: an unmarked comment of yours whose text happens to
+  match one the tool emits elsewhere in the same file is dropped instead of trapped. A
+  `keep` marker is exact and is not subject to it.
 
 ## Insert blocks — adding code
 

@@ -1768,12 +1768,13 @@ mod tests {
     // that is a fidelity break, not a cosmetic one: a value decoded from the wire and written back
     // after an in-place edit must keep every key where the wire put it.
     //
-    // These three tests pin the semantics the wrapper is contractually required to have,
+    // These tests pin the semantics the wrapper is contractually required to have,
     // independently of WHICH insertion-ordered map backs it. They assert only through
     // `OrderedHashMap`'s own surface and `to_cbor_bytes()` — no backing-crate path is named — so
     // they stay meaningful across a swap of that backing. Written against the current backing and
-    // green on it, so a later swap that changes any of the three is caught as a behavior change
-    // rather than blessed as new bytes.
+    // green on it, so a later swap that changes any of them is caught as a behavior change
+    // rather than blessed as new bytes. One per method of the entry surface, since the inherent
+    // `entry()` shadows `Deref`: that surface is the whole surface a consumer can reach.
     //
     // Values are all < 24 so every uint is a single Sz::Inline byte, keeping the expected byte
     // vectors readable; `WrapperTable` ( `{ * uint => uint }` @newtype ) serializes as exactly the
@@ -1910,6 +1911,106 @@ mod tests {
                 vacant.insert(14);
             }
         }
+        let value = WrapperTable::new(table);
+        assert_eq!(
+            value.to_cbor_bytes(),
+            [
+                map_def(4),
+                cbor_int(1, Sz::Inline),
+                cbor_int(10, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(4, Sz::Inline),
+                cbor_int(14, Sz::Inline),
+            ]
+            .concat()
+        );
+        deser_test(&value);
+    }
+    // Pin 5: `entry(k).or_default()` must not move an existing key. This is the accumulate idiom a
+    // consumer reaches for when `V: Default` (`*t.entry(k).or_default() += n`); the backing crate
+    // has no `or_default` at all, so the wrapper's is the only one, and the obvious delegation
+    // (`or_insert(V::default())` on the backing entry) would refresh the key's position. Driven from
+    // DECODED bytes rather than a built table: the value under test is one that came off the wire,
+    // which is exactly the case where a moved key rewrites bytes the caller never edited.
+    #[test]
+    fn ordered_hash_map_or_default_keeps_position() {
+        let bytes = [
+            map_def(3),
+            cbor_int(1, Sz::Inline),
+            cbor_int(10, Sz::Inline),
+            cbor_int(2, Sz::Inline),
+            cbor_int(11, Sz::Inline),
+            cbor_int(3, Sz::Inline),
+            cbor_int(12, Sz::Inline),
+        ]
+        .concat();
+        let decoded = WrapperTable::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(decoded.to_cbor_bytes(), bytes);
+        let mut table = decoded.get().clone();
+        // existing key: the default is not applied, and re-serializing gives back the SAME bytes
+        assert_eq!(*table.entry(2).or_default(), 11);
+        assert_eq!(
+            WrapperTable::new(table.clone()).to_cbor_bytes(),
+            bytes,
+            "or_default on an occupied entry must leave the wire bytes untouched"
+        );
+        // absent key: `V::default()` is inserted and appended last, as a plain insert would be
+        assert_eq!(*table.entry(4).or_default(), 0);
+        let value = WrapperTable::new(table);
+        assert_eq!(
+            value.to_cbor_bytes(),
+            [
+                map_def(4),
+                cbor_int(1, Sz::Inline),
+                cbor_int(10, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(11, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(4, Sz::Inline),
+                cbor_int(0, Sz::Inline),
+            ]
+            .concat()
+        );
+        deser_test(&value);
+    }
+
+    // Pin 6: `entry(k).and_modify(..)` mutates an occupied entry in place, leaving its position
+    // alone, and passes a vacant entry through untouched so a trailing `or_insert` still appends.
+    // Same decoded-value framing as pin 5.
+    #[test]
+    fn ordered_hash_map_and_modify_keeps_position() {
+        let bytes = [
+            map_def(3),
+            cbor_int(1, Sz::Inline),
+            cbor_int(10, Sz::Inline),
+            cbor_int(2, Sz::Inline),
+            cbor_int(11, Sz::Inline),
+            cbor_int(3, Sz::Inline),
+            cbor_int(12, Sz::Inline),
+        ]
+        .concat();
+        let decoded = WrapperTable::from_cbor_bytes(&bytes).unwrap();
+        let mut table = decoded.get().clone();
+        // occupied, read-only closure: it sees the stored value, and nothing about the wire moves
+        let mut saw = None;
+        table.entry(2).and_modify(|v| saw = Some(*v));
+        assert_eq!(saw, Some(11));
+        assert_eq!(
+            WrapperTable::new(table.clone()).to_cbor_bytes(),
+            bytes,
+            "and_modify on an occupied entry must leave the wire bytes untouched"
+        );
+        // occupied, mutating closure: the new value lands in the key's ORIGINAL slot
+        table.entry(2).and_modify(|v| *v += 1);
+        // vacant: the closure never runs and the chained `or_insert` appends at the back
+        table
+            .entry(4)
+            .and_modify(|_| panic!("key 4 was never inserted — its entry must be vacant"))
+            .or_insert(14);
         let value = WrapperTable::new(table);
         assert_eq!(
             value.to_cbor_bytes(),

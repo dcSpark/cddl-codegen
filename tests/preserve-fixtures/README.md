@@ -57,6 +57,27 @@ comment" leaves it unmarked and asserts it is dropped, self-cancelled, or trappe
 - `eof_comment_preserved_at_file_end` — a comment past the last token stays at EOF.
 - `comment_before_code_on_same_line_fails_loudly` — `/* note */ code` is out of own-line scope.
 
+## Cross-version cases (a regen that also rewrote generated CODE)
+
+Every other case here regenerates at the SAME tool version, so `old.rs` and `new.rs` agree on
+generated code bytes except where the fixture deliberately drifts one item. A tool UPGRADE is a
+different shape — it adds code tokens and rewrites others across the whole file at once, shifting
+every anchor and drifting the items the rewrite touched — and that shape is what the two cases
+below cover. The class exists because the anchored suppressions (positional self-cancel, insertion-
+point dedup) cancel a generator comment only where the two sides agree on position: under an
+upgrade they cannot fire, and only the text-presence check keeps a comment the fresh emission
+carries verbatim out of a `compile_error!`.
+
+- `cross_version_std_to_alloc_rewrite_self_cancels` — the no_std upgrade's shape (a consumer-filed
+  false positive): `new` adds `extern crate alloc;` + `use alloc::…` and rewrites
+  `::std::borrow::Cow` → `alloc::borrow::Cow` and `std::collections::BTreeSet` →
+  `alloc::collections::BTreeSet`. A 3-line tool comment run sits directly above the rewritten
+  `let` — its annotated statement is the one that changed, so no tier can re-anchor it — and `new`
+  carries the run verbatim. Output is byte-identical to `new.rs`: zero sentinel blocks.
+- `cross_version_rewrite_traps_only_the_reworded_line` — the same file with one of the three
+  comment lines reworded upstream. Only that line traps; the two `new` still carries suppress. Pins
+  both that the trap is not weakened and that suppression is per LINE, not per run.
+
 ## Insert-block cases
 
 - `insert_identity` — block placed above its anchor when the file is otherwise unchanged.
