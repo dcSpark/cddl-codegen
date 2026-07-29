@@ -1607,6 +1607,49 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   unification. Measurable by exactly the party who hits it (the tier runner reading the E0277
   against an unchanged fixture), on the dimension the cost grows (the count of spliced hand
   fragments using reshaped-dep surfaces).
+- **A profile-driven compile gate covers the compositions its PROFILES' SPECS reach, and a runtime
+  file emitted on an IR PREDICATE × a FLAG is reached only by their conjunction — the first
+  consumer-reported no_std break lived exactly in that hole.** The no_std drift gate shipped as ten
+  cells over five single-crate profiles plus the split layout, each profile chosen for a runtime
+  surface the snapshot corpus never emits; none of their CDDL contained `any`. `any_cbor.rs` is
+  emitted only when the finalized IR holds `any`, and the whole of `static/any_cbor_json.rs` — eight
+  nested inline `natural_any_cbor_*` serde adapters — is appended to it only under
+  `--json-serde-derives`. Both flags were already in the `json_schema` profile, so the miss reads
+  as flag coverage while being composition coverage: no profile's SPEC put the file in any thumb
+  compile, and the consumer met the E0425 first. Owned meanwhile by that profile's extended CDDL
+  (an `any_members` rule carrying one member of every adapter shape — plain, optional, seq, optional
+  seq, table, optional table — so all eight adapters are in the compile), plus the working rule that
+  a new conditionally-assembled `static/` fragment states which profile's spec reaches it. Machinery
+  on a trigger, not now (one instance, and the enumeration it would need — every emission predicate
+  in `generation/export.rs`'s fragment assembly, paired against every profile's generated file set —
+  is a second model of the assembly that can drift from it): a coverage assertion that each
+  conditionally-assembled static fragment appears in at least one profile's generated tree.
+  *Reopening signal:* a SECOND no_std break in a `static/` fragment that no profile's compile
+  reaches — measurable by the party who already has the problem (a consumer's red shim, or a tier
+  runner's red cell naming a file no cell had compiled), on the dimension the cost grows (the count
+  of conditionally-assembled fragments outside every profile's spec).
+- **The alloc imports of nested inline modules are hand-carried by design, and two of the eight
+  `natural_any_cbor_*` adapters were missed — silent under `std`, six E0425s without it.** The
+  alloc-import injector deliberately does not scan nested inline `mod X { … }` bodies: a file-top
+  import added for a nested usage would be unused at file scope and still would not resolve inside
+  the module, so each such module carries its own `use super::alloc::…;`. The four map adapters
+  carried theirs; `natural_any_cbor_seq` and `natural_any_cbor_opt_seq` named `Vec` without one.
+  Fixed minimally — the two hand imports, pointing at the canonical rationale comment on
+  `natural_any_cbor_btreemap` — rather than by teaching the injector to inject into nested bodies,
+  because the nested-module universe in tool output is CLOSED and enumerated (those eight adapters
+  plus `--emit-tests`' `cddl_generated_tests`, which opens `use super::*;` and needs nothing), while
+  a nested-aware injector buys concrete new hazards for it: per-scope dedup against a consumer's
+  `cddl-codegen:insert` block already binding the same name inside the module (E0252 if injected
+  blindly, which is what CML's tree would have met), ownership matching extended past the column-0
+  exact-match strip rule to indented lines, per-level `super` counting, and insertion-point rules
+  inside nested bodies interacting with the reserved-marker hard stops. What converts "correctness
+  depends on someone noticing every new nested adapter" into a red tier is the `json_schema`
+  profile's `shim_thumb` cell above, which now compiles every adapter shape. *Reopening signal* for
+  the nested-aware injector: a SECOND miss of the hand pattern — a red `json_schema`-profile cell,
+  or a consumer filing, on an alloc name inside a nested inline module. Measurable by the party who
+  already has the problem (the tier runner or the consumer reading the E0425), on the dimension the
+  cost grows (recurrence of the class the hand pattern must cover). A new nested adapter added WITH
+  its imports correct does not fire it — the signal is the pattern being missed, not the set growing.
 - **The gate-cache closure audit is structurally blind to GATE-AUTHORED inputs parked in scratch:
   its allowed-read table admits everything under `$TMPDIR` on the justification "the generated tree
   is hashed", which is true only while every file a cached cell reads under scratch actually lives

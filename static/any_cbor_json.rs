@@ -458,6 +458,9 @@ impl<'de> serde::Deserialize<'de> for NaturalAnyCborDe {
 /// struct field), rendering each element naturally. Rides serde's own seq handling.
 pub mod natural_any_cbor_seq {
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
+    // `super::alloc`, not `alloc` — the bounded hand-written exception; the full rationale is on
+    // natural_any_cbor_btreemap's import in this file.
+    use super::alloc::vec::Vec;
 
     pub fn serialize<S>(value: &[AnyCbor], serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -513,6 +516,9 @@ pub mod natural_any_cbor_btreemap {
 /// `Option<Vec<AnyCbor>>`), paired with `#[serde(default)]`. `None` → JSON null / missing.
 pub mod natural_any_cbor_opt_seq {
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
+    // `super::alloc`, not `alloc` — the bounded hand-written exception; the full rationale is on
+    // natural_any_cbor_btreemap's import in this file.
+    use super::alloc::vec::Vec;
 
     pub fn serialize<S>(value: &Option<Vec<AnyCbor>>, serializer: S) -> Result<S::Ok, S::Error>
     where
