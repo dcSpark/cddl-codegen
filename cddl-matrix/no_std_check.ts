@@ -305,10 +305,11 @@ const PROFILES: Profile[] = [
     ].join("\n"),
   },
   {
-    // The raw-bytes runtime — `RawBytesEncoding`, its `0x`-prefix guard and BOTH `hex::` call
-    // sites — which the snapshot corpus structurally never emits. Note the runtime is
-    // CONCATENATED INTO `generated/serialization.rs`; there is no separate `raw_bytes_encoding.rs`
-    // in the output to look for.
+    // The raw-bytes runtime — `RawBytesEncoding` and the `decode_canonical_hex` door its
+    // `from_raw_hex` reads through, i.e. BOTH `hex::` call sites — which the snapshot corpus
+    // structurally never emits. Note the runtime is CONCATENATED INTO
+    // `generated/serialization.rs`; there is no separate `raw_bytes_encoding.rs` or
+    // `hex_canonical.rs` in the output to look for.
     id: "raw_bytes",
     libName: "nostd-rawbytes",
     flags: ["--preserve-encodings=true"],

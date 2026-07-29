@@ -327,23 +327,22 @@ pub(super) fn generate_wrapper_struct(
                 serde_ser_fn.line(format!(
                     "serializer.serialize_str(&hex::encode({self_var}.clone()))"
                 ));
-                // One rejection wording for one class: the prefix guard below and both decode-failure
-                // arms further down build the SAME serde error, so a consumer reading it cannot tell
-                // which check refused the string.
+                // One rejection wording for one class: every way the string can be refused — a
+                // non-canonical hex character, an odd digit count, a failing `new` — builds the
+                // SAME serde error, so a consumer reading it cannot tell which check refused it.
                 let err_expr = "serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &\"invalid hex bytes\")";
                 let err_body = format!("{{ {err_expr} }}");
                 serde_deser_fn
                     .line("let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;")
-                    // The accepted JSON grammar for a bytes newtype is BARE hex digits — exactly
-                    // what the serialize half above emits. The backing decoder strips a leading
-                    // `0x`/`0X` and accepts the rest, so without this check the read side would
-                    // admit a spelling the write side never produces. A bare `"0x"` is why the
-                    // length is tested: stripped of its prefix it is a valid (empty) hex string.
-                    .line("let raw = s.as_bytes();")
-                    .line("if raw.len() >= 2 && raw[0] == b'0' && (raw[1] == b'x' || raw[1] == b'X') {")
-                    .line(format!("    return Err({err_expr});"))
-                    .line("}")
-                    .line("hex::decode(&s)");
+                    // The accepted JSON grammar for a bytes newtype is CANONICAL hex — exactly what
+                    // the serialize half above emits — and it is the runtime's
+                    // `decode_canonical_hex` that owns it, not this call site. Routing through the
+                    // shared door rather than calling the backing decoder here is what keeps this
+                    // surface's grammar identical to `RawBytesEncoding::from_raw_hex`'s: the
+                    // decoder itself is lenient (it strips a `0x`/`0X` prefix and takes either
+                    // case), so a direct call would silently widen the read side past what the
+                    // write side emits.
+                    .line("decode_canonical_hex(&s)");
                 if types.can_new_fail(type_name) {
                     serde_deser_fn
                         .line(format!(
@@ -869,6 +868,20 @@ pub(super) fn generate_wrapper_struct(
     }
     if !struct_config.custom_json {
         if cli.json_serde_derives {
+            // The bytes-newtype deserializer emitted above calls `decode_canonical_hex`
+            // unqualified, so this scope needs the import. Pushed dumbly (the central
+            // `import_prune` pass drops it again if nothing in the module family names it) and
+            // routed through `common_import_rust()`, which is what makes it resolve in all three
+            // layouts: in-crate (`crate::generated::serialization`), under
+            // `--common-import-override` (the shared runtime crate), and in the `--config` split
+            // (same, via the override the config writes).
+            if json_hex_bytes {
+                gen_scope.rust(types, type_name).push_import(
+                    format!("{}::serialization", cli.common_import_rust()),
+                    "decode_canonical_hex",
+                    None,
+                );
+            }
             gen_scope
                 .rust(types, type_name)
                 .push_impl(serde_ser_impl)

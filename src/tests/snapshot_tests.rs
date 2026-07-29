@@ -816,6 +816,9 @@ fn serialization_prelude() {
     settings.set_snapshot_path(dir);
     settings.set_prepend_module_to_snapshot(false);
     // serialization_prelude only reads --static-dir; the input is irrelevant but clap needs one.
+    // Both spec-conditional fragments are off here (`raw_bytes_encoding` and the canonical-hex
+    // door): this suite covers the FLAG dimension, and those two vary by spec, not by flag — they
+    // are exercised end-to-end by the `raw-bytes` / `raw-bytes-preserve` integration fixtures.
     let dummy = std::path::Path::new("tests/corpus/primitives.cddl");
     settings.bind(|| {
         for (name, extra) in [
@@ -827,8 +830,9 @@ fn serialization_prelude() {
             ),
         ] {
             let cli = cli_for(dummy, extra);
-            let prelude = crate::generation::GenerationScope::serialization_prelude(false, &cli)
-                .unwrap_or_else(|e| panic!("prelude failed for {}: {}", name, e));
+            let prelude =
+                crate::generation::GenerationScope::serialization_prelude(false, false, &cli)
+                    .unwrap_or_else(|e| panic!("prelude failed for {}: {}", name, e));
             insta::assert_snapshot!(name, prelude);
         }
     });
