@@ -869,7 +869,12 @@ new hand vectors in these shapes; a vector that merely EXERCISES the code certif
    `tests/preserve-encodings/tests.rs` (insert-overwrite moves to back; `or_insert` keeps position;
    `from_iter` duplicate keys; entry match shapes), written and committed green against the
    incumbent backing BEFORE the linked-hash-map→hashlink swap, so the swap had to reproduce bytes
-   rather than bless new ones. When to write these: any change to the version floor or identity of
+   rather than bless new ones. The shape also covers a dependency's ACCEPTED INPUT GRAMMAR and
+   RENDERED ERROR TEXT, which round-trips are equally blind to (they only feed back what the
+   encoder produced): the hex wire pins in `tests/raw-bytes/tests.rs` and `tests/json/tests.rs`
+   pin case handling, `0x`-prefix rejection, and the error Display texts a `DeserializeError`
+   renders, committed green against the incumbent before any hex-crate swap.
+   When to write these: any change to the version floor or identity of
    a dependency whose types the generated public API re-exposes lands pins of the incumbent's
    consumer-reachable behavior first, in their own commit (the full working rule and its trigger
    ledger live in `TESTING_ROADMAP.md` § Standing-system residuals).
