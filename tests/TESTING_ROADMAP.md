@@ -1588,6 +1588,27 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   unification. Measurable by exactly the party who hits it (the tier runner reading the E0277
   against an unchanged fixture), on the dimension the cost grows (the count of spliced hand
   fragments using reshaped-dep surfaces).
+- **The gate-cache closure audit is structurally blind to GATE-AUTHORED inputs parked in scratch:
+  its allowed-read table admits everything under `$TMPDIR` on the justification "the generated tree
+  is hashed", which is true only while every file a cached cell reads under scratch actually lives
+  inside a hashed root.** A gate that writes its own input files (hand consumer crates, appended
+  modules) BESIDE the hashed tree violates the justification without violating the audit: the reads
+  classify as `tmp/scratch, allowed`, the key never covers the bytes, and an edit to that input
+  serves the stale PASS forever. Near-miss instance (D3, caught by the implementing agent before
+  landing — no shipped gate ever had the bug): `no_std_check.ts`'s first draft wrote the host
+  std-arm consumer crate outside the profile's hashed output root; the audit, had it traced that
+  gate, would have passed it. What shipped instead is the discipline applied (both gate-written
+  crates inside the hashed root, relative path deps so hashed bytes stay run-independent) plus the
+  rule stated in `tests/README.md` § "The gate cache" — review-owned, like the design rules.
+  Machinery on a trigger, not now (one cache-participating gate writes gate-authored inputs today,
+  and it complies): extend the audit's model from "scratch is allowed wholesale" to "a scratch READ
+  must fall under some root the traced gate hashed" — a per-gate hashed-root manifest the audit
+  consumes, turning the discipline into a traced assertion. *Reopening signal:* a second
+  cache-participating gate that writes gate-authored input files into its scratch root — measurable
+  by that gate's author/reviewer at landing (the red-first mutation check the cache section already
+  requires makes the question "is this file inside the hashed root?" unavoidable to ask), on the
+  dimension the cost grows (the count of such gates, each a fresh chance to repeat the draft bug
+  with no audit backstop).
 - **Comment-residue false matches in text scans over emitted/prior `.rs` output — one proven
   instance, no machinery yet.** Any diagnostic or decision that SCANS generated (or user-edited
   prior) Rust text for a code pattern shares one trap: the comment-preservation overlay and the

@@ -111,7 +111,9 @@ resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` ho
 
 > **Editing this README or `ROADMAP.md`?** They are themselves linted: the sibling script
 > `lint_doc_citations.ts` (check.ts `local` tier; not matrix tooling — it lives here for the shared
-> tsc coverage) asserts every "pinned by/tracked by/gated by `name`" citation in the hand docs still
+> tsc coverage, as does `no_std_check.ts`, the no_std drift gate, which additionally shares
+> `lib.ts`'s gate-cache helpers; see `tests/README.md` § "The no_std drift gate") asserts every
+> "pinned by/tracked by/gated by `name`" citation in the hand docs still
 > resolves in the tree, bans positional "…item `<N>`" citations, bans numbered section headings in
 > the hand docs (a numbered heading invites `§ <N>` citations, which silently retarget on
 > renumbering), and requires a blank line before headings.
