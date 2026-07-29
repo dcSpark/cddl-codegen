@@ -2,8 +2,8 @@
 //!
 //! Everything here is derived from each type's IR at generation time — there are no hand-authored
 //! value lists. The per-IR-shape derivation rules below are the single maintained surface, and any
-//! type/field/variant they can't mint is skipped with an `eprintln!`, never a silently-weakened
-//! test. The one deliberate weakening — an unbounded collection whose element can't be minted is
+//! type/field/variant they can't mint is skipped with a `warn!` (stderr, visible at the default
+//! verbosity), never a silently-weakened test. The one deliberate weakening — an unbounded collection whose element can't be minted is
 //! minted EMPTY (its element wire path goes unexercised) so recursion can terminate — is loud too.
 //!
 //! **Reject half** — for every type carrying a bounded (`RangeCheck`) field, a `#[test]` that
@@ -46,7 +46,7 @@
 //! Deliberately scoped to the cheap cases:
 //! valid values are minted from compile-time literals, so any field that can't be cheaply
 //! minted (nested rust structs/tags, bounded `nint`s — whose stored/wire direction is inverted)
-//! causes that one type/case to be skipped with an `eprintln!`.
+//! causes that one type/case to be skipped with a `warn!`.
 
 use crate::cli::Cli;
 use crate::intermediate::{
@@ -335,7 +335,7 @@ pub fn emit_generated_tests(
 ) -> Option<String> {
     if !cli.to_from_bytes_methods {
         // both halves need to_cbor_bytes/from_cbor_bytes
-        eprintln!(
+        crate::warn!(
             "cddl-codegen --emit-tests: skipped (requires --to-from-bytes-methods, which is off)"
         );
         return None;
@@ -433,7 +433,7 @@ pub fn emit_generated_tests(
             // generated code even if it compiled. The generator-emitted wire path exists only at
             // EMBED sites, which mint via their containing record (e.g. `bool_holder`).
             RustStructType::Table { .. } | RustStructType::Array { .. } => {
-                eprintln!(
+                crate::warn!(
                     "cddl-codegen --emit-tests: {name} is a transparent table/array alias — no standalone round-trip exists (embed-site coverage only)"
                 );
                 None
@@ -579,7 +579,7 @@ fn conformance_rule_name(
         None => {
             // A top-level rule with no recorded source name shouldn't happen (registration records
             // every rule), but if it ever does, exclude loudly rather than mis-root the oracles.
-            eprintln!(
+            crate::warn!(
                 "cddl-codegen --emit-tests: cannot recover the source CDDL rule name for {ident} \
                  — excluding it from the conformance validate (--emit-tests-conformance) AND the \
                  decorrelated minted-bytes dump/ruby sweep for this fixture"
@@ -840,7 +840,7 @@ fn record_roundtrip(
         match valid_value(types, &f.rust_type) {
             Some(v) => valid_args.push(v),
             None => {
-                eprintln!(
+                crate::warn!(
                     "cddl-codegen --emit-tests: no round-trip for {name} (field {} not cheaply mintable)",
                     f.name
                 );
@@ -880,7 +880,7 @@ fn record_roundtrip(
                     format!("optional `{}` present", f.name),
                 ));
             }
-            None => eprintln!(
+            None => crate::warn!(
                 "cddl-codegen --emit-tests: {name}.{} optional-present case not cheaply mintable — skipped",
                 f.name
             ),
@@ -931,7 +931,7 @@ fn record_roundtrip(
                         ),
                         "rest entry present".to_owned(),
                     )),
-                    _ => eprintln!(
+                    _ => crate::warn!(
                         "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
                     ),
                 }
@@ -947,7 +947,7 @@ fn record_roundtrip(
                         ),
                         "rest tail element present".to_owned(),
                     )),
-                    None => eprintln!(
+                    None => crate::warn!(
                         "cddl-codegen --emit-tests: {name} rest tail not cheaply mintable — round-trip covers empty tail only"
                     ),
                 }
@@ -972,7 +972,7 @@ fn choice_roundtrip(
     for variant in variants {
         let ctor = format!("new_{}", variant.name_as_var());
         let Some(arg_fields) = variant_arg_fields(types, variant, group_choice) else {
-            eprintln!(
+            crate::warn!(
                 "cddl-codegen --emit-tests: {name}::{ctor} not cheaply constructible — no round-trip case"
             );
             continue;
@@ -983,7 +983,7 @@ fn choice_roundtrip(
             match valid_value(types, ty) {
                 Some(v) => args.push(v),
                 None => {
-                    eprintln!(
+                    crate::warn!(
                         "cddl-codegen --emit-tests: {name}::{ctor} arg {field} not cheaply mintable — no round-trip case"
                     );
                     ok = false;
@@ -1038,7 +1038,7 @@ fn wrapper_roundtrip(
         },
     };
     let Some(inner) = inner else {
-        eprintln!(
+        crate::warn!(
             "cddl-codegen --emit-tests: no round-trip for {name} (inner value not cheaply mintable)"
         );
         return None;
@@ -1087,7 +1087,7 @@ fn record_deser_reject(
     // surface any bounded field we can't push out of bounds (e.g. nint) so the gap isn't silent
     for f in &record.fields {
         if f.rust_type.config.bounds.is_some() && measure_kind(&f.rust_type).is_none() {
-            eprintln!(
+            crate::warn!(
                 "cddl-codegen --emit-tests: {name}.{} bounded but not cheaply testable (e.g. nint) — no reject test",
                 f.name
             );
@@ -1120,7 +1120,7 @@ fn record_deser_reject(
         match valid_value(types, &f.rust_type) {
             Some(v) => valid_args.push(render_rust(&v)),
             None => {
-                eprintln!(
+                crate::warn!(
                     "cddl-codegen --emit-tests: skipped {name} (field {} not cheaply mintable)",
                     f.name
                 );
@@ -1622,7 +1622,7 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
                 // collection's element wire path goes unexercised.
                 let fallback = unbounded_len.then(|| empty_collection(ty)).flatten();
                 if fallback.is_some() {
-                    eprintln!(
+                    crate::warn!(
                         "cddl-codegen --emit-tests: unbounded collection element not cheaply mintable (recursion cap or unsupported element shape) — minted empty; its element wire path is unexercised"
                     );
                 }
@@ -1914,7 +1914,7 @@ fn materialize_at(
                     // still mints EMPTY via the caller's unbounded fallback, but that generic notice
                     // masks WHY — surface the specific key here so the gap isn't silently a wrong
                     // reason.
-                    eprintln!(
+                    crate::warn!(
                         "cddl-codegen --emit-tests: map key {other:?} not cheaply mintable — the map's key wire path is unexercised"
                     );
                     return None;
@@ -1967,7 +1967,7 @@ fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
         // LENGTH (or nothing at all), which the `__i.to_string()` / `vec![__i as u8]` /
         // `__i == 1` spellings have no way to steer. Minting anyway emits a vector the generated
         // decoder rejects and reads as a decoder bug.
-        eprintln!(
+        crate::warn!(
             "cddl-codegen --emit-tests: map key carries bounds {bounds:?} that the {key:?} key spelling cannot honour — the map's key wire path is unexercised"
         );
         return None;
@@ -2016,7 +2016,7 @@ fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
     }
     // `bounds` here is the STORAGE-space window (magnitude, for `N64`) the search actually ran in —
     // reporting the value-space one would name a window the reader cannot line up with the failure.
-    eprintln!(
+    crate::warn!(
         "cddl-codegen --emit-tests: map key window {bounds:?} has no run of {count} consecutive accepted {p:?} values — the map's key wire path is unexercised"
     );
     None

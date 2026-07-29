@@ -6736,6 +6736,13 @@ fn a_mid_run_generation_failure_names_the_crates_already_regenerated() {
 ///
 /// Binary-level because the closure lives on the command line: it is resolved once, before the run,
 /// the listing and the diagnostics that quote the selection back can disagree about what is in it.
+///
+/// Also the DEFAULT-VERBOSITY visibility pin for the run-level orchestration lines. Every run below
+/// passes no `--verbosity`, so what this reads off stdout is what a user sees with no flags: the
+/// per-crate `[name] generating …` banners (a multi-crate run's only orientation) and the
+/// `[converge] re-running` note. That second one matters beyond readability — AGENTS.md makes those
+/// lines the REOPENING SIGNAL for config mode's in-memory fast path ("exceeding roughly half the
+/// config's crates on routine edits"), and a signal nobody sees by default cannot fire.
 #[test]
 fn with_deps_settles_the_subset_case_in_one_command() {
     let dir = std::env::temp_dir().join(format!(
@@ -6779,6 +6786,13 @@ fn with_deps_settles_the_subset_case_in_one_command() {
         stdout.contains("[core] generating") && stdout.contains("[ledger] generating"),
         "the dependency must really have been pulled into the run:\n{stdout}"
     );
+    assert!(
+        stdout.contains("[converge] re-running `core`"),
+        "and the second generation of `core` must announce itself at the DEFAULT verbosity — a \
+         crate generated twice in one invocation with nothing between the two banners is baffling, \
+         and these lines are the reopening signal for config mode's in-memory fast \
+         path:\n{stdout}"
+    );
     let index =
         std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
     assert!(
@@ -6816,6 +6830,176 @@ fn with_deps_settles_the_subset_case_in_one_command() {
     ) {
         panic!("`--print-flags` must generate nothing, but {difference}");
     }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Run verbosity under `--config`: the per-crate reach, the command-line override, and the run-level
+// asymmetry. All three drive the real binary as a SUBPROCESS — the level is a process global and
+// `cargo test` runs `#[test]`s on parallel threads, so an in-process assertion on printed output
+// would race every other test that installs a level. See the same note in `integration_tests.rs`.
+// ---------------------------------------------------------------------------------------------
+
+/// A two-crate config whose per-crate `verbosity` values are supplied by the caller, with rule names
+/// distinct per crate (`alpha_rec` / `beta_rec`) so a `- Handling rule:` banner can be ATTRIBUTED to
+/// the crate that printed it. `extra_defaults` goes verbatim into `[defaults]`.
+fn verbosity_pair_fixture(
+    dir: &Path,
+    extra_defaults: &str,
+    alpha_keys: &str,
+    beta_keys: &str,
+) -> std::path::PathBuf {
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(dir.join("specs/alpha.cddl"), "alpha_rec = [a: uint]\n").unwrap();
+    std::fs::write(dir.join("specs/beta.cddl"), "beta_rec = [b: text]\n").unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n{extra_defaults}\n\
+             [crates.alpha]\ninput = \"specs/alpha.cddl\"\noutput = \"gen/alpha\"\n\
+             lib-name = \"alpha-lib\"\n{alpha_keys}\n\
+             [crates.beta]\ninput = \"specs/beta.cddl\"\noutput = \"gen/beta\"\n\
+             lib-name = \"beta-lib\"\n{beta_keys}\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+    config_path
+}
+
+/// Run `--config <path>` plus `args` through the real binary; assert exit 0 and return stdout.
+fn config_run_stdout(config_path: &Path, args: &[&str]) -> String {
+    let out = super::integration_tests::codegen_cmd()
+        .arg("--config")
+        .arg(config_path)
+        .args(args)
+        .output()
+        .expect("the generator binary must be spawnable");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "the config run must succeed — verbosity decides what is PRINTED, never what \
+         happens\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// Per-crate verbosity is the reason this is a config key at all, so it is asserted rather than
+/// assumed.
+///
+/// The shape that motivates the key is a multi-crate config where you want to raise the level for the
+/// ONE crate you are debugging and leave the rest quiet. A run-global knob cannot express that; a key
+/// merged through `[defaults]`/`[profiles.*]`/`[crates.*]` can, and this pins that it really does —
+/// `alpha`'s rule banners appear, `beta`'s do not, in one run.
+#[test]
+fn verbosity_is_per_crate_under_config() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_verbosity_per_crate_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let config_path = verbosity_pair_fixture(&dir, "", "verbosity = \"debug\"\n", "");
+
+    let stdout = config_run_stdout(&config_path, &[]);
+    assert!(
+        stdout.contains("- Handling rule: lib:alpha_rec"),
+        "the crate that asked for `debug` must print its rule banners:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("- Handling rule: lib:beta_rec"),
+        "and the crate that did not ask must stay at the default level — otherwise one crate's key \
+         leaks into the whole run:\n{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `--config … --verbosity trace` wins over a committed `[defaults] verbosity = "error"`.
+///
+/// Two things in one behavioural assertion, because neither is worth much alone: the
+/// `EXEMPT_ARG_IDS` pass-through that lets `--verbosity` reach a config invocation at all (every
+/// other generation flag is refused there), and the precedence — the key is the project's committed
+/// default, the command line is this invocation's override.
+#[test]
+fn command_line_verbosity_overrides_the_config_key() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_verbosity_override_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let config_path = verbosity_pair_fixture(&dir, "verbosity = \"error\"\n", "", "");
+
+    // Baseline: the committed key really is in force, so the override below is proving something.
+    let quiet = config_run_stdout(&config_path, &[]);
+    assert!(
+        quiet.trim().is_empty(),
+        "`[defaults] verbosity = \"error\"` must silence the whole run:\n{quiet}"
+    );
+
+    let loud = config_run_stdout(&config_path, &["--verbosity", "trace"]);
+    assert!(
+        loud.contains("RustStructs:"),
+        "a command-line `--verbosity trace` must reach the crates and restore the IR \
+         dump:\n{loud}"
+    );
+    assert!(
+        loud.contains("[alpha] generating") && loud.contains("[beta] generating"),
+        "and it must move the RUN-level lines too — it applies to every crate, which is exactly \
+         why it is allowed alongside --config:\n{loud}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Only `[defaults]` moves the run-level orchestration lines. Pinned so it is a decision rather than
+/// an accident.
+///
+/// `config::generate` installs ONE level for everything it prints itself — the `[runtime]` notes, the
+/// `[name] generating …` banner, the `[converge]` re-run notes, the residual convergence warning —
+/// and each crate's own generation then installs its own under a guard that restores that one. So a
+/// `[crates.*]` (or `[profiles.*]`) value governs only that crate's own output. This is the reading
+/// that follows from the existing merge model rather than a special case: `[defaults]` is defined as
+/// the value that reaches every crate, and the run is what contains every crate.
+#[test]
+fn run_level_messages_follow_the_defaults_key() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_verbosity_runlevel_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Under `[defaults]`: the run level moves, so the per-crate banner goes with it.
+    let from_defaults = dir.join("defaults");
+    let config_path = verbosity_pair_fixture(&from_defaults, "verbosity = \"error\"\n", "", "");
+    let stdout = config_run_stdout(&config_path, &[]);
+    assert!(
+        !stdout.contains("[alpha] generating") && !stdout.contains("[beta] generating"),
+        "`[defaults] verbosity = \"error\"` is the value that reaches every crate, so it moves the \
+         run-level lines too:\n{stdout}"
+    );
+
+    // The same value under `[crates.*]` only: the run level is untouched, so both banners stay —
+    // including the banner of the crate that silenced ITSELF. A quiet crate must still be announced,
+    // or a multi-crate log loses its only orientation.
+    let from_crates = dir.join("crates");
+    let config_path = verbosity_pair_fixture(
+        &from_crates,
+        "",
+        "verbosity = \"error\"\n",
+        "verbosity = \"error\"\n",
+    );
+    let stdout = config_run_stdout(&config_path, &[]);
+    assert!(
+        stdout.contains("[alpha] generating") && stdout.contains("[beta] generating"),
+        "a `[crates.*]` verbosity governs only that crate's own generation — the run-level banner \
+         is not its to suppress:\n{stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

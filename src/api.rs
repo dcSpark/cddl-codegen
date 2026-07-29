@@ -33,7 +33,7 @@ fn cddl_paths(
             output.push(path);
         } else {
             // extensionless files (README, LICENSE, dotfiles) land here too instead of panicking
-            println!("Skipping file: {}", path.as_path().to_str().unwrap());
+            crate::info!("Skipping file: {}", path.as_path().to_str().unwrap());
         }
     }
     Ok(())
@@ -83,7 +83,7 @@ fn scan_module_directives(
             )
             .into());
         } else {
-            eprintln!(
+            crate::warn!(
                 "warning: unrecognized `;# …` directive-shaped comment at {}:{line_no} — \
                  cddl-codegen does not process CDDL module directives; treating it as a comment.",
                 input_file.display()
@@ -225,7 +225,7 @@ fn append_extern_imports(
     for (dep, files) in &files_by_dep {
         let names = &selected[dep];
         if names.is_empty() {
-            eprintln!(
+            crate::warn!(
                 "{}",
                 crate::extern_narrow::unused_dependency_note(dep, &extern_imports[dep])
             );
@@ -806,7 +806,7 @@ pub fn with_types<R>(
         .filter(|cddl_rule| {
             // We inserted string constants with specific prefixes earlier to mark scope
             if let Some(new_scope) = rule_is_scope_marker(cddl_rule) {
-                println!("Switching from scope '{scope}' to '{new_scope}'");
+                crate::info!("Switching from scope '{scope}' to '{new_scope}'");
                 scope = new_scope;
                 false
             } else {
@@ -844,7 +844,7 @@ pub fn with_types<R>(
 
     // Creating intermediate form from the CDDL
     for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
-        println!(
+        crate::debug!(
             "\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------",
             scope,
             cddl_rule.name()
@@ -875,7 +875,7 @@ pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     // restore is what keeps a config run's RUN level intact across a crate that raised its own.
     let _verbosity = crate::log::scoped(cli.verbosity);
     with_types(cli, |types, export_raw_bytes_encoding_trait| {
-        println!(
+        crate::info!(
             "\n-----------------------------------------\n- Generating code...\n------------------------------------"
         );
         let mut gen_scope = GenerationScope::new();
@@ -890,7 +890,12 @@ pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
              finalize or add a new drain"
         );
         gen_scope.export(types, export_raw_bytes_encoding_trait, cli)?;
-        types.print_info();
+        // Guarded HERE rather than inside `print_info`, because the cost being avoided is the `{:?}`
+        // formatting of every registered struct (215 KB on a 501-line spec), not the writes: the
+        // function's own lines are `trace!` too, but only a call-site guard skips the formatting.
+        if crate::log::enabled(crate::log::Verbosity::Trace) {
+            types.print_info();
+        }
         gen_scope.print_structs_without_deserialize();
         Ok(())
     })?

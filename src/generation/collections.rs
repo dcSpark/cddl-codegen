@@ -122,7 +122,7 @@ impl GenerationScope {
                     // type-identity split is therefore the unconditional consequence and the link
                     // collision the conditional one, phrased like the sibling not-in-index warning
                     // below ("a dep that later adds it would duplicate-symbol").
-                    eprintln!(
+                    crate::warn!(
                         "warning: rule-declared type {structural_name} shadows the collection wrapper \
                          this crate would otherwise borrow from workspace dependency {dep:?}; the \
                          authored class is minted locally, so this crate's {structural_name} and the \
@@ -184,7 +184,7 @@ impl GenerationScope {
                 [only] => (*only).clone(),
                 many => {
                     if self.deferred_warned.insert(wrapper_ident.clone()) {
-                        eprintln!(
+                        crate::warn!(
                             "warning: collection wrapper {structural_name} is listed in several \
                              --extern-wrapper-index files ({many:?}); deferring to the first ({})",
                             many[0]
@@ -226,7 +226,7 @@ impl GenerationScope {
                     // renderer; requester = this consumer's normalized --lib-name.
                     let rule_name = convert_to_snake_case(structural_name);
                     let requester = cli.lib_name_code();
-                    eprintln!(
+                    crate::warn!(
                         "warning: collection wrapper {structural_name} has only extern elements of \
                          dependency {dep:?} but is absent from its --extern-wrapper-index; minting \
                          it locally (a dep that later adds it would duplicate-symbol at link time)\n\

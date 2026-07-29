@@ -20687,3 +20687,263 @@ fn integration_tuple_field_width_ladder_never_aborts_rustfmt() {
          (rustfmt 1.9.0-stable); got {lengths:?}"
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Run verbosity (`--verbosity`): what a run prints, and on which stream.
+//
+// EVERY test in this group drives the generator as a SUBPROCESS rather than calling
+// `api::generate_to_disk` in-process, and that is load-bearing rather than incidental: the level is
+// a process global (`crate::log::LEVEL`) and `cargo test` runs `#[test]`s on parallel threads, so two
+// in-process tests installing different levels would race each other's output. A subprocess owns its
+// own global. Do not "simplify" these into in-process calls — the simplification is the flake.
+// ---------------------------------------------------------------------------------------------
+
+/// One spec that emits at least one message of EVERY category the level model has, so a single
+/// fixture is enough to characterize each level:
+///   * `note!`  — the own-spec extern re-export contract (`my_ext`), stdout at the default level;
+///   * `warn!`  — `Recursive type:` (`rec`) and the `@duplicates`-default notice (`setty`), stderr;
+///   * `info!`  — the scope switch and the `- Generating code...` phase banner;
+///   * `debug!` — the per-rule `- Handling rule:` banners;
+///   * `trace!` — the `RustStructs:` IR dump.
+fn verbosity_fixture(dir: &std::path::Path) -> std::path::PathBuf {
+    std::fs::create_dir_all(dir).unwrap();
+    let input = dir.join("input.cddl");
+    std::fs::write(
+        &input,
+        "my_ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         rec = [a: uint, ? next: rec]\n\
+         holder = [r: rec, e: my_ext]\n\
+         setty = #6.258([* uint])\n",
+    )
+    .unwrap();
+    input
+}
+
+/// Generate `input` into `out` at `level` (`None` = no flag at all, i.e. the default), returning
+/// `(stdout, stderr)`. Fails loud on a nonzero exit — no level may change whether a run succeeds.
+fn run_at_verbosity(
+    input: &std::path::Path,
+    out: &std::path::Path,
+    level: Option<&str>,
+) -> (String, String) {
+    let _ = std::fs::remove_dir_all(out);
+    let mut cmd = codegen_cmd();
+    cmd.arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true");
+    if let Some(level) = level {
+        cmd.arg(format!("--verbosity={level}"));
+    }
+    let run = cmd
+        .output()
+        .expect("the generator binary must be spawnable");
+    assert!(
+        run.status.success(),
+        "generation must succeed at every level (level {level:?}) — verbosity decides what is \
+         PRINTED, never what happens:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    (
+        String::from_utf8_lossy(&run.stdout).into_owned(),
+        String::from_utf8_lossy(&run.stderr).into_owned(),
+    )
+}
+
+/// Every `.rs` under the generated trees of an output crate, rel-path -> bytes.
+fn generated_tree_bytes(out: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+    let mut map = std::collections::BTreeMap::new();
+    let mut stack = vec![out.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if let Ok(text) = std::fs::read_to_string(&path) {
+                map.insert(
+                    path.strip_prefix(out)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    text,
+                );
+            }
+        }
+    }
+    map
+}
+
+/// Verbosity is not an input to generation.
+///
+/// Determinism in this project is stated over INPUTS ("same inputs → same bytes"), and the level is
+/// not one of them — it decides which of the tool's own messages reach a terminal. Asserting it as
+/// prose is cheap and wrong-able; this measures it, over the two extremes of the scale (`error`, which
+/// prints nothing, and `trace`, which prints the whole IR).
+#[test]
+fn verbosity_does_not_change_generated_bytes() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!("cddl_verbosity_bytes_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let input = verbosity_fixture(&root);
+
+    let quiet_out = root.join("quiet");
+    let loud_out = root.join("loud");
+    run_at_verbosity(&input, &quiet_out, Some("error"));
+    run_at_verbosity(&input, &loud_out, Some("trace"));
+
+    let quiet = generated_tree_bytes(&quiet_out);
+    let loud = generated_tree_bytes(&loud_out);
+    assert_eq!(
+        quiet.keys().collect::<Vec<_>>(),
+        loud.keys().collect::<Vec<_>>(),
+        "the two levels must write the same set of files"
+    );
+    for (rel, quiet_text) in &quiet {
+        assert_eq!(
+            quiet_text, &loud[rel],
+            "{rel} differs between --verbosity error and --verbosity trace — the level reached \
+             generation, which it must never do"
+        );
+    }
+    assert!(
+        !quiet.is_empty(),
+        "the comparison must have had something to compare"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The default level is quiet about progress and loud about problems — both halves.
+///
+/// Only the pair is meaningful. A test that checked the hiding alone cannot tell "correctly quiet"
+/// from "printing nothing at all", which is the way this feature fails silently: the whole point is
+/// that the messages a user must ACT on survive the default, while the ones that scale with the spec
+/// do not.
+#[test]
+fn default_verbosity_hides_progress_and_keeps_diagnostics() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root =
+        std::env::temp_dir().join(format!("cddl_verbosity_default_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let input = verbosity_fixture(&root);
+    let (stdout, stderr) = run_at_verbosity(&input, &root.join("out"), None);
+
+    // Hidden: the two surfaces that scale with the spec rather than with what happened.
+    assert!(
+        !stdout.contains("Handling rule") && !stderr.contains("Handling rule"),
+        "the per-rule banners are `debug`, so the default run must not carry \
+         them\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        !stdout.contains("RustStructs") && !stderr.contains("RustStructs"),
+        "the IR dump is `trace`, so the default run must not carry \
+         it\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    // Kept, on stderr: a diagnostic the user has to act on.
+    assert!(
+        stderr.contains("Recursive type:"),
+        "a recursive type is a diagnostic and must survive the default level, on \
+         stderr\nstderr:\n{stderr}"
+    );
+    // Kept, on stdout: run output that is not a diagnostic (the `note!` category).
+    assert!(
+        stdout.contains("pub use <your_module>::MyExt;"),
+        "the re-export contract is unbuildable-without, so it must survive the default level, on \
+         stdout\nstdout:\n{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Raising the level never takes a message away.
+///
+/// This is what actually pins the compatibility promise — `--verbosity trace` emits the message set
+/// today's unconditional run emits — and it catches a misclassified call site without anyone
+/// re-reading the classification table by hand. Compared over stdout AND stderr combined, so a
+/// deliberate stream move (a diagnostic that used to print on stdout) is not read as a disappearance.
+#[test]
+fn raising_verbosity_is_monotonic() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!("cddl_verbosity_mono_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let input = verbosity_fixture(&root);
+
+    let lines = |level: &str| -> std::collections::BTreeSet<String> {
+        let (stdout, stderr) = run_at_verbosity(&input, &root.join(level), Some(level));
+        stdout
+            .lines()
+            .chain(stderr.lines())
+            .map(str::to_owned)
+            .collect()
+    };
+    let levels = ["error", "warn", "info", "debug", "trace"];
+    let sets: Vec<_> = levels.iter().map(|level| lines(level)).collect();
+
+    for window in 0..levels.len() - 1 {
+        let lost: Vec<_> = sets[window].difference(&sets[window + 1]).collect();
+        assert!(
+            lost.is_empty(),
+            "raising --verbosity from {} to {} LOST {} line(s) — every message at a level must \
+             still appear at the level above it: {lost:?}",
+            levels[window],
+            levels[window + 1],
+            lost.len()
+        );
+    }
+    // Not vacuous: the scale really does widen, or the subset checks above are free.
+    for window in 1..levels.len() {
+        assert!(
+            sets[window].len() > sets[window - 1].len(),
+            "{} must print strictly more than {} on this fixture (it carries a message of every \
+             category), got {} vs {}",
+            levels[window],
+            levels[window - 1],
+            sets[window].len(),
+            sets[window - 1].len()
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// `debug` and `trace` are separate levels because they answer different questions at 15× different
+/// cost: "which rules were handled, in what order" is about the PIPELINE, "what did rule `foo`
+/// become" is about the IR. A reader who wants the first must not have to pay for the second, and
+/// this is that split as a behaviour.
+#[test]
+fn trace_restores_the_full_ir_dump() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!("cddl_verbosity_trace_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let input = verbosity_fixture(&root);
+
+    let (debug_stdout, _) = run_at_verbosity(&input, &root.join("debug"), Some("debug"));
+    assert!(
+        debug_stdout.contains("- Handling rule: lib:rec"),
+        "`debug` is where the per-rule banners live:\n{debug_stdout}"
+    );
+    assert!(
+        !debug_stdout.contains("RustStructs:"),
+        "and `debug` must NOT pull in the IR dump — that is the whole reason the two levels are \
+         separate:\n{debug_stdout}"
+    );
+
+    let (trace_stdout, _) = run_at_verbosity(&input, &root.join("trace"), Some("trace"));
+    assert!(
+        trace_stdout.contains("RustStructs:") && trace_stdout.contains("- Handling rule: lib:rec"),
+        "`trace` restores both:\n{trace_stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
