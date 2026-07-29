@@ -17,6 +17,7 @@ pub mod extern_narrow;
 pub mod generation;
 pub mod import_prune;
 pub mod intermediate;
+pub mod log;
 pub mod parsing;
 pub mod rust_reserved;
 pub mod utils;

@@ -213,6 +213,17 @@
             "type": "string"
           },
           "description": "Config key for the `--rust-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "verbosity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "description": "Config key for the `--verbosity` flag. See docs/docs/command_line_flags.mdx."
         }
       }
     },
@@ -436,6 +447,17 @@
             "type": "string"
           },
           "description": "Config key for the `--rust-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "verbosity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "description": "Config key for the `--verbosity` flag. See docs/docs/command_line_flags.mdx."
         }
       }
     },

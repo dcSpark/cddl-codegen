@@ -1,3 +1,4 @@
+use crate::log::Verbosity;
 use clap::Parser;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
@@ -781,6 +782,14 @@ pub struct Cli {
         value_name = "EXPORT_STATIC_CRATE"
     )]
     pub export_static_crate: Option<std::path::PathBuf>,
+
+    /// How much the run prints. `warn` (the default) shows warnings and errors only;
+    /// `info`, `debug` and `trace` add progress, per-rule handling, and the full IR dump.
+    /// Diagnostics go to stderr and run output to stdout, at every level.
+    // Declared LAST so the existing `--help` order is undisturbed. `-v` is free: `Cli` uses only
+    // `-i`, `-o` and `-s`, and declares no `version`, so clap claims no `-V` either.
+    #[clap(long, short = 'v', value_enum, default_value_t = Verbosity::Warn)]
+    pub verbosity: Verbosity,
 }
 
 /// A `--lib-name` in the form rust code spells it: dashes normalised to underscores.

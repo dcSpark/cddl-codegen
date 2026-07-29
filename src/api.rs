@@ -634,6 +634,12 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
 /// Parse the CDDL input described by `cli`, build the intermediate representation, and invoke
 /// `f` with a borrow of it plus the `export_raw_bytes_encoding_trait` flag. The AST and IR are
 /// owned for the duration of the call, so `f` must return owned data (it cannot leak the borrow).
+///
+/// Deliberately NOT an install point for `cli.verbosity` ([`crate::log::scoped`]), unlike
+/// [`generate_to_disk`]: a caller driving the pipeline itself owns its process's logging level, and a
+/// library entry point that silently reset it would be taking a decision that is not this function's
+/// to take. Wrap the call in a `crate::log::scoped(cli.verbosity)` guard to get
+/// `generate_to_disk`'s behaviour.
 pub fn with_types<R>(
     cli: &Cli,
     f: impl FnOnce(&IntermediateTypes, bool) -> R,
@@ -863,6 +869,11 @@ pub fn with_types<R>(
 
 /// Run the full pipeline and write the generated crate(s) to `cli.output` (the CLI behaviour).
 pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // This crate's own verbosity, installed for the duration of its generation and restored on exit.
+    // One line here makes every caller correct by construction — the single-crate CLI path, config
+    // mode's per-crate loop, and library users all get the level their own `Cli` asks for — and the
+    // restore is what keeps a config run's RUN level intact across a crate that raised its own.
+    let _verbosity = crate::log::scoped(cli.verbosity);
     with_types(cli, |types, export_raw_bytes_encoding_trait| {
         println!(
             "\n-----------------------------------------\n- Generating code...\n------------------------------------"
