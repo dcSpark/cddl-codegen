@@ -20,6 +20,7 @@ pub(crate) mod extern_narrow;
 pub(crate) mod generation;
 pub(crate) mod import_prune;
 pub(crate) mod intermediate;
+pub(crate) mod log;
 pub(crate) mod parsing;
 pub(crate) mod rust_reserved;
 pub(crate) mod utils;
@@ -73,9 +74,19 @@ fn generate_from_config(argv: &[String]) -> Result<(), Box<dyn std::error::Error
         invocation.crates.clone()
     };
     if invocation.print_flags {
-        return config::print_flags(&invocation.config, &selected, static_dir);
+        return config::print_flags(
+            &invocation.config,
+            &selected,
+            static_dir,
+            invocation.verbosity,
+        );
     }
-    config::generate(&invocation.config, &selected, static_dir)
+    config::generate(
+        &invocation.config,
+        &selected,
+        static_dir,
+        invocation.verbosity,
+    )
 }
 
 #[cfg(test)]

@@ -926,3 +926,29 @@ Pass `--no-preserve-comments` to skip the overlay entirely and clobber each gene
 cddl-codegen --input=example --output=export --no-preserve-comments
 ```
 :::
+
+<br/><br/>
+
+:::info `--verbosity`
+How much the run prints. Five ordered levels, each adding to the one below it.
+
+| level | adds |
+| --- | --- |
+| `error` | nothing beyond fatal errors, which are the exit path rather than logging and are never suppressed |
+| `warn` | warnings, behaviour-change notices, and run output (what the run produced, and what you must act on) |
+| `info` | per-file / per-scope / per-phase progress |
+| `debug` | the per-rule handling banners |
+| `trace` | the full IR dump |
+
+**The level decides whether a message appears; the STREAM is decided by its kind, independently.** Diagnostics — errors, warnings, and notices that a decode behaviour changed — go to **stderr**. Run output — what the run is doing, what it produced, what you must now act on — goes to **stdout**. So: pipe stdout for the run's output, watch stderr for problems. Both streams are subject to the level.
+
+`-v` is the short spelling, and it takes a value (`-v trace`) rather than being repeatable.
+
+**In a config file this is `verbosity = "<level>"`,** settable in `[defaults]`, a `[profiles.<name>]` table, or one `[crates.<name>]` table — so a multi-crate run can raise the level for just the crate you are debugging. `--verbosity` is one of the two generation flags accepted alongside `--config` (with `--static-dir`), and it overrides the key for every crate in the run. See [Config file](./config_file).
+
+**Possible values:** `error`, `warn`, `info`, `debug`, `trace`<br></br>
+**Default:** `warn`
+```bash
+cddl-codegen --input=example --output=export --verbosity=info
+```
+:::

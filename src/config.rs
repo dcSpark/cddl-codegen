@@ -37,6 +37,7 @@
 //! whose CWD is a different checkout silently generates with THAT checkout's runtime).
 
 use crate::cli::Cli;
+use crate::log::Verbosity;
 // The generated layout, from the emitter that writes it rather than re-spelled here — see
 // `generation::layout` for why every one of these is a shared fact and not a local string.
 use crate::generation::layout::{
@@ -114,7 +115,14 @@ pub(crate) const TOP_LEVEL_KEYS: &[&str] = &["defaults", "profiles", "crates", "
 /// "which crate does it apply to" — all of them — and that is what every other generation flag
 /// cannot say. It is also the one flag a config file cannot get right by itself: the value is a
 /// property of a checkout, and a config is committed.
-const EXEMPT_ARG_IDS: &[&str] = &["static_dir"];
+///
+/// `--verbosity` meets the same criterion rather than widening it: there is exactly one answer to
+/// "which crate does a command-line `--verbosity` apply to", namely all of them. What differs is
+/// only WHY the command line is the right place for it — the key is the project's committed default
+/// and the flag is this invocation's override of it ("not this run"), so the override winning
+/// silently is the intended use rather than a conflict to report. Unlike `static-dir` it is also a
+/// value a config CAN get right, per crate, which is exactly why the key exists too.
+const EXEMPT_ARG_IDS: &[&str] = &["static_dir", "verbosity"];
 
 /// Every key [`Settings`] holds, as it is spelled in TOML.
 ///
@@ -161,6 +169,7 @@ pub(crate) const SETTINGS_KEYS: &[&str] = &[
     "json-gen-dep",
     "wasm-dep",
     "rust-dep",
+    "verbosity",
 ];
 
 /// Levenshtein distance, capped: the caller only ever asks "is this within 2?", so the row-by-row
@@ -411,6 +420,16 @@ pub struct Settings {
     /// The third, for `<output>/rust/Cargo.toml`. Same rule, same reason.
     #[serde(default)]
     pub rust_dep: BTreeMap<String, String>,
+
+    // --- the level key ---
+    /// Typed rather than `Option<String>` for two reasons. A bad value (`verbosity = "loud"`) is
+    /// rejected by SERDE, at config-parse time, with the valid variants named — rather than
+    /// surfacing later as a clap error about a flag the user never typed. And the editor schema,
+    /// which derives itself from these field types, can emit an `enum` of the five names and
+    /// therefore autocomplete them.
+    ///
+    /// Declared LAST because the schema renders properties in declaration order.
+    pub verbosity: Option<Verbosity>,
 }
 
 impl Settings {
@@ -456,6 +475,7 @@ impl Settings {
             json_gen_dep,
             wasm_dep,
             rust_dep,
+            verbosity,
         } = over;
 
         // Scalars: a set value replaces, an absent one leaves the earlier layer alone.
@@ -487,6 +507,7 @@ impl Settings {
             wasm_cbor_json_api_macro,
             wasm_conversions_macro,
             wasm_list_macro,
+            verbosity,
         );
 
         // Arrays CONCATENATE rather than replace: these are additive per-item lists, and
@@ -629,6 +650,17 @@ pub struct Config {
     /// come from the config file. A relative value means what it means on any other command line —
     /// relative to the process CWD — so the flag behaves identically in both modes.
     pub static_dir_override: Option<String>,
+    /// A command-line `--verbosity`, which overrides the key of that name for EVERY crate.
+    ///
+    /// Not parsed from the document — [`parse_str`] always leaves it `None` — for the same reason its
+    /// `static_dir` sibling is not: it is not a config value. The key is the project's committed
+    /// default; this is THIS INVOCATION's override of it, so the override winning silently is the
+    /// intended use rather than a conflict to report. Set by [`generate`]/[`print_flags`] from
+    /// [`ConfigCli`].
+    ///
+    /// It also decides the RUN level — the `[runtime]` notes, the per-crate banner, the convergence
+    /// lines — which is why [`generate`] reads it before any crate generates.
+    pub verbosity_override: Option<Verbosity>,
 }
 
 /// Read and parse a config file. Paths inside it resolve against ITS directory, so the caller's CWD
@@ -765,6 +797,7 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
         crates,
         runtime,
         static_dir_override: None,
+        verbosity_override: None,
     };
     config.validate()?;
     Ok(config)
@@ -1651,6 +1684,7 @@ impl Config {
                     &std_forward_deps,
                     &derived,
                     self.static_dir_override.as_deref(),
+                    self.verbosity_override,
                 );
                 let cli = build_cli(&name, entry, &self.base_dir, &fragments)?;
                 // The generator's own cross-flag rules, run HERE rather than where the generator
@@ -2072,6 +2106,7 @@ impl Config {
                 &[],
                 &Provenance::new(),
                 self.static_dir_override.as_deref(),
+                self.verbosity_override,
             );
             out.insert(
                 name.clone(),
@@ -2625,6 +2660,7 @@ fn argv_fragments(
     std_forward_deps: &[DerivedManifestDep],
     derived: &Provenance,
     static_dir_override: Option<&str>,
+    verbosity_override: Option<Verbosity>,
 ) -> Vec<Fragment> {
     let Settings {
         static_dir,
@@ -2661,6 +2697,7 @@ fn argv_fragments(
         json_gen_dep,
         wasm_dep,
         rust_dep,
+        verbosity,
     } = settings;
 
     let mut out: Vec<Fragment> = Vec::new();
@@ -2772,6 +2809,17 @@ fn argv_fragments(
     }
     if let Some(v) = wasm_list_macro {
         flag!("wasm-list-macro", "wasm-list-macro", v.clone());
+    }
+    // `verbosity`, on the same two-arm shape as `static-dir` above and for the same reason: a
+    // command-line `--verbosity` overrides the committed key for every crate, and `--print-flags`
+    // must be able to say WHY the key in the file is not the value in use.
+    match verbosity_override {
+        Some(v) => flag!("command line", "verbosity", v.as_str()),
+        None => {
+            if let Some(v) = verbosity {
+                flag!("verbosity", "verbosity", v.as_str());
+            }
+        }
     }
 
     // Arrays: one flag occurrence per item, in array order — the order IS the input for
@@ -3207,8 +3255,28 @@ pub fn generate(
     config_path: &Path,
     selected: &[String],
     static_dir: Option<&Path>,
+    verbosity: Option<Verbosity>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_with(config_path, static_dir)?;
+    let config = load_with(config_path, static_dir, verbosity)?;
+    // The RUN level, installed before anything is emitted: the command line if it gave one, else
+    // `[defaults].verbosity`, else the built-in default.
+    //
+    // Everything THIS function prints — the `[runtime]` notes, the per-crate `[name] generating …`
+    // banner, the `[converge]` re-run notes, the residual convergence warning — is run-level output
+    // and runs at this level, unaffected by whichever crate generated last: each crate's own
+    // generation installs its own level under a guard that restores this one on exit
+    // (`api::generate_to_disk`).
+    //
+    // Hence one asymmetry, which is the reading that follows from the existing merge model rather
+    // than a special case: a `[profiles.*]` or `[crates.*]` verbosity governs only that crate's own
+    // generation, and only `[defaults]` moves these run-level lines. `[defaults]` is defined as the
+    // value that reaches every crate, and the run is what contains every crate.
+    let _run_verbosity = crate::log::scoped(
+        config
+            .verbosity_override
+            .or(config.defaults.verbosity)
+            .unwrap_or_default(),
+    );
     let expanded = config
         .expand(selected)
         .map_err(|e| about_the_config(config_path, e))?;
@@ -3404,11 +3472,16 @@ pub fn selection_with_deps(config_path: &Path, selected: &[String]) -> Result<Ve
         .map_err(|e| about_the_config(config_path, e))
 }
 
-/// [`load`] plus the command-line `--static-dir` override, which is not a config value and so cannot
-/// be parsed from the document.
-fn load_with(config_path: &Path, static_dir: Option<&Path>) -> Result<Config, String> {
+/// [`load`] plus the two command-line overrides, neither of which is a config value and so neither of
+/// which can be parsed from the document.
+fn load_with(
+    config_path: &Path,
+    static_dir: Option<&Path>,
+    verbosity: Option<Verbosity>,
+) -> Result<Config, String> {
     let mut config = load(config_path)?;
     config.static_dir_override = static_dir.map(|p| p.to_string_lossy().into_owned());
+    config.verbosity_override = verbosity;
     Ok(config)
 }
 
@@ -3426,8 +3499,19 @@ pub fn print_flags(
     config_path: &Path,
     selected: &[String],
     static_dir: Option<&Path>,
+    verbosity: Option<Verbosity>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let listing = load_with(config_path, static_dir)?
+    let config = load_with(config_path, static_dir, verbosity)?;
+    // The run level, on the same `??` chain [`generate`] uses. The listing itself is the output of a
+    // COMMAND rather than logging — like `--help`, it is never gated — but installing the level keeps
+    // the two entry points saying the same thing about what this invocation's level is.
+    let _run_verbosity = crate::log::scoped(
+        config
+            .verbosity_override
+            .or(config.defaults.verbosity)
+            .unwrap_or_default(),
+    );
+    let listing = config
         .flag_listing(selected)
         .map_err(|e| about_the_config(config_path, e))?;
     print!("{listing}");
@@ -3490,6 +3574,18 @@ pub struct ConfigCli {
     // directions are not symmetric.
     #[clap(long = "with-deps", action = clap::ArgAction::SetTrue)]
     pub with_deps: bool,
+
+    /// How much the run prints (overrides any `verbosity` key).
+    // The SECOND generation flag [`reject_generation_flags`] lets through — see [`EXEMPT_ARG_IDS`]
+    // for why it meets the same criterion `--static-dir` does. `-v` as well as `--verbosity`, because
+    // the exemption is by ARG ID and so covers `Cli`'s short too: a short that passed the rejection
+    // only to be an unknown argument here would be a worse error than the one it got through.
+    //
+    // `Option`, not a defaulted value, because "the command line said nothing" must be
+    // distinguishable from "the command line said `warn`" — the run level is
+    // `this ?? [defaults].verbosity ?? warn`, and a default here would silently outrank the key.
+    #[clap(long = "verbosity", short = 'v', value_enum)]
+    pub verbosity: Option<Verbosity>,
 
     /// Generate only these crates (default: every crate in the config).
     #[clap(value_parser, value_name = "CRATE")]
@@ -3556,9 +3652,10 @@ pub fn reject_generation_flags(argv: &[String]) -> Result<(), String> {
                  (does a command-line `{offender}` apply to one crate or all of them?). Set it under \
                  `[defaults]`, a `[profiles.<name>]` table, or the `[crates.<name>]` table it belongs \
                  to. Config mode's own arguments — positional crate names, `--with-deps`, \
-                 `--print-flags`, and `--static-dir`, which names this machine's copy of the tool's \
-                 runtime rather than anything about a crate, so it applies to all of them — are the \
-                 only command-line arguments it takes."
+                 `--print-flags`, `--static-dir`, which names this machine's copy of the tool's \
+                 runtime rather than anything about a crate, so it applies to all of them, and \
+                 `--verbosity`, which is this run's override of a committed default and likewise \
+                 applies to all of them — are the only command-line arguments it takes."
             ));
         }
     }

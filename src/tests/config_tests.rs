@@ -494,6 +494,7 @@ wasm-list-macro = "foo::bar::list"
 json-schema-root = ["demo_lib::hand::Address", "demo_lib::hand::Key"]
 workspace-dep = ["core"]
 std-forward-dep = ["core"]
+verbosity = "debug"
 
 [crates.demo.extern-import]
 core = "../core/extern-interface/core"
@@ -601,6 +602,7 @@ core = "../../core/rust"
         "core=../../core/rust",
         "--std-forward-dep",
         "core",
+        "--verbosity=debug",
     ]);
 
     // Exhaustive on purpose — see the doc comment.
@@ -642,6 +644,7 @@ core = "../../core/rust"
         extern_import,
         export_static_crate,
         std_forward_dep,
+        verbosity,
     } = from_config;
 
     assert_eq!(input, from_flags.input);
@@ -705,6 +708,11 @@ core = "../../core/rust"
     assert_eq!(extern_import, from_flags.extern_import);
     assert_eq!(export_static_crate, from_flags.export_static_crate);
     assert_eq!(std_forward_dep, from_flags.std_forward_dep);
+    assert_eq!(verbosity, from_flags.verbosity);
+    // Named rather than left to the equality above, because both sides could agree on the built-in
+    // default and the row would then prove nothing: the TOML's `"debug"` and the flag's `debug` have
+    // to be the SAME vocabulary, and serde's `rename_all` is what makes them so.
+    assert_eq!(verbosity, crate::log::Verbosity::Debug);
 }
 
 /// Omitting `preserve-comments` leaves the built-in on: the key is a positive boolean over a negated
@@ -1021,7 +1029,7 @@ fn errors_after_parsing_still_name_the_config_file() {
     .unwrap();
     let expected = format!("--config {}: ", path.display());
 
-    let ran = config::generate(&path, &[], None)
+    let ran = config::generate(&path, &[], None, None)
         .expect_err("the combination must be refused")
         .to_string();
     assert!(
@@ -1033,7 +1041,7 @@ fn errors_after_parsing_still_name_the_config_file() {
         "and must still say which crate, got: {ran}"
     );
 
-    let listed = config::print_flags(&path, &[], None)
+    let listed = config::print_flags(&path, &[], None, None)
         .expect_err("--print-flags refuses what a run refuses")
         .to_string();
     assert_eq!(
@@ -1043,7 +1051,7 @@ fn errors_after_parsing_still_name_the_config_file() {
 
     // A PARSE error was already prefixed and must not now be prefixed twice.
     std::fs::write(&path, "[crates.demo]\ninput = \"s.cddl\"\n").unwrap();
-    let parse_time = config::generate(&path, &[], None)
+    let parse_time = config::generate(&path, &[], None, None)
         .expect_err("a missing `output` must be refused")
         .to_string();
     assert_eq!(
@@ -1095,14 +1103,18 @@ fn name_valued_sub_table_sides_are_never_path_resolved() {
 ///
 /// The offending-flag set is read out of `Cli`'s own clap `Command`, so this is checked across EVERY
 /// flag rather than a sample — a flag added tomorrow is rejected without anyone updating a list.
-/// `--static-dir` is the one exemption, and it is asserted from the same enumeration (below), so the
-/// exemption cannot silently widen either.
+/// `--static-dir` and `--verbosity` are the two exemptions, and each is asserted from the same
+/// enumeration (below), so neither can silently stop being accepted.
+///
+/// The exemption list is spelled HERE rather than read from `config::EXEMPT_ARG_IDS`, deliberately:
+/// reading the real list would make a widened exemption invisible to this test, whereas a hand list
+/// makes adding a member fail loudly and demand the accept-half assertion that goes with it.
 #[test]
 fn a_generation_flag_alongside_config_is_a_hard_error() {
     use clap::CommandFactory;
 
     for arg in Cli::command().get_arguments() {
-        if arg.get_id() == "static_dir" {
+        if matches!(arg.get_id().as_str(), "static_dir" | "verbosity") {
             continue;
         }
         for long in arg.get_long_and_visible_aliases().unwrap_or_default() {
@@ -1286,6 +1298,123 @@ fn print_flags_attributes_the_static_dir_override_to_the_command_line() {
         !listing.contains("vendor/static"),
         "and the overridden key's value must not also be listed, got:\n{listing}"
     );
+}
+
+/// `--verbosity` is the second generation flag config mode accepts, in every spelling — and the
+/// rejection it is exempted FROM still works.
+///
+/// Both halves are asserted on purpose: an exemption test that only checks the accept half cannot
+/// tell "exempted" from "the rejection broke and now lets everything through".
+#[test]
+fn verbosity_passes_through_config_mode() {
+    use clap::Parser;
+
+    for spelling in [
+        vec!["--verbosity", "trace"],
+        vec!["--verbosity=trace"],
+        vec!["-v", "trace"],
+    ] {
+        let argv: Vec<String> = ["cddl-codegen", "--config", "c.toml"]
+            .into_iter()
+            .chain(spelling.iter().copied())
+            .map(str::to_owned)
+            .collect();
+        config::reject_generation_flags(&argv)
+            .unwrap_or_else(|e| panic!("`{spelling:?}` must be accepted with --config, got: {e}"));
+        let invocation = config::ConfigCli::parse_from(&argv);
+        assert_eq!(
+            invocation.verbosity,
+            Some(crate::log::Verbosity::Trace),
+            "`{spelling:?}` must parse into the override"
+        );
+    }
+
+    // Absent is distinguishable from `warn`: the run level is
+    // `command line ?? [defaults].verbosity ?? warn`, and a defaulted `ConfigCli` field would
+    // silently outrank the key.
+    let bare: Vec<String> = ["cddl-codegen", "--config", "c.toml"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(config::ConfigCli::parse_from(&bare).verbosity, None);
+
+    // The other half: a genuinely per-crate flag is still refused, in both spellings.
+    for offender in ["--preserve-encodings=true", "--preserve-encodings"] {
+        let argv: Vec<String> = ["cddl-codegen", "--config", "c.toml", offender]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        let Err(err) = config::reject_generation_flags(&argv) else {
+            panic!("`{offender}` must still be rejected alongside --config");
+        };
+        assert!(
+            err.contains("--preserve-encodings") && err.contains("config file"),
+            "must name the flag and say where it belongs, got: {err}"
+        );
+    }
+}
+
+/// A command-line `--verbosity` overrides the committed key, and `--print-flags` says so — the only
+/// surface on which that override is observable without reading the run's own output.
+///
+/// Driven through the real binary rather than `flag_listing` directly, because the chain being pinned
+/// is longer than the listing: `ConfigCli` -> `Config::verbosity_override` -> the `argv_fragments`
+/// override arm, plus the `EXEMPT_ARG_IDS` pass-through that lets the flag reach any of it.
+#[test]
+fn a_command_line_verbosity_overrides_the_key_in_the_listing() {
+    let dir = std::env::temp_dir().join(format!("cddl_config_verbosity_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let config_path = dir.join("codegen.toml");
+    std::fs::write(
+        &config_path,
+        "[defaults]\nverbosity = \"error\"\n\n[crates.demo]\ninput = \"s.cddl\"\noutput = \"g\"\n",
+    )
+    .unwrap();
+
+    // Without the flag, the committed key is the provenance and the value.
+    let from_key = super::integration_tests::codegen_cmd()
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--print-flags")
+        .output()
+        .expect("the generator binary must be spawnable");
+    assert!(from_key.status.success(), "--print-flags must exit 0");
+    let listed = String::from_utf8_lossy(&from_key.stdout);
+    assert!(
+        listed
+            .lines()
+            .any(|line| line.trim_start().starts_with("verbosity")
+                && line.ends_with("--verbosity=error")),
+        "the key alone is its own provenance, got:\n{listed}"
+    );
+
+    let overridden = super::integration_tests::codegen_cmd()
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--print-flags")
+        .args(["--verbosity", "trace"])
+        .output()
+        .expect("the generator binary must be spawnable");
+    assert!(
+        overridden.status.success(),
+        "`--verbosity` must not be rejected alongside `--config`, got: {}",
+        String::from_utf8_lossy(&overridden.stderr)
+    );
+    let listed = String::from_utf8_lossy(&overridden.stdout);
+    assert!(
+        listed
+            .lines()
+            .any(|line| line.trim_start().starts_with("command line")
+                && line.ends_with("--verbosity=trace")),
+        "the override must be listed as coming from the command line, got:\n{listed}"
+    );
+    assert!(
+        !listed.contains("--verbosity=error"),
+        "and the overridden key's value must not also be listed, got:\n{listed}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Both spellings clap accepts for a valued flag select config mode; nothing else does.
@@ -2024,6 +2153,25 @@ fn schema_type_keywords(rust_type: &str) -> Option<Vec<(String, Json)>> {
             ("type".to_owned(), Json::Str("object".to_owned())),
             ("additionalProperties".to_owned(), string()),
         ],
+        // An enum of fixed strings is a string in disguise — the case the panic below invites. The
+        // `enum` array is DERIVED from `clap::ValueEnum::value_variants()` rather than written out:
+        // a hand list drifts silently the day a level is added, and the point of this document being
+        // generated is that it cannot.
+        "Option<Verbosity>" => {
+            use clap::ValueEnum;
+            vec![
+                ("type".to_owned(), Json::Str("string".to_owned())),
+                (
+                    "enum".to_owned(),
+                    Json::Arr(
+                        crate::log::Verbosity::value_variants()
+                            .iter()
+                            .map(|v| Json::Str(v.as_str().to_owned()))
+                            .collect(),
+                    ),
+                ),
+            ]
+        }
         _ => return None,
     };
     Some(entries)
@@ -3010,7 +3158,7 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
     // ONE cold run, and it settles: the convergence pass re-runs `core` after `ledger` has recorded
     // the wrapper it borrows, so the invocation exits 0 over a workspace that hosts it. The
     // idempotence half is pinned by [`a_config_run_converges_and_then_repeats_byte_for_byte`].
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("one cold config run must converge and exit 0");
 
     let dep_export = dir.join("gen/core/extern-interface/core/mod.cddl");
@@ -3031,7 +3179,7 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
     );
 
     // A second run has nothing left to do, which is what convergence means here.
-    config::generate(&config_path, &[], None).expect("a warm config run must generate");
+    config::generate(&config_path, &[], None, None).expect("a warm config run must generate");
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -3075,7 +3223,7 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
 
     // The sugar: `deps` derives the `--extern-import` that collides with the stub.
     let derived = write_config("derived.toml", "deps = [\"core\"]\n");
-    let err = config::generate(&derived, &[], None)
+    let err = config::generate(&derived, &[], None, None)
         .expect_err("a dependency declared by `deps` AND by a stub must be refused")
         .to_string();
     assert!(
@@ -3098,7 +3246,7 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
     );
 
     // `--print-flags` performs the real expansion, so it refuses identically.
-    let listed = config::print_flags(&derived, &[], None)
+    let listed = config::print_flags(&derived, &[], None, None)
         .expect_err("--print-flags must refuse what a run refuses")
         .to_string();
     assert_eq!(
@@ -3111,7 +3259,7 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
         "hand.toml",
         "\n[crates.ledger.extern-import]\ncore = \"gen/core/extern-interface/core\"\n",
     );
-    let err = config::generate(&hand, &[], None)
+    let err = config::generate(&hand, &[], None, None)
         .expect_err("the same conflict declared by hand must be refused")
         .to_string();
     assert!(
@@ -3765,7 +3913,7 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
         choice.notes
     );
 
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
 
     // The shared runtime really received the files, in the crate shape `--export-static-crate`
@@ -3876,7 +4024,7 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
         "reduced_rec = [x: uint, nm: {+ uint => text}]\n",
     )
     .unwrap();
-    config::generate(&config_path, &["reduced".to_owned()], None)
+    config::generate(&config_path, &["reduced".to_owned()], None, None)
         .expect("the reduced crate must still GENERATE — the gap is a compile-time one");
     let mutated = crate::tests::integration_tests::tool_cmd("cargo")
         .arg("check")
@@ -4944,10 +5092,10 @@ fn a_config_generated_workspace_builds_with_wasm_on() {
     // The idempotence half is taken BEFORE the hand edits below, so what it compares is the tool's
     // own output rather than the merge of a hand-edited manifest (which the manifest convergence
     // tests pin separately, and which would confound the claim being made here).
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("one cold config run must converge and exit 0");
     let after_first = tree_bytes(&dir, &["gen", "runtime"]);
-    config::generate(&config_path, &[], None).expect("the second run must generate");
+    config::generate(&config_path, &[], None, None).expect("the second run must generate");
     if let Some(difference) = first_tree_difference(
         "first run",
         &after_first,
@@ -5155,7 +5303,7 @@ fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
     )
     .unwrap();
 
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
 
     let json_gen_dir = dir.join("gen/user/wasm/json-gen");
@@ -5199,7 +5347,7 @@ fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
 
     // Leg 2: the consumer now publishes a name the dependency already registered.
     std::fs::write(dir.join("specs/user.cddl"), "dep_thing = [z: text]\n").unwrap();
-    config::generate(&config_path, &["usercrate".to_owned()], None)
+    config::generate(&config_path, &["usercrate".to_owned()], None, None)
         .expect("the collision is a RUN-time verdict — generation must still succeed");
     let collided = crate::tests::integration_tests::tool_cmd("cargo")
         .arg("run")
@@ -5653,7 +5801,7 @@ fn a_whole_config_generates_what_the_hand_written_flags_generate() {
 
     // ONE config run over a cold tree, and it exits 0: the convergence pass inside it re-runs the
     // dependencies whose sidecars the run rewrote.
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("one cold config run over the acceptance fixture must converge and exit 0");
 
     // The hand-written side has to model that pass, or the two trees differ for a reason that is not
@@ -5766,7 +5914,7 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     // went from absent to present across the whole invocation, which is true and is precisely what
     // triggered the convergence pass. What it does NOT mean any more is "run this again".
     let cold = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("one cold config run must converge inside the invocation and exit 0");
     assert_eq!(
         cold.stale_crates(),
@@ -5794,7 +5942,7 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
 
     // (3) Run 2: nothing to do, nothing changed.
     let warm = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None).expect("the second run must generate");
+    config::generate(&config_path, &[], None, None).expect("the second run must generate");
     assert!(
         warm.stale_crates().is_empty(),
         "a settled workspace must consume no sidecar this run rewrites — one still moving here \
@@ -5819,7 +5967,7 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     }
 
     // (4) And the fixed point is a fixed point.
-    config::generate(&config_path, &[], None).expect("the repeat run must generate");
+    config::generate(&config_path, &[], None, None).expect("the repeat run must generate");
     let after_third = tree_bytes(&dir, &["gen"]);
     if let Some(difference) =
         first_tree_difference("second run", &after_second, "third run", &after_third)
@@ -5870,7 +6018,7 @@ fn the_convergence_pass_says_which_crate_it_re_runs_and_why() {
     let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
 
     let cold = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("one cold config run must converge and exit 0");
     let notes = cold.rerun_notes();
     assert_eq!(
@@ -5895,7 +6043,7 @@ fn the_convergence_pass_says_which_crate_it_re_runs_and_why() {
 
     // A settled workspace announces nothing: no crate is re-run, so there is no line to print.
     let warm = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None).expect("the second run must generate");
+    config::generate(&config_path, &[], None, None).expect("the second run must generate");
     assert!(
         warm.rerun_notes().is_empty(),
         "a converged run must print no convergence line at all: {:?}",
@@ -5947,7 +6095,7 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
     .unwrap();
 
     // Converge, in one invocation: the convergence pass leaves `core` hosting `CoreThingList`.
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("one cold config run must converge and exit 0");
 
     // Now the case. The consumer's spec gains a map over the dependency's type, so it borrows a
@@ -5963,7 +6111,7 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
         .expand(&selected)
         .unwrap();
     let bracketing = config::Convergence::capture(&expanded);
-    let verdict = config::generate(&config_path, &selected, None)
+    let verdict = config::generate(&config_path, &selected, None, None)
         .expect_err("a subset run that adds a borrow leaves the workspace unbuildable");
 
     assert!(
@@ -6008,7 +6156,7 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
         verdict.contains(&format!("--config {} core", config_path.display())),
         "the verdict must print the command that settles it, got: {verdict}"
     );
-    config::generate(&config_path, &["core".to_owned()], None)
+    config::generate(&config_path, &["core".to_owned()], None, None)
         .expect("the dependency-alone regen the verdict names must converge the workspace");
     let index =
         std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
@@ -6016,7 +6164,7 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
         index.contains("MapU64ToCoreThing"),
         "the dependency must now host the wrapper, got:\n{index}"
     );
-    config::generate(&config_path, &[], None).expect("and the converged workspace is silent");
+    config::generate(&config_path, &[], None, None).expect("and the converged workspace is silent");
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -6086,7 +6234,7 @@ fn a_two_edge_dependency_chain_converges_in_one_invocation() {
 
     // (1) One cold invocation, exit 0.
     let cold = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None).expect(
+    config::generate(&config_path, &[], None, None).expect(
         "one cold run over a two-edge chain must converge inside the invocation and exit 0",
     );
     assert_eq!(
@@ -6156,7 +6304,7 @@ fn a_two_edge_dependency_chain_converges_in_one_invocation() {
 
     // (3) Run 2 changes nothing, anywhere in the tree, and consumes no sidecar this run rewrote.
     let warm = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None).expect("the second run must generate");
+    config::generate(&config_path, &[], None, None).expect("the second run must generate");
     assert!(
         warm.stale_crates().is_empty(),
         "a settled chain must consume no sidecar this run rewrites — one still moving at depth 2 is \
@@ -6179,7 +6327,7 @@ fn a_two_edge_dependency_chain_converges_in_one_invocation() {
     }
 
     // (4) And the fixed point is a fixed point rather than a two-cycle.
-    config::generate(&config_path, &[], None).expect("the repeat run must generate");
+    config::generate(&config_path, &[], None, None).expect("the repeat run must generate");
     let after_third = tree_bytes(&dir, &["gen"]);
     if let Some(difference) =
         first_tree_difference("second run", &after_second, "third run", &after_third)
@@ -6201,7 +6349,7 @@ fn a_two_edge_dependency_chain_converges_in_one_invocation() {
     )
     .unwrap();
     let incremental = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("a settled chain whose top crate gains a borrow must converge in one run");
     assert_eq!(
         incremental.stale_crates(),
@@ -6235,7 +6383,7 @@ fn a_two_edge_dependency_chain_converges_in_one_invocation() {
         "and the incremental run must really have settled the new borrow:\n{mid_index}"
     );
     let settled = tree_bytes(&dir, &["gen"]);
-    config::generate(&config_path, &[], None).expect("the run after it must generate");
+    config::generate(&config_path, &[], None, None).expect("the run after it must generate");
     if let Some(difference) = first_tree_difference(
         "incremental run",
         &settled,
@@ -6311,7 +6459,7 @@ fn a_diamond_dependency_graph_converges_in_one_invocation() {
 
     // (1) One cold invocation, exit 0, and every crate that hosts a borrow is re-run.
     let cold = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None)
+    config::generate(&config_path, &[], None, None)
         .expect("one cold run over a diamond must converge inside the invocation and exit 0");
     assert_eq!(
         cold.stale_crates(),
@@ -6369,7 +6517,7 @@ fn a_diamond_dependency_graph_converges_in_one_invocation() {
 
     // (3) Run 2 changes nothing, and (4) run 3 confirms the fixed point.
     let warm = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[], None).expect("the second run must generate");
+    config::generate(&config_path, &[], None, None).expect("the second run must generate");
     assert!(
         warm.stale_crates().is_empty(),
         "a settled diamond must consume no sidecar this run rewrites. Stale: {:?}",
@@ -6388,7 +6536,7 @@ fn a_diamond_dependency_graph_converges_in_one_invocation() {
             "one cold run must settle a diamond, so the next one changes nothing, but {difference}"
         );
     }
-    config::generate(&config_path, &[], None).expect("the repeat run must generate");
+    config::generate(&config_path, &[], None, None).expect("the repeat run must generate");
     let after_third = tree_bytes(&dir, &["gen"]);
     if let Some(difference) =
         first_tree_difference("second run", &after_second, "third run", &after_third)
