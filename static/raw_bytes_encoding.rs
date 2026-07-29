@@ -11,9 +11,23 @@
 /// inline, so a derived `Debug` would insert a `FromHexErrorCore(..)` layer into every rendered
 /// message. The wrapper is deliberately invisible in output.
 ///
-/// `pub(crate)`: it is only ever constructed inside `from_raw_hex`'s default body and immediately
-/// erased to `dyn core::error::Error`, so it never appears in a public signature.
-pub(crate) struct FromHexErrorCore(hex::FromHexError);
+/// `pub`, with the inner error kept private. The impl this newtype supplies is missing for an
+/// ORPHAN-RULE reason, not a privacy one: any crate that needs a `hex::FromHexError` boxed as a
+/// `core::error::Error` has to declare this same wrapper itself, because neither `hex` nor `core`
+/// is its to extend. Hand-written sibling crates around the generated one hit exactly that wall —
+/// a `thiserror` enum with a `#[from] hex::FromHexError` arm is the usual shape — so the runtime
+/// exports its copy rather than making every sibling duplicate it, and carries the
+/// `From<hex::FromHexError>` impl below that such a `#[from]` needs. Nothing in the generated code
+/// names the type in a signature: `from_raw_hex` constructs it and immediately erases it to
+/// `dyn core::error::Error`. The field stays private because the wrapper promises a trait impl and
+/// a faithful rendering, not access to the inner error.
+pub struct FromHexErrorCore(hex::FromHexError);
+
+impl From<hex::FromHexError> for FromHexErrorCore {
+    fn from(e: hex::FromHexError) -> Self {
+        Self(e)
+    }
+}
 
 impl core::fmt::Debug for FromHexErrorCore {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -44,8 +58,9 @@ pub trait RawBytesEncoding {
     where
         Self: Sized,
     {
-        let bytes = hex::decode(hex_str)
-            .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(FromHexErrorCore(e))))?;
+        let bytes = hex::decode(hex_str).map_err(|e| {
+            DeserializeFailure::InvalidStructure(Box::new(FromHexErrorCore::from(e)))
+        })?;
         Self::from_raw_bytes(bytes.as_ref())
     }
 }
