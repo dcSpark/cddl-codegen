@@ -717,7 +717,7 @@ function runFuzz(o: Opts): Outcome {
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cargo check (fuzz) exit ${exit}` };
 }
 
-// ---- no-std drift gate: fresh-generate three profiles, thumb-check each emitted shim -------------
+// ---- no-std drift gate: fresh-generate the profiles, thumb-check each emitted shim ---------------
 // A `fn` gate for two reasons. (1) The absent-target outcome is TIER-DEPENDENT — a loud SKIPPED in
 // `local`, a hard FAIL in `full` — and `Opts` carries no tier, so the gate reads it the way `main()`
 // does: the first non-`--` argv token (the self-log re-exec preserves argv verbatim). (2) A SKIPPED
@@ -802,7 +802,7 @@ export const REGISTRY: Gate[] = [
   { id: "matrix_typecheck", tier: "local", kind: "fn", run: runMatrixTypecheck,
     desc: "tsc --noEmit over the cddl-matrix scripts (pinned local devDependency)" },
   { id: "no_std_check", tier: "local", kind: "fn", run: runNoStdCheck, script: "no_std_check.ts",
-    desc: "emitted no-std-check shims: fresh-generate 3 profiles, cargo check each shim on thumbv7m-none-eabi" },
+    desc: "emitted no-std-check shims: fresh-generate the six profiles, cargo check each shim on thumbv7m-none-eabi" },
   // verify.ts's own gate is `full`-tier, so without this its assert-at-startup self-tests would only
   // ever run inside a ~60-minute manual gate — a millisecond check sitting behind the most expensive
   // thing in the repo. What they cover fails SILENTLY in production: a wrong ruby verdict token or a
