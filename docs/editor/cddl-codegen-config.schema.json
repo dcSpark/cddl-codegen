@@ -144,6 +144,13 @@
           },
           "description": "Config key for the `--workspace-dep` flag. See docs/docs/command_line_flags.mdx."
         },
+        "std-forward-dep": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config key for the `--std-forward-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
         "extern-import": {
           "type": "object",
           "additionalProperties": {
@@ -360,6 +367,13 @@
           },
           "description": "Config key for the `--workspace-dep` flag. See docs/docs/command_line_flags.mdx."
         },
+        "std-forward-dep": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config key for the `--std-forward-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
         "extern-import": {
           "type": "object",
           "additionalProperties": {
@@ -438,6 +452,10 @@
           "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
         },
         "flavor-from": {
+          "type": "string",
+          "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+        },
+        "lib-name": {
           "type": "string",
           "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
         }

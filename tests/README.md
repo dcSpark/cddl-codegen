@@ -308,11 +308,12 @@ promise true of tool output.
 
 `cddl-matrix/no_std_check.ts`, driven by a `fn` registry entry and also invocable on its own as
 `bun run cddl-matrix/no_std_check.ts [tier]` (`check.ts` has no single-gate selector). It generates
-five crates **fresh** into `mkdtemp` scratch — the `tests/<dir>/export*` trees are unusable here
-because the integration harness splices module-scope `println!` helpers into them outside
-`#[cfg(test)]`, so they would fail for reasons that are not the tool's — then runs each profile's
-cells: every profile's emitted shim gets a `thumbv7m-none-eabi` `cargo check` (inverted for one
-profile — see the table), and three profiles carry a host-side cell beside it:
+five single-crate profiles plus one multi-crate `--config` tree **fresh** into `mkdtemp` scratch —
+the `tests/<dir>/export*` trees are unusable here because the integration harness splices
+module-scope `println!` helpers into them outside `#[cfg(test)]`, so they would fail for reasons
+that are not the tool's — then runs each profile's cells: every profile's emitted shim gets a
+`thumbv7m-none-eabi` `cargo check` (inverted for one profile — see the table), and four profiles
+carry a host-side cell beside it:
 
 | Profile | Flags | Surface it exists for |
 |---|---|---|
@@ -320,6 +321,7 @@ profile — see the table), and three profiles carry a host-side cell beside it:
 | `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `FromHexErrorCore` newtype and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus |
 | `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives |
 | `depth_limit` | `--deserialize-depth-limit 64` + a recursive rule | The one flag whose output is deliberately **not** `no_std`-capable (`thread_local!` guard). Its shim cell INVERTS: expected FAIL carrying the pinned ``--deserialize-depth-limit output requires the `std` feature`` substring (LOCKSTEP with `generation::export::DEPTH_LIMIT_REQUIRES_STD`); a `host_default_check` `cargo check` beside it proves the refusal is confined to `not(std)` |
+| `split_config` | a `--config` tree: two crates joined by a `deps` edge over a shared `[runtime]` runtime crate | The only profile where `default-features = false` has more than one package to reach. The `std` feature has to FORWARD across each hop — consumer → dependency → runtime — or it stops at the first, and on a target with no `std` at all a leaked `std` feature anywhere in the chain is a compile error. It is therefore the reachability proof for the runtime crate's `not(std)` hasher arm through a real topology, and it covers both forwarding derivations at once (`deps` and `[runtime].lib-name`). Its `host_std_arm` cell is the tripwire below, pointed at the runtime crate, which owns the cfg pair in this layout |
 | `emit_tests` | `--emit-tests --preserve-encodings` | The emitted `#[cfg(test)]` module, which no shim cell can see (test code is not compiled when a crate is built as a dependency): `host_test_nostd` runs `cargo test --no-default-features --lib` on the generated crate, compiling and RUNNING the module — including its module-local `std` restore and the nested fidelity mod's hand-carried copy — under the `not(std)` root; the shim cell beside it guards restore-leakage into crate scope |
 
 Profile `preserve_canonical` also gets a **host**-target cell: a consumer crate carrying
@@ -329,7 +331,12 @@ thumb cells exercise only the `not(std)` arm, so this signature is the one place
 silent hasher flip fails. Profile `raw_bytes` additionally gets a hand-written consumer module for
 its extern type — the documented contract makes zero-hand-code impossible there, so the module is
 kept minimal and deliberately `no_std`-clean, and it is appended to the *seed-once crate root*, never
-patched into a generated file.
+patched into a generated file. Profile `split_config` hand-writes the co-owned runtime crate's two
+hand-owned halves for the same reason — its `[package]` table before generating (the export's
+`package.name` op is seed-once, and the name must match `[runtime].lib-name`, which the tool
+deliberately does not read that manifest to check) and its crate root afterwards (`pub mod` lines
+plus the documented `#![cfg_attr(not(feature = "std"), no_std)]`; the module list is the export's,
+not ours to predict).
 
 **Each shim is checked alone**, via the emitted empty `[workspace]` table and a `--manifest-path`
 invocation. That is a correctness requirement, not tidiness: cargo unifies features across a whole
@@ -359,7 +366,7 @@ attribution guarantee with nothing else positioned to notice, and CI runs `fast`
 
 **Cache participation:** each cell goes through the shared gate cache (key = tree hash over the whole
 scratch output root + `rustc -vV` + RUSTFLAGS + path-normalized argv carrying the verdict marker
-`no-std-check-v2`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
+`no-std-check-v3`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
 Both hand-written crates the gate writes live INSIDE the hashed output root, so editing either
 invalidates the key rather than serving a stale PASS. Bump the verdict marker on any change to the
 VERDICT logic — the warning classifier or an accept predicate, not just the allowed-warning set. Because keys are content-derived (scratch paths normalized out), a
@@ -417,8 +424,9 @@ crates, appended modules). A gate-authored input parked beside the hashed tree i
 key, so editing it serves the stale PASS forever — and the closure audit cannot flag it, because its
 allowed-read classes treat everything under scratch as derived-from-hashed (true only by this
 discipline; the gap is ledgered in `tests/TESTING_ROADMAP.md`). Shipped exemplar of the rule
-applied: `no_std_check.ts` writes both of its consumer crates inside each profile's hashed output
-root, with relative path deps so the hashed bytes stay run-independent.
+applied: `no_std_check.ts` writes every crate it hand-authors inside the hashed output root — the two
+single-crate consumer crates, and the split profile's co-owned runtime `[package]` table, crate root
+and host consumer — with relative path deps so the hashed bytes stay run-independent.
 The resolution itself is memoized in-process (`src/tests/gate_cache.rs`), keyed on every file in the
 generated tree that resolution reads, because the generated manifests are identical across fixtures
 and differ only by generation profile: one measured `cargo test --all-features --all-targets` run

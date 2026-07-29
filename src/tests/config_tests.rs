@@ -493,6 +493,7 @@ wasm-conversions-macro = "foo::bar::conv"
 wasm-list-macro = "foo::bar::list"
 json-schema-root = ["demo_lib::hand::Address", "demo_lib::hand::Key"]
 workspace-dep = ["core"]
+std-forward-dep = ["core"]
 
 [crates.demo.extern-import]
 core = "../core/extern-interface/core"
@@ -598,6 +599,8 @@ core = "../../core/rust"
         "core-wasm=../../core/wasm",
         "--rust-dep",
         "core=../../core/rust",
+        "--std-forward-dep",
+        "core",
     ]);
 
     // Exhaustive on purpose — see the doc comment.
@@ -638,6 +641,7 @@ core = "../../core/rust"
         key_requests,
         extern_import,
         export_static_crate,
+        std_forward_dep,
     } = from_config;
 
     assert_eq!(input, from_flags.input);
@@ -700,6 +704,7 @@ core = "../../core/rust"
     assert_eq!(key_requests, from_flags.key_requests);
     assert_eq!(extern_import, from_flags.extern_import);
     assert_eq!(export_static_crate, from_flags.export_static_crate);
+    assert_eq!(std_forward_dep, from_flags.std_forward_dep);
 }
 
 /// Omitting `preserve-comments` leaves the built-in on: the key is a positive boolean over a negated
@@ -763,6 +768,12 @@ fn a_refused_flag_combination_fails_expansion_and_names_the_crate() {
             "[defaults]\ncanonical-form = true\n\
              [crates.beta]\ninput = \"b.cddl\"\noutput = \"gen/b\"\n",
             "--canonical-form=true requires --preserve-encodings=true",
+        ),
+        (
+            "and for a hand-written std forward with no dependency to forward to",
+            "[defaults]\nstd-forward-dep = [\"cml-core\"]\n\
+             [crates.beta]\ninput = \"b.cddl\"\noutput = \"gen/b\"\n",
+            "--std-forward-dep=cml-core names a package that no --rust-dep declares",
         ),
     ] {
         let err = expand_error(text);
@@ -2047,7 +2058,7 @@ fn build_editor_schema() -> String {
     let cli_rs = concat!(env!("CARGO_MANIFEST_DIR"), "/src/cli.rs");
     let longs = cli_flag_spellings(cli_rs);
 
-    let property = |key: &str, rust_type: &str| -> (String, Json) {
+    let described = |key: &str, rust_type: &str, description: String| -> (String, Json) {
         let mut keywords = schema_type_keywords(rust_type).unwrap_or_else(|| {
             panic!(
                 "config key `{key}` has Rust type `{rust_type}`, which this schema has no TOML type \
@@ -2056,12 +2067,11 @@ fn build_editor_schema() -> String {
                  disguise, otherwise the key itself needs deciding, not approximating."
             )
         });
-        keywords.push((
-            "description".to_owned(),
-            Json::Str(key_description(key, &longs)),
-        ));
+        keywords.push(("description".to_owned(), Json::Str(description)));
         (key.to_owned(), Json::Obj(keywords))
     };
+    let property =
+        |key: &str, rust_type: &str| described(key, rust_type, key_description(key, &longs));
 
     // `[defaults]`, every `[profiles.<name>]`, and the settings half of every `[crates.<name>]`.
     let settings_fields = struct_field_types(config_rs, "Settings");
@@ -2115,9 +2125,20 @@ fn build_editor_schema() -> String {
         );
     }
 
+    // `[runtime]`'s keys are not `Settings` keys, and one of them COLLIDES with a per-crate key:
+    // `lib-name` in `[crates.<name>]` is the `--lib-name` flag, while in `[runtime]` it is the cargo
+    // package name of the co-owned runtime crate — the same spelling for a different thing, and no
+    // flag of its own. So a runtime key is described as a flag key only while it is NOT also a
+    // per-crate key; a future collision gets the same treatment without being noticed by hand.
     let runtime_props: Vec<(String, Json)> = struct_field_types(config_rs, "Runtime")
         .iter()
-        .map(|(key, ty)| property(key, ty))
+        .map(|(key, ty)| {
+            if per_crate_fields.iter().any(|(k, _)| k == key) {
+                described(key, ty, key_description(key, &Default::default()))
+            } else {
+                property(key, ty)
+            }
+        })
         .collect();
 
     let definition = |props: Vec<(String, Json)>, required: Option<Vec<&str>>| -> Json {
@@ -4727,6 +4748,108 @@ fn a_hand_written_rust_dep_entry_wins_per_package() {
     );
 }
 
+// ---------------------------------------------------------------------------------------------
+// The std-forwarding derivations (`deps` edges and `[runtime].lib-name`)
+// ---------------------------------------------------------------------------------------------
+
+/// A `deps` edge derives `--std-forward-dep` beside `--rust-dep`, UNCONDITIONALLY — including for a
+/// package whose path a hand-written `rust-dep` entry supplied.
+///
+/// Unconditional is the point rather than an oversight: the target is a crate this config generates,
+/// and every crate this tool generates declares a `std` feature, so the forward always resolves.
+/// Without it, `default-features = false` on the consumer stops at the consumer — the dependency is
+/// still built with its defaults and its own `no_std` arm is unreachable from any downstream
+/// configuration.
+#[test]
+fn a_deps_edge_derives_the_std_forward_beside_the_rust_dep() {
+    let by_name = expand_all(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nlib-name = \"core-lib\"\n\
+         [crates.extra]\ninput = \"e.cddl\"\noutput = \"gen/extra\"\nlib-name = \"extra-lib\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\
+         deps = [\"core\", \"extra\"]\n\
+         [crates.ledger.rust-dep]\ncore-lib = \"../../vendor/core\"\n",
+    );
+    assert_eq!(
+        by_name["ledger"].std_forward_dep,
+        vec!["core-lib", "extra-lib"],
+        "every `deps` edge forwards, whoever supplied the dependency's path"
+    );
+    for lonely in ["core", "extra"] {
+        assert!(
+            by_name[lonely].std_forward_dep.is_empty(),
+            "`{lonely}` has no `deps` edge, so there is nothing to forward to"
+        );
+    }
+}
+
+/// A hand-written `std-forward-dep` array entry suppresses the derived one, so a package is named
+/// once — the rule every derivation in this file follows, on the array shape.
+#[test]
+fn a_hand_written_std_forward_dep_entry_is_not_derived_twice() {
+    let by_name = expand_all(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nlib-name = \"core-lib\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n\
+         std-forward-dep = [\"core-lib\"]\n",
+    );
+    assert_eq!(by_name["ledger"].std_forward_dep, vec!["core-lib"]);
+}
+
+/// `[runtime].lib-name` derives EVERY crate's dependency on the shared runtime crate — both halves,
+/// the path entry and the forward — by a relative path from that crate's own rust directory, under
+/// each crate's own `package-json` layout.
+///
+/// This is the edge `common-import` cannot derive: an override is a Rust path prefix, and no cargo
+/// package name follows from one. Naming the package is the one-line opt-in.
+#[test]
+fn a_runtime_lib_name_derives_every_crate_s_dependency_on_the_shared_runtime() {
+    let by_name = expand_all(
+        "[runtime]\nexport-static-crate = \"runtime\"\ncommon-import = \"cddl_runtime\"\n\
+         lib-name = \"cddl-runtime\"\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.npm]\ninput = \"n.cddl\"\noutput = \"gen/npm\"\npackage-json = true\n",
+    );
+    assert_eq!(
+        by_name["core"].rust_dep,
+        vec!["cddl-runtime=../../../runtime"]
+    );
+    assert_eq!(
+        by_name["npm"].rust_dep,
+        vec!["cddl-runtime=../../../../runtime"],
+        "the path is counted from the crate's OWN rust directory, which `package-json` moves down"
+    );
+    for name in ["core", "npm"] {
+        assert_eq!(
+            by_name[name].std_forward_dep,
+            vec!["cddl-runtime"],
+            "{name}: the runtime edge forwards too, or its `no_std` arm is unreachable"
+        );
+    }
+}
+
+/// Without `lib-name` the runtime edge stays the hand edit it has always been — the key is an opt-in,
+/// and a `[runtime]` that predates it generates exactly what it did before.
+#[test]
+fn a_runtime_without_lib_name_derives_no_dependency_on_the_shared_runtime() {
+    let cli = expand_one(
+        "[runtime]\nexport-static-crate = \"runtime\"\ncommon-import = \"cddl_runtime\"\n\
+         [crates.demo]\ninput = \"s.cddl\"\noutput = \"gen\"\n",
+    );
+    assert!(cli.rust_dep.is_empty() && cli.std_forward_dep.is_empty());
+}
+
+/// `lib-name` with no `export-static-crate` is a key that cannot mean anything: the dependency it
+/// derives has no directory to point at. Same shape as the empty-table and `flavor-from` refusals.
+#[test]
+fn a_runtime_lib_name_without_an_export_is_an_error() {
+    let err = error(&format!(
+        "[runtime]\ncommon-import = \"r\"\nlib-name = \"cddl-runtime\"\n{MINIMAL_CRATE}"
+    ));
+    assert!(
+        err.contains("`cddl-runtime`") && err.contains("nothing to point at"),
+        "the refusal must name the package and say why it cannot mean anything, got:\n{err}"
+    );
+}
+
 /// **The compile proof**: a config-generated workspace with `wasm = true` and a `deps` edge, built.
 ///
 /// This is the deliverable, and the reason is that no manifest-text assertion can see it. A
@@ -4828,6 +4951,11 @@ fn a_config_generated_workspace_builds_with_wasm_on() {
     // package, in the consumer's RUST manifest. The last is asserted rather than hand-written
     // because `--rust-dep` derives it; this is the inversion the hand edit that used to sit below
     // was built to force.
+    //
+    // The rust entry additionally carries `default-features = false` and a `depcrate/std` forward:
+    // a `deps` edge derives `--std-forward-dep` beside `--rust-dep`, so `default-features = false`
+    // on the CONSUMER reaches the dependency's no_std arm instead of stopping at the consumer. The
+    // wasm entry has neither — the wasm crate is `std` by nature and declares no `std` feature.
     for (manifest, expected) in [
         (
             "gen/usercrate/wasm/Cargo.toml",
@@ -4839,8 +4967,9 @@ fn a_config_generated_workspace_builds_with_wasm_on() {
         ),
         (
             "gen/usercrate/rust/Cargo.toml",
-            "depcrate = { path = \"../../depcrate/rust\" }",
+            "depcrate = { path = \"../../depcrate/rust\", default-features = false }",
         ),
+        ("gen/usercrate/rust/Cargo.toml", "std = [\"depcrate/std\"]"),
     ] {
         let text = std::fs::read_to_string(dir.join(manifest)).expect(manifest);
         assert!(
@@ -4936,7 +5065,7 @@ fn a_config_generated_workspace_builds_with_wasm_on() {
         ),
         (
             "gen/usercrate/rust/Cargo.toml",
-            "depcrate = { path = \"../../depcrate/rust\" }\n",
+            "depcrate = { path = \"../../depcrate/rust\", default-features = false }\n",
             "depcrate",
         ),
     ] {
@@ -5113,9 +5242,10 @@ fn write_acceptance_specs(root: &Path) {
 }
 
 /// Every layer of the feature in one file: `[defaults]`, a `[profiles.*]` three of the four crates
-/// apply, `[runtime]`, a `deps` edge, a `wasm-reexports` edge, a `json-schema-root`, and one crate
-/// (`basic`) that applies no profile and so deviates from the others' runtime flavor on both max
-/// axes.
+/// apply, `[runtime]` (including `lib-name`, so every crate derives its dependency on the shared
+/// runtime and the std forward onto it), a `deps` edge, a `wasm-reexports` edge, a
+/// `json-schema-root`, and one crate (`basic`) that applies no profile and so deviates from the
+/// others' runtime flavor on both max axes.
 ///
 /// `basic` sorts FIRST by name and is deliberately not the runtime carrier: the carrier is derived
 /// as the first crate whose flavor is the join, which is `core`, so a derivation that had simply
@@ -5134,6 +5264,7 @@ fn acceptance_config_text() -> String {
          [runtime]\n\
          export-static-crate = \"runtime\"\n\
          common-import = \"shared_runtime\"\n\
+         lib-name = \"cddl-runtime\"\n\
          \n\
          [crates.basic]\n\
          input = \"specs/basic.cddl\"\n\
@@ -5183,8 +5314,9 @@ fn acceptance_config_text() -> String {
 /// `apply_graph_edges` forward (`--extern-import`, `--extern-wasm-crate`, `--extern-wrapper-index`,
 /// `--workspace-dep`) and reverse (`--wrapper-requests`, `--key-requests`); `apply_runtime`
 /// (`--common-import-override` on every crate, `--export-static-crate` on the derived carrier);
-/// `threading` (`--json-schema-dep` + `--json-gen-dep` per edge); and the two manifest derivations
-/// (`--wasm-dep` per package per edge, `--rust-dep` once per `deps` edge).
+/// `threading` (`--json-schema-dep` + `--json-gen-dep` per edge); and the manifest derivations
+/// (`--wasm-dep` per package per edge; `--rust-dep` + `--std-forward-dep` once per `deps` edge, and
+/// once more per crate for the `[runtime].lib-name` runtime crate).
 fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> {
     let p = |rel: &str| root.join(rel).to_string_lossy().into_owned();
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static").to_owned();
@@ -5206,6 +5338,16 @@ fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> 
         "--common-import-override".to_owned(),
         "shared_runtime".to_owned(),
     ];
+    // `[runtime].lib-name`: every crate depends on the shared runtime crate by relative path from
+    // its own rust directory, and forwards its `std` onto it. Appended LAST because the per-flag
+    // order is what the `Cli` comparison sees, and the config emits the `deps`-derived entries
+    // before this one.
+    let runtime_dep: Vec<String> = vec![
+        "--rust-dep".to_owned(),
+        "cddl-runtime=../../../runtime".to_owned(),
+        "--std-forward-dep".to_owned(),
+        "cddl-runtime".to_owned(),
+    ];
     let invocation = |per_crate: Vec<String>, profiled: bool, extra: Vec<String>| {
         let mut argv = vec!["cddl-codegen".to_owned()];
         argv.extend(per_crate);
@@ -5215,6 +5357,7 @@ fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> 
         }
         argv.extend(runtime.iter().cloned());
         argv.extend(extra);
+        argv.extend(runtime_dep.iter().cloned());
         argv
     };
 
@@ -5331,6 +5474,10 @@ fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> 
                     // `wasm-reexports` contributes none, since no rust line names that crate.
                     "--rust-dep".to_owned(),
                     "core-lib=../../core/rust".to_owned(),
+                    // …and its std-forwarding half, so `default-features = false` on this crate
+                    // reaches `core-lib`'s no_std arm rather than stopping here.
+                    "--std-forward-dep".to_owned(),
+                    "core-lib".to_owned(),
                 ],
             ),
         ),

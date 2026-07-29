@@ -11,7 +11,11 @@ expression: "files[\"no-std-check/Cargo.toml\"]"
 #
 #   cargo check --manifest-path <output-root>/no-std-check/Cargo.toml --target thumbv7m-none-eabi
 #
-# A failure here with an otherwise unmodified generated crate is caused by hand-written additions.
+# A failure here with an otherwise unmodified generated crate is caused by hand-written additions —
+# which, in a split layout, includes the hand-owned half of a runtime crate this one depends on: its
+# crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate
+# takes with `default-features = false` is named by its own `std` feature, so turning `std` off here
+# turns it off all the way down.
 
 [package]
 name = "cddl-lib-no-std-check"

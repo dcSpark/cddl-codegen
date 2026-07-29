@@ -151,6 +151,7 @@ pub(crate) const SETTINGS_KEYS: &[&str] = &[
     "wasm-list-macro",
     "json-schema-root",
     "workspace-dep",
+    "std-forward-dep",
     "extern-import",
     "extern-wasm-crate",
     "extern-wrapper-index",
@@ -242,6 +243,22 @@ pub struct Runtime {
     /// Name the carrier by hand instead of deriving it, accepting the flavor gap that made the
     /// derivation refuse. See [`Config::runtime_carrier`].
     pub flavor_from: Option<String>,
+    /// The cargo PACKAGE name of the co-owned runtime crate `export-static-crate` writes into — the
+    /// same vocabulary a `[crates.<name>]` table's `lib-name` uses.
+    ///
+    /// Naming it is what lets the config derive each crate's dependency ON the runtime:
+    /// `--rust-dep <lib-name>=<relative path>` plus `--std-forward-dep <lib-name>`, so a crate built
+    /// with `default-features = false` reaches the runtime's `no_std` arm instead of stopping at its
+    /// own. `common-import` cannot supply it — an override is a Rust path prefix (`crate::common` is
+    /// a legal value), and no cargo package name follows from one.
+    ///
+    /// Optional by design: absent, nothing is derived and the dependency stays the hand edit it is
+    /// today. Adding the key is the one-line opt-in.
+    ///
+    /// It must MATCH the crate's actual `package.name`. The tool does not read that manifest to
+    /// check — a content read of a co-owned file, for a one-line rule — so a mismatch surfaces as
+    /// cargo's own "no matching package named X found at path" error.
+    pub lib_name: Option<String>,
 }
 
 /// The exported runtime's flavor: the `Cli` fields that change a byte of what
@@ -365,6 +382,10 @@ pub struct Settings {
     pub json_schema_root: Vec<String>,
     #[serde(default)]
     pub workspace_dep: Vec<String>,
+    /// An array rather than a sub-table because the flag takes a bare package name: it is the
+    /// std-forwarding HALF of a `rust-dep` entry, whose path side that other key already carries.
+    #[serde(default)]
+    pub std_forward_dep: Vec<String>,
 
     // --- `<k>=<v>` sub-tables: per-key UNION across layers, later layer wins per key ---
     #[serde(default)]
@@ -425,6 +446,7 @@ impl Settings {
             wasm_list_macro,
             json_schema_root,
             workspace_dep,
+            std_forward_dep,
             extern_import,
             extern_wasm_crate,
             extern_wrapper_index,
@@ -473,6 +495,7 @@ impl Settings {
         // list `[defaults]` exists to hold.
         self.json_schema_root.extend(json_schema_root.clone());
         self.workspace_dep.extend(workspace_dep.clone());
+        self.std_forward_dep.extend(std_forward_dep.clone());
 
         // Sub-tables union per key — the same accumulation a repeated `<k>=<v>` flag already gets by
         // landing in a `BTreeMap`. A later layer overrides only the keys it names.
@@ -1093,6 +1116,22 @@ impl Config {
             );
         }
 
+        // Same shape as the empty-table rule above: a key that cannot mean anything is a typo, not a
+        // request. `lib-name` derives each crate's cargo dependency on the runtime crate, and the
+        // path side of that dependency is `export-static-crate` — without it there is no directory
+        // to point at, and `common-import` alone points at a crate this config does not write.
+        if let Some(lib_name) = &runtime.lib_name
+            && runtime.export_static_crate.is_none()
+        {
+            return Err(format!(
+                "`[runtime].lib-name` names `{lib_name}` as the cargo package of the shared runtime \
+                 crate, but `[runtime]` sets no `export-static-crate`. The key derives each crate's \
+                 dependency on that crate, whose PATH is the export directory — so there is nothing \
+                 to point at. Say where the runtime is written, or drop `lib-name` and declare the \
+                 dependency by hand."
+            ));
+        }
+
         if let Some(from) = &runtime.flavor_from {
             if runtime.export_static_crate.is_none() {
                 return Err(format!(
@@ -1600,7 +1639,8 @@ impl Config {
                     self.graphed_settings(&name, entry, &ungraphed, runtime_choice.as_ref());
                 let threads = self.threading(&name, entry, &settings, &ungraphed)?;
                 let wasm_deps = self.wasm_deps(&name, entry, &settings, &ungraphed)?;
-                let rust_deps = self.rust_deps(&name, entry, &settings, &ungraphed)?;
+                let (rust_deps, std_forward_deps) =
+                    self.rust_deps(&name, entry, &settings, &ungraphed)?;
                 let fragments = argv_fragments(
                     entry,
                     &settings,
@@ -1608,6 +1648,7 @@ impl Config {
                     &threads,
                     &wasm_deps,
                     &rust_deps,
+                    &std_forward_deps,
                     &derived,
                     self.static_dir_override.as_deref(),
                 );
@@ -1915,15 +1956,47 @@ impl Config {
     ///
     /// A hand-written `[crates.<name>.rust-dep]` entry for the same PACKAGE wins, silently, per
     /// package — the rule every sub-table derivation in this file follows.
+    ///
+    /// # The std-forwarding half
+    ///
+    /// Each entry is paired with a `--std-forward-dep <package>`, so the crate takes the dependency
+    /// with `default-features = false` and its own `std` feature carries `<package>/std`. Without
+    /// that pair, `default-features = false` on THIS crate stops at this crate: the dependency is
+    /// still built with its defaults, its `std` is still on, and the `#[cfg(not(feature = "std"))]`
+    /// arms it wrote are unreachable from any downstream configuration.
+    ///
+    /// UNCONDITIONAL per `deps` edge, unlike the `--rust-dep` half a hand-written entry suppresses.
+    /// The target is a crate this config generates, and every crate this tool generates declares a
+    /// `std` feature — so the forward always resolves, including onto a dependency whose path the
+    /// user chose to spell by hand.
+    ///
+    /// `[runtime].lib-name` adds one more of each, for the shared runtime crate: the same
+    /// dependency, on the same reasoning, onto a crate `export-static-crate` writes rather than one
+    /// `[crates.*]` declares.
     fn rust_deps(
         &self,
         name: &str,
         entry: &CrateEntry,
         settings: &Settings,
         ungraphed: &BTreeMap<String, Cli>,
-    ) -> Result<Vec<DerivedManifestDep>, String> {
+    ) -> Result<(Vec<DerivedManifestDep>, Vec<DerivedManifestDep>), String> {
         let consumer_dir = self.crate_dir(&ungraphed[name], &entry.output, "rust");
         let mut out = Vec::new();
+        let mut forwarding = Vec::new();
+        // A hand-written `std-forward-dep` array entry for the same package wins, on the same terms
+        // the `rust-dep` sub-table's does: the derivation adds what is not already there.
+        let mut forward = |package: &str, key: &'static str| {
+            if !settings.std_forward_dep.iter().any(|v| v == package)
+                && !forwarding
+                    .iter()
+                    .any(|d: &DerivedManifestDep| d.value == package)
+            {
+                forwarding.push(DerivedManifestDep {
+                    key,
+                    value: package.to_owned(),
+                });
+            }
+        };
         for dep in &entry.deps {
             // Validated to name a configured crate by the `deps` checks.
             let dep_entry = &self.crates[dep];
@@ -1931,6 +2004,7 @@ impl Config {
             // `package.name` the rust manifest's change log writes — the opposite spelling from the
             // underscored crate name the generated `use` lines carry.
             let package = dep_entry.lib_name.clone();
+            forward(&package, "deps");
             if settings.rust_dep.contains_key(&package) {
                 continue;
             }
@@ -1946,7 +2020,31 @@ impl Config {
                 value: format!("{package}={path}"),
             });
         }
-        Ok(out)
+
+        // The shared runtime crate. Only `[runtime].lib-name` can name it: `common-import` is a Rust
+        // path prefix (`crate::common` is a legal value), so no cargo package name follows from one,
+        // and reading `package.name` out of the co-owned manifest would be a new content-read class
+        // for a rule one documented line states.
+        if let Some(runtime) = &self.runtime
+            && let (Some(lib_name), Some(export)) =
+                (&runtime.lib_name, &runtime.export_static_crate)
+        {
+            forward(lib_name, "runtime");
+            if !settings.rust_dep.contains_key(lib_name) {
+                let runtime_dir = PathBuf::from(resolve_path(&self.base_dir, export));
+                let path = manifest_relative_path(&consumer_dir, &runtime_dir).map_err(|e| {
+                    format!(
+                        "`[runtime].lib-name` makes every crate depend on the shared runtime at \
+                         `{export}` by path, and `[crates.{name}]` cannot reach it: {e}"
+                    )
+                })?;
+                out.push(DerivedManifestDep {
+                    key: "runtime",
+                    value: format!("{lib_name}={path}"),
+                });
+            }
+        }
+        Ok((out, forwarding))
     }
 
     /// Every crate's `Cli` as its own table alone describes it — before any cross-crate derivation.
@@ -1968,6 +2066,7 @@ impl Config {
                 entry,
                 &settings,
                 &self.base_dir,
+                &[],
                 &[],
                 &[],
                 &[],
@@ -2514,7 +2613,7 @@ fn resolve_path(base_dir: &Path, value: &str) -> String {
 // Every parameter is a distinct INPUT to the expansion — the settings after merging, the derivations
 // that are not settings, and the one value that comes from neither — so folding them into a struct
 // would rename the list rather than shorten it, and hide from the signature which of them a caller
-// legitimately has nothing to pass (`ungraphed` passes three empties).
+// legitimately has nothing to pass (`ungraphed` passes four empties).
 #[allow(clippy::too_many_arguments)]
 fn argv_fragments(
     entry: &CrateEntry,
@@ -2523,6 +2622,7 @@ fn argv_fragments(
     threads: &[DerivedThread],
     wasm_deps: &[DerivedManifestDep],
     rust_deps: &[DerivedManifestDep],
+    std_forward_deps: &[DerivedManifestDep],
     derived: &Provenance,
     static_dir_override: Option<&str>,
 ) -> Vec<Fragment> {
@@ -2551,6 +2651,7 @@ fn argv_fragments(
         wasm_list_macro,
         json_schema_root,
         workspace_dep,
+        std_forward_dep,
         extern_import,
         extern_wasm_crate,
         extern_wrapper_index,
@@ -2760,6 +2861,19 @@ fn argv_fragments(
     }
     for (k, v) in rust_dep {
         flag!("rust-dep", "rust-dep", format!("{k}={v}"));
+    }
+    // `--std-forward-dep` is the other half of a `rust-dep` entry, so it emits right after one, on
+    // the same derived-before-raw rule. Its value is a bare package name — the path side is the
+    // `rust-dep` entry's — which is why this is an array key rather than a fourth `<k>=<v>` table.
+    for derived_dep in std_forward_deps {
+        flag!(
+            derived_dep.key,
+            "std-forward-dep",
+            derived_dep.value.clone()
+        );
+    }
+    for v in std_forward_dep {
+        flag!(tag("std-forward-dep", v), "std-forward-dep", v.clone());
     }
 
     out

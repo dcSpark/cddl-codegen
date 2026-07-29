@@ -41,7 +41,7 @@ pub enum Language { PlutusV1, PlutusV2, PlutusV3 }
 The feature name (`wasm` above) is set by [`--rust-wasm-feature`](./command_line_flags). Correspondingly, in `rust/Cargo.toml`:
 
 - `wasm-bindgen` is an **optional** dependency (`{ version = "0.2", optional = true }`), present only when the spec has at least one c-style enum.
-- the `[features]` table **always** carries the feature under `--wasm` — `wasm = ["dep:wasm-bindgen"]` when a c-style enum exists, otherwise `wasm = []`. It exists even in the empty case so the wasm crate can reference it unconditionally without knowing whether the spec has a c-style enum. The `dep:` form means the optional dependency introduces no implicit same-named feature. (The table also carries `default = ["std"]` and `std = []`, written on every run whatever the flags — see [Cargo.toml merge](#generated-cargotoml-merge-not-clobber); `--rust-wasm-feature` may not be named `std` or `default` for that reason.)
+- the `[features]` table **always** carries the feature under `--wasm` — `wasm = ["dep:wasm-bindgen"]` when a c-style enum exists, otherwise `wasm = []`. It exists even in the empty case so the wasm crate can reference it unconditionally without knowing whether the spec has a c-style enum. The `dep:` form means the optional dependency introduces no implicit same-named feature. (The table also carries `default = ["std"]` and a `std` key written on every run whatever the flags, whose value is the [computed forwarding list](#the-std-feature-building-without-std) — see [Cargo.toml merge](#generated-cargotoml-merge-not-clobber); `--rust-wasm-feature` may not be named `std` or `default` for that reason.)
 
 The generated `wasm/Cargo.toml`'s path dependency on the rust crate enables the feature — `cddl-lib = { path = "../rust", features = ["wasm"] }` — so building the wasm crate compiles the `#[wasm_bindgen]` attribute in exactly as before; nothing about wasm builds changes.
 
@@ -1194,22 +1194,56 @@ generated crate is [`--deserialize-depth-limit`](./command_line_flags), whose `t
 guard has no `core`/`alloc` equivalent and which therefore refuses a `no_std` build outright rather
 than gating itself away — see the carve-out below.
 
-**The `std` feature does not forward to dependency features.** It is `std = []`, an in-crate `cfg`
-only, and the crate's dependencies stay in alloc mode permanently: `hex` with
-`default-features = false, features = ["alloc"]`, and `serde` / `serde_json` / `schemars` likewise
-`default-features = false` with only the features the emitted code needs. Forwarding
-(`std = ["hex/std", …]`) is not available: those dependencies are flag- and type-conditional, and a
-feature referencing a dependency that this flag set did not emit is a cargo manifest error. If your
-hand code wants a dependency's `std` features, add them to that dependency's entry — the
-[manifest merge](#generated-cargotoml-merge-not-clobber) unions features and keeps yours.
+**The `std` feature FORWARDS to its dependencies, and the list is computed per run.** The rule is
+one sentence: a dependency's `std` feature is named by this crate's iff the tool ships that
+dependency with `default-features = false` *and* the dependency has a `std` feature to name. So a
+crate generated with the JSON flags and a bytes wrapper gets
 
-**Scope is the rust crate.** The `wasm` and `wasm/json-gen` crates stay `std` by nature
-(`wasm-bindgen`, and writing schema files to disk); they consume the rust crate with default
-features on and are unaffected. The [`--export-static-crate`](./command_line_flags) target declares
-the same `std` feature — it receives `ordered_hash_map.rs`, whose `cfg` would otherwise silently
-select the `no_std` hasher there, since an undeclared feature is always false — but that manifest's
-dependency specs are co-owned and deliberately not reshaped, so the feature is an in-crate switch
-and does not by itself make that crate buildable with `--no-default-features`.
+```toml
+[features]
+default = ["std"]
+std = ["serde/std", "serde_json/std", "schemars/std", "hex/std"]
+```
+
+while a crate with none of those gets `std = []`. The list VARIES because the dependency set does —
+the tool's dependencies are flag- and type-conditional, and a feature naming a dependency this flag
+set did not emit is a manifest cargo rejects. That is exactly why it is computed by the run that
+writes the manifest, which knows every dependency it wrote, rather than fixed in advance.
+`hashlink` and the pinned `cbor_event` fork never appear: neither declares a `std` feature (the fork
+is unconditionally `#![no_std]`), so there is nothing to forward to.
+
+Without the forwarding, `default-features = false` at your dependant would stop at this crate: its
+dependencies would still be built with their defaults, their `std` would still be on, and the
+`no_std` arms would be unreachable from any configuration. Forwarding is what makes the opt-in an
+actual switch.
+
+**Path dependencies forward on request** —
+[`--std-forward-dep <package>`](./command_line_flags), which marks a `--rust-dep` package as
+std-forwarding: the entry gains `default-features = false` and the crate's `std` gains
+`<package>/std`. Under [`--config`](./config_file) you never pass it: a `deps` edge derives it
+alongside the `--rust-dep`, and `[runtime].lib-name` derives it for the shared runtime crate. Only
+path dependencies need naming, because only they can be crates the tool has no independent
+knowledge of.
+
+**The merge keeps your entries and drops stranded ones.** `features.std` is
+[merged, not replaced](#generated-cargotoml-merge-not-clobber): your own forwards (to a dependency
+you added by hand) survive verbatim and ours are appended. On top of the union there is one prune —
+a `<pkg>/<feat>` entry whose `<pkg>` is no longer a `[dependencies]` key is dropped. That is what
+makes a flag flip converge in a single pass: turning the JSON flags off tombstones
+`dependencies.serde`, and a leftover `serde/std` beside it is a manifest cargo refuses. A forward
+to a dependency that *is* present is kept whoever wrote it, and a bare (non-forwarding) entry is
+never pruned.
+
+**Scope is the rust crate, and the exported runtime.** The `wasm` and `wasm/json-gen` crates stay
+`std` by nature (`wasm-bindgen`, and writing schema files to disk); they consume the rust crate with
+default features on and are unaffected. The [`--export-static-crate`](./command_line_flags) target
+declares and forwards the same `std` feature: it receives `ordered_hash_map.rs`, whose `cfg` would
+otherwise silently select the `no_std` hasher there since an undeclared feature is always false, and
+its own dependency specs are asserted in alloc mode with `hex/std` (plus the JSON companions this
+flavor carries) forwarded. That crate is the one the generated crates forward INTO, so a runtime
+whose deps stayed `std`-on would absorb every consumer's `default-features = false` one crate short
+of the dependency that matters. Its manifest stays co-owned in the direction that matters: a
+dependency the tool no longer needs is never removed from it.
 
 ## The `no-std-check` shim crate
 
@@ -1243,7 +1277,11 @@ report it — **with one carve-out, which announces itself**: a crate generated 
 
 If that is the failure you are looking at, it is the documented incompatibility rather than a defect
 (the shim's own header says so too, in that crate's `no-std-check/src/lib.rs`). Any other red over an
-unmodified crate is ours; otherwise it attributes to hand-written additions. Calibrate on one detail:
+unmodified crate is ours; otherwise it attributes to hand-written additions. In a SPLIT layout —
+several generated crates over a shared [`--export-static-crate`](./command_line_flags) runtime — the
+hand-written half includes that runtime crate's own root and any dependency it adds; the tool-written
+half forwards, so the feature does reach every generated crate in the chain (the repo's gate checks
+exactly that topology). Calibrate on one detail:
 that gate runs in the repo's `local` and `full` tiers, which are a run-before-shipping discipline
 rather than a continuous one (its CI runs the `fast` tier only).
 
@@ -1383,11 +1421,20 @@ or gitignore it is your call — it is tool-owned and reproducible, like `extern
 the committed precedent. Its empty `[workspace]` table guarantees it cannot disturb a workspace that
 does not list it, but a CI step that inventories the top level of your output tree will see it.
 
-**7. The [`--export-static-crate`](./command_line_flags) target gains a `std` feature too**, and it
-means less than it looks like: that manifest is co-owned, so its dependency specs are deliberately
-left alone. Declaring the feature is what keeps the exported `ordered_hash_map.rs` on `RandomState`
-instead of silently selecting the `no_std` hasher; it does not by itself make that crate buildable
-with `--no-default-features`.
+**7. The [`--export-static-crate`](./command_line_flags) target gains a `std` feature too**, a real
+one: it declares the feature (which is what keeps the exported `ordered_hash_map.rs` on
+`RandomState` instead of silently selecting the `no_std` hasher) and its dependency specs are
+asserted in alloc mode with their `std` forwarded, exactly as a generated crate's are. It is the
+crate the generated crates forward INTO, so this is what lets a `default-features = false` build
+reach all the way down. Two things stay co-owned: the crate root, which the tool never writes (add
+the `#![cfg_attr(not(feature = "std"), no_std)]` line there yourself, as below), and the dependency
+LIST, from which the tool removes nothing.
+
+**7a. The `std` feature forwards, so `default-features = false` now does something.** Before, it
+was a no-op in practice: the feature was `std = []` and every dependency kept its defaults. If your
+tree was relying on that — a `default-features = false` dependant that was in fact getting a plain
+`std` build — it now gets the `no_std` one, which is the thing it asked for. The
+[`no-std-check` shim](#the-no-std-check-shim-crate) is where you see the difference.
 
 **8. An existing crate opts into `no_std` with one hand-added line.** The crate root is seeded once
 and never rewritten, so the tool cannot deliver the attribute to a tree it has already generated.
@@ -1439,8 +1486,9 @@ Every key falls into one of three categories:
   from your manifest. Pin the full command in a script or Makefile. Three `[features]` entries are also
   tool-owned. Under `--wasm` the [`--rust-wasm-feature`](./command_line_flags) key (default `wasm`) is
   set at the leaf level to `["dep:wasm-bindgen"]` or `[]` (see [the feature gate above](#wasm-feature-gate-for-c-style-enums)),
-  and dropping `--wasm` removes exactly that key. `std = []` is written on every run whatever the
-  flags (`default = ["std"]` is its own case, below). Because each op addresses a single
+  and dropping `--wasm` removes exactly that key. `features.std` is written on every run whatever the
+  flags, with the forwarding list that flag set implies — but it is one of the two feature keys that
+  MERGE rather than replace (`default = ["std"]` is the other; both are below). Because each op addresses a single
   `features.<name>` leaf, your **other** `[features]` entries are untouched. Note that `package.edition` is
   pinned to `2024` on purpose — the generated code relies on `TryFrom`/`TryInto` being in the
   edition-2021+ prelude rather than importing them, so a consumer that reverts the manifest to an
@@ -1460,11 +1508,18 @@ Every key falls into one of three categories:
 - **Seeded once.** `package.version` is written only if it's absent. After the initial `0.1.0`
   (`0.0.1` for the json-gen crate) the tool has no opinion — bump it and it stays bumped across
   regenerations.
-- **Merged, not replaced.** `features.default` — the tool's entries are added to whatever list is
-  already there rather than overwriting it: your entries keep their order (and come first) and the
-  tool's are appended. The consequence worth knowing before you meet it is that the merge is one-way
-  — an entry the tool asserts cannot be durably deleted from this list, because the next
-  regeneration adds it back.
+- **Merged, not replaced.** `features.default` and `features.std` — the tool's entries are added to
+  whatever list is already there rather than overwriting it: your entries keep their order (and come
+  first) and the tool's are appended. The consequence worth knowing before you meet it is that the
+  merge is one-way — an entry the tool asserts cannot be durably deleted from these lists, because
+  the next regeneration adds it back.
+
+  `features.std` carries one addition the other does not need: after the union, a `<pkg>/<feat>`
+  entry whose `<pkg>` is not a `[dependencies]` key is **pruned**. `default`'s tool list is the
+  constant `["std"]`, so a union can never strand anything; `std`'s varies with the flags, so a flag
+  flip would otherwise leave yesterday's `serde/std` beside a tombstoned `serde` — a manifest cargo
+  rejects. Your forward to a dependency that is still there is kept; a bare entry (no `/`) names a
+  feature of this crate and is never pruned.
 - **Preserved (never touched).** Any key no changeset op mentions: your own dependencies,
   `[profile]` tables, the rest of the `[features]` table (every entry but the three tool-owned keys
   above), workspace inheritance lines, etc.
@@ -1475,8 +1530,9 @@ make generation depend on disk contents), so it's purely informational for debug
 
 A fourth manifest rides the same merge machinery with a **co-owned** variant of this contract: the
 [`--export-static-crate`](./command_line_flags) target's `Cargo.toml`. There the tool asserts only
-the dependencies its exported runtime source references, seeds (never rewrites) `package` identity,
-and never removes a dependency — see that flag's documentation for the exact contract.
+the dependencies its exported runtime source references (in alloc mode, with a matching computed
+`features.std`), seeds (never rewrites) `package` identity, and never removes a dependency — see
+that flag's documentation for the exact contract.
 
 If an existing manifest is **not valid TOML**, regeneration is a **hard error naming the file** — the
 tool never falls back to clobbering, because a parse failure is exactly the case where it can't

@@ -203,6 +203,15 @@ existing crate meets on upgrade are in
 [Output format § The `std` feature](./output_format#the-std-feature-building-without-std) and
 [§ Upgrading a crate generated before the `no_std` output](./output_format#upgrading-a-crate-generated-before-the-no_std-output).
 
+The feature **forwards**: it names the `std` feature of every dependency the tool ships with
+`default-features = false` that has one, so the list is computed per run from that run's dependency
+set (`std = ["serde/std", "serde_json/std", "schemars/std", "hex/std"]` at the widest, `std = []`
+with nothing to forward to). Path dependencies opt in with
+[`--std-forward-dep`](./command_line_flags), which a [`--config`](./config_file) `deps` edge and
+`[runtime].lib-name` derive for you. The [`--export-static-crate`](./command_line_flags) runtime
+crate does the same, which is what lets a `default-features = false` build reach through a split
+layout rather than stopping at the first crate.
+
 Two flags interact with it, and only one is a limitation:
 
 - **[`--deserialize-depth-limit`](./command_line_flags) makes the crate `std`-only.** The guard's

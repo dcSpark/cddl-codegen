@@ -50,16 +50,21 @@ set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c
 # genuinely-std pieces of the runtime from inside the crate; a no_std consumer depends on the crate
 # with `default-features = false`.
 #
-# `std = []` forwards to NO dependency std feature, deliberately. Forwarding (`std = ["hex/std", …]`)
-# is impossible while the feature is unconditional: the deps it would name are flag- and
-# type-conditional, and a feature referencing an absent dependency is a cargo manifest error. The
-# dependency specs therefore stay in alloc mode permanently, and a consumer wanting a dep's std
-# features adds them to that dep's own spec, where the field-level dep merge preserves them.
+# The `[]` below is only the BASE. `ops_for_rust` overrides `features.std` every run with a COMPUTED
+# list: `<pkg>/std` for each `--std-forward-dep` path dependency, then for each third-party dep this
+# flag set ships in alloc mode and which has a `std` feature to name (`serde`, `serde_json`,
+# `schemars`, `hex`). A per-run computed op can do what a static log entry could not — the run that
+# emits a manifest knows every dep it wrote, so it never names an absent one. `hashlink` and the
+# pinned `cbor_event` fork declare no `std` feature at all, so nothing forwards to them.
 #
-# `features.default` is the one NON-dependency path `apply` merges instead of replacing (union, the
-# user's entries first), so a hand-customized default list keeps its entries and gains `"std"`. That
-# union is monotone — `"std"` cannot be durably removed here, which is exactly why the supported
-# no_std path is `default-features = false` at the DEPENDANT rather than an edit to this list.
+# `features.default` and `features.std` are the two NON-dependency paths `apply` merges instead of
+# replacing (union, the user's entries first), so a hand-customized list keeps its entries and gains
+# ours. `features.std` additionally PRUNES any `<pkg>/<feat>` entry whose `<pkg>` is not in
+# `[dependencies]` when the op applies — the tool's std list varies with the flags, so a flag flip
+# would otherwise strand yesterday's forward beside a tombstoned dep, which cargo rejects.
+#
+# The `default` union is monotone — `"std"` cannot be durably removed there, which is exactly why the
+# supported no_std path is `default-features = false` at the DEPENDANT rather than an edit to it.
 [[change]]
 id = 8
 path = "features.default"

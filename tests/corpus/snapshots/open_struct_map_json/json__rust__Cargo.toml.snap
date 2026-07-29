@@ -21,4 +21,4 @@ schemars = { version = "1.2.1", default-features = false, features = ["derive"] 
 
 [features]
 default = ["std"]
-std = []
+std = ["serde/std", "serde_json/std", "schemars/std"]

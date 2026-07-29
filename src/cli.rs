@@ -194,6 +194,34 @@ fn parse_rust_dep(s: &str) -> Result<String, String> {
     parse_manifest_dep(s, "rust-dep", "rust/Cargo.toml", "cml-chain")
 }
 
+/// clap value parser for `--std-forward-dep`, whose value is a bare `<cargo-package-name>` (no path:
+/// the path is `--rust-dep`'s, and the two flags are required to agree by
+/// `api::validate_flag_combinations`).
+///
+/// Same charset as the left-hand side of [`parse_manifest_dep`], for the same reasons: the value is
+/// a `[dependencies]` key to look up AND half of a `<pkg>/std` feature entry, so anything outside
+/// cargo's package-name charset could not be either.
+fn parse_std_forward_dep(s: &str) -> Result<String, String> {
+    let name = s.trim();
+    if name.is_empty() {
+        return Err(
+            "--std-forward-dep value must be a cargo package name, got an empty value".to_owned(),
+        );
+    }
+    if let Some(c) = name
+        .chars()
+        .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-'))
+    {
+        return Err(format!(
+            "invalid character {c:?}; --std-forward-dep takes a CARGO PACKAGE NAME (e.g. \
+             `cml-core`), which uses only [A-Za-z0-9_-] — it names a `[dependencies]` key of the \
+             generated `rust/Cargo.toml` and becomes a `<package>/std` entry of that crate's `std` \
+             feature. Note this is the DASHED package name, not the underscored rust lib path"
+        ));
+    }
+    Ok(name.to_owned())
+}
+
 /// Fold one of the `<cargo-package-name>=<path>` flag lists into `package name -> path`, SORTED by
 /// package name.
 ///
@@ -518,6 +546,39 @@ pub struct Cli {
         value_name = "PACKAGE=PATH"
     )]
     pub rust_dep: Vec<String>,
+
+    /// Mark a `--rust-dep` path dependency as std-FORWARDING: the generated `rust/Cargo.toml` takes
+    /// it with `default-features = false`, and the crate's own `std` feature gains a
+    /// `<package>/std` entry — so `default-features = false` at your dependant actually reaches
+    /// that crate's `no_std` arm instead of stopping at this one.
+    ///
+    /// Without it a path dependency keeps its default features on, and turning this crate's `std`
+    /// off leaves the dependency's on: the `#[cfg(not(feature = "std"))]` arms it wrote are then
+    /// unreachable from any downstream configuration. That is the whole failure this flag exists
+    /// for, and it is silent — nothing errors, the opt-in simply does nothing.
+    ///
+    /// The value is the cargo PACKAGE name (`cml-core`) — the same dashed spelling `--rust-dep`
+    /// takes on its LEFT side, and the name that becomes a `[dependencies]` key. It must name a
+    /// package this run also passes `--rust-dep` for: a `default-features = false` fragment with
+    /// no path or version is a manifest cargo rejects outright, so a `--std-forward-dep` without
+    /// its `--rust-dep` is a hard error rather than a manifest the tool would be the author of.
+    ///
+    /// Only path dependencies need naming. The tool's OWN third-party dependencies forward
+    /// automatically wherever they can (`serde`, `serde_json`, `schemars`, `hex` — the ones it
+    /// ships in alloc mode and which have a `std` feature to name); `hashlink` and `cbor_event`
+    /// have none, so nothing forwards to them.
+    ///
+    /// The target crate must actually HAVE a `std` feature — every crate this tool generates does.
+    /// A package that does not is a cargo error naming the missing feature.
+    ///
+    /// Repeatable. Under `--config`, a `deps` edge derives this for you, and `[runtime].lib-name`
+    /// derives it for the shared runtime crate.
+    #[clap(
+        long = "std-forward-dep",
+        value_parser = parse_std_forward_dep,
+        value_name = "PACKAGE"
+    )]
+    pub std_forward_dep: Vec<String>,
 
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on
@@ -933,6 +994,21 @@ impl Cli {
     /// contract as the two directly above, for `rust/Cargo.toml`.
     pub fn rust_deps(&self) -> std::collections::BTreeMap<String, String> {
         manifest_deps(&self.rust_dep, "rust-dep")
+    }
+
+    /// The `--std-forward-dep` packages, deduplicated and SORTED — the order they render in the
+    /// generated crate's `features.std` list.
+    ///
+    /// A `BTreeSet` for the reason [`manifest_deps`] sorts: these become entries of one TOML array
+    /// whose order nothing observes, so sorting invents no semantics and makes the rendered list
+    /// independent of how the flags happened to be spelled. A repeat is a no-op rather than an
+    /// error — unlike the `<package>=<path>` flags, a second occurrence carries no second value
+    /// that could silently replace the first.
+    pub fn std_forward_deps(&self) -> std::collections::BTreeSet<String> {
+        self.std_forward_dep
+            .iter()
+            .map(|name| name.trim().to_owned())
+            .collect()
     }
 
     /// If someone override the common imports, we don't want to export them

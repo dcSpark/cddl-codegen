@@ -598,6 +598,36 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
             }
         }
     }
+    // `--std-forward-dep` names a `[dependencies]` key twice over: the entry it reshapes to
+    // `default-features = false`, and the `<package>/std` entry it adds to the crate's own `std`
+    // feature. A package with no `--rust-dep` has no entry to reshape, so the tool would be the
+    // AUTHOR of a manifest cargo rejects — either a bare `default-features = false` with no source,
+    // or a feature naming a dependency that is not there. Rejected here rather than left to cargo
+    // because the tool wrote the manifest and the user wrote the flags.
+    let rust_dep_packages: std::collections::BTreeSet<&str> = cli
+        .rust_dep
+        .iter()
+        .map(|entry| {
+            entry
+                .split_once('=')
+                .map_or(entry.as_str(), |(name, _)| name)
+                .trim()
+        })
+        .collect();
+    for package in &cli.std_forward_dep {
+        let package = package.trim();
+        if !rust_dep_packages.contains(package) {
+            return Err(format!(
+                "--std-forward-dep={package} names a package that no --rust-dep declares: \
+                 forwarding takes that dependency with `default-features = false` and adds \
+                 `{package}/std` to this crate's `std` feature, and both need the \
+                 `[dependencies].{package}` entry only --rust-dep can write (a \
+                 `default-features = false` with no path or version, or a feature naming an absent \
+                 dependency, is a manifest cargo rejects). Pass \
+                 `--rust-dep {package}=<path>` as well, or drop the forwarding"
+            ));
+        }
+    }
     Ok(())
 }
 
