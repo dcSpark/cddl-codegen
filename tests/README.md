@@ -600,10 +600,15 @@ meaningful across rustfmt versions because "both spellings parse" is the asserti
 folded shape). A fourth seam — the overlay's ORDERING against the usage-derived import prune
 (`export()` applies the overlay to the in-memory file map, then re-derives the import set from the
 post-overlay content, so an import whose last user a replace block removed vanishes from the final
-bytes) — is pinned by `comment_preservation_replace_orphans_import_same_file` and
-`comment_preservation_replace_in_descendant_orphans_parent_import` (the cross-file flavor that
-makes the re-prune family-wide); that property lives in the export driver, not in the merge, so it
-cannot be a fixture. Keep both sets thin; new merge behavior belongs in fixtures.
+bytes) — is pinned by `comment_preservation_replace_orphans_import_same_file` (the re-prune direction) and
+`comment_preservation_replace_in_descendant_orphans_parent_import` (since the core/alloc delivery:
+the post-overlay alloc-import RECOMPUTE direction — generated files self-bind the injector-owned
+names, so the orphaned import lives in the file the replace block edits and the recompute must
+remove it, the add-and-remove half that also covers trait imports the pruner's name-scan model can
+never own). The cross-file family-wide re-prune MODEL is pinned shape-independently by the
+`import_prune::tests` super-glob family (`keeps_parent_import_consumed_by_child_via_super_glob`
+and siblings) — the real output no longer holds a glob-only import to pin it end-to-end. That
+property lives in the export driver, not in the merge, so it cannot be a fixture. Keep both sets thin; new merge behavior belongs in fixtures.
 
 One generator-output assumption is deliberately NOT pinned by that set, because none of the three
 can see its violation: "the generator emits no comment on a row a spec change can delete" (which
@@ -1778,7 +1783,7 @@ pinned in the fast tier by `snapshot_tests::json_gen_rows_are_byte_stable`).
 (json2ts emits it, suffixed, as the TypeScript type name), so the common crate's `add_schema` helper
 — which every emitted `reg.add::<T>()` row reaches through the `Registrar` that owns its ledger —
 enforces that the document's published names are injective, panicking with both offenders named. It carries
-three checks: a **name ledger** keyed on `std::any::type_name` — the only thing that can see a
+three checks: a **name ledger** keyed on `core::any::type_name` — the only thing that can see a
 *merge*, where two hand-written impls return one name and `schema_id()`'s default makes them one type
 to `schemars`, so both returned refs equal the shared name; a **kept-its-own-name** comparison against
 the ref `subschema_for` returned — which sees an order-dependent `<name>2` even when the type that
