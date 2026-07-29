@@ -59,6 +59,15 @@ into its enum variant (at most one non-fixed field) emits no struct at all and s
 `credential`'s `; @name Script` arm may sit alongside a `script` rule, giving `Credential::Script`
 and `Script` independently.
 
+Note: separately from the type name above, every arm of one group choice names a *variant of the
+same generated enum*, so within a single rule the arms' names must be distinct — including two arms
+whose shapes are identical, and including two spellings that produce the same name (`my_arm` and
+`myArm`). Giving two arms of one rule the same `@name` is rejected with a clean error naming both;
+rename either. Arms you do **not** name are named for you (from the arm's member key, its type, or
+its position), and such a derived name simply takes a numeric suffix when it collides — `foo = [ x:
+uint // x: text ]` gives `Foo::X` and `Foo::X2`. A name you wrote always wins over a derived one,
+whichever arm comes first.
+
 Note: `@name` does not rename a top-level rule or group — the rule identifier itself is the
 emitted type name, so `foo = uint ; @name bar` is rejected with a clean error. To change the
 emitted type name, rename the `foo` identifier. On a plain group rule the trailing comment

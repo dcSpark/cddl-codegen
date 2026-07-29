@@ -2831,6 +2831,23 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 
 ## Declined (decided, with the reopening signal)
 
+- **Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm
+  path does.** The two enum-producing paths now differ in policy: two group-choice arms of one rule
+  given the same `; @name` are a graceful rejection (`reject_group_choice_arm_variant_name_collision`
+  — an authored name is public API of the generated crate, so renaming one would ship a name nobody
+  wrote), while a type choice in the same situation (`foo = 0 ; @name mainnet / 1 ; @name mainnet`)
+  silently emits `Mainnet` and `Mainnet2`. The divergence is deliberate and rests on what the two
+  produce, not on principle: the arm path was emitting a REPEATED variant — a generated crate that
+  does not compile (`E0428`) — so it had to change and the only question was which way, whereas the
+  type-choice path emits code that compiles and works today. Tightening it is therefore a pure
+  behavior change on working output, and it would break any spec whose author has (knowingly or not)
+  built against the `Mainnet2` spelling — a cost paid by existing consumers to buy consistency no
+  consumer has asked for. Note the asymmetry does NOT extend to derived names: those carry no
+  authorial intent and take a numeric suffix on BOTH paths (`foo = [ x: uint // x: text ]` gives
+  `Foo::X` / `Foo::X2`), which is the behavior `append_number_if_duplicate` exists for. Reopening
+  signal: a consumer reporting that a variant they EXPLICITLY `@name`d was emitted under a different
+  name — the harm this would prevent, observable by the party who has it, and distinct from the
+  derived-name suffixing that is working as designed.
 - **MSRV declaration / OS matrix for GENERATED code.** The templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
   output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer

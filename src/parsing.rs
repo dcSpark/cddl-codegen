@@ -1,7 +1,7 @@
 use crate::cli::Cli;
 use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
@@ -460,6 +460,83 @@ fn reject_group_choice_arm_ident_collision(
     types.record_rejection(format!(
         "{conflict}. Two types cannot share one name. Rename the arm with `; @name <new_name>` \
          (this renames the generated variant too, e.g. `{enum_name}::<NewName>`)."
+    ));
+}
+
+/// Settle ONE group-choice arm's variant name against the names its enum has already committed to.
+///
+/// This is the variant-namespace counterpart of `arm_ident_collision`, and the two genuinely cannot
+/// be one check: an EMBEDDABLE arm is inlined and registers no struct, so it claims nothing in the
+/// struct namespace while still declaring a variant, and two arms that share a single struct by
+/// structural equality still declare two variants. Both shapes emitted an enum with a repeated
+/// variant (Rust `E0428`) until this ran.
+///
+/// The policy splits on whether the author WROTE the name. An explicit `; @name` is public API of
+/// the generated crate, so it is never renamed and a second arm spelling it is rejected — the author
+/// picks, exactly as for the struct namespace. A DERIVED name (an arm's member key, its type, or its
+/// `{rule}{index}` position) carries no authorial intent, so it yields and takes a numeric suffix,
+/// which is what the type-choice path already does for its own derived names. Callers reserve every
+/// arm's explicit name before the loop, so the authored name wins from either source position.
+fn settle_arm_variant_name(
+    types: &mut IntermediateTypes,
+    enum_name: &RustIdent,
+    used: &mut BTreeSet<String>,
+    explicit_seen: &mut BTreeMap<String, String>,
+    base: String,
+    arm_source_name: &str,
+    explicit: bool,
+) -> String {
+    if explicit {
+        // Already reserved by the caller's pre-pass, so `used` says nothing here — a second
+        // claimant is detected by the source name recorded against the generated one. Two
+        // DIFFERENT spellings can camel-case to one variant (`my_arm` / `myArm`), so the message
+        // names both arms as the author wrote them.
+        if let Some(first) = explicit_seen.get(&base) {
+            reject_group_choice_arm_variant_name_collision(
+                types,
+                enum_name,
+                first,
+                arm_source_name,
+                &base,
+            );
+        } else {
+            explicit_seen.insert(base.clone(), arm_source_name.to_owned());
+        }
+        return base;
+    }
+    if used.insert(base.clone()) {
+        return base;
+    }
+    // Search for the first free suffix rather than appending a single counter: the pool holds the
+    // arms' EXPLICIT names too, so a one-shot `Name2` could land straight onto an arm the author
+    // spelled `; @name name2` — turning one duplicate into another.
+    let mut n = 2u32;
+    loop {
+        let candidate = format!("{base}{n}");
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Two arms of ONE group choice, each explicitly `@name`d onto the same generated variant. Rejected
+/// gracefully rather than renamed, for the same reason as its struct-namespace sibling
+/// `reject_group_choice_arm_ident_collision`: a variant name is public API of the generated crate,
+/// so any automatic disambiguation silently ships a name the author never wrote — and a positional
+/// one would derive that public name from arm ORDER. The author picks, via `@name`.
+fn reject_group_choice_arm_variant_name_collision(
+    types: &mut IntermediateTypes,
+    enum_name: &RustIdent,
+    first_arm_source_name: &str,
+    second_arm_source_name: &str,
+    variant_name: &str,
+) {
+    let owner = source_rule_name_of(types, enum_name);
+    types.record_rejection(format!(
+        "rule `{owner}`: its group-choice arms `{first_arm_source_name}` and \
+         `{second_arm_source_name}` both generate the variant `{enum_name}::{variant_name}`. Two \
+         variants cannot share one name. Rename one of them with `; @name <new_name>`."
     ));
 }
 
@@ -4678,7 +4755,27 @@ pub fn parse_group(
         assert!(!types.is_plain_group(name));
 
         // Handle group with choices by generating an enum then generating a group for every choice
-        let mut variants_names_used = BTreeMap::<String, u32>::new();
+        //
+        // Every arm names a variant of the ONE enum being built here, so all the arms' names share a
+        // single namespace and two arms landing on the same one is a Rust `E0428` — a generated
+        // crate that does not compile. `settle_arm_variant_name` below owns that namespace for all
+        // three naming branches: an EXPLICIT `@name` is never renamed (it is public API of the
+        // generated crate, so a rename would silently ship a name nobody asked for) and a second one
+        // spelling it rejects; a DERIVED name — from the arm's member key, its type, or its position
+        // — carries no authorial intent, so it yields and takes a numeric suffix.
+        //
+        // The arms' explicit names are reserved BEFORE the loop so that which side of a colliding
+        // explicit/derived pair keeps the plain name never depends on the order the author happened
+        // to write the arms in: the authored name wins from either position.
+        let mut explicit_variant_names = BTreeMap::<String, String>::new();
+        let mut variant_names_used = BTreeSet::<String>::new();
+        for group_choice in group.group_choices.iter() {
+            if let Some(explicit) =
+                RuleMetadata::from(group_choice.comments_before_grpchoice.as_ref()).name
+            {
+                variant_names_used.insert(convert_to_camel_case(&explicit));
+            }
+        }
         let variants: Vec<EnumVariant> = group
             .group_choices
             .iter()
@@ -4707,17 +4804,24 @@ pub fn parse_group(
                         } else {
                             false
                         };
-                    let ident_name = rule_metadata.name.unwrap_or_else(|| {
-                        match group_entry_to_raw_field_name(group_entry) {
-                            Some(name) => name,
-                            None => append_number_if_duplicate(
-                                &mut variants_names_used,
-                                ty.for_variant().to_string(),
-                            ),
-                        }
-                    });
-                    let variant_ident =
-                        VariantIdent::new_custom(convert_to_camel_case(&ident_name));
+                    // A single-entry arm registers no record at all — its type goes straight into
+                    // the variant — so the name settled here is the ONLY name it ever claims.
+                    let (ident_name, explicit_name) = match rule_metadata.name.clone() {
+                        Some(explicit) => (explicit, true),
+                        None => match group_entry_to_raw_field_name(group_entry) {
+                            Some(field_name) => (field_name, false),
+                            None => (ty.for_variant().to_string(), false),
+                        },
+                    };
+                    let variant_ident = VariantIdent::new_custom(settle_arm_variant_name(
+                        types,
+                        name,
+                        &mut variant_names_used,
+                        &mut explicit_variant_names,
+                        convert_to_camel_case(&ident_name),
+                        &ident_name,
+                        explicit_name,
+                    ));
                     // For a MAP-representation arm the single entry carries a member key that must
                     // be written+verified on the wire (dropping it produces malformed CBOR). Carry
                     // the fixed key on the variant; reject non-fixed/keyless entries gracefully
@@ -4791,7 +4895,10 @@ pub fn parse_group(
                     //     EnumVariant::new(variant_name.clone(), RustType::Rust(variant_name), true)
                     // },
                 } else {
-                    let ident_name = rule_metadata.name.unwrap_or_else(|| format!("{name}{i}"));
+                    let (ident_name, explicit_name) = match rule_metadata.name.clone() {
+                        Some(explicit) => (explicit, true),
+                        None => (format!("{name}{i}"), false),
+                    };
                     // General case, GroupN type identifiers and generate group choice since it's inlined here
                     let arm_ident = RustIdent::new(CDDLIdent::new(ident_name.clone()));
                     // The arm's record is built through the normal registration path, so it must
@@ -4837,8 +4944,25 @@ pub fn parse_group(
                     );
                     // The variant's DISPLAY name always comes from the arm's own ident, never from
                     // whatever the record was registered under: `Credential::Script` is public API of
-                    // the generated crate and must survive a synthesized registration.
-                    let variant_display = VariantIdent::new_rust(arm_ident.clone());
+                    // the generated crate and must survive a synthesized registration. It is settled
+                    // against the ENUM's namespace, which is a different namespace from the struct
+                    // one `arm_ident_collision` above guards — an embeddable arm registers no struct
+                    // at all, and even two arms sharing one struct by structural equality still
+                    // declare two variants.
+                    let variant_name = settle_arm_variant_name(
+                        types,
+                        name,
+                        &mut variant_names_used,
+                        &mut explicit_variant_names,
+                        arm_ident.to_string(),
+                        &ident_name,
+                        explicit_name,
+                    );
+                    let variant_display = if variant_name == arm_ident.as_ref() {
+                        VariantIdent::new_rust(arm_ident.clone())
+                    } else {
+                        VariantIdent::new_custom(variant_name)
+                    };
                     let variant_ident = ConceptualRustType::Rust(register_under.clone());
                     if EnumVariant::can_embed_fields(types, &variant_ident) {
                         // Embeddable: the record is pulled back out and inlined into the variant, so
