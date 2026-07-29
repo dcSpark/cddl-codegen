@@ -17,7 +17,11 @@
 //!   - `["dependencies", <name>]` merges FIELD-LEVEL ([`merge_dep_spec`]), so a user's
 //!     `optional`/`default-features`/extra features and a compatible version pin survive a regen
 //!     while the tool still owns the version floor, its required features, and any field it sets
-//!     (e.g. `path`). See [`merge_dep_spec`] for the exact merge contract.
+//!     (e.g. `path`). See [`merge_dep_spec`] for the exact merge contract. A merged entry is the one
+//!     place the byte-for-byte claim above is qualified, in two bounded ways: its inline table's
+//!     whitespace is re-normalized ([`normalize_inline_decor`] — the merge moves fields between
+//!     positions, so their old spacing is stale by construction), and a dependency the tool ADDS to
+//!     a `[dependencies]` table that already existed gains an [`OWNERSHIP_MARKER`].
 //!   - `["features", "default"]` merges as a UNION ([`merge_default_features`]): the user's list
 //!     survives verbatim and tool entries it lacks are appended. A whole-value replace would
 //!     silently drop a consumer's customized default-feature list, and the key is not one the tool
@@ -117,6 +121,9 @@ pub fn apply(
         })?,
         None => DocumentMut::new(),
     };
+    // Whether `[dependencies]` was in the manifest BEFORE this run touched it — read once, from the
+    // document as parsed, because the ops themselves create it. See [`OWNERSHIP_MARKER`].
+    let dep_table_preexisted = doc.as_table().get("dependencies").is_some();
     for (path, op) in ops {
         match op {
             ManifestOp::Set(item) => {
@@ -134,11 +141,16 @@ pub fn apply(
                     }
                     _ => item.clone(),
                 };
-                set_leaf(&mut doc, path, value);
+                set_leaf(
+                    &mut doc,
+                    path,
+                    value,
+                    dep_table_preexisted && is_dependency_entry(path),
+                );
             }
             ManifestOp::SeedOnce(item) => {
                 if item_at(doc.as_table(), path).is_none() {
-                    set_leaf(&mut doc, path, item.clone());
+                    set_leaf(&mut doc, path, item.clone(), false);
                 }
             }
             ManifestOp::Remove => remove_leaf(doc.as_table_mut(), path),
@@ -171,10 +183,30 @@ fn table_at<'a>(table: &'a mut Table, segments: &[String]) -> &'a mut Table {
     }
 }
 
+/// The inline marker a dependency entry gains when the tool ADDS it to a table a human already
+/// maintains. A merge cannot know where in such a table a dep "belongs", so it appends — and the end
+/// of a hand-written table is the one position guaranteed to inherit whatever section comment
+/// happens to be last (`# wasm` above, `hashlink = "0.12.1"` below it, reading as if the comment
+/// scoped it). Every placement heuristic that could avoid that has its own mis-scope: insert-before-
+/// the-first-comment is wrong the moment the table STARTS with one, and any "related section" guess
+/// moves tool deps away from the hand deps they belong beside.
+///
+/// So the marker states ownership at exactly the line where the ambiguity is, instead of moving the
+/// line somewhere the ambiguity is merely less visible. It is content-dependent output, which the
+/// manifest merge is the bounded exception for: this is one of the manifest's own keys, written into
+/// a file the tool is already merging by design.
+///
+/// Idempotent by construction: only a VACANT dependency key gains one, so a re-run takes the
+/// occupied branch below, whose decor transfer carries the marker forward unchanged.
+const OWNERSHIP_MARKER: &str = " # cddl-codegen";
+
 /// Set the leaf key at `path`. On overwrite, transfer the existing value's decor onto the new value
 /// (cargo's pattern) so an inline `# comment` on a bumped dep survives; the `Entry::Occupied` reuse
 /// of the existing key also preserves a full-line comment written above the key.
-fn set_leaf(doc: &mut DocumentMut, path: &[String], item: Item) {
+///
+/// `mark_new_dep` requests an [`OWNERSHIP_MARKER`] on an insert (never on an overwrite) — see there
+/// for when the caller sets it.
+fn set_leaf(doc: &mut DocumentMut, path: &[String], item: Item, mark_new_dep: bool) {
     let Some((leaf, parents)) = path.split_last() else {
         return;
     };
@@ -189,7 +221,10 @@ fn set_leaf(doc: &mut DocumentMut, path: &[String], item: Item) {
             }
         }
         Entry::Vacant(e) => {
-            e.insert(item);
+            let slot = e.insert(item);
+            if mark_new_dep && let Some(v) = slot.as_value_mut() {
+                v.decor_mut().set_suffix(OWNERSHIP_MARKER);
+            }
         }
     }
 }
@@ -479,6 +514,8 @@ fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
         }
     }
 
+    normalize_inline_decor(&mut base);
+
     // shape: a plain-string user entry stays a plain string iff the merge left only `version`.
     if user_was_string {
         let table = base.as_table_like().unwrap();
@@ -489,6 +526,43 @@ fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
         }
     }
     base
+}
+
+/// Hand rendering of an inline table's values back to `toml_edit`'s POSITION-AWARE defaults: one
+/// space after each `,`, one space before the closing `}` — the shape every hand-written dep spec in
+/// a cargo manifest has.
+///
+/// Those defaults apply only where a value carries no explicit decor, and a MERGE makes explicit
+/// decor stale by construction, in both directions at once. A value that was last carries the
+/// trailing ` ` it needed there, and stops being last the moment the tool appends a field beside it
+/// (`features = ["derive", "rc"] , default-features = …` — the space now sits before the comma). A
+/// value copied out of a tool snippet carries the decor it had THERE, so one that sat mid-snippet
+/// arrives with no trailing space and lands last (`default-features = false}`). Both were filed by a
+/// consumer against the same four lines: not wrong TOML, but it marks the tool-touched lines as
+/// visibly different from the hand-written ones beside them for no reason, forever, since a manifest
+/// has no `cargo fmt` to settle it.
+///
+/// Clearing the decor rather than computing a replacement keeps this a normalization: the renderer
+/// already knows what each position should look like, and a cleared decor is a fixed point, so a
+/// re-merge of an already-normalized entry changes nothing.
+///
+/// BOUNDED TO WHITESPACE. TOML 1.1 admits newlines and comments inside an inline table, so a decor
+/// holding either is a thing the user WROTE and is left exactly as it is — at the cost of leaving
+/// the stale-position spacing in that rare entry, which is the right way round.
+fn normalize_inline_decor(item: &mut Item) {
+    let Some(table) = item.as_inline_table_mut() else {
+        return;
+    };
+    let is_plain_ws = |raw: Option<&toml_edit::RawString>| {
+        raw.and_then(|r| r.as_str())
+            .is_none_or(|s| s.chars().all(|c| c == ' ' || c == '\t'))
+    };
+    for (_, value) in table.iter_mut() {
+        let decor = value.decor_mut();
+        if is_plain_ws(decor.prefix()) && is_plain_ws(decor.suffix()) {
+            decor.clear();
+        }
+    }
 }
 
 /// Merge the tool's `features.default` list (`tool`) onto the user's existing one (`existing`, the
@@ -1729,6 +1803,126 @@ hex = { version = \"0.4.3\", optional = true }
         assert_eq!(
             out, second,
             "alloc-mode merge must be a fixed point:\n{out}"
+        );
+    }
+
+    /// The four CML lines, byte for byte. `alloc_mode_specs_merge_onto_user_customized_entries`
+    /// above asks WHAT the merged entry contains; this asks how it READS, because the two glitches a
+    /// consumer filed were invisible to every `contains()` assertion in this file: a space before the
+    /// comma on the two deps whose features array already existed, and no space before the closing
+    /// brace on all four. Exact strings are the only assertion shape that can hold that, and they
+    /// double as the regression net for `normalize_inline_decor`.
+    #[test]
+    fn alloc_mode_merge_renders_hand_written_spacing() {
+        let existing = "\
+[dependencies]
+serde = { version = \"1.0.152\", features = [\"derive\", \"rc\"] }
+serde_json = { version = \"1.0.57\", features = [\"arbitrary_precision\"] }
+schemars = \"1.2.1\"
+hex = { version = \"0.4.3\" }
+";
+        let ops: Vec<_> = ["serde", "serde_json", "schemars", "hex"]
+            .into_iter()
+            .map(|name| set(&["dependencies", name], &alloc_mode_spec(name)))
+            .collect();
+        let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap();
+
+        let line = |name: &str| {
+            out.lines()
+                .find(|l| l.trim_start().starts_with(&format!("{name} = ")))
+                .unwrap_or_else(|| panic!("`{name}` missing from merge output:\n{out}"))
+                .to_owned()
+        };
+        assert_eq!(
+            line("serde"),
+            "serde = { version = \"1.0.152\", features = [\"derive\", \"rc\", \"alloc\"], default-features = false }"
+        );
+        assert_eq!(
+            line("serde_json"),
+            "serde_json = { version = \"1.0.57\", features = [\"arbitrary_precision\", \"alloc\", \"float_roundtrip\"], default-features = false }"
+        );
+        assert_eq!(
+            line("schemars"),
+            "schemars = { version = \"1.2.1\", features = [\"derive\"], default-features = false }"
+        );
+        assert_eq!(
+            line("hex"),
+            "hex = { version = \"0.4.3\", features = [\"alloc\"], default-features = false }"
+        );
+
+        // Normalization is a fixed point, so a re-merge rewrites nothing.
+        let second = apply(&ops, Some(&out), "rust/Cargo.toml").unwrap();
+        assert_eq!(
+            out, second,
+            "the normalized merge must be idempotent:\n{out}"
+        );
+    }
+
+    /// A decor carrying a COMMENT is user-written text, so normalization leaves it alone even though
+    /// that means the entry keeps its stale-position spacing. TOML 1.1 admits comments and newlines
+    /// inside an inline table; whitespace-only is the whole bound `normalize_inline_decor` claims.
+    #[test]
+    fn a_commented_inline_table_keeps_its_own_layout() {
+        let existing = "\
+[dependencies]
+hex = { version = \"0.4.3\", # the pin our vendored decoder needs
+}
+";
+        let out = apply(
+            &[set(&["dependencies", "hex"], &alloc_mode_spec("hex"))],
+            Some(existing),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        out.parse::<DocumentMut>().unwrap();
+        assert!(
+            out.contains("# the pin our vendored decoder needs"),
+            "a comment inside the inline table must survive the merge:\n{out}"
+        );
+    }
+
+    /// The ownership marker. A dep the tool ADDS to a table a human already maintains lands at the
+    /// end of that table, under whatever section comment happens to be last — so it says whose it is
+    /// on its own line. A fresh tool-owned manifest has no such ambiguity and gains no marker, an
+    /// entry the user already wrote is merged into and gains none either, and a second apply is
+    /// byte-identical because the marker rides the existing decor transfer.
+    #[test]
+    fn a_new_dep_in_a_hand_maintained_table_marks_itself() {
+        let existing = "\
+[dependencies]
+cbor_event = \"2.4.0\"
+
+# wasm
+wasm-bindgen = { version = \"0.2.126\", optional = true }
+";
+        let ops = vec![
+            set(&["dependencies", "hashlink"], "\"0.12.1\""),
+            set(&["dependencies", "cbor_event"], "\"2.4.0\""),
+        ];
+        let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap();
+        let line = |name: &str| {
+            out.lines()
+                .find(|l| l.trim_start().starts_with(&format!("{name} = ")))
+                .unwrap_or_else(|| panic!("`{name}` missing:\n{out}"))
+                .to_owned()
+        };
+        assert_eq!(line("hashlink"), "hashlink = \"0.12.1\" # cddl-codegen");
+        assert_eq!(
+            line("cbor_event"),
+            "cbor_event = \"2.4.0\"",
+            "a key the user already wrote is merged into, not re-labelled"
+        );
+        // Idempotent: the marker carries forward through the occupied branch's decor transfer.
+        let second = apply(&ops, Some(&out), "rust/Cargo.toml").unwrap();
+        assert_eq!(out, second, "a re-apply must be byte-identical:\n{out}");
+
+        // A manifest the tool writes from nothing is wholly tool-owned, so nothing is marked.
+        let fresh = apply(&ops, None, "rust/Cargo.toml").unwrap();
+        assert!(
+            !fresh.contains("# cddl-codegen"),
+            "a fresh tool-owned manifest must carry no ownership markers:\n{fresh}"
         );
     }
 

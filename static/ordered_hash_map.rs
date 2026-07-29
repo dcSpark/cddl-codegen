@@ -55,14 +55,20 @@ impl<K, V> core::ops::DerefMut for OrderedHashMap<K, V> where K : Hash + Eq + Or
     }
 }
 
-/// A view into a single entry of an `OrderedHashMap`, identical to the backing map's own entry view
-/// EXCEPT that `or_insert`/`or_insert_with` do not move an occupied entry to the back of the
-/// insertion order (the backing crate's versions do, refreshing it LRU-style).
+/// A view into a single entry of an `OrderedHashMap`.
+///
+/// `OrderedHashMap::entry` is an INHERENT method, and an inherent method shadows `Deref`, so a
+/// `map.entry(k)` call lands here however the receiver is spelled — this type's surface is the whole
+/// surface, with no fallback to the backing map's own entry view. That surface is:
+/// `or_insert`, `or_insert_with`, `or_default`, `and_modify`, `key`, and the two variant types
+/// `OccupiedEntry`/`VacantEntry` re-exported above.
 ///
 /// A table's iteration order IS its serialized key order, so under `--preserve-encodings` a moved
 /// entry would silently rewrite the bytes of a value that was only read off the wire and
-/// incremented. Reading or accumulating through an entry therefore leaves the order alone; only an
-/// explicit `insert` of a new value re-positions a key.
+/// incremented. Reading or accumulating through an entry therefore leaves the order alone — which
+/// is the reason this type exists: the backing crate's `or_insert`/`or_insert_with` move an occupied
+/// entry to the back, refreshing it LRU-style. Only an explicit `insert` of a new value re-positions
+/// a key.
 pub enum Entry<'a, K, V, S = MapHashBuilder> {
     Occupied(OccupiedEntry<'a, K, V, S>),
     Vacant(VacantEntry<'a, K, V, S>),
@@ -83,6 +89,27 @@ impl<'a, K, V, S> Entry<'a, K, V, S> {
         match self {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => entry.insert(default()),
+        }
+    }
+
+    /// `or_insert` with `V::default()`. The backing crate has no `or_default` at all, so this is the
+    /// only spelling of it a consumer has.
+    pub fn or_default(self) -> &'a mut V where K : Hash, S : BuildHasher, V : Default {
+        match self {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(V::default()),
+        }
+    }
+
+    /// In-place mutable access to an occupied entry before any potential insert. A vacant entry
+    /// passes through untouched, and neither arm changes the insertion order.
+    pub fn and_modify<F: FnOnce(&mut V)>(self, f: F) -> Self {
+        match self {
+            Entry::Occupied(mut entry) => {
+                f(entry.get_mut());
+                Entry::Occupied(entry)
+            }
+            Entry::Vacant(entry) => Entry::Vacant(entry),
         }
     }
 

@@ -439,6 +439,25 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    formatter's novel comment re-owning — the sweep's version-bump tripwire is the instrument for
    those.
 
+8. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
+   SAME-VERSION suite by construction: every case's `old.rs` and `new.rs` agree on generated code
+   bytes except where the fixture deliberately drifts one item, which is the shape a re-run of one
+   tool version produces. A tool UPGRADE is the other shape — it adds tokens and rewrites others
+   across a whole file at once, so every anchor shifts and each item the rewrite touched drifts —
+   and no vector expressed it until the no_std false positive arrived from a consumer with a
+   `compile_error!` sitting three lines above the comment it claimed was lost
+   (`cross_version_std_to_alloc_rewrite_self_cancels` /
+   `cross_version_rewrite_traps_only_the_reworded_line`). Those two cover the rewrite class the
+   upgrade actually performed; what has no witness is the same whole-file-shift shape crossing the
+   overlay's other units — an insert block, a replace block's needle, and a `keep` run whose
+   anchoring statement the upgrade rewrote — where the recorded original is matched by TOKENS and
+   no text-presence escape hatch exists. Authored as ordinary preserve fixtures, so the corpus and
+   its rustfmt-cycle sweep absorb them with zero harness change. Reopening signal, measurable by a
+   consumer that already has the problem with two runs and a diff: an upgrade regen emits
+   `cddl-codegen:unpreserved-comment` or a trapped block that a second, otherwise-unchanged regen
+   does NOT reproduce — a block that self-clears is a false positive by construction, which is
+   exactly how the no_std one was identified.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
@@ -2599,6 +2618,23 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   passes into one json-gen crate and for whom the hand-written composition is not enough.
 
 ## Operational watches
+
+- **A migration handoff's "complete list found by survey" is a NEGATIVE premise, and the first
+  consumer falsified one twice.** The no_std handoff's hand-action survey ended "Nothing else,"
+  and CML's executed migration found two more required classes (public struct fields typed
+  `LinkedHashMap<…>`; `Entry::or_default()` call sites) plus a three-manifests-wider stale-dep
+  sweep. Both misses are instances of standing AGENTS.md rules, recorded here because they
+  happened in a SURVEY DOC rather than in code: the field-annotation half was surveyed with a
+  grep truncated through `| head -8` and presented as complete (the evidence-lost-to-tail class —
+  the pipe ate the `witness_builder.rs` hits), and `or_default` was simply not in the grep
+  vocabulary, so absence-of-hits read as absence-of-thing (the vocabulary-bounded-negative
+  class — a survey's completeness is established by enumerating the CATEGORY registry, not by
+  the searches one thought of). The systematic fix is committed where the next consumer will
+  meet it: the four-category migration-search recipe in `docs/docs/output_format.mdx`
+  § "Upgrading a crate generated before the `no_std` output" (including resolve-`.entry(`-by-type,
+  since the inherent method shadows `Deref` and no text search settles the receiver). Watch, not
+  work item: the next handoff doc's survey section should cite that recipe as its method — a
+  survey that instead presents its own grep list as complete is this entry recurring.
 
 - **`lint_doc_citations` crashes rather than reports when a tracked file is deleted but unstaged.**
   It walks `git ls-files`, which lists a path git still tracks even after the working-tree file is
