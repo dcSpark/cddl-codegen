@@ -172,6 +172,40 @@ mod tests {
         assert_json_reject::<StructWrapper>("\"5\"", "invalid type");
     }
 
+    // --- `hex`-dependency wire pins, at the JSON bytes-wrapper surface ---
+    //
+    // A `bytes` newtype (`bytes_wrapper`) emits hand-written serde impls that call the hex crate's
+    // encode/decode DIRECTLY (the `json_hex_bytes` branch of the wrapper emitter), so that
+    // dependency's behavior IS the JSON wire format of every bytes newtype this tool emits, on both
+    // sides. The `bytes_wrapper` round-trip above only ever feeds back what the serializer produced,
+    // so the ACCEPTED INPUT GRAMMAR is observed nowhere else — and unlike the `RawBytesEncoding`
+    // surface, the emitted deserializer discards the hex error entirely (it substitutes serde's
+    // `invalid_value` / "invalid hex bytes"), so a rejection's WORDING is ours and only the accept /
+    // reject VERDICT is the dependency's. That verdict is what these pins hold.
+    //
+    // Companion to the pins at the `RawBytesEncoding` surface in `tests/raw-bytes/tests.rs`; same
+    // rule (tests/README.md hand-vector shape 5: pin a re-exposed dependency's behavior BEFORE the
+    // baseline moves). Asserted only through serde — no `hex::` path is named — so they survive a
+    // swap and must be flipped in its own diff.
+    #[test]
+    fn bytes_wrapper_hex_wire_pins() {
+        // Wire pin 5: serialize emits a PLAIN LOWERCASE hex string — no `0x` prefix, no uppercase.
+        let value = BytesWrapper::new(vec![0xBA, 0xAD, 0xF0, 0x0D]);
+        assert_eq!(serde_json::to_string(&value).unwrap(), "\"baadf00d\"");
+        // ...and deserialize accepts that exact form, plus its uppercase twin (decoding is
+        // case-insensitive), normalizing back to the lowercase form on the way out.
+        let from_lower: BytesWrapper = serde_json::from_str("\"baadf00d\"").unwrap();
+        assert_eq!(serde_json::to_string(&from_lower).unwrap(), "\"baadf00d\"");
+        let from_upper: BytesWrapper = serde_json::from_str("\"BAADF00D\"").unwrap();
+        assert_eq!(serde_json::to_string(&from_upper).unwrap(), "\"baadf00d\"");
+        // Wire pin 3 (JSON half): a `0x` / `0X`-prefixed hex string is REJECTED — the accepted JSON
+        // grammar for a bytes newtype is bare hex digits only. This is the pin a more lenient hex
+        // implementation flips from reject to accept, silently widening a shipped JSON input
+        // grammar while serialization keeps emitting the unprefixed form.
+        assert_json_reject::<BytesWrapper>("\"0xbaadf00d\"", "invalid hex bytes");
+        assert_json_reject::<BytesWrapper>("\"0XBAADF00D\"", "invalid hex bytes");
+    }
+
     // Each type emits a hand-written `impl JsonSchema` alongside its
     // serde impl, and json-gen ships those schemas. The two are generated independently, so they can
     // silently disagree — a gap the round-trip tests above can't see (they only check that serde is
