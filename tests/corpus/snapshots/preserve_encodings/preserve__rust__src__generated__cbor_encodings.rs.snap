@@ -6,9 +6,9 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
+use crate::generated::serialization::{LenEncoding, StringEncoding, TagPresenceEncoding};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
-use crate::generated::serialization::{LenEncoding, StringEncoding, TagPresenceEncoding};
 
 #[derive(Clone, Debug, Default)]
 pub struct AEncoding {

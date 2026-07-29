@@ -6,8 +6,8 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use alloc::collections::BTreeMap;
 use crate::generated::serialization::LenEncoding;
+use alloc::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
 pub struct BkeyHolderEncoding {

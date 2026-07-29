@@ -18,7 +18,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-
 pub type Bkeys = BTreeMap<Vec<u8>, u64>;
 
 #[derive(Clone, Debug)]

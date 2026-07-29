@@ -20,7 +20,6 @@ pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod serialization;
 
-
 pub type Bkeys = BTreeMap<Vec<u8>, u64>;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]

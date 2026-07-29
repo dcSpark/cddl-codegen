@@ -18,7 +18,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-
 #[derive(Clone, Debug)]
 pub struct Holder {
     pub payload: X,

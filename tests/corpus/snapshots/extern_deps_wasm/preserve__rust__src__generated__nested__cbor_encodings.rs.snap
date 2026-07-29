@@ -6,8 +6,8 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use alloc::collections::BTreeMap;
 use super::*;
+use alloc::collections::BTreeMap;
 use extern_dep_crate::serialization::LenEncoding;
 
 #[derive(Clone, Debug, Default)]

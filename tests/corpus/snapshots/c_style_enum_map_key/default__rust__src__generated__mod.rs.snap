@@ -17,7 +17,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-
 pub type EnumKeyedMap = BTreeMap<FixedEnum, u64>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]

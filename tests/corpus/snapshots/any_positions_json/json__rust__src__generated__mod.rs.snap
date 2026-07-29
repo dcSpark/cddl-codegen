@@ -22,7 +22,6 @@ pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod serialization;
 
-
 impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
     fn from(wrapper: Tagged) -> Self {
         wrapper.0

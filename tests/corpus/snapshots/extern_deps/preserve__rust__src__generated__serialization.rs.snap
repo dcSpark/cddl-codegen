@@ -6,10 +6,10 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use alloc::collections::BTreeMap;
-use alloc::vec::Vec;
 use super::cbor_encodings::*;
 use super::*;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 use extern_dep_crate::error::*;

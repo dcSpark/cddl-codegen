@@ -20,7 +20,6 @@ mod extern_interface_check;
 mod key_demand_assertions;
 pub mod serialization;
 
-
 #[derive(Clone, Debug)]
 pub struct EnumKeyHolder {
     pub choice_keyed: EnumKeyed,

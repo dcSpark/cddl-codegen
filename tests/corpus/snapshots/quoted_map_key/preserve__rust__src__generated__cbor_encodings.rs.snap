@@ -6,8 +6,8 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use alloc::vec::Vec;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::vec::Vec;
 
 #[derive(Clone, Debug, Default)]
 pub struct QuotedMapKeyEncoding {
