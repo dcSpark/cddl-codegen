@@ -354,7 +354,11 @@ scratch output root + `rustc -vV` + RUSTFLAGS + path-normalized argv carrying th
 `no-std-check-v1`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
 Both hand-written crates the gate writes live INSIDE the hashed output root, so editing either
 invalidates the key rather than serving a stale PASS. Bump the verdict marker on any change to the
-allowed-warning logic.
+allowed-warning logic. Because keys are content-derived (scratch paths normalized out), a
+standalone `bun run cddl-matrix/no_std_check.ts` primes the same cache a tier run reads — a gate's
+maiden in-tier run may legitimately serve every cell cached, and trusting that is sound exactly
+because the red/green landing proof showed a content change MISSES (the injected-`std::` run
+re-keyed and failed).
 
 **Fresh-checkout setup:** `thumbv7m-none-eabi` is declared in `rust-toolchain.toml`, so a
 rustup-managed checkout (and CI's `setup-rust-toolchain`, which reads that file) provisions it
@@ -398,6 +402,15 @@ misses exactly its cells; a corrupted entry re-runs), and `GATE_CACHE=0` exists 
 
 The lockfile preflight: before a cell is keyed, its generated crates need a `Cargo.lock` — that lock
 is part of the hashed tree, so dependency resolution is part of what the verdict is cached against.
+
+One discipline the mechanics above cannot enforce for you: **every input a cached cell reads from
+scratch must live INSIDE the hashed root — including files the gate itself writes** (hand consumer
+crates, appended modules). A gate-authored input parked beside the hashed tree is invisible to the
+key, so editing it serves the stale PASS forever — and the closure audit cannot flag it, because its
+allowed-read classes treat everything under scratch as derived-from-hashed (true only by this
+discipline; the gap is ledgered in `tests/TESTING_ROADMAP.md`). Shipped exemplar of the rule
+applied: `no_std_check.ts` writes both of its consumer crates inside each profile's hashed output
+root, with relative path deps so the hashed bytes stay run-independent.
 The resolution itself is memoized in-process (`src/tests/gate_cache.rs`), keyed on every file in the
 generated tree that resolution reads, because the generated manifests are identical across fixtures
 and differ only by generation profile: one measured `cargo test --all-features --all-targets` run
@@ -3313,7 +3326,7 @@ one schema name and asserts the injectivity guard names the consumer's row.
 
 ## Design rules (review-owned; each with a shipped exemplar)
 
-Three rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
+Four rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
 Review is their current owner; the conditional mechanical layers (built only if a class recurs) are a
 `tests/TESTING_ROADMAP.md` item.
 
@@ -3348,6 +3361,16 @@ Review is their current owner; the conditional mechanical layers (built only if 
   Shipped exemplar: `snapshot_tests::json_gen_extern_schema_rows`'s `quiet_group`/`loud_group` and
   `quiet_extern`/`my_extern` pairs — added after `@no_json_schema_export` shipped silently inert on
   plain group rules, a drop that a control-free negative assertion would have reported as green.
+- **A walk over registered roots witnesses each root it claims to cover.** A sweeping test that
+  `read_dir`s a list of registered directories and skips unreadable ones (`Ok(..) else continue`)
+  makes a mistyped, renamed, or never-written root INVISIBLE — the walk finds nothing there and the
+  test reads as a pass, which is indistinguishable from the surface being clean. An aggregate count
+  floor does not fix this unless its arithmetic provably requires every root, which drifts as
+  surfaces grow. So each registered root asserts a file it must have reached (per-root witness),
+  with the floor kept only as a belt. Shipped exemplar:
+  `every_written_surface_is_rustfmt_stable`'s per-root reached assertions (added when the emitted
+  `no-std-check/src` surface joined the walk and the old floor's "cannot be met without the
+  original roots" claim turned out to be unverified arithmetic).
 
 ## Coverage
 
