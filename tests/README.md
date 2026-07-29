@@ -320,7 +320,7 @@ carry a host-side cell beside it:
 | Profile | Flags | Surface it exists for |
 |---|---|---|
 | `preserve_canonical` | `--preserve-encodings --canonical-form` | `OrderedHashMap`/`MapHashBuilder`, the derivative-derived key traits in all four `@used_as_key` flavors, a bytes wrapper. No float member — `--preserve-encodings` aborts generation on one |
-| `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, its `0x`-prefix guard and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus. Also the only cell that compiles the `hex` key's package (`const-hex`) for a bare-metal target |
+| `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `decode_canonical_hex` door its `from_raw_hex` reads through, and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus. Also the only cell that compiles the `hex` key's package (`const-hex`) for a bare-metal target |
 | `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives — plus the `any` × `--json-serde-derives` composition, which no flag list alone reaches: `any_cbor.rs` is emitted only when the finalized IR holds `any`, and only then is the whole of `static/any_cbor_json.rs` appended to it. Its spec therefore carries an `any_members` rule with one member of every nested `natural_any_cbor_*` adapter shape (plain, optional, seq, optional seq, table, optional table), because those nested inline modules carry their alloc imports BY HAND and a missed one is invisible under `std` |
 | `depth_limit` | `--deserialize-depth-limit 64` + a recursive rule | The one flag whose output is deliberately **not** `no_std`-capable (`thread_local!` guard). Its shim cell INVERTS: expected FAIL carrying the pinned ``--deserialize-depth-limit output requires the `std` feature`` substring (LOCKSTEP with `generation::export::DEPTH_LIMIT_REQUIRES_STD`); a `host_default_check` `cargo check` beside it proves the refusal is confined to `not(std)` |
 | `split_config` | a `--config` tree: two crates joined by a `deps` edge over a shared `[runtime]` runtime crate | The only profile where `default-features = false` has more than one package to reach. The `std` feature has to FORWARD across each hop — consumer → dependency → runtime — or it stops at the first, and on a target with no `std` at all a leaked `std` feature anywhere in the chain is a compile error. It is therefore the reachability proof for the runtime crate's `not(std)` hasher arm through a real topology, and it covers both forwarding derivations at once (`deps` and `[runtime].lib-name`). Its `host_std_arm` cell is the tripwire below, pointed at the runtime crate, which owns the cfg pair in this layout |
@@ -877,9 +877,13 @@ new hand vectors in these shapes; a vector that merely EXERCISES the code certif
    encoder produced): the hex wire pins in `tests/raw-bytes/tests.rs` and `tests/json/tests.rs`
    pin case handling, `0x`-prefix rejection, and the error Display texts a `DeserializeError`
    renders, committed green against the incumbent before the `hex` key moved to the `const-hex`
-   package. That swap is what the shape is for: the pins held the grammar (the new decoder's
-   `0x` leniency became an explicit guard at both sites rather than a silent widening) and flipped
-   loudly on the one thing that did move, the Display casing.
+   package. That swap, and the deliberate narrowing that followed it, are what the shape is for.
+   The pins made every grammar decision an explicit line in a diff rather than a property of
+   whichever decoder happened to be linked: the new decoder's `0x` leniency was refused at both
+   sites instead of silently widening the read side; the Display casing that DID move flipped
+   loudly; and when the maintainer then chose a canonical-only grammar — rejecting the uppercase
+   input the surface used to normalize — the pins that had to flip named exactly the behavior
+   being traded away, in the commit trading it.
    When to write these: any change to the version floor or identity of
    a dependency whose types the generated public API re-exposes lands pins of the incumbent's
    consumer-reachable behavior first, in their own commit (the full working rule and its trigger
