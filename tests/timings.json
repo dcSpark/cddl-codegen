@@ -314,7 +314,17 @@
       ]
     },
     {
-      "gate": "no_std_check"
+      "gate": "no_std_check",
+      "warm_ms": 2000,
+      "n": 3,
+      "measured": "2026-07-29",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-29",
+          "warm_ms": 2000
+        }
+      ]
     },
     {
       "gate": "project_corpus",
