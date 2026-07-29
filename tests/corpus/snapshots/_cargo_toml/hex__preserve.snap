@@ -17,7 +17,7 @@ crate-type = ["cdylib", "rlib"]
 cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
 hashlink = "0.12.1"
 derivative = { version = "2.2.0", features = ["use_core"] }
-hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+hex = { package = "const-hex", version = "1.19.1", default-features = false, features = ["alloc", "core-error"] }
 
 [features]
 default = ["std"]

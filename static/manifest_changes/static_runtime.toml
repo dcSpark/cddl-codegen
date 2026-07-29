@@ -91,3 +91,17 @@ set = '[]'
 id = 9
 path = "dependencies.hex"
 set = '{ version = "0.4.3", default-features = false, features = ["alloc"] }'
+
+# The `hex` KEY now takes the `const-hex` PACKAGE — a renamed dependency, still in alloc mode. The
+# key is deliberately unchanged: every `hex::` path in the composed runtime resolves through it, so
+# the swap is invisible to the source, and an already-written manifest needs no tombstone. The
+# second feature, `core-error`, gives `FromHexError` an unconditional `core::error::Error` impl,
+# which is what lets `raw_bytes_encoding.rs` box a decode failure directly. `hex/std` in the
+# computed `features.std` keeps forwarding unchanged — cargo resolves that against the KEY, and
+# `const-hex` declares a real `std` feature on the other side. Same shape the generated rust crate
+# asserts, so one runtime still serves both. (Co-owned manifest: an assert may UPDATE a spec, as
+# this does — it may never remove one.)
+[[change]]
+id = 10
+path = "dependencies.hex"
+set = '{ package = "const-hex", version = "1.19.1", default-features = false, features = ["alloc", "core-error"] }'

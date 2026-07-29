@@ -305,8 +305,8 @@ const PROFILES: Profile[] = [
     ].join("\n"),
   },
   {
-    // The raw-bytes runtime — `RawBytesEncoding`, the `FromHexErrorCore` newtype and BOTH `hex::`
-    // call sites — which the snapshot corpus structurally never emits. Note the runtime is
+    // The raw-bytes runtime — `RawBytesEncoding`, its `0x`-prefix guard and BOTH `hex::` call
+    // sites — which the snapshot corpus structurally never emits. Note the runtime is
     // CONCATENATED INTO `generated/serialization.rs`; there is no separate `raw_bytes_encoding.rs`
     // in the output to look for.
     id: "raw_bytes",
