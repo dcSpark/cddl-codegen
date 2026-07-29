@@ -1,12 +1,25 @@
 use core::hash::{BuildHasher, Hash};
 
-/// The hash builder backing `OrderedHashMap`: std's `RandomState` (randomly seeded SipHash, so keys
-/// chosen by whoever wrote the CBOR can't drive a table into its worst case). The backing map takes
-/// its hash builder as a type parameter and defaults it to a non-std one, so naming the choice here
-/// keeps it deliberate. It is a public alias rather than a written-out path because it appears in
-/// the signatures below — anything that names those names this too, so the alias is the one place
-/// the choice can later change without renaming a public type.
+/// The hash builder backing `OrderedHashMap`, chosen per build:
+///
+/// * with the `std` feature (the default), std's `RandomState` — randomly seeded SipHash, so keys
+///   chosen by whoever wrote the CBOR can't drive a table into its worst case. This is the historic
+///   choice and every std consumer keeps it.
+/// * without it, the backing map crate's own default builder, which is what a crate with no `std`
+///   to draw entropy from can have: faster, deterministically seeded, and correspondingly weaker
+///   against an attacker who picks the keys.
+///
+/// The difference is a service-degradation axis and nothing more. A table's ITERATION order is its
+/// insertion order under either builder, and iteration order is what the serializer writes, so the
+/// bytes a given value produces are identical across the two.
+///
+/// It is a public alias rather than a written-out path because it appears in the signatures below —
+/// anything naming those names this too, so the alias is the one place the choice lives, and
+/// switching arms renames no public type.
+#[cfg(feature = "std")]
 pub type MapHashBuilder = std::collections::hash_map::RandomState;
+#[cfg(not(feature = "std"))]
+pub type MapHashBuilder = hashlink::DefaultHashBuilder;
 
 /// The two halves of [`Entry`], re-exported so code matching on an entry can name them without
 /// depending on the backing map crate itself.
@@ -84,7 +97,12 @@ impl<'a, K, V, S> Entry<'a, K, V, S> {
 
 impl<K, V> OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     pub fn new() -> Self {
-        Self(hashlink::LinkedHashMap::with_hasher(MapHashBuilder::new()))
+        // `default()` rather than `new()`: it is the constructor BOTH arms of `MapHashBuilder`
+        // offer, so the call needs no `cfg` of its own (only std's `RandomState` has an inherent
+        // `new`). Both arms seed a builder exactly as their own `Default` does.
+        Self(hashlink::LinkedHashMap::with_hasher(
+            MapHashBuilder::default(),
+        ))
     }
 
     /// Consume the wrapper, yielding the backing insertion-ordered map.

@@ -25,9 +25,14 @@ edition = "2024"
 cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
 hashlink = "0.12.1"
 derivative = { version = "2.2.0", features = ["use_core"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0.57", features = ["float_roundtrip"] }
-schemars = "1.2.1"
-hex = "0.4.3"
+# These four are emitted with `default-features = false` (the generated rust crate runs its JSON and
+# hex deps in alloc mode). This manifest deliberately leaves default features ON and only ADDS the
+# emitted features: its job is to pre-fetch a SUPERSET of the dep universe, and disabling defaults
+# here could only shrink what `cargo fetch` pulls. `warmup_manifest_covers_registry_dep_universe`
+# compares versions and asserts feature CONTAINMENT, so the added names are what it checks.
+serde = { version = "1.0", features = ["derive", "alloc"] }
+serde_json = { version = "1.0.57", features = ["alloc", "float_roundtrip"] }
+schemars = { version = "1.2.1", features = ["derive"] }
+hex = { version = "0.4.3", features = ["alloc"] }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6.5"

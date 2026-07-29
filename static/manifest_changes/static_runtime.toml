@@ -49,3 +49,28 @@ set = '"0.4.3"'
 id = 6
 path = "dependencies.cbor_event"
 set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }'
+
+# The `std` feature, uniform with the generated rust crate's (see `rust.toml`'s entry for the full
+# contract). ASSERTED here for a reason that is not uniformity: `ordered_hash_map.rs` is one file
+# with two destinations — it is composed into the generated crate AND exported into this co-owned
+# crate — and it now selects its hash builder on `#[cfg(feature = "std")]`. An UNDECLARED feature is
+# always false, so shipping that cfg without this declaration would silently move every
+# static-crate consumer off std's `RandomState` (seeded SipHash) onto the backing map's default
+# hasher. The declaration and the cfg are therefore one change, not two.
+#
+# Scope of what this buys: an IN-CRATE switch only. Unlike the generated rust crate's, this
+# manifest's dependency specs are NOT reshaped to alloc mode (co-owned — a dep's std-ness is the
+# owning crate's business), so declaring `std` here does not by itself make the crate buildable with
+# `--no-default-features`.
+#
+# Same co-owned posture as the deps above: `features.default` merges as a union, so a hand-written
+# default list keeps its entries and gains `"std"`.
+[[change]]
+id = 7
+path = "features.default"
+set = '["std"]'
+
+[[change]]
+id = 8
+path = "features.std"
+set = '[]'

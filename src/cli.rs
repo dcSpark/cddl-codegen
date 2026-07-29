@@ -2,9 +2,20 @@ use clap::Parser;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
 
+/// Feature names the generated rust crate's `[features]` table already owns, so the
+/// `--rust-wasm-feature` flag may not claim one. See [`parse_rust_wasm_feature`].
+const RESERVED_RUST_FEATURE_NAMES: &[&str] = &["std", "default"];
+
 /// clap value parser for `--rust-wasm-feature`: a cargo feature name is non-empty and restricted to
 /// cargo's feature-name charset (`[A-Za-z0-9_+.-]`), so the name can be written into `[features]` and
 /// a `cfg(feature = "…")` gate verbatim. Rejects anything else with a message naming the bad char.
+///
+/// It additionally rejects the names the rust manifest's own `[features]` keys already occupy
+/// (`std`, `default` — see `static/manifest_changes/rust.toml`). The collision would be SILENT
+/// rather than loud: this flag's op is pushed after the change-log ops, so it applies last and its
+/// value (`["dep:wasm-bindgen"]` or `[]`) would simply overwrite the manifest's own key — turning
+/// the crate `no_std` on a plain build, or emptying its default features. Rejecting the input is the
+/// only place that collision can be reported at all.
 fn parse_rust_wasm_feature(s: &str) -> Result<String, String> {
     if s.is_empty() {
         return Err("must be a non-empty cargo feature name".to_owned());
@@ -15,6 +26,13 @@ fn parse_rust_wasm_feature(s: &str) -> Result<String, String> {
     {
         return Err(format!(
             "invalid character {c:?}; cargo feature names use only [A-Za-z0-9_+.-]"
+        ));
+    }
+    if RESERVED_RUST_FEATURE_NAMES.contains(&s) {
+        return Err(format!(
+            "reserved feature name {s:?}; the generated rust crate's [features] table already owns \
+             it, and this flag's key is written last — it would silently overwrite that entry. \
+             Pick another name (the default is \"wasm\")"
         ));
     }
     Ok(s.to_owned())
@@ -274,7 +292,8 @@ pub struct Cli {
     /// only on c-style enums under `--wasm`) is gated behind, so the rust crate compiles standalone
     /// without the optional `wasm-bindgen` dependency. The generated wasm crate enables this feature
     /// via its path dependency on the rust crate. Must be a valid cargo feature name (non-empty,
-    /// chars in `[A-Za-z0-9_+.-]`). Defaults to `wasm`.
+    /// chars in `[A-Za-z0-9_+.-]`) and not one the rust manifest already owns (`std`, `default`).
+    /// Defaults to `wasm`.
     // NB: the derived `Default` yields `""` here — clap's `default_value` applies only to parsed
     // invocations (same quirk as `wasm: bool`, whose parse default is true) — so a test built with
     // `..Default::default()` must set this explicitly if it also sets `wasm: true`.

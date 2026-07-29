@@ -20,4 +20,6 @@ derivative = { version = "2.2.0", features = ["use_core"] }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
+default = ["std"]
+std = []
 wasm = ["dep:wasm-bindgen"]

@@ -15,10 +15,12 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0.57", features = ["float_roundtrip"] }
-schemars = "1.2.1"
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1.0.57", default-features = false, features = ["alloc", "float_roundtrip"] }
+schemars = { version = "1.2.1", default-features = false, features = ["derive"] }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
+default = ["std"]
+std = []
 wasm = ["dep:wasm-bindgen"]
