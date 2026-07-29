@@ -641,7 +641,20 @@ json-schema build where applicable. Each config (`preserve`, `canonical`, `json`
 raw-bytes, extern-deps, …) exercises a distinct compile path, so they aren't redundant.
 A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into the generated
 *wasm* crate and `cargo test`ed there (host target — the wasm-bindgen wrapper types are plain Rust,
-so no node/wasm-pack is needed). `tests/core/tests_wasm.rs` (default profile) and
+so no node/wasm-pack is needed).
+
+The spliced hand files (each dir's `tests.rs`/`tests_wasm.rs` and shared fragments like
+`tests/custom_serialization{,_preserve}`) are CONSUMER-shaped code: they compile against the
+generated crate's own dependency features, so they must model the post-reshape world (e.g. `hex` in
+alloc mode has no `std::error::Error` on `FromHexError` — the two `custom_serialization` fragments
+carry the local-newtype migration exemplar). A delivery that reshapes a dep's features therefore
+sweeps the committed hand-file set as part of its battery — the reshape's owning family includes
+every fixture whose hand code uses that dep, which no ops-table enumeration can produce. And a
+green compile inside a fixture tree is weak evidence for that sweep: the oracle-carrying trees
+unify features graph-wide (the `cddl` dep's own `hex` re-enabled `hex/std` in the preserve tree and
+masked one of the two instances), the same unification caveat
+`rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards against below — full class
+ledger in `TESTING_ROADMAP.md` § Standing-system residuals. `tests/core/tests_wasm.rs` (default profile) and
 `tests/canonical/tests_wasm.rs` (preserve-encodings/canonical, whose map wrappers wrap
 `OrderedHashMap`) execute a representative sample of the wasm-ABI shape axis (the
 `project_wasm_matrix.ts` `SHAPES` list): construct through the wasm wrapper API, round-trip
