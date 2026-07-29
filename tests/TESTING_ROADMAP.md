@@ -1401,8 +1401,18 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   directive grammar and drifted twice (no `@used_as_elem`; pre-flavor `@used_as_key` grammar),
   with its hand-picked selfCheck vectors drifting WITH it — the layers that fired
   (`verify.ts`'s docs-lint, `project_corpus`'s content-drift check A) trigger only via adjacent
-  artifacts (a docs mention, a `[[cover]]` entry), not the mirror itself. Directive-SET drift now
-  has a firing detector: `corpus_detect.ts`'s selfCheck lockstep tripwire demands set equality
+  artifacts (a docs mention, a `[[cover]]` entry), not the mirror itself. A fourth, BYTE-COUPLED
+  flavor was read-caught before it fired (D1's core/alloc rewrite, 2026-07-29):
+  `composed_runtime_static_files`' preserve flavoring `.replace()`s a byte-exact import line that
+  lives in `static/non_empty_map.rs`, so rewriting that line's path would have silently no-op'd
+  the substitution — distinct from the instances above in failure mode: not silent (the mangled
+  flavor is an E0432 in every preserve corpus-compile cell, `local` tier) but loud-LATE and far
+  from the causing edit, and invisible to any grep of either file alone. Fixed as a synchronized
+  edit with a move-together comment on BOTH sides; the instance-level tripwire, due on the next
+  touch of that composition code, is a must-hit replace (assert the pattern occurred before
+  substituting — the selfCheck-lockstep analog for byte mirrors, turning the no-op into a
+  generation-time panic that every snapshot regeneration sees at `fast` tier). Directive-SET
+  drift now has a firing detector: `corpus_detect.ts`'s selfCheck lockstep tripwire demands set equality
   between the mirror's `MIRRORED_DIRECTIVES` and the authority's `tag("@…")` literals at import
   time, so `project_corpus` (fast tier, CI) fires the moment a directive is added or removed on
   either side. Remaining work, each piece behind its trigger:
@@ -1432,6 +1442,23 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
     `bounds_check_expr_non_negative`'s Array/Map leg and the member-side zero-min elision are
     defensive-only — every zero lower bound is dropped upstream by the owners above before
     emission, so the corner is unreachable end-to-end and a fixture cannot pin it.
+- **Tree-wide sweeps over gitignored regeneration targets count DEAD files as product — one
+  proven near-miss, no machinery (and none possible tool-side).** Proven instance (D1's Phase-0
+  inventory, caught by classification discipline, not by any gate): a long-lived checkout's
+  `tests/*/export*/` trees held 151 stale `.rs` at `<crate>/src/*.rs` from the pre-thin-root
+  layout — nothing compiles them (the thin root binds only `src/generated/**`), and a sweep that
+  counted them concluded the emitted rust crate has a `std::io` surface, which it does not. The
+  near-miss was writing that phantom surface into a delivery inventory as fact and sizing work
+  against it. No tool diagnostic can own the class: the crate `src/` level is USER territory by
+  the ownership contract (hand modules beside the seed-once `lib.rs` are legitimate, and the tool
+  cannot tell a user's file from its own pre-layout-change leftovers), and the trees are
+  gitignored, so no repo gate sees them either. Working rule (the fix that worked): classify
+  swept files by the CURRENT write-site key set (`src/generation/export.rs`'s write sites are the
+  authority), never by presence on disk, and state the unmatched remainder as non-product in the
+  sweep's scope note; hygiene half — delete-and-regenerate (or `git clean`) the export trees
+  before any tree-wide sweep on a checkout old enough to predate a layout change. Mechanical
+  layer on a SECOND distorted-analysis instance: a sweep-preflight that regenerates the swept
+  trees first, so the on-disk state IS the current write-site set.
 - **Run-local values in gate-cache key material — one proven instance, no machinery yet.** The
   TS-side cache keys hashed the literal nested-cargo argv, which embeds the run's `mkdtempSync`
   probe dir — every key was unique to its run, so verify.ts could never hit its cache across runs
@@ -2088,7 +2115,13 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   already has the problem measures it as "my spec and my manifest are unchanged and my generated code
   behaves differently", which is what makes it reportable at all, and it lies on the axis the cost
   grows along, since the deferred layer's value scales with how many such features exist rather than
-  with how many consumers hit the one we know about.
+  with how many consumers hit the one we know about. A second semantics-changing feature is now
+  known but is TOOL-OWNED and deliberate rather than unification-borne, so it does not fire this
+  trigger: D1 ships `derivative` with `use_core`, which changes every emitted `#[derivative(…)]`
+  expansion from `::std::` to `::core::` paths — landed only after probing the COMPLETE emitted
+  attribute-form set (7 bodies × 3 derive lines) for equivalence on host and a no-std target.
+  Recorded so the count of known semantics-changing dependency features reads two, not one, when
+  this axis is next weighed.
 
 - **A DOCUMENTED flag pairing can be broken while every fixture stays green, because a fixture
   satisfies the pairing's preconditions by accident.** Proven instance (found by reading the fixture,
