@@ -132,9 +132,9 @@
     },
     {
       "gate": "feature_corpus_roundtrips_nondefault_profiles",
-      "warm_ms": 386000,
+      "warm_ms": 465000,
       "n": 20,
-      "measured": "2026-07-28",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
@@ -144,6 +144,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 386000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 465000
         }
       ]
     },
@@ -285,9 +289,9 @@
     },
     {
       "gate": "multifile_matrix_roundtrips",
-      "warm_ms": 315000,
+      "warm_ms": 413000,
       "n": 20,
-      "measured": "2026-07-27",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
@@ -297,6 +301,10 @@
         {
           "date": "2026-07-27",
           "warm_ms": 315000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 413000
         }
       ]
     },
@@ -514,14 +522,18 @@
     },
     {
       "gate": "recombination_preserve_crates_execute",
-      "warm_ms": 61000,
+      "warm_ms": 89000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 61000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 89000
         }
       ]
     },
@@ -665,14 +677,18 @@
     },
     {
       "gate": "verify",
-      "warm_ms": 405000,
+      "warm_ms": 529000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 405000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 529000
         }
       ]
     },
@@ -694,9 +710,9 @@
     },
     {
       "gate": "wasm_matrix_roundtrips",
-      "warm_ms": 343000,
+      "warm_ms": 511000,
       "n": 20,
-      "measured": "2026-07-28",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
@@ -706,6 +722,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 343000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 511000
         }
       ]
     }
