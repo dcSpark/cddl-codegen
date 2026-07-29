@@ -13968,6 +13968,7 @@ fn depth_limit_output_declares_its_std_requirement_at_the_seam() {
         args.extend_from_slice(extra);
         crate::generation::GenerationScope::serialization_prelude(
             false,
+            false,
             &crate::cli::Cli::parse_from(args),
         )
         .unwrap()
@@ -19095,6 +19096,16 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         serialization_rs.contains("pub trait RawBytesEncoding"),
         "serialization.rs must ALWAYS include raw_bytes_encoding (pure function of flags), even \
          though the spec uses no raw bytes:\n{serialization_rs}"
+    );
+    // Same rule, and the asymmetry it creates against the IN-CRATE composition is the point: in a
+    // generated crate the canonical-hex door is gated on `cargo_manifest::needs_hex` (no hex users,
+    // no fragment, no dep), while a SHARED runtime must carry it whatever the exporting run's spec
+    // contained — a consumer crate generated later against this runtime imports the function from
+    // here, and this manifest asserts `hex` unconditionally so it always compiles.
+    assert!(
+        serialization_rs.contains("pub fn decode_canonical_hex"),
+        "serialization.rs must ALWAYS include the canonical-hex door (pure function of flags), \
+         even though the spec uses no hex:\n{serialization_rs}"
     );
     assert!(
         !serialization_rs.contains("MyUniqueExportType"),

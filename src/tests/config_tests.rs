@@ -3722,10 +3722,13 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("specs")).unwrap();
     // The FULL-flavor crate: preserve + canonical + json, and a spec that reaches every runtime type
-    // the export composes, so the exported files are exercised rather than merely present.
+    // the export composes, so the exported files are exercised rather than merely present. The
+    // `bw` bytes newtype is there for one of them specifically: its emitted serde deserializer
+    // calls `decode_canonical_hex`, which under `--common-import-override` must resolve into the
+    // SHARED runtime rather than a crate-local copy — the split layout's leg of that routing.
     std::fs::write(
         dir.join("specs/full.cddl"),
-        "full_rec = [ne: [+ uint], nm: {+ uint => text}, m: {* uint => text}, a: any]\n",
+        "bw = bytes ; @newtype\nfull_rec = [ne: [+ uint], nm: {+ uint => text}, m: {* uint => text}, a: any, b: bw]\n",
     )
     .unwrap();
     // The REDUCED-flavor crate: none of those flags, and a spec that avoids the two constructs the
@@ -3790,6 +3793,17 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
     assert!(
         !dir.join("gen/reduced/rust/src/generated/error.rs").exists(),
         "a --common-import-override crate keeps no local copy of the runtime"
+    );
+    // The canonical-hex door is one of those runtime items: the full crate's bytes newtype calls
+    // it, and the import must name the SHARED runtime. (`cargo check --workspace` below is what
+    // proves it RESOLVES; this pins that the path is the override's, so a regression to a
+    // crate-local spelling fails here with the reason rather than as a bare E0433.)
+    let full_mod = std::fs::read_to_string(dir.join("gen/full/rust/src/generated/mod.rs"))
+        .expect("the full crate's generated mod.rs must exist");
+    assert!(
+        full_mod.contains("use cddl_runtime::serialization::decode_canonical_hex;"),
+        "the bytes newtype's hex door must be imported from the shared runtime under \
+         --common-import-override, got:\n{full_mod}"
     );
 
     // The target crate root is HAND-owned: the tool never writes it, and its new-static-file notice

@@ -769,6 +769,33 @@ pub fn render_derived_template(
     Ok(format!("{}{body}", derived_header(log_name)))
 }
 
+/// Whether this run's rust crate takes the `hex` dependency: the `RawBytesEncoding` trait's
+/// `to_raw_hex`/`from_raw_hex` defaults call it, and so does every emitted bytes-newtype JSON
+/// codec.
+///
+/// SHARED, and that is the point of it being a function rather than a local: the manifest's `hex`
+/// dep op ([`ops_for_rust`]) and the composed runtime's `hex_canonical.rs` fragment
+/// (`GenerationScope::serialization_prelude`) must answer the same question, because the fragment
+/// names `hex::` paths — a fragment emitted without the dep is E0433 in generated output, and a dep
+/// asserted without any user is an unused entry. Two copies of the predicate could drift on the
+/// next shape added here; one function makes the agreement structural.
+pub fn needs_hex(types: &IntermediateTypes, export_raw_bytes_encoding_trait: bool) -> bool {
+    export_raw_bytes_encoding_trait
+        || types
+            .rust_structs()
+            .iter()
+            .any(|(_, rust_struct)| match rust_struct.variant() {
+                RustStructType::Wrapper { wrapped, .. } => {
+                    !rust_struct.config().custom_json
+                        && matches!(
+                            wrapped.resolve_alias_shallow(),
+                            ConceptualRustType::Primitive(Primitive::Bytes)
+                        )
+                }
+                _ => false,
+            })
+}
+
 /// The declarative changeset for `rust/Cargo.toml`: change-log keys + flag/type-conditional deps
 /// (set-or-remove) + the write-only version stamp. Absorbs the conditional dep logic that used to
 /// string-push into the template.
@@ -836,20 +863,7 @@ pub fn ops_for_rust(
     ));
 
     // type-conditional deps (mirrors the old `rust_cargo_toml` conditions exactly)
-    let needs_hex = export_raw_bytes_encoding_trait
-        || types
-            .rust_structs()
-            .iter()
-            .any(|(_, rust_struct)| match rust_struct.variant() {
-                RustStructType::Wrapper { wrapped, .. } => {
-                    !rust_struct.config().custom_json
-                        && matches!(
-                            wrapped.resolve_alias_shallow(),
-                            ConceptualRustType::Primitive(Primitive::Bytes)
-                        )
-                }
-                _ => false,
-            });
+    let needs_hex = needs_hex(types, export_raw_bytes_encoding_trait);
     // Alloc mode, on the same terms as the JSON deps above (and forwarded by `features.std` the same
     // way). `alloc` is what `hex::encode`/`decode` need — they return owned `String`/`Vec`.
     //

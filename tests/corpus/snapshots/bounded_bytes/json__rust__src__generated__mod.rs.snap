@@ -21,6 +21,7 @@ pub mod json_value_ser;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::serialization::decode_canonical_hex;
 
 #[derive(Clone, Debug)]
 pub struct Hash(pub(crate) Vec<u8>);
@@ -74,14 +75,7 @@ impl<'de> serde::de::Deserialize<'de> for Hash {
         D: serde::de::Deserializer<'de>,
     {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        let raw = s.as_bytes();
-        if raw.len() >= 2 && raw[0] == b'0' && (raw[1] == b'x' || raw[1] == b'X') {
-            return Err(serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(&s),
-                &"invalid hex bytes",
-            ));
-        }
-        hex::decode(&s)
+        decode_canonical_hex(&s)
             .ok()
             .and_then(|bytes| Hash::new(bytes).ok())
             .ok_or_else(|| {

@@ -21,6 +21,8 @@ pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod serialization;
 
+use crate::generated::serialization::decode_canonical_hex;
+
 #[derive(Clone, Debug)]
 pub enum Int {
     Uint(u64),
@@ -341,16 +343,14 @@ impl<'de> serde::de::Deserialize<'de> for PreludeBignint {
         D: serde::de::Deserializer<'de>,
     {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        let raw = s.as_bytes();
-        if raw.len() >= 2 && raw[0] == b'0' && (raw[1] == b'x' || raw[1] == b'X') {
-            return Err(serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(&s),
-                &"invalid hex bytes",
-            ));
-        }
-        hex::decode(&s).map(PreludeBignint::new).map_err(|_e| {
-            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
-        })
+        decode_canonical_hex(&s)
+            .map(PreludeBignint::new)
+            .map_err(|_e| {
+                serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(&s),
+                    &"invalid hex bytes",
+                )
+            })
     }
 }
 
@@ -408,16 +408,14 @@ impl<'de> serde::de::Deserialize<'de> for PreludeBiguint {
         D: serde::de::Deserializer<'de>,
     {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        let raw = s.as_bytes();
-        if raw.len() >= 2 && raw[0] == b'0' && (raw[1] == b'x' || raw[1] == b'X') {
-            return Err(serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(&s),
-                &"invalid hex bytes",
-            ));
-        }
-        hex::decode(&s).map(PreludeBiguint::new).map_err(|_e| {
-            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
-        })
+        decode_canonical_hex(&s)
+            .map(PreludeBiguint::new)
+            .map_err(|_e| {
+                serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(&s),
+                    &"invalid hex bytes",
+                )
+            })
     }
 }
 
@@ -487,16 +485,14 @@ impl<'de> serde::de::Deserialize<'de> for PreludeEncodedCbor {
         D: serde::de::Deserializer<'de>,
     {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        let raw = s.as_bytes();
-        if raw.len() >= 2 && raw[0] == b'0' && (raw[1] == b'x' || raw[1] == b'X') {
-            return Err(serde::de::Error::invalid_value(
-                serde::de::Unexpected::Str(&s),
-                &"invalid hex bytes",
-            ));
-        }
-        hex::decode(&s).map(PreludeEncodedCbor::new).map_err(|_e| {
-            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid hex bytes")
-        })
+        decode_canonical_hex(&s)
+            .map(PreludeEncodedCbor::new)
+            .map_err(|_e| {
+                serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(&s),
+                    &"invalid hex bytes",
+                )
+            })
     }
 }
 

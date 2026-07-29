@@ -187,23 +187,48 @@ mod tests {
     // rule (tests/README.md hand-vector shape 5: pin a re-exposed dependency's behavior BEFORE the
     // baseline moves). Asserted only through serde — no `hex::` path is named — so they survive a
     // swap and must be flipped in its own diff.
+    //
+    // The accepted grammar is CANONICAL hex — bare, even-length, lowercase, exactly what the
+    // serialize half emits — and both surfaces get it from the same runtime door
+    // (`decode_canonical_hex` in the composed `serialization.rs`), which is why the two cannot
+    // drift. Accepting uppercase was a leniency this surface HAD and no longer has: it was removed
+    // by maintainer ruling in exchange for the round-trip property pinned below.
     #[test]
     fn bytes_wrapper_hex_wire_pins() {
-        // Wire pin 5: serialize emits a PLAIN LOWERCASE hex string — no `0x` prefix, no uppercase.
+        // Wire pin 5: serialize emits a PLAIN LOWERCASE hex string — no `0x` prefix, no uppercase —
+        // and deserialize accepts that exact form.
         let value = BytesWrapper::new(vec![0xBA, 0xAD, 0xF0, 0x0D]);
         assert_eq!(serde_json::to_string(&value).unwrap(), "\"baadf00d\"");
-        // ...and deserialize accepts that exact form, plus its uppercase twin (decoding is
-        // case-insensitive), normalizing back to the lowercase form on the way out.
         let from_lower: BytesWrapper = serde_json::from_str("\"baadf00d\"").unwrap();
         assert_eq!(serde_json::to_string(&from_lower).unwrap(), "\"baadf00d\"");
-        let from_upper: BytesWrapper = serde_json::from_str("\"BAADF00D\"").unwrap();
-        assert_eq!(serde_json::to_string(&from_upper).unwrap(), "\"baadf00d\"");
+        // ...and its uppercase twin is now REJECTED (this half of pin 5 flipped with the canonical
+        // grammar). The JSON surface is verdict-only: the emitted deserializer discards the hex
+        // error and substitutes one wording for every refusal, so there is no character or index to
+        // pin here — the raw-bytes twin pins those.
+        assert_json_reject::<BytesWrapper>("\"BAADF00D\"", "invalid hex bytes");
+        // MIXED case, likewise rejected — a lowercase prefix buys the rest no leniency.
+        assert_json_reject::<BytesWrapper>("\"baADf00d\"", "invalid hex bytes");
         // Wire pin 3 (JSON half): a `0x` / `0X`-prefixed hex string is REJECTED — the accepted JSON
         // grammar for a bytes newtype is bare hex digits only. This is the pin a more lenient hex
         // implementation flips from reject to accept, silently widening a shipped JSON input
         // grammar while serialization keeps emitting the unprefixed form.
         assert_json_reject::<BytesWrapper>("\"0xbaadf00d\"", "invalid hex bytes");
         assert_json_reject::<BytesWrapper>("\"0XBAADF00D\"", "invalid hex bytes");
+    }
+
+    /// The canonical round-trip property at the JSON surface: for every ACCEPTED hex string, the
+    /// value it deserializes to re-serializes to that same string byte for byte. Strictly stronger
+    /// than the `bytes_wrapper` round-trip elsewhere in this file, which only ever feeds back what
+    /// the serializer produced: this says the accepted grammar and the emitted grammar are the SAME
+    /// grammar, so no accepted spelling exists that serialization would not itself have written.
+    /// Any read-side widening (uppercase, a `0x` prefix) falsifies exactly this.
+    #[test]
+    fn bytes_wrapper_hex_canonical_round_trip() {
+        for s in ["\"\"", "\"00\"", "\"baadf00d\"", "\"0123456789abcdef\""] {
+            let value: BytesWrapper = serde_json::from_str(s)
+                .unwrap_or_else(|e| panic!("{s} must be accepted canonical hex: {e}"));
+            assert_eq!(serde_json::to_string(&value).unwrap(), s);
+        }
     }
 
     // Each type emits a hand-written `impl JsonSchema` alongside its

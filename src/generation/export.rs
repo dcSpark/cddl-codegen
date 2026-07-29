@@ -778,6 +778,7 @@ impl GenerationScope {
             let mut merged = codegen::Scope::new();
             merged.raw(Self::serialization_prelude(
                 export_raw_bytes_encoding_trait,
+                crate::cargo_manifest::needs_hex(types, export_raw_bytes_encoding_trait),
                 cli,
             )?);
             merged.append(&self.rust_serialize_lib_scope);
@@ -1112,8 +1113,9 @@ impl GenerationScope {
                 write_rs_with_preserve(&path, filename, &content, cli.preserve_comments)?;
                 warn_new_static_file(is_new, filename);
             }
-            // serialization.rs — the static prelude only. `export_raw_bytes_encoding_trait` is
-            // forced true (always include raw_bytes_encoding, per the pure-function-of-flags rule).
+            // serialization.rs — the static prelude only. `export_raw_bytes_encoding_trait` and
+            // `needs_hex` are both forced true (always include raw_bytes_encoding and the canonical
+            // hex door, per the pure-function-of-flags rule).
             // rustfmt'd before the preserve write, exactly like the composed runtime files.
             //
             // The prelude carries no `use` statements of its own: in-crate it is prepended to the
@@ -1125,7 +1127,7 @@ impl GenerationScope {
                 "use super::error::{{DeserializeError, DeserializeFailure}};\n\
                  use cbor_event::de::Deserializer;\n\
                  use cbor_event::se::Serializer;\n\n{}",
-                Self::serialization_prelude(true, cli)?
+                Self::serialization_prelude(true, true, cli)?
             );
             let prelude =
                 crate::alloc_import_inject::inject(rustfmt_generated_string(&prelude)?.as_ref())
@@ -1267,8 +1269,18 @@ impl GenerationScope {
     /// The static serialization runtime prelude (concatenated from `static/serialization*.rs`)
     /// that `export` prepends to the root serialization.rs. Exposed so it can be snapshotted on
     /// its own (it ships verbatim but varies by `--preserve-encodings`/`--canonical-form`).
+    ///
+    /// `needs_hex` gates the canonical-hex fragment, and its two callers pass it ASYMMETRICALLY on
+    /// purpose. In-crate it is [`crate::cargo_manifest::needs_hex`] — the very predicate that
+    /// decides the `hex` dependency op, so the fragment and the dep it references can never
+    /// disagree. For the `--export-static-crate` target it is unconditionally `true`: that
+    /// manifest asserts `hex` always (`static/manifest_changes/static_runtime.toml`), and a
+    /// consumer crate generated LATER against that shared runtime must find the function there
+    /// regardless of what the EXPORTING run's own spec happened to contain — the exported set is a
+    /// pure function of the flag set, never of the spec (same rule as `raw_bytes_encoding` below).
     pub(crate) fn serialization_prelude(
         export_raw_bytes_encoding_trait: bool,
+        needs_hex: bool,
         cli: &Cli,
     ) -> std::io::Result<String> {
         let mut serialize_paths = vec![cli.static_dir.join("serialization.rs")];
@@ -1289,6 +1301,12 @@ impl GenerationScope {
         } else {
             serialize_paths.push(cli.static_dir.join("serialization_non_preserve.rs"));
             serialize_paths.push(cli.static_dir.join("serialization_non_force_canonical.rs"));
+        }
+        // The one hex-reading door (`decode_canonical_hex`), placed before its users: the
+        // `RawBytesEncoding` defaults below call it directly, and every emitted bytes-newtype JSON
+        // deserializer imports it from this module.
+        if needs_hex {
+            serialize_paths.push(cli.static_dir.join("hex_canonical.rs"));
         }
         if export_raw_bytes_encoding_trait {
             serialize_paths.push(cli.static_dir.join("raw_bytes_encoding.rs"));
