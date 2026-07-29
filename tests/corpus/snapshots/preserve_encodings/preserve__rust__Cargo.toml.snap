@@ -22,5 +22,5 @@ wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
 default = ["std"]
-std = []
+std = ["hex/std"]
 wasm = ["dep:wasm-bindgen"]

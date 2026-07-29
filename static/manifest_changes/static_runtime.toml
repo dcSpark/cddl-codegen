@@ -58,13 +58,20 @@ set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c
 # static-crate consumer off std's `RandomState` (seeded SipHash) onto the backing map's default
 # hasher. The declaration and the cfg are therefore one change, not two.
 #
-# Scope of what this buys: an IN-CRATE switch only. Unlike the generated rust crate's, this
-# manifest's dependency specs are NOT reshaped to alloc mode (co-owned — a dep's std-ness is the
-# owning crate's business), so declaring `std` here does not by itself make the crate buildable with
-# `--no-default-features`.
+# Scope of what this buys: the same switch the generated rust crate's `std` is. The `[]` value below
+# is only the BASE — `ops_for_static_runtime` overrides it every run with a COMPUTED list forwarding
+# to each dependency this flavor asserts in alloc mode (`hex/std` always; `serde/std`,
+# `serde_json/std`, `schemars/std` on their own flag conditions), and asserts those specs with
+# `default-features = false`. A consumer of this crate can therefore reach its `no_std` arm with
+# `default-features = false`, which is what the crates generated beside it forward into.
+# `hashlink` and the pinned `cbor_event` fork contribute nothing: neither declares a `std` feature
+# (the fork is unconditionally `#![no_std]`), so there is nothing to name.
 #
 # Same co-owned posture as the deps above: `features.default` merges as a union, so a hand-written
-# default list keeps its entries and gains `"std"`.
+# default list keeps its entries and gains `"std"`. `features.std` merges as a union too, plus a
+# prune of any forward whose dependency is not in the table — which on THIS manifest can only ever
+# drop a hand-removed dependency's forward, since the tool never removes a dep from a co-owned
+# manifest.
 [[change]]
 id = 7
 path = "features.default"
@@ -74,3 +81,13 @@ set = '["std"]'
 id = 8
 path = "features.std"
 set = '[]'
+
+# `hex` in ALLOC MODE, so the `hex/std` forward the computed `features.std` carries is a real switch:
+# with default features on, hex's `std` is on regardless of this crate's feature and a
+# `--no-default-features` build of a consumer still gets a std `hex`. Same shape the generated rust
+# crate asserts, so one runtime serves both. (Co-owned manifest: an assert may UPDATE a spec, as this
+# does — it may never remove one.)
+[[change]]
+id = 9
+path = "dependencies.hex"
+set = '{ version = "0.4.3", default-features = false, features = ["alloc"] }'

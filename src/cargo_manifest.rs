@@ -12,7 +12,7 @@
 //! The three op kinds are the per-field collision rules:
 //! * [`ManifestOp::Set`] — tool-owned key: written every run, overwriting whatever is there. User
 //!   edits to these are overwritten by design (the dep set is version-coupled to the emitted code).
-//!   **Two** path classes are exceptions, both merging into the existing value instead of replacing
+//!   **Three** path classes are exceptions, all merging into the existing value instead of replacing
 //!   it:
 //!   - `["dependencies", <name>]` merges FIELD-LEVEL ([`merge_dep_spec`]), so a user's
 //!     `optional`/`default-features`/extra features and a compatible version pin survive a regen
@@ -23,6 +23,13 @@
 //!     silently drop a consumer's customized default-feature list, and the key is not one the tool
 //!     can decline to write — the generated crate's `std` feature has to be on by default for a
 //!     plain `cargo build` to keep working.
+//!   - `["features", "std"]` merges as a union too, plus an ABSENT-DEP PRUNE
+//!     ([`merge_std_features`]): a `<pkg>/<feat>` entry whose `<pkg>` is not a key of the document's
+//!     `[dependencies]` table when the op applies is dropped from either side. The tool's `std` list
+//!     is COMPUTED per run from the deps that run wrote, so unlike `default`'s constant list it
+//!     varies with the flags, and a union alone would strand yesterday's `serde/std` beside a
+//!     tombstoned dep — a manifest cargo rejects. This is why the `features.std` op is pushed AFTER
+//!     every dependencies op in every builder.
 //!
 //!   Every other `Set` path hard-replaces as before.
 //! * [`ManifestOp::SeedOnce`] — written only if the key is absent (existence check only, never a
@@ -121,6 +128,9 @@ pub fn apply(
                     Some(existing) if is_dependency_entry(path) => merge_dep_spec(existing, item),
                     Some(existing) if is_default_feature_list(path) => {
                         merge_default_features(existing, item)
+                    }
+                    existing if is_std_feature_list(path) => {
+                        merge_std_features(existing, item, &dependency_keys(&doc))
                     }
                     _ => item.clone(),
                 };
@@ -229,6 +239,84 @@ fn is_dependency_entry(path: &[String]) -> bool {
 /// `default` is the one feature key whose value a consumer legitimately owns a share of.
 fn is_default_feature_list(path: &[String]) -> bool {
     path.len() == 2 && path[0] == "features" && path[1] == "default"
+}
+
+/// Is `path` exactly `["features", "std"]` — the third merging `Set` path class
+/// ([`merge_std_features`])? Like `default`, its value is co-owned: the tool asserts the forwards it
+/// knows about, a consumer may add their own.
+fn is_std_feature_list(path: &[String]) -> bool {
+    path.len() == 2 && path[0] == "features" && path[1] == "std"
+}
+
+/// Every key of the document's `[dependencies]` table, as the feature syntax spells them.
+///
+/// The TABLE KEY rather than any `package` rename target, because that is what a `<pkg>/<feat>`
+/// feature entry resolves against.
+fn dependency_keys(doc: &DocumentMut) -> Vec<String> {
+    doc.as_table()
+        .get("dependencies")
+        .and_then(Item::as_table_like)
+        .map(|t| t.iter().map(|(key, _)| key.to_owned()).collect())
+        .unwrap_or_default()
+}
+
+/// The `<pkg>` a feature-list entry forwards to, for the two forwarding spellings cargo has
+/// (`<pkg>/<feat>` and the weak `<pkg>?/<feat>`). `None` for a bare feature name, which names a
+/// feature of THIS crate and is never pruned.
+fn forwarded_package(entry: &str) -> Option<&str> {
+    let (package, _) = entry.split_once('/')?;
+    Some(package.strip_suffix('?').unwrap_or(package))
+}
+
+/// Merge the tool's `features.std` list onto the existing one, then prune every forward to a package
+/// the document's `[dependencies]` table does not hold.
+///
+/// The union half is [`merge_default_features`]'s, and for the same reason: a consumer's own
+/// forwards (to a dependency they added by hand) are theirs and survive verbatim, in their order,
+/// with tool entries appended.
+///
+/// The prune half is what `features.default` needs no equivalent of. `default`'s tool set is the
+/// constant `["std"]`, so a union can never leave an entry behind that no longer means anything.
+/// `std`'s tool set is FLAG-VARYING — it names exactly the dependencies this run asserted — so
+/// dropping `--json-serde-derives` tombstones `dependencies.serde` while an already-written manifest
+/// still carries `serde/std`, and cargo refuses a feature naming an absent dependency. Pruning on
+/// the dependency table makes a flag flip converge in one pass, keeps a consumer's hand forward to a
+/// dependency that IS present, and drops the ones whose dependency the tool removed.
+///
+/// Still a pure function of `(ops, existing)`: `deps` is read out of the document the ops are being
+/// applied to, which is why every builder pushes this op after its last dependencies op.
+///
+/// Safe fallback when either side is not an array, matching [`merge_default_features`]: take the
+/// tool's value — pruned, since the tool's own list is the one this run is asserting.
+fn merge_std_features(existing: Option<&Item>, tool: &Item, deps: &[String]) -> Item {
+    let keep = |entry: &str| match forwarded_package(entry) {
+        Some(package) => deps.iter().any(|dep| dep == package),
+        None => true,
+    };
+    let pruned_tool = || {
+        let mut arr = Array::new();
+        if let Some(list) = tool.as_array() {
+            for feature in list.iter().filter_map(Value::as_str).filter(|f| keep(f)) {
+                arr.push(feature);
+            }
+        }
+        Item::Value(Value::Array(arr))
+    };
+    let (Some(existing), Some(tool_list)) = (existing, tool.as_array()) else {
+        return pruned_tool();
+    };
+    let Some(user_list) = existing.as_array() else {
+        return pruned_tool();
+    };
+    let mut merged = user_list.clone();
+    let have: Vec<&str> = user_list.iter().filter_map(Value::as_str).collect();
+    for feature in tool_list.iter().filter_map(Value::as_str) {
+        if !have.contains(&feature) {
+            merged.push(feature);
+        }
+    }
+    merged.retain(|value| value.as_str().is_none_or(keep));
+    Item::Value(Value::Array(merged))
 }
 
 /// The version field of a dep spec: the string itself for a plain-string shorthand (`"1.0"` is
@@ -640,13 +728,14 @@ pub fn ops_for_rust(
         "{ version = \"2.2.0\", features = [\"use_core\"] }",
         cli.preserve_encodings,
     ));
-    // The JSON deps run in ALLOC MODE (`default-features = false` + explicit features), because the
-    // crate's own `std` feature cannot forward to a dep's (the deps are conditional; a feature
-    // naming an absent dep is a manifest error — see the `features.std` entry in the change log).
-    // So the specs the tool asserts have to be the ones that work with the feature OFF, and they are
-    // the same specs a std build gets: alloc mode is a subset, not a different library. `alloc`
-    // restores what `default-features = false` removed on the surface the generated code uses
-    // (owned `String`/`Vec`, the `to_string`/`from_str` entry points).
+    // The JSON deps run in ALLOC MODE (`default-features = false` + explicit features), which is
+    // what makes them FORWARDABLE: the crate's own `std` feature names `<dep>/std` for each of them
+    // (see the computed `features.std` op at the end of this function), so a `std` consumer gets the
+    // dep's std build and a `default-features = false` consumer gets its alloc build, off one
+    // switch. Alloc mode is a subset of the std one, not a different library, so nothing about the
+    // emitted code changes with the arm; `alloc` restores what `default-features = false` removed on
+    // the surface the generated code uses (owned `String`/`Vec`, the `to_string`/`from_str` entry
+    // points).
     ops.push(dep(
         "serde",
         "{ version = \"1.0\", default-features = false, features = [\"derive\", \"alloc\"] }",
@@ -687,8 +776,8 @@ pub fn ops_for_rust(
                 }
                 _ => false,
             });
-    // Alloc mode, on the same terms as the JSON deps above (the crate's `std` feature cannot forward
-    // to a dep's). `alloc` is what `hex::encode`/`decode` need — they return owned `String`/`Vec`.
+    // Alloc mode, on the same terms as the JSON deps above (and forwarded by `features.std` the same
+    // way). `alloc` is what `hex::encode`/`decode` need — they return owned `String`/`Vec`.
     // `hex`'s std-only `Error` impl on `FromHexError` is already handled independently of the spec,
     // by the runtime's `FromHexErrorCore` newtype in `static/raw_bytes_encoding.rs`.
     ops.push(dep(
@@ -710,11 +799,58 @@ pub fn ops_for_rust(
         needs_wasm_bindgen,
     ));
 
+    // `--rust-dep=<package>=<path>`: the manifest half of the cross-crate references this crate's
+    // RUST pass emits for an extern dependency — `use <dep>::<Type>;` for every imported type
+    // (`--extern-import`), which is written whether or not `--wasm` is on. Only this flag carries
+    // where the named crate lives.
+    //
+    // ASSERT-ONLY, on exactly the terms `ops_for_json_gen` states for the same op on the json-gen
+    // manifest and `ops_for_wasm` on the wasm one: the package name lives only inside the flag
+    // value, so a dropped flag carries no name to tombstone and a stale entry lingers until removed
+    // by hand — documented on the flag rather than left to be discovered.
+    let std_forwarding = cli.std_forward_deps();
+    ops.extend(manifest_dep_ops(cli.rust_deps(), &std_forwarding));
+
+    // The computed `std` feature — pushed AFTER every dependencies op above, which the merge's
+    // absent-dep prune depends on (see `std_feature_op`).
+    //
+    // The rule for what lands here is one sentence: a dependency's `std` feature is forwarded iff
+    // this run ships that dependency with `default-features = false` AND the dependency exposes a
+    // `std` feature. That is why the four third-party entries below are exactly the alloc-mode specs
+    // asserted above, and why `hashlink` and `cbor_event` contribute nothing (neither declares a
+    // `std` feature at all — the fork is unconditionally `#![no_std]`), nor does the proc-macro
+    // `derivative` (its spec keeps default features) or the wasm-only optional `wasm-bindgen`.
+    //
+    // The path-dep entries come first and sorted; the third-party ones follow in the fixed order
+    // their dep ops are pushed, so the rendered array reads the way the function does.
+    let mut std_features: Vec<String> = std_forwarding
+        .iter()
+        .map(|package| format!("{package}/std"))
+        .collect();
+    for (name, enabled) in [
+        ("serde", cli.json_serde_derives),
+        (
+            "serde_json",
+            cli.json_serde_derives || cli.json_schema_export,
+        ),
+        ("schemars", cli.json_schema_export),
+        ("hex", needs_hex),
+    ] {
+        if enabled {
+            std_features.push(format!("{name}/std"));
+        }
+    }
+    push_std_feature_op(&mut ops, std_features);
+
     // The feature gating the c-style-enum `#[wasm_bindgen]` (see `generate_c_style_enum`). Under `--wasm` it
     // ALWAYS exists — enabling `dep:wasm-bindgen` when a c-style enum is present, otherwise empty —
     // so the wasm crate can reference it unconditionally via its path dep without knowing whether the
     // spec has a c-style enum. `dep:` syntax so the optional dep introduces no implicit same-named
     // feature. Set-or-remove like the conditional deps: dropping `--wasm` tombstones it.
+    //
+    // Ordered AFTER the `features.std` op above, which is what keeps a fresh manifest's `[features]`
+    // table reading `default`, `std`, `<wasm>` — the order the change log gives it, and cargo's
+    // convention. A `Set` on a vacant key appends, so op order IS key order on a first write.
     let feature_op = if cli.wasm {
         let list = if needs_wasm_bindgen {
             "[\"dep:wasm-bindgen\"]"
@@ -729,17 +865,6 @@ pub fn ops_for_rust(
         key_path(&["features", cli.rust_wasm_feature.as_str()]),
         feature_op,
     ));
-
-    // `--rust-dep=<package>=<path>`: the manifest half of the cross-crate references this crate's
-    // RUST pass emits for an extern dependency — `use <dep>::<Type>;` for every imported type
-    // (`--extern-import`), which is written whether or not `--wasm` is on. Only this flag carries
-    // where the named crate lives.
-    //
-    // ASSERT-ONLY, on exactly the terms `ops_for_json_gen` states for the same op on the json-gen
-    // manifest and `ops_for_wasm` on the wasm one: the package name lives only inside the flag
-    // value, so a dropped flag carries no name to tombstone and a stale entry lingers until removed
-    // by hand — documented on the flag rather than left to be discovered.
-    ops.extend(manifest_dep_ops(cli.rust_deps()));
 
     ops.push(version_stamp());
     Ok(ops)
@@ -787,7 +912,13 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     // manifest: the package name lives only inside the flag value, so a dropped flag carries no name
     // to tombstone and a stale entry lingers until removed by hand — documented on the flag rather
     // than left to be discovered.
-    ops.extend(manifest_dep_ops(cli.wasm_deps()));
+    // No forwarding set: `--std-forward-dep` is a rust-manifest flag. The wasm crate is `std` by
+    // nature (wasm-bindgen), declares no `std` feature, and consumes the rust crate with default
+    // features on — there is nothing here for a forward to switch.
+    ops.extend(manifest_dep_ops(
+        cli.wasm_deps(),
+        &std::collections::BTreeSet::new(),
+    ));
 
     ops.push(version_stamp());
     Ok(ops)
@@ -804,19 +935,68 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
 /// The `["dependencies", <name>]` shape is exactly the path class [`apply`] merges FIELD-LEVEL, so
 /// an entry a user already added by hand for the same package converges on one entry: our `path`
 /// wins, their `version`/`optional`/`features` survive.
+/// `std_forwarding` names the packages whose spec additionally carries `default-features = false`
+/// (`--std-forward-dep`, rust manifest only): forwarding `<pkg>/std` is only half a switch if the
+/// dependency's own default features turn `std` back on regardless. `merge_dep_spec` treats it as
+/// any other tool-set field, so it overwrites a stale `default-features = true` while the user's
+/// version pin, extra features and `optional` survive.
 fn manifest_dep_ops(
     deps: std::collections::BTreeMap<String, String>,
+    std_forwarding: &std::collections::BTreeSet<String>,
 ) -> Vec<(KeyPath, ManifestOp)> {
     deps.into_iter()
         .map(|(name, path)| {
             let mut spec = InlineTable::new();
             spec.insert("path", Value::from(path));
+            if std_forwarding.contains(&name) {
+                spec.insert("default-features", Value::from(false));
+            }
             (
                 key_path(&["dependencies", name.as_str()]),
                 ManifestOp::Set(Item::Value(Value::InlineTable(spec))),
             )
         })
         .collect()
+}
+
+/// The computed `features.std` op: a `Set` of `<package>/std` entries, one per dependency this run
+/// asserted that has a `std` feature to forward to.
+///
+/// ALWAYS pushed, even when the list is empty — the manifest shape stays uniform across flag sets
+/// (`std = []` is what a crate with nothing to forward gets), and an op that sometimes vanished
+/// could not converge a manifest a previous flag set wrote.
+///
+/// **Ordering invariant: every caller pushes this AFTER its last `[dependencies]` op, and as the
+/// changeset's ONLY op on that path.** The merge's prune reads the dependency table out of the
+/// document being written ([`merge_std_features`]), so an op ordered before a dep's `Set` would
+/// prune a forward to a dependency that is about to exist, and one ordered before a dep's `Remove`
+/// would keep a forward to one that is about to go. The change logs' own `features.std` entry sits
+/// at exactly that wrong position, which is why [`push_std_feature_op`] drops it rather than letting
+/// two ops share the path.
+fn std_feature_op(entries: Vec<String>) -> (KeyPath, ManifestOp) {
+    let mut list = Array::new();
+    for entry in entries {
+        list.push(entry);
+    }
+    (
+        key_path(&["features", "std"]),
+        ManifestOp::Set(Item::Value(Value::Array(list))),
+    )
+}
+
+/// Replace whatever `features.std` op the change log folded to with the computed one, at the END of
+/// `ops`.
+///
+/// The log's entry stays in the log (it is append-only, and it is the honest base the derived
+/// template renders), but it must not APPLY: it is ordered with the other log keys, i.e. before
+/// every conditional dependency op, where the merge's prune would answer against a dependency table
+/// the run has not finished writing. The one case that costs is a hand-written forward to a package
+/// a `--rust-dep` in this same run introduces — pruned as absent at the log's position, and gone
+/// from the file for good.
+fn push_std_feature_op(ops: &mut Vec<(KeyPath, ManifestOp)>, entries: Vec<String>) {
+    let path = key_path(&["features", "std"]);
+    ops.retain(|(p, _)| *p != path);
+    ops.push(std_feature_op(entries));
 }
 
 /// The declarative changeset for the `--export-static-crate` target's `Cargo.toml`: the deps the
@@ -831,13 +1011,21 @@ fn manifest_dep_ops(
 /// them). Package identity keys are seed-only (see the log).
 pub fn ops_for_static_runtime(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     let mut ops = ops_from_log(cli, "manifest_changes/static_runtime.toml")?;
+    // hashlink has no `std` feature at all (its only feature is `serde_impl`), so there is nothing
+    // to reshape and nothing to forward — the spec stays exactly as the generated crate's is.
     if cli.preserve_encodings {
         ops.push(dep("hashlink", "\"0.12.1\"", true));
     }
+    // The three JSON specs are the generated crate's, verbatim: ALLOC MODE plus a `<dep>/std`
+    // forward below. Asserting them here is within the co-owned contract — an assert may UPDATE a
+    // spec (it may never REMOVE one) — and it is what makes this crate's own `std` feature a real
+    // switch rather than an in-crate cfg: `ordered_hash_map.rs` is the same file in both
+    // destinations, and a runtime whose deps stayed std-on could not serve a `no_std` consumer of
+    // the crates that import it.
     if cli.json_serde_derives {
         ops.push(dep(
             "serde",
-            "{ version = \"1.0\", features = [\"derive\"] }",
+            "{ version = \"1.0\", default-features = false, features = [\"derive\", \"alloc\"] }",
             true,
         ));
     }
@@ -848,13 +1036,41 @@ pub fn ops_for_static_runtime(cli: &Cli) -> std::io::Result<Vec<(KeyPath, Manife
     if cli.json_serde_derives || cli.json_schema_export {
         ops.push(dep(
             "serde_json",
-            "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
+            "{ version = \"1.0.57\", default-features = false, features = [\"alloc\", \"float_roundtrip\"] }",
             true,
         ));
     }
     if cli.json_schema_export {
-        ops.push(dep("schemars", "\"1.2.1\"", true));
+        ops.push(dep(
+            "schemars",
+            "{ version = \"1.2.1\", default-features = false, features = [\"derive\"] }",
+            true,
+        ));
     }
+
+    // The computed `std` feature, after every dependencies op (see `std_feature_op`). `hex` is
+    // unconditional here because the log asserts the dep unconditionally; the other three follow
+    // their own conditions exactly.
+    //
+    // The set-or-SKIP posture above interacts with the merge's absent-dep prune the right way round:
+    // a dep this flavor stops needing is never removed from this manifest, so its `<dep>/std` entry
+    // union-survives beside the dep it names — the pair stays consistent either way, which is the
+    // property the prune exists to keep.
+    let mut std_features = vec!["hex/std".to_owned()];
+    for (name, enabled) in [
+        ("serde", cli.json_serde_derives),
+        (
+            "serde_json",
+            cli.json_serde_derives || cli.json_schema_export,
+        ),
+        ("schemars", cli.json_schema_export),
+    ] {
+        if enabled {
+            std_features.push(format!("{name}/std"));
+        }
+    }
+    push_std_feature_op(&mut ops, std_features);
+
     ops.push(version_stamp());
     Ok(ops)
 }
@@ -879,7 +1095,12 @@ pub fn ops_for_json_gen(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>
     // flag value and a dropped flag carries none. A stale entry therefore lingers until removed by
     // hand — documented on the flag rather than left to be discovered. `--wasm-dep` carries the same
     // op onto `wasm/Cargo.toml` on the same terms; see `manifest_dep_ops`.
-    ops.extend(manifest_dep_ops(cli.json_gen_deps()));
+    // No forwarding set, for the reason `ops_for_wasm` states: the json-gen crate is `std` by nature
+    // (it writes schema files to disk) and declares no `std` feature.
+    ops.extend(manifest_dep_ops(
+        cli.json_gen_deps(),
+        &std::collections::BTreeSet::new(),
+    ));
 
     ops.push(version_stamp());
     Ok(ops)
@@ -1628,12 +1849,244 @@ my-feature = []
         assert_eq!(second, third, "and stay there:\n{second}");
     }
 
-    /// The union is exactly ONE more path: a sibling `features.*` key is tool-NAMED, so it keeps
-    /// hard-replace semantics (this is what repairs a stale `--rust-wasm-feature` list, per
-    /// `feature_gate_custom_name_repairs_legacy_feature_list`).
+    /// The merging paths are exactly `features.default` and `features.std`: the `--rust-wasm-feature`
+    /// leaf is tool-NAMED (its whole value is `["dep:wasm-bindgen"]` or `[]`, decided by the spec),
+    /// so it keeps hard-replace semantics — which is what repairs a stale list, per
+    /// `feature_gate_custom_name_repairs_legacy_feature_list`.
     #[test]
     fn sibling_feature_keys_still_hard_replace() {
-        let existing = "[features]\nstd = [\"something-stale\"]\n";
+        let existing = "[features]\nwasm = [\"something-stale\"]\n";
+        let out = apply(
+            &[set(&["features", "wasm"], "[]")],
+            Some(existing),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert!(
+            out.contains("wasm = []") && !out.contains("something-stale"),
+            "a tool-named sibling `features.*` key must hard-replace:\n{out}"
+        );
+    }
+
+    // ---- the computed, forwarding `std` feature ----------------------------------------------
+
+    /// The computed list's RENDERED ORDER, read off the production builder: `--std-forward-dep` path
+    /// packages first and sorted, then the third-party entries in the fixed order their dep ops are
+    /// pushed (serde, serde_json, schemars, hex). Order is not semantics to cargo, but it is what a
+    /// reviewer diffs, so it is pinned rather than left to whatever the iteration happens to be.
+    #[test]
+    fn the_computed_std_list_renders_path_deps_sorted_then_the_fixed_third_party_order() {
+        with_manifest_ops(
+            "pubkey = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nfoo = [k: pubkey]\n",
+            &[
+                "--json-serde-derives",
+                "true",
+                "--json-schema-export",
+                "true",
+                "--rust-dep",
+                "zeta-lib=../zeta/rust",
+                "--rust-dep",
+                "alpha-lib=../alpha/rust",
+                "--std-forward-dep",
+                "zeta-lib",
+                "--std-forward-dep",
+                "alpha-lib",
+            ],
+            |rust, _| {
+                let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains(
+                        "std = [\"alpha-lib/std\", \"zeta-lib/std\", \"serde/std\", \
+                         \"serde_json/std\", \"schemars/std\", \"hex/std\"]"
+                    ),
+                    "the computed std list drifted from its pinned order:\n{out}"
+                );
+            },
+        );
+    }
+
+    /// `--std-forward-dep` is BOTH halves of the switch: the feature entry above, and
+    /// `default-features = false` on the dependency itself. Forwarding `<pkg>/std` while the
+    /// dependency keeps its default features would be a switch that is always on.
+    #[test]
+    fn a_std_forward_dep_takes_the_path_dependency_with_default_features_off() {
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &[
+                "--rust-dep",
+                "core-lib=../../core/rust",
+                "--std-forward-dep",
+                "core-lib",
+            ],
+            |rust, _| {
+                let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains(
+                        "core-lib = { path = \"../../core/rust\", default-features = false }"
+                    ),
+                    "a forwarded path dep must be taken with default features off:\n{out}"
+                );
+                assert!(
+                    out.contains("std = [\"core-lib/std\"]"),
+                    "and named by the crate's own std feature:\n{out}"
+                );
+            },
+        );
+        // The same `--rust-dep` WITHOUT the forwarding flag keeps default features — the opt-in is
+        // an opt-in, and an unmarked path dep is unchanged from before this feature existed.
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--rust-dep", "core-lib=../../core/rust"],
+            |rust, _| {
+                let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+                assert!(
+                    out.contains("core-lib = { path = \"../../core/rust\" }")
+                        && out.contains("std = []"),
+                    "an unmarked --rust-dep must be untouched by the forwarding:\n{out}"
+                );
+            },
+        );
+    }
+
+    /// A consumer's OWN forward, to a dependency they added by hand, survives verbatim and gains
+    /// ours — the union half, on the CML-shaped base every other merge test uses.
+    #[test]
+    fn cml_shaped_std_list_unions_with_the_computed_one() {
+        let existing = format!(
+            "{}fraction = \"0.13\"\n\n[features]\ndefault = [\"std\"]\nstd = [\"fraction/std\"]\n",
+            cml_shaped_manifest()
+        );
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--json-serde-derives", "true"],
+            |rust, _| {
+                let out = apply(rust, Some(&existing), "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains("std = [\"fraction/std\", \"serde/std\", \"serde_json/std\"]"),
+                    "the user's forward must come first and ours be appended:\n{out}"
+                );
+            },
+        );
+    }
+
+    /// Three applications over a customized list reach and hold a fixed point — the property every
+    /// merging path in this file owes, and the one a prune could break by dropping an entry it just
+    /// added.
+    #[test]
+    fn rerun_is_byte_identical_with_a_customized_std_list() {
+        let existing = format!(
+            "{}fraction = \"0.13\"\n\n[features]\ndefault = [\"std\"]\nstd = [\"fraction/std\"]\n",
+            cml_shaped_manifest()
+        );
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--json-serde-derives", "true"],
+            |rust, _| {
+                let first = apply(rust, Some(&existing), "rust/Cargo.toml").unwrap();
+                let second = apply(rust, Some(&first), "rust/Cargo.toml").unwrap();
+                assert_eq!(
+                    first, second,
+                    "the std merge must reach a fixed point:\n{first}"
+                );
+                let third = apply(rust, Some(&second), "rust/Cargo.toml").unwrap();
+                assert_eq!(second, third, "and stay there:\n{second}");
+                assert!(
+                    first.contains("fraction/std"),
+                    "the user's forward to their own dep must survive every application:\n{first}"
+                );
+            },
+        );
+    }
+
+    /// The reason `features.std` needs a prune that `features.default` does not: the tool's list is
+    /// FLAG-VARYING. Dropping the json flags tombstones `dependencies.serde`, and a union alone
+    /// would leave `serde/std` behind — a feature naming an absent dependency, which cargo refuses.
+    /// One pass, and the manifest converges.
+    #[test]
+    fn a_flag_flip_prunes_the_forward_to_the_dep_it_tombstones() {
+        let existing = "\
+[dependencies]
+cbor_event = \"2.4.0\"
+serde = { version = \"1.0\", default-features = false, features = [\"derive\", \"alloc\"] }
+
+[features]
+default = [\"std\"]
+std = [\"serde/std\"]
+";
+        with_manifest_ops("foo = [x: uint]\n", &[], |rust, _| {
+            let out = apply(rust, Some(existing), "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            assert!(
+                !out.contains("serde"),
+                "the dep and its forward must both go in one pass:\n{out}"
+            );
+            assert!(out.contains("std = []"), "leaving an empty list:\n{out}");
+        });
+    }
+
+    /// The changeset carries exactly ONE `features.std` op, and it is the LAST one — the log's own
+    /// entry is dropped rather than left to apply from its position among the log keys, which is
+    /// before every conditional dependency op.
+    ///
+    /// Position, not redundancy, is what makes that necessary: the prune answers against the
+    /// dependency table as it stands when the op applies, so an op at the log's position would judge
+    /// a hand-written forward against a table this run has not finished writing. The observable
+    /// consequence is a forward to a package a `--rust-dep` in the SAME run introduces — kept here,
+    /// silently deleted if the log's op were allowed to apply first.
+    #[test]
+    fn the_changeset_carries_one_std_feature_op_and_it_is_last() {
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--rust-dep", "newdep=../../newdep/rust"],
+            |rust, _| {
+                let std_ops: Vec<usize> = rust
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (p, _))| p.iter().map(String::as_str).eq(["features", "std"]))
+                    .map(|(i, _)| i)
+                    .collect();
+                assert_eq!(
+                    std_ops.len(),
+                    1,
+                    "exactly one op may address `features.std`"
+                );
+                let last_dep = rust
+                    .iter()
+                    .rposition(|(p, _)| is_dependency_entry(p))
+                    .expect("the changeset writes dependencies");
+                assert!(
+                    std_ops[0] > last_dep,
+                    "the `features.std` op (at {}) must come after the last dependencies op (at \
+                     {last_dep}), or the prune answers against an unfinished table",
+                    std_ops[0]
+                );
+                // The consequence, end to end: a hand forward to a package this run is about to add.
+                let existing = "[features]\nstd = [\"newdep/std\"]\n";
+                let out = apply(rust, Some(existing), "rust/Cargo.toml").unwrap();
+                assert!(
+                    out.contains("std = [\"newdep/std\"]"),
+                    "a hand forward to a package this run introduces must survive:\n{out}"
+                );
+            },
+        );
+    }
+
+    /// The prune is about the DEPENDENCY TABLE, not about who wrote the entry: a forward to a dep
+    /// that is present is kept whoever added it, and a bare (non-forwarding) entry is never pruned
+    /// at all — it names a feature of this crate, which this file has no standing to judge.
+    #[test]
+    fn the_prune_keeps_present_deps_and_never_touches_bare_entries() {
+        let existing = "\
+[dependencies]
+fraction = \"0.13\"
+
+[features]
+extras = []
+std = [\"fraction/std\", \"gone/std\", \"gone?/std\", \"extras\"]
+";
         let out = apply(
             &[set(&["features", "std"], "[]")],
             Some(existing),
@@ -1641,8 +2094,8 @@ my-feature = []
         )
         .unwrap();
         assert!(
-            out.contains("std = []") && !out.contains("something-stale"),
-            "`features.std` must hard-replace like every other tool-named key:\n{out}"
+            out.contains("std = [\"fraction/std\", \"extras\"]"),
+            "only the forwards whose dep is absent may be pruned (weak `?/` form included):\n{out}"
         );
     }
 
@@ -2022,21 +2475,26 @@ used_from_wasm = [\"wasm-bindgen\"]
     // ---- the unconditional `std` feature -----------------------------------------------------
 
     /// The shipped contract, read off the real change log rather than a hand-built op list: every
-    /// generated rust manifest declares a default-ON `std` feature, whatever the flags. Ordering is
-    /// part of it — `default` before `std`, cargo's convention, which falls out of the change log's
-    /// first-mention order and would silently invert if the entries were appended the other way.
+    /// generated rust manifest declares a default-ON `std` feature, whatever the flags — and its
+    /// VALUE is the forwarding list this flag set implies, which is a different assertion per row.
+    /// Ordering is part of it — `default` before `std`, cargo's convention, which falls out of the
+    /// change log's first-mention order and would silently invert if the entries were appended the
+    /// other way.
     #[test]
     fn std_feature_is_declared_default_on_under_every_flag_combination() {
-        for extra in [
-            &[][..],
-            &["--wasm", "false"][..],
-            &["--preserve-encodings", "true"][..],
-            &[
-                "--json-serde-derives",
-                "true",
-                "--json-schema-export",
-                "true",
-            ][..],
+        for (extra, expected) in [
+            (&[][..], "std = []"),
+            (&["--wasm", "false"][..], "std = []"),
+            (&["--preserve-encodings", "true"][..], "std = []"),
+            (
+                &[
+                    "--json-serde-derives",
+                    "true",
+                    "--json-schema-export",
+                    "true",
+                ][..],
+                "std = [\"serde/std\", \"serde_json/std\", \"schemars/std\"]",
+            ),
         ] {
             with_manifest_ops("foo = [x: uint]\n", extra, |rust, _| {
                 let out = apply(rust, None, "rust/Cargo.toml").unwrap();
@@ -2050,12 +2508,14 @@ used_from_wasm = [\"wasm-bindgen\"]
                     "`std` is not a default feature for {extra:?}:\n{out}"
                 );
                 assert!(
-                    out.contains("std = []"),
-                    "`std` is not declared (an undeclared feature is always FALSE, which would flip \
-                     the crate to its no_std arm on a plain build) for {extra:?}:\n{out}"
+                    out.contains(expected),
+                    "`std` is not declared as `{expected}` (an undeclared feature is always FALSE, \
+                     which would flip the crate to its no_std arm on a plain build; a wrong list \
+                     leaves a dependency's std on when the consumer asked for it off) for \
+                     {extra:?}:\n{out}"
                 );
                 let default_at = out.find("default = [\"std\"]").unwrap();
-                let std_at = out.find("\nstd = []").unwrap();
+                let std_at = out.find(&format!("\n{expected}")).unwrap();
                 assert!(
                     default_at < std_at,
                     "`default` must precede `std` in the table for {extra:?}:\n{out}"
@@ -2068,6 +2528,11 @@ used_from_wasm = [\"wasm-bindgen\"]
     /// beyond uniformity: `ordered_hash_map.rs` is exported into that crate and selects its hash
     /// builder on `#[cfg(feature = "std")]`, and an UNDECLARED feature is always false. Without this
     /// declaration the export would silently move that crate off std's `RandomState`.
+    ///
+    /// The forwarding half is asserted here too, because it is what makes that feature a real switch
+    /// rather than an in-crate cfg: the runtime is the crate the GENERATED crates forward INTO, so a
+    /// runtime whose own deps stayed std-on would absorb every consumer's `default-features = false`
+    /// one crate short of the dependency that matters.
     #[test]
     fn the_static_runtime_manifest_declares_the_std_feature_too() {
         use clap::Parser;
@@ -2086,8 +2551,55 @@ used_from_wasm = [\"wasm-bindgen\"]
         .unwrap();
         out.parse::<DocumentMut>().unwrap();
         assert!(
-            out.contains("default = [\"std\"]") && out.contains("std = []"),
-            "the exported runtime crate must declare the same default-on std feature:\n{out}"
+            out.contains("default = [\"std\"]") && out.contains("std = [\"hex/std\"]"),
+            "the exported runtime crate must declare the same default-on std feature, forwarding \
+             to the deps it ships in alloc mode:\n{out}"
+        );
+        assert!(
+            out.contains(
+                "hex = { version = \"0.4.3\", default-features = false, features = [\"alloc\"] }"
+            ),
+            "and ship `hex` in alloc mode, or the forward switches nothing:\n{out}"
+        );
+    }
+
+    /// The co-owned set-or-SKIP posture and the merge's absent-dep prune agree: a dep this flavor no
+    /// longer needs is never removed from this manifest, so its `<dep>/std` forward union-survives
+    /// beside the dep it names. The pair stays consistent in the direction the generated crates'
+    /// set-or-REMOVE rule handles by tombstoning both.
+    #[test]
+    fn static_runtime_flavor_narrowing_keeps_the_dep_and_its_forward() {
+        use clap::Parser;
+        let base = |extra: &[&str]| {
+            let mut args = vec![
+                "cddl-codegen".to_owned(),
+                "--input=unused".to_owned(),
+                "--output=unused".to_owned(),
+                concat!("--static-dir=", env!("CARGO_MANIFEST_DIR"), "/static").to_owned(),
+            ];
+            args.extend(extra.iter().map(|s| (*s).to_owned()));
+            Cli::parse_from(args)
+        };
+        // Exported once at the json flavor…
+        let wide = apply(
+            &ops_for_static_runtime(&base(&["--json-serde-derives=true"])).unwrap(),
+            None,
+            "runtime/Cargo.toml",
+        )
+        .unwrap();
+        assert!(wide.contains("serde/std"), "{wide}");
+        // …then re-exported at a narrower one. Neither the dep nor its forward may vanish: this
+        // manifest is co-owned, and the tool cannot know the crate's hand code stopped needing them.
+        let narrow = apply(
+            &ops_for_static_runtime(&base(&[])).unwrap(),
+            Some(&wide),
+            "runtime/Cargo.toml",
+        )
+        .unwrap();
+        narrow.parse::<DocumentMut>().unwrap();
+        assert!(
+            narrow.contains("serde = ") && narrow.contains("serde/std"),
+            "a co-owned dep and its forward must both survive a flavor narrowing:\n{narrow}"
         );
     }
 

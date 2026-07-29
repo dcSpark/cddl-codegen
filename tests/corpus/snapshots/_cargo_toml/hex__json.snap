@@ -22,5 +22,5 @@ hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["std"]
-std = []
+std = ["serde/std", "serde_json/std", "schemars/std", "hex/std"]
 wasm = []

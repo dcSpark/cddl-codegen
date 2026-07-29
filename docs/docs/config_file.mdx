@@ -53,6 +53,7 @@ canonical-form = true
 [runtime]
 export-static-crate = "core/rust"
 common-import = "cml_core"
+lib-name = "cml-core"           # its cargo package name — derives every crate's dependency on it
 flavor-from = "chain"           # which crate's flavor it is written at
 
 [crates.chain]
@@ -742,10 +743,17 @@ The raw `[crates.<name>.rust-dep]` sub-table names a crate the config does **not
 overrides a derived package. A hand-written entry wins per package, silently, like every other
 sub-table entry.
 
-One entry a `deps` edge needs is still **not** derived and remains a hand edit: under `[runtime]`,
-each crate's dependency on the shared runtime crate, which `--common-import-override` documents as
-your line — an override is a Rust path prefix (`crate::common` is a legal value), so no package name
-can be derived from it.
+Each entry is paired with a **`--std-forward-dep`** for the same package, unconditionally — including
+one whose path a hand-written entry supplied. Without it, `default-features = false` on a crate stops
+at that crate: its dependency is still built with its own defaults, so the `no_std` arms inside it are
+unreachable. The target is a crate this config generates and every generated crate declares a `std`
+feature, so the forward always resolves.
+
+Each crate's dependency on the **shared runtime crate** is derived too, but only when you name that
+crate's cargo package in [`[runtime].lib-name`](#runtime). `--common-import-override` cannot supply
+it — an override is a Rust path prefix (`crate::common` is a legal value), so no package name follows
+from one — which is why the key exists and why it is opt-in. Without it that dependency stays the hand
+edit it has always been.
 
 :::note An umbrella package still needs a hand-written exporter
 Every `[crates.<name>]` table needs an `input`, so a config cannot describe a crate that generates
@@ -823,6 +831,7 @@ than one each. On the command line that is two flags — `--export-static-crate`
 [runtime]
 export-static-crate = "crates/cddl-runtime"   # where the shared runtime is written
 common-import = "cddl_runtime"                # applied to every crate
+lib-name = "cddl-runtime"                     # its cargo package name — derives the dependency
 ```
 
 - `common-import` expands to `--common-import-override <value>` on **every** crate. It is the
@@ -834,6 +843,20 @@ common-import = "cddl_runtime"                # applied to every crate
 - A second `export-static-crate` in any layer alongside `[runtime].export-static-crate` is a hard
   error. Two exports would race for one role, and letting either win would make which runtime
   survives depend on generation order.
+- `lib-name` is the runtime crate's cargo **package** name — the same vocabulary a
+  `[crates.<name>]` table's `lib-name` uses, for a crate this config does not generate. Naming it
+  derives, for every crate, `--rust-dep <lib-name>=<relative path to the export directory>` and
+  `--std-forward-dep <lib-name>`: the cargo dependency on the shared runtime, and the std forward
+  that lets a `default-features = false` build reach the runtime's `no_std` arm instead of stopping
+  at the generated crate. `common-import` cannot supply it — an override is a Rust path prefix, and
+  no package name follows from one. Optional and opt-in: omit it and that dependency stays the hand
+  edit it has always been.
+
+  It must **match the crate's actual `package.name`**. The runtime crate is hand-created by
+  definition (a fresh one gets the tool's `"cddl-runtime"` seed on its first export), and the tool
+  does not read that manifest to check — that would be a content read of a co-owned file for a rule
+  one line states. A mismatch is cargo's own "no matching package named X found at path" error.
+  `lib-name` without `export-static-crate` is a hard error: there is no directory to point at.
 
 ### Which crate carries the export, and why it is derived
 
@@ -978,6 +1001,10 @@ cannot leave the first crate's output half-migrated on disk.
   disagree on, or the crate each missing key comes from. Selecting a subset does not soften it:
   which crate can carry the shared runtime is a property of the config, so
   `cddl-codegen --config c.toml one-crate` rejects exactly what a full run rejects.
+- **`[runtime].lib-name` without `export-static-crate` is a hard error.** The key derives every
+  crate's cargo dependency on the shared runtime, whose PATH is the export directory — so with no
+  export there is nothing to point at. Same shape as the empty-`[runtime]` and `flavor-from`
+  refusals: a key that cannot mean anything is a typo, not a request.
 - **`export-static-crate` may reach at most one crate**, from whichever layer it comes and whether
   or not there is a `[runtime]` table. It is an ordinary shared key, so one `[defaults]` line is a
   single layer and one export site *per crate* — and two crates exporting into one directory is not

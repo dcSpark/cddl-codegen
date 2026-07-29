@@ -35,6 +35,12 @@
  * `compile_error!` text instead. Each cell therefore carries its own accept predicate (see
  * `Accept`), and the cache stores cell-SUCCESS rather than cargo-exit-0.
  *
+ * # The split-layout profile
+ *
+ * The `PROFILES` below are single-crate, so their shim has exactly one package to turn `std` off
+ * for. A real consumer is a `--config` tree of several packages over one shared runtime crate, where
+ * the feature has to FORWARD across every hop or it stops at the first — see `generateSplitProfile`.
+ *
  * Standalone-invocable — `check.ts` has no single-gate selector, so the way to run this alone is
  * `bun run cddl-matrix/no_std_check.ts [fast|local|full]` (default `local`).
  */
@@ -51,7 +57,7 @@ const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script li
 const TARGET = "thumbv7m-none-eabi";
 const GATE = "no_std_check";
 /** Bump on any change to the VERDICT logic (not to the profiles' bytes, which the tree hash covers). */
-const VERDICT_MARKER = "no-std-check-v2";
+const VERDICT_MARKER = "no-std-check-v3";
 const CARGO_TIMEOUT_S = 900;
 
 /**
@@ -387,6 +393,144 @@ const PROFILES: Profile[] = [
   },
 ];
 
+// ---- the split-layout profile (`--config`) ------------------------------------------------------
+/**
+ * The layout every other profile in this file cannot reach: a `--config` tree whose crates are
+ * SEPARATE cargo packages, joined by a `deps` edge, all sharing one `--export-static-crate` runtime
+ * crate.
+ *
+ * # What only this profile can prove
+ *
+ * The single-crate profiles above check one package, so `default-features = false` on their shim has
+ * exactly one crate to reach. In a split layout it has three, and the feature has to FORWARD across
+ * each hop or it stops at the first: a crate whose own `std` is off while its dependency's is on is
+ * a crate whose dependency still selected the `std` arm. On `thumbv7m-none-eabi` `std` does not
+ * exist at all, so a leaked `std` feature anywhere in the chain is a compile error rather than a
+ * silent difference — which is what makes the thumb cell below the reachability proof for the
+ * runtime crate's `#[cfg(not(feature = "std"))]` hasher arm through a real consumer topology.
+ *
+ * Both forwarding classes ride on the one profile: `deps` (leaf → core) and `[runtime].lib-name`
+ * (both crates → the co-owned runtime).
+ *
+ * # The hand-owned half
+ *
+ * `--export-static-crate` writes into a crate the TOOL DOES NOT OWN: its `[package]` table is
+ * seed-once and its crate root is never written at all. So the gate plays the consumer, exactly as
+ * `config_tests::a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against` does and as
+ * profile B plays the `_CDDL_CODEGEN_RAW_BYTES_TYPE_` consumer: a minimal `[package]` table before
+ * generating (so the seed sees a name to keep — it must MATCH `[runtime].lib-name`, which the tool
+ * deliberately does not read that manifest to check), and the root afterwards. Afterwards because
+ * the module list is the export's, not ours to predict; deliberately no_std-clean and carrying the
+ * documented `cfg_attr` line, so a red cell attributes to the tool rather than to this.
+ */
+const SPLIT_ID = "split_config";
+const SPLIT_RUNTIME_PACKAGE = "nostd-runtime";
+const SPLIT_RUNTIME_CRATE = "nostd_runtime";
+
+function generateSplitProfile(): string {
+  const root = scratch(SPLIT_ID);
+  mkdirSync(join(root, "specs"), { recursive: true });
+  mkdirSync(join(root, "runtime", "src"), { recursive: true });
+  // `core` carries `--preserve-encodings`, so `OrderedHashMap` — and therefore the `MapHashBuilder`
+  // cfg pair the whole no_std switch is observable through — is in the compile.
+  writeFileSync(join(root, "specs", "core.cddl"),
+    ["hash28 = bytes .size 28", "tbl = { * uint => text }", "core_thing = [ h: hash28, t: tbl ]", ""].join("\n"));
+  writeFileSync(join(root, "specs", "leaf.cddl"), ["leaf_rec = [ c: core_thing, n: uint ]", ""].join("\n"));
+  // Hand-owned half, part 1: the package identity. Written BEFORE generating because the export's
+  // `package.name` op is seed-once — it writes only into a manifest that has none.
+  writeFileSync(join(root, "runtime", "Cargo.toml"), [
+    "# Hand-written by the no_std_check gate: the co-owned runtime crate's identity. Its `name` must",
+    "# match `[runtime].lib-name` — the tool derives the dependency from that key and does not read",
+    "# this file to check.",
+    "[package]", `name = "${SPLIT_RUNTIME_PACKAGE}"`, 'version = "0.0.0"', 'edition = "2024"',
+    "publish = false", "", "[workspace]", "",
+  ].join("\n"));
+  writeFileSync(join(root, "codegen.toml"), [
+    "[defaults]", `static-dir = "${join(CODEGEN_DIR, "static")}"`, "wasm = false", "preserve-encodings = true", "",
+    "[runtime]", 'export-static-crate = "runtime"', `common-import = "${SPLIT_RUNTIME_CRATE}"`,
+    `lib-name = "${SPLIT_RUNTIME_PACKAGE}"`, "",
+    "[crates.core]", 'input = "specs/core.cddl"', 'output = "gen/core"', 'lib-name = "nostd-core"', "",
+    "[crates.leaf]", 'input = "specs/leaf.cddl"', 'output = "gen/leaf"', 'lib-name = "nostd-leaf"',
+    'deps = ["core"]', "",
+  ].join("\n"));
+
+  const gen = run(["cargo", "run", "-q", "--bin", "cddl-codegen", "--", "--config", join(root, "codegen.toml")], CODEGEN_DIR);
+  if (gen.exit !== 0) {
+    console.log(`  ${SPLIT_ID}: GENERATION FAILED (exit ${gen.exit})`);
+    console.log(gen.stdout);
+    console.log(gen.stderr);
+    throw new Error(`generation failed for profile ${SPLIT_ID}`);
+  }
+
+  // Hand-owned half, part 2: the crate root. `pub mod` lines only, plus the one documented opt-in
+  // line — without it the runtime crate is a plain `std` crate and the thumb cell would fail on a
+  // target that has no `std`, which is a fact about this hand file rather than about the forwarding.
+  const runtimeSrc = join(root, "runtime", "src");
+  const modules = readdirSync(runtimeSrc)
+    .filter(f => f.endsWith(".rs") && f !== "lib.rs")
+    .map(f => f.slice(0, -3))
+    .sort();
+  if (modules.length === 0)
+    throw new Error(`profile ${SPLIT_ID}: the export wrote no runtime modules — the export half is broken`);
+  writeFileSync(join(runtimeSrc, "lib.rs"), [
+    "//! Hand-written by the no_std_check gate: the co-owned runtime crate's root, which the tool",
+    "//! never writes. `pub mod` lines and the documented opt-in line, nothing else.",
+    '#![cfg_attr(not(feature = "std"), no_std)]',
+    "",
+    ...modules.map(m => `pub mod ${m};`),
+    "",
+  ].join("\n"));
+
+  // The std-arm tripwire, on the crate that OWNS the cfg pair in this layout: the runtime. Same
+  // placement rules as `writeHostConsumer` — inside the hashed tree, before any cell runs.
+  const hostDir = join(root, "host-consumer");
+  mkdirSync(join(hostDir, "src"), { recursive: true });
+  writeFileSync(join(hostDir, "Cargo.toml"), [
+    "[package]", 'name = "split-host-consumer"', 'version = "0.0.0"', 'edition = "2024"', "publish = false", "",
+    "[dependencies]", `${SPLIT_RUNTIME_PACKAGE} = { path = "../runtime" }`, "", "[workspace]", "",
+  ].join("\n"));
+  writeFileSync(join(hostDir, "src", "lib.rs"), [
+    "//! Written by the no_std_check gate: the std-arm hasher assertion for the SPLIT layout, where",
+    "//! the cfg pair lives in the shared runtime crate rather than in a generated one.",
+    `use ${SPLIT_RUNTIME_CRATE}::ordered_hash_map::MapHashBuilder;`,
+    "",
+    "pub fn _h(h: MapHashBuilder) -> std::collections::hash_map::RandomState {",
+    "    h",
+    "}",
+    "",
+  ].join("\n"));
+
+  const shim = join(root, "gen", "leaf", "no-std-check", "Cargo.toml");
+  if (!existsSync(shim))
+    throw new Error(`profile ${SPLIT_ID}: the tool emitted no shim at ${shim} — the emission half is broken`);
+  return root;
+}
+
+/** Both cells of the split profile. Returns false if either failed. */
+function runSplitProfile(cargoTarget: string): boolean {
+  const root = generateSplitProfile();
+  let ok = true;
+  // The consumer at the FAR end of the chain: its shim turns `std` off on `nostd-leaf`, which must
+  // reach `nostd-core` and then `nostd-runtime`. Green here is the reachability proof.
+  const shimManifest = join(root, "gen", "leaf", "no-std-check", "Cargo.toml");
+  const shimCell = cacheableCell(
+    `${SPLIT_ID}.shim_thumb`,
+    ["cargo", "check", "--manifest-path", shimManifest, "--target", TARGET],
+    [shimManifest], root, { CARGO_TARGET_DIR: cargoTarget },
+  );
+  if (!reportCell(`${SPLIT_ID}.shim_thumb`, shimCell)) ok = false;
+
+  // …and the default direction, so the forwarding cannot be "fixed" by leaving the std arm behind.
+  const hostManifest = join(root, "host-consumer", "Cargo.toml");
+  const hostCell = cacheableCell(
+    `${SPLIT_ID}.host_std_arm`,
+    ["cargo", "check", "--manifest-path", hostManifest],
+    [hostManifest], root, { CARGO_TARGET_DIR: cargoTarget },
+  );
+  if (!reportCell(`${SPLIT_ID}.host_std_arm`, hostCell)) ok = false;
+  return ok;
+}
+
 // ---- target guard -------------------------------------------------------------------------------
 function targetInstalled(): boolean {
   // cwd = repo root so `rust-toolchain.toml` selects the pinned toolchain — targets are installed
@@ -495,7 +639,7 @@ function reportCell(cell: string, r: CellVerdict & { cached: boolean; ms: number
 }
 
 export function runNoStdCheckGate(tier: string): NoStdOutcome {
-  console.log(`  target: ${TARGET}   profiles: ${PROFILES.map(p => p.id).join(", ")}`);
+  console.log(`  target: ${TARGET}   profiles: ${[...PROFILES.map(p => p.id), SPLIT_ID].join(", ")}`);
 
   if (!targetInstalled()) {
     for (const l of loudSkipMessage()) console.log(l);
@@ -568,6 +712,7 @@ export function runNoStdCheckGate(tier: string): NoStdOutcome {
         if (!reportCell(`${p.id}.host_std_arm`, hostCell)) ok = false;
       }
     }
+    if (!runSplitProfile(cargoTarget)) ok = false;
   } catch (e) {
     console.log(`  ${GATE}: ${(e as Error).message}`);
     ok = false;

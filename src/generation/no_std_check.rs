@@ -85,7 +85,11 @@ fn cargo_toml(cli: &Cli) -> String {
 #
 #   {CHECK_COMMAND}
 #
-# A failure here with an otherwise unmodified generated crate is caused by hand-written additions.
+# A failure here with an otherwise unmodified generated crate is caused by hand-written additions —
+# which, in a split layout, includes the hand-owned half of a runtime crate this one depends on: its
+# crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate
+# takes with `default-features = false` is named by its own `std` feature, so turning `std` off here
+# turns it off all the way down.
 
 [package]
 name = \"{lib_name}{NO_STD_CHECK_PACKAGE_SUFFIX}\"
@@ -124,8 +128,9 @@ pub type _NoStdCheckDeserializeError = {lib_name_code}::error::DeserializeError;
         format!(
             "\
 // This crate was generated with `--common-import-override`, so it owns no runtime modules to name a
-// type from; depending on it is what forces its whole `no_std` build. NOTE: such a crate also needs
-// the override crate added to its `[dependencies]` by hand before any check here can pass.
+// type from; depending on it is what forces its whole `no_std` build. NOTE: the override crate must
+// be in this crate's `[dependencies]` for the check to run at all — `--rust-dep` (or a `deps` edge
+// under `--config`) writes that entry, and a hand-added one does just as well.
 use {lib_name_code} as _;
 "
         )
@@ -169,7 +174,11 @@ use {lib_name_code} as _;
 //!
 //!   {CHECK_COMMAND}
 //!
-//! A failure here with an otherwise unmodified generated crate is caused by hand-written additions.
+//! A failure here with an otherwise unmodified generated crate is caused by hand-written additions —
+//! which, in a split layout, includes the hand-owned half of a runtime crate this one depends on: its
+//! crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate
+//! takes with `default-features = false` is named by its own `std` feature, so turning `std` off here
+//! turns it off all the way down.
 {depth_limit_note}
 #![no_std]
 

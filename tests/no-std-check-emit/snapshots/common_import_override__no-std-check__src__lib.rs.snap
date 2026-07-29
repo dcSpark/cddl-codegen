@@ -11,11 +11,16 @@ expression: "files[\"no-std-check/src/lib.rs\"]"
 //!
 //!   cargo check --manifest-path <output-root>/no-std-check/Cargo.toml --target thumbv7m-none-eabi
 //!
-//! A failure here with an otherwise unmodified generated crate is caused by hand-written additions.
+//! A failure here with an otherwise unmodified generated crate is caused by hand-written additions —
+//! which, in a split layout, includes the hand-owned half of a runtime crate this one depends on: its
+//! crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate
+//! takes with `default-features = false` is named by its own `std` feature, so turning `std` off here
+//! turns it off all the way down.
 
 #![no_std]
 
 // This crate was generated with `--common-import-override`, so it owns no runtime modules to name a
-// type from; depending on it is what forces its whole `no_std` build. NOTE: such a crate also needs
-// the override crate added to its `[dependencies]` by hand before any check here can pass.
+// type from; depending on it is what forces its whole `no_std` build. NOTE: the override crate must
+// be in this crate's `[dependencies]` for the check to run at all — `--rust-dep` (or a `deps` edge
+// under `--config`) writes that entry, and a hand-added one does just as well.
 use cddl_lib as _;
