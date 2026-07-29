@@ -573,9 +573,9 @@
     },
     {
       "gate": "snapshot_quick",
-      "warm_ms": 15000,
+      "warm_ms": 18000,
       "n": 20,
-      "measured": "2026-07-27",
+      "measured": "2026-07-29",
       "machine": "86216c55",
       "history": [
         {
@@ -589,6 +589,10 @@
         {
           "date": "2026-07-27",
           "warm_ms": 15000
+        },
+        {
+          "date": "2026-07-29",
+          "warm_ms": 18000
         }
       ]
     },
