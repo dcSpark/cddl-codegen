@@ -7,4 +7,6 @@
 channel = "1.96.1"
 components = ["rustfmt", "clippy"]
 # wasm_json_roundtrip builds generated bindings with wasm-pack and runs them under node.
-targets = ["wasm32-unknown-unknown"]
+# thumbv7m-none-eabi is a std-less target: the `no_std_check` gate checks the emitted no-std-check
+# shims against it, which a host target cannot do (host targets always link std).
+targets = ["wasm32-unknown-unknown", "thumbv7m-none-eabi"]

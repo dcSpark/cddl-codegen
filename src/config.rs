@@ -2371,8 +2371,10 @@ fn join(output: &str, tail: &str) -> String {
 fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
     // LOCKSTEP: this is the emitter's `--package-json` nesting rule, restated for the crate reading
     // ANOTHER crate's output — `GenerationScope::export`'s `rust_dir`, which is where the one-level-
-    // down decision is actually made. It is code rather than a string, so no constant in
-    // `generation::layout` can carry it for both sites. Change both together.
+    // down decision is actually made, and `generation::no_std_check::dep_path`, which restates it
+    // again for the emitted shim (which stays at the output root and absorbs the nesting into its
+    // dep path). It is code rather than a string, so no constant in `generation::layout` can carry it
+    // for all three sites. Change them together.
     if cli.package_json {
         join(output, &format!("rust/{tail}"))
     } else {

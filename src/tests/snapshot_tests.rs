@@ -1772,3 +1772,263 @@ fn extern_interface_check_skips_generic_base_without_instances() {
         "the concrete opaque rows must still assert Serialize:\n{c}"
     );
 }
+
+// --- Emitted no-std-check shim crate (D3) --------------------------------------------------------
+
+/// The fixture family's one spec. Every test below points at it, including the ones whose assertion
+/// is that the spec makes no difference — a shared constant is what makes that claim checkable
+/// rather than a coincidence of two tests happening to use the same file.
+const NO_STD_CHECK_INPUTS: &str = "tests/no-std-check-emit/inputs";
+
+/// Snapshot both files of the shim under DEFAULT flags. Bless with
+/// `INSTA_UPDATE=always cargo test no_std_check_emit`.
+///
+/// The shim is not part of the corpus family: that family is built from `api::generated_strings` ->
+/// `generated_files()`, which never sees a sibling tree placed by `export()`. So it gets its own
+/// fixture family, exactly as the extern-interface export does.
+#[test]
+fn no_std_check_emit() {
+    let cli = cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false"],
+    );
+    let files = crate::api::no_std_check_strings(&cli);
+
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/no-std-check-emit/snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        assert_eq!(
+            files.keys().cloned().collect::<Vec<_>>(),
+            vec![
+                "no-std-check/Cargo.toml".to_owned(),
+                "no-std-check/src/lib.rs".to_owned()
+            ],
+            "the shim is exactly two files, keyed relative to the OUTPUT ROOT — a key that lost its \
+             `no-std-check/` prefix would be written into the rust crate instead"
+        );
+        for (path, content) in &files {
+            let name = path.replace('/', "__");
+            insta::assert_snapshot!(name, content);
+        }
+    });
+}
+
+/// Deterministic: emit twice, require byte-identical output. Same guarantee
+/// `generation_is_deterministic` gives the main output and `extern_interface_emit_is_deterministic`
+/// gives the sibling tree.
+#[test]
+fn no_std_check_emit_is_deterministic() {
+    let cli = cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false"],
+    );
+    let a = crate::api::no_std_check_strings(&cli);
+    let b = crate::api::no_std_check_strings(&cli);
+    assert_eq!(a, b, "the shim emission must be byte-identical across runs");
+}
+
+/// Emission is byte-identical under `--wasm=false` and `--wasm=true`. The shim depends on the RUST
+/// crate only — the wasm crate is std by nature and out of the no_std scope entirely — so the wasm
+/// face cannot reach it. A difference here would mean the shim had grown a dependency on the wasm
+/// surface, which is the one thing it must never check.
+#[test]
+fn no_std_check_emit_same_in_both_modes() {
+    let base = std::path::Path::new(NO_STD_CHECK_INPUTS);
+    let rust_only = crate::api::no_std_check_strings(&cli_for(base, &["--wasm", "false"]));
+    let wasm = crate::api::no_std_check_strings(&cli_for(base, &["--wasm", "true"]));
+    assert_eq!(
+        rust_only, wasm,
+        "the shim is rust-crate-only surface and must not vary with --wasm"
+    );
+}
+
+/// The shim is a function of the CLI, not of the spec: a spec with a wholly different construct set
+/// emits the identical two files. This is what lets the fixture above stay trivial, and it is the
+/// property that makes the gate's verdict mean "this crate is no_std-clean" rather than "this spec
+/// happens to be".
+#[test]
+fn no_std_check_emit_is_spec_independent() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_nostd_specindep_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "hash28 = bytes .size 28\n\
+         tbl = { * uint => text }\n\
+         keyed = [ a: uint ] ; @used_as_key hash\n\
+         outer = [ h: hash28, t: tbl, k: keyed ]\n",
+    )
+    .unwrap();
+    let other = crate::api::no_std_check_strings(&cli_for(&path, &["--wasm", "false"]));
+    std::fs::remove_file(&path).ok();
+    let fixture = crate::api::no_std_check_strings(&cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false"],
+    ));
+    assert_eq!(
+        fixture, other,
+        "the shim must not vary with the spec — it asserts a property of the crate, not of the rules"
+    );
+}
+
+/// `--lib-name` flows to all three places that name the crate: the shim's own package name
+/// (`<lib-name>-no-std-check`, which is what keeps a `--config` multi-crate tree collision-free), the
+/// dependency KEY (the rust crate's cargo package name is `--lib-name` verbatim), and the `use` path
+/// (code form, dashes underscored). Bless with
+/// `INSTA_UPDATE=always cargo test no_std_check_emit_lib_name`.
+#[test]
+fn no_std_check_emit_lib_name() {
+    let cli = cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false", "--lib-name", "my-chain-lib"],
+    );
+    let files = crate::api::no_std_check_strings(&cli);
+
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/no-std-check-emit/snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        for (path, content) in &files {
+            let name = format!("lib_name__{}", path.replace('/', "__"));
+            insta::assert_snapshot!(name, content);
+        }
+    });
+}
+
+/// `--package-json` nests the cargo crates one level down (`<out>/rust/rust`) while the shim stays at
+/// the output root, so the dep path becomes `../rust/rust`. The shim is the THIRD reader of that
+/// nesting rule (LOCKSTEP with `GenerationScope::export`'s `rust_dir` and `config::crate_relative`),
+/// and a disagreement there type-checks — this snapshot is what makes it fail instead.
+#[test]
+fn no_std_check_emit_package_json() {
+    let cli = cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false", "--package-json", "true"],
+    );
+    let files = crate::api::no_std_check_strings(&cli);
+    assert!(
+        files["no-std-check/Cargo.toml"].contains("path = \"../rust/rust\""),
+        "--package-json must move the dep path one level down:\n{}",
+        files["no-std-check/Cargo.toml"]
+    );
+
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/no-std-check-emit/snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        insta::assert_snapshot!(
+            "package_json__no-std-check__Cargo.toml",
+            files["no-std-check/Cargo.toml"]
+        );
+    });
+}
+
+/// Under `--common-import-override` the runtime modules are not emitted (`Cli::export_static_files`
+/// is `common_import_override.is_none()`), so there is no `error::DeserializeError` to name and the
+/// shim falls back to naming the crate itself. Bless with
+/// `INSTA_UPDATE=always cargo test no_std_check_emit_common_import_override`.
+#[test]
+fn no_std_check_emit_common_import_override() {
+    let cli = cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false", "--common-import-override", "cml_core"],
+    );
+    let files = crate::api::no_std_check_strings(&cli);
+
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/no-std-check-emit/snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        insta::assert_snapshot!(
+            "common_import_override__no-std-check__src__lib.rs",
+            files["no-std-check/src/lib.rs"]
+        );
+    });
+}
+
+/// The default and `--common-import-override` `use`-shapes differ, and differ in the specific way the
+/// override forces. Asserted directly rather than left to a reader diffing two snapshots: the reason
+/// the default form names a TYPE is that doing so also proves the dependency's seed-once crate root
+/// still re-exports `generated::*`, and that assertion is exactly what the override case gives up.
+#[test]
+fn no_std_check_emit_use_shape_follows_common_import_override() {
+    let base = std::path::Path::new(NO_STD_CHECK_INPUTS);
+    let default = crate::api::no_std_check_strings(&cli_for(base, &["--wasm", "false"]))
+        ["no-std-check/src/lib.rs"]
+        .clone();
+    let overridden = crate::api::no_std_check_strings(&cli_for(
+        base,
+        &["--wasm", "false", "--common-import-override", "cml_core"],
+    ))["no-std-check/src/lib.rs"]
+        .clone();
+
+    assert!(
+        default
+            .contains("pub type _NoStdCheckDeserializeError = cddl_lib::error::DeserializeError;"),
+        "the default shim must name a generated type through the crate root:\n{default}"
+    );
+    assert!(
+        !default.contains("use cddl_lib as _;"),
+        "the default shim must NOT fall back to the crate-level form:\n{default}"
+    );
+    assert!(
+        overridden.contains("use cddl_lib as _;"),
+        "the override shim must fall back to naming the crate itself:\n{overridden}"
+    );
+    assert!(
+        !overridden.contains("error::DeserializeError"),
+        "the override crate emits no `error` module, so the shim must not name one:\n{overridden}"
+    );
+    assert!(
+        default.starts_with("//!") && overridden.starts_with("//!"),
+        "both shapes keep the generated-by header first"
+    );
+}
+
+/// The documented invocation is quoted in three places that a consumer reads in sequence — the seeded
+/// rust crate root (hence ~285 blessed corpus snapshots of it), the emitted shim's own two files, and
+/// `docs/docs/output_format.mdx`. A consumer copies the line out of the seeded root and runs it
+/// against the file this emitter writes, so a drift between them is a command that does not work.
+/// This pins the two the tool emits against each other; the docs half is `lint_doc_citations`' and a
+/// reader's.
+#[test]
+fn no_std_check_emit_quotes_the_seeded_roots_command() {
+    const COMMAND: &str = "cargo check --manifest-path <output-root>/no-std-check/Cargo.toml \
+                           --target thumbv7m-none-eabi";
+    let files = crate::api::no_std_check_strings(&cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false"],
+    ));
+    for (path, content) in &files {
+        assert!(
+            content.contains(COMMAND),
+            "{path} must quote the check command verbatim:\n{content}"
+        );
+    }
+    let seeded = crate::api::generated_strings(&cli_for(
+        std::path::Path::new(NO_STD_CHECK_INPUTS),
+        &["--wasm", "false"],
+    ))
+    .unwrap();
+    let root = seeded
+        .get("rust/src/lib.rs")
+        .expect("the seeded rust crate root must be part of the generated files");
+    assert!(
+        root.contains(COMMAND),
+        "the seeded rust crate root must quote the same command verbatim:\n{root}"
+    );
+}

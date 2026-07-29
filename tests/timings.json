@@ -314,6 +314,9 @@
       ]
     },
     {
+      "gate": "no_std_check"
+    },
+    {
       "gate": "project_corpus",
       "warm_ms": 194,
       "n": 20,

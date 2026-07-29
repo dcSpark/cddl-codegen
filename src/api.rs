@@ -892,6 +892,19 @@ pub fn extern_interface_strings(
     })
 }
 
+/// The emitted no-std-check shim crate's files, keyed by path relative to `<output>`
+/// (`no-std-check/…`). The snapshot-fixture analog of [`extern_interface_strings`], driving the SAME
+/// producer `export` writes to disk so the tested and shipped shim can't drift.
+///
+/// Deliberately NOT shaped like its sibling: no `Result` and no `with_types`, because the producer
+/// takes only `&Cli` — the shim asserts a property of the generated CRATE, not of the spec, so there
+/// is no IR to build and no parse failure to surface. Adding either would be a signature that lies
+/// about what can go wrong here.
+#[cfg(test)]
+pub fn no_std_check_strings(cli: &Cli) -> std::collections::BTreeMap<String, String> {
+    crate::generation::no_std_check::no_std_check_files(cli)
+}
+
 /// Parse + build the IR and return a debug dump of the resolved Rust structures, for IR-level
 /// snapshot tests (localizes a regression to parsing/IR vs generation). Deliberately excludes
 /// the raw cddl AST held in `plain_groups` (noisy byte-span info).
