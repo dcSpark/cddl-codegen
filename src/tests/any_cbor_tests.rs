@@ -1075,6 +1075,67 @@ mod json_non_preserve {
         serde_json::from_str::<AnyCbor>(r#"{"nint":5}"#).unwrap_err();
     }
 
+    /// The `{"bytes": …}` reader's accepted grammar, rendered errors included.
+    ///
+    /// This codec's hex routine (`any_cbor_hex_decode`) is self-contained — an `any`-carrying crate
+    /// need not take the `hex` dependency, so it cannot call the shared `decode_canonical_hex` door
+    /// — but it accepts the SAME canonical grammar: lowercase digits, even length, no `0x`/`0X`
+    /// prefix. What differs is only how a refusal reads: this surface's errors are `String`s that
+    /// reach the caller through serde's `Error::custom`, so the pinned texts below carry
+    /// serde_json's own ` at line L column C` position fixup after the routine's message.
+    ///
+    /// Pinned once, in this shim only, for the same reason `rendering_table_exact` is: the fragment
+    /// is mode-independent (written against `new_bytes`/`as_bytes`), and the `json_preserve` shim
+    /// `include!`s the identical file — a second copy would pin the same code path twice.
+    #[test]
+    fn bytes_hex_grammar_is_canonical() {
+        let err = |s: &str| serde_json::from_str::<AnyCbor>(s).unwrap_err().to_string();
+
+        // Uppercase and mixed case: REJECTED at the first non-canonical digit. This is a NEW pin,
+        // not a flip of an old one — no test asserted the previous case-insensitivity, which came
+        // from `char::to_digit(16)` rather than from any decision.
+        assert_eq!(
+            err(r#"{"bytes":"A1B2"}"#),
+            "invalid hex nibble 'A' at line 1 column 16"
+        );
+        assert_eq!(
+            err(r#"{"bytes":"a1B2"}"#),
+            "invalid hex nibble 'B' at line 1 column 16"
+        );
+        // Prefixes: incumbent behavior, pinned now that this surface's grammar is ruled. `x`/`X`
+        // need no rule of their own — they are simply outside the canonical alphabet.
+        assert_eq!(
+            err(r#"{"bytes":"0xa1b2"}"#),
+            "invalid hex nibble 'x' at line 1 column 18"
+        );
+        assert_eq!(
+            err(r#"{"bytes":"0Xa1b2"}"#),
+            "invalid hex nibble 'X' at line 1 column 18"
+        );
+        // Odd length: incumbent, and reported BEFORE any nibble check — this surface's precedence,
+        // deliberately unlike the shared door's (which names the first offending character first).
+        assert_eq!(
+            err(r#"{"bytes":"abc"}"#),
+            "odd-length hex string (len 3) at line 1 column 15"
+        );
+        assert_eq!(
+            err(r#"{"bytes":"0x"}"#),
+            "invalid hex nibble 'x' at line 1 column 14"
+        );
+
+        // Canonical in, canonical out: for every accepted string the JSON round-trip reproduces it
+        // byte for byte, because the write side (`any_cbor_hex_encode`) emits exactly this grammar.
+        for hex in ["", "00", "a1b2", "ff00deadbeef", "0123456789abcdef"] {
+            let doc = format!(r#"{{"bytes":"{hex}"}}"#);
+            let v: AnyCbor = serde_json::from_str(&doc).unwrap();
+            assert_eq!(
+                serde_json::to_string(&v).unwrap(),
+                doc,
+                "hex round-trip: {hex}"
+            );
+        }
+    }
+
     // ---- Natural-fallible JSON surface ----
     // The tagged tests above pin `AnyCbor`'s OWN serde (the total value codec). These pin the
     // SEPARATE natural walk (`to_natural_json`/`from_natural_json`) that generated types route

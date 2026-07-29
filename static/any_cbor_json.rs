@@ -9,7 +9,8 @@
 //   uint       {"uint": 5}                 JSON number (u64 range, as serde_json emits crate-wide)
 //   nint       {"nint": -3}                JSON number when the value fits i64,
 //              {"nint": "-18446744073709551616"}  else a decimal string (the nint domain exceeds i64)
-//   bytes      {"bytes": "a1b2"}           lowercase hex
+//   bytes      {"bytes": "a1b2"}           canonical hex — lowercase, even length, no 0x prefix,
+//                                          on the read side as well (`any_cbor_hex_decode`)
 //   text       {"text": "…"}
 //   array      {"array": [ … ]}            recursive
 //   map        {"map": [[K, V], …]}        array of pairs — wire order + duplicate keys preserved,
@@ -589,22 +590,37 @@ fn any_cbor_hex_encode(bytes: &[u8]) -> String {
     s
 }
 
-/// Parse lowercase/uppercase hex into bytes; errors on odd length or a non-hex nibble.
+/// Parses **canonical** hex into bytes — lowercase digits only, even length, no `0x`/`0X` prefix.
+///
+/// The grammar is deliberately the one `decode_canonical_hex` accepts on the crate's other two hex
+/// surfaces (`RawBytesEncoding::from_raw_hex` and a `bytes` newtype's JSON form), so hex text has a
+/// single canonical spelling tool-wide: for every accepted `s`, `any_cbor_hex_encode` of the decoded
+/// bytes reproduces `s` byte for byte — the round-trip property on the ENCODING and not merely on
+/// the bytes. This stays a SEPARATE, self-contained routine rather than a call into that function
+/// because a crate emitting `AnyCbor` need not take the `hex` dependency at all, and it keeps its
+/// own error surface: `String` messages rendered through serde's `Error::custom`, with odd length
+/// reported BEFORE any bad nibble (the shared door reports the first offending character first).
+///
+/// **This narrows what this surface used to accept, by maintainer decision.** Uppercase and
+/// mixed-case input was decoded and normalized to lowercase on the way out; it is now an invalid
+/// nibble at the first uppercase digit. Callers holding hex produced elsewhere lowercase it
+/// themselves before handing it over. The full rationale lives on `decode_canonical_hex`.
 fn any_cbor_hex_decode(s: &str) -> Result<Vec<u8>, String> {
+    /// The canonical alphabet, i.e. exactly what `any_cbor_hex_encode` writes. `char::to_digit(16)`
+    /// would also take `A`–`F`, which is the leniency this surface no longer has.
+    fn nibble(b: u8) -> Result<u32, String> {
+        match b {
+            b'0'..=b'9' => Ok((b - b'0') as u32),
+            b'a'..=b'f' => Ok((b - b'a') as u32 + 10),
+            _ => Err(format!("invalid hex nibble {:?}", b as char)),
+        }
+    }
     if s.len() & 1 == 1 {
         return Err(format!("odd-length hex string (len {})", s.len()));
     }
     let bytes = s.as_bytes();
     (0..bytes.len())
         .step_by(2)
-        .map(|i| {
-            let hi = (bytes[i] as char)
-                .to_digit(16)
-                .ok_or_else(|| format!("invalid hex nibble {:?}", bytes[i] as char))?;
-            let lo = (bytes[i + 1] as char)
-                .to_digit(16)
-                .ok_or_else(|| format!("invalid hex nibble {:?}", bytes[i + 1] as char))?;
-            Ok(((hi << 4) | lo) as u8)
-        })
+        .map(|i| Ok(((nibble(bytes[i])? << 4) | nibble(bytes[i + 1])?) as u8))
         .collect()
 }
