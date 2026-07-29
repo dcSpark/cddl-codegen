@@ -19485,6 +19485,12 @@ fn comment_preservation_broken_existing_file_hard_errors() {
 /// rebuild, (iii) the post-overlay recompute, (iv) the composed runtime statics, and (v) the
 /// `--export-static-crate` outputs including the standalone serialization prelude.
 ///
+/// A SIXTH surface joins them for a different reason: the emitted `no-std-check/src/lib.rs` is built
+/// as a literal string and never passes through rustfmt at all, so "canonical" there is a property of
+/// the emitter's source text rather than of a missing pass. It is registered here anyway because the
+/// consequence of getting it wrong is identical — and because the two failure modes are
+/// indistinguishable from the outside, a reader should not have to know which one this file has.
+///
 /// The spec is chosen to populate all of them at once: `[+ T]` and `{+ k => v}` pull in the NonEmpty
 /// runtimes, a table field gives serialization.rs its encoding maps (the injected `BTreeMap`), and
 /// `--export-static-crate` exercises the out-of-tree writes. Generation runs TWICE and the second
@@ -19518,8 +19524,12 @@ fn every_written_surface_is_rustfmt_stable() {
     ]);
     crate::api::generate_to_disk(&cli).unwrap();
 
-    let mut checked = 0usize;
-    let mut roots = vec![out.join("rust/src/generated"), static_crate.join("src")];
+    let mut checked: Vec<std::path::PathBuf> = Vec::new();
+    let mut roots = vec![
+        out.join("rust/src/generated"),
+        static_crate.join("src"),
+        out.join("no-std-check/src"),
+    ];
     while let Some(dir) = roots.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -19541,18 +19551,39 @@ fn every_written_surface_is_rustfmt_stable() {
                 "{} was written non-rustfmt-stable — an injection site is missing its rustfmt pass",
                 path.display()
             );
-            checked += 1;
+            checked.push(path);
         }
     }
     assert!(
-        checked >= 8,
-        "expected the spec to populate every write surface; only {checked} files were checked"
+        checked.len() >= 9,
+        "expected the spec to populate every write surface; only {} files were checked",
+        checked.len()
     );
+    // A root naming a directory the exporter does not write is INVISIBLE above — `read_dir` fails
+    // and the walk moves on — so a registered surface contributing nothing looks exactly like a
+    // passing one. The count floor cannot speak for any individual root (it says nothing about WHICH
+    // root produced the files), so every root asserts a file it must have reached.
+    for (root, must_reach) in [
+        (out.join("rust/src/generated"), "generated/mod.rs"),
+        (static_crate.join("src"), "runtime/src/serialization.rs"),
+        (out.join("no-std-check/src"), "no-std-check/src/lib.rs"),
+    ] {
+        assert!(
+            checked.iter().any(|p| p.ends_with(must_reach)),
+            "the write surface rooted at {} was not reached — it is registered but produced no \
+             file, which is indistinguishable from a pass. Checked: {checked:?}",
+            root.display()
+        );
+    }
 
     // The whole point of the invariant: an unchanged regeneration must be a byte-identical no-op.
     let before: Vec<(std::path::PathBuf, String)> = {
         let mut v = Vec::new();
-        let mut roots = vec![out.join("rust/src/generated"), static_crate.join("src")];
+        let mut roots = vec![
+            out.join("rust/src/generated"),
+            static_crate.join("src"),
+            out.join("no-std-check/src"),
+        ];
         while let Some(dir) = roots.pop() {
             let Ok(entries) = std::fs::read_dir(&dir) else {
                 continue;

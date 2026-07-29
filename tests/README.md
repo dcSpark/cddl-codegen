@@ -28,7 +28,7 @@ policy below). `local` is "run before considering work done" — the heavy corre
 `cddl-matrix/` once; the runtime stays dependency-free), `verify_selftest` (`verify.ts`'s
 assert-at-startup deciders, run standalone in ~30 ms — their own gate is `full`-tier, and a wrong
 verdict token or evidence-stage name is silent in production, so the cheap tier is where it must
-fail), and the decode-conformance catalog +
+fail), `no_std_check` (the no_std drift gate — see its section below), and the decode-conformance catalog +
 status-header count and doc-citation drift gates (`project_decode_conformance.ts`,
 `project_status_headers.ts`, `lint_doc_citations.ts`) live here, NOT in CI. The doc-citation gate
 checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, bans
@@ -298,6 +298,68 @@ fixture-only dep missing from the warm-up manifest fails offline cells loudly wi
 `CHECK_ONLINE=1` keeps the run online (no offline forcing); a pre-set `CARGO_NET_OFFLINE=true`
 skips the fetch and trusts the cache. The warm-up is the ONE place a network retry is honest (a
 pure fetch, no assertions behind it); if it fails all attempts the run stops before any gate.
+
+### The no_std drift gate (`no_std_check`, local tier)
+
+The generated rust crate is `no_std`-capable, and the tool emits a `no-std-check/` shim crate into
+every output root plus a pointer to it in the seeded crate root. That pointer is a promise: a red
+shim in a consumer's tree attributes to *their* hand-written additions. This gate is what makes the
+promise true of tool output.
+
+`cddl-matrix/no_std_check.ts`, driven by a `fn` registry entry and also invocable on its own as
+`bun run cddl-matrix/no_std_check.ts [tier]` (`check.ts` has no single-gate selector). It generates
+three crates **fresh** into `mkdtemp` scratch — the `tests/<dir>/export*` trees are unusable here
+because the integration harness splices module-scope `println!` helpers into them outside
+`#[cfg(test)]`, so they would fail for reasons that are not the tool's — then `cargo check`s each
+emitted shim on `thumbv7m-none-eabi`:
+
+| Profile | Flags | Surface it exists for |
+|---|---|---|
+| `preserve_canonical` | `--preserve-encodings --canonical-form` | `OrderedHashMap`/`MapHashBuilder`, the derivative-derived key traits in all four `@used_as_key` flavors, a bytes wrapper. No float member — `--preserve-encodings` aborts generation on one |
+| `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `FromHexErrorCore` newtype and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus |
+| `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives |
+
+Profile `preserve_canonical` also gets a **host**-target cell: a consumer crate carrying
+`fn _h(h: MapHashBuilder) -> std::collections::hash_map::RandomState { h }`. `MapHashBuilder` is a
+cfg pair (`RandomState` under `feature = "std"`, `hashlink::DefaultHashBuilder` without it) and the
+thumb cells exercise only the `not(std)` arm, so this signature is the one place in the repo where a
+silent hasher flip fails. Profile `raw_bytes` additionally gets a hand-written consumer module for
+its extern type — the documented contract makes zero-hand-code impossible there, so the module is
+kept minimal and deliberately `no_std`-clean, and it is appended to the *seed-once crate root*, never
+patched into a generated file.
+
+**Each shim is checked alone**, via the emitted empty `[workspace]` table and a `--manifest-path`
+invocation. That is a correctness requirement, not tidiness: cargo unifies features across a whole
+dependency graph, and a check run inside a tree holding (say) a test-only oracle dep can have `std`
+re-enabled transitively for a shared dependency — which masked a real break in this repo until a
+sibling cell failed. Any future convenience refactor that moves these checks into an oracle-carrying
+tree silently voids the gate's verdict.
+
+**Allowed-warning contract.** The verdict is `exit == 0` **and** every `warning:` line falling in one
+of three classes: the cdylib drop (the generated crate's `crate-type` includes `cdylib`, which cargo
+drops with a warning on a no-std target rather than erroring), the documented `Serialize` trait
+residue (matched on the backticked path's *leaf*, exactly as `integration_tests`'
+`UNUSED_IMPORT_TRAIT_RESIDUE` scanner does, since rustc renders it both fully-qualified and as a bare
+leaf), and cargo's per-crate roll-up line. Anything else fails, printing the offending lines and the
+full stderr. Presence is never asserted, only membership — `preserve_canonical` emits no residue at
+all, so requiring it would fail that profile. Asserting warning-free output would make the gate red
+on day one for non-product reasons.
+
+**Absent target: loud SKIP in `local`, hard FAIL in `full`.** The skip prints a multi-line banner
+naming the gate, the target, the fix and what went unchecked; a silent skip would void the
+attribution guarantee with nothing else positioned to notice, and CI runs `fast` only.
+
+**Cache participation:** each cell goes through the shared gate cache (key = tree hash over the whole
+scratch output root + `rustc -vV` + RUSTFLAGS + path-normalized argv carrying the verdict marker
+`no-std-check-v1`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
+Both hand-written crates the gate writes live INSIDE the hashed output root, so editing either
+invalidates the key rather than serving a stale PASS. Bump the verdict marker on any change to the
+allowed-warning logic.
+
+**Fresh-checkout setup:** `thumbv7m-none-eabi` is declared in `rust-toolchain.toml`, so a
+rustup-managed checkout (and CI's `setup-rust-toolchain`, which reads that file) provisions it
+automatically. `rustup target add thumbv7m-none-eabi` is the backstop for everything else — note
+targets install *per toolchain*, so it must land on the pinned one.
 
 ### The gate cache (memoize-and-skip for nested cargo)
 

@@ -74,6 +74,7 @@ import {
   readLedger, runKeysInOrder, splitLogName, tierWindow, trimCellLines, trimRows, upsert, writeLedger,
   KEEP_RUNS_IN_CELLS, type Digest, type GateRow, type Row, type RunRow,
 } from "./cddl-matrix/project_timings.ts";
+import { runNoStdCheckGate } from "./cddl-matrix/no_std_check.ts";
 
 const ROOT = import.meta.dir;
 const MATRIX = join(ROOT, "cddl-matrix");
@@ -716,6 +717,17 @@ function runFuzz(o: Opts): Outcome {
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cargo check (fuzz) exit ${exit}` };
 }
 
+// ---- no-std drift gate: fresh-generate three profiles, thumb-check each emitted shim -------------
+// A `fn` gate for two reasons. (1) The absent-target outcome is TIER-DEPENDENT — a loud SKIPPED in
+// `local`, a hard FAIL in `full` — and `Opts` carries no tier, so the gate reads it the way `main()`
+// does: the first non-`--` argv token (the self-log re-exec preserves argv verbatim). (2) A SKIPPED
+// shows in the registry SUMMARY table rather than only in the scrollback, the same honest-visible-skip
+// reason `gate_cache_closure_audit` is a `fn` gate.
+function runNoStdCheck(): Outcome {
+  const tier = process.argv.slice(2).find(a => !a.startsWith("--")) ?? "local";
+  return runNoStdCheckGate(tier);
+}
+
 // ---- matrix typecheck gate: tsc --noEmit via the pinned local devDependency ----------------------
 // The cddl-matrix scripts run under Bun (no build step), but nothing checks their strict types unless
 // `tsc` runs. This gate uses the LOCAL typescript pinned in cddl-matrix/package.json (not a global /
@@ -789,6 +801,8 @@ export const REGISTRY: Gate[] = [
     desc: "snapshot orphan check" },
   { id: "matrix_typecheck", tier: "local", kind: "fn", run: runMatrixTypecheck,
     desc: "tsc --noEmit over the cddl-matrix scripts (pinned local devDependency)" },
+  { id: "no_std_check", tier: "local", kind: "fn", run: runNoStdCheck, script: "no_std_check.ts",
+    desc: "emitted no-std-check shims: fresh-generate 3 profiles, cargo check each shim on thumbv7m-none-eabi" },
   // verify.ts's own gate is `full`-tier, so without this its assert-at-startup self-tests would only
   // ever run inside a ~60-minute manual gate — a millisecond check sitting behind the most expensive
   // thing in the repo. What they cover fails SILENTLY in production: a wrong ruby verdict token or a

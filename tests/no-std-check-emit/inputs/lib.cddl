@@ -1,0 +1,5 @@
+; Fixture for the no-std-check shim emitter. The shim is derived from the CLI alone — no rule here
+; reaches it — so this spec exists only to give the pipeline something valid to parse. It is
+; deliberately trivial: a spec that grew constructs would imply the shim varies with the spec, which
+; is exactly the property `no_std_check_emit_is_spec_independent` pins.
+foo = [ a: uint, b: text ]

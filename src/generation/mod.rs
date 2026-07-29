@@ -43,6 +43,11 @@ pub(crate) mod layout;
 // (commit 4). `pub(crate)` so the test-only `api::extern_interface_strings` helper can reach the
 // emitter for snapshot fixtures.
 pub(crate) mod extern_interface;
+
+// The emitted `no-std-check/` shim crate: a second always-clobbered sibling tree, on exactly the
+// terms `extern_interface` states, but built from `Cli` alone (no IR). `pub(crate)` so the test-only
+// `api::no_std_check_strings` helper can reach the producer for snapshot fixtures.
+pub(crate) mod no_std_check;
 // Re-exports keeping the pre-split paths (`generation::X`) resolving for callers outside this
 // module: the public `rustfmt_generated_string` and the test-only helpers. None are used in the
 // crate's non-test compilations, so the aliases read as unused there — allow the lint on them.

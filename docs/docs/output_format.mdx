@@ -6,6 +6,7 @@ sidebar_position: 4
 
 - Inside of the output directly the tool always produces a `rust/` directory (including Cargo.toml, etc). 
 - Unless we pass in `--wasm=false` the tool also generates a corresponding `wasm/` directory.
+- Two further top-level directories are emitted beside them in **every** mode: `extern-interface/` (this crate's extern-visible type surface, for consumers — see [Extern-interface export](#extern-interface-export)) and `no-std-check/` (a tiny throwaway crate that proves the rust crate still builds without `std` — see [The `no-std-check` shim crate](#the-no-std-check-shim-crate)). Both are tool-owned and delete-and-recreated on every run.
 - Every crate's generated code lives under a tool-owned `src/generated/` subtree (`rust/src/generated/mod.rs` holds the structs, `rust/src/generated/serialization.rs` their (de)serialization implementations/corresponding types, plus the runtime modules `error.rs`/`ordered_hash_map.rs`; a crate with any [`@used_as_key`](./comment_dsl)-tagged rule also carries `key_demand_assertions.rs`, the private compile-time record of which tag demanded which comparison/hash traits). The crate root `src/lib.rs` is a thin, user-owned wrapper (`mod generated; pub use generated::*;`) — see [Generated crate roots](#generated-crate-roots-thin-root-seed-once) below.
 - The `wasm/` directory is full of wasm_bindgen-annotated wrappers (under `wasm/src/generated/`) for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh). Every wasm crate also carries a `wasm/src/generated/collections.rs` index: one `pub use crate::…::<Wrapper>;` re-export per collection wrapper class the crate defines (the `FooList` / `MapKToV` and `NonEmpty…` wrappers minted from `[* T]` / `{* K => V}` shapes), sorted, with no glob. Because it is compiled as part of the crate, a line naming a removed wrapper fails the crate's own build, so the index can never silently drift from the classes it inventories.
 
@@ -1012,7 +1013,8 @@ that doesn't exist.
 
 ## Extern-interface export
 
-Every regeneration emits an `extern-interface/<dep>/**` directory — a sibling of `rust/` and `wasm/`
+Every regeneration emits an `extern-interface/<dep>/**` directory — a sibling of `rust/`, `wasm/` and
+[`no-std-check/`](#the-no-std-check-shim-crate)
 under the output directory — describing the crate's own extern-visible type surface so that a
 **consumer** crate can depend on it with [`--extern-import`](./command_line_flags). `<dep>` is the
 crate's normalized lib name (underscored — the same key the `--extern-wasm-crate` /
@@ -1155,6 +1157,65 @@ crate — for borrowed dependency types, the dependency's real module path (see
 > `extern_interface_check.rs` or `key_demand_assertions.rs` (stranded when you deleted a rule). Regenerating
 > does **not** clear it — sentinel blocks are carried forward by design — so delete that one block by hand
 > once; every regen afterwards stays clean.
+
+## The `no-std-check` shim crate
+
+The generated **rust** crate is `no_std`-capable: it declares a default-on `std` cargo feature, and a
+`no_std` consumer depends on it with `default-features = false`. Everything under `src/generated/**`
+is generated `no_std`-clean. The crate root `src/lib.rs`, however, is
+[seeded once and then yours](#generated-crate-roots-thin-root-seed-once) — so hand-added utils (and
+anything they pull in) are the one thing that can take a generated crate out of `no_std`, and nothing
+in the generator can see that happen.
+
+So every regeneration also emits a `no-std-check/` directory — a sibling of `rust/`, `wasm/` and
+`extern-interface/` under the output directory — holding a ~15-line crate whose only job is to be
+checked:
+
+```
+cargo check --manifest-path <output-root>/no-std-check/Cargo.toml --target thumbv7m-none-eabi
+```
+
+Green means the rust crate, *including whatever you added to its root*, builds with no `std`. The
+same command is quoted in the seeded `rust/src/lib.rs` header — the one file you open before adding
+utils.
+
+**What that lets you conclude.** Generated output is held `no_std`-clean by a drift gate in this
+tool's own repository, which generates representative crates fresh and runs exactly this check
+against them. So a red `no-std-check` over an unmodified generated crate is a bug in the tool —
+report it — and otherwise it attributes to hand-written additions. Calibrate on one detail: that gate
+runs in the repo's `local` and `full` tiers, which are a run-before-shipping discipline rather than a
+continuous one (its CI runs the `fast` tier only).
+
+- **Always-clobbered and tool-owned**, the same class as `extern-interface/`: the whole directory is
+  delete-and-recreated each run, so hand edits inside it do not survive. It is outside every
+  per-crate system — no seed-once file, no [`Cargo.toml` merge](#generated-cargotoml-merge-not-clobber),
+  no [edit-preservation overlay](./preserving_edits). Both of its files are derived from the
+  command-line flags alone and never from the spec, which is what makes the check's verdict a
+  statement about the *crate* rather than about the rules that happen to be in it.
+- **Emitted unconditionally, in every mode** (including `--wasm=false`), for the same reason the
+  extern-interface export is: the seeded crate root tells every consumer to run it, so it has to be
+  there.
+- **A no-std *target* is required, not just the feature.** Host targets always link `std`, so a host
+  `cargo check` cannot prove anything here; `thumbv7m-none-eabi` is a bare-metal target with no `std`
+  at all. Install it once with `rustup target add thumbv7m-none-eabi`.
+- **Deliberately standalone**, via an empty `[workspace]` table in its manifest. That keeps it out of
+  a surrounding cargo workspace, which matters for correctness and not just tidiness: cargo unifies
+  features across a whole dependency graph, so one other workspace member turning `std` back on for a
+  shared dependency would make this check pass while the crate is not in fact `no_std`-clean.
+  (It also means the directory appearing in your output can never disturb a workspace that does not
+  list it — and that a bare `cargo check -p …` has no workspace to resolve the name in, hence the
+  `--manifest-path` invocation.)
+- **Package name `<lib-name>-no-std-check`**, from [`--lib-name`](./command_line_flags), so a
+  [`--config`](./command_line_flags) multi-crate tree gets one non-colliding shim per crate.
+- **It stays at the output root under [`--package-json`](./command_line_flags)**, where the cargo
+  crates move one level down; the shim absorbs that by pointing its path dependency at `../rust/rust`
+  instead of `../rust`.
+- **One exception to "just run it":** a crate generated with
+  [`--common-import-override`](./command_line_flags) does not emit the runtime modules at all (the
+  override crate owns them) and does not gain a dependency on that override crate automatically, so
+  its shim cannot go green until you have added that dependency to `rust/Cargo.toml` by hand. The
+  shim is still emitted there; it just inherits the same one-time manifest edit the crate itself
+  needs.
 
 ## Generated `Cargo.toml` (merge, not clobber)
 
@@ -1317,3 +1378,8 @@ hand-maintains its own npm manifests. The scripts resolve their inputs relative 
 and work under either layout; see
 [Command line flags § `--json-schema-scripts`](./command_line_flags) for their arguments and their
 failure behaviour.
+
+The two always-emitted sibling directories are not pictured above and do **not** move with the
+crates: `extern-interface/` and [`no-std-check/`](#the-no-std-check-shim-crate) stay at the output
+root in every layout. The shim absorbs the nesting in its path dependency instead, which reaches
+`rust/rust` here rather than `rust`.

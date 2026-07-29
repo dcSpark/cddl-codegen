@@ -717,8 +717,10 @@ impl GenerationScope {
         // without it they sit directly under `<output>`. `config::crate_relative` duplicates THIS
         // rule on purpose — a config derives cross-crate flag values naming ANOTHER crate's
         // generated files, so it has to know where that crate's emitter put them, and the rule is
-        // code rather than a string so no constant can carry it for both. Change both together: a
-        // disagreement type-checks and produces derived paths one directory away from the files.
+        // code rather than a string so no constant can carry it for both. Change all THREE together
+        // (`generation::no_std_check::dep_path` is the third: the shim stays at the output root and
+        // absorbs the nesting into its dep path instead of moving): a disagreement type-checks and
+        // produces derived paths one directory away from the files.
         let rust_dir = if cli.package_json {
             if cli.json_schema_export {
                 std::fs::copy(
@@ -1154,6 +1156,32 @@ impl GenerationScope {
             std::fs::remove_dir_all(&extern_interface_dir)?;
         }
         for (rel_path, content) in &extern_interface_files {
+            let path = cli.output.join(rel_path);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, content)?;
+        }
+
+        // The no-std-check shim crate: the same always-clobbered sibling-tree shape as the
+        // extern-interface export directly above, and emitted unconditionally for the same reason
+        // (the seeded rust crate root tells every consumer to run it, so it has to be there). No
+        // seed, no manifest changeset, no comment/code-preservation overlay, and no prior-output
+        // read: both files are a pure function of `Cli`, so a rerun rewrites identical bytes.
+        //
+        // The stale-file scan below deliberately does NOT cover this tree, on the same argument that
+        // exempts `extern-interface/`: the scan exists for the three PARTIALLY-rewritten
+        // `src/generated` trees, where a removed rule leaves a `.rs` nothing declares any more.
+        // Delete-and-recreate cannot orphan anything — a file this run did not write does not exist
+        // after it — so a scan here could only ever report the empty set.
+        let no_std_check_files = crate::generation::no_std_check::no_std_check_files(cli);
+        let no_std_check_dir = cli
+            .output
+            .join(crate::generation::no_std_check::NO_STD_CHECK_DIR);
+        if no_std_check_dir.exists() {
+            std::fs::remove_dir_all(&no_std_check_dir)?;
+        }
+        for (rel_path, content) in &no_std_check_files {
             let path = cli.output.join(rel_path);
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
