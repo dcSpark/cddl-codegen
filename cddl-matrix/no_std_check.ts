@@ -350,10 +350,27 @@ const PROFILES: Profile[] = [
     // The JSON surface the corpus never emits: `json_schema_gen.rs` (the Registrar runtime and the
     // `$crate::json_schema_gen::Cow` macro), `json_value_ser.rs`, and serde/schemars derives on the
     // generated types — all compiled into the RUST crate, hence inside the thumb check.
+    //
+    // `any_members` is the `any` × `--json-serde-derives` composition, and it is here for a reason
+    // no other profile covers: `any_cbor.rs` is emitted only when the finalized IR contains `any`,
+    // and under `--json-serde-derives` the WHOLE of `static/any_cbor_json.rs` is appended to it —
+    // eight nested inline `natural_any_cbor_*` adapter modules, all compiled whether or not the spec
+    // reaches them. A file-top `use alloc::…` does not reach a nested inline module, so each of those
+    // modules carries its own `use super::alloc::…;` BY HAND; a missed one is invisible under `std`
+    // (the std prelude supplies the name) and an E0425 the moment the crate is built without it.
+    // That is exactly the shape of the first consumer-reported no_std break, and this member set —
+    // a plain `any`, an optional `any`, a `[* any]` seq, an optional seq, a `{* K => any}` table and
+    // an optional table — is what puts every adapter shape inside the thumb compile.
     id: "json_schema",
     libName: "nostd-json",
     flags: ["--preserve-encodings=true", "--json-serde-derives=true", "--json-schema-export=true"],
-    cddl: ["inner = [ a: uint, b: text ]", "tbl = { * uint => text }", "outer = [ i: inner, t: tbl, ? o: bytes ]", ""].join("\n"),
+    cddl: [
+      "inner = [ a: uint, b: text ]",
+      "tbl = { * uint => text }",
+      "any_members = { 1: any, ? 2: any, 3: [* any], ? 4: [* any], 5: { * uint => any }, ? 6: { * uint => any } }",
+      "outer = [ i: inner, t: tbl, ? o: bytes, am: any_members ]",
+      "",
+    ].join("\n"),
   },
   {
     // The ONE flag whose output is deliberately not no_std-capable. `--deserialize-depth-limit`

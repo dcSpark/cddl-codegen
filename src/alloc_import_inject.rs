@@ -43,10 +43,16 @@
 //! * **Nested inline `mod X { … }` bodies never trigger.** A file-top `use` does not reach a nested
 //!   inline module, so a nested usage must not pull a file-top import in: the import would be
 //!   unused at file scope and the nested module would still not resolve. Nested modules that need
-//!   alloc names carry their own `use super::alloc::…;` lines by hand (the four `natural_any_cbor_*`
-//!   serde adapters in `static/any_cbor_json*.rs` are the only such sites, and their content is
-//!   static and unconditional within their fragment, so they cannot hit the duplicate-import hazard
-//!   that hand imports elsewhere in `static/` would).
+//!   alloc names carry their own `use super::alloc::…;` lines by hand: the `natural_any_cbor_*`
+//!   serde adapters in `static/any_cbor_json*.rs` are the only such sites, and six of the eight
+//!   carry one (the four map adapters `BTreeMap`, the two seq adapters `Vec`; plain
+//!   `natural_any_cbor`/`natural_any_cbor_opt` name no alloc type at all). Their content is static
+//!   and unconditional within their fragment, so they cannot hit the duplicate-import hazard that
+//!   hand imports elsewhere in `static/` would. The full rationale for the `super::alloc` spelling
+//!   is the canonical comment on `natural_any_cbor_btreemap`'s import; the other five point at it.
+//!   A hand import MISSED here is invisible under `std` and an E0425 without it, so the systematic
+//!   net is the `json_schema` profile of `cddl-matrix/no_std_check.ts`, whose CDDL carries one
+//!   member of every adapter shape.
 //! * **`use` items never trigger.** An import is not a use of the name it binds.
 //! * **The `extern crate alloc;` line is broader on purpose**: it is emitted when the file
 //!   references the crate `alloc` at file scope OR through `super::alloc`/`self::alloc` ANYWHERE in
