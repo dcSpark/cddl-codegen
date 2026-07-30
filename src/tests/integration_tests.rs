@@ -8946,8 +8946,10 @@ fn custom_schema_impl_writes_a_closing_document() {
     );
 }
 
-/// Float JSON serde/schema, split from `json` because that fixture also runs under
-/// `json_preserve` and preserve-encodings is unimplemented for floats.
+/// Float JSON serde/schema. A fixture of its own rather than part of `json` because of the tests
+/// beside it: validation against the crate's own emitted schema (the `jsonschema` dev-dep below) and
+/// a bit-exact f64 JSON round-trip, which holds only while the generated manifest carries
+/// serde_json's `float_roundtrip` feature.
 #[test]
 fn json_float() {
     run_test(

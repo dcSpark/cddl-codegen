@@ -319,7 +319,7 @@ carry a host-side cell beside it:
 
 | Profile | Flags | Surface it exists for |
 |---|---|---|
-| `preserve_canonical` | `--preserve-encodings --canonical-form` | `OrderedHashMap`/`MapHashBuilder`, the derivative-derived key traits in all four `@used_as_key` flavors, a bytes wrapper. No float member — `--preserve-encodings` aborts generation on one |
+| `preserve_canonical` | `--preserve-encodings --canonical-form` | `OrderedHashMap`/`MapHashBuilder`, the derivative-derived key traits in all four `@used_as_key` flavors, a bytes wrapper, and a float member — its preserve head-width path reaches the `write_float` runtime helper, a `core`-only fn that has to stay no_std-clean |
 | `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `decode_canonical_hex` door its `from_raw_hex` reads through, and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus. Also the only cell that compiles the `hex` key's package (`const-hex`) for a bare-metal target |
 | `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives — plus the `any` × `--json-serde-derives` composition, which no flag list alone reaches: `any_cbor.rs` is emitted only when the finalized IR holds `any`, and only then is the whole of `static/any_cbor_json.rs` appended to it. Its spec therefore carries an `any_members` rule with one member of every nested `natural_any_cbor_*` adapter shape (plain, optional, seq, optional seq, table, optional table), because those nested inline modules carry their alloc imports BY HAND and a missed one is invisible under `std` |
 | `depth_limit` | `--deserialize-depth-limit 64` + a recursive rule | The one flag whose output is deliberately **not** `no_std`-capable (`thread_local!` guard). Its shim cell INVERTS: expected FAIL carrying the pinned ``--deserialize-depth-limit output requires the `std` feature`` substring (LOCKSTEP with `generation::export::DEPTH_LIMIT_REQUIRES_STD`); a `host_default_check` `cargo check` beside it proves the refusal is confined to `not(std)` |
@@ -526,12 +526,21 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
 - **`whole_program`** — the larger integration inputs (`core`, `preserve-encodings`, `canonical`,
   `json`, `json-float`, and the `multifile` directory) each under one known-safe profile, capturing
   the *full* output incl. `Cargo.toml`s. Covers cross-feature interactions, the scope/module path,
-  and the edition/deps logic. It's also the home for inputs that need a *profile-limited* snapshot
-  (`json-float`: floats can't join the corpus, whose snapshots span all three profiles, and
-  preserve-encodings is unimplemented for floats). The same constraint routes a single CONSTRUCT
-  into a profile-limited input's `.cddl` rather than the corpus: `tagged_type_choice` (tag over a
-  whole type choice) lives in `core` because tagging a type-choice enum is unimplemented under
-  preserve-encodings. And it's the home for inputs whose output *can't compile
+  and the edition/deps logic. It's also the home for inputs that need a *profile-limited* snapshot,
+  which routes a single CONSTRUCT into such an input's `.cddl` rather than the corpus:
+  `tagged_type_choice` (tag over a whole type choice) lives in `core` because tagging a type-choice
+  enum is unimplemented under preserve-encodings, and the corpus snapshots span all three profiles.
+  No float constraint of that kind survives — floats carry their head width as an encoding variable,
+  so `tests/corpus/homogeneous_array.cddl`'s `float_holder` and `tests/corpus/optional_fixed_float.cddl`
+  are ordinary corpus fixtures snapshotted under preserve like everything else. What keeps
+  `json-float` here is its fixture SHAPE, not any float gap: its hand-written
+  `tests/json-float/tests.rs` validates a serialization against the crate's own emitted schema
+  (a `jsonschema` dev-dep the corpus harness has no slot for) and asserts an f64 survives a JSON
+  round-trip bit-exactly, which holds only while the generated manifest carries serde_json's
+  `float_roundtrip` feature — a manifest this suite captures and the corpus deliberately skips.
+  Both the fold-back into `tests/json/` (split from it only for the retired float reason) and the
+  promotion of the bare `[f: float64]` construct into the corpus are open, unperformed work.
+  And it's the home for inputs whose output *can't compile
   standalone* (`extern_deps`/`extern_deps_wasm`/`raw_bytes` reference user-supplied types; their
   behavioral coverage is their integration fixtures) — this suite never compiles, so neither constraint bites here, which
   is why such inputs are pinned here rather than via corpus skip-lists that would weaken the corpus
@@ -1269,10 +1278,17 @@ directives) is verified across the layers:
   mismatch ruling, empty-rest ≡ closed-struct bytes.
 - **Preserve/canonical e2e** — `tests/open-struct-map-preserve-e2e` (compiled): byte-exact
   wire-order interleave at non-minimal widths, concrete key/value encoding sidecars, the
-  `0x01`-vs-`0x1801` value-duplicate rejection under BOTH key domains, empty-rest ≡ closed
+  value-duplicate rejection under BOTH key domains that reject (`0x01`-vs-`0x1801` under `* uint =>
+  any`, `0x05`-vs-`0x1805` under `* any => any`), empty-rest ≡ closed
   canonical bytes, the runtime canonical merge, the `24`-vs-`10` codegen↔runtime comparator
-  divergence-agreement vector, and the `@duplicates preserve` pair-list twin (byte-exact with
-  duplicates present, positional sidecars, canonical stable sort keeping wire order).
+  divergence-agreement vector, the `@duplicates preserve` pair-list twin over the concrete uint
+  domain (byte-exact with duplicates present, positional sidecars, canonical stable sort keeping
+  wire order), and the composition of the two — `@duplicates preserve` over the `any` KEY domain
+  (`dup_any_rest`, a `PairMap<AnyCbor, AnyCbor>`): duplicate and composite (array) keys byte-exact
+  with canonical re-canonicalizing to itself, indefinite map framing around a duplicated non-minimal
+  key whose value payload is a run of major-7 head bytes, and float VALUES replayed at their wire
+  widths whose canonical output applies each RFC 8949 § 4.2 rule (`f93c00` shrink, `f97e00` NaN
+  payload drop, `f98000` signed zero).
 - **JSON e2e** — `tests/open-struct-map-json-e2e` (compiled): flatten round-trip, declared-names-
   bind-first loose read, and the write-error postures (declared-name collision, identical
   stringifications — which is also how a pair-list holding real duplicates errors — complex `any`
@@ -1680,13 +1696,19 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
 
   Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
   re-encode **byte-identically** (the preserve contract is itself decode-direction evidence).
-  `PRESERVE_SKIP` (stale-guarded) carries three entry classes: the float class, the
-  tag-over-a-type-choice preserve gap, and the BY-DESIGN rejection class (`dsl.ignore` — `@ignore`
-  under `--preserve-encodings` is a contract rejection, not a gap, so its stale-entry guard is a
-  regression tripwire: that leg starting to generate is the finding). Anything new there is a
-  finding either way. It stays a hand list on purpose — it is NOT the matrix
-  emission axis: the replay specs embed rows as members, so e.g. `prelude.float` skips here while
-  its `emission.preserve` verdict (a bare-alias probe) is `supported`.
+  `PRESERVE_SKIP` (stale-guarded) carries two entry classes: the tag-over-a-type-choice preserve
+  gap, and the BY-DESIGN rejection class (`dsl.ignore` — `@ignore` under `--preserve-encodings` is a
+  contract rejection, not a gap, so its stale-entry guard is a regression tripwire: that leg starting
+  to generate is the finding). Anything new there is a finding either way. It stays a hand list on
+  purpose, for two reasons that outlive any single entry. WHICH class an entry belongs to is what its
+  stale guard means — a gap closing versus a contract regressing — and the matrix's
+  `emission.preserve` verdict is one boolean that cannot carry that distinction: both residents are
+  annotated `unsupported`. And that verdict comes from a bare-alias probe while the replay specs
+  embed rows as members, so a shape the alias never reaches can be preserve-broken under a
+  `supported` verdict; the retired float class was exactly that divergence, and nothing about the
+  probe shape has changed since. The corpus twin gate below has no annotation axis at all — its rows
+  are keyed to corpus fixtures. See the entry on pin-masked ledger obligations in
+  `tests/TESTING_ROADMAP.md` for how far the mechanical layer can go.
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),
@@ -2115,11 +2137,15 @@ three-profile sweep here and the full-tier execution sweep
 cover the three classes an in-process suite structurally cannot: an emission rustfmt rejects, an
 emission rustc rejects, and an emission that is only wrong under a non-default profile. Promote such
 a shape into `tests/corpus/`; do not build a harness beside it.
-A fixture that deliberately reaches a tracked unimplemented path under ONE profile is ledgered
-per-profile in the gate's `EXPECTED_GENERATION_FAIL` (`(stem, profile, reason)` — e.g.
-`optional_fixed_float`/preserve, which aborts at the native-float preserve stub), stale-guarded
-both directions: a listed cell that starts generating fails as "gap closed — remove the pin", an
-unlisted generation failure fails normally. The same cells are mirrored where the other corpus
+A fixture whose generation deliberately aborts under ONE profile is ledgered per-profile in the
+gate's `EXPECTED_GENERATION_FAIL` (`(stem, profile, reason)`), for either of two reasons: it reaches
+a tracked unimplemented path, or the profile REFUSES it by design. Its one resident is the by-design
+kind — `dsl_ignore`/preserve, where an `@ignore` open struct-map is rejected under
+`--preserve-encodings` because a preserve crate's byte-exact round-trip contract cannot hold for a
+type that drops unknown entries. Stale-guarded both directions: a listed cell that starts generating
+fails as "gap closed — remove the pin", which for a by-design entry is read the other way round (the
+contract regressed — investigate rather than delete the pin); an unlisted generation failure fails
+normally. The same cells are mirrored where the other corpus
 walkers would trip over them: the snapshot suite's `PROFILE_GENERATION_SKIP` (`snapshot_tests.rs` —
 no snapshot exists for a profile that never generates) and
 `feature_corpus_roundtrips_nondefault_profiles`' `SKIP`, each with its own stale guard.

@@ -140,9 +140,10 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             &["--json-serde-derives=true", "--json-schema-export=true"],
         ),
     ),
-    // float JSON emission — split from `json` (that fixture also runs under json_preserve,
-    // and preserve-encodings is unimplemented for floats; same reason floats can't be corpus
-    // entries, whose snapshots span all three profiles).
+    // float JSON emission — a separate fixture from `json` for the hand-written tests beside it
+    // (validation against the emitted schema through a jsonschema dev-dep, and a bit-exact f64 JSON
+    // round-trip that holds only while the generated manifest carries serde_json's
+    // `float_roundtrip` feature). Floats themselves are ordinary corpus material under every profile.
     (
         "json_float",
         "tests/json-float/input.cddl",
