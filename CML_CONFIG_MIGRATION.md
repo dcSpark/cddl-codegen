@@ -331,10 +331,10 @@ Give each crate its own `output`.
 ```
 
 It cannot be appended to the `--config` command either, since `--config` refuses any generation flag
-beside it (`--static-dir` is the one exception, and it is a tool location, not a crate fact). So it
-stays its own `cddl-codegen` invocation in the wrapper script, with its flags
-written out in full — `--print-flags` on the config is how you keep that hand-written invocation
-honest, on the day you copy it.
+beside it (`--static-dir` and `--verbosity` are the two exceptions, and neither is a crate fact — one
+is a tool location, the other this invocation's log level). So it stays its own `cddl-codegen`
+invocation in the wrapper script, with its flags written out in full — `--print-flags` on the config
+is how you keep that hand-written invocation honest, on the day you copy it.
 
 ## The generation order flips, and the run settles it
 
@@ -415,10 +415,11 @@ Verified: running the fixture's config from a directory with no `static/` panics
 
 Writing `static-dir` into the config is not the fix, because its value is a per-machine cache path
 (`$XDG_CACHE_HOME/cml-cddl-codegen…`) that would then be baked into a committed file. The fix is the
-one command-line exception config mode carries for exactly this shape: pass
+command-line exception config mode carries for exactly this shape: pass
 `--static-dir "$WORK/static"` alongside `--config` (it applies to every crate and overrides any
-committed key — `docs/docs/config_file.mdx` § "The one exception: `--static-dir`"), which retires
-the `cd`'s load-bearing role; keeping the `cd` remains a working spelling of the same fact.
+committed key — `docs/docs/config_file.mdx` § "The two exceptions: `--static-dir` and
+`--verbosity`"), which retires the `cd`'s load-bearing role; keeping the `cd` remains a working
+spelling of the same fact.
 
 ## The manifest entries: three derived, two still by hand
 
