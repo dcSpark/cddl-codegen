@@ -4,14 +4,18 @@
   "gates": [
     {
       "gate": "all_supported_constructs_generate_all_profiles",
-      "warm_ms": 133000,
+      "warm_ms": 164000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-30",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 133000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 164000
         }
       ]
     },
@@ -500,14 +504,18 @@
     },
     {
       "gate": "recombination_crates_execute",
-      "warm_ms": 45000,
+      "warm_ms": 59000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-30",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 45000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 59000
         }
       ]
     },
@@ -530,9 +538,9 @@
     },
     {
       "gate": "recombination_preserve_crates_execute",
-      "warm_ms": 89000,
+      "warm_ms": 108000,
       "n": 20,
-      "measured": "2026-07-29",
+      "measured": "2026-07-30",
       "machine": "86216c55",
       "history": [
         {
@@ -542,6 +550,10 @@
         {
           "date": "2026-07-29",
           "warm_ms": 89000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 108000
         }
       ]
     },
