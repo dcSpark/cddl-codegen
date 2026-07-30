@@ -514,6 +514,45 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    does NOT reproduce — a block that self-clears is a false positive by construction, which is
    exactly how the no_std one was identified.
 
+10. **The wasm crate does not compile for two shape COMBINATIONS, each of whose ingredients is
+    covered alone.** Both were found while probing the declared-type-spelling delivery, both
+    reproduce at that delivery's parent (`a5d8eec6`) with a binary built there, and neither is
+    caused by it — the spelling change moves `EncodingField::type_name` inputs, which reach the rust
+    crate's `cbor_encodings.rs` only, while both failures are in emitted WASM.
+    - **(i) A structural wrapper name is claimed by two different container twins — `E0277`.**
+      `epoch = uint`, `meta = {* epoch => text} ; @duplicates preserve` (referenced by a record) plus
+      an open-struct rest row `* epoch => text`, under `--preserve-encodings --wasm`: the named
+      preserve rule mints the class `Meta` over `PairMap<u64, String>` and claims
+      `pub type MapEpochToText = Meta;`, while the rest row needs the LOOSE
+      `OrderedHashMap<u64, String>` wrapper for the same key/value shape and asks for it under the
+      same name. The rest accessor then emits `self.0.rest.clone().into()` against a class whose
+      `From` is over the pair-map twin: `the trait bound Meta: From<OrderedHashMap<u64, String>> is
+      not satisfied`.
+    - **(ii) An open-struct rest row's wasm surface is not routed across scopes — `E0425` ×2.**
+      A directory input with `epoch`/`policy_id` in module `a` and
+      `open_holder = {1: uint, * epoch => {* policy_id => text}}` in module `b`: `b/mod.rs`'s rest
+      accessor returns `MapEpochToMapPolicyIdToText`, which is minted at the crate ROOT and never
+      imported into `b`; and the root-minted wrapper's own `insert`/getter signatures name `Epoch`,
+      which lives in `a` and is not imported into the root either. The trigger is the REST ROW
+      specifically — the identical nested cross-scope map as a plain FIELD compiles clean, and a
+      cross-scope FLAT map rest row compiles clean, so it is the rest row's wasm surface that misses
+      the ref-marking both a field walk and a flat rest row get.
+    - **The missing system is combinatorial wasm compilation, not another fixture.** Every
+      ingredient here is covered in isolation: preserve pair-map tables have fixtures, rest rows have
+      fixtures, cross-scope references have fixtures, nested maps have fixtures. The wasm compile
+      cells are per-feature, so no cell crosses (container twin × rest row) or (rest row × scope ×
+      nesting depth). The cheap version is a small matrix of shape PAIRS compiled wasm-side —
+      generated once per pair, `cargo check`ed, no vectors — which is how both of these would have
+      surfaced before a consumer's build did.
+    - **(i) is a cross-KIND collision, which is why the four per-kind wrapper-name collision
+      detectors miss it.** They are deliberately parallel siblings with distinct pinned message
+      texts, and each sees only its own kind; nothing compares one kind's structural-name claim
+      against another's. A fifth sibling that compares claims ACROSS kinds is consistent with that
+      standing ruling (it needs its own message text anyway); collapsing the four into one generic
+      detector is not. The magnitude dimension is how many twins can claim one name — four today
+      (loose, pair-map, non-empty, reject-set) — so each new `@duplicates`-style twin multiplies the
+      unchecked pairs.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
