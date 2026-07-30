@@ -371,6 +371,45 @@ fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent)
     ));
 }
 
+/// The `@custom_serialize` / `@custom_deserialize` directive names present in `metadata`, in a
+/// stable order. Every placement rejection for the pair reports it one directive at a time, so the
+/// message names exactly the spelling the author wrote (and both fire when both are present).
+fn custom_codec_directives(metadata: &RuleMetadata) -> Vec<&'static str> {
+    let mut found = Vec::new();
+    if metadata.custom_serialize.is_some() {
+        found.push("@custom_serialize");
+    }
+    if metadata.custom_deserialize.is_some() {
+        found.push("@custom_deserialize");
+    }
+    found
+}
+
+/// Reject a custom (de)serializer pair sitting in a collection ROW-ENTRY comment slot — a table row,
+/// an open struct-map rest row, an open-array rest tail. The pair is a TYPE-level override keyed on
+/// the type whose codec it replaces, and a row entry declares no type of its own, so the directives
+/// are read into the row's `RuleMetadata` and dropped. (`@name`, `@duplicates` and `@ignore` are the
+/// spellings that slot legitimately carries — they are row-scoped by construction, which is exactly
+/// what the pair is not.) `slot` names the row shape and `remedy` names the rule to move the pair
+/// onto, both of which differ per call site. Returns whether anything was rejected.
+fn reject_custom_codec_on_row_entry(
+    types: &mut IntermediateTypes,
+    src: &str,
+    slot: &str,
+    remedy: &str,
+    metadata: &RuleMetadata,
+) -> bool {
+    let found = custom_codec_directives(metadata);
+    for directive in &found {
+        types.record_rejection(format!(
+            "{directive} on the {slot} of rule `{src}`: the custom (de)serializer pair is a \
+             TYPE-level override keyed on the type whose codec it replaces, and a row entry \
+             declares no type of its own, so it is not honored in this slot. {remedy}"
+        ));
+    }
+    !found.is_empty()
+}
+
 /// The CDDL source name a rule ident was registered under, falling back to the ident itself for a
 /// struct synthesized during IR build (which has no source rule).
 fn source_rule_name_of(types: &IntermediateTypes, name: &RustIdent) -> String {
@@ -1646,6 +1685,64 @@ fn parse_type(
              {RAW_BYTES_MARKER} rule — it declares that the externally-defined rust type derives \
              `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
         ));
+    }
+    // The custom (de)serializer pair is a TYPE-LEVEL override: it replaces the codec of the rust type
+    // the rule resolves to, keyed on that type's alias node. Three rule-level spellings delete or
+    // bypass the thing it keys on, and each one used to accept the directives and generate as if they
+    // were absent — the silent-wire-divergence class the extern-interface guard exists to prevent. Each
+    // is a graceful rejection naming the spelling that DOES work. (Field position and the row-entry
+    // slots are handled where their metadata is read; a named RECORD rule is deliberately NOT here —
+    // its impls are suppressed for the author to hand-own, which is a separate contract.)
+    let custom_directives = custom_codec_directives(&rule_metadata);
+    for directive in &custom_directives {
+        // An extern rule names a type this crate does not define — `RustStruct::new_extern` stores no
+        // config, so the pair never reaches generation and BOTH directions emit the extern's own impls.
+        if is_extern_marker {
+            types.record_rejection(format!(
+                "{directive} on `{type_name}`: a {EXTERN_MARKER} rule names a type this crate does \
+                 not define, so that type owns its own serialization impls and the custom \
+                 (de)serializer pair never reaches generation. Give the rule a real CDDL body and \
+                 put the pair there (`<rule> = text ; @custom_serialize <fn> @custom_deserialize \
+                 <fn>`) — that states the wire type in the spec and routes the pair through the \
+                 type-level alias override."
+            ));
+        }
+        // `@no_alias` strips the alias node the override is keyed on, so the pair goes with it and
+        // both directions fall back to the default wire format — symmetric, and therefore invisible
+        // to a round-trip test. Excluded body shapes (`Map`/`Array`, and the tag-head/parenthesized
+        // wrappers that recurse back into this function carrying the metadata) route to
+        // `parse_group`, where `@no_alias` is inert for a different reason and a named RECORD rule
+        // legitimately carries the pair.
+        if rule_metadata.no_alias
+            && !matches!(
+                &type1.type2,
+                Type2::Map { .. }
+                    | Type2::Array { .. }
+                    | Type2::TaggedData { .. }
+                    | Type2::ParenthesizedType { .. }
+            )
+        {
+            types.record_rejection(format!(
+                "{directive} together with `@no_alias` on `{type_name}`: `@no_alias` removes the \
+                 type-alias node the custom (de)serializer override is keyed on, so the pair goes \
+                 with it and BOTH directions silently fall back to the default wire format. Drop \
+                 `@no_alias` to keep the alias the pair overrides, or drop the pair."
+            ));
+        }
+        // `@newtype` mints a wrapper struct whose `Serialize` impl is generated unconditionally
+        // (`wrappers.rs` has no custom handling) while the DESERIALIZE call sites do route through
+        // the custom reader — so the pair here is not a drop but a round-trip asymmetry: the wrapper
+        // reads one wire format and writes another.
+        if rule_metadata.newtype.is_some() {
+            types.record_rejection(format!(
+                "{directive} together with `@newtype` on `{type_name}`: a `@newtype` wrapper writes \
+                 through its own generated serialize impl while the deserialize CALL SITES do route \
+                 through the custom reader, so the pair would make the wrapper read one wire format \
+                 and write another. Drop `@newtype` and use the plain alias spelling (`<rule> = \
+                 <body> ; @custom_serialize <fn> @custom_deserialize <fn>`), or declare the type \
+                 `{EXTERN_MARKER}` and hand-write it in full."
+            ));
+        }
     }
     // `@duplicates` is a collection concept. A `Map`/`Array` body (and a tag-head / parenthesized
     // wrapper of one) delegates to `parse_group` / a recursion that performs the shape-aware routing
@@ -4224,6 +4321,18 @@ fn recognize_rest_row(
     // via `get_comment_after` on the group choice, so the two do not collide — a rest-row directive
     // stays entry-level and a rule directive stays rule-level).
     let rest_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
+    // A custom (de)serializer pair in this slot is inert (the row declares no type of its own) —
+    // reject it here rather than generating default wire in both directions.
+    if reject_custom_codec_on_row_entry(
+        types,
+        &src,
+        "open struct-map rest row (`* k => v`)",
+        "Name the row's key or value type as its own rule and put the pair there (`k = text ; \
+         @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).",
+        &rest_metadata,
+    ) {
+        return (None, Some(candidate));
+    }
     // `@ignore` selects the tolerate-and-DROP flavor: unknown entries are typed-deserialized and
     // discarded (no field, serialize emits declared members only). It combines with nothing else on
     // the row, and it is incompatible with `--preserve-encodings`. Each combination is a graceful
@@ -4451,6 +4560,18 @@ fn recognize_array_rest_tail(
     // collide). Placement/shape guards above fire FIRST, so `@ignore` on a rejected placement gets the
     // placement rejection, not one of these.
     let tail_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
+    // A custom (de)serializer pair in this slot is inert (the tail declares no type of its own) —
+    // reject it here rather than generating default wire in both directions.
+    if reject_custom_codec_on_row_entry(
+        types,
+        &src,
+        "open-array rest tail (`* t`)",
+        "Name the tail element type as its own rule and put the pair there (`e = uint ; \
+         @custom_serialize <fn> @custom_deserialize <fn>`, then `* e`).",
+        &tail_metadata,
+    ) {
+        return (None, Some(candidate));
+    }
     // `@duplicates` on an array tail is meaningless — there are no keys for a duplicates policy to
     // govern (distinct from the map row's `@ignore`+`@duplicates` combination message).
     if tail_metadata.duplicates.is_some() {
@@ -4628,6 +4749,31 @@ fn parse_group_choice(
             // (`{ * k => v }`, no fixed keys) — reject a rule-position `@ignore` loudly.
             if rule_metadata.ignore {
                 reject_ignore_not_applicable(types, name);
+            }
+            // A table's single row carries a trailing comment slot that nothing reads — disjoint from
+            // the rule's own slot (a rule-trailing `@duplicates` reaches `rule_metadata`; the same
+            // directive spelled on the row does not). A custom (de)serializer pair written there is
+            // therefore inert; reject it and point at the key/value rule spelling that works.
+            // (`InlineGroup` is skipped: `group_entry_rule_metadata` panics on one, and a
+            // parenthesized table row `{ * (k => v) }` has no entry slot of its own anyway.)
+            if let [(row_ge, row_comma)] =
+                flatten_group_entries(&group_choice.group_entries, Representation::Map)[..]
+                && !matches!(row_ge, GroupEntry::InlineGroup { .. })
+            {
+                let row_metadata = group_entry_rule_metadata(row_ge, row_comma);
+                let src = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                reject_custom_codec_on_row_entry(
+                    types,
+                    &src,
+                    "table row (`* k => v`)",
+                    "Name the table's key or value type as its own rule and put the pair there \
+                     (`k = text ; @custom_serialize <fn> @custom_deserialize <fn>`, then \
+                     `{ * k => v }`).",
+                    &row_metadata,
+                );
             }
             // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
             // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
