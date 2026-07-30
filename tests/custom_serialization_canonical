@@ -1,0 +1,101 @@
+// Hand-written `@custom_serialize`/`@custom_deserialize` targets for
+// `tests/custom-serialize-canonical-e2e`, generated under `--preserve-encodings --canonical-form`.
+// Under canonical the signatures take a trailing `force_canonical: bool` and the encoding sidecar
+// by value, so `StringEncoding::to_str_len_sz` is the two-argument flavor (see
+// docs/docs/comment_dsl.mdx, "@custom_serialize / @custom_deserialize").
+//
+// The hex codec is written out longhand rather than pulled from the `hex` crate: that dependency is
+// emitted only when the spec itself demands it (raw-bytes / JSON), and this fixture would otherwise
+// need a manifest dep purely for four lines of test scaffolding.
+
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX_DIGITS[usize::from(b >> 4)] as char);
+        out.push(HEX_DIGITS[usize::from(b & 0x0f)] as char);
+    }
+    out
+}
+
+fn hex_decode(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok())
+        .collect()
+}
+
+/// Table-position custom key (`hexid = bytes`): the in-memory form is the decoded bytes, the wire
+/// form is lowercase hex TEXT. Both legs are custom, so the codec is a real transform in both
+/// directions.
+///
+/// The width is taken from the HEX TEXT's length (2n), not the raw bytes' (n): the recorded
+/// encoding was read off the wire text, and a fresh `StringEncoding::Canonical` must pick its width
+/// from the length actually written. Passing n instead fails `InvalidLenPassed` wherever n and 2n
+/// straddle a CBOR head-width boundary.
+pub fn write_hex_key<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    bytes: &[u8],
+    enc: StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    let hex_text = hex_encode(bytes);
+    let str_len_sz = enc.to_str_len_sz(hex_text.len() as u64, force_canonical);
+    serializer.write_text_sz(&hex_text, str_len_sz)
+}
+
+pub fn read_hex_key(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(Vec<u8>, StringEncoding), crate::generated::error::DeserializeError> {
+    let (text, text_enc) = raw.text_sz()?;
+    match hex_decode(&text) {
+        Some(bytes) => Ok((bytes, text_enc.into())),
+        None => Err(crate::generated::error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError("read_hex_key(): not lowercase hex text".to_owned()),
+        )
+        .into()),
+    }
+}
+
+/// Rest-row-position custom key (`extkey = text`): a validating pass-through. The bytes it writes
+/// are the text the generated writer would have written (the sidecar's width is honored verbatim),
+/// but the key must be lowercase ASCII — so a refused key fails serialization, which is what makes
+/// it observable that the custom function is on the write path at all.
+///
+/// Both call sites reach this: the open struct-map's canonical key MERGE serializes each rest key
+/// into a local scratch `Serializer` to sort by encoded bytes, and the write arm then writes the
+/// entry for real. A free function needs `&mut buf` at the former, which is the E0308 this fixture's
+/// mere compilation pins.
+pub fn write_ext_key<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    text: &str,
+    enc: StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    if !text.bytes().all(|b| b.is_ascii_lowercase()) {
+        return Err(cbor_event::Error::CustomError(
+            "write_ext_key(): rest keys must be lowercase ASCII".to_owned(),
+        ));
+    }
+    let str_len_sz = enc.to_str_len_sz(text.len() as u64, force_canonical);
+    serializer.write_text_sz(text, str_len_sz)
+}
+
+pub fn read_ext_key(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(String, StringEncoding), crate::generated::error::DeserializeError> {
+    let (text, text_enc) = raw.text_sz()?;
+    if !text.bytes().all(|b| b.is_ascii_lowercase()) {
+        return Err(crate::generated::error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError(
+                "read_ext_key(): rest keys must be lowercase ASCII".to_owned(),
+            ),
+        )
+        .into());
+    }
+    Ok((text, text_enc.into()))
+}

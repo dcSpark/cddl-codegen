@@ -426,6 +426,16 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          kept off the wasm axis; the shape-clean `open-struct-map` snapshot fixture covers parity",
     ),
     (
+        "custom-serialize-canonical-e2e",
+        "custom-serialize CANONICAL scratch-buffer e2e fixture: its integration gate generates \
+         --preserve-encodings --canonical-form --wasm=false (the call form of a free-function \
+         custom serializer inside a rust scratch `Serializer`, not the wasm boundary). Its custom \
+         targets are hand-written RUST free functions appended into the generated rust scope, and a \
+         wasm wrapper never calls them — it delegates to the rust type's impl — so there is no wasm \
+         surface here to differential; the `dsl_custom` corpus fixture snapshots the directive's \
+         wasm-side emission",
+    ),
+    (
         "open-struct-map-json-e2e",
         "loose-CBOR open struct-map FLATTENED-JSON e2e fixture: its integration gate generates \
          --json-serde-derives --json-schema-export --wasm=false (it exercises the JSON boundary). It \

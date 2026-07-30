@@ -1,0 +1,30 @@
+; Custom-serialize CANONICAL end-to-end vectors. Generated under --preserve-encodings
+; --canonical-form (canonical implies preserve), which is what puts both key positions below through
+; a LOCAL scratch `Serializer`: the canonical passes serialize each key into a `buf` to sort by
+; encoded bytes before the real write. A `@custom_serialize` target is a FREE function taking the
+; serializer as an ARGUMENT, so those sites must pass `&mut buf` — a method receiver auto-refs, a
+; function argument does not. Emitting the bare name there made the crate fail to compile (E0308),
+; so this fixture COMPILING is itself the regression pin; the vectors in tests.rs then pin that the
+; sort key equals the bytes the write arm actually emits. Every `wire` byte string is hand-written
+; from the CBOR grammar.
+
+; --- table position: the canonical key-sort scratch pass ---
+; In-memory the key is decoded bytes, on the wire it is lowercase hex TEXT, so both legs of the
+; custom pair do real work. Used as a map key inside a struct field.
+hexid = bytes ; @custom_serialize write_hex_key @custom_deserialize read_hex_key
+
+table_holder = [
+  table: { * hexid => uint },
+]
+
+; --- open struct-map rest row whose key domain alias carries the custom pair ---
+; This is the SHIPPED open-struct-map feature's exposure to the same call site: the canonical merge
+; that orders rest keys against the declared ones. The declared `"zzz"` key is sized (4 wire bytes)
+; so the vectors can place a rest key on each side of it, pinning that the merge interleaves by the
+; custom-written bytes under the length-first comparator.
+extkey = text ; @custom_serialize write_ext_key @custom_deserialize read_ext_key
+
+open_ext = {
+  "zzz": uint,
+  * extkey => uint
+}

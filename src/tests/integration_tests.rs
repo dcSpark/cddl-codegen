@@ -6476,6 +6476,35 @@ fn open_struct_map_preserve_e2e() {
 }
 
 #[test]
+fn custom_serialize_canonical_e2e() {
+    use std::str::FromStr;
+    // `@custom_serialize`/`@custom_deserialize` reached through a canonical SCRATCH-BUFFER key pass,
+    // in both positions that have one: a table's key-sort pass and the shipped open struct-map's
+    // canonical rest-key merge. A custom target is a free function, so those sites must pass
+    // `&mut buf`; emitting the bare local made the crate uncompilable (E0308), which is why this
+    // gate's compile step is itself the regression pin. The vectors then pin what the two calls must
+    // share — the merge's sort key is the bytes the write arm emits — plus byte-exact preserve
+    // round-trips through the custom codecs. Generated under --preserve-encodings --canonical-form,
+    // --wasm=false to isolate the rust surface. See tests/custom-serialize-canonical-e2e/tests.rs.
+    let custom_ser_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_serialization_canonical");
+    run_test(
+        "custom-serialize-canonical-e2e",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[custom_ser_path],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn open_struct_map_json_e2e() {
     // Loose-CBOR open struct-map FLATTENED-JSON round-trip vectors: rest
     // entries render at the same JSON object level as the declared fields (serde flatten), to_json is
