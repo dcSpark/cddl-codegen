@@ -225,9 +225,9 @@
     },
     {
       "gate": "insta_orphan",
-      "warm_ms": 45000,
+      "warm_ms": 55000,
       "n": 20,
-      "measured": "2026-07-29",
+      "measured": "2026-07-30",
       "machine": "86216c55",
       "history": [
         {
@@ -245,6 +245,10 @@
         {
           "date": "2026-07-29",
           "warm_ms": 45000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 55000
         }
       ]
     },
@@ -293,9 +297,9 @@
     },
     {
       "gate": "multifile_matrix_roundtrips",
-      "warm_ms": 413000,
+      "warm_ms": 557000,
       "n": 20,
-      "measured": "2026-07-29",
+      "measured": "2026-07-30",
       "machine": "86216c55",
       "history": [
         {
@@ -309,6 +313,10 @@
         {
           "date": "2026-07-29",
           "warm_ms": 413000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 557000
         }
       ]
     },
@@ -504,7 +512,7 @@
     },
     {
       "gate": "recombination_crates_execute",
-      "warm_ms": 59000,
+      "warm_ms": 71000,
       "n": 20,
       "measured": "2026-07-30",
       "machine": "86216c55",
@@ -516,6 +524,10 @@
         {
           "date": "2026-07-30",
           "warm_ms": 59000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 71000
         }
       ]
     },
@@ -734,9 +746,9 @@
     },
     {
       "gate": "wasm_matrix_roundtrips",
-      "warm_ms": 511000,
+      "warm_ms": 657000,
       "n": 20,
-      "measured": "2026-07-29",
+      "measured": "2026-07-30",
       "machine": "86216c55",
       "history": [
         {
@@ -750,6 +762,10 @@
         {
           "date": "2026-07-29",
           "warm_ms": 511000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 657000
         }
       ]
     }
