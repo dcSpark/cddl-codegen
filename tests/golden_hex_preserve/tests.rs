@@ -837,6 +837,54 @@ mod golden_hex_preserve {
             assert_eq!(d.dbl.to_bits(), 0x7ff8_0000_0000_0001u64);
         }
     );
+    // The payload case at the OTHER end of the width range: `f9 7e01` is a quiet NaN whose payload
+    // (f16 mantissa 0x201 — quiet bit plus low bit) DOES fit the 2-byte head, so the shortest
+    // lossless width is 0xf9 and the recorded width is honored directly. Its f64 form is the
+    // left-aligned widening 0x7ff8040000000000 (mantissa 0x201 << 42), which the anchor asserts
+    // bit-exactly. Paired with floats_nan_payload_f64 above, the two pin BOTH branches of the
+    // payload-fits-a-narrow-mantissa question: that one needs 8 bytes, this one needs 2. Without it a
+    // width rule that sent every payload-carrying NaN to 0xfb would still pass every other vector.
+    kat_preserve!(
+        floats_nan_payload_f16,
+        Floats,
+        &[0x82, 0xf9, 0x7e, 0x01, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.dbl.to_bits(), 0x7ff8_0400_0000_0000u64);
+        }
+    );
+    // A NEGATIVE NaN (§3.3 leaves the sign bit of a NaN free; IEEE 754 `fb fff8000000000000` is the
+    // zero-payload quiet NaN with the sign set). Preserve keeps the sign AND the 8-byte head; the
+    // canonical twin drops both (§4.2.2's canonical NaN is the POSITIVE zero-payload quiet NaN, so
+    // canonicalization is the only place the sign of a NaN is touched). `is_nan()` says nothing about
+    // the sign, so the anchor asserts the bit pattern.
+    kat_preserve!(
+        floats_nan_negative,
+        Floats,
+        &[
+            0x82, 0xfb, 0xff, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9, 0x3c, 0x00
+        ],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan() && d.dbl.is_sign_negative());
+            assert_eq!(d.dbl.to_bits(), 0xfff8_0000_0000_0000u64);
+        }
+    );
+    // A SIGNALING NaN: `f9 7c01` has the all-ones exponent with the quiet bit (mantissa MSB) CLEAR
+    // and a non-zero payload, so it is a NaN but not a quiet one. Its f64 form is
+    // 0x7ff0040000000000 (mantissa 0x001 << 42). It survives the round trip because the runtime's
+    // NaN handling is software bit-ops end to end — `float_sz()` reads bits, `write_float_sz` writes
+    // bits — and any float ARITHMETIC on the way through would quiet it (setting the mantissa MSB and
+    // turning this into `f9 7e01`). That is what the vector pins: not a spec guarantee about sNaN
+    // semantics, but that no arithmetic sneaks into the width/value path.
+    kat_preserve!(
+        floats_nan_signaling,
+        Floats,
+        &[0x82, 0xf9, 0x7c, 0x01, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.dbl.to_bits(), 0x7ff0_0400_0000_0000u64);
+        }
+    );
 
     // ---- a FIXED float member: the VALUE is spec-pinned, the WIDTH is still data ----
     // `fixed_float = [v: 1.5]` generates a struct with no value field at all (the constant lives in

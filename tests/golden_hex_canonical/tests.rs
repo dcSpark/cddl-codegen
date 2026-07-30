@@ -454,8 +454,11 @@ mod golden_hex_canonical {
     // that must happen FIRST, with the width derived from the REWRITTEN value. Deriving the width
     // before normalizing is exactly the bug the implementation's `write_float` special-cases against
     // (a payload-carrying NaN's smallest lossless width is 8 bytes, so the canonical NaN would be
-    // written at 0xfb). These three vectors pin it from both sides: an already-quiet NaN at 0xfa and
-    // at 0xfb, and a PAYLOAD-carrying NaN whose payload must be dropped. Their preserve-identity
+    // written at 0xfb). The vectors below pin it from every side: an already-quiet NaN at 0xfa and at
+    // 0xfb, a PAYLOAD-carrying NaN at each of the two widths its payload can occupy (0xfb, where the
+    // payload forces the wide head, and 0xf9, where it does not — so the width rule alone changes
+    // nothing and only the value rewrite can), and a NEGATIVE NaN, whose SIGN the rewrite drops too.
+    // Their preserve-identity
     // halves are the same inputs' twins in tests/golden_hex_preserve/tests.rs, which must NOT
     // normalize — so a serializer that normalized in both profiles fails there, and one that
     // normalized in neither fails here.
@@ -495,6 +498,39 @@ mod golden_hex_canonical {
         |d: &Floats| {
             assert!(d.dbl.is_nan());
             assert_eq!(d.dbl.to_bits(), 0x7ff8_0000_0000_0001u64);
+        }
+    );
+    // The payload case whose payload ALREADY fits the canonical width. `f9 7e01` (f64 form
+    // 0x7ff8040000000000, mantissa 0x201 << 42) has shortest-lossless width 0xf9 — so a width-only
+    // canonicalizer leaves it byte-identical and passes every OTHER canonical float vector. Only the
+    // §4.2.2 value rewrite takes it to f9 7e00. Its preserve twin (floats_nan_payload_f16) keeps the
+    // payload, so the pair also pins that the rewrite is canonical-only.
+    kat_canonical!(
+        canon_floats_nan_payload_f16_normalized,
+        Floats,
+        &[0x82, 0xf9, 0x7e, 0x01, 0xf9, 0x3c, 0x00],
+        &[0x82, 0xf9, 0x7e, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.dbl.to_bits(), 0x7ff8_0400_0000_0000u64);
+        }
+    );
+    // The SIGN half of §4.2.2, which no other vector reaches: the canonical NaN is the POSITIVE
+    // zero-payload quiet NaN, so a negative NaN (`fb fff8000000000000`) canonicalizes to f9 7e00 —
+    // the sign is dropped along with the width. This is the one place canonicalization discards a
+    // float's sign bit; canon_floats_negative_zero pins the converse for -0.0, whose sign SURVIVES
+    // (§4.2 minimizes the encoding, and only the NaN rule changes a value). A canonicalizer that
+    // normalized the payload but carried the sign through would emit f9 fe00 here.
+    kat_canonical!(
+        canon_floats_nan_negative_normalized,
+        Floats,
+        &[
+            0x82, 0xfb, 0xff, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9, 0x3c, 0x00
+        ],
+        &[0x82, 0xf9, 0x7e, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan() && d.dbl.is_sign_negative());
+            assert_eq!(d.dbl.to_bits(), 0xfff8_0000_0000_0000u64);
         }
     );
     // A FIXED float member (`fixed_float = [v: 1.5]`): the value is spec-pinned, so the width is all
