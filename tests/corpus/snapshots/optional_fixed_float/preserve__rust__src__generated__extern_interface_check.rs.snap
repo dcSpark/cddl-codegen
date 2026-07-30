@@ -21,16 +21,10 @@ expression: content
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
-#[allow(unused_imports)]
-use crate::generated::Bools as _;
-#[allow(unused_imports)]
-use crate::generated::Floats as _;
-#[allow(unused_imports)]
-use crate::generated::Nums as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::BoolHolder>();
-    _assert_deserialize::<crate::generated::BoolHolder>();
-    _assert_serialize::<crate::generated::FloatHolder>();
-    _assert_deserialize::<crate::generated::FloatHolder>();
+    _assert_serialize::<crate::generated::OptFixedFloatArray>();
+    _assert_deserialize::<crate::generated::OptFixedFloatArray>();
+    _assert_serialize::<crate::generated::OptFixedFloatMap>();
+    _assert_deserialize::<crate::generated::OptFixedFloatMap>();
 }

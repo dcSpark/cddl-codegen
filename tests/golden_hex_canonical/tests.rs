@@ -346,4 +346,185 @@ mod golden_hex_canonical {
             assert_eq!(d.rest.get(&7).copied(), Some(9), "rest entry 7 => 9 captured");
         }
     );
+
+    // ---- native floats (major type 7, heads 0xf9/0xfa/0xfb) ----
+    // §4.2.1's smallest-argument rule applies to the float HEAD too, with one twist that makes it
+    // stricter than the integer case: the shortest head must preserve the value BIT-FOR-BIT, not
+    // merely approximate it. So "shrink" is bounded by exact representability, and a value with no
+    // narrower exact form must stay wide (canon_floats_shortest_lossless). Every byte string is an
+    // RFC 8949 Appendix A row or an IEEE 754 widening of one (the table in the delivery spec).
+    //
+    // The `sgl` (float32) member's values are all f32-exact, so its decode-side `x as f32` narrowing
+    // is never itself lossy — that is a separate question from canonical width choice. NaN vectors
+    // use `dbl` only: Rust leaves the payload and sign of a NaN float-cast unspecified.
+
+    // Every width of 1.0 canonicalizes to the shortest head that holds it, 0xf9 3c00 (§A). The
+    // irregular input carries the SAME value at 0xfb and 0xfa, so this one vector covers both
+    // widenings; the f9 -> f9 case is the vector's own fixed-point half (decode the canonical bytes,
+    // re-canonicalize, get them back). Preserve identity is asserted first, so the vector also proves
+    // the two profiles genuinely differ on the same input rather than one of them being unreachable.
+    kat_canonical!(
+        canon_floats_widths_shrink,
+        Floats,
+        &[
+            0x82, 0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfa, 0x3f, 0x80, 0x00,
+            0x00
+        ],
+        &[0x82, 0xf9, 0x3c, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert_eq!(d.dbl, 1.0);
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    // The bound on shrinking, both halves in one vector. 1.1 (§A: fb 3ff199999999999a) has no exact
+    // f16 or f32 form, so 0xfb IS its preferred head and canonical must leave it alone — a writer
+    // that picked the narrowest head holding an APPROXIMATION would emit fa 3f8ccccd here and change
+    // the value. 100000.0 arrives widened to 0xfb (fb 40f86a0000000000) and must shrink to exactly
+    // 0xfa (§A: fa 47c35000), not to 0xf9: it exceeds the f16 range. Together they pin the rule as
+    // "shortest LOSSLESS", which neither "never shrink" nor "always shrink to f16" satisfies.
+    kat_canonical!(
+        canon_floats_shortest_lossless,
+        Floats,
+        &[
+            0x82, 0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a, 0xfb, 0x40, 0xf8, 0x6a,
+            0x00, 0x00, 0x00, 0x00, 0x00
+        ],
+        &[
+            0x82, 0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a, 0xfa, 0x47, 0xc3, 0x50,
+            0x00
+        ],
+        |d: &Floats| {
+            assert_eq!(d.dbl, 1.1);
+            assert_eq!(d.sgl, 100000.0);
+        }
+    );
+    // The two ends of the f16 range decide where shrinking stops, so both must shrink all the way:
+    // 65504.0 is the max finite f16 (§A: f9 7bff, widened fb 40effc0000000000) and 2^-24 is the min
+    // f16 SUBNORMAL (§A: f9 0001, widened fa 33800000). A width choice written as a magnitude range
+    // rather than an exactness test refuses the subnormal and leaves it at 0xfa.
+    kat_canonical!(
+        canon_floats_f16_edges,
+        Floats,
+        &[
+            0x82, 0xfb, 0x40, 0xef, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfa, 0x33, 0x80, 0x00,
+            0x00
+        ],
+        &[0x82, 0xf9, 0x7b, 0xff, 0xf9, 0x00, 0x01],
+        |d: &Floats| {
+            assert_eq!(d.dbl, 65504.0);
+            assert_eq!(d.sgl.to_bits(), 0x3380_0000u32);
+        }
+    );
+    // Signed zero shrinks but is NOT normalized: §4.2 minimizes the ENCODING, and -0.0 and 0.0 are
+    // different values (only §4.2.2's NaN rule changes a value). -0.0 at 0xfb -> f9 8000, 0.0 at
+    // 0xfa -> f9 0000. A canonicalizer that rebuilt the value through a comparison would emit
+    // f9 0000 for both, since -0.0 == 0.0.
+    kat_canonical!(
+        canon_floats_negative_zero,
+        Floats,
+        &[
+            0x82, 0xfb, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfa, 0x00, 0x00, 0x00,
+            0x00
+        ],
+        &[0x82, 0xf9, 0x80, 0x00, 0xf9, 0x00, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl == 0.0 && d.dbl.is_sign_negative());
+            assert!(d.sgl == 0.0 && d.sgl.is_sign_positive());
+        }
+    );
+    // Infinities are exactly representable at every width, so both shrink to the f16 head and the
+    // SIGN survives (§A: Infinity -> f9 7c00, -Infinity -> f9 fc00). Irregular input carries them at
+    // 0xfb and 0xfa.
+    kat_canonical!(
+        canon_floats_infinity,
+        Floats,
+        &[
+            0x82, 0xfb, 0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfa, 0xff, 0x80, 0x00,
+            0x00
+        ],
+        &[0x82, 0xf9, 0x7c, 0x00, 0xf9, 0xfc, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_infinite() && d.dbl.is_sign_positive());
+            assert!(d.sgl.is_infinite() && d.sgl.is_sign_negative());
+        }
+    );
+    // ---- §4.2.2 NaN normalization: the one place canonicalization changes a VALUE ----
+    // RFC 8949 §4.2.2 makes the deterministic encoding of every NaN the zero-payload quiet NaN
+    // f9 7e00. That is NOT a consequence of the shortest-lossless width rule — it is a value rewrite
+    // that must happen FIRST, with the width derived from the REWRITTEN value. Deriving the width
+    // before normalizing is exactly the bug the implementation's `write_float` special-cases against
+    // (a payload-carrying NaN's smallest lossless width is 8 bytes, so the canonical NaN would be
+    // written at 0xfb). These three vectors pin it from both sides: an already-quiet NaN at 0xfa and
+    // at 0xfb, and a PAYLOAD-carrying NaN whose payload must be dropped. Their preserve-identity
+    // halves are the same inputs' twins in tests/golden_hex_preserve/tests.rs, which must NOT
+    // normalize — so a serializer that normalized in both profiles fails there, and one that
+    // normalized in neither fails here.
+    kat_canonical!(
+        canon_floats_nan_f32_normalized,
+        Floats,
+        &[0x82, 0xfa, 0x7f, 0xc0, 0x00, 0x00, 0xf9, 0x3c, 0x00],
+        &[0x82, 0xf9, 0x7e, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    kat_canonical!(
+        canon_floats_nan_f64_normalized,
+        Floats,
+        &[
+            0x82, 0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9, 0x3c, 0x00
+        ],
+        &[0x82, 0xf9, 0x7e, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    // The payload case: mantissa 0x8000000000001, whose low bit fits no narrower mantissa. Its
+    // shortest LOSSLESS head is 0xfb, so a width-only canonicalizer leaves the input untouched;
+    // §4.2.2 requires f9 7e00. The anchor asserts the payload bits are genuinely present after
+    // decoding, so the vector cannot pass by having lost them on the way in.
+    kat_canonical!(
+        canon_floats_nan_payload_normalized,
+        Floats,
+        &[
+            0x82, 0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xf9, 0x3c, 0x00
+        ],
+        &[0x82, 0xf9, 0x7e, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.dbl.to_bits(), 0x7ff8_0000_0000_0001u64);
+        }
+    );
+    // A FIXED float member (`fixed_float = [v: 1.5]`): the value is spec-pinned, so the width is all
+    // canonicalization can touch — 0xfb 3ff8000000000000 minimizes to f9 3e00 (§A). The struct has no
+    // value field, so there is nothing to anchor; the decode half is pinned by
+    // fixed_float_wrong_value_rejected in tests/golden_hex_preserve/tests.rs (the constant IS
+    // compared, so acceptance is a value assertion).
+    kat_canonical!(
+        canon_fixed_float_width_minimized,
+        FixedFloat,
+        &[0x81, 0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        &[0x81, 0xf9, 0x3e, 0x00],
+        |_d: &FixedFloat| {}
+    );
+    // Per-element minimization inside one array: the same value at three different widths, in
+    // indefinite framing, becomes a definite array of three identical minimal heads (§4.2.1 + the
+    // §4.2.2-adjacent definite re-framing). Each element minimizes INDEPENDENTLY, so a single width
+    // recorded for the whole array — or one carried over from the first element — cannot produce this.
+    kat_canonical!(
+        canon_float_seq_per_element,
+        FloatHolder,
+        &[
+            0x81, 0x9f, 0xf9, 0x3c, 0x00, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xfb, 0x3f, 0xf0, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xff
+        ],
+        &[
+            0x81, 0x83, 0xf9, 0x3c, 0x00, 0xf9, 0x3c, 0x00, 0xf9, 0x3c, 0x00
+        ],
+        |d: &FloatHolder| {
+            assert_eq!(d.fs, vec![1.0, 1.0, 1.0]);
+        }
+    );
 }

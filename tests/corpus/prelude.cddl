@@ -1,6 +1,9 @@
 ; CDDL standard-prelude types (RFC 8610 Appendix D), pulled in as raw CDDL.
-; Each distinct generated shape is covered once; float-bearing prelude types
-; (number/time) are omitted as floats don't support --preserve-encodings.
+; Each distinct generated shape is covered once. The float-bearing choice types (number/time)
+; generate and round-trip under every profile, but their shape (a type-choice enum) is already
+; covered here by other members, and their float arm is exercised where it is CHEAP to give real
+; wire vectors: the matrix decode-conformance replay's prelude.number/prelude.time rows, and
+; homogeneous_array.cddl's `float_holder` / optional_fixed_float.cddl for the plain float member.
 prelude = [
   big_u:    biguint,      ; #6.2(bstr)      — tagged-bytes alias
   uri:      uri,          ; #6.32(tstr)     — tagged-text alias

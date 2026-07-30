@@ -57,3 +57,19 @@ dup_pmap_holder = [p: dup_pmap]
 ; with the rest keys length-first-then-bytewise. Vectors in tests.rs pin the preserve-identity of the
 ; irregular input AND the minimized canonical form.
 open_map = { 1: uint, * uint => uint }
+
+; native CBOR floats (major type 7, heads 0xf9/0xfa/0xfb) — same shapes as the preserve suite, whose
+; comments explain WHY the head width is data. Canonicalization minimizes that width to the shortest
+; head that preserves the value bit-for-bit (RFC 8949 §4.2.1 preferred serialization), which is NOT
+; the same as "narrowest head that holds an approximation": 1.1 has no f32 form and must stay 0xfb.
+; The one value-changing rule in the whole canonical path lives here too: every NaN, payload
+; included, normalizes to the half-width quiet NaN 0xf9 0x7e00 (§4.2.2). The `float32` member's
+; vectors stay inside f32-exact values so its decode-side narrowing is never itself lossy.
+floats = [dbl: float64, sgl: float32]
+
+; a FIXED float member: the value is spec-pinned, so canonicalization can only minimize the width.
+fixed_float = [v: 1.5]
+
+; per-element widths: every element minimizes independently, and the array re-frames definite.
+float_seq    = [* float64]
+float_holder = [fs: float_seq]

@@ -4,10 +4,10 @@
 ; `write_special(cbor_event::Special::Float(<lit>))` iff the bool is set and the length term flips
 ; with it; deserialize peeks CBOR Special, verifies the constant (`raw.float()?` + exact `!= <lit>`
 ; compare -> FixedValueMismatch { found/expected: Key::Float(..) }), and records presence — the same
-; spellings the MANDATORY fixed-float path already emits. Default and json profiles work;
-; --preserve-encodings is a separate unimplemented class for floats (the
-; preserve_encodings_supports_floats stub aborts generation at the float deserialize site), so this
-; fixture is preserve-generation-fail-ledgered in feature_corpus_compiles / corpus_decode_replay.
+; spellings the MANDATORY fixed-float path already emits. Under --preserve-encodings the member also
+; carries a head-width encoding var (`f_encoding: Option<cbor_event::Sz>`) read by `float_sz()` and
+; written by `write_float`, so an absent member stores no width and a present one re-emits at the
+; width it arrived on — the shape `preserve_encodings_supports_floats` asserts on these snapshots.
 ;
 ; A fixed float peeks as CBOR Special (same class as bool/null), so in the ARRAY form the optional
 ; float member must not be followed by another Special-classed field (the ambiguity guard) —

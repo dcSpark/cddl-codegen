@@ -267,17 +267,22 @@ nev_preserve = [ pts: [+ uint] ]
 nem_preserve = [ m: {+ uint => tstr} ]
 
 ; --- cbor_event 3.2.0 upgrade vectors: the preserve flavor of the nullable-Special null-peek ---
-; (see tests/core/input.cddl — bool-only here: preserve-encodings does not support floats)
+; (see tests/core/input.cddl). BOTH major-type-7 flavors: the encoding-less `bool` and the
+; width-carrying `float64`, whose head width survives the null-peek and the Optional wrapper.
 nullable_bool = bool / null
-nullable_specials = [b: nullable_bool]
+nullable_float = float64 / null
+nullable_specials = [b: nullable_bool, f: nullable_float]
 
 ; --- OPTIONAL fixed-value members under --preserve-encodings ---
 ; The presence `bool` coexists with the encoding vars: an encoding-ful fixed value (uint/nint/text)
 ; keeps its width metadata keyed off the FIELD in the parent encoding struct, so a NON-CANONICAL
 ; encoding of the constant (e.g. `? ufix: 5` written 0x1805 — a 2-byte uint) round-trips
-; byte-identically; the encoding-less bool/null carry only the presence bit. (No float: preserve is
-; unimplemented for floats.)
+; byte-identically; the encoding-less bool/null carry only the presence bit. A fixed FLOAT is the
+; third kind: encoding-ful like uint/text (its head WIDTH is the metadata), but its constant peeks as
+; CBOR Special like bool/null, so in the array form it must not be followed by another
+; Special-classed field.
 opt_fixed_arr = [a: uint, ? ufix: 5, b: text]
+opt_fixed_arr_float = [a: uint, ? ffix: 2.5, b: text]
 opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: true, ? m_null: null}
 
 ; WI-3: a `@duplicates reject` collapsed tag-set field, minted as a NAMED GENERIC instance under

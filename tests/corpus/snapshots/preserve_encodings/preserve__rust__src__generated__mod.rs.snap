@@ -93,12 +93,12 @@ use cbor_encodings::{
     CborNestedPayloadsEncoding, CustomFieldHolderEncoding, DeeplyNestedEncoding, EdEncoding,
     EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding, MapWithDefaultsEncoding,
     NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
-    OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding, PlainEncoding,
-    RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding,
-    String64Encoding, String1632Encoding, StructWithCustomSerializationEncoding,
-    TableArrMembersEncoding, TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding,
-    TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
-    WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
+    OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding,
+    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
+    SignedIntsEncoding, String64Encoding, String1632Encoding,
+    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
+    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
+    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -1227,15 +1227,22 @@ impl NonOverlappingTypeChoiceSome {
 
 pub type NullableBool = Option<bool>;
 
+pub type NullableFloat = Option<f64>;
+
 #[derive(Clone, Debug)]
 pub struct NullableSpecials {
     pub b: NullableBool,
+    pub f: NullableFloat,
     pub encodings: Option<NullableSpecialsEncoding>,
 }
 
 impl NullableSpecials {
-    pub fn new(b: NullableBool) -> Self {
-        Self { b, encodings: None }
+    pub fn new(b: NullableBool, f: NullableFloat) -> Self {
+        Self {
+            b,
+            f,
+            encodings: None,
+        }
     }
 }
 
@@ -1253,6 +1260,26 @@ impl OptFixedArr {
         Self {
             a,
             ufix: false,
+            b,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedArrFloat {
+    pub a: u64,
+    /// Whether the optional fixed value `2.5` (CDDL `? ffix: 2.5`) is present; `false` means absent.
+    pub ffix: bool,
+    pub b: String,
+    pub encodings: Option<OptFixedArrFloatEncoding>,
+}
+
+impl OptFixedArrFloat {
+    pub fn new(a: u64, b: String) -> Self {
+        Self {
+            a,
+            ffix: false,
             b,
             encodings: None,
         }

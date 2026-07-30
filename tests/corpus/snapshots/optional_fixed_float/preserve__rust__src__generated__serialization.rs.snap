@@ -1,0 +1,376 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for OptFixedFloatArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2 + if self.f { 1 } else { 0 }),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.x,
+            fit_sz(
+                self.x,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.x_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        if self.f {
+            write_float(
+                serializer,
+                2.5,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f_encoding)
+                    .unwrap_or_default(),
+            )?;
+        }
+        serializer.write_text_sz(
+            &self.label,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.label_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.label.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OptFixedFloatArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            let (x, x_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("x"))?;
+            let (f, f_encoding) = if raw
+                .as_slice()
+                .first()
+                .map(|byte: &u8| {
+                    cbor_event::Type::from(*byte) == cbor_event::Type::Special
+                        && (*byte & 0b0001_1111) != 0x1f
+                })
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let (f_value, f_encoding) = raw.float_sz()?;
+                    if f_value != 2.5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Float(f_value),
+                            expected: Key::Float(2.5),
+                        }
+                        .into());
+                    }
+                    Ok(Some(f_encoding))
+                })()
+                .map_err(|e| e.annotate("f"))
+                .map(|f_encoding| (true, f_encoding))
+            } else {
+                Ok((false, None))
+            }?;
+            let (label, label_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("label"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedFloatArray {
+                x,
+                f,
+                label,
+                encodings: Some(OptFixedFloatArrayEncoding {
+                    len_encoding,
+                    x_encoding,
+                    f_encoding,
+                    label_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedFloatArray"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedFloatMap {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1 + if self.amount { 1 } else { 0 } + if self.rate { 1 } else { 0 }),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len()
+                    == 1 + if self.amount { 1 } else { 0 } + if self.rate { 1 } else { 0 }
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..3).collect());
+        for field_index in deser_order {
+            match field_index {
+                0 => {
+                    serializer.write_text_sz(
+                        "x",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.x_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("x".len() as u64),
+                    )?;
+                    serializer.write_unsigned_integer_sz(
+                        self.x,
+                        fit_sz(
+                            self.x,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.x_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                }
+                2 => {
+                    if self.rate {
+                        serializer.write_text_sz(
+                            "rate",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.rate_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("rate".len() as u64),
+                        )?;
+                        write_float(
+                            serializer,
+                            2.5,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.rate_encoding)
+                                .unwrap_or_default(),
+                        )?;
+                    }
+                }
+                1 => {
+                    if self.amount {
+                        serializer.write_text_sz(
+                            "amount",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.amount_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("amount".len() as u64),
+                        )?;
+                        write_float(
+                            serializer,
+                            1.5,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.amount_encoding)
+                                .unwrap_or_default(),
+                        )?;
+                    }
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OptFixedFloatMap {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            let mut orig_deser_order = Vec::new();
+            let mut x_encoding = None;
+            let mut x_key_encoding = StringEncoding::default();
+            let mut x = None;
+            let mut rate_encoding = None;
+            let mut rate_key_encoding = StringEncoding::default();
+            let mut rate_present = false;
+            let mut amount_encoding = None;
+            let mut amount_key_encoding = StringEncoding::default();
+            let mut amount_present = false;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => {
+                        let (text_key, key_enc) = raw.text_sz()?;
+                        match text_key.as_str() {
+                            "x" => {
+                                if x.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "x".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_x, tmp_x_encoding) = raw
+                                    .unsigned_integer_sz()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .map(|(x, enc)| (x, Some(enc)))
+                                    .map_err(|e: DeserializeError| e.annotate("x"))?;
+                                x = Some(tmp_x);
+                                x_encoding = tmp_x_encoding;
+                                x_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(0);
+                            }
+                            "rate" => {
+                                if rate_present {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "rate".into(),
+                                    ))
+                                    .into());
+                                }
+                                let tmp_rate_encoding = (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let (rate_value, rate_encoding) = raw.float_sz()?;
+                                    if rate_value != 2.5 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Float(rate_value),
+                                            expected: Key::Float(2.5),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(rate_encoding))
+                                })()
+                                .map_err(|e| e.annotate("rate"))?;
+                                rate_present = true;
+                                rate_encoding = tmp_rate_encoding;
+                                rate_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(2);
+                            }
+                            "amount" => {
+                                if amount_present {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "amount".into(),
+                                    ))
+                                    .into());
+                                }
+                                let tmp_amount_encoding = (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let (amount_value, amount_encoding) = raw.float_sz()?;
+                                    if amount_value != 1.5 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Float(amount_value),
+                                            expected: Key::Float(1.5),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(amount_encoding))
+                                })()
+                                .map_err(|e| e.annotate("amount"))?;
+                                amount_present = true;
+                                amount_encoding = tmp_amount_encoding;
+                                amount_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(1);
+                            }
+                            unknown_key => {
+                                return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                    unknown_key.to_owned(),
+                                ))
+                                .into());
+                            }
+                        }
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let x = match x {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("x")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                x,
+                amount: amount_present,
+                rate: rate_present,
+                encodings: Some(OptFixedFloatMapEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    x_key_encoding,
+                    x_encoding,
+                    amount_key_encoding,
+                    amount_encoding,
+                    rate_key_encoding,
+                    rate_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedFloatMap"))
+    }
+}

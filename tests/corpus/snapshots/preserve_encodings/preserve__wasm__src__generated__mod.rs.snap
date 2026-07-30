@@ -2820,6 +2820,8 @@ pub enum NonOverlappingTypeChoiceSomeKind {
 
 pub type NullableBool = Option<bool>;
 
+pub type NullableFloat = Option<f64>;
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct NullableSpecials(pub(crate) cddl_lib::NullableSpecials);
@@ -2840,8 +2842,12 @@ impl NullableSpecials {
         self.0.b
     }
 
-    pub fn new(b: Option<bool>) -> Self {
-        Self(cddl_lib::NullableSpecials::new(b))
+    pub fn f(&self) -> NullableFloat {
+        self.0.f
+    }
+
+    pub fn new(b: Option<bool>, f: Option<f64>) -> Self {
+        Self(cddl_lib::NullableSpecials::new(b, f))
     }
 }
 
@@ -2914,6 +2920,61 @@ impl From<OptFixedArr> for cddl_lib::OptFixedArr {
 
 impl AsRef<cddl_lib::OptFixedArr> for OptFixedArr {
     fn as_ref(&self) -> &cddl_lib::OptFixedArr {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedArrFloat(pub(crate) cddl_lib::OptFixedArrFloat);
+
+#[wasm_bindgen]
+impl OptFixedArrFloat {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedArrFloat, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn ffix(&self) -> bool {
+        self.0.ffix
+    }
+
+    pub fn set_ffix(&mut self, present: bool) {
+        self.0.ffix = present
+    }
+
+    pub fn b(&self) -> String {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64, b: String) -> Self {
+        Self(cddl_lib::OptFixedArrFloat::new(a, b))
+    }
+}
+
+impl From<cddl_lib::OptFixedArrFloat> for OptFixedArrFloat {
+    fn from(native: cddl_lib::OptFixedArrFloat) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedArrFloat> for cddl_lib::OptFixedArrFloat {
+    fn from(wasm: OptFixedArrFloat) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedArrFloat> for OptFixedArrFloat {
+    fn as_ref(&self) -> &cddl_lib::OptFixedArrFloat {
         &self.0
     }
 }

@@ -301,7 +301,7 @@ w(`  - ${emittable.length} **emittable but no Appendix A vector lands here** (e.
 w(`- Golden tests: ${tests.size} default-flags · sibling sets: ${preserveKats} preserve + ${canonicalKats} canonical (below)`);
 w();
 w("**Sibling golden sets (not in this grid):** the encodings the default-flags set can never");
-w("exercise — the ➖ `.indef` cells and non-minimal header arguments — have their own spec-anchored");
+w("exercise — the ➖ `.indef` cells, the ➖ `.float16`/`.float32` heads, and non-minimal header arguments — have their own spec-anchored");
 w("KATs: `tests/golden_hex_preserve/tests.rs` (irregular RFC 8949 §3 encodings must re-encode");
 w("byte-identically under `--preserve-encodings`) and `tests/golden_hex_canonical/tests.rs` (the");
 w("same irregular inputs must re-encode to hand-derived §4.2 minimal bytes under `--canonical-form`).");

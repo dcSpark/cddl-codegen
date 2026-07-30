@@ -31,4 +31,6 @@ use crate::generated::Nums as _;
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::BoolHolder>();
     _assert_deserialize::<crate::generated::BoolHolder>();
+    _assert_serialize::<crate::generated::FloatHolder>();
+    _assert_deserialize::<crate::generated::FloatHolder>();
 }

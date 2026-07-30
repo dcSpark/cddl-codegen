@@ -4070,10 +4070,10 @@ expect = "accept"
 [[row]]
 id = "homogeneous_array.bool_holder"
 axis = "corpus"
-example = "bools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). A `float_holder` can't join it because floats don't support\n; --preserve-encodings (a pre-existing generation limitation the corpus exercises for every entry —\n; same reason float prelude types are excluded from prelude.cddl).\nbool_holder = [b: bools]"
+example = "bools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). `float_holder` is its float twin, viable now that a float\n; element carries its head width as an encoding variable under --preserve-encodings: it round-trips\n; under every profile, and under preserve its emit-tests `widen_float` fidelity variant re-encodes each\n; element head one IEEE width wider and requires the re-emit to be byte-identical.\nbool_holder = [b: bools]"
 fixture = "homogeneous_array"
 rule = "bool_holder"
-spec = "__probe_holder = [0, bool_holder]\nbools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). A `float_holder` can't join it because floats don't support\n; --preserve-encodings (a pre-existing generation limitation the corpus exercises for every entry —\n; same reason float prelude types are excluded from prelude.cddl).\nbool_holder = [b: bools]"
+spec = "__probe_holder = [0, bool_holder]\nbools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). `float_holder` is its float twin, viable now that a float\n; element carries its head width as an encoding variable under --preserve-encodings: it round-trips\n; under every profile, and under preserve its emit-tests `widen_float` fidelity variant re-encodes each\n; element head one IEEE width wider and requires the re-emit to be byte-identical.\nbool_holder = [b: bools]"
 mode = "holder"
 type_name = "ProbeHolder"
 
@@ -4088,11 +4088,6 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008181f5"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
 hex = "82008182f4f5"
 source = "ruby-generate"
 expect = "accept"
@@ -4102,25 +4097,20 @@ hex = "82008183f5f4f5"
 source = "ruby-generate"
 expect = "accept"
 
-[[row.vector]]
-hex = "82008183f5f5f4"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "82008184f4f5f4f4"
-source = "ruby-generate"
-expect = "accept"
-
 [[row]]
 id = "homogeneous_array.bools"
 axis = "corpus"
-example = "bools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). A `float_holder` can't join it because floats don't support\n; --preserve-encodings (a pre-existing generation limitation the corpus exercises for every entry —\n; same reason float prelude types are excluded from prelude.cddl)."
+example = "bools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). `float_holder` is its float twin, viable now that a float\n; element carries its head width as an encoding variable under --preserve-encodings: it round-trips\n; under every profile, and under preserve its emit-tests `widen_float` fidelity variant re-encodes each\n; element head one IEEE width wider and requires the re-emit to be byte-identical."
 fixture = "homogeneous_array"
 rule = "bools"
-spec = "__probe_holder = [0, bools]\nbools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). A `float_holder` can't join it because floats don't support\n; --preserve-encodings (a pre-existing generation limitation the corpus exercises for every entry —\n; same reason float prelude types are excluded from prelude.cddl)."
+spec = "__probe_holder = [0, bools]\nbools = [* bool]\n; ...and referencing such a named special-element collection as a record field must not panic\n; generation (the Array-element Special-class assert in intermediate.rs was stale for the definite\n; case; it fired at generation time regardless of profile). `bool_holder` is the systematic catch on\n; two axes: it generates+compiles under all three profiles (locking that generation-time panic), and\n; its default-profile emit-tests round-trip exercises `make_deser_loop_break_check` — which is\n; type-agnostic, so it equally locks the `[* float64]` break-check regression (a `bool` element is the\n; same CBOR major type 7 as a float). `float_holder` is its float twin, viable now that a float\n; element carries its head width as an encoding variable under --preserve-encodings: it round-trips\n; under every profile, and under preserve its emit-tests `widen_float` fidelity variant re-encodes each\n; element head one IEEE width wider and requires the re-emit to be byte-identical."
 mode = "holder"
 type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
 
 [[row.vector]]
 hex = "820081f5"
@@ -4128,12 +4118,7 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082f4f4"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "820082f5f4"
+hex = "820082f4f5"
 source = "ruby-generate"
 expect = "accept"
 
@@ -4143,32 +4128,62 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083f5f5f4"
+hex = "820084f5f5f4f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "homogeneous_array.float_holder"
+axis = "corpus"
+example = "floats = [* float64]\nfloat_holder = [f: floats]"
+fixture = "homogeneous_array"
+rule = "float_holder"
+spec = "__probe_holder = [0, float_holder]\nfloats = [* float64]\nfloat_holder = [f: floats]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008180"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083f5f5f5"
+hex = "82008181fb4ca6272195623fa0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084f4f4f4f5"
+hex = "82008181fbfa5412c59d8340dc"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084f4f4f5f4"
+hex = "82008183fbab6934988d9086affbbe0f88640fdd78d0fbf5a56c9d33938400"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084f5f4f5f5"
+hex = "82008184fb273ea4c0e21ede08fb35a5af467714d8e0fb76bce818c94e21b2fbe4151c09aec1a900"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084f5f5f4f5"
+hex = "82008184fb320287e32e2ed132fb73bf3e2369d4fd5afbd07f54779d2b9b9dfbe8a8143733ed4e7a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008184fb61f35d5f7ea55addfb6cd641ae8ddd46b0fb76901d9ec1033596fbdd59e42659d96454"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008184fb6c9e6778e07cfd9bfb0edd539073781358fbb24e0d20e9275360fbd195be6c1603fd10"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008184fb8043ce253a26bc0afb3399853c561058acfbbb9d2ef377a04db7fb3ac245f14ced6c52"
 source = "ruby-generate"
 expect = "accept"
 
@@ -4188,32 +4203,42 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081fb018453bf65a6e298"
+hex = "820081fb093f5a3291b5fbf4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081fb3e606c0f264be8f8"
+hex = "820081fb723948c1c14142fa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081fb6d5a8450f1883352"
+hex = "820082fbc8b1e2dfd443abd0fb415846c42dacd80f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081fbcf476479f3ad6040"
+hex = "820083fb093385f9277b9800fbbeb28f6542222710fb238bfd8cfa842f68"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083fbbeb5a3dda0b2f166fbbffa7b4b423f3912fbd684d0d46f136942"
+hex = "820083fb318e0abf43a94036fb892b43904ab25d7cfb620b8e1d1644d53c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083fbbf4e7d14b74bbbbcfbe4007d8c37337760fb0a13720021a740fb"
+hex = "820083fbd7ef79cf8c3faacefbf956c5dbba63577cfbd766f68a18be638c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084fb089aa7d1c4fabb8ffbb98238d96cba945ffb0aa3beaae1768f02fb35b01931e50f8bb2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084fb89ec3fbef1116545fb43ce89d4bcd7adbefbf40b538c42346c9bfba500ca1c76553bd8"
 source = "ruby-generate"
 expect = "accept"
 
@@ -4233,42 +4258,47 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190d1c"
+hex = "820081191257"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200821880190e67"
+hex = "8200821901361909fd"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190a6d190812"
+hex = "820083190648190720190c50"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190b6f190f9e"
+hex = "8200831908901907661820"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190b7d18a1"
+hex = "820084190112190c83184e1902fd"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200841908481905271907541905f2"
+hex = "820084190166190d2b1906c4190675"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084190ce11903c7190feb190f3d"
+hex = "8200841902e8190288190e12190535"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084190d671904b9190d75189e"
+hex = "820084190f58190cb61901ac190c93"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084190f78190f3d190877190f95"
 source = "ruby-generate"
 expect = "accept"
 

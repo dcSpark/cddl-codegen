@@ -477,8 +477,9 @@ opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: 
 ; Same one-bit presence model as the kinds above; the constant is written with
 ; `write_special(Special::Float(<lit>))` (canonical `fb` + 8 bytes) and verified with `raw.float()?`
 ; + an exact `!= <lit>` compare -> FixedValueMismatch, the SAME spellings the mandatory fixed-float
-; path emits. Default/json only: --preserve-encodings is unimplemented for floats (the float
-; deserialize stub). The float peeks as CBOR Special like bool/null, so in the array form it must not
+; path emits. Under --preserve-encodings the constant additionally carries its head-width encoding
+; var (see the preserve suite's `opt_fixed_arr_float`). The float peeks as CBOR Special like
+; bool/null, so in the array form it must not
 ; be followed by another Special-classed field: `? ffix: 2.5` (Special) precedes `b: text`. 2.5 is
 ; exactly representable so the verify's exact compare is well-defined. Corpus sibling:
 ; tests/corpus/optional_fixed_float.cddl.

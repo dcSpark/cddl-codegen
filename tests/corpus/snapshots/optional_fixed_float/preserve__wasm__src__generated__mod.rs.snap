@@ -1,0 +1,129 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedFloatArray(pub(crate) cddl_lib::OptFixedFloatArray);
+
+#[wasm_bindgen]
+impl OptFixedFloatArray {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedFloatArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn f(&self) -> bool {
+        self.0.f
+    }
+
+    pub fn set_f(&mut self, present: bool) {
+        self.0.f = present
+    }
+
+    pub fn label(&self) -> String {
+        self.0.label.clone()
+    }
+
+    pub fn new(x: u64, label: String) -> Self {
+        Self(cddl_lib::OptFixedFloatArray::new(x, label))
+    }
+}
+
+impl From<cddl_lib::OptFixedFloatArray> for OptFixedFloatArray {
+    fn from(native: cddl_lib::OptFixedFloatArray) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedFloatArray> for cddl_lib::OptFixedFloatArray {
+    fn from(wasm: OptFixedFloatArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedFloatArray> for OptFixedFloatArray {
+    fn as_ref(&self) -> &cddl_lib::OptFixedFloatArray {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedFloatMap(pub(crate) cddl_lib::OptFixedFloatMap);
+
+#[wasm_bindgen]
+impl OptFixedFloatMap {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedFloatMap, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn amount(&self) -> bool {
+        self.0.amount
+    }
+
+    pub fn set_amount(&mut self, present: bool) {
+        self.0.amount = present
+    }
+
+    pub fn rate(&self) -> bool {
+        self.0.rate
+    }
+
+    pub fn set_rate(&mut self, present: bool) {
+        self.0.rate = present
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::OptFixedFloatMap::new(x))
+    }
+}
+
+impl From<cddl_lib::OptFixedFloatMap> for OptFixedFloatMap {
+    fn from(native: cddl_lib::OptFixedFloatMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedFloatMap> for cddl_lib::OptFixedFloatMap {
+    fn from(wasm: OptFixedFloatMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedFloatMap> for OptFixedFloatMap {
+    fn as_ref(&self) -> &cddl_lib::OptFixedFloatMap {
+        &self.0
+    }
+}
