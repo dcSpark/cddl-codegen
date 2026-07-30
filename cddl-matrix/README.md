@@ -367,12 +367,23 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    INLINE (`{ * uint => uint }`, `{ * 0 => uint }`) validate fine, and the empty map validates
    everywhere (no key to mis-match). Error shape: `unexpected key Integer(Integer(0))` from the
    map-key arm — the same neighborhood as gap #8 (TAG-typed map keys), likely the same
-   key-matching site not resolving typename refs/choices. This is what strips the corpus decode
+   key-matching site not resolving typename refs/choices. **It is worse than non-resolution: the
+   site binds the key to the WRONG RULE.** A `{* epoch => label}` member (`epoch = uint`,
+   `label = text`) reports `key of type text required, got Integer(Integer(0))` — `text` is
+   `label`'s type, i.e. the VALUE's rule answering for the KEY. The same instance validates when the
+   map is reached through one more typename indirection (a synthetic
+   `__cddl_oracle_root = <rule>` root makes it pass), so the rejection also depends on how the
+   containing rule is entered — both worth stating in the upstream report. This is what strips the
+   corpus decode
    rows `c_style_enum_map_key.enum_keyed_map`, `table_enum_key.enum_keyed` and
    `table_enum_key.enum_key_holder` down to their EMPTY-map instances (every non-empty ruby
    candidate dies `ruby=0 rust=1` on the two-oracle gate; a mint whose random draws miss the
    empty instance pins the row `pinned_reason`-vectorless instead, with the per-oracle tallies in
-   the pin wording — the two states flip-flop across re-mints while the gap is open). No
+   the pin wording — the two states flip-flop across re-mints while the gap is open), and it is
+   why `alias_positions` — the corpus fixture whose whole subject is aliased (i.e. named-rule) map
+   keys — rides `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` with its ruby half left judging: its
+   maps sit in MEMBER position, where the empty-map instance that spares the three rows above is not
+   what the minter draws, so five of its six rules carry the signature. No
    upstream issue filed yet. Differential grid, two adjacent same-neighborhood observations
    (nested-map VALUES in a `*` table; multi-entry composite-array-key tables), and close-out
    steps: `draft/rust-cddl-named-key-map-gap.md` (local note).

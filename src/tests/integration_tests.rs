@@ -7626,7 +7626,19 @@ fn ir_conformance_corpus() {
     // RUST_ORACLE_SKIP: fixtures whose minted bytes are valid but hit a documented RUST conformance
     // validator gap. Such fixtures still generate, round-trip, and dump, but are generated WITHOUT
     // --emit-tests-conformance (rust validate half off) so the decorrelated ruby gem can continue
-    // judging them. A rust-validator gap must not blind the second oracle. Currently empty.
+    // judging them. A rust-validator gap must not blind the second oracle.
+    //   alias_positions rides gap #11 (`cddl-matrix/README.md` § "Upstream oracle gaps", OPEN at
+    //   `ac1b98e`): the validator WRONGLY REJECTS every non-empty map instance whose KEY domain is a
+    //   NAMED-RULE reference, which is this fixture's whole subject — its aliased map keys are named
+    //   rules by construction, and its maps sit in MEMBER position where the empty-map instance that
+    //   spares the existing gap-11 fixtures (`c_style_enum_map_key`, `table_enum_key`) is not what
+    //   the minter draws. Five of its six rules failed with the gap's signature
+    //   (`unexpected key Integer(Integer(0))`); the minted bytes are spec-valid and the ruby gem
+    //   accepts all of them (verified per-rule: `keyed`, `open_holder`, `open_tail` all ruby exit 0),
+    //   so the second oracle keeps judging the fixture in full. Sharper than the gap note's
+    //   "not resolving typename refs": the validator binds the key to the WRONG rule — a
+    //   `{* epoch => label}` member reports `key of type text required`, which is `label`'s type, not
+    //   `epoch`'s. Comes off this list when the fork fix lands.
     //   (cbor_bignint_table is a PAST resident: the validator rejected ANY bignint-KEYED map
     //   wholesale — an over-rejection isolated to the key-domain position — until the fork's
     //   bignum-key fix (`local-fixes` @ 4e39d09, which also makes bignum tags ENFORCED in value
@@ -7642,7 +7654,7 @@ fn ir_conformance_corpus() {
     //   draft/cddl-size-on-int-divergence.md). If upstream ships the per-value semantics and
     //   cddl-codegen supports the construct, its fixture re-grows the member — possibly back onto
     //   this list until the fork fix lands.)
-    const RUST_ORACLE_SKIP: &[&str] = &[];
+    const RUST_ORACLE_SKIP: &[&str] = &["alias_positions"];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
