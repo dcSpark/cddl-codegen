@@ -78,7 +78,7 @@ impl Deserialize for Everything {
                         break;
                     }
                     let table_key = raw.unsigned_integer()?;
-                    let table_value = Bar::deserialize(raw)?;
+                    let table_value = BarTypedef::deserialize(raw)?;
                     if table_table.insert(table_key, table_value).is_some() {
                         return Err(DeserializeFailure::DuplicateKey(Key::Uint(table_key)).into());
                     }

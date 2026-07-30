@@ -158,7 +158,7 @@ impl Deserialize for Everything {
                         }
                         let (table_key, table_key_encoding) =
                             raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-                        let table_value = Bar::deserialize(raw)?;
+                        let table_value = BarTypedef::deserialize(raw)?;
                         if table_table.insert(table_key, table_value).is_some() {
                             return Err(
                                 DeserializeFailure::DuplicateKey(Key::Uint(table_key)).into()

@@ -19,6 +19,33 @@ pub(super) struct DeserializeConfig<'a> {
     read_len_overload: Option<String>,
     /// Override regular deserialization lgoic with a call to this function
     custom_deserialize: Option<String>,
+    /// The member's type AS DECLARED, when the declaration is an `AliasIdent::Rust` — the spelling
+    /// the member-level deserialize CALL TARGETS use instead of the alias's structural target
+    /// (`StakeCredential::deserialize` where the field is `sc: StakeCredential`, not
+    /// `Credential::deserialize`). Lifted at the `Alias` arm, consumed ONLY through
+    /// [`Self::call_target`]; `None` = spell the structural ident, which is also what every
+    /// position that is not a call target keeps doing (an error-message string literal and an
+    /// enum-variant path name the struct itself, never the member's declaration — see the
+    /// `CStyleEnum` arm).
+    ///
+    /// User doc: `docs/docs/output_format.mdx` § "Type spelling at member positions".
+    declared_spelling: Option<String>,
+    /// `true` once this descent has crossed a `CBOREncodingOperation`, which SEALS the declared
+    /// spelling: an `Alias` arm below an operation must not lift one.
+    ///
+    /// The seal, rather than a clear at the operation's descent, is what the arm ORDER forces. A
+    /// `RustType`'s encoding operations wrap its conceptual type (`SerializingRustType::from`), so
+    /// `Root(Alias(..))` is reached only AFTER every operation is consumed — the alias ident of
+    /// `cred_bytes = bytes .cbor credential` therefore arrives at the arm that reads the *payload*,
+    /// which is not the position the ident names. `CredBytes::deserialize(inner_de)` compiles (the
+    /// alias is transparent) and lies: it claims to read a bytes-wrapped value where the payload is
+    /// read. Clearing at the `CBORBytes` descent cannot prevent that, because the lift happens
+    /// below it.
+    ///
+    /// A container inner needs no seal — `Array`/`Map` recurse with a FRESH `DeserializeConfig`
+    /// (so both fields reset, which is what makes an element inside a `.cbor` payload spell its own
+    /// declaration), and `Optional` clears the spelling explicitly at its descent.
+    inside_encoding_op: bool,
     /// number of tag levels already crossed on this member name (0 at the field root). Drives the
     /// `tag`/`tag2`/… encoding-var infix (and the `tag_enc`/`tag_enc2` binding) so stacked tags each
     /// record their own level's size instead of shadowing. See `tag_encoding_infix`.
@@ -35,6 +62,8 @@ impl<'a> DeserializeConfig<'a> {
             deserializer_name_overload: None,
             read_len_overload: None,
             custom_deserialize: None,
+            declared_spelling: None,
+            inside_encoding_op: false,
             tag_depth: 0,
         }
     }
@@ -95,6 +124,47 @@ impl<'a> DeserializeConfig<'a> {
     pub(super) fn custom_deserialize(mut self, func: String) -> Self {
         self.custom_deserialize = Some(func);
         self
+    }
+
+    /// Lift the member's declared spelling (see [`Self::declared_spelling`]). OUTERMOST WINS and an
+    /// operation-sealed descent lifts nothing, both enforced here rather than at the call site so
+    /// the `Alias` arm cannot get either half wrong: `alias_b = alias_a = credential` keeps the
+    /// member's own declared name, and a `bytes .cbor` payload keeps the structural target.
+    pub(super) fn declare_spelling(mut self, spelling: String) -> Self {
+        if self.declared_spelling.is_none() && !self.inside_encoding_op {
+            self.declared_spelling = Some(spelling);
+        }
+        self
+    }
+
+    /// Descend into a `CBOREncodingOperation`'s child: the member's declared spelling does not reach
+    /// inside one (see [`Self::inside_encoding_op`]).
+    pub(super) fn inside_encoding_op(mut self) -> Self {
+        self.inside_encoding_op = true;
+        self
+    }
+
+    /// Descend into an `Optional`'s inner: a member position of its OWN, so it spells from its own
+    /// declaration (its `Alias` arm lifts it) and must not inherit the outer member's. Without this
+    /// a member typed `maybe_cred = credential / null` emits `MaybeCred::deserialize(raw)` inside
+    /// the `Some(..)` the arm wraps it in — `Some(Option<Credential>)` against a field typed
+    /// `Option<Credential>`, i.e. E0308. `Array`/`Map` inners need no equivalent: they recurse with
+    /// a fresh `DeserializeConfig`.
+    pub(super) fn clear_declared_spelling(mut self) -> Self {
+        self.declared_spelling = None;
+        self
+    }
+
+    /// THE spelling of a member-level deserialize call target. Use at every call-target format in the
+    /// `Rust(ident)` arm (`T::deserialize`, `T::from_raw_bytes`, `T::deserialize_as_embedded_group`)
+    /// and NOWHERE else: the same arm also interpolates `ident` into a `DeserializeError::new("..")`
+    /// string literal (runtime-observable output) and into `{ident}::{variant}` enum-variant paths
+    /// (which name the struct's own variants, not the member's type). Routing every call target
+    /// through one method is what keeps those two out of the change.
+    pub(super) fn call_target(&self, ident: &RustIdent) -> String {
+        self.declared_spelling
+            .clone()
+            .unwrap_or_else(|| ident.to_string())
     }
 
     pub(super) fn pass_read_len(&self) -> String {
@@ -1526,12 +1596,14 @@ impl GenerationScope {
                                     deser_code.read_len_used = true;
                                 }
                                 if cli.preserve_encodings {
+                                    // declared spelling BEFORE `final_exprs` is moved out below
+                                    let call_target = config.call_target(ident);
                                     config
                                         .final_exprs
                                         .push("StringEncoding::from(enc)".to_owned());
                                     let from_raw_bytes_with_conversions = format!(
                                         "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
-                                        ident,
+                                        call_target,
                                         final_expr(config.final_exprs, Some("bytes".to_owned()))
                                     );
                                     deser_code.content.line(&format!(
@@ -1543,8 +1615,9 @@ impl GenerationScope {
                                         before_after.after_str(true)
                                     ));
                                 } else {
+                                    let call_target = config.call_target(ident);
                                     let from_raw_bytes_with_conversions = format!(
-                                        "{ident}::from_raw_bytes(&bytes).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())"
+                                        "{call_target}::from_raw_bytes(&bytes).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())"
                                     );
                                     deser_code.content.line(&format!(
                                         "{}{}.bytes(){}.and_then(|bytes| {}){}",
@@ -1602,7 +1675,7 @@ impl GenerationScope {
                                     deser_code.len_used = true;
                                     let final_expr_value = format!(
                                         "{}::deserialize_as_embedded_group({}, {}, len)",
-                                        ident,
+                                        config.call_target(ident),
                                         deserializer_name,
                                         config.pass_read_len()
                                     );
@@ -1618,8 +1691,10 @@ impl GenerationScope {
                                         deser_code.read_len_used = true;
                                         deser_code.throws = true;
                                     }
-                                    let final_expr_value =
-                                        format!("{ident}::deserialize({deserializer_name})");
+                                    let final_expr_value = format!(
+                                        "{}::deserialize({deserializer_name})",
+                                        config.call_target(ident)
+                                    );
                                     deser_code.content.line(&final_result_expr_complete(
                                         &mut deser_code.throws,
                                         config.final_exprs,
@@ -1701,7 +1776,8 @@ impl GenerationScope {
                             types,
                             (&**ty).into(),
                             DeserializeBeforeAfter::new("Some(", ")", false),
-                            config.optional_field(false),
+                            // an `Optional` inner is a member position of its OWN
+                            config.optional_field(false).clear_declared_spelling(),
                             cli,
                         )
                         .add_to(&mut some_block);
@@ -1726,7 +1802,8 @@ impl GenerationScope {
                             types,
                             (&**ty).into(),
                             DeserializeBeforeAfter::new(map_some_before, &map_some_after, false),
-                            config.optional_field(false),
+                            // an `Optional` inner is a member position of its OWN
+                            config.optional_field(false).clear_declared_spelling(),
                             cli,
                         )
                         .add_to(&mut some_block);
@@ -1808,6 +1885,10 @@ impl GenerationScope {
                             .content
                             .line(&format!("let len = {deserializer_name}.array()?;"));
                     }
+                    // FRESH config, not the outer member's: an array element is a member position of
+                    // its own (it spells from its own declaration, via its own `Alias` arm) and must
+                    // not inherit the outer member's declared spelling. Same for the map arm's
+                    // key/value configs below.
                     let mut elem_config = DeserializeConfig::new(&elem_var_name);
                     let (mut deser_loop, plain_len_check) = match &ty.conceptual_type {
                         ConceptualRustType::Rust(ty_ident) if types.is_plain_group(ty_ident) => {
@@ -2325,6 +2406,17 @@ impl GenerationScope {
                     } else {
                         config
                     };
+                    // The member's DECLARED spelling, for the call targets below (a field
+                    // `sc: StakeCredential` is filled by `StakeCredential::deserialize`, not by the
+                    // alias's structural target). Same lift-from-the-alias shape as the
+                    // `custom_deserialize` above: the alias influences how its target is emitted.
+                    // `AliasIdent::Reserved` is excluded because a prelude name is not a rust ident.
+                    let config_for_alias = match ident {
+                        AliasIdent::Rust(rust_ident) => {
+                            config_for_alias.declare_spelling(rust_ident.to_string())
+                        }
+                        AliasIdent::Reserved(_) => config_for_alias,
+                    };
                     // keep the OUTER config: an Alias's inner is a bare ConceptualRustType (no
                     // config of its own — see `as_alias`), so recursing with `(&**ty).into()`
                     // would default the config and drop e.g. the occurrence-count bounds a named
@@ -2378,7 +2470,9 @@ impl GenerationScope {
                         types,
                         *child,
                         before_after,
-                        config.overload_deserializer(name_overload),
+                        config
+                            .overload_deserializer(name_overload)
+                            .inside_encoding_op(),
                         cli,
                     )
                     .add_to_code(&mut deser_code);
@@ -2414,7 +2508,10 @@ impl GenerationScope {
                                 types,
                                 *child,
                                 DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config.optional_field(false).tag_depth(tag_level),
+                                config
+                                    .optional_field(false)
+                                    .tag_depth(tag_level)
+                                    .inside_encoding_op(),
                                 cli,
                             )
                             .mark_and_extract_content(&mut deser_code);
@@ -2439,7 +2536,10 @@ impl GenerationScope {
                                 types,
                                 *child,
                                 DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config.optional_field(false).tag_depth(tag_level),
+                                config
+                                    .optional_field(false)
+                                    .tag_depth(tag_level)
+                                    .inside_encoding_op(),
                                 cli,
                             )
                             .mark_and_extract_content(&mut deser_code);
@@ -2521,7 +2621,10 @@ impl GenerationScope {
                         types,
                         *child,
                         before_after,
-                        config.optional_field(false).tag_depth(tag_level),
+                        config
+                            .optional_field(false)
+                            .tag_depth(tag_level)
+                            .inside_encoding_op(),
                         cli,
                     )
                     .add_to_code(&mut deser_code);
