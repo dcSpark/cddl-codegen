@@ -4588,3 +4588,258 @@ fn derived_group_choice_arm_variant_names_deduplicate() {
         }
     }
 }
+
+/// Generate `spec` expecting SUCCESS, returning the concatenated generated source. The positive
+/// control the `@custom_serialize`/`@custom_deserialize` placement rejections below each pair with:
+/// a rejection is only attributable to the PLACEMENT if the same directives in their honored
+/// position still generate their call sites.
+fn expect_custom_codec_source(tag: &str, spec: &str) -> String {
+    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    std::fs::write(&path, spec).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "custom_codec_unused",
+    ]));
+    std::fs::remove_file(&path).ok();
+    out.unwrap_or_else(|e| panic!("[{tag}] spec must generate, got a rejection: {e}\n{spec}"))
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The custom (de)serializer pair on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule is rejected BY DESIGN — via
+/// a GRACEFUL `Err` (deferred through `record_rejection` → drained by `finalize`), never a `panic!`.
+/// An extern rule names a type this crate does not define, so `RustStruct::new_extern` stores no
+/// config and the pair never reaches generation: both directions emit the extern's own impls while
+/// the spec claims a custom codec. The remedy the message advertises — a real CDDL body carrying the
+/// pair — is the control asserted here, so the rejection is attributable to the extern MARKER rather
+/// than to the directives.
+#[test]
+fn custom_codec_pair_on_extern_rule_rejects_gracefully() {
+    let err = expect_graceful_rejection(
+        "custom_extern",
+        "ext = _CDDL_CODEGEN_EXTERN_TYPE_ ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [f: ext]\n",
+        &[],
+    );
+    assert!(
+        err.contains(
+            "@custom_serialize on `Ext`: a _CDDL_CODEGEN_EXTERN_TYPE_ rule names a type this crate \
+             does not define, so that type owns its own serialization impls and the custom \
+             (de)serializer pair never reaches generation."
+        ),
+        "the extern rejection must name the directive, the marker and why it cannot be honored, \
+         got:\n{err}"
+    );
+    // Both halves of the pair are reported, so an author who wrote only one is not left guessing.
+    assert!(
+        err.contains("@custom_deserialize on `Ext`:"),
+        "each half of the pair gets its own rejection line, got:\n{err}"
+    );
+    assert!(
+        err.contains(
+            "Give the rule a real CDDL body and put the pair there (`<rule> = text ; \
+             @custom_serialize <fn> @custom_deserialize <fn>`)"
+        ),
+        "the rejection must advertise the type-level alias spelling as the remedy, got:\n{err}"
+    );
+    // CONTROL: the advertised remedy really does route both directions through the custom fns.
+    let src = expect_custom_codec_source(
+        "custom_extern_control",
+        "ext = text ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ext]\n",
+    );
+    assert!(
+        src.contains("my_ser(") && src.contains("my_deser("),
+        "the remedy spelling must emit both custom call sites, got:\n{src}"
+    );
+}
+
+/// The custom (de)serializer pair written in a collection ROW-ENTRY comment slot — a table row, an
+/// open struct-map rest row, an open-array rest tail — is rejected BY DESIGN, via a GRACEFUL `Err`
+/// (`record_rejection` → drained by `finalize`), never a `panic!`. That slot legitimately carries
+/// `@name`/`@duplicates`/`@ignore`, all of which are row-SCOPED; the pair is a type-level override
+/// keyed on a type the row does not declare, so it was read into the row's metadata and dropped.
+///
+/// The controls are what make this a PLACEMENT rejection rather than a directive one: the same
+/// directives keep working at field position and on a key/value RULE (the spelling the message
+/// advertises), and the row slot's other directives keep working on the very rows rejected here.
+#[test]
+fn custom_codec_pair_in_row_entry_slot_rejects_gracefully() {
+    let vectors = [
+        (
+            "map_rest_row",
+            "opn = {\n  1: uint,\n  * text => uint ; @custom_serialize my_ser @custom_deserialize my_deser\n}\n",
+            "@custom_serialize on the open struct-map rest row (`* k => v`) of rule `opn`:",
+            "Name the row's key or value type as its own rule and put the pair there (`k = text ; \
+             @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).",
+        ),
+        (
+            "array_rest_tail",
+            "opa = [\n  a: uint,\n  * uint ; @custom_serialize my_ser @custom_deserialize my_deser\n]\n",
+            "@custom_serialize on the open-array rest tail (`* t`) of rule `opa`:",
+            "Name the tail element type as its own rule and put the pair there (`e = uint ; \
+             @custom_serialize <fn> @custom_deserialize <fn>`, then `* e`).",
+        ),
+        (
+            "table_row",
+            "t = {\n  * text => uint ; @custom_serialize my_ser @custom_deserialize my_deser\n}\nholder = [f: t]\n",
+            "@custom_serialize on the table row (`* k => v`) of rule `t`:",
+            "Name the table's key or value type as its own rule and put the pair there (`k = text \
+             ; @custom_serialize <fn> @custom_deserialize <fn>`, then `{ * k => v }`).",
+        ),
+    ];
+    for (tag, spec, head, remedy) in vectors {
+        let err = expect_graceful_rejection(tag, spec, &[]);
+        assert!(
+            err.contains(head),
+            "[{tag}] the rejection must name the directive and the row shape it sits on, got:\n{err}"
+        );
+        assert!(
+            err.contains(
+                "the custom (de)serializer pair is a TYPE-level override keyed on the type whose \
+                 codec it replaces, and a row entry declares no type of its own, so it is not \
+                 honored in this slot."
+            ),
+            "[{tag}] the rejection must explain why the slot cannot honor it, got:\n{err}"
+        );
+        assert!(
+            err.contains(remedy),
+            "[{tag}] the rejection must advertise the key/value/element rule spelling, got:\n{err}"
+        );
+        assert!(
+            err.contains("@custom_deserialize on the "),
+            "[{tag}] each half of the pair gets its own rejection line, got:\n{err}"
+        );
+    }
+    // CONTROL 1: the remedy — the pair on the row's key RULE — generates and calls both fns.
+    let src = expect_custom_codec_source(
+        "custom_row_entry_control_rule",
+        "k = text ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         t = { * k => uint }\nholder = [f: t]\n",
+    );
+    assert!(
+        src.contains("my_ser(") && src.contains("my_deser("),
+        "the advertised key-rule spelling must emit both custom call sites, got:\n{src}"
+    );
+    // CONTROL 2: the SAME comment placement in the FIELD slot is honored, so the rejection is about
+    // the row entry, not about a comment the DSL never sees.
+    let src = expect_custom_codec_source(
+        "custom_row_entry_control_field",
+        "holder = [\n  f: bytes, ; @custom_serialize my_ser @custom_deserialize my_deser\n]\n",
+    );
+    assert!(
+        src.contains("my_ser(") && src.contains("my_deser("),
+        "the field slot must still honor the pair, got:\n{src}"
+    );
+    // CONTROL 3: the row slot's own directives still work on the very rows rejected above — only the
+    // custom pair is refused there.
+    let src = expect_custom_codec_source(
+        "custom_row_entry_control_slot",
+        "opn = {\n  1: uint,\n  * text => uint ; @name extras\n}\n",
+    );
+    assert!(
+        src.contains("pub extras"),
+        "`@name` in the rest-row slot must still rename the captured field, got:\n{src}"
+    );
+}
+
+/// `@no_alias` together with the custom (de)serializer pair is rejected BY DESIGN, via a GRACEFUL
+/// `Err` (`record_rejection` → drained by `finalize`), never a `panic!`. `@no_alias` strips the type
+/// alias node the override is keyed on, so the pair goes with it and BOTH directions fall back to
+/// the default wire format — a SYMMETRIC drop, which is precisely what no round-trip test can see.
+/// The control is the same rule without `@no_alias`, which does emit both call sites.
+#[test]
+fn custom_codec_pair_with_no_alias_rejects_gracefully() {
+    let err = expect_graceful_rejection(
+        "custom_no_alias",
+        "cb = bytes ; @no_alias @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [f: cb]\n",
+        &[],
+    );
+    assert!(
+        err.contains(
+            "@custom_serialize together with `@no_alias` on `Cb`: `@no_alias` removes the \
+             type-alias node the custom (de)serializer override is keyed on, so the pair goes with \
+             it and BOTH directions silently fall back to the default wire format."
+        ),
+        "the @no_alias rejection must name the combination and the symmetric drop, got:\n{err}"
+    );
+    assert!(
+        err.contains("Drop `@no_alias` to keep the alias the pair overrides, or drop the pair."),
+        "the rejection must name both ways out, got:\n{err}"
+    );
+    assert!(
+        err.contains("@custom_deserialize together with `@no_alias` on `Cb`:"),
+        "each half of the pair gets its own rejection line, got:\n{err}"
+    );
+    // CONTROL: without `@no_alias` the identical rule honors the pair.
+    let src = expect_custom_codec_source(
+        "custom_no_alias_control",
+        "cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]\n",
+    );
+    assert!(
+        src.contains("my_ser(") && src.contains("my_deser("),
+        "the same rule without @no_alias must emit both custom call sites, got:\n{src}"
+    );
+}
+
+/// `@newtype` together with the custom (de)serializer pair is rejected BY DESIGN, via a GRACEFUL
+/// `Err` (`record_rejection` → drained by `finalize`), never a `panic!`. This one is not a drop but
+/// an ASYMMETRY: the deserialize call sites do route through the custom reader while the wrapper
+/// writes through its generated `Serialize` impl (`wrappers.rs` has no custom handling), so the
+/// generated type reads one wire format and writes another — silent wire divergence that a
+/// generated-crate round-trip cannot expose either.
+///
+/// Both wrapper flavors are covered: the primitive newtype and the collection newtype (`[* uint]`),
+/// which reaches the wrapper through `parse_group_choice` rather than the leaf `parse_type` arm.
+#[test]
+fn custom_codec_pair_with_newtype_rejects_gracefully() {
+    let vectors = [
+        (
+            "custom_newtype_primitive",
+            "nt = bytes ; @newtype @custom_serialize my_ser @custom_deserialize my_deser\n\
+             holder = [f: nt]\n",
+        ),
+        (
+            "custom_newtype_collection",
+            "nt = [* uint] ; @newtype @custom_serialize my_ser @custom_deserialize my_deser\n\
+             holder = [f: nt]\n",
+        ),
+    ];
+    for (tag, spec) in vectors {
+        let err = expect_graceful_rejection(tag, spec, &[]);
+        assert!(
+            err.contains(
+                "@custom_serialize together with `@newtype` on `Nt`: a `@newtype` wrapper writes \
+                 through its own generated serialize impl while the deserialize CALL SITES do \
+                 route through the custom reader, so the pair would make the wrapper read one wire \
+                 format and write another."
+            ),
+            "[{tag}] the @newtype rejection must state the round-trip asymmetry, got:\n{err}"
+        );
+        assert!(
+            err.contains(
+                "Drop `@newtype` and use the plain alias spelling (`<rule> = <body> ; \
+                 @custom_serialize <fn> @custom_deserialize <fn>`), or declare the type \
+                 `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write it in full."
+            ),
+            "[{tag}] the rejection must offer the alias spelling and the hand-owned type, got:\n{err}"
+        );
+        assert!(
+            err.contains("@custom_deserialize together with `@newtype` on `Nt`:"),
+            "[{tag}] each half of the pair gets its own rejection line, got:\n{err}"
+        );
+    }
+    // CONTROL: without `@newtype` the identical rule honors the pair.
+    let src = expect_custom_codec_source(
+        "custom_newtype_control",
+        "nt = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: nt]\n",
+    );
+    assert!(
+        src.contains("my_ser(") && src.contains("my_deser("),
+        "the same rule without @newtype must emit both custom call sites, got:\n{src}"
+    );
+}

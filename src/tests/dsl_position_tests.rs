@@ -14,11 +14,12 @@
 //! purpose. `KNOWN_SILENT_DROP` (mirroring the hazard sweep's `EXPECTED_COMPILE_FAIL`) pins any cell
 //! whose directive is currently DROPPED in that position — asserted to STILL be dropped, so the pin
 //! flips loudly the day a fix lands. A pin is a FINDING, not a license to fix: do not silence a drop
-//! by re-authoring its expectation, and do not fix a newly-found drop beyond the scoped rule-position
-//! `@name` rejection this module's Part 2 lands and the non-last-arm rule-level rejection beside it.
-//! Both of those are deliberate, triggered fixes rather than opportunistic ones, and each ships with
-//! its own placement CONTROL cell isolating position as the variable — which is the bar a third one
-//! has to clear too.
+//! by re-authoring its expectation, and do not fix a newly-found drop opportunistically. Every fix
+//! that has landed here was TRIGGERED — the scoped rule-position `@name` rejection this module's
+//! Part 2 lands, the non-last-arm rule-level rejection beside it, and the six `@custom_serialize` /
+//! `@custom_deserialize` placement rejections (cells 23a–23f), each of which was ruled before it was
+//! written — and each ships with its own placement CONTROL cell isolating position as the variable.
+//! That is the bar the next one has to clear too.
 //!
 //! Every cell runs generation under `catch_unwind` + `with_thread_silenced_panics` (like the hazard
 //! sweep) so a panic is reported as its own failure kind — never a test abort, and never mistaken for
@@ -71,7 +72,10 @@ struct Cell {
 /// a position where the directive DOES work, isolating position as the variable — the anon-group
 /// pin's control is the `anon-group-choice-member` cell.
 ///
-/// Four live findings (none fixed by this task — the scoped fix is rule-position `@name` rejection):
+/// Six live findings. Four predate the custom-serialize hardening (none fixed by the task that added
+/// them — its scoped fix was the rule-position `@name` rejection); the last two are that delivery's
+/// remainder, deliberately left silent because honoring or refusing either is a design decision, not
+/// a call-site fix. Its four RULED placements are cells 23a–23f, which now `Reject` rather than pin:
 ///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" rejection advertises `@name`
 ///     as the remedy, but at a MEMBER-position anonymous inline group the comment lands on the
 ///     enclosing group entry's trailing_comments, which the naming site's `get_comment_after(type2)`
@@ -92,6 +96,16 @@ struct Cell {
 ///     seam), which the rule-level detector never reads, so no wrapper is minted even though the
 ///     element would mint one at rule position. Control: the field-trailing comment slot is proven
 ///     live by the `@name array-element-*` / `@doc array-field` cells.
+///   - `@custom_serialize+deserialize` @ `table-rule`: a table rule is a type-level rule, the docs'
+///     supported position, yet the pair is dropped in both directions. Control: the `type-level` cell
+///     (same rule-trailing placement on a primitive body — it emits both call sites) plus the live
+///     rule slot itself, since a rule-trailing `@duplicates preserve` on this shape does swap in the
+///     PairMap twin. Whether a transparent table alias CAN carry the pair is the open question.
+///   - `@custom_serialize+deserialize` @ `rest-row-key-domain-alias`: honored halfway — the write arm
+///     calls the custom serializer, the rest arm never calls the custom deserializer (it binds the
+///     key the row's own key dispatch already consumed). The pin is non-vacuous by construction: the
+///     `my_ser(` half of the expectation IS satisfied, so only the reader is missing. A rule-level
+///     rejection would be wrong — the same alias works in table and field positions.
 const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
     (
         "@name",
@@ -119,6 +133,23 @@ const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
         "@used_as_elem is a rule-level tag read from rule metadata; a field-trailing comment binds to \
          the field's trailing_comments, which the rule-level detector never reads, so the loose-list \
          wrapper is silently not minted (the field-position tag is dropped)",
+    ),
+    (
+        "@custom_serialize+deserialize",
+        "table-rule",
+        "the custom (de)serializer pair on a TABLE rule (`t = { * k => v } ; @custom_serialize …`) is \
+         dropped in both directions, although the docs claim type-level rules are a supported \
+         position. The rule slot itself is live (a rule-trailing `@duplicates preserve` on the same \
+         shape does swap in the PairMap twin), so this is the directive being unhonored for the \
+         table shape, not the comment being unseen",
+    ),
+    (
+        "@custom_serialize+deserialize",
+        "rest-row-key-domain-alias",
+        "the pair on the key-domain alias of an open struct-map rest row is honored HALFWAY: \
+         `@custom_serialize` reaches the row's write arm (and the canonical key merge) while \
+         `@custom_deserialize` is never called — the rest arm binds the key the row's own dispatch \
+         already read, so honoring the reader needs design work, not a call-site fix",
     ),
 ];
 
@@ -605,6 +636,102 @@ const GRID: &[Cell] = &[
         directive: "@custom_serialize+deserialize",
         position: "field-level",
         spec: "holder = [f: bytes, ; @custom_serialize my_ser @custom_deserialize my_deser\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["my_ser(", "my_deser("],
+            must_not: &[],
+        },
+    },
+    // 23a-f: the six REJECTING placements. The pair is a TYPE-level override keyed on the type whose
+    // codec it replaces; each of these positions deletes, bypasses, or never had that type, so the
+    // directives used to parse and generate as if absent. Cells 22/23 above are the standing controls
+    // (same directives, honored positions) that make each rejection attributable to the PLACEMENT.
+    // 23a. REJECT: a `_CDDL_CODEGEN_EXTERN_TYPE_` rule — the named type owns its own impls.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "extern-rule",
+        spec: "ext = _CDDL_CODEGEN_EXTERN_TYPE_ ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ext]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "a _CDDL_CODEGEN_EXTERN_TYPE_ rule names a type this crate does not define",
+        ),
+    },
+    // 23b. REJECT: the open struct-map rest ROW-ENTRY slot (the slot `@name`/`@duplicates`/`@ignore`
+    //      legitimately own — those stay live, see the `@name` control in the robustness sibling).
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "map-rest-row-entry",
+        spec: "opn = {\n  1: uint,\n  * text => uint ; @custom_serialize my_ser @custom_deserialize my_deser\n}\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("on the open struct-map rest row (`* k => v`) of rule `opn`"),
+    },
+    // 23c. REJECT: the open-array rest TAIL entry slot (the array sibling of 23b).
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "array-rest-tail-entry",
+        spec: "opa = [\n  a: uint,\n  * uint ; @custom_serialize my_ser @custom_deserialize my_deser\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("on the open-array rest tail (`* t`) of rule `opa`"),
+    },
+    // 23d. REJECT: a TABLE's row entry slot. Disjoint from the table RULE's own slot (cell 23g),
+    //      which is a separate — and still silent — finding.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "table-row-entry",
+        spec: "t = {\n  * text => uint ; @custom_serialize my_ser @custom_deserialize my_deser\n}\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("on the table row (`* k => v`) of rule `t`"),
+    },
+    // 23e. REJECT: with `@no_alias`, which strips the alias node the override keys on (a SYMMETRIC
+    //      drop — both directions fall back to default wire, so no round-trip can see it).
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "with-no-alias",
+        spec: "cb = bytes ; @no_alias @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("together with `@no_alias`"),
+    },
+    // 23f. REJECT: with `@newtype` — not a drop but an ASYMMETRY (deserialize call sites route
+    //      through the custom reader, the wrapper writes through its generated impl).
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "with-newtype",
+        spec: "nt = bytes ; @newtype @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: nt]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("together with `@newtype`"),
+    },
+    // 23g. FINDING (pinned in KNOWN_SILENT_DROP): a TABLE RULE is a type-level rule, which the docs
+    //      say is a supported position, but the pair is dropped there. The rule slot is genuinely
+    //      read — a rule-trailing `@duplicates preserve` on this same shape DOES swap in the PairMap
+    //      twin — so this is the directive being unhonored, not the comment being unseen, and the
+    //      row-entry sibling (23d) rejects rather than masking it.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "table-rule",
+        spec: "t = {\n  * text => uint\n} ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["my_ser(", "my_deser("],
+            must_not: &[],
+        },
+    },
+    // 23h. FINDING (pinned in KNOWN_SILENT_DROP): the pair on the KEY-DOMAIN alias of an open
+    //      struct-map rest row is honored HALFWAY — `my_ser(` appears (the rest row's write arm), and
+    //      that presence is what makes the pin non-vacuous, but `my_deser(` never does: the rest arm
+    //      binds the key the row's own dispatch already read. A transforming codec in this position
+    //      writes transformed keys and reads raw ones.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "rest-row-key-domain-alias",
+        spec: "k = text ; @custom_serialize my_ser @custom_deserialize my_deser\nopn = {\n  1: uint,\n  * k => uint\n}\n",
         flags: &[],
         wasm: false,
         expect: Expect::Effect {
