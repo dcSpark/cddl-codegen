@@ -214,6 +214,10 @@ pub fn fit_sz(len: u64, sz: Option<cbor_event::Sz>) -> cbor_event::Sz {
 /// which no `float_sz()` read produces, but a hand-built encoding struct can hold — fall out of the
 /// same comparison. `sz_max` is reused purely as the width ORDERING (it is monotonic in head size);
 /// its integer magnitude carries no meaning for a float.
+///
+/// LOCKSTEP: `AnyCbor`'s float serializer (`static/any_cbor_preserve.rs`, `serialize_special`)
+/// restates this rule rather than calling it — that workhorse is shared by both canonical
+/// assemblies, and this helper's ARITY varies between them. The two must agree; keep them in step.
 pub fn write_float(
     serializer: &mut Serializer,
     value: f64,

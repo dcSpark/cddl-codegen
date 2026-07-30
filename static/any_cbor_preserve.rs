@@ -515,13 +515,27 @@ fn serialize_special<'a>(
                 // (write_float_sz(f64::NAN, Two) narrows the standard quiet NaN to f16 0x7e00.)
                 return serializer.write_float_sz(f64::NAN, cbor_event::Sz::Two);
             }
-            // `smallest_float_sz` is the RFC 8949 §4.2.1 value-preserving smallest width (NaN
-            // payload included). The NaN-drops-payload canonical case is handled above, so here it
-            // only ever runs on non-NaN (force_canonical) or any value (non-canonical None).
-            let width = match (force_canonical, sz) {
-                (true, _) => cbor_event::se::smallest_float_sz(*f),
-                (false, Some(sz)) => *sz, // replay stored width byte-exactly
-                (false, None) => cbor_event::se::smallest_float_sz(*f), // payload-preserving smallest
+            // LOCKSTEP: the width rule below is `serialization`'s `write_float`, restated here. That
+            // helper's ARITY varies with `--canonical-form` (the force-canonical fragment takes a
+            // `force_canonical` argument, the other does not) while this workhorse is shared by both
+            // assemblies, so it cannot be called with one spelling — the same reason `fit_int_sz` /
+            // `len_sz` / `str_len_sz` above are local mirrors. Keep the two in step.
+            //
+            // `smallest_float_sz` is the RFC 8949 §4.2.1 value-preserving smallest width (NaN payload
+            // included); the NaN-drops-payload canonical case is handled above. A recorded width is
+            // honored only while it still represents the value EXACTLY, because `write_float_sz`
+            // ERRORS (`InvalidLenPassed`) on a lossy width rather than emitting a merely non-minimal
+            // head — so a width the value has OUTGROWN widens to `smallest_float_sz` instead of
+            // failing the write. A DECODED value never reaches that branch (its recorded width came
+            // from `float_sz()` and is exact by construction); a hand-built or mutated value does —
+            // `AnySpecial::Float(1.1, Some(Sz::Two))` would otherwise panic through `to_cbor_bytes`'s
+            // unwrap. The float-invalid `Sz::Inline`/`Sz::One` fall out of the same comparison.
+            // `sz_max` is reused purely as the width ORDERING (monotonic in head size); its integer
+            // magnitude carries no meaning for a float.
+            let smallest = cbor_event::se::smallest_float_sz(*f);
+            let width = match sz {
+                Some(sz) if !force_canonical && sz_max(*sz) >= sz_max(smallest) => *sz,
+                _ => smallest,
             };
             serializer.write_float_sz(*f, width)
         }
