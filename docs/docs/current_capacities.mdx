@@ -21,7 +21,12 @@ sidebar_position: 3
   any other argument width, in every position. One caveat follows from the member type rather than
   the encoding: because `float32` narrows to `f32`, a wire *double* that is not exactly representable
   in single precision loses precision on decode (`1.1` at an `0xfb` head comes back as the nearest
-  `f32`, so its re-encode differs) — declare the member `float64` if the wire may carry full doubles
+  `f32`, so its re-encode differs) — declare the member `float64` if the wire may carry full doubles.
+  That same cast is why a **NaN** in a `float32` member round-trips only *platform-typically*: it
+  passes through `x as f32` / `f64::from(x)`, and Rust leaves the payload and sign of a NaN
+  float-cast unspecified. The value stays a NaN and the head width is still preserved, but
+  byte-exact replay of the payload bits is not guaranteed — use `float64` where NaN payloads must
+  survive byte-exactly
 * Array values - `[uint]`
 * Table types as members - `foo = ( x: { * a => b } )`
 * Inline groups at root level - `foo = ( a: uint, b: uint)`

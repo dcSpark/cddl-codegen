@@ -33,7 +33,7 @@ primitive encoding regardless of the `0x81` framing.
 - Legal **leaf** cells: **45** — 18 covered, 27 unexercised:
   - 8 **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)
   - 19 **emittable but no Appendix A vector lands here** (e.g. wide-argument length/count heads) — not a generator gap, just outside the App-A example set
-- Golden tests: 45 default-flags · sibling sets: 58 preserve + 28 canonical (below)
+- Golden tests: 45 default-flags · sibling sets: 61 preserve + 30 canonical (below)
 
 **Sibling golden sets (not in this grid):** the encodings the default-flags set can never
 exercise — the ➖ `.indef` cells, the ➖ `.float16`/`.float32` heads, and non-minimal header arguments — have their own spec-anchored
