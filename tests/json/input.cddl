@@ -13,8 +13,10 @@ nint_wrapper = nint ; @newtype
 struct_wrapper = u64_wrapper ; @newtype
 custom_wrapper = uint ; @newtype @custom_json
 
-; NB: this fixture also runs under json_preserve, so it can't hold floats
-; (preserve-encodings is unimplemented for floats) — float JSON lives in tests/json-float/
+; NB: float JSON lives in tests/json-float/, whose fixture carries the schema-validation and
+; bit-exact-f64 round-trip tests this one has no home for. The split dates from preserve-encodings
+; being unable to emit floats at all; it emits them now, so holding a float here is no longer ruled
+; out by the json_preserve leg this fixture also runs under
 ; map-bearing type: BTreeMap (json) / OrderedHashMap (json_preserve) JSON serde/schema emission
 table = { * text => uint }
 ; array-struct holder: a single-field bareword-keyed MAP holder panics generation

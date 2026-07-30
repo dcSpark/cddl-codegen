@@ -1744,10 +1744,16 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   in both replay gates — every catalog row (ACTIVE or PINNED) whose matrix annotation says
   `emission.preserve.status = "unsupported"` must have a `PRESERVE_SKIP` entry, checked without
   generating anything, so the gap fires at the WP commit that adds the row, not at activation.
-  (Full derivation of `PRESERVE_SKIP` from the annotation verdict is NOT possible: the float
-  rows' annotations say preserve-SUPPORTED — the matrix probe's bare-alias shape misses the
-  float deserialize stub that the replay's example spec hits — so the hand ledger keeps owning
-  the reasons; the cross-check is subset-direction only.) Confirmed since: each replay gate's
+  (Full derivation of `PRESERVE_SKIP` from the annotation verdict stays out of reach for two
+  reasons that hold with no float rows left in either ledger, so the cross-check is
+  subset-direction only. The corpus replay gate has no annotation axis to derive FROM — its
+  catalog rows are keyed to `tests/corpus/*.cddl` fixtures, which the matrix does not annotate, so
+  its whole ledger is hand-owned by construction. And on the matrix leg the verdict is a single
+  boolean: both residents are annotated `unsupported`, while the ledger's job is to say WHICH kind
+  each one is, because that decides what a stale-guard trip MEANS — a gap closing, or the
+  `@ignore` contract regressing. The bare-alias probe shape is also still narrower than the
+  replay's member-embedded specs, so a `supported` verdict over a preserve-broken shape remains
+  possible; that seam is now uninstanced rather than fixed.) Confirmed since: each replay gate's
   `PRESERVE_SKIP` stale-guard asserts every listed id names an ACTIVE (vectored) row, so a
   `PRESERVE_SKIP` entry for a still-PINNED row FAILS the gate outright — a designed-rejection skip
   therefore CANNOT be pre-landed against a pinned row. The static annotation-side cross-check (which

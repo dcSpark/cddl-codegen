@@ -1,4 +1,7 @@
-; float JSON serde/schema, isolated from tests/json/ because that fixture also runs under
-; json_preserve and preserve-encodings is unimplemented for floats. Fold back into tests/json/
-; if float preserve support ever lands.
+; float JSON serde/schema. Kept apart from tests/json/ for the hand-written tests.rs beside it —
+; validation against the crate's own emitted schema (a jsonschema dev-dep) and a bit-exact f64 JSON
+; round-trip that holds only while the generated manifest carries serde_json's `float_roundtrip`
+; feature. The original reason for the split (preserve-encodings could not emit floats, and this
+; fixture's twin also runs under json_preserve) is retired: float head widths are encoding variables
+; now, so folding back into tests/json/ is open work rather than blocked.
 float_holder = [f: float64]
