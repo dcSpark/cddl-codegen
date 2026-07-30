@@ -550,7 +550,7 @@
     },
     {
       "gate": "recombination_preserve_crates_execute",
-      "warm_ms": 108000,
+      "warm_ms": 134000,
       "n": 20,
       "measured": "2026-07-30",
       "machine": "86216c55",
@@ -566,6 +566,10 @@
         {
           "date": "2026-07-30",
           "warm_ms": 108000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 134000
         }
       ]
     },
