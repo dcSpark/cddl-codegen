@@ -3191,6 +3191,192 @@ impl Deserialize for InlineWrapper {
     }
 }
 
+impl cbor_event::se::Serialize for MapStructWithCustomSerialization {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(5))?;
+        serializer.write_text("hexed")?;
+        write_hex_string(serializer, &self.hexed)?;
+        serializer.write_text("plain")?;
+        serializer.write_unsigned_integer(self.plain)?;
+        serializer.write_text("tagged")?;
+        write_tagged_uint_str(serializer, &self.tagged)?;
+        serializer.write_text("aliased")?;
+        custom_serialize_bytes(serializer, &self.aliased)?;
+        serializer.write_text("chunked")?;
+        custom_serialize_bytes(serializer, &self.chunked)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for MapStructWithCustomSerialization {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(5)?;
+            read_len.finish()?;
+            let mut hexed = None;
+            let mut plain = None;
+            let mut tagged = None;
+            let mut aliased = None;
+            let mut chunked = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "hexed" => {
+                            if hexed.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "hexed".into(),
+                                ))
+                                .into());
+                            }
+                            hexed = Some(
+                                read_hex_string(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("hexed"))?,
+                            );
+                        }
+                        "plain" => {
+                            if plain.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "plain".into(),
+                                ))
+                                .into());
+                            }
+                            plain = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("plain"))?,
+                            );
+                        }
+                        "tagged" => {
+                            if tagged.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "tagged".into(),
+                                ))
+                                .into());
+                            }
+                            tagged = Some(
+                                read_tagged_uint_str(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("tagged"))?,
+                            );
+                        }
+                        "aliased" => {
+                            if aliased.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "aliased".into(),
+                                ))
+                                .into());
+                            }
+                            aliased = Some(
+                                custom_deserialize_bytes(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("aliased"))?,
+                            );
+                        }
+                        "chunked" => {
+                            if chunked.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "chunked".into(),
+                                ))
+                                .into());
+                            }
+                            chunked = Some(
+                                custom_deserialize_bytes(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("chunked"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let chunked =
+                match chunked {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("chunked"),
+                        ))
+                        .into());
+                    }
+                };
+            let hexed = match hexed {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("hexed")))
+                            .into(),
+                    );
+                }
+            };
+            let aliased =
+                match aliased {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("aliased"),
+                        ))
+                        .into());
+                    }
+                };
+            let tagged = match tagged {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tagged")))
+                            .into(),
+                    );
+                }
+            };
+            let plain = match plain {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("plain")))
+                            .into(),
+                    );
+                }
+            };
+            Ok(Self {
+                chunked,
+                hexed,
+                aliased,
+                tagged,
+                plain,
+            })
+        })()
+        .map_err(|e| e.annotate("MapStructWithCustomSerialization"))
+    }
+}
+
 impl cbor_event::se::Serialize for MapWithDefaults {
     fn serialize<'se>(
         &self,

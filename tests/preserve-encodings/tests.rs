@@ -1551,6 +1551,63 @@ mod tests {
         assert_eq!(back.overridden, vec![0xAB; 16]);
     }
 
+    // The MAP-rep twin of `custom_serialization`. A map-rep field's serialize is built from ONE
+    // config that also serves the member-key write, and that config used to be built WITHOUT the
+    // field's @custom_serialize — so the custom WRITER was dropped while @custom_deserialize kept
+    // being honored on the read side. Under --preserve-encodings the drop is doubly visible: the
+    // value's encoding sidecar is handed to the custom writer as an argument, so a default writer
+    // loses both the custom wire shape AND the recorded widths. Every field carries a non-minimal
+    // encoding (including its own member-KEY header, which the same config derives) so the re-encode
+    // equality below is a real fidelity assertion rather than a shape check.
+    #[test]
+    fn map_custom_serialization() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_8_encodings = vec![
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Indefinite(vec![(3, Sz::Two), (5, Sz::One)]),
+            StringLenSz::Indefinite(vec![(0, Sz::Four), (4, Sz::Inline), (0, Sz::Inline), (4, Sz::Inline), (0, Sz::One)]),
+        ];
+        for def_enc in &def_encodings {
+            let bytes_special_enc = StringLenSz::Indefinite(vec![(1, *def_enc); 4]);
+            let key_enc = StringLenSz::Len(*def_enc);
+            for str_enc in &str_8_encodings {
+                // wire order here is DECLARATION order; orig_deser_order replays whatever it saw
+                let irregular_bytes = vec![
+                    map_sz(5, *def_enc),
+                        cbor_str_sz("chunked", key_enc.clone()),
+                            cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], bytes_special_enc.clone()),
+                        cbor_str_sz("hexed", key_enc.clone()),
+                            cbor_str_sz("baadd00d", str_enc.clone()),
+                        cbor_str_sz("aliased", key_enc.clone()),
+                            cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], bytes_special_enc.clone()),
+                        cbor_str_sz("tagged", key_enc.clone()),
+                            cbor_tag(9),
+                            cbor_str_sz("10241024", StringLenSz::Len(*def_enc)),
+                        cbor_str_sz("plain", key_enc.clone()),
+                            cbor_int(7, *def_enc),
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let from_bytes = MapStructWithCustomSerialization::from_cbor_bytes(&irregular_bytes).unwrap();
+                assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+            }
+        }
+        // a FRESH value (no encoding sidecar) must still go through the custom writers: `chunked` comes
+        // out indefinite-chunked and `hexed` as hex TEXT, which is exactly what the custom readers
+        // demand back — under the default writers this round-trip errors rather than merely
+        // differing.
+        let fresh = MapStructWithCustomSerialization::new(
+            vec![0xCA, 0xFE, 0xF0, 0x0D],
+            vec![0xBA, 0xAD, 0xD0, 0x0D],
+            vec![0x03, 0x01, 0x04, 0x01],
+            1024,
+            7,
+        );
+        let fresh_bytes = fresh.to_cbor_bytes();
+        let back = MapStructWithCustomSerialization::from_cbor_bytes(&fresh_bytes).unwrap();
+        assert_eq!(back.to_cbor_bytes(), fresh_bytes);
+        assert_eq!(back.hexed, vec![0xBA, 0xAD, 0xD0, 0x0D]);
+    }
+
     #[test]
     fn wrapper_table() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];

@@ -2229,7 +2229,16 @@ pub(super) fn codegen_struct(
 
                     // serialize key
                     let mut map_ser_content = BlocksOrLines::default();
-                    let serialize_config = SerializeConfig::new(&data_name, &field.name)
+                    // `for_field`, NOT `new(..)`: this one config serves both the key write (via
+                    // `key_encoding_var` just below) and the VALUE serialize further down, and the
+                    // value is a record field — so it must carry the field's `@custom_serialize`
+                    // exactly like the array-rep sites do, or a map-rep field's custom writer is
+                    // silently dropped while `DeserializeConfig::for_field` still honors the custom
+                    // READER (a round-trip-breaking asymmetry). `for_field` is `new(..)` plus that
+                    // carry and nothing else, so the key side is untouched: `encoding_var` reads only
+                    // `var_name`/`encoding_var_in_option_struct`, and the key write never consults
+                    // `custom_serialize`.
+                    let serialize_config = SerializeConfig::for_field(&data_name, field)
                         .expr_is_ref(expr_is_ref)
                         .encoding_var_in_option_struct("self.encodings");
                     let key_encoding_var =

@@ -392,6 +392,23 @@ struct_with_custom_serialization = [
   tagged2: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str 
 ]
 
+; The MAP-rep twin of struct_with_custom_serialization. A map-rep field's serialize builds ONE
+; config that serves both the member-key write and the VALUE write, so that config must carry the
+; field's @custom_serialize: built without it the custom WRITER was silently dropped while the read
+; side kept honoring @custom_deserialize — a round-trip-breaking asymmetry the array-rep rule above
+; cannot see, since array fields take a different construction path. Each custom field here writes
+; bytes the DEFAULT writer would not (indefinite 1-byte-chunked bytes, hex TEXT over a `bytes`
+; field, a hook-written tag), so a dropped writer fails the byte-exact vector rather than merely
+; the round-trip. `aliased` is the type-level control (honored through the alias, not the field)
+; and `plain` the no-directive control — neither may move.
+map_struct_with_custom_serialization = {
+  chunked: bytes, ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
+  hexed: bytes, ; @custom_serialize write_hex_string @custom_deserialize read_hex_string
+  aliased: custom_bytes,
+  tagged: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str
+  plain: uint,
+}
+
 docs = [
   foo: text, ; @doc this is a field-level comment
   bar: uint, ; @doc bar is a u64

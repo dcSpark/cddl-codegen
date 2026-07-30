@@ -91,14 +91,15 @@ use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
     CborNestedPayloadsEncoding, CustomFieldHolderEncoding, DeeplyNestedEncoding, EdEncoding,
-    EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding, MapWithDefaultsEncoding,
-    NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
-    OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding,
-    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
-    SignedIntsEncoding, String64Encoding, String1632Encoding,
-    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
-    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
-    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
+    EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding,
+    MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding, NemPreserveEncoding,
+    NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedArrFloatEncoding,
+    OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding, PlainEncoding,
+    RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding,
+    String64Encoding, String1632Encoding, StructWithCustomSerializationEncoding,
+    TableArrMembersEncoding, TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding,
+    TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
+    WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -862,6 +863,35 @@ impl TryFrom<Vec<u8>> for Hash {
 impl From<Hash> for Vec<u8> {
     fn from(wrapper: Hash) -> Self {
         wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MapStructWithCustomSerialization {
+    pub chunked: Vec<u8>,
+    pub hexed: Vec<u8>,
+    pub aliased: CustomBytes,
+    pub tagged: u64,
+    pub plain: u64,
+    pub encodings: Option<MapStructWithCustomSerializationEncoding>,
+}
+
+impl MapStructWithCustomSerialization {
+    pub fn new(
+        chunked: Vec<u8>,
+        hexed: Vec<u8>,
+        aliased: CustomBytes,
+        tagged: u64,
+        plain: u64,
+    ) -> Self {
+        Self {
+            chunked,
+            hexed,
+            aliased,
+            tagged,
+            plain,
+            encodings: None,
+        }
     }
 }
 
