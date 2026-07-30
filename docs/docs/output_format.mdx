@@ -54,7 +54,7 @@ The positions this covers:
 
 **Container descent preserves the rule.** An `Array` element, a `Map` key or value, and an `Optional` inner are each themselves member positions with their own declared spelling, at every depth: a rest row over `{* epoch => {* policy_id => text}}` spells `Epoch` *and* the nested `PolicyId`.
 
-**Encoding-operation descent does not.** A position strictly inside a tag or a `.cbor` unwrap is not the member's type, and is spelled from the type actually at that point. `cred_bytes = bytes .cbor credential` emits `pub type CredBytes = Credential;` and reads its payload with `Credential::deserialize` — *inside* the already-unwrapped byte string:
+**An alias that names a wrapped form spells its payload from the target.** When the alias *rule itself* carries the tag or `.cbor`, the alias ident denotes the wrapped value, not the payload — so the payload read names the target:
 
 ```cddl
 credential = [idx: uint, hash: policy_id]
@@ -62,7 +62,9 @@ cred_bytes = bytes .cbor credential
 holder = [cb: cred_bytes]
 ```
 
-`CredBytes::deserialize` there would compile (the alias is transparent) and would lie: it claims to read a bytes-wrapped value at the position that reads the payload. The carve-out is deliberate and the inconsistency it keeps is the correct output — this is the one place the rule and "one spelling per member" disagree, and the rule loses on purpose. A container inner *inside* such a payload is unaffected: it is a member position of its own again, so `bytes .cbor [* stake_credential]` reads its elements with `StakeCredential::deserialize`.
+`cred_bytes` emits `pub type CredBytes = Credential;` and reads its payload with `Credential::deserialize`, *inside* the already-unwrapped byte string. `CredBytes::deserialize` there would compile (the alias is transparent) and would lie: `CredBytes` **is** the bytes-wrapped thing, so naming it at the position that reads the payload claims to read a bytes-wrapped value. This is the one place the rule and "one spelling per member" disagree, and the rule loses on purpose.
+
+What matters is which declaration owns the encoding operation, not that there is one. An operation written into the **member's own type expression** leaves the alias denoting exactly the value being read, so the spelling survives it: `f: #6.9(stake_credential)` is a field typed `StakeCredential` read with `StakeCredential::deserialize` inside the tag. Stacking the two resolves on the rule's account — `f: #6.9(cred_bytes)` still reads `Credential::deserialize`, because it is `cred_bytes` that names a wrapped form. And a container inner *inside* a payload is a member position of its own again, so `bytes .cbor [* stake_credential]` reads its elements with `StakeCredential::deserialize`.
 
 Two things are deliberately **not** covered:
 

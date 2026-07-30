@@ -26,13 +26,22 @@
 ;     spelling is an expression rather than a declaration, and it is the position CML reported: a
 ;     field typed `DeltaCoin` used to be filled by `Int::deserialize`.
 ;
-; The rule's ONE carve-out is not visible in this fixture, on purpose: a position strictly inside an
-; encoding operation is not the member's type, so an aliased `bytes .cbor` member reads its payload
-; with the alias's TARGET (`cred_bytes = bytes .cbor credential` -> `Credential::deserialize`, never
-; `CredBytes::deserialize`, which compiles and claims to read a bytes-wrapped value where the payload
-; is read). That needs the alias and the operation in one member type, which the shapes here do not
-; have; it is pinned in-process by
-; `declared_spelling_tests::cbor_bytes_alias_payload_read_names_the_target`, alongside the two
+; The rule's ONE carve-out turns on WHO OWNS an encoding operation, and neither side of it is visible
+; in this fixture:
+;   * the alias RULE owns it (`cred_bytes = bytes .cbor credential`) -> the ident names the WRAPPED
+;     form, so the payload read names the TARGET (`Credential::deserialize`, never
+;     `CredBytes::deserialize`, which compiles and claims to read a bytes-wrapped value where the
+;     payload is read)
+;   * the MEMBER's type expression owns it (`tagged: #6.9(stake_credential)`) -> the ident still
+;     denotes the value read there, so the spelling SURVIVES (`StakeCredential::deserialize`, agreeing
+;     with its own field type)
+; Both need an alias and an operation inside ONE member type, which no shape here has. They are NOT
+; added here on purpose: re-minting this fixture's decode-conformance rows today demotes
+; `alias_positions.holder` and `alias_positions.keyed` from live vectors to PINNED (the named-key
+; upstream oracle gap this fixture already rides), so growing the fixture's RULES costs live decode
+; coverage on its neighbours until that gap closes. The verdicts are pinned in-process instead, by
+; `declared_spelling_tests::encoding_operation_ownership_decides_whether_the_spelling_survives` and
+; `declared_spelling_tests::cbor_bytes_alias_payload_read_names_the_target` — alongside the two
 ; positions the same emitting code must NOT respell (an error-message string literal and an
 ; enum-variant path) in
 ; `declared_spelling_tests::aliased_member_leaves_error_strings_and_variant_paths_alone`.
