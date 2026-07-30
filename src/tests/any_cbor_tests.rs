@@ -612,6 +612,58 @@ mod preserve {
         );
     }
 
+    /// A recorded float width the VALUE HAS OUTGROWN widens instead of failing the write — the
+    /// `write_float` fit rule, which `serialize_special` restates (see its LOCKSTEP comment).
+    ///
+    /// Unreachable from a decoded value (a width read by `float_sz()` is exact by construction), but
+    /// reachable the moment one is hand-built or mutated — `Float(1.1, Some(Sz::Two))` is a
+    /// perfectly constructible value, and `write_float_sz` ERRORS (`InvalidLenPassed`) on a lossy
+    /// width rather than emitting a merely non-minimal head. Before the fit rule was applied here the
+    /// stored width was replayed unconditionally, so this PANICKED through `to_cbor_bytes`'s unwrap.
+    #[test]
+    fn hand_built_outgrown_float_width_widens() {
+        use cbor_event::Sz;
+        // 1.1 has no exact f16 or f32 form (RFC 8949 §A: fb 3ff199999999999a is its only head), so
+        // both narrower recorded widths widen all the way to 8 bytes.
+        for narrow in [Sz::Inline, Sz::One, Sz::Two, Sz::Four] {
+            let v = AnyCbor::Special(AnySpecial::Float(1.1, Some(narrow)));
+            assert_eq!(
+                v.to_cbor_bytes(),
+                super::hex_to_bytes("fb3ff199999999999a"),
+                "outgrown width {narrow:?} widens to the smallest LOSSLESS head"
+            );
+        }
+        // Widening stops at the smallest lossless width, it does not jump to 8: 100000.0 is
+        // f32-exact (§A: fa 47c35000) but has no f16 form.
+        assert_eq!(
+            AnyCbor::Special(AnySpecial::Float(100000.0, Some(Sz::Two))).to_cbor_bytes(),
+            super::hex_to_bytes("fa47c35000"),
+            "widening lands on smallest_float_sz, not on Eight"
+        );
+        // The converse control: a recorded width WIDER than the value needs is still honored verbatim
+        // (that is the whole point of preserve), so the fit rule must not be read as "always minimal".
+        assert_eq!(
+            AnyCbor::Special(AnySpecial::Float(1.0, Some(Sz::Eight))).to_cbor_bytes(),
+            super::hex_to_bytes("fb3ff0000000000000"),
+            "a wider-than-needed recorded width is preserved, not minimized"
+        );
+        // The float-invalid `Sz` spellings (no `float_sz()` read produces them) fall out of the same
+        // comparison rather than reaching `write_float_sz` and erroring.
+        for invalid in [Sz::Inline, Sz::One] {
+            assert_eq!(
+                AnyCbor::Special(AnySpecial::Float(1.0, Some(invalid))).to_cbor_bytes(),
+                super::hex_to_bytes("f93c00"),
+                "float-invalid width {invalid:?} falls back to smallest_float_sz"
+            );
+        }
+        // Canonical is unaffected: it ignores the recorded width entirely.
+        assert_eq!(
+            AnyCbor::Special(AnySpecial::Float(1.1, Some(Sz::Two))).to_canonical_cbor_bytes(),
+            super::hex_to_bytes("fb3ff199999999999a"),
+            "canonical width comes from the value, never the recorded Sz"
+        );
+    }
+
     #[test]
     fn inspection_surface() {
         assert_eq!(

@@ -31,7 +31,10 @@ pub fn fit_sz(len: u64, sz: Option<cbor_event::Sz>, force_canonical: bool) -> cb
 /// value — `smallest_float_sz` of the payload-carrying value is `Sz::Eight`, which would write the
 /// canonical NaN in a non-canonical width. Otherwise the canonical width IS `smallest_float_sz`: RFC
 /// 8949 §4.2.1 preferred serialization for a float is the shortest form that preserves the value.
-/// The generated-code twin of the same rule in `AnyCbor`'s float serializer.
+///
+/// LOCKSTEP: `AnyCbor`'s float serializer (`static/any_cbor_preserve.rs`, `serialize_special`)
+/// restates this rule rather than calling it — that workhorse is shared by both canonical
+/// assemblies, and this helper's ARITY varies between them. The two must agree; keep them in step.
 pub fn write_float(
     serializer: &mut Serializer,
     value: f64,
