@@ -3359,7 +3359,7 @@ one schema name and asserts the injectivity guard names the consumer's row.
 
 ## Design rules (review-owned; each with a shipped exemplar)
 
-Five rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
+Six rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
 Review is their current owner; the conditional mechanical layers (built only if a class recurs) are a
 `tests/TESTING_ROADMAP.md` item.
 
@@ -3404,6 +3404,23 @@ Review is their current owner; the conditional mechanical layers (built only if 
   `every_written_surface_is_rustfmt_stable`'s per-root reached assertions (added when the emitted
   `no-std-check/src` surface joined the walk and the old floor's "cannot be met without the
   original roots" claim turned out to be unverified arithmetic).
+- **Output governed by a process global is asserted from a SUBPROCESS, never in-process.** When what
+  a run prints depends on process-global state — the verbosity level in `src/log.rs` is the shipped
+  instance — an in-process assertion on that output is wrong twice over. The global one test installs
+  is visible to every `#[test]` sharing the process, and `cargo test` runs them on parallel threads,
+  so a test that lowers the level can silence a message a concurrent test is asserting. Worse, the
+  resulting flake is invisible under the conditions used to investigate it: an in-process output
+  assertion passes reliably when run alone, which is exactly how a failing test gets re-run
+  (`--test-threads=1`, or a name-filtered single-test invocation), so the failure reads as
+  intermittent infrastructure noise rather than as the design error it is. Spawning the binary gives
+  each assertion its own process and its own global. Shipped exemplar: the eight verbosity tests
+  (`verbosity_does_not_change_generated_bytes`, `raising_verbosity_is_monotonic`,
+  `verbosity_is_per_crate_under_config` and siblings) all drive the built binary through
+  `generator_bin()` / `codegen_cmd()`, with the reason stated in a comment above each group so the
+  next author does not "simplify" them into in-process calls. The crate has no in-process output
+  capture at all (no `gag`/`BufferRedirect`/`set_output_capture`, nothing in `Cargo.toml`), so the
+  wrong version is currently not even expressible — adding such a dependency is what would make this
+  rule violable.
 - **A delivery that ships a gate covering its own regression classes needs no per-bug ledger
   entries for those classes.** When the failure analysis for a pre-ship catch shows the
   delivery's own gate would have gone red on it, record the coverage fact once and stop —

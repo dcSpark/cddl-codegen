@@ -2314,6 +2314,32 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   the wasm wrapper-name family), or any consumer reporting a declared rule absent from, or
   wrong-shaped in, its generated crate.
 
+- **A message's LEVEL classification is review-owned, and two ways of getting it wrong are
+  invisible.** The verbosity delivery classified 63 emission sites across six macros
+  (`src/log.rs`), and nothing mechanical checks that any of them landed at the right level. Two
+  distinct blind spots, one proven and one structural. **Proven once:** `err!` shipped with zero
+  call sites and no tool could say so — `#[macro_export]` exempts a macro from `unused_macros`, so
+  a level nobody emits at is indistinguishable from one that is merely rare. Caught by
+  orchestrator review of the Phase 1 diff; fixed by converting `main.rs`'s terminal error path,
+  which is where it belonged anyway. **Structural:** a warning-class message parked at `info` or
+  above is silently invisible at the default level, and the only mechanical watcher covers a
+  fraction of the surface — `cddl-matrix/no_silent_directive.ts` needs the `@`-directive notices to
+  stay default-visible, but every other diagnostic (the `Recursive type:` notice, `export()`'s four
+  warnings, the ~22 `--emit-tests` skip notices) has no such consumer. What keeps this a residual
+  rather than a work item is that the one watcher fails SAFE: its FAIL condition is
+  byte-identical-AND-unmentioned, so hiding a notice makes it fail loudly rather than pass
+  vacuously — a suppressed acknowledgement cannot make that gate go quiet. Working rule meanwhile: a
+  new emission site states its level and stream in the same review as its message, and the
+  measurement to make is per-level line counts on a fixture that triggers the class (the delivery's
+  own before/after used `tests/core/input.cddl`, which emits ZERO diagnostics — so it could not have
+  shown a mis-streamed warning, and a second fixture with a recursive type and a `#6.258` set was
+  needed to see the stderr half at all). The mechanical layer, when justified: a source-scanning
+  test asserting no `info!`/`debug!`/`trace!` format string opens with `warning:`, plus a
+  call-site-count floor per macro. Reopening signal, on the dimension the cost actually grows: a
+  SECOND consumer depending on a specific message being default-visible (there is one today, and its
+  fail-safe direction is what makes the count the right instrument rather than any measure of how
+  many sites exist).
+
 ## Deferred features (build when a real consumer needs them)
 
 - **A crate entry that generates only a JSON-schema document (the aggregate package).** An npm
@@ -3043,11 +3069,16 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   fixture dirs change rarely and a new gate's author touches the dir listing anyway; the failure
   mode (a committed fixture nothing runs) is caught by review at that rate.
 - **Assertions on `export()`'s stderr diagnostics** — the legacy-root warning and the
-  comment-preservation stale-file scan (an orphaned `.rs` under a generated tree) print via
-  `eprintln!` in-process, which `cargo test` can't capture without a subprocess harness. The
-  behaviors' *output-byte* halves are pinned (seed-once, overlay tests); only the warning text
-  itself is unasserted. If either diagnostic grows logic, run the CLI as a subprocess (the
-  `run_test` pattern) and assert on captured stderr.
+  comment-preservation stale-file scan (an orphaned `.rs` under a generated tree) emit via
+  `crate::warn!` in-process, and the behaviors' *output-byte* halves are pinned (seed-once, overlay
+  tests); only the warning text itself is unasserted. **Both halves of the original decline have since
+  weakened, so this is now a cheap item rather than a declined one.** The cost half — "`cargo test`
+  can't capture in-process output without a subprocess harness" — is already paid: the verbosity
+  delivery built the subprocess pattern these assertions need (`generator_bin()` / `codegen_cmd()`,
+  see `tests/README.md` § "Design rules" on why output assertions spawn), so writing one is now
+  additive rather than infrastructural. And the "if either diagnostic grows logic" condition has
+  fired: every one of these sites is now level-gated, which is a second reason each could go silent
+  and a second thing no test watches.
 
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
