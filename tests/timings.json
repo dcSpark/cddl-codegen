@@ -575,9 +575,9 @@
     },
     {
       "gate": "recombination_wasm_crates_check",
-      "warm_ms": 75000,
+      "warm_ms": 91000,
       "n": 20,
-      "measured": "2026-07-29",
+      "measured": "2026-07-30",
       "machine": "86216c55",
       "history": [
         {
@@ -587,6 +587,10 @@
         {
           "date": "2026-07-29",
           "warm_ms": 75000
+        },
+        {
+          "date": "2026-07-30",
+          "warm_ms": 91000
         }
       ]
     },
