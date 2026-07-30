@@ -553,6 +553,28 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       (loose, pair-map, non-empty, reject-set) — so each new `@duplicates`-style twin multiplies the
       unchecked pairs.
 
+11. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
+    lost one layer above where the spelling rule operates.** `holder = [j: bytes .cbor
+    stake_credential]` emits `pub j: Credential` — not `StakeCredential` — while the tag form of the
+    same shape (`f: #6.9(stake_credential)`) keeps `Alias(StakeCredential, Rust(Credential))` and
+    therefore keeps its declared field type. Both forms attach an encoding operation at the member's
+    own type expression; only `.cbor` drops the alias node.
+    - **Not fixable in the emitter, which is why it is here and not a spelling bug.** The
+      declared-spelling rule (`docs/docs/output_format.mdx` § "Type spelling at member positions")
+      names a member position's type from the IR it is handed; if parsing already replaced
+      `Alias(StakeCredential, …)` with the bare target, every downstream position — field,
+      constructor parameter, accessor, encoding sidecar, call target — agrees on `Credential`, and
+      that self-consistency is why nothing fails. The fix is in `parsing.rs`, at whatever builds the
+      member's `RustType` for a `.cbor` controller over a typename.
+    - **What it costs today: nothing observable, which is the argument for recording rather than
+      building.** The output compiles and round-trips; the only loss is the spec author's chosen name
+      at a shape that no committed fixture uses (found by probing the tag/`.cbor` asymmetry while
+      ruling on the ownership carve-out, not by any gate).
+    - **Reopening signal, measurable by a consumer who already has the problem:** a spec declares a
+      `bytes .cbor <alias>` member and the generated field's type is not the alias — i.e. their
+      public API loses a name they wrote. That is one grep of their own generated source, and it does
+      not require anyone to recognise it as a parse-layer issue.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing

@@ -36,10 +36,13 @@
 ;     denotes the value read there, so the spelling SURVIVES (`StakeCredential::deserialize`, agreeing
 ;     with its own field type)
 ; Both need an alias and an operation inside ONE member type, which no shape here has. They are NOT
-; added here on purpose: re-minting this fixture's decode-conformance rows today demotes
-; `alias_positions.holder` and `alias_positions.keyed` from live vectors to PINNED (the named-key
-; upstream oracle gap this fixture already rides), so growing the fixture's RULES costs live decode
-; coverage on its neighbours until that gap closes. The verdicts are pinned in-process instead, by
+; added here on purpose: re-minting this fixture's decode-conformance rows is LOSSY today, and not
+; because of anything a new rule does — a re-mint of this file UNCHANGED demoted
+; `alias_positions.nested` from live vectors to PINNED on net -37 catalog lines, and WHICH rows fall
+; varies per run, because the minter's draws land on the named-key upstream oracle gap this fixture
+; already rides (`cddl-matrix/README.md` § "Upstream oracle gaps", gap #11 — its flip-flop, measured).
+; So touching this fixture's RULES means paying an unpredictable slice of its neighbours' live decode
+; coverage until that gap closes. The verdicts are pinned in-process instead, by
 ; `declared_spelling_tests::encoding_operation_ownership_decides_whether_the_spelling_survives` and
 ; `declared_spelling_tests::cbor_bytes_alias_payload_read_names_the_target` — alongside the two
 ; positions the same emitting code must NOT respell (an error-message string literal and an
