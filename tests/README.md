@@ -1390,6 +1390,41 @@ row; user docs: `docs/docs/output_format.mdx` § "Open arrays", `docs/docs/comme
   `PRESERVE_SKIP`. Capture's decode conformance rides the foreign
   `contain.occurrence-target.grpent.member.zero_array` catalog row.
 
+### Custom (de)serializer pairs (`@custom_serialize`/`@custom_deserialize`) — test map
+
+User doc: `docs/docs/comment_dsl.mdx` § `@custom_serialize`/`@custom_deserialize` — the honored
+positions (type-level alias, record field, table key/value), the signature contracts (including
+the `force_canonical` trailing argument and the by-value table-position encoding), and the
+"Positions that are rejected" / "Positions that are still silent" boundary. Hand-fn fragments
+spliced into generated trees: `tests/custom_serialization` (core), `tests/custom_serialization_preserve`
+(preserve, incl. the table-position pair), `tests/custom_serialization_canonical` (canonical
+`force_canonical` signatures).
+
+- **Field positions, both reps** — `struct_with_custom_serialization` (array-rep) and its map-rep
+  twin `map_struct_with_custom_serialization` in BOTH `tests/core` and `tests/preserve-encodings`.
+  The map-rep twin is the regression pin for the field-config carry (a dropped custom WRITER fails
+  its byte-exact vector, and its reader rejects the default writer's shape, so writer/reader
+  drift cannot pass as cosmetic).
+- **Table key/value positions** — `custom_table_positions` (+ `_sidecar_shape`,
+  `_reject_default_shape`) in `tests/preserve-encodings`: a width sweep byte-exact through the
+  custom fns in both positions, the decoded-key sidecar keying, and the reject-default-shape
+  polarity pair.
+- **Canonical e2e** — `tests/custom-serialize-canonical-e2e`
+  (`integration_tests::custom_serialize_canonical_e2e`, compiled, rust-only): the fixture
+  COMPILING is itself the regression pin for the free-function call form at both scratch-buffer
+  sites (the table canonical key sort and the open-struct-map canonical merge); its vectors pin
+  that the merge sorts by the bytes the write arm emits, the table-VALUE leg's `force_canonical`
+  re-minimization, and a serializer refusal surfacing from both call sites.
+- **Placement axis** — `dsl_position_tests` cells: the rejected placements (extern/raw-bytes
+  rules, row-entry slots, `@no_alias`, `@newtype`, enum rules in every spelling, record-rule
+  single-half) as `Expect::Reject` beside the honored controls, the record-rule BOTH-set spelling
+  as an accepted-behavior control cell, and two `KNOWN_SILENT_DROP` pins (table-RULE slot;
+  rest-row key-domain `@custom_deserialize`) that flip loudly if honored later. Message texts are
+  pinned by the `custom_codec`/`single_half_custom_codec` robustness tests.
+- **Oracle exclusion** — the emit-tests encoding-fidelity oracle excludes custom-carrying types
+  rep-independently (their wire format isn't the generated serializer's — see the emit-tests
+  section below), so the fixtures above are the fidelity evidence for these positions.
+
 ### Per-rule duplicates policy (`@duplicates`) — test map
 
 The **`@duplicates reject` flavor** (set/array collections — user doc:
