@@ -223,6 +223,7 @@ pub struct NevPreserveEncoding {
 #[derive(Clone, Debug, Default)]
 pub struct NullableSpecialsEncoding {
     pub len_encoding: LenEncoding,
+    pub f_encoding: Option<cbor_event::Sz>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -230,6 +231,14 @@ pub struct OptFixedArrEncoding {
     pub len_encoding: LenEncoding,
     pub a_encoding: Option<cbor_event::Sz>,
     pub ufix_encoding: Option<cbor_event::Sz>,
+    pub b_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OptFixedArrFloatEncoding {
+    pub len_encoding: LenEncoding,
+    pub a_encoding: Option<cbor_event::Sz>,
+    pub ffix_encoding: Option<cbor_event::Sz>,
     pub b_encoding: StringEncoding,
 }
 

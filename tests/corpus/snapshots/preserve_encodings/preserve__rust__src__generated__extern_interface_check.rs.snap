@@ -39,6 +39,8 @@ use crate::generated::FooBytes as _;
 #[allow(unused_imports)]
 use crate::generated::NullableBool as _;
 #[allow(unused_imports)]
+use crate::generated::NullableFloat as _;
+#[allow(unused_imports)]
 use crate::generated::Table as _;
 #[allow(unused_imports)]
 use crate::generated::U32 as _;
@@ -112,6 +114,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::NullableSpecials>();
     _assert_serialize::<crate::generated::OptFixedArr>();
     _assert_deserialize::<crate::generated::OptFixedArr>();
+    _assert_serialize::<crate::generated::OptFixedArrFloat>();
+    _assert_deserialize::<crate::generated::OptFixedArrFloat>();
     _assert_serialize::<crate::generated::OptFixedMap>();
     _assert_deserialize::<crate::generated::OptFixedMap>();
     _assert_serialize::<crate::generated::OsetPU64>();

@@ -287,8 +287,8 @@ const PROFILES: Profile[] = [
   {
     // Maximises the preserve-encodings surface: the OrderedHashMap public type (hence the
     // `MapHashBuilder` cfg pair), the derivative-derived key traits in all four `@used_as_key`
-    // flavors, and a bytes wrapper. NO float member — `--preserve-encodings` aborts generation on
-    // one (the tracked `preserve_encodings_supports_floats` stub).
+    // flavors, a bytes wrapper, and a float member (whose preserve head-width path reaches the
+    // `write_float` runtime helper — a `core`-only fn, so it must stay no_std-clean).
     id: "preserve_canonical",
     libName: "nostd-preserve",
     hostStdArm: true,
@@ -300,7 +300,7 @@ const PROFILES: Profile[] = [
       "key_ord = [ d: uint ] ; @used_as_key ord",
       "key_cstyle = 0 / 1 / 2 ; @used_as_key",
       "tbl = { * uint => text }",
-      "outer = [ h: hash28, t: tbl, kb: key_bare, kh: key_hash, ko: key_ord, kc: key_cstyle ]",
+      "outer = [ h: hash28, t: tbl, kb: key_bare, kh: key_hash, ko: key_ord, kc: key_cstyle, f: float64 ]",
       "",
     ].join("\n"),
   },

@@ -32,6 +32,17 @@ impl BoolHolder {
 
 pub type Bools = Vec<bool>;
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct FloatHolder {
+    pub f: Floats,
+}
+
+impl FloatHolder {
+    pub fn new(f: Floats) -> Self {
+        Self { f }
+    }
+}
+
 pub type Floats = Vec<f64>;
 
 pub type Nums = Vec<u64>;

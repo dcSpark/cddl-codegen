@@ -5587,11 +5587,26 @@ impl cbor_event::se::Serialize for NullableSpecials {
                 .as_ref()
                 .map(|encs| encs.len_encoding)
                 .unwrap_or_default()
-                .to_len_sz(1),
+                .to_len_sz(2),
         )?;
         match &self.b {
             Some(x) => {
                 serializer.write_special(cbor_event::Special::Bool(*x))?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
+        match &self.f {
+            Some(x) => {
+                write_float(
+                    serializer,
+                    *x,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.f_encoding)
+                        .unwrap_or_default(),
+                )?;
             }
             None => {
                 serializer.write_special(cbor_event::Special::Null)?;
@@ -5611,7 +5626,7 @@ impl Deserialize for NullableSpecials {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
             let mut read_len = CBORReadLen::new(len);
-            read_len.read_elems(1)?;
+            read_len.read_elems(2)?;
             read_len.finish()?;
             let b = (|| -> Result<_, DeserializeError> {
                 let b_is_some = match raw.cbor_type()? {
@@ -5637,6 +5652,33 @@ impl Deserialize for NullableSpecials {
                 })
             })()
             .map_err(|e| e.annotate("b"))?;
+            let (f, f_encoding) = (|| -> Result<_, DeserializeError> {
+                let f_is_some = match raw.cbor_type()? {
+                    cbor_event::Type::Special => {
+                        let initial_position = raw.position();
+                        let special = raw.special()?;
+                        raw.set_position(initial_position).unwrap();
+                        match special {
+                            cbor_event::Special::Null => false,
+                            _ => true,
+                        }
+                    }
+                    _ => true,
+                };
+                Ok(match f_is_some {
+                    true => Result::<_, DeserializeError>::Ok(
+                        raw.float_sz().map(|(x, enc)| (x, Some(enc)))?,
+                    )
+                    .map(|(x, f_encoding)| (Some(x), f_encoding))?,
+                    false => {
+                        if raw.special()? != cbor_event::Special::Null {
+                            return Err(DeserializeFailure::ExpectedNull.into());
+                        }
+                        (None, None)
+                    }
+                })
+            })()
+            .map_err(|e| e.annotate("f"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
                 cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -5646,7 +5688,11 @@ impl Deserialize for NullableSpecials {
             }
             Ok(NullableSpecials {
                 b,
-                encodings: Some(NullableSpecialsEncoding { len_encoding }),
+                f,
+                encodings: Some(NullableSpecialsEncoding {
+                    len_encoding,
+                    f_encoding,
+                }),
             })
         })()
         .map_err(|e| e.annotate("NullableSpecials"))
@@ -5762,6 +5808,120 @@ impl Deserialize for OptFixedArr {
             })
         })()
         .map_err(|e| e.annotate("OptFixedArr"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedArrFloat {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2 + if self.ffix { 1 } else { 0 }),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.a,
+            fit_sz(
+                self.a,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.a_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        if self.ffix {
+            write_float(
+                serializer,
+                2.5,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.ffix_encoding)
+                    .unwrap_or_default(),
+            )?;
+        }
+        serializer.write_text_sz(
+            &self.b,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.b_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.b.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OptFixedArrFloat {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            let (a, a_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("a"))?;
+            let (ffix, ffix_encoding) = if raw
+                .as_slice()
+                .first()
+                .map(|byte: &u8| {
+                    cbor_event::Type::from(*byte) == cbor_event::Type::Special
+                        && (*byte & 0b0001_1111) != 0x1f
+                })
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let (ffix_value, ffix_encoding) = raw.float_sz()?;
+                    if ffix_value != 2.5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Float(ffix_value),
+                            expected: Key::Float(2.5),
+                        }
+                        .into());
+                    }
+                    Ok(Some(ffix_encoding))
+                })()
+                .map_err(|e| e.annotate("ffix"))
+                .map(|ffix_encoding| (true, ffix_encoding))
+            } else {
+                Ok((false, None))
+            }?;
+            let (b, b_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("b"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedArrFloat {
+                a,
+                ffix,
+                b,
+                encodings: Some(OptFixedArrFloatEncoding {
+                    len_encoding,
+                    a_encoding,
+                    ffix_encoding,
+                    b_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedArrFloat"))
     }
 }
 

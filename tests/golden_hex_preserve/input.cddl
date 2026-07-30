@@ -6,7 +6,8 @@
 ; and still round-trips green. Raw spec-anchored hex breaks that circularity for the preserve path.
 ;
 ; Coverage: non-minimal integer/length/tag header arguments (the 1/2/4/8-byte forms of values that
-; fit smaller), indefinite-length strings/arrays/maps (incl. chunked strings), and map key order.
+; fit smaller), indefinite-length strings/arrays/maps (incl. chunked strings), map key order, and
+; native float head WIDTHS (the 0xf9/0xfa/0xfb forms of a value that fits a narrower head).
 
 ; non-minimal uint arguments + array framing
 pair = [a: uint, b: uint]
@@ -104,3 +105,23 @@ open_map = { 1: uint, * uint => uint }
 ; per-element encoding sidecar (`rest_elem_encodings`); the declared members stay minimal. Vectors in
 ; tests.rs.
 open_list = [uint, tstr, * uint]
+
+; native CBOR floats (major type 7, heads 0xf9/0xfa/0xfb). The encoding variable here is unlike every
+; other rule in this file: not a header ARGUMENT but the head WIDTH itself. RFC 8949 §3 admits the
+; same value at every width that holds it losslessly, so the width is DATA — nothing about the value
+; determines it — and must re-emit verbatim. Both member types are present because they are different
+; emission sites: the `float32` member additionally NARROWS on decode (`x as f32`) and widens back to
+; the CBOR float domain (f64) on encode, a lossy hop the `float64` member does not have, so its
+; vectors stay inside the f32-exact values and widths.
+floats = [dbl: float64, sgl: float32]
+
+; a FIXED float member: the VALUE is pinned by the spec, so the head WIDTH is the only data left —
+; and it is preserved anyway. 1.5 is an RFC 8949 Appendix A vector, so all three of its widths are
+; spec-quoted rather than hand-derived.
+fixed_float = [v: 1.5]
+
+; per-element float widths inside one homogeneous array: each element carries its own width in the
+; positional encoding sidecar, so one array may hold the same value three times at three widths.
+; Bare `[* float64]` is a transparent Vec alias with no standalone Serialize — wrap it in a record.
+float_seq    = [* float64]
+float_holder = [fs: float_seq]

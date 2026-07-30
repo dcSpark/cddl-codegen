@@ -1734,30 +1734,158 @@ mod tests {
     #[test]
     fn nullable_specials() {
         // Preserve-mode flavor of the `T / null` null-peek flip vectors (see the core suite's
-        // twin — bool-only: preserve-encodings does not support floats): the peek must rewind by
-        // the ACTUAL width `special()` consumed, not a hardcoded 1 byte.
-        let some: Vec<u8> = [arr_def(1), vec![0xf5]].concat();
-        let d = NullableSpecials::from_cbor_bytes(&some).unwrap();
-        assert_eq!(d.b, Some(true));
-        assert_eq!(d.to_cbor_bytes(), some);
-        let none: Vec<u8> = [arr_def(1), vec![0xf6]].concat();
+        // twin): the peek must rewind by the ACTUAL width `special()` consumed, not a hardcoded 1
+        // byte. Both major-type-7 flavors are in the fixture — the encoding-less `bool` and the
+        // width-carrying `float64` — because the rewind width and the encoding var are independent
+        // failure modes: a float slot must ALSO come back through the Optional wrapper with its
+        // head width intact.
+        //
+        // The float slot carries 1.0, whose three wire widths (`f9 3c00` / `fa 3f800000` /
+        // `fb 3ff0000000000000`, RFC 8949 Appendix A) are the same value — so a re-encode that
+        // reproduces the input width can only be reading it off the encoding var, not deriving it.
+        for float_wire in [
+            &[0xf9u8, 0x3c, 0x00][..],
+            &[0xfa, 0x3f, 0x80, 0x00, 0x00],
+            &[0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        ] {
+            let some: Vec<u8> = [arr_def(2), vec![0xf5], float_wire.to_vec()].concat();
+            let d = NullableSpecials::from_cbor_bytes(&some).unwrap();
+            assert_eq!(d.b, Some(true));
+            assert_eq!(d.f, Some(1.0));
+            assert_eq!(d.to_cbor_bytes(), some);
+        }
+        // both slots null: the float's encoding var has nothing to record, and re-serialize must
+        // not invent a width (i.e. must not emit a float at all).
+        let none: Vec<u8> = [arr_def(2), vec![0xf6, 0xf6]].concat();
         let d = NullableSpecials::from_cbor_bytes(&none).unwrap();
         assert!(d.b.is_none());
+        assert!(d.f.is_none());
+        assert_eq!(d.to_cbor_bytes(), none);
         // malformed two-byte simple in the nullable-bool slot (`f8 f5`): the 2.4.0 peek consumed
         // 2 bytes, rewound 1, and re-read the PAYLOAD byte f5 as `true` — accepting malformed
         // input. This and the RFC 8949 §3.3 non-well-formed simples all reject; an f9 float in
-        // the bool slot rejects as a type mismatch (not a mis-decode).
-        for bad in [
-            &[0x81u8, 0xf8, 0xf5][..],
-            &[0x81, 0xfc],
-            &[0x81, 0xfd],
-            &[0x81, 0xfe],
-            &[0x81, 0xf8, 0x1f],
-            &[0x81, 0xff],
-            &[0x81, 0xf9, 0x42, 0x00],
+        // the bool slot rejects as a type mismatch (not a mis-decode). Each vector keeps a VALID
+        // float in the second slot so the rejection is attributable to the first one rather than
+        // to the array arity.
+        for bad_bool in [
+            &[0xf8u8, 0xf5][..],
+            &[0xfc],
+            &[0xfd],
+            &[0xfe],
+            &[0xf8, 0x1f],
+            &[0xff],
+            &[0xf9, 0x42, 0x00],
         ] {
-            assert!(NullableSpecials::from_cbor_bytes(bad).is_err());
+            let bad: Vec<u8> =
+                [arr_def(2), bad_bool.to_vec(), vec![0xf9, 0x3c, 0x00]].concat();
+            assert!(NullableSpecials::from_cbor_bytes(&bad).is_err());
         }
+        // ...and the mirror: a non-float Special in the FLOAT slot is a type mismatch, including
+        // the reserved `0xfc-0xfe` codepoints the cbor_event fork rejects at read.
+        for bad_float in [&[0xf5u8][..], &[0xf8, 0x18], &[0xfc], &[0xff]] {
+            let bad: Vec<u8> = [arr_def(2), vec![0xf5], bad_float.to_vec()].concat();
+            assert!(NullableSpecials::from_cbor_bytes(&bad).is_err());
+        }
+    }
+
+    // The recorded head width describes the value that was READ, so it stops applying once there is
+    // no such value — and a float takes the SAME two fallbacks an integer argument width takes, which
+    // is the part that reads like "preserve does not preserve" if you meet it without the contract
+    // above it. Pinned here because the float fallback is load-bearing in a way the integer one is
+    // not: `write_float_sz` ERRORS (`InvalidLenPassed`) on a width that cannot represent the value
+    // exactly, so without the widening this would be a runtime serialize failure, not just a
+    // non-minimal head.
+    #[test]
+    fn float_width_falls_back_like_an_integer_width() {
+        // [b: bool / null, f: float64 / null] — `f` is a mutable Option<f64>.
+        let read: Vec<u8> = [arr_def(2), vec![0xf5], vec![0xf9, 0x3e, 0x00]].concat();
+        let mut d = NullableSpecials::from_cbor_bytes(&read).unwrap();
+        assert_eq!(d.f, Some(1.5));
+        // baseline: the read value keeps its half-width head (the contract this test's siblings pin)
+        assert_eq!(d.to_cbor_bytes(), read);
+        // REPLACED value that the recorded f16 width cannot represent -> the head widens to the
+        // narrowest width that CAN, rather than erroring out of serialize
+        d.f = Some(1.1);
+        assert_eq!(
+            d.to_cbor_bytes(),
+            [
+                arr_def(2),
+                vec![0xf5],
+                vec![0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a],
+            ]
+            .concat(),
+            "a value the recorded width cannot hold must widen, not fail"
+        );
+        // ...and a value that still FITS the recorded width keeps it (the fallback is not a reset:
+        // 1.0 would encode minimally as f16 anyway, so use a value whose own minimal width is
+        // NARROWER than the one recorded, and assert the recorded one survives)
+        let read_wide: Vec<u8> = [
+            arr_def(2),
+            vec![0xf5],
+            vec![0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        ]
+        .concat();
+        let mut d = NullableSpecials::from_cbor_bytes(&read_wide).unwrap();
+        d.f = Some(1.0); // minimal width f16, but the recorded width is f64 and still fits
+        assert_eq!(
+            d.to_cbor_bytes(),
+            [
+                arr_def(2),
+                vec![0xf5],
+                vec![0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            ]
+            .concat(),
+            "a recorded width that still represents the new value must be kept, not minimized"
+        );
+        // a FRESH value carries no recorded width and writes the shortest that represents it
+        let fresh = NullableSpecials::new(Some(true), Some(1.5));
+        assert_eq!(
+            fresh.to_cbor_bytes(),
+            [arr_def(2), vec![0xf5], vec![0xf9, 0x3e, 0x00]].concat()
+        );
+    }
+
+    // An optional fixed FLOAT member is the third encoding shape among the optional fixed kinds:
+    // encoding-FUL like uint/text (its head width is metadata) but Special-classed like bool/null
+    // (so the presence probe peeks a major-type-7 head). This pins that the two mechanisms compose —
+    // presence bit AND width — which neither `opt_fixed_member_preserve` (encoding-ful, not Special)
+    // nor the bool/null arms there (Special, not encoding-ful) can reach.
+    #[test]
+    fn opt_fixed_float_member_preserve() {
+        // absent -> presence false, no float element on the wire, nothing recorded
+        let absent: Vec<u8> =
+            [arr_def(2), cbor_int(9, Sz::Inline), cbor_string("hi")].concat();
+        let d = OptFixedArrFloat::from_cbor_bytes(&absent).unwrap();
+        assert!(!d.ffix);
+        assert_eq!(d.to_cbor_bytes(), absent);
+        // present at each of 2.5's two wire widths (`f9 4100` / `fb 4004000000000000`): the VALUE is
+        // fixed by the spec, so only a recorded width can reproduce the input bytes.
+        for float_wire in [
+            &[0xf9u8, 0x41, 0x00][..],
+            &[0xfb, 0x40, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        ] {
+            let present: Vec<u8> = [
+                arr_def(3),
+                cbor_int(9, Sz::Inline),
+                float_wire.to_vec(),
+                cbor_string("hi"),
+            ]
+            .concat();
+            let d = OptFixedArrFloat::from_cbor_bytes(&present).unwrap();
+            assert!(d.ffix);
+            assert_eq!(d.to_cbor_bytes(), present);
+            deser_test(&d);
+        }
+        // a DIFFERENT float in the slot is a FixedValueMismatch, not a silently-accepted value —
+        // without this the width vectors above would pass against a decoder that never checks it
+        let wrong: Vec<u8> = [
+            arr_def(3),
+            cbor_int(9, Sz::Inline),
+            vec![0xf9, 0x3c, 0x00],
+            cbor_string("hi"),
+        ]
+        .concat();
+        assert!(OptFixedArrFloat::from_cbor_bytes(&wrong).is_err());
     }
 
     // --- OrderedHashMap mutation semantics, pinned at the WIRE level ---

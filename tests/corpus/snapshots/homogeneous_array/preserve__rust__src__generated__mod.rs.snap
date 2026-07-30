@@ -20,7 +20,7 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use cbor_encodings::BoolHolderEncoding;
+use cbor_encodings::{BoolHolderEncoding, FloatHolderEncoding};
 
 #[derive(Clone, Debug)]
 pub struct BoolHolder {
@@ -35,6 +35,18 @@ impl BoolHolder {
 }
 
 pub type Bools = Vec<bool>;
+
+#[derive(Clone, Debug)]
+pub struct FloatHolder {
+    pub f: Floats,
+    pub encodings: Option<FloatHolderEncoding>,
+}
+
+impl FloatHolder {
+    pub fn new(f: Floats) -> Self {
+        Self { f, encodings: None }
+    }
+}
 
 pub type Floats = Vec<f64>;
 

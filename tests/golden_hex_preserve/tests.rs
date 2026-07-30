@@ -671,4 +671,232 @@ mod golden_hex_preserve {
             assert_eq!(d.rest, vec![7u64], "tail element 7 captured");
         }
     );
+
+    // ---- native floats (major type 7, heads 0xf9/0xfa/0xfb): the head WIDTH is the data ----
+    // Every other family above varies a header ARGUMENT; a float varies the head itself. RFC 8949 §3
+    // admits the same value at every width that holds it losslessly, so the width cannot be derived
+    // from the value — it must be recorded and replayed. All byte strings are RFC 8949 Appendix A
+    // rows or IEEE 754 widenings of them (the table in the delivery spec), never generator output.
+    //
+    // NaN appears only in the `dbl` (float64) member, deliberately: the `sgl` member round-trips
+    // through `x as f32` / `x as f64`, and Rust leaves the payload and sign of a NaN float-cast
+    // UNSPECIFIED — a NaN vector there would pin platform behaviour rather than the spec. For the
+    // same reason `sgl`'s values are all f32-exact: a double the f32 domain cannot hold would narrow
+    // lossily on decode, which is a different (and out-of-scope) question from width preservation.
+
+    // 1.0 at each of the three legal widths, one vector per width — the family's whole point. The
+    // decoded value is bit-identical in all three, so NOTHING about it can pick the head; only the
+    // recorded Sz can. An implementation that re-derives the width from the value (or that always
+    // writes the widest, or always the narrowest) passes at most one of these three.
+    // §A: 1.0 -> f9 3c00 / fa 3f800000 / fb 3ff0000000000000.
+    kat_preserve!(
+        floats_width_f16,
+        Floats,
+        &[0x82, 0xf9, 0x3c, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert_eq!(d.dbl, 1.0);
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    kat_preserve!(
+        floats_width_f32,
+        Floats,
+        &[0x82, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert_eq!(d.dbl, 1.0);
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    kat_preserve!(
+        floats_width_f64,
+        Floats,
+        &[
+            0x82, 0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9, 0x3c, 0x00
+        ],
+        |d: &Floats| {
+            assert_eq!(d.dbl, 1.0);
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    // The other direction: a value whose width the spec FIXES, so preservation must not narrow it.
+    // 1.1 (§A: fb 3ff199999999999a) has no exact f16 or f32 form — 0xfb is its only legal head — and
+    // 100000.0 (§A: fa 47c35000) has no f16 form but IS f32-exact, so 0xfa is its narrowest. Paired
+    // with the trio above, a writer that ignores the recorded width and always emits the shortest
+    // lossless head fails the trio; one that always emits 0xfb fails this vector's `sgl`.
+    kat_preserve!(
+        floats_width_bound_to_value,
+        Floats,
+        &[
+            0x82, 0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a, 0xfa, 0x47, 0xc3, 0x50,
+            0x00
+        ],
+        |d: &Floats| {
+            assert_eq!(d.dbl, 1.1);
+            assert_eq!(d.sgl, 100000.0);
+        }
+    );
+    // Signed zero: -0.0 compares EQUAL to 0.0, so only the sign BIT distinguishes the two encodings.
+    // A round-trip that rebuilt the value through any comparison-based path would emit 0x0000 here.
+    // §A: -0.0 -> f9 8000, widened to f32 -> fa 80000000 (the `sgl` member's cast is exact for
+    // finite values, signed zero included).
+    kat_preserve!(
+        floats_negative_zero,
+        Floats,
+        &[0x82, 0xf9, 0x80, 0x00, 0xfa, 0x80, 0x00, 0x00, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl == 0.0 && d.dbl.is_sign_negative());
+            assert!(d.sgl == 0.0 && d.sgl.is_sign_negative());
+        }
+    );
+    // The two ends of the f16 range, where "does this value fit the narrow head" is decided:
+    // 5.960464477539063e-8 is the min f16 SUBNORMAL (§A: f9 0001; its f64 form is
+    // 3e70000000000000, which the anchor asserts bit-exactly rather than through a 16-digit decimal
+    // literal) and 65504.0 is the max finite f16 (§A: f9 7bff). A width check written as a magnitude
+    // range rather than an exactness test mis-handles the subnormal end.
+    kat_preserve!(
+        floats_f16_edges,
+        Floats,
+        &[0x82, 0xf9, 0x00, 0x01, 0xf9, 0x7b, 0xff],
+        |d: &Floats| {
+            assert_eq!(d.dbl.to_bits(), 0x3e70_0000_0000_0000u64);
+            assert_eq!(d.sgl, 65504.0);
+        }
+    );
+    // Non-finite values at the narrow head (§A: Infinity -> f9 7c00, -Infinity -> f9 fc00).
+    kat_preserve!(
+        floats_infinity_f16,
+        Floats,
+        &[0x82, 0xf9, 0x7c, 0x00, 0xf9, 0xfc, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_infinite() && d.dbl.is_sign_positive());
+            assert!(d.sgl.is_infinite() && d.sgl.is_sign_negative());
+        }
+    );
+    // …and the same two infinities at the WIDE heads (§A: fb 7ff0000000000000 / fa ff800000). An
+    // infinity is exactly representable at every width, so all three heads are legal for it and the
+    // recorded one is the only thing that decides — the non-finite twin of the 1.0 trio.
+    kat_preserve!(
+        floats_infinity_wide,
+        Floats,
+        &[
+            0x82, 0xfb, 0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfa, 0xff, 0x80, 0x00,
+            0x00
+        ],
+        |d: &Floats| {
+            assert!(d.dbl.is_infinite() && d.dbl.is_sign_positive());
+            assert!(d.sgl.is_infinite() && d.sgl.is_sign_negative());
+        }
+    );
+    // NaN at each of the three widths (§A: f9 7e00 / fa 7fc00000 / fb 7ff8000000000000 — all the
+    // same quiet NaN, the payload left-aligns on widening). These are the vectors that pin
+    // --preserve-encodings as NOT normalizing: the canonical suite's twins take the identical inputs
+    // to f9 7e00 (RFC 8949 §4.2.2), so a serializer that normalized unconditionally would pass every
+    // canonical NaN vector and fail these two wide ones. An `assert_eq!` on a NaN is always false, so
+    // the anchor is `is_nan()`.
+    kat_preserve!(
+        floats_nan_f16,
+        Floats,
+        &[0x82, 0xf9, 0x7e, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    kat_preserve!(
+        floats_nan_f32,
+        Floats,
+        &[0x82, 0xfa, 0x7f, 0xc0, 0x00, 0x00, 0xf9, 0x3c, 0x00],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    kat_preserve!(
+        floats_nan_f64,
+        Floats,
+        &[
+            0x82, 0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9, 0x3c, 0x00
+        ],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.sgl, 1.0);
+        }
+    );
+    // A NaN carrying a PAYLOAD (mantissa 0x8000000000001): the low bit does not fit an f16 or f32
+    // mantissa, so 0xfb is its only lossless head AND the payload bits are part of what must survive.
+    // Preserve keeps both; the canonical twin drops the payload to f9 7e00, which is why the anchor
+    // asserts the exact bit pattern rather than just `is_nan()`.
+    kat_preserve!(
+        floats_nan_payload_f64,
+        Floats,
+        &[
+            0x82, 0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xf9, 0x3c, 0x00
+        ],
+        |d: &Floats| {
+            assert!(d.dbl.is_nan());
+            assert_eq!(d.dbl.to_bits(), 0x7ff8_0000_0000_0001u64);
+        }
+    );
+
+    // ---- a FIXED float member: the VALUE is spec-pinned, the WIDTH is still data ----
+    // `fixed_float = [v: 1.5]` generates a struct with no value field at all (the constant lives in
+    // the emitted serialize/deserialize), so the head width is the ONLY thing left to preserve — and
+    // it is, at all three of 1.5's legal widths (§A: f9 3e00 / fa 3fc00000 / fb 3ff8000000000000).
+    // With no field to anchor, the decode half is pinned instead by fixed_float_wrong_value_rejected
+    // below: the constant IS compared, so acceptance is a value assertion.
+    kat_preserve!(fixed_float_minimal, FixedFloat, &[0x81, 0xf9, 0x3e, 0x00], |_d: &FixedFloat| {});
+    kat_preserve!(
+        fixed_float_f32,
+        FixedFloat,
+        &[0x81, 0xfa, 0x3f, 0xc0, 0x00, 0x00],
+        |_d: &FixedFloat| {}
+    );
+    kat_preserve!(
+        fixed_float_wide,
+        FixedFloat,
+        &[0x81, 0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        |_d: &FixedFloat| {}
+    );
+
+    // The fixed member's value anchor: the constant is genuinely compared, so a different float in
+    // that slot is refused (FixedValueMismatch) rather than silently accepted and re-emitted. Without
+    // this the three width vectors above would pass against a decoder that read the head and ignored
+    // the payload. 1.0 (f9 3c00) is a legal float at the same width — only the VALUE differs.
+    #[test]
+    fn fixed_float_wrong_value_rejected() {
+        assert!(
+            FixedFloat::from_cbor_bytes(&[0x81, 0xf9, 0x3c, 0x00]).is_err(),
+            "a float other than the spec's 1.5 must not be accepted in a fixed-value slot"
+        );
+    }
+
+    // ---- per-element float widths in a homogeneous array (`[* float64]`, wrapped in a record) ----
+    // Two different values at two different widths: 1.0 at the narrow head, 1.5 at the wide one
+    // (§A: f9 3c00, fb 3ff8000000000000). The widths are per-ELEMENT, held in the positional sidecar.
+    kat_preserve!(
+        float_seq_mixed_widths,
+        FloatHolder,
+        &[
+            0x81, 0x82, 0xf9, 0x3c, 0x00, 0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ],
+        |d: &FloatHolder| {
+            assert_eq!(d.fs, vec![1.0, 1.5]);
+        }
+    );
+    // The discriminating version: ONE indefinite array holding the SAME value three times at three
+    // different widths. The three elements are indistinguishable after decoding, so a sidecar keyed
+    // by anything but position — or a single width recorded for the whole array — collapses them to
+    // one head and fails. Also re-frames nothing: the indefinite framing (0x9f … 0xff) is preserved
+    // alongside the per-element widths.
+    kat_preserve!(
+        float_seq_same_value_three_widths,
+        FloatHolder,
+        &[
+            0x81, 0x9f, 0xf9, 0x3c, 0x00, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xfb, 0x3f, 0xf0, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xff
+        ],
+        |d: &FloatHolder| {
+            assert_eq!(d.fs, vec![1.0, 1.0, 1.0]);
+        }
+    );
 }

@@ -124,13 +124,13 @@ reason = "extended simple values are not a CDDL construct the generator emits"
 [[note]]
 cell = "enc.major7.float16"
 status = "out_of_scope"
-reason = "generator maps CDDL `float` to Rust f64 and does NOT shorten (Inf/NaN encode as double, not half), so half-precision is never emitted"
+reason = "under default flags the generator writes every float as a double (`write_special(Special::Float(..))`), so half-precision is never emitted; the f16 head IS emitted under --preserve-encodings (a recorded head width replays) and under --canonical-form (the shortest lossless width), both covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve, tests/golden_hex_canonical)"
 code_anchor = "Special::Float"   # generation/serialize.rs: `Special::Float({expr} as f64)`
 
 [[note]]
 cell = "enc.major7.float32"
 status = "out_of_scope"
-reason = "generator never emits single-precision (same no-shortening reason as float16)"
+reason = "under default flags the generator never emits single-precision (same always-a-double reason as float16); the f32 head is covered under --preserve-encodings / --canonical-form by the sibling KATs"
 code_anchor = "Special::Float"
 
 [[note]]
