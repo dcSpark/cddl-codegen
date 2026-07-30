@@ -833,10 +833,17 @@ impl GenerationScope {
                             }
                         }
                         FixedValue::Float(x) => {
-                            deser_code.content.line(&format!(
-                                "let {}_value = {}.float()?;",
-                                config.var_name, deserializer_name
-                            ));
+                            if cli.preserve_encodings {
+                                deser_code.content.line(&format!(
+                                    "let ({}_value, {}_encoding) = {}.float_sz()?;",
+                                    config.var_name, config.var_name, deserializer_name
+                                ));
+                            } else {
+                                deser_code.content.line(&format!(
+                                    "let {}_value = {}.float()?;",
+                                    config.var_name, deserializer_name
+                                ));
+                            }
                             // float_literal, not Display: `{}` on a whole-valued f64 drops the
                             // decimal point (3.0 -> "3"), emitting integer literals in the f64
                             // compare and Key::Float positions (E0308).
@@ -848,7 +855,15 @@ impl GenerationScope {
                             compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, float_fixed_literal(*x)));
                             deser_code.content.push_block(compare_block);
                             if cli.preserve_encodings {
-                                unimplemented!("preserve_encodings is not implemented for float")
+                                config
+                                    .final_exprs
+                                    .push(format!("Some({}_encoding)", config.var_name));
+                                deser_code.content.line(&format!(
+                                    "{}{}{}",
+                                    before_after.before_str(false),
+                                    final_expr(config.final_exprs, None),
+                                    before_after.after_str(false)
+                                ));
                             }
                         }
                         FixedValue::Bool(b) => {
@@ -1280,10 +1295,7 @@ impl GenerationScope {
                                 &format!("bool::deserialize({deserializer_name})"),
                             ));
                         }
-                        Primitive::F32 => {
-                            if cli.preserve_encodings {
-                                unimplemented!("preserve_encodings is not implemented for float")
-                            }
+                        Primitive::F32 | Primitive::F64 => {
                             // NaN-safe window enforced inline via `and_then` (the value is compared
                             // as f64 so the authored decimal literal is exact). Integer `bounds`
                             // never attach to a float (parsing routes those to float_bounds/reject);
@@ -1291,41 +1303,70 @@ impl GenerationScope {
                             // skipping enforcement.
                             assert!(
                                 type_cfg.bounds.is_none(),
-                                "integer bounds on an f32 — parsing must route float constraints to float_bounds"
+                                "integer bounds on an {p} — parsing must route float constraints to float_bounds"
                             );
-                            let result_expr = match &type_cfg.float_bounds {
-                                Some(window) => format!(
-                                    "f32::deserialize({deserializer_name}).and_then(|x| {} else {{ Ok(x) }})",
-                                    bounds_check_if_block_float(window, true, "x", false, None)
-                                ),
-                                None => format!("f32::deserialize({deserializer_name})"),
-                            };
-                            deser_code.content.line(&final_result_expr_complete(
-                                &mut deser_code.throws,
-                                config.final_exprs,
-                                &result_expr,
-                            ));
-                        }
-                        Primitive::F64 => {
+                            let is_f32 = *p == Primitive::F32;
                             if cli.preserve_encodings {
-                                unimplemented!("preserve_encodings is not implemented for float")
+                                // The head WIDTH is the float encoding variable, so the preserve read
+                                // is `float_sz()` -> `(f64, Sz)` — the same `(value, enc)` tuple shape
+                                // every other `_sz` reader yields, so the tail below is `deser_primitive`'s
+                                // preserve half with the float window in place of the integer one.
+                                //
+                                // An f32 member narrows AFTER the read (the CBOR float domain is f64),
+                                // and the window is checked on the NARROWED value so a bounded
+                                // `float32` accepts/rejects identically in both profiles — the
+                                // non-preserve arm below checks `f32::deserialize`'s output for the
+                                // same reason.
+                                let mut final_exprs = config.final_exprs.clone();
+                                final_exprs.push("Some(enc)".to_owned());
+                                let value_expr = if is_f32 { "x as f32" } else { "x" };
+                                let tail = match &type_cfg.float_bounds {
+                                    // Convert the read's error to DeserializeError so the `.and_then`
+                                    // closure's `Err(DeserializeFailure::…into())` sees a consistent
+                                    // E — but ONLY when the site's `error_convert` did not already
+                                    // (the convert-at-most-once rule `deserialize_converts_error_at_most_once`
+                                    // guards, shared with `deser_primitive`'s bounds arm).
+                                    Some(window) => format!(
+                                        "{}.and_then(|(x, enc)| {{ let x = {value_expr}; {} else {{ Ok({}) }} }})",
+                                        if error_convert.is_empty() {
+                                            convert_err_to_ours
+                                        } else {
+                                            ""
+                                        },
+                                        bounds_check_if_block_float(
+                                            window, is_f32, "x", false, None
+                                        ),
+                                        final_expr(final_exprs, Some("x".to_owned())),
+                                    ),
+                                    None => format!(
+                                        ".map(|(x, enc)| {})",
+                                        final_expr(final_exprs, Some(value_expr.to_owned()))
+                                    ),
+                                };
+                                deser_code.content.line(&format!(
+                                    "{}{}.float_sz(){}{}{}",
+                                    before_after.before_str(true),
+                                    deserializer_name,
+                                    error_convert,
+                                    tail,
+                                    before_after.after_str(true)
+                                ));
+                            } else {
+                                let result_expr = match &type_cfg.float_bounds {
+                                    Some(window) => format!(
+                                        "{p}::deserialize({deserializer_name}).and_then(|x| {} else {{ Ok(x) }})",
+                                        bounds_check_if_block_float(
+                                            window, is_f32, "x", false, None
+                                        )
+                                    ),
+                                    None => format!("{p}::deserialize({deserializer_name})"),
+                                };
+                                deser_code.content.line(&final_result_expr_complete(
+                                    &mut deser_code.throws,
+                                    config.final_exprs,
+                                    &result_expr,
+                                ));
                             }
-                            assert!(
-                                type_cfg.bounds.is_none(),
-                                "integer bounds on an f64 — parsing must route float constraints to float_bounds"
-                            );
-                            let result_expr = match &type_cfg.float_bounds {
-                                Some(window) => format!(
-                                    "f64::deserialize({deserializer_name}).and_then(|x| {} else {{ Ok(x) }})",
-                                    bounds_check_if_block_float(window, false, "x", false, None)
-                                ),
-                                None => format!("f64::deserialize({deserializer_name})"),
-                            };
-                            deser_code.content.line(&final_result_expr_complete(
-                                &mut deser_code.throws,
-                                config.final_exprs,
-                                &result_expr,
-                            ));
                         }
                     };
                 }

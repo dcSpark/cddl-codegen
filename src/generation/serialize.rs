@@ -405,6 +405,35 @@ pub(super) fn write_using_sz(
     }
 }
 
+/// The float twin of `write_using_sz`. A float head's WIDTH is data under preserve exactly as an
+/// integer argument's is, but the runtime side is a free function (`write_float`) rather than
+/// `write_using_sz`'s `{serializer}.{func}_sz(expr, fit_sz(..))` chain, because for a float the width
+/// and the written VALUE are coupled: a canonical write drops a NaN payload (RFC 8949 §4.2.2) and the
+/// width must then come from the NORMALIZED value. Splitting them into a `fit_*`-style width helper
+/// plus an inline value expression is exactly how the two silently disagree — the first
+/// implementation did, writing the canonical NaN at `Sz::Eight`.
+///
+/// Takes `serializer_pass`, NOT `serializer_use`: a free function needs the serializer as an
+/// ARGUMENT, and inside a `bytes .cbor T` wrapper the serializer is a local `Serializer` value whose
+/// pass-form is `&mut <name>` — a method receiver auto-refs, a function argument does not (E0308).
+pub(super) fn write_float(
+    body: &mut dyn CodeBlock,
+    serializer_pass: &str,
+    value_expr: &str,
+    line_ender: &str,
+    encoding_var: &str,
+    cli: &Cli,
+) {
+    body.line(&format!(
+        "write_float({}, {}, {}{}){}",
+        serializer_pass,
+        value_expr,
+        encoding_var,
+        canonical_param(cli),
+        line_ender
+    ));
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_string_sz(
     body: &mut dyn CodeBlock,
@@ -803,10 +832,21 @@ impl GenerationScope {
                     FixedValue::Float(f) => {
                         // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal
                         // point (3.0 -> "3"), emitting an integer literal in an f64 position (E0308).
-                        body.line(&format!(
-                            "{serializer_use}.write_special(cbor_event::Special::Float({})){line_ender}",
-                            float_fixed_literal(*f)
-                        ));
+                        let lit = float_fixed_literal(*f);
+                        if cli.preserve_encodings {
+                            write_float(
+                                body,
+                                &serializer_pass,
+                                &lit,
+                                line_ender,
+                                &encoding_var_deref,
+                                cli,
+                            );
+                        } else {
+                            body.line(&format!(
+                                "{serializer_use}.write_special(cbor_event::Special::Float({lit})){line_ender}"
+                            ));
+                        }
                     }
                     FixedValue::Text(s) => {
                         write_string_sz(
@@ -828,15 +868,30 @@ impl GenerationScope {
                                 "{serializer_use}.write_special(cbor_event::Special::Bool({expr_deref})){line_ender}"
                             ));
                         }
-                        Primitive::F32 => {
-                            body.line(&format!(
-                                "{serializer_use}.write_special(cbor_event::Special::Float({expr_deref} as f64)){line_ender}"
-                            ));
-                        }
-                        Primitive::F64 => {
-                            body.line(&format!(
-                                "{serializer_use}.write_special(cbor_event::Special::Float({expr_deref})){line_ender}"
-                            ));
+                        Primitive::F32 | Primitive::F64 => {
+                            // Both widths go over the wire as f64 (the CBOR float domain is f64;
+                            // `float32` narrows only the Rust MEMBER type), so an f32 member widens
+                            // here — always exact — and the head width is chosen from the widened
+                            // value.
+                            let value = if *primitive == Primitive::F32 {
+                                Cow::Owned(format!("{expr_deref} as f64"))
+                            } else {
+                                Cow::Borrowed(expr_deref.as_str())
+                            };
+                            if cli.preserve_encodings {
+                                write_float(
+                                    body,
+                                    &serializer_pass,
+                                    &value,
+                                    line_ender,
+                                    &encoding_var_deref,
+                                    cli,
+                                );
+                            } else {
+                                body.line(&format!(
+                                    "{serializer_use}.write_special(cbor_event::Special::Float({value})){line_ender}"
+                                ));
+                            }
                         }
                         Primitive::Bytes => {
                             write_string_sz(
