@@ -916,6 +916,33 @@ impl InlineWrapper {
 }
 
 #[derive(Clone, Debug)]
+pub struct MapStructWithCustomSerialization {
+    pub chunked: Vec<u8>,
+    pub hexed: Vec<u8>,
+    pub aliased: CustomBytes,
+    pub tagged: u64,
+    pub plain: u64,
+}
+
+impl MapStructWithCustomSerialization {
+    pub fn new(
+        chunked: Vec<u8>,
+        hexed: Vec<u8>,
+        aliased: CustomBytes,
+        tagged: u64,
+        plain: u64,
+    ) -> Self {
+        Self {
+            chunked,
+            hexed,
+            aliased,
+            tagged,
+            plain,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MapWithDefaults {
     pub key_1: DefaultUint,
     pub key_2: String,

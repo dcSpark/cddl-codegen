@@ -243,6 +243,24 @@ struct_with_custom_serialization = [
 ; regressing to a type-level-only check.
 custom_field_holder = [ nested: struct_with_custom_serialization ]
 
+; The MAP-rep twin of struct_with_custom_serialization. A map-rep field's serialize builds ONE
+; config that serves both the member-key write and the VALUE write, so that config must carry the
+; field's @custom_serialize: built without it the custom WRITER was silently dropped while the read
+; side kept honoring @custom_deserialize — a round-trip-breaking asymmetry the array-rep rule above
+; cannot see, since array fields take a different construction path. Under --preserve-encodings the
+; drop is doubly visible: the value's encoding sidecar is handed to the custom writer as an
+; argument, so a dropped writer also loses the recorded widths. Each custom field here writes bytes
+; the DEFAULT writer would not (indefinite 1-byte-chunked bytes, hex TEXT over a `bytes` field, a
+; hook-written tag). `aliased` is the type-level control (honored through the alias, not the field)
+; and `plain` the no-directive control — neither may move, and both keep their own key encodings.
+map_struct_with_custom_serialization = {
+  chunked: bytes, ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
+  hexed: bytes, ; @custom_serialize write_hex_string @custom_deserialize read_hex_string
+  aliased: custom_bytes,
+  tagged: #6.9(uint), ; @custom_serialize write_tagged_uint_str @custom_deserialize read_tagged_uint_str
+  plain: uint,
+}
+
 wrapper_table = { * uint => uint } ; @newtype
 wrapper_list = [ * uint ] ; @newtype
 

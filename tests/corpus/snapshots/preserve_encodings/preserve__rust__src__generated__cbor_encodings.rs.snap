@@ -194,6 +194,23 @@ pub struct HashEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MapStructWithCustomSerializationEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub chunked_encoding: StringEncoding,
+    pub chunked_key_encoding: StringEncoding,
+    pub hexed_encoding: StringEncoding,
+    pub hexed_key_encoding: StringEncoding,
+    pub aliased_encoding: StringEncoding,
+    pub aliased_key_encoding: StringEncoding,
+    pub tagged_tag_encoding: Option<cbor_event::Sz>,
+    pub tagged_encoding: Option<cbor_event::Sz>,
+    pub tagged_key_encoding: StringEncoding,
+    pub plain_encoding: Option<cbor_event::Sz>,
+    pub plain_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct MapWithDefaultsEncoding {
     pub len_encoding: LenEncoding,
     pub orig_deser_order: Vec<usize>,

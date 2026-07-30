@@ -4352,6 +4352,350 @@ impl Deserialize for Hash {
     }
 }
 
+impl cbor_event::se::Serialize for MapStructWithCustomSerialization {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(5),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| encs.orig_deser_order.len() == 5)
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..5).collect());
+        for field_index in deser_order {
+            match field_index {
+                1 => {
+                    serializer.write_text_sz(
+                        "hexed",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.hexed_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("hexed".len() as u64),
+                    )?;
+                    write_hex_string(
+                        serializer,
+                        &self.hexed,
+                        &self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.hexed_encoding.clone())
+                            .unwrap_or_default(),
+                    )?;
+                }
+                4 => {
+                    serializer.write_text_sz(
+                        "plain",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.plain_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("plain".len() as u64),
+                    )?;
+                    serializer.write_unsigned_integer_sz(
+                        self.plain,
+                        fit_sz(
+                            self.plain,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.plain_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                }
+                3 => {
+                    serializer.write_text_sz(
+                        "tagged",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.tagged_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("tagged".len() as u64),
+                    )?;
+                    write_tagged_uint_str(
+                        serializer,
+                        &self.tagged,
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.tagged_tag_encoding)
+                            .unwrap_or_default(),
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.tagged_encoding)
+                            .unwrap_or_default(),
+                    )?;
+                }
+                2 => {
+                    serializer.write_text_sz(
+                        "aliased",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.aliased_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("aliased".len() as u64),
+                    )?;
+                    custom_serialize_bytes(
+                        serializer,
+                        &self.aliased,
+                        &self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.aliased_encoding.clone())
+                            .unwrap_or_default(),
+                    )?;
+                }
+                0 => {
+                    serializer.write_text_sz(
+                        "chunked",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.chunked_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("chunked".len() as u64),
+                    )?;
+                    custom_serialize_bytes(
+                        serializer,
+                        &self.chunked,
+                        &self
+                            .encodings
+                            .as_ref()
+                            .map(|encs| encs.chunked_encoding.clone())
+                            .unwrap_or_default(),
+                    )?;
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for MapStructWithCustomSerialization {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(5)?;
+            read_len.finish()?;
+            let mut orig_deser_order = Vec::new();
+            let mut hexed_encoding = StringEncoding::default();
+            let mut hexed_key_encoding = StringEncoding::default();
+            let mut hexed = None;
+            let mut plain_encoding = None;
+            let mut plain_key_encoding = StringEncoding::default();
+            let mut plain = None;
+            let mut tagged_tag_encoding = None;
+            let mut tagged_encoding = None;
+            let mut tagged_key_encoding = StringEncoding::default();
+            let mut tagged = None;
+            let mut aliased_encoding = StringEncoding::default();
+            let mut aliased_key_encoding = StringEncoding::default();
+            let mut aliased = None;
+            let mut chunked_encoding = StringEncoding::default();
+            let mut chunked_key_encoding = StringEncoding::default();
+            let mut chunked = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => {
+                        let (text_key, key_enc) = raw.text_sz()?;
+                        match text_key.as_str() {
+                            "hexed" => {
+                                if hexed.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "hexed".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_hexed, tmp_hexed_encoding) = read_hex_string(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("hexed"))?;
+                                hexed = Some(tmp_hexed);
+                                hexed_encoding = tmp_hexed_encoding;
+                                hexed_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(1);
+                            }
+                            "plain" => {
+                                if plain.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "plain".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_plain, tmp_plain_encoding) = raw
+                                    .unsigned_integer_sz()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .map(|(x, enc)| (x, Some(enc)))
+                                    .map_err(|e: DeserializeError| e.annotate("plain"))?;
+                                plain = Some(tmp_plain);
+                                plain_encoding = tmp_plain_encoding;
+                                plain_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(4);
+                            }
+                            "tagged" => {
+                                if tagged.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "tagged".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_tagged, tmp_tagged_tag_encoding, tmp_tagged_encoding) =
+                                    read_tagged_uint_str(raw)
+                                        .map_err(|e: DeserializeError| e.annotate("tagged"))?;
+                                tagged = Some(tmp_tagged);
+                                tagged_tag_encoding = tmp_tagged_tag_encoding;
+                                tagged_encoding = tmp_tagged_encoding;
+                                tagged_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(3);
+                            }
+                            "aliased" => {
+                                if aliased.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "aliased".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_aliased, tmp_aliased_encoding) =
+                                    custom_deserialize_bytes(raw)
+                                        .map_err(|e: DeserializeError| e.annotate("aliased"))?;
+                                aliased = Some(tmp_aliased);
+                                aliased_encoding = tmp_aliased_encoding;
+                                aliased_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(2);
+                            }
+                            "chunked" => {
+                                if chunked.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "chunked".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_chunked, tmp_chunked_encoding) =
+                                    custom_deserialize_bytes(raw)
+                                        .map_err(|e: DeserializeError| e.annotate("chunked"))?;
+                                chunked = Some(tmp_chunked);
+                                chunked_encoding = tmp_chunked_encoding;
+                                chunked_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(0);
+                            }
+                            unknown_key => {
+                                return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                    unknown_key.to_owned(),
+                                ))
+                                .into());
+                            }
+                        }
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let chunked =
+                match chunked {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("chunked"),
+                        ))
+                        .into());
+                    }
+                };
+            let hexed = match hexed {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("hexed")))
+                            .into(),
+                    );
+                }
+            };
+            let aliased =
+                match aliased {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("aliased"),
+                        ))
+                        .into());
+                    }
+                };
+            let tagged = match tagged {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tagged")))
+                            .into(),
+                    );
+                }
+            };
+            let plain = match plain {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("plain")))
+                            .into(),
+                    );
+                }
+            };
+            Ok(Self {
+                chunked,
+                hexed,
+                aliased,
+                tagged,
+                plain,
+                encodings: Some(MapStructWithCustomSerializationEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    chunked_key_encoding,
+                    chunked_encoding,
+                    hexed_key_encoding,
+                    hexed_encoding,
+                    aliased_key_encoding,
+                    aliased_encoding,
+                    tagged_key_encoding,
+                    tagged_tag_encoding,
+                    tagged_encoding,
+                    plain_key_encoding,
+                    plain_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("MapStructWithCustomSerialization"))
+    }
+}
+
 impl cbor_event::se::Serialize for MapWithDefaults {
     fn serialize<'se>(
         &self,

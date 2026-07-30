@@ -138,6 +138,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Hash>();
     _assert_serialize::<crate::generated::InlineWrapper>();
     _assert_deserialize::<crate::generated::InlineWrapper>();
+    _assert_serialize::<crate::generated::MapStructWithCustomSerialization>();
+    _assert_deserialize::<crate::generated::MapStructWithCustomSerialization>();
     _assert_serialize::<crate::generated::MapWithDefaults>();
     _assert_deserialize::<crate::generated::MapWithDefaults>();
     _assert_serialize::<crate::generated::NemHolder>();

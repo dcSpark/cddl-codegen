@@ -1716,6 +1716,77 @@ pub type MapBytesToMapU64ToMapU64ToArrArrText = Data;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct MapStructWithCustomSerialization(pub(crate) cddl_lib::MapStructWithCustomSerialization);
+
+#[wasm_bindgen]
+impl MapStructWithCustomSerialization {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MapStructWithCustomSerialization, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn chunked(&self) -> Vec<u8> {
+        self.0.chunked.clone()
+    }
+
+    pub fn hexed(&self) -> Vec<u8> {
+        self.0.hexed.clone()
+    }
+
+    pub fn aliased(&self) -> CustomBytes {
+        self.0.aliased.clone().into()
+    }
+
+    pub fn tagged(&self) -> u64 {
+        self.0.tagged
+    }
+
+    pub fn plain(&self) -> u64 {
+        self.0.plain
+    }
+
+    pub fn new(
+        chunked: Vec<u8>,
+        hexed: Vec<u8>,
+        aliased: CustomBytes,
+        tagged: u64,
+        plain: u64,
+    ) -> Self {
+        Self(cddl_lib::MapStructWithCustomSerialization::new(
+            chunked,
+            hexed,
+            aliased.clone(),
+            tagged,
+            plain,
+        ))
+    }
+}
+
+impl From<cddl_lib::MapStructWithCustomSerialization> for MapStructWithCustomSerialization {
+    fn from(native: cddl_lib::MapStructWithCustomSerialization) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapStructWithCustomSerialization> for cddl_lib::MapStructWithCustomSerialization {
+    fn from(wasm: MapStructWithCustomSerialization) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MapStructWithCustomSerialization> for MapStructWithCustomSerialization {
+    fn as_ref(&self) -> &cddl_lib::MapStructWithCustomSerialization {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct MapTextToU64(pub(crate) OrderedHashMap<String, u64>);
 
 #[wasm_bindgen]

@@ -1589,6 +1589,64 @@ mod tests {
         );
     }
 
+    // The MAP-rep twin of the test above. A map-rep field's serialize is built from ONE config that
+    // also serves the member-key write, and that config used to be built WITHOUT the field's
+    // @custom_serialize — so the custom WRITER was dropped while @custom_deserialize kept being
+    // honored on the read side. Both halves of that asymmetry are pinned here: the byte-exact vector
+    // fails if the writer reverts to the default (`chunked`/`hexed` would come out as plain definite byte
+    // strings), and the round-trip fails outright because the custom READER rejects exactly those
+    // default-shaped bytes.
+    #[test]
+    fn map_custom_serialization() {
+        use cbor_event::{Sz, StringLenSz};
+        let v = MapStructWithCustomSerialization::new(
+            vec![0xCA, 0xFE, 0xF0, 0x0D],
+            vec![0xBA, 0xAD, 0xD0, 0x0D],
+            vec![0x03, 0x01, 0x04, 0x01],
+            1024,
+            7,
+        );
+        deser_test(&v);
+        let chunked_enc = StringLenSz::Indefinite(vec![(1, Sz::Inline); 4]);
+        // member keys go out length-first then lexicographic, not in declaration order
+        let expected_bytes = [
+            map_def(5),
+                cbor_string("hexed"),
+                    cbor_string("baadd00d"),
+                cbor_string("plain"),
+                    cbor_int(7, Sz::Inline),
+                cbor_string("tagged"),
+                    cbor_tag(9),
+                    cbor_string("1024"),
+                cbor_string("aliased"),
+                    cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], chunked_enc.clone()),
+                cbor_string("chunked"),
+                    cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], chunked_enc.clone()),
+        ].concat();
+        assert_eq!(expected_bytes, v.to_cbor_bytes());
+        // and the reader agrees with that writer: the bytes the DEFAULT writer would have produced
+        // for `chunked` (a definite byte string) are REJECTED, so a dropped custom writer cannot go
+        // unnoticed as a merely-cosmetic difference
+        let default_shaped = [
+            map_def(5),
+                cbor_string("hexed"),
+                    cbor_string("baadd00d"),
+                cbor_string("plain"),
+                    cbor_int(7, Sz::Inline),
+                cbor_string("tagged"),
+                    cbor_tag(9),
+                    cbor_string("1024"),
+                cbor_string("aliased"),
+                    cbor_bytes_sz(vec![0x03, 0x01, 0x04, 0x01], chunked_enc.clone()),
+                cbor_string("chunked"),
+                    cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], StringLenSz::Len(Sz::Inline)),
+        ].concat();
+        assert!(
+            MapStructWithCustomSerialization::from_cbor_bytes(&default_shaped).is_err(),
+            "the custom reader must reject the default writer's shape for `chunked`"
+        );
+    }
+
     #[test]
     fn wrapper_table() {
         use cbor_event::Sz;
