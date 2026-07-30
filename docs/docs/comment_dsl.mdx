@@ -774,7 +774,7 @@ The string after `@custom_serialize`/`@custom_deserialize` will be directly call
 
 With `--preserve-encodings=true` the encoding variables must be passed in in the order they are used in cddl-codegen with regular serialization. They are passed in as `Option<cbor_event::Sz>` for integers/tags, `LenEncoding` for lengths and `StringEncoding` for text/bytes. These are the same types as are stored in the `*Encoding` structs generated. The same must be returned for deserialization. When there are no encoding variables the deserialized value should be directly returned, and if not a tuple with the value and its encoding variables should be returned.
 
-There are two ways to use this comment DSL:
+There are two ways to attach this comment DSL:
 
 * Type level: e.g. `custom_bytes`. This will replace the (de)serialization everywhere you use this type.
 * Field level: e.g. `struct_with_custom_serialization.field`. This will entirely replace the (de)serialization logic for the entire field, including other encoding operations like tags, `.cbor`, etc.
@@ -809,7 +809,43 @@ pub fn read_tagged_uint_str(
 
 Note that as this is at the field-level it must handle the tag as well as the `uint`.
 
-For more examples see `tests/custom_serialization` (used in the `core` and `core_no_wasm` tests) and `tests/custom_serialization_preserve` (used in the `preserve-encodings` test).
+With `--canonical-form=true` every serialize function takes one further trailing argument, `force_canonical: bool`, which must be passed on to the encoding helpers it calls (`StringEncoding::to_str_len_sz(len, force_canonical)`, `fit_sz(len, sz, force_canonical)`, …) so that the canonical output re-minimizes the same way generated code does. The deserialize signature is unchanged.
+
+### Table key and value positions
+
+A type-level pair is honored wherever the alias resolves, which includes both halves of a table:
+
+```cddl
+hex_table_str = bytes ; @custom_serialize write_hex_table_string @custom_deserialize read_hex_table_string
+
+custom_table_positions = [
+  keyed: { * hex_table_str => uint },
+  valued: { * uint => hex_table_str },
+]
+```
+
+Here the key domain and the value range each go through the custom pair, so a `bytes` key can be written as hex text on the wire while staying decoded bytes in memory. Only the type-level spelling reaches these positions — a table row has no field to hang a field-level directive on (see the un-honored positions below).
+
+Two details specific to a table under `--preserve-encodings=true`:
+
+* The per-entry encoding is looked up out of the table's sidecar map and passed **by value** (`StringEncoding`), where a record field passes its stored encoding **by reference** (`&StringEncoding`). The two positions therefore need separate functions if you want to share one codec.
+* Both sidecars (`<field>_key_encodings` and `<field>_value_encodings`) are `BTreeMap`s keyed by the **decoded key**. A custom key deserializer's returned encoding is filed under the value it decoded to, not under the bytes it consumed, and the value sidecar is likewise keyed by the entry's key rather than by the value.
+
+Under `--canonical-form=true` a table's keys are additionally serialized into a scratch buffer to sort by their encoded bytes, so a custom **key** serializer is called twice per entry (once for the sort key, once for the write) and must be deterministic. A custom **value** serializer is only on the write path.
+
+### Positions that are not honored today
+
+The pair also parses in the positions below, where it currently has no effect — or, in the last two, only half an effect. None of them is rejected, so the directive is silently inert there; use the type-level alias spelling instead.
+
+* **On a `_CDDL_CODEGEN_EXTERN_TYPE_` rule.** An extern type owns its own (de)serialization impls, and the parsed pair never reaches generation.
+* **On a table row or an open-map rest row entry** — a trailing comment on the `* k => v` row itself. Row-entry comments carry `@name`, `@duplicates` and `@ignore` only; anything else in that slot is unconsumed. Put the pair on the row's key or value rule instead.
+* **Together with `@no_alias`.** `@no_alias` removes the alias node the override is keyed on, so the pair goes with it.
+* **Together with `@newtype`.** The deserialize call sites do call the custom reader, but the wrapper's serialization goes through its generated impl — an asymmetric round-trip rather than a clean drop.
+* **`@custom_deserialize` on an open struct-map rest row's key-domain alias.** `@custom_serialize` *is* honored there (at both the canonical key merge and the write arm), but the read side binds the key the rest row's own dispatch already consumed, so the custom reader is never called. A transforming codec in that position writes transformed keys and reads raw ones.
+
+Whether each of these becomes supported or a graceful rejection is not yet decided — treat the current silence as unspecified rather than as a guarantee.
+
+For more examples see `tests/custom_serialization` (used in the `core` and `core_no_wasm` tests), `tests/custom_serialization_preserve` (used in the `preserve-encodings` test, including the table key/value positions above) and `tests/custom_serialization_canonical` (used in the `custom-serialize-canonical-e2e` test, for the `force_canonical` signatures).
 
 ## @doc
 
