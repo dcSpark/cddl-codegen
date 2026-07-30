@@ -35,6 +35,489 @@
 # pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.
 
 [[row]]
+id = "alias_positions.credential"
+axis = "corpus"
+example = "policy_id = bytes\ncredential = [idx: uint, hash: policy_id]"
+fixture = "alias_positions"
+rule = "credential"
+spec = "__probe_holder = [0, credential]\npolicy_id = bytes\ncredential = [idx: uint, hash: policy_id]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820082190123477472656d6f7273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821901614843616c657869636f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821903dc486d6964646c652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821905434977616c6c6579652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821905e64774696e666f696c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219083946637265616b79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190aa34b746565746f74616c6c6572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190bef4a74696d656b6565706572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219112b4773746565706c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219116149766572647572652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.delta_coin"
+axis = "corpus"
+example = "delta_coin = int"
+fixture = "alias_positions"
+rule = "delta_coin"
+spec = "__probe_holder = [0, delta_coin]\ndelta_coin = int"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820019031f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001904ad"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190dd7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190f98"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003867"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200390259"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003902d4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003902f2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820039030d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200390327"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.epoch"
+axis = "corpus"
+example = "epoch = uint"
+fixture = "alias_positions"
+rule = "epoch"
+spec = "__probe_holder = [0, epoch]\nepoch = uint"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82001901ec"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001902b1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001902b9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190332"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190357"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190612"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001907a7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190875"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190982"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001911de"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.holder"
+axis = "corpus"
+example = "policy_id = bytes\nepoch = uint\ndelta_coin = int\nlabel = text\ncredential = [idx: uint, hash: policy_id]\nstake_credential = credential\nnemap = { * epoch => label }\n\n; data field / ctor param / accessor, plus the two deserialize call targets\nholder = [\n  pid: policy_id,\n  dc: delta_coin,\n  sc: stake_credential,\n  m: nemap,\n]\n\n; declared map field: the encoding sidecar's index key must be the field's DECLARED key type"
+fixture = "alias_positions"
+rule = "holder"
+spec = "__probe_holder = [0, holder]\npolicy_id = bytes\nepoch = uint\ndelta_coin = int\nlabel = text\ncredential = [idx: uint, hash: policy_id]\nstake_credential = credential\nnemap = { * epoch => label }\n\n; data field / ctor param / accessor, plus the two deserialize call targets\nholder = [\n  pid: policy_id,\n  dc: delta_coin,\n  sc: stake_credential,\n  m: nemap,\n]\n\n; declared map field: the encoding sidecar's index key must be the field's DECLARED key type"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008444446927733891821911344767616e676c6961a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008447736573616d657338f5821909054c63656e7472616c697a696e67a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200844d64657365677265676174696f6e1910898219096a4b7265636970726f63697479a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.keyed"
+axis = "corpus"
+example = "epoch = uint\nlabel = text\nkeyed = { 1: { * epoch => label } }\n\n; container descent — an alias under Array, under Optional, and as the key of a nested Map"
+fixture = "alias_positions"
+rule = "keyed"
+spec = "__probe_holder = [0, keyed]\nepoch = uint\nlabel = text\nkeyed = { 1: { * epoch => label } }\n\n; container descent — an alias under Array, under Optional, and as the key of a nested Map"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a101a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.label"
+axis = "corpus"
+example = "label = text"
+fixture = "alias_positions"
+rule = "label"
+spec = "__probe_holder = [0, label]\nlabel = text"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82006473656174"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006743757272792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200676f27636c6f636b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200687468696576696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200696d697261636c652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006970726f666573736f72"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820069746572616279746573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006a63616d69736f6c652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006b61626469636174696f6e73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006b6d61726b6574706c616365"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.nemap"
+axis = "corpus"
+example = "epoch = uint\nlabel = text\nnemap = { * epoch => label }\n\n; data field / ctor param / accessor, plus the two deserialize call targets"
+fixture = "alias_positions"
+rule = "nemap"
+spec = "__probe_holder = [0, nemap]\nepoch = uint\nlabel = text\nnemap = { * epoch => label }\n\n; data field / ctor param / accessor, plus the two deserialize call targets"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.nested"
+axis = "corpus"
+example = "policy_id = bytes\nepoch = uint\nlabel = text\nnested = [\n  arr: [* policy_id],\n  opt: policy_id / null,\n  deep: { * epoch => { * policy_id => label } },\n]\n\n; open struct-map rest row: depth 1 is the key domain, depth 2 the container inside the rest VALUE"
+fixture = "alias_positions"
+rule = "nested"
+spec = "__probe_holder = [0, nested]\npolicy_id = bytes\nepoch = uint\nlabel = text\nnested = [\n  arr: [* policy_id],\n  opt: policy_id / null,\n  deep: { * epoch => { * policy_id => label } },\n]\n\n; open struct-map rest row: depth 1 is the key domain, depth 2 the container inside the rest VALUE"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820083824974727573746965737449707265666162626564f6a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200838350636f756e74657262616c616e636527734c67656f7068797369637327734963657274696669656448666f637573696e67a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083844a7368656570646f6727734d62656174696669636174696f6e4961706f6c6f676961734b626c6f77746f72636865734973616e646261722773a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.open_holder"
+axis = "corpus"
+example = "policy_id = bytes\nepoch = uint\nlabel = text\nopen_holder = {\n  1: uint,\n  * epoch => { * policy_id => label },\n}\n\n; open array rest tail: the element is a container whose key is an alias"
+fixture = "alias_positions"
+rule = "open_holder"
+pinned_reason = "all 10 generated candidate(s) failed two-oracle cross-validation (ruby accepted 10/10, rust --ci accepted 0/10 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "alias_positions.open_tail"
+axis = "corpus"
+example = "policy_id = bytes\nlabel = text\nopen_tail = [uint, * { * policy_id => label }]"
+fixture = "alias_positions"
+rule = "open_tail"
+spec = "__probe_holder = [0, open_tail]\npolicy_id = bytes\nlabel = text\nopen_tail = [uint, * { * policy_id => label }]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200811907bf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190d66"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190e46"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190ed2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190fcb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.policy_id"
+axis = "corpus"
+example = "policy_id = bytes"
+fixture = "alias_positions"
+rule = "policy_id"
+spec = "__probe_holder = [0, policy_id]\npolicy_id = bytes"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200446465656d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004754776565642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004772756666696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004773707261742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200487175617361722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004b6173737572616e63652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004b677565737374696d617465"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004b70726f6a656374696c6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004c63697263756c6172697a6564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004d626c61626265726d6f75746873"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "alias_positions.stake_credential"
+axis = "corpus"
+example = "policy_id = bytes\ncredential = [idx: uint, hash: policy_id]\nstake_credential = credential"
+fixture = "alias_positions"
+rule = "stake_credential"
+spec = "__probe_holder = [0, stake_credential]\npolicy_id = bytes\ncredential = [idx: uint, hash: policy_id]\nstake_credential = credential"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008218b1486d696c6974617279"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821904b24842656175766f6972"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821907114b436861726d61696e652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821908af484361726e61702773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219098249667572746865726564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190a4d49656469746f7269616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190a8e4961637475617269616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190c7d485461776e65792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190e03496469766f7263652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219111a4774616e7472756d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "array.arr"
 axis = "corpus"
 example = "arr = [uint, text, bytes]"
