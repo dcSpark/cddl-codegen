@@ -1,0 +1,90 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+
+#[derive(Clone, Debug, Default)]
+pub struct CredentialEncoding {
+    pub len_encoding: LenEncoding,
+    pub idx_encoding: Option<cbor_event::Sz>,
+    pub hash_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct HolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub pid_encoding: StringEncoding,
+    pub m_encoding: LenEncoding,
+    pub m_key_encodings: BTreeMap<Epoch, Option<cbor_event::Sz>>,
+    pub m_value_encodings: BTreeMap<Epoch, StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct KeyedEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: LenEncoding,
+    pub key_1_key_encodings: BTreeMap<Epoch, Option<cbor_event::Sz>>,
+    pub key_1_value_encodings: BTreeMap<Epoch, StringEncoding>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+}
+
+pub type NestedDeepValueEncodings = BTreeMap<
+    Epoch,
+    (
+        LenEncoding,
+        BTreeMap<PolicyId, StringEncoding>,
+        BTreeMap<PolicyId, StringEncoding>,
+    ),
+>;
+
+#[derive(Clone, Debug, Default)]
+pub struct NestedEncoding {
+    pub len_encoding: LenEncoding,
+    pub arr_encoding: LenEncoding,
+    pub arr_elem_encodings: Vec<StringEncoding>,
+    pub opt_encoding: StringEncoding,
+    pub deep_encoding: LenEncoding,
+    pub deep_key_encodings: BTreeMap<Epoch, Option<cbor_event::Sz>>,
+    pub deep_value_encodings: NestedDeepValueEncodings,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OpenHolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub rest_key_encodings: BTreeMap<Epoch, Option<cbor_event::Sz>>,
+    pub rest_value_encodings: OpenHolderRestValueEncodings,
+}
+
+pub type OpenHolderRestValueEncodings = BTreeMap<
+    Epoch,
+    (
+        LenEncoding,
+        BTreeMap<PolicyId, StringEncoding>,
+        BTreeMap<PolicyId, StringEncoding>,
+    ),
+>;
+
+#[derive(Clone, Debug, Default)]
+pub struct OpenTailEncoding {
+    pub len_encoding: LenEncoding,
+    pub index_0_encoding: Option<cbor_event::Sz>,
+    pub rest_elem_encodings: OpenTailRestElemEncodings,
+}
+
+pub type OpenTailRestElemEncodings = Vec<(
+    LenEncoding,
+    BTreeMap<PolicyId, StringEncoding>,
+    BTreeMap<PolicyId, StringEncoding>,
+)>;

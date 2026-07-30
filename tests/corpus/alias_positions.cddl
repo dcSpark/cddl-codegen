@@ -1,0 +1,70 @@
+; Every position at which generated code NAMES the type of a member, exercised on ONE alias each, so
+; a re-resolution at ANY single emission path shows up as a snapshot diff on a fixture whose whole
+; purpose is the spelling rule (`docs/docs/output_format.mdx` § "Type spelling at member positions").
+;
+; The rule is that a type-DECLARATION position spells the member's type AS DECLARED, keeping the
+; outermost alias ident. Exactly one function spells member types
+; (`ConceptualRustType::for_rust_member_ct`) and it already keeps the alias, so every resolved
+; spelling in the output comes from a caller that resolved for STRUCTURAL DISPATCH and then reused
+; the dispatch-normalized value as a NAMING input — which is invisible at any one site, and is how
+; the emission paths drifted from each other. This fixture makes the paths visible together.
+;
+; Positions covered, and what to look for under `--preserve-encodings`:
+;   * data-struct field, constructor param, getter/setter        -> `pid: PolicyId`
+;   * a named collection rule's own alias target                 -> `pub type Nemap = OrderedHashMap<Epoch, String>`
+;   * encoding sidecar INDEX KEY, declared map field             -> `key_1_key_encodings: BTreeMap<Epoch, ..>`
+;     (this one MUST be the data field's key type: serialize looks the sidecar up with a key
+;     borrowed straight out of the data map, so the two are one type expressed twice)
+;   * encoding sidecar, open-struct rest row, depth 1            -> `rest_key_encodings: BTreeMap<Epoch, ..>`
+;   * encoding sidecar, open-struct rest row, depth 2            -> the nested `BTreeMap<PolicyId, ..>`
+;     inside the rest VALUE's tuple. Depth 1 was declared while depth 2 was resolved INSIDE ONE TYPE
+;     EXPRESSION, which is the defect in its purest form and the reason this fixture spans depths.
+;   * encoding sidecar, rest ARRAY tail element                  -> `rest_elem_encodings: Vec<(.., BTreeMap<PolicyId, ..>, ..)>`
+;   * container descent (Array / Optional / nested Map inners)    -> `arr`, `opt`, `deep`
+;
+; Also covered, and deliberately still RESOLVED here: the member deserialize CALL TARGETS
+; (`Int::deserialize` for `dc`, `Credential::deserialize` for `sc`). Those are a different position
+; class, out of scope for the declared-spelling change at type declarations; this fixture's committed
+; snapshot is the diff surface for whenever that class is taken on, so the positions are exercised
+; now rather than added later.
+;
+; Shape constraint worth keeping: no `@duplicates preserve` table sharing a key/value shape with a
+; rest row in this file. That combination trips a pre-existing wasm wrapper-name collision
+; (`MapEpochToText` claimed by both the pair-map twin and the rest row) unrelated to spelling.
+
+policy_id = bytes
+epoch = uint
+delta_coin = int
+label = text
+
+credential = [idx: uint, hash: policy_id]
+stake_credential = credential
+
+nemap = { * epoch => label }
+
+; data field / ctor param / accessor, plus the two deserialize call targets
+holder = [
+  pid: policy_id,
+  dc: delta_coin,
+  sc: stake_credential,
+  m: nemap,
+]
+
+; declared map field: the encoding sidecar's index key must be the field's DECLARED key type
+keyed = { 1: { * epoch => label } }
+
+; container descent — an alias under Array, under Optional, and as the key of a nested Map
+nested = [
+  arr: [* policy_id],
+  opt: policy_id / null,
+  deep: { * epoch => { * policy_id => label } },
+]
+
+; open struct-map rest row: depth 1 is the key domain, depth 2 the container inside the rest VALUE
+open_holder = {
+  1: uint,
+  * epoch => { * policy_id => label },
+}
+
+; open array rest tail: the element is a container whose key is an alias
+open_tail = [uint, * { * policy_id => label }]

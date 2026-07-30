@@ -2438,6 +2438,14 @@ pub fn table_type(cli: &Cli) -> &'static str {
 #[derive(Debug)]
 struct EncodingField {
     field_name: String,
+    /// The type this encoding field is DECLARED as. Callers that push it into an encoding struct (or
+    /// an enum variant's field list) must therefore hand `encoding_fields` the member's **declared**
+    /// type — never `.resolve_aliases()`d — so the declaration keeps the alias ident the data-struct
+    /// field for the same member already keeps (`docs/docs/output_format.mdx` § "Type spelling at
+    /// member positions"). Resolving is a STRUCTURAL-DISPATCH normalization; reusing its result as a
+    /// NAMING input is how `BTreeMap<Vec<u8>, ..>` came to index a field typed
+    /// `OrderedHashMap<PolicyId, ..>`. Callers that consume only `field_name`/`default_expr` are
+    /// spelling-irrelevant and may pass whatever shape is convenient.
     type_name: String,
     /// this MUST be equivalent to the Default trait of the encoding field.
     /// This can be more concise though e.g. None for Option<T>::default()

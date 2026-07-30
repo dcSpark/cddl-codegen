@@ -1,0 +1,633 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Credential(pub(crate) cddl_lib::Credential);
+
+#[wasm_bindgen]
+impl Credential {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Credential, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn idx(&self) -> u64 {
+        self.0.idx
+    }
+
+    pub fn hash(&self) -> PolicyId {
+        self.0.hash.clone().into()
+    }
+
+    pub fn new(idx: u64, hash: PolicyId) -> Self {
+        Self(cddl_lib::Credential::new(idx, hash.clone()))
+    }
+}
+
+impl From<cddl_lib::Credential> for Credential {
+    fn from(native: cddl_lib::Credential) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Credential> for cddl_lib::Credential {
+    fn from(wasm: Credential) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Credential> for Credential {
+    fn as_ref(&self) -> &cddl_lib::Credential {
+        &self.0
+    }
+}
+
+pub type DeltaCoin = Int;
+
+pub type Epoch = u64;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn pid(&self) -> PolicyId {
+        self.0.pid.clone().into()
+    }
+
+    pub fn dc(&self) -> DeltaCoin {
+        self.0.dc.clone().into()
+    }
+
+    pub fn sc(&self) -> StakeCredential {
+        self.0.sc.clone().into()
+    }
+
+    pub fn m(&self) -> Nemap {
+        self.0.m.clone().into()
+    }
+
+    pub fn new(pid: PolicyId, dc: &DeltaCoin, sc: &StakeCredential, m: &Nemap) -> Self {
+        Self(cddl_lib::Holder::new(
+            pid.clone(),
+            dc.clone().into(),
+            sc.clone().into(),
+            m.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Int(pub(crate) cddl_lib::Int);
+
+#[wasm_bindgen]
+impl Int {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Int, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(x: i64) -> Self {
+        if x >= 0 {
+            Self(cddl_lib::Int::new_uint(x as u64))
+        } else {
+            Self(cddl_lib::Int::new_nint((x + 1).unsigned_abs()))
+        }
+    }
+
+    pub fn new_uint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_uint(value))
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_nint(value))
+    }
+
+    pub fn to_str(&self) -> String {
+        self.0.to_string()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(string: &str) -> Result<Int, JsError> {
+        // have to redefine so it's visible in WASM
+        std::str::FromStr::from_str(string)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("Int.from_str({}): {:?}", string, e)))
+    }
+}
+
+impl From<cddl_lib::Int> for Int {
+    fn from(native: cddl_lib::Int) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Int> for cddl_lib::Int {
+    fn from(wasm: Int) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Int> for Int {
+    fn as_ref(&self) -> &cddl_lib::Int {
+        &self.0
+    }
+}
+
+pub type IntError = JsError;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Keyed(pub(crate) cddl_lib::Keyed);
+
+#[wasm_bindgen]
+impl Keyed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Keyed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> MapEpochToLabel {
+        self.0.key_1.clone().into()
+    }
+
+    pub fn new(key_1: &MapEpochToLabel) -> Self {
+        Self(cddl_lib::Keyed::new(key_1.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Keyed> for Keyed {
+    fn from(native: cddl_lib::Keyed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Keyed> for cddl_lib::Keyed {
+    fn from(wasm: Keyed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Keyed> for Keyed {
+    fn as_ref(&self) -> &cddl_lib::Keyed {
+        &self.0
+    }
+}
+
+pub type Label = String;
+
+pub type MapEpochToLabel = Nemap;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapEpochToMapPolicyIdToLabel(
+    pub(crate) OrderedHashMap<cddl_lib::Epoch, OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>,
+);
+
+#[wasm_bindgen]
+impl MapEpochToMapPolicyIdToLabel {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Epoch, value: &MapPolicyIdToLabel) -> Option<MapPolicyIdToLabel> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: Epoch) -> Option<MapPolicyIdToLabel> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<Epoch> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<OrderedHashMap<cddl_lib::Epoch, OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>>
+    for MapEpochToMapPolicyIdToLabel
+{
+    fn from(
+        native: OrderedHashMap<
+            cddl_lib::Epoch,
+            OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>,
+        >,
+    ) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapEpochToMapPolicyIdToLabel>
+    for OrderedHashMap<cddl_lib::Epoch, OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>
+{
+    fn from(wasm: MapEpochToMapPolicyIdToLabel) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<cddl_lib::Epoch, OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>>
+    for MapEpochToMapPolicyIdToLabel
+{
+    fn as_ref(
+        &self,
+    ) -> &OrderedHashMap<cddl_lib::Epoch, OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapPolicyIdToLabel(pub(crate) OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>);
+
+#[wasm_bindgen]
+impl MapPolicyIdToLabel {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: PolicyId, value: Label) -> Option<Label> {
+        self.0.insert(key.clone(), value.clone())
+    }
+
+    pub fn get(&self, key: PolicyId) -> Option<Label> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> PolicyIdList {
+        PolicyIdList(self.0.keys().cloned().collect::<Vec<_>>())
+    }
+}
+
+impl From<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>> for MapPolicyIdToLabel {
+    fn from(native: OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapPolicyIdToLabel> for OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label> {
+    fn from(wasm: MapPolicyIdToLabel) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>> for MapPolicyIdToLabel {
+    fn as_ref(&self) -> &OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapPolicyIdToLabelList(
+    pub(crate) Vec<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>,
+);
+
+#[wasm_bindgen]
+impl MapPolicyIdToLabelList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> MapPolicyIdToLabel {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &MapPolicyIdToLabel) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>> for MapPolicyIdToLabelList {
+    fn from(native: Vec<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapPolicyIdToLabelList> for Vec<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>> {
+    fn from(wasm: MapPolicyIdToLabelList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>>> for MapPolicyIdToLabelList {
+    fn as_ref(&self) -> &Vec<OrderedHashMap<cddl_lib::PolicyId, cddl_lib::Label>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Nemap(pub(crate) cddl_lib::Nemap);
+
+#[wasm_bindgen]
+impl Nemap {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Epoch, value: Label) -> Option<Label> {
+        self.0.insert(key, value.clone())
+    }
+
+    pub fn get(&self, key: Epoch) -> Option<Label> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<Epoch> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::Nemap> for Nemap {
+    fn from(native: cddl_lib::Nemap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Nemap> for cddl_lib::Nemap {
+    fn from(wasm: Nemap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Nemap> for Nemap {
+    fn as_ref(&self) -> &cddl_lib::Nemap {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Nested(pub(crate) cddl_lib::Nested);
+
+#[wasm_bindgen]
+impl Nested {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Nested, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn arr(&self) -> PolicyIdList {
+        self.0.arr.clone().into()
+    }
+
+    pub fn opt(&self) -> Option<PolicyId> {
+        self.0.opt.clone().into()
+    }
+
+    pub fn deep(&self) -> MapEpochToMapPolicyIdToLabel {
+        self.0.deep.clone().into()
+    }
+
+    pub fn new(
+        arr: &PolicyIdList,
+        opt: Option<PolicyId>,
+        deep: &MapEpochToMapPolicyIdToLabel,
+    ) -> Self {
+        Self(cddl_lib::Nested::new(
+            arr.clone().into(),
+            opt,
+            deep.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Nested> for Nested {
+    fn from(native: cddl_lib::Nested) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Nested> for cddl_lib::Nested {
+    fn from(wasm: Nested) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Nested> for Nested {
+    fn as_ref(&self) -> &cddl_lib::Nested {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OpenHolder(pub(crate) cddl_lib::OpenHolder);
+
+#[wasm_bindgen]
+impl OpenHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OpenHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> u64 {
+        self.0.key_1
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> MapEpochToMapPolicyIdToLabel {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_1: u64) -> Self {
+        Self(cddl_lib::OpenHolder::new(key_1))
+    }
+}
+
+impl From<cddl_lib::OpenHolder> for OpenHolder {
+    fn from(native: cddl_lib::OpenHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OpenHolder> for cddl_lib::OpenHolder {
+    fn from(wasm: OpenHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OpenHolder> for OpenHolder {
+    fn as_ref(&self) -> &cddl_lib::OpenHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OpenTail(pub(crate) cddl_lib::OpenTail);
+
+#[wasm_bindgen]
+impl OpenTail {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OpenTail, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    /// The captured trailing array elements beyond the declared members (CDDL `* t` rest tail), as the wasm list wrapper.
+    pub fn rest(&self) -> MapPolicyIdToLabelList {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::OpenTail::new(index_0))
+    }
+}
+
+impl From<cddl_lib::OpenTail> for OpenTail {
+    fn from(native: cddl_lib::OpenTail) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OpenTail> for cddl_lib::OpenTail {
+    fn from(wasm: OpenTail) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OpenTail> for OpenTail {
+    fn as_ref(&self) -> &cddl_lib::OpenTail {
+        &self.0
+    }
+}
+
+pub type PolicyId = Vec<u8>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PolicyIdList(pub(crate) Vec<cddl_lib::PolicyId>);
+
+#[wasm_bindgen]
+impl PolicyIdList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> PolicyId {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: PolicyId) {
+        self.0.push(elem.clone());
+    }
+}
+
+impl From<Vec<cddl_lib::PolicyId>> for PolicyIdList {
+    fn from(native: Vec<cddl_lib::PolicyId>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PolicyIdList> for Vec<cddl_lib::PolicyId> {
+    fn from(wasm: PolicyIdList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::PolicyId>> for PolicyIdList {
+    fn as_ref(&self) -> &Vec<cddl_lib::PolicyId> {
+        &self.0
+    }
+}
+
+pub type StakeCredential = Credential;

@@ -29,6 +29,34 @@ So the tag / fixed-value encoding for these is emitted at each use site. A conse
 
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
 
+## Type spelling at member positions
+
+Wherever generated code **declares** the type of a member, it spells that type **as you declared it** — keeping the outermost alias ident, with no resolution to the alias's structural target. Given
+
+```cddl
+policy_id = bytes
+epoch = uint
+holder = [pid: policy_id, m: {* epoch => text}]
+```
+
+the emitted `pid` is `PolicyId`, never `Vec<u8>`, and `m`'s encoding sidecar is keyed by `Epoch`, never by `u64`.
+
+The declaration positions this covers:
+
+- **data-struct fields**, and the constructor / getter / setter / wasm signatures built from them;
+- **encoding-struct fields** under `--preserve-encodings`, including the sidecar **index key** of a map-typed member (that one *must* match the data field's key type: serialize looks the sidecar up with a key borrowed straight out of the data map, so the two are one type expressed twice);
+- the same sidecars for an [open struct-map rest row](#open-struct-maps-rest-rows) or [open array rest tail](#open-arrays-rest-tails);
+- a **named collection rule's own alias target** (`nemap = {* epoch => text}` emits `pub type Nemap = OrderedHashMap<Epoch, String>`).
+
+**Container descent preserves the rule.** An `Array` element, a `Map` key or value, and an `Optional` inner are each themselves member positions with their own declared spelling, at every depth: a rest row over `{* epoch => {* policy_id => text}}` spells `Epoch` *and* the nested `PolicyId`.
+
+Two things are deliberately **not** covered:
+
+- **Member deserialize call targets.** A member typed `delta_coin = int` is still read with `Int::deserialize`, and one typed `stake_credential = credential` with `Credential::deserialize` — the alias's structural target, not the alias. Those are call expressions rather than type declarations; nothing about the emitted bytes or the public type surface depends on which spelling appears there.
+- **Wasm collection wrapper names.** These are keyed by *structural* identity — one wrapper class can serve members declared under different aliases of the same shape — so "the member's alias" is not well defined for them. They are minted from the first requester's alias idents (`MapEpochToText`, `PolicyIdList`) and are stable API surface.
+
+Why this is worth stating: exactly one function spells a member's type, and it keeps the alias. Any resolved spelling you might see is not a decision to resolve *for naming* — it is a code path that resolved the type in order to dispatch on its structure (`Map` vs `Array` vs primitive) and then reused the dispatch-normalized value as a naming input. Since that mistake is invisible at any single emission site, the rule is written down here so a reader can predict the output and a reviewer can defend it.
+
 ## Wasm feature gate for c-style enums
 
 Under `--wasm`, a c-style enum is the one type kind the tool exposes to wasm *directly* — the wasm crate `pub use`-re-exports the rust enum rather than wrapping it — so it is also the only place the **rust** crate itself carries a `#[wasm_bindgen]` attribute. To keep the rust crate compilable standalone (without pulling in `wasm-bindgen` for non-wasm consumers), that attribute is gated behind a cargo feature:

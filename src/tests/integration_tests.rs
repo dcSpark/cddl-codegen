@@ -4018,6 +4018,87 @@ fn no_synthesized_rust_collection_aliases_suppresses_only_synthesized() {
     );
 }
 
+/// The multi-scope half of the declared-spelling rule COMPILES: with a directory input, an alias
+/// declared in module `a` and referred to by a record in module `b` is spelled declared in
+/// `b/cbor_encodings.rs`, and the ident must actually be in scope there.
+///
+/// This needs a compile rather than a source assertion because the failure mode is E0412/E0433, not
+/// a diff — `<scope>/cbor_encodings.rs` names the ident through `use super::*`, so the route depends
+/// on the scope's own `mod.rs` binding it, and `mark_refs` marking both an alias ident and its target
+/// was established for the SERIALIZATION file's idents, which is a different emission surface. Both
+/// sidecar depths are exercised: the rest row's key domain (depth 1) and the container inside its
+/// value (depth 2).
+///
+/// `--wasm=false` deliberately: a cross-scope NESTED-map wrapper (`{* epoch => {* policy_id => text}}`
+/// with the aliases in another module) fails to emit its `MapEpochToMapPolicyIdToText` wasm class
+/// (E0425). That is pre-existing and unrelated to spelling — it reproduces with every
+/// `resolve_aliases` call restored, and a cross-scope FLAT map wrapper compiles fine — so including
+/// wasm here would make this pin red for a reason it does not test. The source-level spelling +
+/// routing assertions are in
+/// `declared_spelling_tests::cross_scope_alias_is_spelled_and_routed_in_the_referring_scope`.
+/// Tier: check.ts `local`.
+#[test]
+fn declared_spelling_cross_scope_encoding_crate_compiles() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_declspell_cross_scope_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let input = scratch.join("input");
+    std::fs::create_dir_all(&input).unwrap();
+    std::fs::write(input.join("lib.cddl"), "rt = [uint]\n").unwrap();
+    std::fs::write(input.join("a.cddl"), "epoch = uint\npolicy_id = bytes\n").unwrap();
+    std::fs::write(
+        input.join("b.cddl"),
+        "holder = [m: {* epoch => text}]\n\
+         open_holder = {1: uint, * epoch => {* policy_id => text}}\n\
+         open_tail = [uint, * {* policy_id => text}]\n",
+    )
+    .unwrap();
+    let out = scratch.join("out");
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--preserve-encodings=true")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "cross-scope generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    // The spelling itself, so a compile-only pass cannot go green by resolving everything.
+    let b_enc =
+        std::fs::read_to_string(out.join("rust/src/generated/b/cbor_encodings.rs")).unwrap();
+    assert!(
+        b_enc.contains("BTreeMap<Epoch, Option<cbor_event::Sz>>")
+            && b_enc.contains("BTreeMap<PolicyId, StringEncoding>"),
+        "scope `b`'s encoding file must spell scope `a`'s aliases as declared at both \
+         depths:\n{b_enc}"
+    );
+
+    let target_dir = scratch.join("target");
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "the cross-scope generated rust crate failed to compile — a declared spelling in \
+         `b/cbor_encodings.rs` naming an ident from scope `a` is not routed into scope `b`:\n{}\n{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// The rust crate's c-style-enum `#[wasm_bindgen]` is gated behind the `--rust-wasm-feature` cargo
 /// feature (default `wasm`), so the rust crate compiles STANDALONE — feature off — without the
 /// optional wasm-bindgen dependency (the request this feature closes). Asserts (a) the emitted

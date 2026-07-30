@@ -809,17 +809,23 @@ fn rest_encoding_fields(
     if !cli.preserve_encodings {
         return (vec![], vec![]);
     }
+    // DECLARED types, not `.resolve_aliases()`d: both of these `type_name`s reach a type
+    // DECLARATION (`{restfield}_{key,value}_encodings`), so they owe the member's declared spelling
+    // (see `EncodingField::type_name`). The domain is leaf-only today — a rest row rejects key
+    // domains other than `uint`/`text`/`any`, so its encoding fields carry no container to spell —
+    // and passes the declared type anyway, so widening the accepted domains cannot silently
+    // reintroduce a resolved spelling on one half of this function.
     let key_encs = encoding_fields(
         types,
         &format!("{}_key", rest.field_name),
-        &rest.domain().clone().resolve_aliases(),
+        rest.domain(),
         false,
         cli,
     );
     let value_encs = encoding_fields(
         types,
         &format!("{}_value", rest.field_name),
-        &rest.range().clone().resolve_aliases(),
+        rest.range(),
         false,
         cli,
     );
@@ -840,10 +846,12 @@ fn rest_array_elem_encoding_fields(
     if !cli.preserve_encodings {
         return vec![];
     }
+    // DECLARED type (see `EncodingField::type_name`): this reaches the
+    // `{restfield}_elem_encodings` declaration.
     encoding_fields(
         types,
         &format!("{}_elem", rest.field_name),
-        &rest.element().clone().resolve_aliases(),
+        rest.element(),
         false,
         cli,
     )
@@ -1970,14 +1978,10 @@ pub(super) fn codegen_struct(
             encoding_struct.field("pub orig_deser_order", "Vec<usize>");
         }
         for field in &record.fields {
-            // even fixed values still need to keep track of their encodings
-            for field_enc in encoding_fields(
-                types,
-                &field.name,
-                &field.rust_type.clone().resolve_aliases(),
-                true,
-                cli,
-            ) {
+            // even fixed values still need to keep track of their encodings.
+            // DECLARED type (see `EncodingField::type_name`): these `type_name`s become this encoding
+            // struct's field types, which must spell the member as its data-struct field does.
+            for field_enc in encoding_fields(types, &field.name, &field.rust_type, true, cli) {
                 push_encoding_struct_field(
                     &mut encoding_struct,
                     &mut encoding_aliases,

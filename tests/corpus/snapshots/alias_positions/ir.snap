@@ -1,0 +1,1035 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "Credential",
+    ): RustStruct {
+        ident: RustIdent(
+            "Credential",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "idx",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "hash",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "PolicyId",
+                                    ),
+                                ),
+                                Primitive(
+                                    Bytes,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                rest: None,
+            },
+        ),
+    },
+    RustIdent(
+        "Holder",
+    ): RustStruct {
+        ident: RustIdent(
+            "Holder",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "pid",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "PolicyId",
+                                    ),
+                                ),
+                                Primitive(
+                                    Bytes,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "dc",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "DeltaCoin",
+                                    ),
+                                ),
+                                Rust(
+                                    RustIdent(
+                                        "Int",
+                                    ),
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "sc",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "StakeCredential",
+                                    ),
+                                ),
+                                Rust(
+                                    RustIdent(
+                                        "Credential",
+                                    ),
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "m",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "Nemap",
+                                    ),
+                                ),
+                                Map(
+                                    RustType {
+                                        conceptual_type: Alias(
+                                            Rust(
+                                                RustIdent(
+                                                    "Epoch",
+                                                ),
+                                            ),
+                                            Primitive(
+                                                U64,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            duplicates: None,
+                                            float_bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                    RustType {
+                                        conceptual_type: Alias(
+                                            Rust(
+                                                RustIdent(
+                                                    "Label",
+                                                ),
+                                            ),
+                                            Primitive(
+                                                Str,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            duplicates: None,
+                                            float_bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                rest: None,
+            },
+        ),
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "Keyed",
+    ): RustStruct {
+        ident: RustIdent(
+            "Keyed",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Map,
+                fields: [
+                    RustField {
+                        name: "key_1",
+                        rust_type: RustType {
+                            conceptual_type: Map(
+                                RustType {
+                                    conceptual_type: Alias(
+                                        Rust(
+                                            RustIdent(
+                                                "Epoch",
+                                            ),
+                                        ),
+                                        Primitive(
+                                            U64,
+                                        ),
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        duplicates: None,
+                                        float_bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                                RustType {
+                                    conceptual_type: Alias(
+                                        Rust(
+                                            RustIdent(
+                                                "Label",
+                                            ),
+                                        ),
+                                        Primitive(
+                                            Str,
+                                        ),
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        duplicates: None,
+                                        float_bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: Some(
+                            Uint(
+                                1,
+                            ),
+                        ),
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                rest: None,
+            },
+        ),
+    },
+    RustIdent(
+        "Nemap",
+    ): RustStruct {
+        ident: RustIdent(
+            "Nemap",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Table {
+            domain: RustType {
+                conceptual_type: Alias(
+                    Rust(
+                        RustIdent(
+                            "Epoch",
+                        ),
+                    ),
+                    Primitive(
+                        U64,
+                    ),
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            range: RustType {
+                conceptual_type: Alias(
+                    Rust(
+                        RustIdent(
+                            "Label",
+                        ),
+                    ),
+                    Primitive(
+                        Str,
+                    ),
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            bounds: None,
+        },
+    },
+    RustIdent(
+        "Nested",
+    ): RustStruct {
+        ident: RustIdent(
+            "Nested",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "arr",
+                        rust_type: RustType {
+                            conceptual_type: Array(
+                                RustType {
+                                    conceptual_type: Alias(
+                                        Rust(
+                                            RustIdent(
+                                                "PolicyId",
+                                            ),
+                                        ),
+                                        Primitive(
+                                            Bytes,
+                                        ),
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        duplicates: None,
+                                        float_bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "opt",
+                        rust_type: RustType {
+                            conceptual_type: Optional(
+                                RustType {
+                                    conceptual_type: Alias(
+                                        Rust(
+                                            RustIdent(
+                                                "PolicyId",
+                                            ),
+                                        ),
+                                        Primitive(
+                                            Bytes,
+                                        ),
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        duplicates: None,
+                                        float_bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "deep",
+                        rust_type: RustType {
+                            conceptual_type: Map(
+                                RustType {
+                                    conceptual_type: Alias(
+                                        Rust(
+                                            RustIdent(
+                                                "Epoch",
+                                            ),
+                                        ),
+                                        Primitive(
+                                            U64,
+                                        ),
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        duplicates: None,
+                                        float_bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                                RustType {
+                                    conceptual_type: Map(
+                                        RustType {
+                                            conceptual_type: Alias(
+                                                Rust(
+                                                    RustIdent(
+                                                        "PolicyId",
+                                                    ),
+                                                ),
+                                                Primitive(
+                                                    Bytes,
+                                                ),
+                                            ),
+                                            encodings: [],
+                                            config: RustTypeSerializeConfig {
+                                                default: None,
+                                                bounds: None,
+                                                duplicates: None,
+                                                float_bounds: None,
+                                                basic_override: false,
+                                            },
+                                        },
+                                        RustType {
+                                            conceptual_type: Alias(
+                                                Rust(
+                                                    RustIdent(
+                                                        "Label",
+                                                    ),
+                                                ),
+                                                Primitive(
+                                                    Str,
+                                                ),
+                                            ),
+                                            encodings: [],
+                                            config: RustTypeSerializeConfig {
+                                                default: None,
+                                                bounds: None,
+                                                duplicates: None,
+                                                float_bounds: None,
+                                                basic_override: false,
+                                            },
+                                        },
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        duplicates: None,
+                                        float_bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                rest: None,
+            },
+        ),
+    },
+    RustIdent(
+        "OpenHolder",
+    ): RustStruct {
+        ident: RustIdent(
+            "OpenHolder",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Map,
+                fields: [
+                    RustField {
+                        name: "key_1",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: Some(
+                            Uint(
+                                1,
+                            ),
+                        ),
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                rest: Some(
+                    RestRow {
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Alias(
+                                    Rust(
+                                        RustIdent(
+                                            "Epoch",
+                                        ),
+                                    ),
+                                    Primitive(
+                                        U64,
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            range: RustType {
+                                conceptual_type: Map(
+                                    RustType {
+                                        conceptual_type: Alias(
+                                            Rust(
+                                                RustIdent(
+                                                    "PolicyId",
+                                                ),
+                                            ),
+                                            Primitive(
+                                                Bytes,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            duplicates: None,
+                                            float_bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                    RustType {
+                                        conceptual_type: Alias(
+                                            Rust(
+                                                RustIdent(
+                                                    "Label",
+                                                ),
+                                            ),
+                                            Primitive(
+                                                Str,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            duplicates: None,
+                                            float_bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            duplicates: None,
+                        },
+                        semantics: Capture,
+                        field_name: "rest",
+                    },
+                ),
+            },
+        ),
+    },
+    RustIdent(
+        "OpenTail",
+    ): RustStruct {
+        ident: RustIdent(
+            "OpenTail",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "index_0",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                rest: Some(
+                    RestRow {
+                        kind: ArrayTail {
+                            element: RustType {
+                                conceptual_type: Map(
+                                    RustType {
+                                        conceptual_type: Alias(
+                                            Rust(
+                                                RustIdent(
+                                                    "PolicyId",
+                                                ),
+                                            ),
+                                            Primitive(
+                                                Bytes,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            duplicates: None,
+                                            float_bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                    RustType {
+                                        conceptual_type: Alias(
+                                            Rust(
+                                                RustIdent(
+                                                    "Label",
+                                                ),
+                                            ),
+                                            Primitive(
+                                                Str,
+                                            ),
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            duplicates: None,
+                                            float_bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                        },
+                        semantics: Capture,
+                        field_name: "rest",
+                    },
+                ),
+            },
+        ),
+    },
+}

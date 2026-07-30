@@ -483,13 +483,9 @@ pub(super) fn generate_wrapper_struct(
             "pub(crate) inner",
             field_type.for_rust_member(types, false, cli),
         );
-        let enc_fields = encoding_fields(
-            types,
-            "inner",
-            &field_type.clone().resolve_aliases(),
-            true,
-            cli,
-        );
+        // DECLARED type (see `EncodingField::type_name`): these become the wrapper's encoding-struct
+        // field types, beside the `inner` field spelled from the same `field_type` just above.
+        let enc_fields = encoding_fields(types, "inner", field_type, true, cli);
 
         if !enc_fields.is_empty() {
             // A set nominal derives always-on comparisons (see `create_base_rust_struct` above), so its
