@@ -660,10 +660,17 @@ impl GenerationScope {
             } else {
                 Cow::Borrowed("")
             };
+            // `serializer_pass`, NOT `serializer_use`: a custom serialize target is a FREE FUNCTION
+            // taking the serializer as an ARGUMENT, so where the serializer in scope is a local
+            // `Serializer` value (the canonical key-sort scratch `buf`, the open struct-map canonical
+            // merge's `buf`, a `bytes .cbor T` wrapper's inner) the pass-form is `&mut <name>` — a
+            // method receiver auto-refs, a function argument does not (E0308). Same class as
+            // `write_float`'s doc comment above; for the DEFAULT `serializer` (already `&mut`) the two
+            // forms coincide, so this changes emitted bytes only at local-serializer sites.
             body.line(&format!(
                 "{}({}, {}{}{}){}",
                 custom_serialize,
-                serializer_use,
+                serializer_pass,
                 expr_ref,
                 pass_encoding_args,
                 canonical_param(cli),
