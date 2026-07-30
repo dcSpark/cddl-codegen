@@ -47,12 +47,9 @@ id = "prelude.bool"
 fixture = "bool.cddl"
 
 # `prelude.float64`'s canonical fixture is `homogeneous_array.cddl`, where it appears as the top-level
-# `floats = [* float64]` transparent `Vec<f64>` alias — generated and compiled under all three
-# profiles. It is NOT round-tripped as its own emit-tests subject: a float in a struct field aborts
-# generation under `--preserve-encodings` (see the `prelude.float*` "partial" notes). A float-bearing
-# record CAN be a corpus entry so long as its preserve leg is generation-fail-ledgered:
-# `optional_fixed_float.cddl` carries one (an optional fixed FLOAT member) and default/json round-trip
-# it, with the preserve leg pinned in `feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`. The
+# `floats = [* float64]` transparent `Vec<f64>` alias — generated, compiled and round-tripped under
+# all three profiles (a float member's head width is an encoding variable under `--preserve-encodings`
+# like any other primitive's argument width, so a float-bearing record needs no ledger). The
 # `[* float64]` runtime regression that once rejected every non-empty Special-class (major-type-7)
 # element collection lived in the type-agnostic `make_deser_loop_break_check`; it is locked by
 # `bool_holder`'s default-profile emit-tests round-trip, whose emitted break-check is byte-identical to
@@ -437,24 +434,6 @@ status = "unsupported"
 reason = "incremental group-choice extension (//=) that extends an already-defined ident is rejected gracefully at generation — same silent last-wins drop as the type socket; a plain group rule cannot itself carry a group choice, so give each arm its own named group and select at the use site (`t = [ grpA // grpB ]`)"
 code_anchor = "incremental_choice_extension_rejection"
 
-[[note]]
-id = "prelude.float"
-status = "partial"
-reason = "de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve; float JSON emission is covered by tests/json-float/ + its whole_program snapshot instead)"
-code_anchor = "preserve_encodings is not implemented for float"
-
-[[note]]
-id = "prelude.float32"
-status = "partial"
-reason = "works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float32]` compiles default, fails preserve)"
-code_anchor = "preserve_encodings is not implemented for float"
-
-[[note]]
-id = "prelude.float64"
-status = "partial"
-reason = "works under default/json as a member, but --preserve-encodings is unimplemented for floats — same limitation as `float` (verified: `holder = [x: float64]` compiles default, fails preserve)"
-code_anchor = "preserve_encodings is not implemented for float"
-
 # ---- ➖ not supported — where the generator gives up (anchors for the boundary) ----
 [[note]]
 id = "prelude.eb64url"
@@ -616,7 +595,7 @@ text = "Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are 
 text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes)."
 
 [[finding]]
-text = "Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites). The corpus no longer avoids floats entirely: `tests/corpus/optional_fixed_float.cddl` carries an optional fixed FLOAT member (default/json generate the `bool` presence field; its preserve leg is generation-fail-ledgered in `feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`). The residual preserve-only float gap rides the `preserve_encodings_supports_floats` stub class."
+text = "Float works in every position under every profile, `--preserve-encodings` included: the CBOR head width (`0xf9`/`0xfa`/`0xfb`) is an `Option<cbor_event::Sz>` encoding variable, and a float window is enforced on the same value in both profiles. The corpus carries floats accordingly — `tests/corpus/optional_fixed_float.cddl` (an optional fixed FLOAT member, presence bit plus width) and `homogeneous_array.cddl`'s `float_holder` (per-element widths). Spec-anchored wire vectors live in the `golden_hex_preserve` / `golden_hex_canonical` KAT suites."
 
 [[finding]]
 text = "Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested)."

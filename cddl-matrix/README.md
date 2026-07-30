@@ -494,7 +494,8 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   consequence, pinned there: `int` members reject spec-valid CBOR outside i64 as a representability
   rejection instead of silently mis-decoding it) and the float range/control windows (NaN-safe
   accept-form checks + bounds-enforcing wrapper newtypes for top-level ranges, pinned by the
-  `float_bounds` / `top_level_float_ranges` fixtures and the `rangeop.*.float` constraint vectors).
+  `float_bounds` / `top_level_float_ranges` fixtures and the `rangeop.inclusive.float` /
+  `rangeop.exclusive.float` constraint vectors).
   For a CERTIFIED-but-unfixed silent-acceptance bug (no enforcing fix yet), the catalog's
   `class="over-acceptance"` vector class is the standing pin: spec-INVALID CBOR (both oracles reject)
   the decoder CURRENTLY wrongly accepts, replayed by `decode_conformance_replay`'s over-acceptance leg

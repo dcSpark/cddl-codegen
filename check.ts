@@ -929,9 +929,8 @@ export const REGISTRY: Gate[] = [
     desc: "fuzz crate compile-rot check (generate.sh iff needed, then cargo check)" },
 
   // --- tracked-failing IOU stubs: known-failing #[ignore] tests, NEVER executed (shown as STUB) ---
-  { id: "stub_preserve_encodings_supports_floats", tier: "full", kind: "stub",
-    ignoredTest: "preserve_encodings_supports_floats",
-    desc: "IOU: floats under --preserve-encodings (pre-existing unimplemented! in generation/deserialize.rs)" },
+  // (none — the float-under-preserve IOU was delivered; `preserve_encodings_supports_floats` is now
+  // an ordinary always-on test.)
 ];
 
 // ==================================================================================================

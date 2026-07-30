@@ -475,7 +475,8 @@ class its sketched glob-EDGE escalation could not have seen); and the optional-f
 entry's "data-lossy but non-crashing" premise (the silent drop was real only for a float ALONGSIDE
 other dynamic-length optionals — an ISOLATED one FAILED generation loudly, so the entry's
 certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks; delivered by
-`tests/corpus/optional_fixed_float.cddl` + the float presence-field arms, residue owned by
+`tests/corpus/optional_fixed_float.cddl` + the float presence-field arms, with the preserve residue
+since delivered too — a float's head width is an encoding variable, pinned by
 `preserve_encodings_supports_floats`). A fourth is on record and is the reason a cited GATE counts as
 a premise too: two entries named `all_supported_constructs_generate_all_profiles` as the disk-writing
 gate their remedy would extend, and it writes nothing — it drives `api::generated_strings` in-process
@@ -2687,6 +2688,25 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   passes into one json-gen crate and for whom the hand-written composition is not enough.
 
 ## Operational watches
+
+- **A stale-pin guard cannot distinguish "the gap closed" from "the vector that proved the gap went
+  blunt" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting
+  the first.** Proven 2026-07-30 (native-float preserve delivery): adding one corpus rule required a
+  catalog row, and `verify.ts --mint-decode-corpus` was run in its FULL-refresh form, which re-rolled
+  every row's ruby-generated vectors (3817-line diff for one new row). `corpus_decode_replay` then
+  failed with `ENCODING_VARIANT_SKIP names (table_preserve.md, reverse_maps) … the gap closed —
+  remove the entry (stale pin)`. It had not: that pin exists because reversing a `@duplicates
+  preserve` pair-map's entry order changes the VALUE, and the re-rolled vector set had replaced
+  HEAD's multi-entry maps (`8200a2…`, `8200a3…`) with the empty map `8200a0`, which reverses to
+  itself. Taking the guard at its word would have deleted a live order-collapse tripwire AND left the
+  coverage silently gone — the guard's message names exactly one of its two possible causes, and it
+  names the wrong one whenever the data moved. The mint's own `--only=<id|fixture>` form is the fix
+  and the working rule: **re-mint the row you changed, never the catalog** (108-line diff, other rows'
+  vectors preserved verbatim, `table_preserve.md` still carrying multi-entry maps). The mechanical
+  layer on a second instance: have the mint refuse a full refresh that REDUCES any row's vector-shape
+  diversity (it already classifies vectors by shape — `vectorShapeClass` — so an empty-map-only row
+  where the committed one had multi-entry maps is detectable at mint time, before the pin ever goes
+  stale). Trigger: a second pin retired or nearly-retired by vector churn rather than by a fix.
 
 - **A migration handoff's "complete list found by survey" is a NEGATIVE premise, and the first
   consumer falsified one twice.** The no_std handoff's hand-action survey ended "Nothing else,"

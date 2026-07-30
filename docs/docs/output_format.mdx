@@ -81,10 +81,9 @@ fixed-value kind is covered — bool, null, uint, nint, text, and **float** (`? 
 presence field serializes with `write_special(Special::Float(<lit>))` and verifies on read with an
 exact `raw.float()? != <lit>` compare, the same spellings the mandatory fixed-float path emits
 (`tests/corpus/optional_fixed_float.cddl`, hand vectors in `tests/core/tests.rs`'s
-`opt_fixed_member_float`). The one exception is `--preserve-encodings`: a fixed float member (optional
-or mandatory) aborts generation at the float deserialize stub, the general
-`preserve_encodings_supports_floats` limitation — tracked by that stub gate and the preserve-side
-float rows in `cddl-matrix/ROADMAP.md`'s findings ledger.
+`opt_fixed_member_float`). Under `--preserve-encodings` the member additionally carries its head-width
+encoding variable, so an absent member stores no width and a present one re-emits at the width it
+arrived on — see [`--preserve-encodings`](command_line_flags) for the float width rules.
 
 ## Nominal tag-258 set types
 

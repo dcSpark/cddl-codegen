@@ -21,16 +21,15 @@
 // excluded). Non-float major-type-7 heads (bool/null/undefined/simple) each carry a single wire
 // form, so they are copied verbatim.
 //
-// Float heads reach this mutator through the emit-tests mint path for `any` (`AnyCbor`): an
-// `AnyCbor`-typed (`any`) member mints a composite value carrying a width-preserving f16/f32/f64
-// head (cbor_event fork `float_sz` API, exercised by `any_cbor_tests`), which the preserve
-// serializer writes at the value-preserving smallest width. `widen_float` re-encodes that head one
-// IEEE width wider — always value-preserving, since f32 exactly represents every f16 and f64 every
-// f32 — and under preserve, `from_cbor_bytes` records the wider width and re-encodes it
-// byte-identically, so the round-trip loop asserts the widened head survives. Native-float members
-// remain unreachable here (they still panic generation under preserve,
-// `preserve_encodings_supports_floats` stub), so every float head this class exercises arrives
-// through `AnyCbor`.
+// Float heads reach this mutator two ways, both of which `widen_float` covers identically: a NATIVE
+// float member (`float`/`float32`/`float64`), whose head width is an ordinary encoding variable under
+// preserve, and an `AnyCbor`-typed (`any`) member, which mints a composite carrying a
+// width-preserving f16/f32/f64 head (cbor_event fork `float_sz` API, exercised by `any_cbor_tests`).
+// Either way the preserve serializer writes a fresh value at the value-preserving smallest width.
+// `widen_float` re-encodes that head one IEEE width wider — always value-preserving, since f32
+// exactly represents every f16 and f64 every f32 — and under preserve, `from_cbor_bytes` records the
+// wider width and re-encodes it byte-identically, so the round-trip loop asserts the widened head
+// survives.
 //
 // `bytes .cbor T` wrappers are treated as opaque byte strings — the outer string is mutated, the
 // inner CBOR is left untouched (mutating the inner encoding is a deliberate out-of-scope extension).

@@ -1453,12 +1453,12 @@ fn recombination_crates_execute() {
 /// `cddl-matrix/ROADMAP.md` § findings entry (stable title, never a position). Vacuity-guarded in
 /// `recombination_preserve_crates_execute`.
 const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
-    (
-        "preserve_encodings is not implemented for float",
-        "native float in member / element / tag / choice-arm position under --preserve-encodings \
-         (the deserialize path has no encoding metadata for f16/f32/f64); cddl-matrix/ROADMAP.md § \
-         findings, `float16 / float-choice aliases unsupported ... Under --preserve-encodings the float gap is positional` entry",
-    ),
+    // (retired when native floats gained preserve support) a float in member / element / tag /
+    // choice-arm position under --preserve-encodings no longer panics: the head width (`0xf9`/
+    // `0xfa`/`0xfb`) is now an `Option<cbor_event::Sz>` encoding variable read by `float_sz()` and
+    // written by the `write_float` runtime helper, so those compositions batch into the preserve
+    // gate like any other primitive. Pinned by `preserve_encodings_supports_floats` and the
+    // golden_hex_preserve / golden_hex_canonical float KATs.
     (
         "!cli.preserve_encodings @ src/generation/enums.rs @ fn cddl_codegen::generation::enums::generate_enum",
         "a CBOR tag over a type-choice / enum / group-choice (`#6.11(int / tstr)`, `#6.11(<enum>)`) hits \

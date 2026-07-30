@@ -102,10 +102,10 @@
 //! the plain `cargo test` / check.ts local tier.
 //!
 //! **Generation-fail pin (the `WASM_MATRIX_SKIP` idiom).** One `(profile, input)` pair aborts
-//! generation — a float member under `--preserve-encodings` (the `unimplemented!` class, issue #205).
-//! It is pinned in `EXPECTED_GENERATION_FAIL` with a resurfaced guard both directions: a listed pair
-//! that now generates fails ("gap closed — remove the pin"); an unlisted abort fails as a normal
-//! generation failure.
+//! generation — a CBOR tag over a type-choice under `--preserve-encodings` (the `assert!` class in
+//! `generation/enums.rs`). It is pinned in `EXPECTED_GENERATION_FAIL` with a resurfaced guard both
+//! directions: a listed pair that now generates fails ("gap closed — remove the pin"); an unlisted
+//! abort fails as a normal generation failure.
 //!
 //! **Ledger + anti-rot (the `WASM_MATRIX_SKIP` idiom).** `PARITY_EXEMPT` holds deliberately-accepted
 //! asymmetries by `(profile, input, "Type" | "Type::member", reason)`. A finding matching a ledger
@@ -159,8 +159,11 @@ const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
 const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
     "preserve",
     "tests/core",
-    "float member aborts generation under --preserve-encodings (issue #205; see the \
-     preserve_encodings_supports_floats stub)",
+    "`tagged_type_choice = #6.11(uint / text)` — a CBOR tag over a type-choice hits the tagged-enum \
+     serialize path's explicit `assert!(!cli.preserve_encodings)` in generation/enums.rs (the \
+     per-variant encoding metadata has no home on the enum); the SAME class recombination_tests' \
+     PRESERVE_ONLY_PANIC_CLASSES ledgers. Note this pin used to name the float member on this input, \
+     which no longer aborts — floats carry their head width as an encoding variable",
 )];
 
 /// `tests/<dir>` fixture dirs swept by the corpus axis: (dir, per-dir committed profile rows).
