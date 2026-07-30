@@ -90,16 +90,16 @@ use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
-    CborNestedPayloadsEncoding, CustomFieldHolderEncoding, DeeplyNestedEncoding, EdEncoding,
-    EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding,
-    MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding, NemPreserveEncoding,
-    NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedArrFloatEncoding,
-    OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding, PlainEncoding,
-    RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding,
-    String64Encoding, String1632Encoding, StructWithCustomSerializationEncoding,
-    TableArrMembersEncoding, TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding,
-    TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
-    WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
+    CborNestedPayloadsEncoding, CustomFieldHolderEncoding, CustomTablePositionsEncoding,
+    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
+    HashEncoding, MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding,
+    NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
+    OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding,
+    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
+    SignedIntsEncoding, String64Encoding, String1632Encoding,
+    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
+    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
+    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -474,6 +474,26 @@ impl CustomFieldHolder {
     pub fn new(nested: StructWithCustomSerialization) -> Self {
         Self {
             nested,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomTablePositions {
+    pub keyed: OrderedHashMap<HexTableStr, u64>,
+    pub valued: OrderedHashMap<u64, HexTableStr>,
+    pub encodings: Option<CustomTablePositionsEncoding>,
+}
+
+impl CustomTablePositions {
+    pub fn new(
+        keyed: OrderedHashMap<HexTableStr, u64>,
+        valued: OrderedHashMap<u64, HexTableStr>,
+    ) -> Self {
+        Self {
+            keyed,
+            valued,
             encodings: None,
         }
     }
@@ -865,6 +885,8 @@ impl From<Hash> for Vec<u8> {
         wrapper.inner
     }
 }
+
+pub type HexTableStr = Vec<u8>;
 
 #[derive(Clone, Debug)]
 pub struct MapStructWithCustomSerialization {

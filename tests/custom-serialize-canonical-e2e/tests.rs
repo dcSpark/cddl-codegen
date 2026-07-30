@@ -74,6 +74,65 @@ mod custom_serialize_canonical {
     }
 
     // ---------------------------------------------------------------------------------------
+    // Table VALUE position: `{ * uint => hexid }`, the value written as lowercase hex TEXT. The
+    // value leg is off the canonical sort path (a map sorts by its keys) but on the write path, so
+    // it is the position a key-only fix would leave behind.
+    // ---------------------------------------------------------------------------------------
+
+    #[test]
+    fn table_custom_value_byte_exact() {
+        // [ { 2(two-byte key head): "cafe"(one-byte text head), 1: "f00d" } ] with a non-minimal
+        // array head and a non-minimal map head. The value is decoded bytes in memory and hex TEXT
+        // on the wire, so byte-exactness needs the VALUE sidecar — keyed by the entry's uint key,
+        // not by the value — to ride back through `write_hex_key`.
+        let wire = bytes("9801 b802 190002 780463616665 01 6466303064");
+        let v = ValueTableHolder::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.table.len(), 2);
+        assert_eq!(v.table.get(&2).cloned(), Some(bytes("cafe")));
+        assert_eq!(v.table.get(&1).cloned(), Some(bytes("f00d")));
+        assert_eq!(v.to_cbor_bytes(), wire, "byte-exact table-value round-trip");
+    }
+
+    #[test]
+    fn table_canonical_reminimizes_custom_written_values() {
+        // Canonical reorders by the KEY bytes (`01` before `02`) and re-minimizes every head —
+        // including the head the custom VALUE writer emits, since `force_canonical` reaches
+        // `write_hex_key` as its trailing argument. So the 1-byte text head recorded for "cafe"
+        // collapses to the inline head, which a value leg that ignored `force_canonical` would not
+        // do.
+        let wire = bytes("9801 b802 190002 780463616665 01 6466303064");
+        let v = ValueTableHolder::from_cbor_bytes(&wire).unwrap();
+        let canonical = bytes("81 a2 01 6466303064 02 6463616665");
+        assert_eq!(
+            v.to_canonical_cbor_bytes(),
+            canonical,
+            "canonical re-minimizes the custom-written value heads and orders by key"
+        );
+        let reparsed = ValueTableHolder::from_cbor_bytes(&canonical).unwrap();
+        assert_eq!(reparsed.to_cbor_bytes(), canonical, "canonical re-parse round-trips");
+        assert_eq!(
+            reparsed.to_canonical_cbor_bytes(),
+            canonical,
+            "canonical output is a fixed point"
+        );
+    }
+
+    #[test]
+    fn table_custom_value_deserialize_rejects_default_shape() {
+        // The DEFAULT writer for a `hexid` value emits a CBOR byte string; the custom reader wants
+        // TEXT. So a value leg that reverted to the default writer fails the round-trip outright
+        // rather than differing cosmetically. The control isolates the position as the variable.
+        assert!(
+            ValueTableHolder::from_cbor_bytes(&bytes("81 a1 01 42cafe")).is_err(),
+            "the default writer's byte-string shape is rejected in the table VALUE range"
+        );
+        assert!(
+            ValueTableHolder::from_cbor_bytes(&bytes("81 a1 01 6463616665")).is_ok(),
+            "control: the custom writer's own hex-TEXT shape parses"
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Open struct-map rest row whose key domain alias carries the custom pair — the SHIPPED
     // open-struct-map feature's exposure to the same scratch-buffer call site (its canonical merge).
     // ---------------------------------------------------------------------------------------

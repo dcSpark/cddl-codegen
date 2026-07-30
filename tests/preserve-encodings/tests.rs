@@ -1608,6 +1608,151 @@ mod tests {
         assert_eq!(back.hexed, vec![0xBA, 0xAD, 0xD0, 0x0D]);
     }
 
+    // A table's KEY domain and VALUE range are the two positions a type-level custom pair reaches
+    // that no struct field does: both go through the table loop rather than a record field's
+    // config. `hex_table_str` writes bytes as hex TEXT, which the default `bytes` writer never
+    // produces and `read_hex_table_string` refuses, so a custom fn dropped in either position is a
+    // round-trip FAILURE below rather than a cosmetic difference. Every head width here is
+    // non-minimal in at least one sweep cell, so the equality is a fidelity assertion: the widths
+    // ride the per-entry sidecars THROUGH the custom fns and back.
+    #[test]
+    fn custom_table_positions() {
+        let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
+        let str_encodings = vec![
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Len(Sz::One),
+            StringLenSz::Indefinite(vec![(2, Sz::Two), (2, Sz::One)]),
+        ];
+        for def_enc in &def_encodings {
+            for str_enc in &str_encodings {
+                let irregular_bytes = vec![
+                    arr_sz(2, *def_enc),
+                        // keyed: { * hex_table_str => uint } — the KEY rides the custom pair
+                        map_sz(2, *def_enc),
+                            cbor_str_sz("cafe", str_enc.clone()), // h'CAFE' written as hex text
+                                cbor_int(1, *def_enc),
+                            cbor_str_sz("f00d", str_enc.clone()), // h'F00D'
+                                cbor_int(2, *def_enc),
+                        // valued: { * uint => hex_table_str } — the VALUE rides the custom pair
+                        map_sz(2, *def_enc),
+                            cbor_int(7, *def_enc),
+                                cbor_str_sz("baad", str_enc.clone()), // h'BAAD'
+                            cbor_int(8, *def_enc),
+                                cbor_str_sz("d00d", str_enc.clone()), // h'D00D'
+                ].into_iter().flatten().clone().collect::<Vec<u8>>();
+                let from_bytes = CustomTablePositions::from_cbor_bytes(&irregular_bytes).unwrap();
+                // the custom READER's output is what lands in the map: decoded bytes, not the text
+                assert_eq!(from_bytes.keyed.get(&vec![0xCA, 0xFE]).copied(), Some(1));
+                assert_eq!(from_bytes.valued.get(&7), Some(&vec![0xBA, 0xAD]));
+                assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);
+            }
+        }
+        // a FRESH value (no sidecar at all) must still go through the custom WRITERS in both
+        // positions — the wire below is hex TEXT, which is exactly what the custom readers demand
+        // back, so under the default `bytes` writers this round-trip errors instead of differing.
+        let mut keyed = OrderedHashMap::new();
+        keyed.insert(vec![0xCA, 0xFEu8], 1u64);
+        let mut valued = OrderedHashMap::new();
+        valued.insert(7u64, vec![0xBA, 0xADu8]);
+        let fresh = CustomTablePositions::new(keyed, valued);
+        let fresh_bytes = fresh.to_cbor_bytes();
+        assert_eq!(
+            fresh_bytes,
+            vec![
+                arr_def(2),
+                    map_def(1),
+                        cbor_string("cafe"),
+                            cbor_int(1, Sz::Inline),
+                    map_def(1),
+                        cbor_int(7, Sz::Inline),
+                            cbor_string("baad"),
+            ].into_iter().flatten().clone().collect::<Vec<u8>>()
+        );
+        let back = CustomTablePositions::from_cbor_bytes(&fresh_bytes).unwrap();
+        assert_eq!(back.to_cbor_bytes(), fresh_bytes);
+        assert_eq!(back.keyed.get(&vec![0xCA, 0xFE]).copied(), Some(1));
+        assert_eq!(back.valued.get(&7), Some(&vec![0xBA, 0xAD]));
+    }
+
+    // The preserve sidecar SHAPE for both table positions. `*_key_encodings` and `*_value_encodings`
+    // are alike keyed by the DECODED KEY, which is what makes a custom KEY codec's two legs meet:
+    // the encoding the custom reader hands back is filed under the VALUE it decoded to, never under
+    // the wire text it consumed. Non-minimal widths on both custom-written strings keep the recorded
+    // encodings distinguishable from the `Canonical` default a missing sidecar entry would yield.
+    #[test]
+    fn custom_table_positions_sidecar_shape() {
+        use serialization::StringEncoding;
+        let wire = vec![
+            arr_sz(2, Sz::Inline),
+                map_sz(1, Sz::Inline),
+                    cbor_str_sz("cafe", StringLenSz::Len(Sz::One)), // 4-char text, 1-byte len head
+                        cbor_int(1, Sz::Inline),
+                map_sz(1, Sz::Inline),
+                    cbor_int(7, Sz::Inline),
+                        cbor_str_sz("baad", StringLenSz::Indefinite(vec![(2, Sz::Two), (2, Sz::One)])),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        let v = CustomTablePositions::from_cbor_bytes(&wire).unwrap();
+        let encs = v.encodings.as_ref().unwrap();
+        // the `get` argument pins the sidecar's KEY type (the decoded `hex_table_str`, i.e. bytes)
+        // and the annotation pins its VALUE type
+        let key_enc: Option<&StringEncoding> = encs.keyed_key_encodings.get(&vec![0xCA, 0xFE]);
+        assert_eq!(key_enc, Some(&StringEncoding::Definite(Sz::One)));
+        // the VALUE sidecar is keyed by the entry's uint KEY, not by the value's own bytes
+        let value_enc: Option<&StringEncoding> = encs.valued_value_encodings.get(&7u64);
+        assert_eq!(
+            value_enc,
+            Some(&StringEncoding::Indefinite(vec![(2, Sz::Two), (2, Sz::One)]))
+        );
+        assert_eq!(v.to_cbor_bytes(), wire);
+    }
+
+    // The reader agrees with the writer in both positions: the bytes the DEFAULT `bytes` writer
+    // would emit (a CBOR byte string) are REJECTED, so a custom writer dropped from either the key
+    // domain or the value range cannot go unnoticed as a merely-cosmetic difference. The control
+    // isolates the position as the variable — the same shapes with hex TEXT parse.
+    #[test]
+    fn custom_table_positions_reject_default_shape() {
+        let custom_shaped = vec![
+            arr_def(2),
+                map_def(1),
+                    cbor_string("cafe"),
+                        cbor_int(1, Sz::Inline),
+                map_def(1),
+                    cbor_int(7, Sz::Inline),
+                        cbor_string("baad"),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        assert!(
+            CustomTablePositions::from_cbor_bytes(&custom_shaped).is_ok(),
+            "control: the custom writers' own hex-TEXT shape parses"
+        );
+        let default_shaped_key = vec![
+            arr_def(2),
+                map_def(1),
+                    cbor_bytes_sz(vec![0xCA, 0xFE], StringLenSz::Len(Sz::Inline)),
+                        cbor_int(1, Sz::Inline),
+                map_def(1),
+                    cbor_int(7, Sz::Inline),
+                        cbor_string("baad"),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        assert!(
+            CustomTablePositions::from_cbor_bytes(&default_shaped_key).is_err(),
+            "the custom reader must reject the default writer's shape in the table KEY domain"
+        );
+        let default_shaped_value = vec![
+            arr_def(2),
+                map_def(1),
+                    cbor_string("cafe"),
+                        cbor_int(1, Sz::Inline),
+                map_def(1),
+                    cbor_int(7, Sz::Inline),
+                        cbor_bytes_sz(vec![0xBA, 0xAD], StringLenSz::Len(Sz::Inline)),
+        ].into_iter().flatten().clone().collect::<Vec<u8>>();
+        assert!(
+            CustomTablePositions::from_cbor_bytes(&default_shaped_value).is_err(),
+            "the custom reader must reject the default writer's shape in the table VALUE range"
+        );
+    }
+
     #[test]
     fn wrapper_table() {
         let def_encodings = vec![Sz::Inline, Sz::One, Sz::Two, Sz::Four, Sz::Eight];
