@@ -4099,6 +4099,111 @@ fn declared_spelling_cross_scope_encoding_crate_compiles() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// The multi-scope half of the declared-spelling rule at member deserialize CALL TARGETS COMPILES:
+/// with a directory input, an alias declared in module `a` and referred to by a record in module `b`
+/// is CALLED by its declared name from `b/serialization.rs`, and that name must be in scope there.
+///
+/// The direction that needs proving is the one the change creates: before it, `b` named the alias's
+/// TARGET (`Credential::deserialize`, `Hash::from_raw_bytes`) and `mark_refs` imported both idents
+/// into `b`, which is why the target import existed at all. Afterwards the target import goes
+/// unused and `import_prune` drops it — so the surviving import must be the one the call now names,
+/// and getting that backwards is E0412/E0433 rather than a source diff. Asserted on the import LINE
+/// too, so a pass cannot come from over-importing.
+///
+/// Covers both call-target families that can cross a scope: a nominal record (`T::deserialize`) and
+/// a raw-bytes type (`T::from_raw_bytes`). The raw-bytes rule is externally defined, so the crate
+/// carries a hand-written definition in its non-generated root — the same shape the
+/// `external_rust_raw_bytes_def` integration cell uses. `--wasm=false` for the same reason as the
+/// encoding-struct cell above. Tier: check.ts `local`.
+#[test]
+fn declared_spelling_cross_scope_call_target_crate_compiles() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_declspell_calltarget_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let input = scratch.join("input");
+    std::fs::create_dir_all(&input).unwrap();
+    std::fs::write(input.join("lib.cddl"), "rt = [uint]\n").unwrap();
+    std::fs::write(
+        input.join("a.cddl"),
+        "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n\
+         script_hash = hash\n\
+         credential = [idx: uint]\n\
+         stake_credential = credential\n",
+    )
+    .unwrap();
+    std::fs::write(
+        input.join("b.cddl"),
+        "holder = [sc: stake_credential, sh: script_hash]\n",
+    )
+    .unwrap();
+    let out = scratch.join("out");
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--preserve-encodings=true")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "cross-scope generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    let b_ser = std::fs::read_to_string(out.join("rust/src/generated/b/serialization.rs")).unwrap();
+    assert!(
+        b_ser.contains("StakeCredential::deserialize(raw)")
+            && b_ser.contains("ScriptHash::from_raw_bytes(&bytes)"),
+        "scope `b`'s call targets must name scope `a`'s aliases as declared:\n{b_ser}"
+    );
+    let b_mod = std::fs::read_to_string(out.join("rust/src/generated/b/mod.rs")).unwrap();
+    assert!(
+        b_mod.contains("use crate::generated::a::{ScriptHash, StakeCredential};"),
+        "scope `b`'s import must be exactly the DECLARED idents its call targets now name — the \
+         structural targets' imports become unused and are pruned:\n{b_mod}"
+    );
+
+    // The raw-bytes rule is externally defined; supply it in the hand-owned crate root so the
+    // generated glue's `pub use crate::Hash;` resolves.
+    let lib_rs = out.join("rust/src/lib.rs");
+    let mut root = std::fs::read_to_string(&lib_rs).unwrap();
+    root.push_str("\npub mod raw_bytes_defs;\npub use raw_bytes_defs::Hash;\n");
+    std::fs::write(&lib_rs, root).unwrap();
+    std::fs::write(
+        out.join("rust/src/raw_bytes_defs.rs"),
+        "use crate::generated::error::DeserializeError;\n\
+         use crate::generated::serialization::RawBytesEncoding;\n\
+         #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]\n\
+         pub struct Hash(pub Vec<u8>);\n\
+         impl RawBytesEncoding for Hash {\n\
+         \x20   fn to_raw_bytes(&self) -> &[u8] { &self.0 }\n\
+         \x20   fn from_raw_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> { Ok(Self(bytes.to_vec())) }\n\
+         }\n",
+    )
+    .unwrap();
+
+    let target_dir = scratch.join("target");
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "the cross-scope generated rust crate failed to compile — a declared call target in \
+         `b/serialization.rs` naming an ident from scope `a` is not routed into scope `b`:\n{}\n{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// The rust crate's c-style-enum `#[wasm_bindgen]` is gated behind the `--rust-wasm-feature` cargo
 /// feature (default `wasm`), so the rust crate compiles STANDALONE — feature off — without the
 /// optional wasm-bindgen dependency (the request this feature closes). Asserts (a) the emitted
