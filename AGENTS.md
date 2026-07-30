@@ -141,9 +141,12 @@ changing the *runtime behaviour* of generated code usually means editing `static
   workarounds (newline-smuggled attrs, the `derivative)]` hack) stay isolated — the real fix is
   upstream; no `Ctx { types, cli }` param-pair struct (borrow-splitting `&mut GenerationScope` +
   `&IntermediateTypes` gets harder behind one struct); `api::with_types` stays one linear
-  narrative; `print!` progress logging stays (humans and tests consume it as-is); the wasm
-  wrapper-name collision detectors stay parallel per-kind siblings rather than one generic
-  detector (their message texts differ meaningfully and are pinned) — the anticipated third
+  narrative; `print!` progress logging stays (humans and tests consume it as-is — WHETHER a message
+  prints is level-gated by `src/log.rs`'s six macros, default `warn`, diagnostics to stderr and run
+  output to stdout; what the ruling protects is the message TEXT, so no prefixes, no level tags and
+  no `log`/`tracing` crate); the wasm wrapper-name collision detectors stay parallel per-kind
+  siblings rather than one generic detector (their message texts differ meaningfully and are
+  pinned) — the anticipated third
   container kind (`@duplicates reject` sets) appeared 2026-07-20 and was added as exactly such a
   sibling, and the fourth (`@duplicates preserve` pair-map tables) followed the same day as
   `preserve_pair_map_wrapper_name_collisions`; a fifth kind gets the same treatment. Two

@@ -109,8 +109,8 @@ Four things are worth reading off it before the sections that explain them:
   generating `cip25` against `chain`'s runtime, and the run states that acceptance back — see
   [`flavor-from`, when you know](#flavor-from-when-you-know).
 - **One value is deliberately absent.** `static-dir` names where *this machine* keeps cddl-codegen's
-  own hand-written runtime, which is not a property a committed file can state. It is the [one
-  generation flag `--config` accepts](#the-one-exception---static-dir) instead.
+  own hand-written runtime, which is not a property a committed file can state. It is [one of the two
+  generation flags `--config` accepts](#the-two-exceptions---static-dir-and---verbosity) instead.
 
 Running it is one command, and [seeing what it would do](#seeing-what-a-config-does-without-running-it)
 is the same one with a flag:
@@ -973,6 +973,39 @@ negative; omitting the key, or setting it to `true`, leaves
 
 `deserialize-depth-limit` is a TOML integer.
 
+## Verbosity is per crate
+
+`verbosity` is an ordinary key: `[defaults]`, a `[profiles.<name>]` table or one `[crates.<name>]`
+table, merged by the same precedence as every other value.
+
+```toml
+[defaults]
+verbosity = "warn"
+
+[crates.chain]
+verbosity = "debug"
+```
+
+**The per-crate case is why the key exists.** A multi-crate run's output is every crate's output in
+sequence, so the level you want while debugging one crate is not the level you want for the other
+five — and a run-global switch cannot say that. A `[crates.<name>]` value raises the level for that
+crate alone; the rest stay at whatever `[defaults]` says. The five level names, and the
+stdout/stderr split that decides where each message lands, are under
+[`--verbosity`](command_line_flags.mdx).
+
+A command-line `--verbosity` overrides the key for **every** crate in the run — it is one of the
+[two generation flags `--config` accepts](#the-two-exceptions---static-dir-and---verbosity).
+
+**One asymmetry, stated here rather than left to be discovered.** A `[profiles.*]` or
+`[crates.*]` value governs only that crate's own generation. The run-level lines — the `[runtime]`
+notes, each crate's `[name] generating from … into …` banner, the `[converge]` re-run notes and the
+residual convergence warning — follow `[defaults]` (or the command line) instead. This is the
+reading that follows from the merge model rather than a special case: `[defaults]` is the value that
+reaches every crate, and the run is what contains every crate. So `[crates.chain] verbosity =
+"error"` silences `chain`'s own output while `chain` is still announced — a quiet crate that is not
+even named would cost a multi-crate log its only orientation — and `[defaults] verbosity = "error"`
+silences the announcements too.
+
 ## What the config refuses
 
 The config file is checked before **any** crate generates, so a mistake in the last crate's table
@@ -1050,7 +1083,7 @@ command-line selector; the config file is the edit loop.
 Selecting a subset generates only the crates you name. Their order on the command line does not
 matter — the config decides the generation order.
 
-### The one exception: `--static-dir`
+### The two exceptions: `--static-dir` and `--verbosity`
 
 `--static-dir` (short `-s`) is accepted alongside `--config` and applies to **every crate in the
 run**:
@@ -1073,6 +1106,14 @@ Unlike every key inside the config, the command-line value is **not** resolved a
 file's directory: it did not come from the config file, so a relative `--static-dir vendor/static`
 means what it means on any other command line — relative to the current directory. Prefer an
 absolute path in a script that may run from anywhere.
+
+`--verbosity` (short `-v`) is the other, and it is exempt on the same criterion: there is exactly one
+answer to "which crate does it apply to", namely all of them — including the run-level lines a
+[`[crates.*]` value cannot move](#verbosity-is-per-crate). What differs is only why the command line
+is the right place for it. The key is the project's committed default and the flag is this
+invocation's override of it, so — as with `static-dir` — the override winning silently is the
+intended use rather than a conflict to report, and `--print-flags` lists the overriding value with
+the provenance `command line`.
 
 ## Seeing what a config does, without running it
 
@@ -1313,9 +1354,9 @@ to migrate should count on keeping one:
 - **Opt-in passes that generate a second spec set into an existing crate.** CML's `byron` pass
   targets the same output and the same `lib-name` as `multi-era` from a different spec directory. Two
   crate tables cannot share a library name — that is a hard error — so this stays a flag invocation.
-  It cannot be *added* to the config command either, since the only generation flag `--config`
-  accepts is [`--static-dir`](#the-one-exception---static-dir); it stays its own `cddl-codegen` call
-  in the script, beside the `--config` one.
+  It cannot be *added* to the config command either, since the only generation flags `--config`
+  accepts are [`--static-dir` and `--verbosity`](#the-two-exceptions---static-dir-and---verbosity);
+  it stays its own `cddl-codegen` call in the script, beside the `--config` one.
 
 What the config removes from the script is the part that was duplicated and unchecked: the flag
 bundles, the cross-crate paths that two invocations had to agree about, and the ordering comment
