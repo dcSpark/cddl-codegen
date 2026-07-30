@@ -1797,9 +1797,8 @@ Two gates mirror the matrix legs:
   own scratch target, its own skip-ledger instances, and vacuity floors pinned from actuals. The corpus carries only plain
   accept vectors at HEAD (the enforcement / over-acceptance axes are matrix-owned), so the
   constraint-reason and over-acceptance machinery stays armed but idle (the over-acceptance
-  completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds the native-float rows
-  (`homogeneous_array.floats`' `[* float64]` plus `optional_fixed_float`'s two fixed-float rows —
-  the `preserve_encodings_supports_floats` gap) and the by-design `dsl_ignore.ignored` row
+  completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds only the by-design
+  `dsl_ignore.ignored` row
   (`@ignore` under `--preserve-encodings` is a contract rejection, so its stale-entry guard is a
   regression tripwire), the
   json/wasm surface ledgers hold this gate's corpus residents (listed in § "json/wasm surface
@@ -2851,10 +2850,10 @@ classes already defined in `mod.rs`, so it introduces no boundary API for the di
 parse), so a future emission surface can't silently escape the differential — it caught
 `key_demand_assertions.rs`'s widening to bare roots exactly this way before the file was
 classified. One (profile, input)
-pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve, tests/core) — a float member aborts
-generation under `--preserve-encodings` (issue #205, the `preserve_encodings_supports_floats` stub)
-— with a resurfaced guard both directions (a listed pair that generates fails as "gap closed —
-remove the pin"; an unlisted abort fails normally).
+pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve, tests/core) — `#6.11(uint / text)`, a CBOR
+tag over a type-choice, hits the tagged-enum `assert!(!cli.preserve_encodings)` in
+`generation/enums.rs` — with a resurfaced guard both directions (a listed pair that generates fails
+as "gap closed — remove the pin"; an unlisted abort fails normally).
 
 Findings reconcile against a `PARITY_EXEMPT` ledger keyed `(profile, input, item, reason)`, the same
 `WASM_MATRIX_SKIP` idiom: a finding matching an entry is expected (no failure); an entry matching no

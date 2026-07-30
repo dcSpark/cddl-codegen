@@ -168,6 +168,8 @@ Requires `--preserve-encodings` (the canonical toggle is emitted on the preserve
 
 Canonical form follows RFC 7049 §3.9 "Canonical CBOR": definite, minimal-length encodings, and map keys sorted length-first, then bytewise. Note this key ordering differs from RFC 8949 §4.2.1 "deterministic encoding" (pure bytewise-lexicographic) whenever a longer-encoded key is bytewise smaller — e.g. the uint key `256` sorts *after* the text key `"a"` under RFC 7049 but *before* it under RFC 8949.
 
+For **floats**, "minimal-length" means the shortest of the three float head widths (`0xf9`/`0xfa`/`0xfb`, RFC 8949 §3.3) that still represents the value exactly, so `1.0` canonicalizes to `0xf9 0x3c00` from any width while `1.1` stays a double. NaN is the one case where canonicalizing changes the VALUE and not just the head: any NaN, carrying any payload, at any width, canonicalizes to the zero-payload quiet NaN `0xf9 0x7e00` (RFC 8949 §4.2.2). A non-canonical write preserves the payload instead, so a payload-carrying NaN round-trips byte-exactly through `to_cbor_bytes()` and collapses only through `to_canonical_cbor_bytes()`.
+
 Possible values: true, false
 ```bash
 cddl-codegen --input=example --output=export --preserve-encodings true --canonical-form true

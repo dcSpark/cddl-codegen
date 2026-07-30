@@ -888,7 +888,7 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
@@ -913,7 +913,7 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
@@ -933,7 +933,7 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
@@ -1018,8 +1018,8 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
-            "status": "unsupported"
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           }
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
@@ -1078,8 +1078,8 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
-            "status": "unsupported"
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           }
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
@@ -1178,8 +1178,8 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
-            "status": "unsupported"
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           }
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 11 foreign spec-derived vector(s); ruby=ok rust=ok",
@@ -1238,8 +1238,8 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
-            "status": "unsupported"
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           }
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 12 foreign spec-derived vector(s); ruby=ok rust=ok",
@@ -1483,8 +1483,8 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
-            "status": "unsupported"
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           }
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 2 foreign spec-derived vector(s); ruby=ok rust=ok",

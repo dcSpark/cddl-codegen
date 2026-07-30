@@ -12,11 +12,16 @@ sidebar_position: 3
   present/absent state is stored as a `bool` presence field (see
   [Output format](output_format#optional-fixed-value-members)); covers bool, null, uint, nint,
   text, and float (`[x: uint, ? f: 2.5, label: text]`) fixed values in both array and map
-  representations (a fixed float member — optional or mandatory — is unavailable under
-  `--preserve-encodings`, the general native-float limitation there)
+  representations
 * `int` (signed integer, `uint / nint`) - maps to a generated `Int` enum covering the full CBOR
   integer range, in any position: as a member, an array element, a table value, or a bare
   top-level alias (`x = int`, `x = bytes .cbor int`)
+* Floats - `float`/`float64` map to Rust `f64`, `float32` to `f32`. The CBOR head width
+  (`0xf9`/`0xfa`/`0xfb`) is ordinary encoding data under `--preserve-encodings` and round-trips like
+  any other argument width, in every position. One caveat follows from the member type rather than
+  the encoding: because `float32` narrows to `f32`, a wire *double* that is not exactly representable
+  in single precision loses precision on decode (`1.1` at an `0xfb` head comes back as the nearest
+  `f32`, so its re-encode differs) — declare the member `float64` if the wire may carry full doubles
 * Array values - `[uint]`
 * Table types as members - `foo = ( x: { * a => b } )`
 * Inline groups at root level - `foo = ( a: uint, b: uint)`
@@ -122,7 +127,7 @@ Comparisons and hashing are unchanged: the wrapper derives `PartialEq/Eq/Partial
 
 A rule that is a plain reference to another type (`foo = bar`) or a wire-transparent wrapper (`basic = (uint)`, where parentheses have no CBOR effect) generates a transparent `pub type Foo = ...` alias. Use `; @newtype` to opt into a `pub struct` wrapper instead (see [comment DSL](comment_dsl#newtype)).
 
-A top-level **range** rule whose window does not collapse exactly onto a Rust primitive width — literal-headed (`c = -10..-3`) or typename-headed (`bounded = int .le 10`) — generates a newtype wrapper whose constructor and deserializer enforce the window (a transparent alias has nothing to hang the check on). An exact collapse (`u8ish = 0..255`) stays a `pub type` alias. Float-typed range windows are enforced the same way: a float range (`c = 0.5..10.5`, exclusive `0.5...10.5`, or a control form like `float64 .lt 10.5`) wraps into a newtype whose constructor and deserializer enforce the window with a NaN-safe check (NaN is always rejected), and a tagged float range writes/requires its tag. Boundaries: `.ne` over a float and a decimal bound on an integer-primitive head (`uint .le 10.5`) are rejected at generation time with a clear error (there is no principled single-value float exclusion, and silently flooring a decimal onto an int head would mis-enforce), and float bounds are not available under `--preserve-encodings` (native floats as members are unimplemented there).
+A top-level **range** rule whose window does not collapse exactly onto a Rust primitive width — literal-headed (`c = -10..-3`) or typename-headed (`bounded = int .le 10`) — generates a newtype wrapper whose constructor and deserializer enforce the window (a transparent alias has nothing to hang the check on). An exact collapse (`u8ish = 0..255`) stays a `pub type` alias. Float-typed range windows are enforced the same way: a float range (`c = 0.5..10.5`, exclusive `0.5...10.5`, or a control form like `float64 .lt 10.5`) wraps into a newtype whose constructor and deserializer enforce the window with a NaN-safe check (NaN is always rejected), and a tagged float range writes/requires its tag. Boundaries: `.ne` over a float and a decimal bound on an integer-primitive head (`uint .le 10.5`) are rejected at generation time with a clear error (there is no principled single-value float exclusion, and silently flooring a decimal onto an int head would mis-enforce). Under `--preserve-encodings` a float window is enforced on the same value the default profile checks — an `f32` member's window is checked after the read narrows to `f32` — so accept/reject does not vary by profile.
 
 A top-level single-type **tag** rule is the exception: it always generates the tag-writing/tag-checking newtype wrapper (`pub struct Tagged(pub(crate) String)` whose serialize writes `write_tag(42)` and whose deserialize rejects a wrong tag with `TagMismatch`). This holds for *every* single-type inner — a primitive or named type (`tagged = #6.42(text)`, `uri = #6.32(tstr)`), a `bytes .cbor T` wrapper (`foo_bytes = #6.20(bytes .cbor foo)`), a `.default`-carrying inner (`#6.42(uint .default 5)` — the default has no meaning on an always-present standalone value and is dropped), and a ranged inner (`#6.42(uint .le 255)` or the literal-headed `#6.5(3..10)`, whether or not the range collapses exactly onto a rust primitive). A transparent `pub type` alias cannot carry a custom serialize impl, so an alias would silently drop the tag from that type's own standalone `to/from_cbor_bytes` API — a CBOR conformance bug. `@newtype` is therefore redundant (though harmless) on a tag rule. Tag rules whose body is a group (`rational = #6.30([...])`) already generate a struct that writes the tag and are unaffected.
 

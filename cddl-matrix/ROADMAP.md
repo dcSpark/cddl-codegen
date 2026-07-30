@@ -13,7 +13,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->7 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->61 `class="constraint"` enforcement reject vectors over 43 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — the widened-occurrence-marker table
@@ -343,9 +343,10 @@ ledgered here (that's what the probe/gate error messages point at).
   axis and the position axis are separate cells, but they share one blocker and one reason to be
   enumerated at all, said here once: the result is known to be NON-uniform (probed kinds keep
   behaving differently from `uint`), so these are rows with a known payoff rather than a
-  speculative sweep — and FLOAT is blocked in both positions by the same preserve-mode float stub
-  (`stub_preserve_encodings_supports_floats`, plus `tests/corpus/optional_fixed_float.cddl`), so the
-  float half of each waits on that stub retiring, which is its reopening signal. The kind axis has
+  speculative sweep. (The FLOAT half of each used to wait on the preserve-mode float stub; that
+  stub is retired — floats preserve their head width in every position — so the float rows are
+  buildable now, with `tests/corpus/optional_fixed_float.cddl` as the member-position precedent.)
+  The kind axis has
   a second dimension the cells must spell deliberately: the DISPATCH PATH. A choice's arms reach
   either the type-match dispatch or (when arms share a CBOR major type) the brute-force
   try-each-arm path, and the two emit independently — the bool/null arm kinds were fixed on the
@@ -594,28 +595,30 @@ ledgered here (that's what the probe/gate error messages point at).
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
-- `float16` / float-choice aliases unsupported while `float32/64` work (the alias rows still
-  panic generation, per the generated Limitations table); generics on plain groups likewise still
-  panic. The historical blocker rationale ("no native Rust f16") is RETIRED as of
-  2026-07-23: the dcSpark `cbor_event` fork the main crate now pins ships lossless software
-  f16/f32↔f64 conversion plus width-carrying endpoints (`float_sz` / `write_float_sz` /
-  `smallest_float_sz`, NaN payloads preserved) — already exercised by the `AnyCbor` runtime type's
-  property layer (`src/tests/any_cbor_tests.rs`), and the generated-crate template now git-deps that
-  same fork rev (the `_sz` float endpoints are present in generated crates). The remaining float work
-  is entirely generator-side: the preserve-mode `unimplemented!` stubs in generation/deserialize.rs
-  and the `float16`→`F32` alias folding in parsing. Under
-  `--preserve-encodings` the float gap is positional, and the emission axis
-  records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
-  (`emission.preserve = supported`, but compile-only evidence — the synthetic embed holder panics
-  generation, so floats **as members** are the broken shape), while the choice-carrying prelude types
-  `number` / `time` panic outright (`emission.preserve = unsupported`). An OPTIONAL fixed FLOAT member
-  (`[? f: 2.5, …]`, `{? amount: 1.5}`) rides this same class: default and json generate the `bool`
-  presence field (`tests/corpus/optional_fixed_float.cddl`, hand vectors in `tests/core/tests.rs`'s
-  `opt_fixed_member_float`), but `--preserve-encodings` aborts at the float deserialize stub. Its
-  preserve leg is ledgered in `feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`,
-  `feature_corpus_roundtrips_nondefault_profiles`'s `SKIP`, and the decode replay `PRESERVE_SKIP`.
-  Landing the `preserve_encodings_supports_floats` encoding-var work retires all these preserve-float
-  member gaps together.
+- **`float16` / the float-CHOICE prelude names panic generation in EVERY position** — the only float
+  gap left, and it is a REGISTRATION gap, not a float gap: `float16`, `float16-32` and `float32-64`
+  are the three prelude names `cddl_prelude` routes to the alias system that the alias table
+  (`IntermediateTypes`'s prelude `insert_alias` block) never registers, so every use — top-level
+  `x = float16` and member `[x: float16]` alike — reaches the `unreachable!("… should be handled by
+  the alias system instead")` in `utils.rs`. `float`/`float32`/`float64` ARE registered and work.
+  (`ident_to_primitive` already maps `float16` → `F32`, which is why the gap reads like a
+  member-position success it is not — probe it, do not infer it.) The remedy is three
+  `insert_alias` calls: `float16` and `float16-32` → `F32`, `float32-64` → `F64`, each width
+  exactly representable in the chosen Rust type; generics on plain groups likewise still panic, on
+  their own unrelated path. What this now buys that it would not have before: with the head width
+  preserved, a `float16`-typed field decoded from an `f9` head re-encodes as `f9`, so the alias no
+  longer implies silently widening every value to `fb` on write. The historical blocker rationale ("no
+  native Rust f16") was retired 2026-07-23 when the main crate pinned the dcSpark `cbor_event` fork
+  (lossless software f16/f32↔f64 conversion plus the width-carrying `float_sz` / `write_float_sz` /
+  `smallest_float_sz` endpoints, NaN payloads preserved), and the preserve-mode half is now
+  DELIVERED: a native float's head width is an `Option<cbor_event::Sz>` encoding variable read by
+  `float_sz()` and written by the `write_float` runtime helper, so floats work in every position
+  under `--preserve-encodings` — member, element, table value, fixed value (mandatory and optional),
+  range newtype, `bytes .cbor` payload, and the nullable-Special `float64 / null`. The
+  choice-carrying prelude types `number` / `time` generate under preserve too. Coverage: the
+  `golden_hex_preserve` / `golden_hex_canonical` float KATs (RFC 8949 Appendix A vectors at all three
+  widths, plus the §4.2.2 canonical-NaN rule), `preserve_encodings_supports_floats`, and the float
+  rows of the decode-conformance replays, which now replay rather than sitting in `PRESERVE_SKIP`.
 - **A CBOR tag over a type-choice enum is unimplemented under `--preserve-encodings`** — a non-float
   preserve gap: `t = #6.10(int / tstr)` panics generation at the tagged-enum serialize path's explicit
   `assert!(!cli.preserve_encodings)` (its own `TODO: how to even store these?` — the per-variant encoding

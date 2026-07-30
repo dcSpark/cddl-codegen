@@ -145,23 +145,14 @@ const COMPILE_SKIP: &[&str] = &["dsl_custom", "dsl_copy", "extern_generic_raw_by
 /// `wasm_parity_tests::EXPECTED_GENERATION_FAIL`): a listed pair that now GENERATES fails the gate
 /// as "gap closed — remove the pin"; an unlisted generation failure fails as a normal generation
 /// failure; and a listed stem absent from `tests/corpus` fails as a stale pin.
-const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[
-    (
-        "optional_fixed_float",
-        "preserve",
-        "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
-         deserialize stub (\"preserve_encodings is not implemented for float\" — the \
-         preserve_encodings_supports_floats stub class); default/json generate the `bool` presence field",
-    ),
-    (
-        "dsl_ignore",
-        "preserve",
-        "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
+const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
+    "dsl_ignore",
+    "preserve",
+    "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
          byte-exact round-trip contract cannot hold for a type that drops unknown entries — the \
          rejection points at capture and at @custom_serialize/@custom_deserialize); default/json \
          generate the closed-struct surface",
-    ),
-];
+)];
 
 /// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry pairs
 /// with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact `E####`,
@@ -5891,19 +5882,56 @@ fn corpus_special_map_key_supported() {
     );
 }
 
-/// Float fields under `--preserve-encodings` abort generation (`unimplemented!` at the
-/// generation/deserialize.rs float arm), which is why no corpus fixture can hold a float in a
-/// struct field (the corpus runs every fixture under the preserve profile) and why the float
-/// element wire path has no executed preserve/canonical coverage.
+/// A native float under `--preserve-encodings` carries its CBOR head WIDTH (`0xf9`/`0xfa`/`0xfb`,
+/// RFC 8949 §3.3) as an encoding variable, exactly as an integer carries its argument width. The
+/// three properties that makes concrete, asserted here on the COMMITTED preserve snapshots so none
+/// can be silently dropped by an unreviewed re-bless:
+///   * the width has a HOME — an `Option<cbor_event::Sz>` encoding field per float member;
+///   * decode CAPTURES it — `float_sz()` (the `(f64, Sz)` reader), never the width-discarding
+///     `float()`, which is what the default profile keeps using;
+///   * encode CONSULTS it — through the `write_float` runtime helper, which is also the single place
+///     that widens a recorded width the held value has outgrown (rather than erroring
+///     `InvalidLenPassed`) and that normalizes a NaN payload away under `--canonical-form`
+///     (RFC 8949 §4.2.2).
+///
+/// A snapshot assertion cannot see whether those bytes are RIGHT, so the executed proofs live
+/// elsewhere: the `golden_hex_preserve` / `golden_hex_canonical` KAT suites (hand-derived RFC 8949
+/// Appendix A vectors at all three widths, including the canonical-NaN rule), this fixture's own
+/// emit-tests round-trip under `feature_corpus_compiles` — whose `widen_float` encoding-fidelity
+/// mutation class now reaches native float heads, not just `AnyCbor`'s — and the float rows of
+/// `decode_conformance_replay` / `corpus_decode_replay`, which replay under preserve rather than
+/// sitting in a `PRESERVE_SKIP` ledger.
 #[test]
-#[ignore = "float --preserve-encodings is unimplemented: any float struct field aborts generation under the flag (generation/deserialize.rs 'preserve_encodings is not implemented for float'). Implementing it unblocks float corpus fixtures (see homogeneous_array.cddl's comment) and float KAT vectors."]
 fn preserve_encodings_supports_floats() {
-    unimplemented!(
-        "a float struct field + --preserve-encodings=true panics generation. Implement float \
-         encoding preservation (half/single/double header forms are the preserve axis; canonical \
-         is smallest-form-that-round-trips per RFC 8949 §4.2.1), add a float field to a preserve \
-         fixture + hand-derived golden-hex vectors (major type 7 heads 0xf9/0xfa/0xfb), then \
-         assert here and remove #[ignore]."
+    let snap = |file: &str| {
+        std::fs::read_to_string(format!(
+            "tests/corpus/snapshots/optional_fixed_float/preserve__rust__src__generated__{file}.snap"
+        ))
+        .unwrap_or_else(|_| {
+            panic!(
+                "optional_fixed_float has no preserve {file} snapshot — floats abort generation \
+                 under --preserve-encodings again"
+            )
+        })
+    };
+    let encs = snap("cbor_encodings.rs");
+    assert!(
+        encs.contains("pub f_encoding: Option<cbor_event::Sz>"),
+        "the fixed-float member has no width encoding field — a float's head width has nowhere to live"
+    );
+    let ser = snap("serialization.rs");
+    assert!(
+        ser.contains("let (f_value, f_encoding) = raw.float_sz()?;"),
+        "the preserve deserializer no longer reads the float through `float_sz()` — the head width \
+         is being discarded at decode, so an f16 input would re-encode as an f64"
+    );
+    // The runtime helper's own DEFINITION is concatenated into this file, so count CALLS as the
+    // excess over definitions rather than matching a bare name (and rather than matching an
+    // indentation-dependent literal, which the emitted call's nesting depth would break).
+    assert!(
+        ser.matches("write_float(").count() > ser.matches("pub fn write_float(").count(),
+        "the preserve serializer no longer writes the float through `write_float` — the recorded \
+         width, its outgrown-value widening, and the canonical NaN rule all live there"
     );
 }
 
@@ -7609,6 +7637,18 @@ fn ir_conformance_corpus() {
              `cbor_nested_payloads` in tests/preserve-encodings carries the preserve round trip). \
              Repro + upstream steps: \
              draft/ruby-cddl-inline-composite-control-arg-gap.md",
+        ),
+        (
+            "homogeneous_array",
+            "float_holder",
+            "gem VALIDATOR gap (cddl 0.12.14): the width-specific prelude names `float32`/`float64` \
+             match NO cbor float at any wire width, while `float` and `float16` match correctly — so \
+             this rule's spec-valid `[[0.0]]` case (`81 81 fb 00…`, a genuine #7.27 double, which the \
+             rust oracle accepts) is rejected. The gem parses the type fine; its own message prints \
+             the expected `[:prim, 7, 27]` and still fails to match, and substituting `float` for \
+             `float64` in the same spec flips the verdict to accept. The fixture's SIBLING rules \
+             (`nums`/`bools`/`bool_holder`) stay judged — this ledger is per (fixture, rule). Repro \
+             table + upstream steps: draft/ruby-cddl-float32-64-prelude-name-gap.md",
         ),
     ];
 
@@ -14397,22 +14437,13 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // `special_break()` (so a major-type-7 element/key falls through to its deserializer), letting
     // the encoding-fidelity oracle run ALL its variant classes — including the two
     // container-reframing ones (`indef_containers`/`everything`) — on those cells, fully green.
-    const SKIP: &[(&str, &str, &str)] = &[
-        (
-            "preserve",
-            "dsl_ignore",
-            "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
+    const SKIP: &[(&str, &str, &str)] = &[(
+        "preserve",
+        "dsl_ignore",
+        "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
          byte-exact round-trip contract cannot hold for a type that drops unknown entries); the \
          default/json emitted round-trip surface runs normally",
-        ),
-        (
-            "preserve",
-            "optional_fixed_float",
-            "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
-         deserialize stub (\"preserve_encodings is not implemented for float\" — the \
-         preserve_encodings_supports_floats stub class); the json leg round-trips normally",
-        ),
-    ];
+    )];
 
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
     // mirroring `feature_corpus_compiles`. Discovered empirically (see the assert below).
@@ -16344,60 +16375,13 @@ fn decode_conformance_replay() {
         return;
     }
 
-    // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. EXPECTED
-    // members are the native-float class: a float struct/element field hits the pre-existing
-    // `unimplemented!` in generation/deserialize.rs ("preserve_encodings is not implemented for float"), the same
-    // gap the `preserve_encodings_supports_floats` stub tracks. `prelude.float/float32/float64` are
-    // floats directly; `prelude.number` (int / float) and `prelude.time` (~= number) carry a float
-    // arm. A row here that starts generating+replaying cleanly under preserve is a stale entry and
-    // fails the gate (the float gap closed — unblock it and drop it from this list).
+    // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. A row here
+    // that starts generating+replaying cleanly under preserve is a stale entry and fails the gate.
+    // The native-float class that used to dominate this list (`prelude.float{,32,64}`, the float arm
+    // of `prelude.number`/`prelude.time`, `rangeop.{inclusive,exclusive}.float`,
+    // `value.number.hexfloat`) is GONE: floats carry their head width as an encoding variable and
+    // replay under preserve like every other primitive.
     const PRESERVE_SKIP: &[(&str, &str)] = &[
-        (
-            "prelude.float",
-            "native float under --preserve-encodings is unimplemented (generation/deserialize.rs float arm \
-             `unimplemented!`; see the preserve_encodings_supports_floats stub)",
-        ),
-        (
-            "prelude.float32",
-            "native float under --preserve-encodings is unimplemented (generation/deserialize.rs float arm \
-             `unimplemented!`; see the preserve_encodings_supports_floats stub)",
-        ),
-        (
-            "prelude.float64",
-            "native float under --preserve-encodings is unimplemented (generation/deserialize.rs float arm \
-             `unimplemented!`; see the preserve_encodings_supports_floats stub)",
-        ),
-        (
-            "prelude.number",
-            "`number` (int / float) carries the native-float arm that is unimplemented under \
-             --preserve-encodings (generation/deserialize.rs; see the preserve_encodings_supports_floats stub)",
-        ),
-        (
-            "prelude.time",
-            "`time` (~= number) carries the native-float arm that is unimplemented under \
-             --preserve-encodings (generation/deserialize.rs; see the preserve_encodings_supports_floats stub)",
-        ),
-        (
-            "rangeop.inclusive.float",
-            "a float-range newtype (`0.5..10.5`) wraps an f64 member, which hits the same native-float \
-             `unimplemented!` under --preserve-encodings (generation/deserialize.rs float arm; see the \
-             preserve_encodings_supports_floats stub) — default-profile decode still replays its \
-             boundary-violation reject vectors",
-        ),
-        (
-            "rangeop.exclusive.float",
-            "a float-range newtype (`0.5...10.5`) wraps an f64 member, which hits the same native-float \
-             `unimplemented!` under --preserve-encodings (generation/deserialize.rs float arm; see the \
-             preserve_encodings_supports_floats stub) — default-profile decode still replays its \
-             boundary-violation reject vectors",
-        ),
-        (
-            "value.number.hexfloat",
-            "a fixed float member (`m = [v: 0x1.8p+1]`) panics generation under --preserve-encodings \
-             (generation/deserialize.rs fixed-float deserialize arm `unimplemented!` — the same native-float class \
-             as the rangeop.*.float rows; see the preserve_encodings_supports_floats stub) — \
-             default-profile decode still replays its accept + FixedValueMismatch reject vectors",
-        ),
         // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag on a
         // TYPE-CHOICE (`t = #6.10(int / tstr)` generates a rust enum) trips an explicit
         // `assert!(!cli.preserve_encodings)` in generation/enums.rs's tagged-enum serialize path, guarding
@@ -17423,32 +17407,12 @@ fn corpus_decode_replay() {
         return;
     }
 
-    // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. The one
-    // member is `homogeneous_array.floats` (`[* float64]`): a native-float element hits the pre-existing
-    // `unimplemented!` in generation/deserialize.rs ("preserve_encodings is not implemented for float"), the same
-    // gap the `preserve_encodings_supports_floats` stub tracks and the matrix replay's PRESERVE_SKIP
-    // documents for the prelude/rangeop float rows. Default-profile decode of this row still replays.
+    // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`.
     // Stale-guarded: a row here that starts generating+replaying cleanly under preserve fails the gate.
+    // The native-float rows this list used to carry (`homogeneous_array.floats`, both
+    // `optional_fixed_float.*` rows) are GONE — floats carry their head width as an encoding variable
+    // and replay under preserve like every other primitive.
     const PRESERVE_SKIP: &[(&str, &str)] = &[
-        (
-            "homogeneous_array.floats",
-            "`[* float64]` has a native-float element that is unimplemented under --preserve-encodings \
-             (generation/deserialize.rs float arm `unimplemented!`; see the preserve_encodings_supports_floats stub) — \
-             default-profile decode still replays its accept vectors",
-        ),
-        (
-            "optional_fixed_float.opt_fixed_float_array",
-            "an optional fixed FLOAT member (`? f: 2.5`) hits the same native-float `unimplemented!` \
-             under --preserve-encodings (generation/deserialize.rs float arm; see the \
-             preserve_encodings_supports_floats stub) — default-profile decode still replays its \
-             present/absent accept vectors (the present-float instance witnesses the presence bit surviving)",
-        ),
-        (
-            "optional_fixed_float.opt_fixed_float_map",
-            "optional fixed FLOAT map values (`? amount: 1.5`, `? rate: 2.5`) hit the same native-float \
-             `unimplemented!` under --preserve-encodings (generation/deserialize.rs float arm; see the \
-             preserve_encodings_supports_floats stub) — default-profile decode still replays its accept vectors",
-        ),
         // NOT a gap — a DESIGNED rejection (the corpus twin of the matrix replay's `dsl.ignore`
         // entry; same tripwire semantics: this leg starting to generate under preserve is a
         // contract regression, not a gap closing).
