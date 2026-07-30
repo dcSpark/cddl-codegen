@@ -418,9 +418,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `value.text` |  | ✅ | ✅ | · |  |  |  | · |  |  |
 
 - Modelled `(role × feature)` cells: **65** (over 117 shape-granular containment rows).
-- Exercised by the corpus **and** modelled: **30**.
+- Exercised by the corpus **and** modelled: **31**.
 - Exercised by the corpus, modelled by **nothing**: **149** (the `·` cells).
-- Modelled but not exercised by any corpus fixture: **35**.
+- Modelled but not exercised by any corpus fixture: **34**.
 
 ## Notable findings
 
@@ -437,7 +437,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **117** — ✅ 66 covered · ➕ 24 supported-untested · ⚠️ 1 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 88
+- Corpus fixtures: 89
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

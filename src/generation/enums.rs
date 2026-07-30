@@ -367,8 +367,11 @@ impl EnumVariantInRust {
         let name = variant.name_as_var();
         match &variant.data {
             EnumVariantData::RustType(ty) => {
+                // DECLARED type (see `EncodingField::type_name`): these `type_name`s land in
+                // `Self::types`, which becomes the variant's field list beside the value field
+                // spelled from the same `ty` below.
                 let mut enc_fields = if cli.preserve_encodings {
-                    encoding_fields(types, &name, &ty.clone().resolve_aliases(), true, cli)
+                    encoding_fields(types, &name, ty, true, cli)
                 } else {
                     vec![]
                 };
@@ -425,11 +428,13 @@ impl EnumVariantInRust {
                         enc_conversion_after: "",
                         is_copy: true,
                     });
+                    // DECLARED types (see `EncodingField::type_name`) — same reason as the
+                    // `RustType` arm above.
                     for field in record.fields.iter() {
                         enc_fields.extend(encoding_fields(
                             types,
                             &field.name,
-                            &field.rust_type.clone().resolve_aliases(),
+                            &field.rust_type,
                             true,
                             cli,
                         ));

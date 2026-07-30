@@ -2447,9 +2447,9 @@ bytes differently — RFC 8949 §3.4.3 bignum tags 2/3, which `ciborium` folds i
 
 ## Declared-type spelling (`src/tests/declared_spelling_tests.rs`)
 
-The rule is that a type-DECLARATION position naming a member's type spells it as declared, keeping
-the outermost alias ident. It needs its own suite because the rule is a property of many emission
-paths at once: one
+The rule (user doc: `docs/docs/output_format.mdx` § "Type spelling at member positions") is that a
+type-DECLARATION position naming a member's type spells it as declared, keeping the outermost alias
+ident. It needs its own suite because the rule is a property of many emission paths at once: one
 function spells member types (`ConceptualRustType::for_rust_member_ct`, which keeps the alias), so
 every resolved spelling in the output comes from a caller that resolved for STRUCTURAL DISPATCH and
 then reused the dispatch-normalized value as a naming input. Nothing about that is visible at any one
@@ -2467,9 +2467,37 @@ site, which is how the emission paths drifted from each other.
   into a `BTreeMap` that structurally cannot hold the repeated keys the table exists to round-trip.
   A wire-behaviour skew wearing a respelling's clothes is exactly what a large bless diff hides, so
   it is pinned rather than reviewed.
+- **Cross-path agreement at every depth** — `declared_field_and_rest_row_sidecars_agree_at_every_depth`:
+  a declared map field and an open-struct rest row over the same alias spell it the same way. The
+  depth axis is the load-bearing part. The two paths agreed at depth 1 (the rest row's key domain was
+  never resolved, so it kept its alias by accident) while disagreeing one level down INSIDE THE SAME
+  TYPE EXPRESSION — a rest row over a container-typed value spelled
+  `BTreeMap<Epoch, (.., BTreeMap<Vec<u8>, StringEncoding>, ..)>` against a data field typed
+  `OrderedHashMap<Epoch, OrderedHashMap<PolicyId, String>>`. A depth-1-only pin passes over exactly
+  that, which is why this asserts both and additionally asserts that NO sidecar names a structural
+  target (`BTreeMap<Vec<u8>,` / `BTreeMap<u64,`).
+- **The multi-scope route** — `cross_scope_alias_is_spelled_and_routed_in_the_referring_scope`
+  (source) plus `integration_tests::declared_spelling_cross_scope_encoding_crate_compiles`
+  (compile). With a directory input the alias can be declared in a different module than the record
+  referring to it, so `<scope>/cbor_encodings.rs` names an ident from another scope, reached through
+  its own `mod.rs` plus `use super::*`. The compile leg is not redundant: a missing route is
+  E0412/E0433, which no source assertion is guaranteed to see. It runs `--wasm=false` because a
+  cross-scope NESTED-map wrapper fails to emit its wasm class (E0425) — pre-existing, reproducible
+  with every `resolve_aliases` call restored, and unrelated to spelling; a cross-scope FLAT map
+  wrapper compiles.
+- **Wasm wrapper names** — `wasm_collection_wrapper_names_keep_the_declared_alias`: wrapper names are
+  keyed by STRUCTURAL identity and are deliberately outside the rule, but they were already minted
+  from declared alias idents before the rule existed, and changing them in either direction is a
+  consumer-visible wasm API break. Pinned so a later "make it uniform" pass has to argue with a test.
 
-These are in-process (`api::generated_strings`) source assertions, so they are `local`-tier: `fast`'s
-only cargo TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`.
+The in-process cells (`api::generated_strings` source assertions) and the compile cell are all
+`local`-tier: `fast`'s only cargo TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`.
+
+The corpus-side companion is `tests/corpus/alias_positions.cddl` — one aliased member exercised at
+every naming position at once (data field, ctor param, alias target, sidecar index key at both rest-row
+depths, deserialize call target, wasm wrapper name), so a re-resolution at any single path shows up as
+a snapshot diff on a fixture whose whole purpose is this rule. Its committed snapshot is also the diff
+surface for the call-target position, which stays resolved for now.
 
 ## Static-runtime property layer (`src/tests/any_cbor_tests.rs`)
 

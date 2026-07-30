@@ -1,0 +1,554 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Credential {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        serializer.write_unsigned_integer(self.idx)?;
+        serializer.write_bytes(&self.hash)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Credential {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let idx =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("idx"))?;
+            let hash = Ok(raw.bytes()?).map_err(|e: DeserializeError| e.annotate("hash"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Credential { idx, hash })
+        })()
+        .map_err(|e| e.annotate("Credential"))
+    }
+}
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(4))?;
+        serializer.write_bytes(&self.pid)?;
+        self.dc.serialize(serializer)?;
+        self.sc.serialize(serializer)?;
+        serializer.write_map(cbor_event::Len::Len(self.m.len() as u64))?;
+        for (key, value) in self.m.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
+            let pid = Ok(raw.bytes()?).map_err(|e: DeserializeError| e.annotate("pid"))?;
+            let dc = Int::deserialize(raw).map_err(|e: DeserializeError| e.annotate("dc"))?;
+            let sc =
+                Credential::deserialize(raw).map_err(|e: DeserializeError| e.annotate("sc"))?;
+            let m = (|| -> Result<_, DeserializeError> {
+                let mut m_table = BTreeMap::new();
+                let m_len = raw.map()?;
+                while match m_len {
+                    cbor_event::Len::Len(n) => (m_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(m_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let m_key = raw.unsigned_integer()?;
+                    let m_value = raw.text()?;
+                    if m_table.insert(m_key, m_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                            "some complicated/unsupported type",
+                        )))
+                        .into());
+                    }
+                }
+                Ok(m_table)
+            })()
+            .map_err(|e| e.annotate("m"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder { pid, dc, sc, m })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}
+
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Self::Uint(x) => serializer.write_unsigned_integer(*x),
+            Self::Nint(x) => serializer
+                .write_negative_integer_sz(-((*x as i128) + 1), cbor_event::Sz::canonical(*x)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),
+                cbor_event::Type::NegativeInteger => Ok(Self::Nint(
+                    (-1 - raw.negative_integer_sz().map(|(x, _enc)| x)?) as u64,
+                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
+impl cbor_event::se::Serialize for Keyed {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1))?;
+        serializer.write_unsigned_integer(1u64)?;
+        serializer.write_map(cbor_event::Len::Len(self.key_1.len() as u64))?;
+        for (key, value) in self.key_1.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Keyed {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let mut key_1 = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        1 => {
+                            if key_1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            key_1 = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut key_1_table = BTreeMap::new();
+                                    let key_1_len = raw.map()?;
+                                    while match key_1_len {
+                                        cbor_event::Len::Len(n) => (key_1_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(key_1_len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let key_1_key = raw.unsigned_integer()?;
+                                        let key_1_value = raw.text()?;
+                                        if key_1_table.insert(key_1_key, key_1_value).is_some() {
+                                            return Err(DeserializeFailure::DuplicateKey(
+                                                Key::Str(String::from(
+                                                    "some complicated/unsupported type",
+                                                )),
+                                            )
+                                            .into());
+                                        }
+                                    }
+                                    Ok(key_1_table)
+                                })()
+                                .map_err(|e| e.annotate("key_1"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(
+                                DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
+                            );
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let key_1 = match key_1 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into()),
+            };
+            Ok(Self { key_1 })
+        })()
+        .map_err(|e| e.annotate("Keyed"))
+    }
+}
+
+impl cbor_event::se::Serialize for Nested {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(3))?;
+        serializer.write_array(cbor_event::Len::Len(self.arr.len() as u64))?;
+        for element in self.arr.iter() {
+            serializer.write_bytes(element)?;
+        }
+        match &self.opt {
+            Some(x) => {
+                serializer.write_bytes(x)?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
+        serializer.write_map(cbor_event::Len::Len(self.deep.len() as u64))?;
+        for (key, value) in self.deep.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_map(cbor_event::Len::Len(value.len() as u64))?;
+            for (key, value) in value.iter() {
+                serializer.write_bytes(key)?;
+                serializer.write_text(value)?;
+            }
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Nested {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
+            let arr = (|| -> Result<_, DeserializeError> {
+                let mut arr_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (arr_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    arr_arr.push(raw.bytes()?);
+                }
+                Ok(arr_arr)
+            })()
+            .map_err(|e| e.annotate("arr"))?;
+            let opt = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                    true => Some(raw.bytes()?),
+                    false => {
+                        if raw.special()? != cbor_event::Special::Null {
+                            return Err(DeserializeFailure::ExpectedNull.into());
+                        }
+                        None
+                    }
+                })
+            })()
+            .map_err(|e| e.annotate("opt"))?;
+            let deep = (|| -> Result<_, DeserializeError> {
+                let mut deep_table = BTreeMap::new();
+                let deep_len = raw.map()?;
+                while match deep_len {
+                    cbor_event::Len::Len(n) => (deep_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(deep_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let deep_key = raw.unsigned_integer()?;
+                    let mut deep_value_table = BTreeMap::new();
+                    let deep_value_len = raw.map()?;
+                    while match deep_value_len {
+                        cbor_event::Len::Len(n) => (deep_value_table.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(deep_value_len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let deep_value_key = raw.bytes()?;
+                        let deep_value_value = raw.text()?;
+                        if deep_value_table
+                            .insert(deep_value_key.clone(), deep_value_value)
+                            .is_some()
+                        {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
+                        }
+                    }
+                    let deep_value = deep_value_table;
+                    if deep_table.insert(deep_key, deep_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                            "some complicated/unsupported type",
+                        )))
+                        .into());
+                    }
+                }
+                Ok(deep_table)
+            })()
+            .map_err(|e| e.annotate("deep"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Nested { arr, opt, deep })
+        })()
+        .map_err(|e| e.annotate("Nested"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(1u64)?;
+        serializer.write_unsigned_integer(self.key_1)?;
+        for (key, value) in self.rest.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_map(cbor_event::Len::Len(value.len() as u64))?;
+            for (key, value) in value.iter() {
+                serializer.write_bytes(key)?;
+                serializer.write_text(value)?;
+            }
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OpenHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut key_1 = None;
+            let mut rest = BTreeMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        1 => {
+                            if key_1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            key_1 = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("key_1"))?,
+                            );
+                        }
+                        unknown_key => {
+                            read_len.read_elems(1)?;
+                            let rest_key = unknown_key;
+                            let mut rest_value_table = BTreeMap::new();
+                            let rest_value_len = raw.map()?;
+                            while match rest_value_len {
+                                cbor_event::Len::Len(n) => (rest_value_table.len() as u64) < n,
+                                cbor_event::Len::Indefinite => true,
+                            } {
+                                if matches!(rest_value_len, cbor_event::Len::Indefinite)
+                                    && raw.cbor_type()? == cbor_event::Type::Special
+                                    && raw.special_break()?
+                                {
+                                    break;
+                                }
+                                let rest_value_key = raw.bytes()?;
+                                let rest_value_value = raw.text()?;
+                                if rest_value_table
+                                    .insert(rest_value_key.clone(), rest_value_value)
+                                    .is_some()
+                                {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        String::from("some complicated/unsupported type"),
+                                    ))
+                                    .into());
+                                }
+                            }
+                            let rest_value = rest_value_table;
+                            if rest.insert(rest_key, rest_value).is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Uint(rest_key)).into()
+                                );
+                            }
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let key_1 = match key_1 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into()),
+            };
+            read_len.finish()?;
+            Ok(Self { key_1, rest })
+        })()
+        .map_err(|e| e.annotate("OpenHolder"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenTail {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        for element in self.rest.iter() {
+            serializer.write_map(cbor_event::Len::Len(element.len() as u64))?;
+            for (key, value) in element.iter() {
+                serializer.write_bytes(key)?;
+                serializer.write_text(value)?;
+            }
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OpenTail {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let mut rest = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let mut rest_elem_table = BTreeMap::new();
+                let rest_elem_len = raw.map()?;
+                while match rest_elem_len {
+                    cbor_event::Len::Len(n) => (rest_elem_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(rest_elem_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let rest_elem_key = raw.bytes()?;
+                    let rest_elem_value = raw.text()?;
+                    if rest_elem_table
+                        .insert(rest_elem_key.clone(), rest_elem_value)
+                        .is_some()
+                    {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                            "some complicated/unsupported type",
+                        )))
+                        .into());
+                    }
+                }
+                let rest_elem = rest_elem_table;
+                rest.push(rest_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OpenTail { index_0, rest })
+        })()
+        .map_err(|e| e.annotate("OpenTail"))
+    }
+}

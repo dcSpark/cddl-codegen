@@ -1,0 +1,247 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+pub mod error;
+mod extern_interface_check;
+pub mod json_schema_gen;
+pub mod json_value_ser;
+pub mod open_struct_rest_json;
+fn open_holder_rest_flatten_serialize<S: serde::Serializer>(
+    rest: &BTreeMap<Epoch, BTreeMap<PolicyId, Label>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::generated::open_struct_rest_json::serialize_flattened_rest(
+        &["key_1"],
+        |k: &u64| Ok::<String, core::convert::Infallible>(k.to_string()),
+        rest.iter(),
+        serializer,
+    )
+}
+
+fn open_holder_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<Epoch, BTreeMap<PolicyId, Label>>, D::Error> {
+    let pairs: Vec<(String, BTreeMap<PolicyId, Label>)> =
+        crate::generated::open_struct_rest_json::read_flattened_rest_pairs(deserializer)?;
+    pairs
+        .into_iter()
+        .map(|(ks, v)| {
+            let k = ks.parse::<u64>().map_err(|_| {
+                serde::de::Error::custom(format!(
+                    "open struct-map rest key {ks:?} is not a valid uint"
+                ))
+            })?;
+            Ok((k, v))
+        })
+        .collect()
+}
+
+pub mod serialization;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Credential {
+    pub idx: u64,
+    pub hash: PolicyId,
+}
+
+impl Credential {
+    pub fn new(idx: u64, hash: PolicyId) -> Self {
+        Self { idx, hash }
+    }
+}
+
+pub type DeltaCoin = Int;
+
+pub type Epoch = u64;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub pid: PolicyId,
+    pub dc: DeltaCoin,
+    pub sc: StakeCredential,
+    pub m: Nemap,
+}
+
+impl Holder {
+    pub fn new(pid: PolicyId, dc: DeltaCoin, sc: StakeCredential, m: Nemap) -> Self {
+        Self { pid, dc, sc, m }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Int {
+    Uint(u64),
+    Nint(u64),
+}
+
+impl serde::Serialize for Int {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for Int {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        core::str::FromStr::from_str(&s).map_err(|_e| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid Int")
+        })
+    }
+}
+
+impl schemars::JsonSchema for Int {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("Int")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        String::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        String::inline_schema()
+    }
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint(value)
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint(value)
+    }
+}
+
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Uint(x) => write!(f, "{}", x),
+            Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
+        }
+    }
+}
+
+impl core::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = core::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(Self::Uint)
+        } else {
+            u64::try_from((x + 1).unsigned_abs()).map(Self::Nint)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Keyed {
+    pub key_1: BTreeMap<Epoch, Label>,
+}
+
+impl Keyed {
+    pub fn new(key_1: BTreeMap<Epoch, Label>) -> Self {
+        Self { key_1 }
+    }
+}
+
+pub type Label = String;
+
+pub type Nemap = BTreeMap<Epoch, Label>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Nested {
+    pub arr: Vec<PolicyId>,
+    pub opt: Option<PolicyId>,
+    pub deep: BTreeMap<Epoch, BTreeMap<PolicyId, Label>>,
+}
+
+impl Nested {
+    pub fn new(
+        arr: Vec<PolicyId>,
+        opt: Option<PolicyId>,
+        deep: BTreeMap<Epoch, BTreeMap<PolicyId, Label>>,
+    ) -> Self {
+        Self { arr, opt, deep }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct OpenHolder {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    #[serde(flatten)]
+    #[serde(
+        serialize_with = "open_holder_rest_flatten_serialize",
+        deserialize_with = "open_holder_rest_flatten_deserialize"
+    )]
+    pub rest: BTreeMap<Epoch, BTreeMap<PolicyId, Label>>,
+}
+
+impl OpenHolder {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct OpenTail {
+    pub index_0: u64,
+    /// Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). Serialized after the declared members; defaults empty.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub rest: Vec<BTreeMap<PolicyId, Label>>,
+}
+
+impl OpenTail {
+    pub fn new(index_0: u64) -> Self {
+        Self {
+            index_0,
+            rest: Vec::new(),
+        }
+    }
+}
+
+pub type PolicyId = Vec<u8>;
+
+pub type StakeCredential = Credential;
