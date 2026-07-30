@@ -1691,15 +1691,21 @@ fn parse_type(
     // bypass the thing it keys on, and each one used to accept the directives and generate as if they
     // were absent — the silent-wire-divergence class the extern-interface guard exists to prevent. Each
     // is a graceful rejection naming the spelling that DOES work. (Field position and the row-entry
-    // slots are handled where their metadata is read; a named RECORD rule is deliberately NOT here —
-    // its impls are suppressed for the author to hand-own, which is a separate contract.)
+    // slots are handled where their metadata is read; the ENUM and single-half-RECORD rule placements
+    // are decided by the minted struct's KIND, so they reject in `IntermediateTypes::finalize`.)
     let custom_directives = custom_codec_directives(&rule_metadata);
     for directive in &custom_directives {
-        // An extern rule names a type this crate does not define — `RustStruct::new_extern` stores no
-        // config, so the pair never reaches generation and BOTH directions emit the extern's own impls.
-        if is_extern_marker {
+        // An extern / raw-bytes rule names a type this crate does not define — `new_extern` and
+        // `new_raw_bytes` both store `RustStructConfig::default()`, so the pair never reaches
+        // generation and BOTH directions emit the named type's own impls. One class, like `@copy`
+        // above treats them; the message names the marker the rule actually spells, since this is
+        // "invalid HERE" rather than `@copy`'s "valid only on X or Y".
+        if let Some(marker) = is_extern_marker
+            .then_some(EXTERN_MARKER)
+            .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER))
+        {
             types.record_rejection(format!(
-                "{directive} on `{type_name}`: a {EXTERN_MARKER} rule names a type this crate does \
+                "{directive} on `{type_name}`: a {marker} rule names a type this crate does \
                  not define, so that type owns its own serialization impls and the custom \
                  (de)serializer pair never reaches generation. Give the rule a real CDDL body and \
                  put the pair there (`<rule> = text ; @custom_serialize <fn> @custom_deserialize \

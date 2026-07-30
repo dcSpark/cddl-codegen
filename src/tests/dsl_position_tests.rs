@@ -17,7 +17,7 @@
 //! by re-authoring its expectation, and do not fix a newly-found drop opportunistically. Every fix
 //! that has landed here was TRIGGERED — the scoped rule-position `@name` rejection this module's
 //! Part 2 lands, the non-last-arm rule-level rejection beside it, and the six `@custom_serialize` /
-//! `@custom_deserialize` placement rejections (cells 23a–23f), each of which was ruled before it was
+//! `@custom_deserialize` placement rejections (cells 23a–23n), each of which was ruled before it was
 //! written — and each ships with its own placement CONTROL cell isolating position as the variable.
 //! That is the bar the next one has to clear too.
 //!
@@ -75,7 +75,8 @@ struct Cell {
 /// Six live findings. Four predate the custom-serialize hardening (none fixed by the task that added
 /// them — its scoped fix was the rule-position `@name` rejection); the last two are that delivery's
 /// remainder, deliberately left silent because honoring or refusing either is a design decision, not
-/// a call-site fix. Its four RULED placements are cells 23a–23f, which now `Reject` rather than pin:
+/// a call-site fix. Its RULED placements are cells 23a–23n, which `Reject` rather than pin (23o is
+/// the accepted-control beside them):
 ///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" rejection advertises `@name`
 ///     as the remedy, but at a MEMBER-position anonymous inline group the comment lands on the
 ///     enclosing group entry's trailing_comments, which the naming site's `get_comment_after(type2)`
@@ -737,6 +738,84 @@ const GRID: &[Cell] = &[
         expect: Expect::Effect {
             must: &["my_ser(", "my_deser("],
             must_not: &[],
+        },
+    },
+    // 23i-23n: the placements whose rejection keys on the MINTED STRUCT's kind rather than on the
+    // parse shape, so they fire from `finalize` (which is also what lets them see a generic
+    // instance's struct). 23o is the standing accepted-control beside them.
+    // 23i. REJECT: a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule — the extern marker's sibling, one class
+    //      (as for `@copy`), message naming the marker the rule actually spells.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "raw-bytes-rule",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: rb]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "a _CDDL_CODEGEN_RAW_BYTES_TYPE_ rule names a type this crate does not define",
+        ),
+    },
+    // 23j. REJECT: a data-carrying type-choice rule (the `@newtype` asymmetry class, on an enum).
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "type-choice-rule",
+        spec: "ch = uint ; @name a\n   / text ; @name b @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ch]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("a type-choice rule (`a / b`) mints an enum"),
+    },
+    // 23k. REJECT: a group-choice rule — a different `RustStructType` than 23j, same class.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "group-choice-rule",
+        spec: "gc = [ ; @name a\n  x: uint //\n  ; @name b\n  y: text ] ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: gc]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("a group-choice rule (`{ … } // { … }`) mints an enum"),
+    },
+    // 23l. REJECT: the dataless C-style enum — a third `RustStructType` reaching the same arm.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "c-style-enum-rule",
+        spec: "ce = 0 ; @name zero\n   / 1 ; @name one @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ce]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("a C-style enum) mints an enum"),
+    },
+    // 23m. REJECT: `@custom_serialize` ALONE on a record rule — no `Serialize` impl is emitted and the
+    //      named function is never called, so the generated crate does not compile.
+    Cell {
+        directive: "@custom_serialize",
+        position: "record-rule-alone",
+        spec: "myrec = [a: uint] ; @custom_serialize my_ser\nholder = [f: myrec]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize alone on `Myrec`"),
+    },
+    // 23n. REJECT: `@custom_deserialize` ALONE on a record rule — the type keeps its generated
+    //      `Deserialize` impl while embed sites are rewritten, so one type decodes two ways.
+    Cell {
+        directive: "@custom_deserialize",
+        position: "record-rule-alone",
+        spec: "myrec = [a: uint] ; @custom_deserialize my_deser\nholder = [f: myrec]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize alone on `Myrec`"),
+    },
+    // 23o. STILL ACCEPTED (not a pin — an `Effect` cell, which only passes on a SUCCESSFUL
+    //      generation): BOTH halves on a record rule suppress the generated impls for the author to
+    //      hand-own. That posture is unspecified and at risk, so this cell is doing two jobs — it is
+    //      the regression guard that 23m/23n did not swallow the both-set spelling, and it pins what
+    //      the spelling does TODAY so a change to it cannot land silently.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "record-rule-both-set",
+        spec: "myrec = [a: uint] ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: myrec]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub struct Myrec", "my_deser(raw)"],
+            must_not: &["Serialize for Myrec", "Deserialize for Myrec"],
         },
     },
     // ---- @raw_bytes_flavor -------------------------------------------------------------------

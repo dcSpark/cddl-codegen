@@ -4610,42 +4610,54 @@ fn expect_custom_codec_source(tag: &str, spec: &str) -> String {
         .join("\n")
 }
 
-/// The custom (de)serializer pair on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule is rejected BY DESIGN — via
-/// a GRACEFUL `Err` (deferred through `record_rejection` → drained by `finalize`), never a `panic!`.
-/// An extern rule names a type this crate does not define, so `RustStruct::new_extern` stores no
-/// config and the pair never reaches generation: both directions emit the extern's own impls while
-/// the spec claims a custom codec. The remedy the message advertises — a real CDDL body carrying the
-/// pair — is the control asserted here, so the rejection is attributable to the extern MARKER rather
-/// than to the directives.
+/// The custom (de)serializer pair on a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
+/// rule is rejected BY DESIGN — via a GRACEFUL `Err` (deferred through `record_rejection` → drained
+/// by `finalize`), never a `panic!`. Either marker names a type this crate does not define, and
+/// `RustStruct::new_extern` / `new_raw_bytes` both store `RustStructConfig::default()`, so the pair
+/// never reaches generation: both directions emit the named type's own impls while the spec claims a
+/// custom codec. The two markers are one class here (as they are for `@copy`), but the message names
+/// the marker the rule actually spells — this says "invalid HERE", not `@copy`'s "valid only on X or
+/// Y". The remedy the message advertises — a real CDDL body carrying the pair — is the control
+/// asserted here, so the rejection is attributable to the MARKER rather than to the directives.
 #[test]
 fn custom_codec_pair_on_extern_rule_rejects_gracefully() {
-    let err = expect_graceful_rejection(
-        "custom_extern",
-        "ext = _CDDL_CODEGEN_EXTERN_TYPE_ ; @custom_serialize my_ser @custom_deserialize my_deser\n\
-         holder = [f: ext]\n",
-        &[],
-    );
-    assert!(
-        err.contains(
-            "@custom_serialize on `Ext`: a _CDDL_CODEGEN_EXTERN_TYPE_ rule names a type this crate \
-             does not define, so that type owns its own serialization impls and the custom \
-             (de)serializer pair never reaches generation."
-        ),
-        "the extern rejection must name the directive, the marker and why it cannot be honored, \
-         got:\n{err}"
-    );
-    // Both halves of the pair are reported, so an author who wrote only one is not left guessing.
-    assert!(
-        err.contains("@custom_deserialize on `Ext`:"),
-        "each half of the pair gets its own rejection line, got:\n{err}"
-    );
-    assert!(
-        err.contains(
-            "Give the rule a real CDDL body and put the pair there (`<rule> = text ; \
-             @custom_serialize <fn> @custom_deserialize <fn>`)"
-        ),
-        "the rejection must advertise the type-level alias spelling as the remedy, got:\n{err}"
-    );
+    for (tag, marker, ident) in [
+        ("custom_extern", "_CDDL_CODEGEN_EXTERN_TYPE_", "Ext"),
+        ("custom_raw_bytes", "_CDDL_CODEGEN_RAW_BYTES_TYPE_", "Rb"),
+    ] {
+        let err = expect_graceful_rejection(
+            tag,
+            &format!(
+                "{} = {marker} ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+                 holder = [f: {}]\n",
+                ident.to_lowercase(),
+                ident.to_lowercase()
+            ),
+            &[],
+        );
+        assert!(
+            err.contains(&format!(
+                "@custom_serialize on `{ident}`: a {marker} rule names a type this crate \
+                 does not define, so that type owns its own serialization impls and the custom \
+                 (de)serializer pair never reaches generation."
+            )),
+            "[{tag}] the rejection must name the directive, the marker and why it cannot be \
+             honored, got:\n{err}"
+        );
+        // Both halves of the pair are reported, so an author who wrote only one is not left guessing.
+        assert!(
+            err.contains(&format!("@custom_deserialize on `{ident}`:")),
+            "[{tag}] each half of the pair gets its own rejection line, got:\n{err}"
+        );
+        assert!(
+            err.contains(
+                "Give the rule a real CDDL body and put the pair there (`<rule> = text ; \
+                 @custom_serialize <fn> @custom_deserialize <fn>`)"
+            ),
+            "[{tag}] the rejection must advertise the type-level alias spelling as the remedy, \
+             got:\n{err}"
+        );
+    }
     // CONTROL: the advertised remedy really does route both directions through the custom fns.
     let src = expect_custom_codec_source(
         "custom_extern_control",
@@ -4841,5 +4853,207 @@ fn custom_codec_pair_with_newtype_rejects_gracefully() {
     assert!(
         src.contains("my_ser(") && src.contains("my_deser("),
         "the same rule without @newtype must emit both custom call sites, got:\n{src}"
+    );
+}
+
+/// The custom (de)serializer pair on an ENUM rule — a type choice, a group choice, or the
+/// fixed-value C-style enum — is rejected BY DESIGN in EVERY spelling (single-half or both), via a
+/// GRACEFUL `Err` (`record_rejection` → drained by `finalize`), never a `panic!`. This is the same
+/// class `@newtype` is rejected for and not a drop: the enum's serialize side is generated
+/// unconditionally while `generate_deserialize`'s `Root(Rust(ident))` arm rewrites every embed site
+/// to the named reader, so the type would read one wire format and write another. Unlike the
+/// parse-walk rejections this one keys on the minted struct's KIND, so it lives in `finalize` —
+/// which is also what makes it see a generic instance's struct.
+///
+/// The control is the remedy the message advertises: the pair on the rule of a VARIANT's type,
+/// which emits both call sites inside the enum's own arms.
+#[test]
+fn custom_codec_pair_on_enum_rule_rejects_gracefully() {
+    let vectors = [
+        (
+            "custom_type_choice_both",
+            "ch = uint ; @name a\n   / text ; @name b @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ch]\n",
+            "a type-choice rule (`a / b`)",
+            "Ch",
+            true,
+        ),
+        (
+            // SINGLE-HALF: an enum rejects either half on its own too (a record does not — see the
+            // sibling test — because a record's both-set spelling has its own suppressed-impls story).
+            "custom_type_choice_ser_only",
+            "ch = uint ; @name a\n   / text ; @name b @custom_serialize my_ser\nholder = [f: ch]\n",
+            "a type-choice rule (`a / b`)",
+            "Ch",
+            false,
+        ),
+        (
+            "custom_type_choice_deser_only",
+            "ch = uint ; @name a\n   / text ; @name b @custom_deserialize my_deser\nholder = [f: ch]\n",
+            "a type-choice rule (`a / b`)",
+            "Ch",
+            false,
+        ),
+        (
+            "custom_group_choice_both",
+            "gc = [ ; @name a\n  x: uint //\n  ; @name b\n  y: text ] ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: gc]\n",
+            "a group-choice rule (`{ … } // { … }`)",
+            "Gc",
+            true,
+        ),
+        (
+            // The dataless C-style shape mints a different `RustStructType` than the data-carrying
+            // type choice above, so it needs its own vector to prove the match arm covers it.
+            "custom_c_style_enum_both",
+            "ce = 0 ; @name zero\n   / 1 ; @name one @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ce]\n",
+            "a fixed-value type-choice rule (`0 / 1`, a C-style enum)",
+            "Ce",
+            true,
+        ),
+    ];
+    for (tag, spec, shape, ident, both) in vectors {
+        let err = expect_graceful_rejection(tag, spec, &[]);
+        assert!(
+            err.contains(&format!(
+                "on `{ident}`: {shape} mints an enum whose serialize side is generated \
+                 unconditionally, while the deserialize CALL SITES do route through the custom \
+                 reader — so the pair would make the enum read one wire format and write another."
+            )),
+            "[{tag}] the rejection must name the enum shape and state the round-trip asymmetry, \
+             got:\n{err}"
+        );
+        assert!(
+            err.contains(&format!(
+                "Put the pair on the rule of the variant type that needs the custom format, or \
+                 declare `{ident}` as a _CDDL_CODEGEN_EXTERN_TYPE_ rule and hand-write the type in \
+                 full."
+            )),
+            "[{tag}] the rejection must offer the variant-rule spelling and the hand-owned type, \
+             got:\n{err}"
+        );
+        if both {
+            assert!(
+                err.contains(&format!("@custom_serialize on `{ident}`:"))
+                    && err.contains(&format!("@custom_deserialize on `{ident}`:")),
+                "[{tag}] each half of the pair gets its own rejection line, got:\n{err}"
+            );
+        }
+    }
+    // CONTROL: the advertised remedy — the pair on a VARIANT's own type rule — generates, and the
+    // custom calls land inside the enum's serialize/deserialize arms.
+    let src = expect_custom_codec_source(
+        "custom_enum_control",
+        "inner = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         ch = uint ; @name a\n   / inner ; @name b\nholder = [f: ch]\n",
+    );
+    assert!(
+        src.contains("Ch::B(b) => my_ser(serializer, b)") && src.contains("Ch::B(my_deser(raw)?)"),
+        "the variant-rule spelling must route both directions inside the enum arms, got:\n{src}"
+    );
+}
+
+/// A SINGLE HALF of the custom (de)serializer pair on a named RECORD rule is rejected BY DESIGN, via
+/// a GRACEFUL `Err` (`record_rejection` → drained by `finalize`), never a `panic!`. The two halves
+/// fail differently and get distinct messages:
+///
+/// * `@custom_serialize` alone emits NO `Serialize` impl for the type and never calls the named
+///   function — the generated crate does not compile (probed: E0599/E0277 at every embed site), with
+///   no diagnostic from this tool.
+/// * `@custom_deserialize` alone keeps the type's own generated `Deserialize` impl while rewriting
+///   every embed site to the named function, so `Foo::from_cbor_bytes` and a field of type `Foo`
+///   decode the same bytes differently — and the rule projects OPAQUELY across the extern-interface
+///   seam (verified: it exports as a `_CDDL_CODEGEN_EXTERN_TYPE_` row, so `CustomSerializeTransparent`
+///   never fires), carrying the divergence to consumers.
+///
+/// The BOTH-SET spelling is deliberately NOT rejected — it suppresses the generated impls for the
+/// author to hand-own. That posture is unspecified and at risk, so the control below pins what it
+/// does TODAY (generates; no impls for the type; embed sites call the named reader) and is the
+/// regression guard that this rejection did not swallow it.
+#[test]
+fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
+    let err = expect_graceful_rejection(
+        "custom_record_ser_only",
+        "myrec = [a: uint] ; @custom_serialize my_ser\nholder = [f: myrec]\n",
+        &[],
+    );
+    assert!(
+        err.contains(
+            "@custom_serialize alone on `Myrec`: a record rule with only the serialize half emits \
+             no `Serialize` impl for the type and never calls the named function, so the generated \
+             crate does not compile — every site holding a `Myrec` calls `.serialize(..)` on a type \
+             that has no impl."
+        ),
+        "the serialize-only rejection must name the non-compiling outcome, got:\n{err}"
+    );
+
+    let err = expect_graceful_rejection(
+        "custom_record_deser_only",
+        "myrec = [a: uint] ; @custom_deserialize my_deser\nholder = [f: myrec]\n",
+        &[],
+    );
+    assert!(
+        err.contains(
+            "@custom_deserialize alone on `Myrec`: a record rule with only the deserialize half \
+             still emits the type's own generated `Deserialize` impl, while every site holding a \
+             `Myrec` is rewritten to call the named function — so `Myrec::from_cbor_bytes` and a \
+             field of type `Myrec` decode the same bytes differently."
+        ),
+        "the deserialize-only rejection must name the two-ways-to-decode divergence, got:\n{err}"
+    );
+    assert!(
+        err.contains(
+            "The rule also projects OPAQUELY across the extern-interface seam, so a consumer \
+             decodes it the generated way."
+        ),
+        "the deserialize-only rejection must name the cross-crate leg, got:\n{err}"
+    );
+    for err in [
+        expect_graceful_rejection(
+            "custom_record_ser_only_remedy",
+            "myrec = [a: uint] ; @custom_serialize my_ser\nholder = [f: myrec]\n",
+            &[],
+        ),
+        expect_graceful_rejection(
+            "custom_record_deser_only_remedy",
+            "myrec = [a: uint] ; @custom_deserialize my_deser\nholder = [f: myrec]\n",
+            &[],
+        ),
+    ] {
+        assert!(
+            err.contains(
+                "Move the pair to the field (or to the type rule of the member) that needs the \
+                 custom format, or declare `Myrec` as a _CDDL_CODEGEN_EXTERN_TYPE_ rule and \
+                 hand-write the type in full."
+            ),
+            "both single-half rejections must offer the same two remedies, got:\n{err}"
+        );
+    }
+
+    // CONTROL 1 (the ruling's regression guard): BOTH halves on a record rule is NOT rejected, and
+    // still does exactly what it did before — generates, emits no `Serialize`/`Deserialize` impl for
+    // the type, and rewrites embed sites to the named reader.
+    let src = expect_custom_codec_source(
+        "custom_record_both_set_control",
+        "myrec = [a: uint] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [f: myrec]\n",
+    );
+    assert!(
+        src.contains("pub struct Myrec")
+            && !src.contains("Serialize for Myrec")
+            && !src.contains("Deserialize for Myrec")
+            && src.contains("my_deser(raw)"),
+        "the both-set record spelling must still generate with its impls suppressed and its embed \
+         sites rewritten, got:\n{src}"
+    );
+    // CONTROL 2: a PLAIN GROUP rule's trailing comment binds to its LAST MEMBER's slot (the
+    // `@name plain-group-trailing` seam), where the pair is a FIELD-level directive and IS honored.
+    // The record-kind check must not reach it — probed to still emit the field call site.
+    let src = expect_custom_codec_source(
+        "custom_plain_group_trailing_control",
+        "pg = (a: uint, b: text) ; @custom_deserialize my_deser\nholder = [pg]\n",
+    );
+    assert!(
+        src.contains("let b = my_deser(raw)"),
+        "a plain group's trailing pair is a field-level directive on its last member and must stay \
+         honored, got:\n{src}"
     );
 }
