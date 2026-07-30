@@ -35,6 +35,13 @@
 //!     tombstoned dep — a manifest cargo rejects. This is why the `features.std` op is pushed AFTER
 //!     every dependencies op in every builder.
 //!
+//!   The `features.std` path additionally carries a tool-asserted COMMENT
+//!   ([`STD_OWNERSHIP_COMMENT`]): the co-ownership contract, restated above the key on every run
+//!   that writes it, so the rule is legible to whoever edits the file rather than only to a reader
+//!   of this repo's docs. It reads the key's existing comment lines to preserve the user's — the
+//!   same bounded existing-manifest read the merges above perform, and like them a pure function of
+//!   `(ops, existing)`.
+//!
 //!   Every other `Set` path hard-replaces as before.
 //! * [`ManifestOp::SeedOnce`] — written only if the key is absent (existence check only, never a
 //!   content read), so it stays on the safe side of the determinism line. `package.version` is the
@@ -147,6 +154,16 @@ pub fn apply(
                     value,
                     dep_table_preexisted && is_dependency_entry(path),
                 );
+                // The co-ownership contract, stated in-band above the key it governs. Conditioned on
+                // the op's own path rather than on anything the caller passes, so the four manifests
+                // are told apart by the one thing that actually distinguishes them — whether their
+                // changeset carries a `features.std` op at all. Ordered AFTER `set_leaf` for both of
+                // its branches: on the occupied one the key (and thus its prefix decor) is reused, so
+                // asserting earlier would be equivalent but pointless; on the vacant one the key does
+                // not exist yet.
+                if is_std_feature_list(path) {
+                    assert_std_ownership_comment(&mut doc, path);
+                }
             }
             ManifestOp::SeedOnce(item) => {
                 if item_at(doc.as_table(), path).is_none() {
@@ -227,6 +244,98 @@ fn set_leaf(doc: &mut DocumentMut, path: &[String], item: Item, mark_new_dep: bo
             }
         }
     }
+}
+
+/// The line prefix that marks a comment line above a co-owned key as the TOOL's. Ownership is
+/// decided per LINE (after any leading indentation), which is what lets the assertion below be
+/// idempotent, self-healing on stale wording, and incapable of touching a comment the user wrote.
+const TOOL_COMMENT_PREFIX: &str = "# cddl-codegen:";
+
+/// The block asserted above `features.std`, one entry per line, each carrying
+/// [`TOOL_COMMENT_PREFIX`].
+///
+/// This is the [`OWNERSHIP_MARKER`] precedent at KEY granularity: same file, same bounded
+/// existing-manifest exception, same rationale that the tool should say what it owns in-band, at the
+/// line where the ambiguity is. Two differences from the dep marker, both forced by what this key
+/// is. The dep marker states ownership of a whole line the tool wrote; this one states the RULES of
+/// a value the tool and the consumer write jointly — the three facts a reader of `std = [...]`
+/// cannot otherwise see (their entries survive, stranded forwards are pruned, the tool re-asserts
+/// its computed forwards). And the dep marker is vacant-insert-only, whereas this block is asserted
+/// on EVERY run: a statement of a contract is only worth having while it is true, so the party that
+/// keeps the contract true writes the text, every time, rather than a consumer hand-maintaining
+/// prose about semantics they don't own (which is how the field's hand-written versions of this
+/// comment came to describe behaviour the tool no longer had).
+///
+/// The text deliberately avoids spelling any TOML table header (`[dependencies]`): manifests are
+/// routinely processed by line-oriented tools and `contains`-style assertions, and a bracketed
+/// header inside a comment collides with them — proven in-repo by a header-anchored insertion in
+/// the config test harness, which the first wording of this line broke.
+const STD_OWNERSHIP_COMMENT: &[&str] = &[
+    "# cddl-codegen: co-owned key. Entries you add here survive regeneration; forwards to",
+    "# cddl-codegen: dependencies that are no longer declared are pruned; the tool re-asserts",
+    "# cddl-codegen: its computed forwards each run. See output_format.mdx, \"The `std` feature\".",
+];
+
+/// Assert [`STD_OWNERSHIP_COMMENT`] as the last prefix-decor lines above the key at `path` (a
+/// full-line comment above a key lives in that key's leaf-decor PREFIX, verified by round-trip).
+///
+/// Strip-then-append over whole lines: every existing line carrying [`TOOL_COMMENT_PREFIX`] is
+/// dropped, every other line (user comments, blank lines) is preserved in its existing order, and
+/// the current block is appended last. Rerun is byte-identical by construction, and a block written
+/// by an older tool version is replaced wholesale rather than accumulating beside the new one.
+///
+/// Determinism: the block is a compile-time constant. Reading the key's existing decor to preserve
+/// the user's lines is the same bounded existing-manifest read the value merges already perform.
+fn assert_std_ownership_comment(doc: &mut DocumentMut, path: &[String]) {
+    let Some((leaf, parents)) = path.split_last() else {
+        return;
+    };
+    let table = table_at(doc.as_table_mut(), parents);
+    let Some(mut key) = table.key_mut(leaf) else {
+        return;
+    };
+    let decor = key.leaf_decor_mut();
+    let existing = match decor.prefix() {
+        // A key this run just inserted has no prefix decor at all — nothing to preserve.
+        None => String::new(),
+        // A raw decor we cannot read as text is left ALONE rather than guessed at: overwriting a
+        // prefix whose content is unknown could delete a user comment, and a missing block is the
+        // strictly safer failure. (Not reachable for a parsed or tool-written document.)
+        Some(raw) => match raw.as_str() {
+            Some(text) => text.to_owned(),
+            None => return,
+        },
+    };
+    decor.set_prefix(std_ownership_prefix(&existing));
+}
+
+/// The rewritten prefix decor: `existing`'s non-tool lines, then the block, then whatever
+/// indentation preceded the key itself.
+///
+/// A key's prefix decor is a run of whole comment/blank lines followed by the key's own indentation
+/// (everything after the final newline — whitespace only, since a comment runs to end of line). That
+/// tail is carried through untouched and reused to indent the asserted lines, so the block sits at
+/// the key's own indentation whatever the table's style.
+fn std_ownership_prefix(existing: &str) -> String {
+    let (lines, indent) = match existing.rfind('\n') {
+        Some(i) => (&existing[..=i], &existing[i + 1..]),
+        None => ("", existing),
+    };
+    let mut out = String::new();
+    for line in lines.lines() {
+        if line.trim_start().starts_with(TOOL_COMMENT_PREFIX) {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    for line in STD_OWNERSHIP_COMMENT {
+        out.push_str(indent);
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(indent);
+    out
 }
 
 /// Fetch the item at `path`, if present (used for `SeedOnce`'s existence check). Walks header and
@@ -3340,5 +3449,185 @@ lto = true
             without.contains("other"),
             "dropping the flag must LEAVE the entry (nothing names it to tombstone):\n{without}"
         );
+    }
+
+    // ---- the `features.std` ownership comment --------------------------------------------------
+
+    /// The block as it must appear in a file: the constant's lines joined by newlines.
+    fn ownership_block() -> String {
+        STD_OWNERSHIP_COMMENT.join("\n")
+    }
+
+    /// How many `# cddl-codegen:` lines the rendered manifest carries — the duplication detector.
+    fn tool_comment_lines(out: &str) -> usize {
+        out.lines()
+            .filter(|l| l.trim_start().starts_with(TOOL_COMMENT_PREFIX))
+            .count()
+    }
+
+    /// The block lands verbatim, as the LAST lines above `std`, on a manifest written from nothing.
+    /// Exact bytes, because a comment whose text drifts from the contract it states is worse than no
+    /// comment — the drift is what the field's hand-written versions of this text died of.
+    #[test]
+    fn std_key_gains_the_ownership_comment_fresh_and_it_reads_verbatim() {
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--json-serde-derives=true"],
+            |rust, _| {
+                let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains(&format!("{}\nstd = [", ownership_block())),
+                    "the block must sit immediately above the `std` key, verbatim:\n{out}"
+                );
+                assert_eq!(
+                    tool_comment_lines(&out),
+                    STD_OWNERSHIP_COMMENT.len(),
+                    "exactly one block, no more:\n{out}"
+                );
+            },
+        );
+    }
+
+    /// Three applications hold a fixed point — the property the strip-then-append rule exists to
+    /// give, and the one an append-only assertion would break by stacking a block per run.
+    #[test]
+    fn std_ownership_comment_rerun_is_byte_identical() {
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--json-serde-derives=true"],
+            |rust, _| {
+                let first = apply(rust, None, "rust/Cargo.toml").unwrap();
+                let second = apply(rust, Some(&first), "rust/Cargo.toml").unwrap();
+                assert_eq!(
+                    first, second,
+                    "asserting onto our own output must be a fixed point:\n{first}"
+                );
+                let third = apply(rust, Some(&second), "rust/Cargo.toml").unwrap();
+                assert_eq!(second, third, "and stay there:\n{second}");
+                assert_eq!(
+                    tool_comment_lines(&third),
+                    STD_OWNERSHIP_COMMENT.len(),
+                    "{third}"
+                );
+            },
+        );
+    }
+
+    /// A consumer's own comment above `std` — the defensive NOTE block CML wrote — survives in its
+    /// order, with the tool's block appended BELOW it and directly above the key. Line ownership is
+    /// what makes this safe: the assertion only ever removes lines carrying its own prefix.
+    #[test]
+    fn user_comment_above_std_survives_the_assertion() {
+        let existing = format!(
+            "{}fraction = \"0.13\"\n\n[features]\ndefault = [\"std\"]\n\
+             # NOTE: keep fraction/std here — our hand dep needs it.\n\
+             # (second line of the same hand note)\n\
+             std = [\"fraction/std\"]\n",
+            cml_shaped_manifest()
+        );
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--json-serde-derives=true"],
+            |rust, _| {
+                let out = apply(rust, Some(&existing), "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                let expected = format!(
+                    "# NOTE: keep fraction/std here — our hand dep needs it.\n\
+                 # (second line of the same hand note)\n{}\nstd = [",
+                    ownership_block()
+                );
+                assert!(
+                    out.contains(&expected),
+                    "user lines must keep their order and the block go last:\n{out}"
+                );
+                // and a rerun still does not disturb them
+                let again = apply(rust, Some(&out), "rust/Cargo.toml").unwrap();
+                assert_eq!(out, again, "{out}");
+            },
+        );
+    }
+
+    /// Wording improvements ship: a block written by an older tool version is replaced WHOLESALE, not
+    /// left beside the current one. This is the reason ownership is decided by the line prefix rather
+    /// than by matching the block's text — a marker that had to match the old text could never
+    /// recognize a block whose text is what changed.
+    #[test]
+    fn a_stale_tool_block_is_replaced_not_duplicated() {
+        let existing = "\
+[dependencies]
+cbor_event = \"2.4.0\"
+
+[features]
+default = [\"std\"]
+# cddl-codegen: this key is owned by the tool and your edits will be lost.
+# cddl-codegen: (wording from a tool version that promised something else entirely)
+std = []
+";
+        with_manifest_ops("foo = [x: uint]\n", &[], |rust, _| {
+            let out = apply(rust, Some(existing), "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            assert!(
+                !out.contains("your edits will be lost"),
+                "the stale wording must be gone in one pass:\n{out}"
+            );
+            assert!(
+                out.contains(&format!("{}\nstd = [", ownership_block())),
+                "replaced by the current block:\n{out}"
+            );
+            assert_eq!(
+                tool_comment_lines(&out),
+                STD_OWNERSHIP_COMMENT.len(),
+                "exactly one block, never two:\n{out}"
+            );
+        });
+    }
+
+    /// The other manifest whose changeset carries a `features.std` op gets the identical block — the
+    /// condition is the op, not the caller, so co-ownership is stated wherever it holds.
+    #[test]
+    fn static_runtime_std_key_carries_the_same_block() {
+        use clap::Parser;
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input=unused",
+            "--output=unused",
+            concat!("--static-dir=", env!("CARGO_MANIFEST_DIR"), "/static"),
+        ]);
+        let ops = ops_for_static_runtime(&cli).unwrap();
+        let out = apply(&ops, None, "runtime/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap();
+        assert!(
+            out.contains(&format!("{}\nstd = [", ownership_block())),
+            "the exported runtime's co-owned key states the same contract:\n{out}"
+        );
+        let second = apply(&ops, Some(&out), "runtime/Cargo.toml").unwrap();
+        assert_eq!(second, out, "and re-exporting is byte-identical:\n{out}");
+    }
+
+    /// The negative half: the two manifests with no `features.std` op gain no comment at all. A
+    /// caller-passed flag could drift from this; an op-derived condition cannot.
+    #[test]
+    fn manifests_without_a_std_op_gain_no_tool_comment() {
+        use clap::Parser;
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input=unused",
+            "--output=unused",
+            concat!("--static-dir=", env!("CARGO_MANIFEST_DIR"), "/static"),
+            "--wasm=true",
+            "--json-serde-derives=true",
+        ]);
+        let json_gen = apply(
+            &ops_for_json_gen(&cli).unwrap(),
+            None,
+            "wasm/json-gen/Cargo.toml",
+        )
+        .unwrap();
+        assert_eq!(tool_comment_lines(&json_gen), 0, "{json_gen}");
+        with_manifest_ops("foo = [x: uint]\n", &["--wasm=true"], |_, wasm| {
+            let out = apply(wasm, None, "wasm/Cargo.toml").unwrap();
+            assert_eq!(tool_comment_lines(&out), 0, "{out}");
+        });
     }
 }

@@ -3989,11 +3989,18 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
             "the tool does not write the consumer's dependency on the shared runtime — the \
              --common-import-override docs make that the user's line"
         );
+        // Line-anchored on purpose: a bare `text.replace("[dependencies]", …)` also rewrites the
+        // spelling wherever it appears mid-line — a comment mentioning the header is enough — and
+        // corrupts the manifest it is editing.
+        assert!(
+            text.contains("\n[dependencies]\n"),
+            "the generated manifest must carry a [dependencies] header to anchor on, got:\n{text}"
+        );
         std::fs::write(
             &path,
             text.replace(
-                "[dependencies]",
-                "[dependencies]\ncddl_runtime = { package = \"cddl-runtime\", path = \"../../../runtime\" }",
+                "\n[dependencies]\n",
+                "\n[dependencies]\ncddl_runtime = { package = \"cddl-runtime\", path = \"../../../runtime\" }\n",
             ),
         )
         .unwrap();

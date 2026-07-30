@@ -1284,6 +1284,25 @@ makes a flag flip converge in a single pass: turning the JSON flags off tombston
 to a dependency that *is* present is kept whoever wrote it, and a bare (non-forwarding) entry is
 never pruned.
 
+**Those rules are also stated in the file, above the key.** Every run that writes a `features.std`
+key asserts a short comment block directly above it, so the contract is legible to whoever is
+editing the manifest rather than only to a reader of this page:
+
+```toml
+[features]
+default = ["std"]
+# cddl-codegen: co-owned key. Entries you add here survive regeneration; forwards to
+# cddl-codegen: dependencies that are no longer declared are pruned; the tool re-asserts
+# cddl-codegen: its computed forwards each run. See output_format.mdx, "The `std` feature".
+std = ["serde/std", "hex/std"]
+```
+
+Ownership of the comment lines is decided per line by the `# cddl-codegen:` prefix. Those lines are
+the tool's: they are stripped and re-written on every regeneration, so editing their text does not
+survive (and a block left by an older version is replaced wholesale rather than accumulating beside
+the new one). Every *other* comment or blank line above the key is yours and is preserved, in order,
+above the asserted block — so a note of your own explaining why a hand forward is there stays put.
+
 **Scope is the rust crate, and the exported runtime.** The `wasm` and `wasm/json-gen` crates stay
 `std` by nature (`wasm-bindgen`, and writing schema files to disk); they consume the rust crate with
 default features on and are unaffected. The [`--export-static-crate`](./command_line_flags) target

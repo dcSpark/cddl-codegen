@@ -19,5 +19,8 @@ wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
 default = ["std"]
+# cddl-codegen: co-owned key. Entries you add here survive regeneration; forwards to
+# cddl-codegen: dependencies that are no longer declared are pruned; the tool re-asserts
+# cddl-codegen: its computed forwards each run. See output_format.mdx, "The `std` feature".
 std = []
 wasm = ["dep:wasm-bindgen"]
