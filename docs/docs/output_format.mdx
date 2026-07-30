@@ -31,29 +31,45 @@ So the tag / fixed-value encoding for these is emitted at each use site. A conse
 
 ## Type spelling at member positions
 
-Wherever generated code **declares** the type of a member, it spells that type **as you declared it** — keeping the outermost alias ident, with no resolution to the alias's structural target. Given
+Wherever generated code **names** the type of a member, it spells that type **as you declared it** — keeping the outermost alias ident, with no resolution to the alias's structural target. Given
 
 ```cddl
 policy_id = bytes
 epoch = uint
-holder = [pid: policy_id, m: {* epoch => text}]
+delta_coin = int
+credential = [idx: uint, hash: policy_id]
+stake_credential = credential
+holder = [pid: policy_id, dc: delta_coin, sc: stake_credential, m: {* epoch => text}]
 ```
 
-the emitted `pid` is `PolicyId`, never `Vec<u8>`, and `m`'s encoding sidecar is keyed by `Epoch`, never by `u64`.
+the emitted `pid` is `PolicyId`, never `Vec<u8>`; `m`'s encoding sidecar is keyed by `Epoch`, never by `u64`; and `sc` is read with `StakeCredential::deserialize`, never `Credential::deserialize`.
 
-The declaration positions this covers:
+The positions this covers:
 
 - **data-struct fields**, and the constructor / getter / setter / wasm signatures built from them;
 - **encoding-struct fields** under `--preserve-encodings`, including the sidecar **index key** of a map-typed member (that one *must* match the data field's key type: serialize looks the sidecar up with a key borrowed straight out of the data map, so the two are one type expressed twice);
 - the same sidecars for an [open struct-map rest row](#open-struct-maps-rest-rows) or [open array rest tail](#open-arrays-rest-tails);
-- a **named collection rule's own alias target** (`nemap = {* epoch => text}` emits `pub type Nemap = OrderedHashMap<Epoch, String>`).
+- a **named collection rule's own alias target** (`nemap = {* epoch => text}` emits `pub type Nemap = OrderedHashMap<Epoch, String>`);
+- **member-level deserialize call targets** — `T::deserialize`, `T::from_raw_bytes`, `T::deserialize_as_embedded_group`. `dc: DeltaCoin` is filled by `DeltaCoin::deserialize`, and a member of a raw-bytes rule aliased as `script_hash` by `ScriptHash::from_raw_bytes`. This is the one covered position whose spelling is an expression rather than a declaration, and the only one where a member declared through a named rule and one declared anonymously appear side by side: in `other = [rs: req_signers, more: nonempty_set<uint>]` the two spell differently (`ReqSigners::deserialize`, `NonemptySetU64::deserialize`) because they are declared differently.
 
 **Container descent preserves the rule.** An `Array` element, a `Map` key or value, and an `Optional` inner are each themselves member positions with their own declared spelling, at every depth: a rest row over `{* epoch => {* policy_id => text}}` spells `Epoch` *and* the nested `PolicyId`.
 
+**Encoding-operation descent does not.** A position strictly inside a tag or a `.cbor` unwrap is not the member's type, and is spelled from the type actually at that point. `cred_bytes = bytes .cbor credential` emits `pub type CredBytes = Credential;` and reads its payload with `Credential::deserialize` — *inside* the already-unwrapped byte string:
+
+```cddl
+credential = [idx: uint, hash: policy_id]
+cred_bytes = bytes .cbor credential
+holder = [cb: cred_bytes]
+```
+
+`CredBytes::deserialize` there would compile (the alias is transparent) and would lie: it claims to read a bytes-wrapped value at the position that reads the payload. The carve-out is deliberate and the inconsistency it keeps is the correct output — this is the one place the rule and "one spelling per member" disagree, and the rule loses on purpose. A container inner *inside* such a payload is unaffected: it is a member position of its own again, so `bytes .cbor [* stake_credential]` reads its elements with `StakeCredential::deserialize`.
+
 Two things are deliberately **not** covered:
 
-- **Member deserialize call targets.** A member typed `delta_coin = int` is still read with `Int::deserialize`, and one typed `stake_credential = credential` with `Credential::deserialize` — the alias's structural target, not the alias. Those are call expressions rather than type declarations; nothing about the emitted bytes or the public type surface depends on which spelling appears there.
+- **Runtime error text and enum-variant paths.** The `NoVariantMatched` error a c-style enum member emits names the enum *struct* (`DeserializeError::new("Cenum", ..)`) even when the member is declared through an alias, and variant construction stays `Cenum::I0`. The first is output your code can match on — respelling it would make this a behaviour change rather than a spelling change — and the second names the enum's own variants, which have nothing to do with how the member was declared.
 - **Wasm collection wrapper names.** These are keyed by *structural* identity — one wrapper class can serve members declared under different aliases of the same shape — so "the member's alias" is not well defined for them. They are minted from the first requester's alias idents (`MapEpochToText`, `PolicyIdList`) and are stable API surface.
+
+Nothing about the emitted bytes, `Ord`/`Hash` behaviour, the JSON face or runtime error text depends on any of these spellings — member-level annotations carry the *field* name, not the type name — so a regeneration across this rule is a respelling of your generated source and nothing else.
 
 Why this is worth stating: exactly one function spells a member's type, and it keeps the alias. Any resolved spelling you might see is not a decision to resolve *for naming* — it is a code path that resolved the type in order to dispatch on its structure (`Map` vs `Array` vs primitive) and then reused the dispatch-normalized value as a naming input. Since that mistake is invisible at any single emission site, the rule is written down here so a reader can predict the output and a reviewer can defend it.
 
