@@ -2445,6 +2445,32 @@ bytes differently — RFC 8949 §3.4.3 bignum tags 2/3, which `ciborium` folds i
 `minicbor` leaves as `Tag(2/3, Bytes)` (our `biguint`/`bignint` prelude types) — is canonicalized by
 `fold_bignums` before comparison, so only a genuine structural divergence turns the gate red.
 
+## Declared-type spelling (`src/tests/declared_spelling_tests.rs`)
+
+The rule is that a type-DECLARATION position naming a member's type spells it as declared, keeping
+the outermost alias ident. It needs its own suite because the rule is a property of many emission
+paths at once: one
+function spells member types (`ConceptualRustType::for_rust_member_ct`, which keeps the alias), so
+every resolved spelling in the output comes from a caller that resolved for STRUCTURAL DISPATCH and
+then reused the dispatch-normalized value as a naming input. Nothing about that is visible at any one
+site, which is how the emission paths drifted from each other.
+
+- **The ordering guard** — `preserve_table_member_keeps_positional_encoding_sidecars`: a
+  `@duplicates preserve` named table referenced by a record member keeps POSITIONAL (`Vec<..>`)
+  encoding sidecars, asserted at all three sites that express that one decision (the encoding-struct
+  field DECLARATION, the deserialize-side `Vec::new()` construction, the serialize-side `.get(i)`
+  positional read). This is the guard on the ORDER of the spelling change: un-resolving an
+  encoding-field caller reaches `encoding_fields_impl`'s `Alias` arm, which must thread the OUTER
+  `RustTypeSerializeConfig` — the `Map` arm reads `cfg.duplicates` to choose positional over
+  key-VALUE-keyed. An `Alias`'s inner is a bare `ConceptualRustType` with no config of its own, so
+  recursing through `(&**ty).into()` DEFAULTS the config and drops the policy, turning the sidecar
+  into a `BTreeMap` that structurally cannot hold the repeated keys the table exists to round-trip.
+  A wire-behaviour skew wearing a respelling's clothes is exactly what a large bless diff hides, so
+  it is pinned rather than reviewed.
+
+These are in-process (`api::generated_strings`) source assertions, so they are `local`-tier: `fast`'s
+only cargo TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`.
+
 ## Static-runtime property layer (`src/tests/any_cbor_tests.rs`)
 
 The `AnyCbor` self-describing CBOR value type (`static/any_cbor_preserve.rs` + its two

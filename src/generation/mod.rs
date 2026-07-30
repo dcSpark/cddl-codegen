@@ -2692,8 +2692,25 @@ fn encoding_fields_impl(
                 tag_depth,
             ),
         },
-        SerializingRustType::Root(ConceptualRustType::Alias(_, ty), _cfg) => {
-            encoding_fields_impl(types, name, (&**ty).into(), cli, tag_depth)
+        SerializingRustType::Root(ConceptualRustType::Alias(_, ty), cfg) => {
+            // Keep the OUTER RustTypeSerializeConfig (`cfg`): an Alias's inner is a bare
+            // ConceptualRustType with no config of its own, so recursing with `(&**ty).into()`
+            // would DEFAULT the config and drop the per-rule policy the alias carries — notably
+            // `@duplicates preserve`, which the `Map` arm above reads to pick the POSITIONAL
+            // (`Vec<..>`) encoding sidecar instead of the key-VALUE-keyed `BTreeMap<..>`. Dropping
+            // it there is not a spelling difference but a wire-behaviour skew: a `BTreeMap` cannot
+            // hold the repeated keys a preserve table exists to round-trip. (`generate_serialize`
+            // and `generate_deserialize` keep the config at their own `Alias` arms for the same
+            // reason.) Masked for as long as every caller whose `type_name` reaches a declaration
+            // pre-resolved aliases; it stops being masked the moment one of them spells the
+            // member's declared type instead.
+            encoding_fields_impl(
+                types,
+                name,
+                SerializingRustType::Root(ty, cfg),
+                cli,
+                tag_depth,
+            )
         }
         SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
             // same-name recursion (a nullable can still carry a tagged inner), so thread the depth
