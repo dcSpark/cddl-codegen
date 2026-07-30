@@ -261,6 +261,21 @@ map_struct_with_custom_serialization = {
   plain: uint,
 }
 
+; A type-level custom pair is honored wherever the alias RESOLVES, and a table's key domain and
+; value range are the two such positions no struct field can reach: neither goes through a record
+; field's config, both go through the table loop instead. `hex_table_str` writes bytes as hex TEXT —
+; a wire shape the default `bytes` writer never produces and `read_hex_table_string` refuses — so a
+; custom fn dropped in either position is a round-trip FAILURE here, not a cosmetic difference.
+; Under --preserve-encodings each position also carries its own sidecar, and both are keyed by the
+; DECODED KEY (`*_key_encodings` and `*_value_encodings` alike): the key sidecar is therefore filled
+; from the value the custom READER handed back, not from the wire text it consumed.
+hex_table_str = bytes ; @custom_serialize write_hex_table_string @custom_deserialize read_hex_table_string
+
+custom_table_positions = [
+  keyed: { * hex_table_str => uint },
+  valued: { * uint => hex_table_str },
+]
+
 wrapper_table = { * uint => uint } ; @newtype
 wrapper_list = [ * uint ] ; @newtype
 

@@ -85,6 +85,32 @@ pub fn read_hex_string(
         .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(HexDecodeError(e))).into())
 }
 
+// The TABLE-position twin of write_hex_string/read_hex_string (same hex-TEXT-over-bytes wire), split
+// off because the encoding sidecar arrives differently there: a record field hands its stored
+// encoding to the custom writer BY REFERENCE, while a table's key/value loop looks the entry's
+// encoding out of the `BTreeMap` sidecar and hands it over BY VALUE. Only the argument mode differs
+// — the body is the same codec — so this pair is what pins that a table key domain and a table value
+// range both route through the alias's custom pair at all.
+pub fn write_hex_table_string<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    bytes: &[u8],
+    enc: StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    // the length passed is the HEX TEXT's (2n), never the raw bytes' (n) — see write_hex_string
+    let hex_text = hex::encode(bytes);
+    let str_len_sz = enc.to_str_len_sz(hex_text.len() as u64);
+    serializer.write_text_sz(hex_text, str_len_sz)
+}
+
+pub fn read_hex_table_string(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(Vec<u8>, StringEncoding), DeserializeError> {
+    let (text, text_enc) = raw.text_sz()?;
+    hex::decode(text)
+        .map(|bytes| (bytes, text_enc.into()))
+        .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(HexDecodeError(e))).into())
+}
+
 // must include the tag since @custom_serialize at field-level overrides everything
 pub fn write_tagged_uint_str<'se>(
     serializer: &'se mut cbor_event::se::Serializer,

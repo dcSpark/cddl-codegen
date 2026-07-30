@@ -17,6 +17,15 @@ table_holder = [
   table: { * hexid => uint },
 ]
 
+; --- table VALUE position: the same alias in a table's range ---
+; A canonical map sorts by its KEYS, so a custom VALUE writer never reaches the scratch-buffer sort
+; pass — but it is on the write path, it receives `force_canonical` all the same, and its sidecar is
+; keyed by the DECODED KEY rather than by the value it encodes. Pinning the value leg beside the key
+; leg keeps one position from regressing while the other stays green.
+value_table_holder = [
+  table: { * uint => hexid },
+]
+
 ; --- open struct-map rest row whose key domain alias carries the custom pair ---
 ; This is the SHIPPED open-struct-map feature's exposure to the same call site: the canonical merge
 ; that orders rest keys against the declared ones. The declared `"zzz"` key is sized (4 wire bytes)

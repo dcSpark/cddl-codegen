@@ -2331,6 +2331,188 @@ impl Deserialize for CustomFieldHolder {
     }
 }
 
+impl cbor_event::se::Serialize for CustomTablePositions {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.keyed_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.keyed.len() as u64),
+        )?;
+        for (key, value) in self.keyed.iter() {
+            let keyed_key_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.keyed_key_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            write_hex_table_string(serializer, key, keyed_key_encoding)?;
+            let keyed_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.keyed_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*value, fit_sz(*value, keyed_value_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.keyed_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.valued_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.valued.len() as u64),
+        )?;
+        for (key, value) in self.valued.iter() {
+            let valued_key_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.valued_key_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*key, fit_sz(*key, valued_key_encoding))?;
+            let valued_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.valued_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            write_hex_table_string(serializer, value, valued_value_encoding)?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.valued_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for CustomTablePositions {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let (keyed, keyed_encoding, keyed_key_encodings, keyed_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut keyed_table = OrderedHashMap::new();
+                    let keyed_len = raw.map_sz()?;
+                    let keyed_encoding = keyed_len.into();
+                    let mut keyed_key_encodings = BTreeMap::new();
+                    let mut keyed_value_encodings = BTreeMap::new();
+                    while match keyed_len {
+                        cbor_event::LenSz::Len(n, _) => (keyed_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if matches!(keyed_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let (keyed_key, keyed_key_encoding) = read_hex_table_string(raw)?;
+                        let (keyed_value, keyed_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        if keyed_table.insert(keyed_key.clone(), keyed_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
+                        }
+                        keyed_key_encodings.insert(keyed_key.clone(), keyed_key_encoding);
+                        keyed_value_encodings.insert(keyed_key.clone(), keyed_value_encoding);
+                    }
+                    Ok((
+                        keyed_table,
+                        keyed_encoding,
+                        keyed_key_encodings,
+                        keyed_value_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("keyed"))?;
+            let (valued, valued_encoding, valued_key_encodings, valued_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut valued_table = OrderedHashMap::new();
+                    let valued_len = raw.map_sz()?;
+                    let valued_encoding = valued_len.into();
+                    let mut valued_key_encodings = BTreeMap::new();
+                    let mut valued_value_encodings = BTreeMap::new();
+                    while match valued_len {
+                        cbor_event::LenSz::Len(n, _) => (valued_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if matches!(valued_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let (valued_key, valued_key_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        let (valued_value, valued_value_encoding) = read_hex_table_string(raw)?;
+                        if valued_table.insert(valued_key, valued_value).is_some() {
+                            return Err(
+                                DeserializeFailure::DuplicateKey(Key::Uint(valued_key)).into()
+                            );
+                        }
+                        valued_key_encodings.insert(valued_key, valued_key_encoding);
+                        valued_value_encodings.insert(valued_key, valued_value_encoding);
+                    }
+                    Ok((
+                        valued_table,
+                        valued_encoding,
+                        valued_key_encodings,
+                        valued_value_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("valued"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CustomTablePositions {
+                keyed,
+                valued,
+                encodings: Some(CustomTablePositionsEncoding {
+                    len_encoding,
+                    keyed_encoding,
+                    keyed_key_encodings,
+                    keyed_value_encodings,
+                    valued_encoding,
+                    valued_key_encodings,
+                    valued_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("CustomTablePositions"))
+    }
+}
+
 impl cbor_event::se::Serialize for DeeplyNested {
     fn serialize<'se>(
         &self,

@@ -74,6 +74,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::CborNestedPayloads>();
     _assert_serialize::<crate::generated::CustomFieldHolder>();
     _assert_deserialize::<crate::generated::CustomFieldHolder>();
+    _assert_serialize::<crate::generated::CustomTablePositions>();
+    _assert_deserialize::<crate::generated::CustomTablePositions>();
     _assert_serialize::<crate::generated::DeeplyNested>();
     _assert_deserialize::<crate::generated::DeeplyNested>();
     _assert_serialize::<crate::generated::EnumOptEmbedFields>();
