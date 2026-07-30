@@ -16,3 +16,14 @@ dup_pair_concrete = {
   5: uint,
   * uint => text ; @duplicates preserve
 }
+; The composition the rules above each cover only half of: the `any` KEY domain crossed with
+; `@duplicates preserve` on the rest row. `dup_pair`/`dup_pair_concrete` pair `preserve` with a
+; CONCRETE uint key domain (whose container Eq is value equality); `open_any` pairs the `any` key
+; domain with the default REJECT. Only here does an entry key of arbitrary CBOR type — a float, a
+; composite — land in a PairMap<AnyCbor, AnyCbor> that must keep duplicates and their wire order.
+; The declared key is text rather than uint so the canonical merge must also order a text key
+; against arbitrary rest keys. Vectors in tests.rs.
+dup_any_rest = {
+  name : text,
+  * any => any ; @duplicates preserve
+}

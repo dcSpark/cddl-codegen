@@ -133,4 +133,78 @@ mod open_struct_map_preserve {
         assert!(v.rest.is_empty());
         assert_eq!(v.to_cbor_bytes(), wire, "empty pair-list ≡ closed");
     }
+
+    // --- the `any` KEY domain crossed with @duplicates preserve (dup_any_rest) ---
+    // The rules above cover the two halves separately: `dup_pair` pairs `preserve` with a CONCRETE
+    // uint key domain, `open_any` pairs the `any` key domain with the default REJECT (see
+    // dup_rejected_any_domain, where 0x05 and 0x1805 are refused as the same key). Here both apply
+    // at once, so the rest field is a PairMap<AnyCbor, AnyCbor>: duplicate keys must be KEPT, and a
+    // key may be any CBOR item at all rather than a uint.
+
+    #[test]
+    fn dup_any_keeps_duplicate_and_composite_keys_byte_exact() {
+        // {"name": "x", 5: "a", 5: "b", [1]: 0} — three rest entries: a duplicated uint key (which
+        // dup_rejected_any_domain shows the REJECT container refuses) and an ARRAY key, which no
+        // concrete-domain rule can hold at all. All three survive, in wire order.
+        let wire = bytes("a4 646e616d65 6178 05 6161 05 6162 8101 00");
+        let v = DupAnyRest::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.name, "x", "declared text member decoded");
+        assert_eq!(
+            v.rest.len(),
+            3,
+            "duplicate uint keys AND the composite array key all captured"
+        );
+        assert_eq!(v.to_cbor_bytes(), wire, "byte-exact with duplicate + composite any keys");
+        // RFC 8949 gives duplicate-keyed data no canonical form, so the pair-map's deterministic
+        // best-effort is pinned as a FIXED POINT rather than against hand-derived bytes: the
+        // canonical output must re-parse and re-canonicalize to itself.
+        let canon = v.to_canonical_cbor_bytes();
+        let re = DupAnyRest::from_cbor_bytes(&canon).unwrap();
+        assert_eq!(re.rest.len(), 3, "canonical output keeps every entry");
+        assert_eq!(
+            re.to_canonical_cbor_bytes(),
+            canon,
+            "canonical of canonical == canonical"
+        );
+    }
+
+    #[test]
+    fn dup_any_indefinite_framing_and_dup_keys_byte_exact() {
+        // {_ "name": "x", 24(two-byte): "a", 24(two-byte): h'f5f4f6f5f5' _} — indefinite MAP framing
+        // around a duplicated non-minimal key, with a byte-string value whose content is itself a run
+        // of major-7 head bytes (0xf5/0xf4/0xf6). The framing, both key widths, and the payload must
+        // all replay verbatim; a reader that mistook a payload 0xf5 for a value would desync.
+        let wire = bytes("bf 646e616d65 6178 1818 6161 1818 45f5f4f6f5f5 ff");
+        let v = DupAnyRest::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.rest.len(), 2, "both key-24 entries kept");
+        assert_eq!(v.to_cbor_bytes(), wire, "indefinite framing + dup keys byte-exact");
+    }
+
+    #[test]
+    fn dup_any_float_junk_values_byte_exact_and_canonical() {
+        // Float VALUES in the any domain, one per interesting float class: 1.0 at the widest head
+        // (RFC 8949 §A: fb 3ff0000000000000), a payload-carrying NaN (fb 7ff8000000000001), and -0.0
+        // already minimal (f9 8000). Preserve replays every head width verbatim; canonical applies
+        // the three different §4.2 rules — 1.0 SHRINKS to f9 3c00, the NaN NORMALIZES to f9 7e00
+        // (§4.2.2, payload dropped), and -0.0 KEEPS its sign at f9 8000 (§4.2 minimizes the encoding,
+        // not the value). The canonical assertion is by containment because duplicate-capable
+        // key ordering is the pair-map's own best-effort, pinned above.
+        let wire = bytes(
+            "a4 646e616d65 6178 01 fb3ff0000000000000 02 fb7ff8000000000001 03 f98000",
+        );
+        let v = DupAnyRest::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.rest.len(), 3);
+        assert_eq!(v.to_cbor_bytes(), wire, "float junk values replay at their wire widths");
+        let canon = v.to_canonical_cbor_bytes();
+        for (needle, why) in [
+            (bytes("f93c00"), "1.0 shrinks to the f16 head"),
+            (bytes("f97e00"), "the NaN payload is dropped (§4.2.2)"),
+            (bytes("f98000"), "-0.0 keeps its sign"),
+        ] {
+            assert!(
+                canon.windows(needle.len()).any(|w| w == &needle[..]),
+                "canonical output must contain {needle:02x?}: {why}"
+            );
+        }
+    }
 }
