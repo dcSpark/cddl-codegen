@@ -175,7 +175,63 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-1. **Two uncovered surfaces around `export()`, both measured while probing the aggregate-package
+1. **A `float32` member accepts every float head and silently narrows the value, so the preserve
+   contract's accept ⇒ byte-exact re-encode does NOT hold for it.** RFC 8610's prelude defines
+   `float32 = #7.26`, so strict CDDL matches a `float32` member against a `0xfa` head alone;
+   `ident_to_primitive` in `src/parsing.rs` routes both `float16` and `float32` onto one
+   `Primitive::F32`, whose read is the pinned cbor_event fork's `impl Deserialize for f32` —
+   `raw.float().map(|f| f as f32)` — taking `f9`/`fa`/`fb` alike and narrowing with an `as` cast.
+   Two consequences the generated crate never signals: spec-invalid input is accepted, and an
+   accepted double that is not f32-exact comes back MUTATED, so preserve re-encodes it to different
+   bytes under the same recorded head width (`fb` 1.1 → the nearest f32 → a different 8-byte
+   payload; `fb` 1e300 → `+Inf`). `float64` members and the `any` path stay byte-exact for every
+   well-formed float, so the hole is exactly the float32/float16 member type — and the
+   platform-dependent float32-NaN caveat in `docs/docs/current_capacities.mdx` exists only because
+   of that same cast.
+   - **Two restorations, either of which makes accept ⇒ byte-exact true again.** The choice is a
+     spec-strictness decision, not a mechanical one. (a) Prelude semantics: a `float32` member
+     accepts `fa` only and a `float16` member `f9` only — what `#7.26`/`#7.25` say. (b)
+     Value-lossless acceptance: accept any head whose value is exactly representable at the member's
+     precision and reject the rest, which keeps the liberal cases that are ALREADY byte-exact (an
+     `fb`-headed 1.5 decodes and re-encodes verbatim today — the golden preserve KATs prove it) and
+     rejects only the mutating ones.
+   - **Under either option the `as` narrowing is replaced by a bit-exact conversion.** The pinned
+     cbor_event fork already ships `f64_to_f32_bits_exact`, which is `None` exactly for the values
+     that would mutate and carries a NaN payload across when it fits the 23-bit mantissa. That is
+     what makes an accepted NaN deterministic, so the fix DELETES the float32-NaN caveat and the
+     lossy-narrowing sentence from the capacities doc instead of keeping them documented.
+   - **It is a default-profile behavior change, not a preserve-only one.** Accept/reject must not
+     vary by profile here — float range windows are already enforced on the narrowed value in both
+     profiles for that reason — so a tightened acceptance lands in both and belongs in the changelog
+     as a decode-acceptance narrowing.
+   - **`float16` needs its own ruling in the same change.** It is aliased onto `Primitive::F32`
+     today, so a `float16` member is an f32 member with a wider accept set than even option (b)
+     would grant it; whichever option lands must say whether float16 keeps f32 storage with an
+     `f9`-only (or f16-exact) accept rule, or gains its own primitive.
+   - **The evidence cannot see the divergence, and no catalog vector can certify it yet — this is
+     the fix's first work item.** Every conformance vector on the `prelude.float32` row is
+     `fa`-headed, so the row's `supported` / `emission.preserve supported` annotation is true of
+     everything it has ever been shown. The two vectors that would discriminate are
+     `8200fb3ff199999999999a` (1.1 — accepted today, value mutates) and `8200fb3ff8000000000000`
+     (1.5 — accepted today, byte-exact; the vector the two options split on, since (a) rejects it
+     and (b) keeps it). Both are spec-INVALID per `#7.26`, so their only legitimate home is
+     `class="over-acceptance"`, which the mint keeps only while BOTH oracles reject the bytes — and
+     the rust oracle does not: `cddl --ci validate` accepts `f9`/`fa`/`fb` alike against a `float32`
+     member (and `fa` against `float64`), while the ruby oracle classifies by the decoded value's
+     MINIMAL width rather than the wire head and so rejects a spec-valid `fa`-headed 1.5 as readily
+     as the `fb` ones. Landing the pins before that is settled would commit vectors the next mint
+     drops, taking the Q4 over-accepts set red with them. The route out is one of: an
+     upstream-oracle-gap exemption for over-acceptance pins (the shape the constraint side already
+     has for the rust `uint` control-op gap), or an oracle that discriminates head width.
+   - **Surfaces the fix touches:** `ident_to_primitive` in `src/parsing.rs`, the
+     `Primitive::F32 | Primitive::F64` arms in `src/generation/deserialize.rs` (the preserve
+     `float_sz()` read and the plain `f32::deserialize` one alike), the float bullet in
+     `docs/docs/current_capacities.mdx` (its lossy-narrowing sentence and NaN caveat both go), the
+     "values are all f32-exact" scope notes on the `sgl` member in the golden preserve and canonical
+     KATs, and — under (b) — the new `prelude.float32` catalog vectors plus a matrix re-probe whose
+     shape lets that row's evidence discriminate.
+
+2. **Two uncovered surfaces around `export()`, both measured while probing the aggregate-package
    deferral above.** Neither depends on that feature ever shipping.
    - **A generated crate's `package.name` can collide with an existing workspace member and nothing
      says so.** The tool writes `rust/Cargo.toml` with `package.name` derived from `--lib-name`,
@@ -194,7 +250,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      no-prior-output-dependence plus four diagnostic-only prior-output reads — and it is the half a
      refactor there would most easily break silently.
 
-2. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
+3. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
    `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
    profile-parameterized layer-2 gates `recombination_crates_execute` /
@@ -268,7 +324,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-3. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
+4. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
    The `from_cbor_bytes` fuzz crate generates from `tests/preserve-encodings/input.cddl`, which now
    carries a `@duplicates reject` collapsed tag-set field minted as a GENERIC instance
    (`oset_p<a> = #6.258([* a]) / [* a] ; @duplicates reject`, used by `reject_set_preserve`) — so
@@ -284,7 +340,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    surface is actually walked, not merely compiled — the compile-rot gate cannot see a panic that
    only a live libFuzzer input triggers.
 
-4. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
+5. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
    preserve-encodings, canonical, JSON/schemars, wasm, extern-interface projection, and the
    `dsl.duplicates.{reject,preserve}` matrix feature rows. Current state lives in
@@ -369,7 +425,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      `cbor_types` panic (the cddl-matrix findings entry) — while the fixture's
      `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows minted with vectors.)
 
-5. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
+6. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on two profiles (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
@@ -392,7 +448,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    consumer CI will trip"; the consumer-report channel stays load-bearing for that remainder, which
    is why those two lints are allowed at the generated root rather than chased per-spec.
 
-6. **The rustfmt-invocation seam's own error paths are contract-untested.**
+7. **The rustfmt-invocation seam's own error paths are contract-untested.**
    `rustfmt_generated_string` (`src/generation/export.rs`) carries the deliberate
    non-0/3-exit-is-fatal contract that both the width ladder
    (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the preserve-fixture rustfmt
@@ -416,7 +472,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    but until that maintainer decision lands, the fatal contract two standing gates lean on keeps
    an untested swallow path at its center, which is the wrong place for one.
 
-7. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
+8. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
    gives the rustfmt-cycle sweep discovery power.**
    `preserve_fixtures_rustfmt_cycle_stability` holds the post-rustfmt on-disk fixed point over
    every fixture, but only over fold positions the corpus expresses — its own delivery record is
@@ -439,7 +495,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    formatter's novel comment re-owning — the sweep's version-bump tripwire is the instrument for
    those.
 
-8. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
+9. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
    SAME-VERSION suite by construction: every case's `old.rs` and `new.rs` agree on generated code
    bytes except where the fixture deliberately drifts one item, which is the shape a re-run of one
    tool version produces. A tool UPGRADE is the other shape — it adds tokens and rewrites others
