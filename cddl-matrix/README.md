@@ -379,7 +379,11 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    `table_enum_key.enum_key_holder` down to their EMPTY-map instances (every non-empty ruby
    candidate dies `ruby=0 rust=1` on the two-oracle gate; a mint whose random draws miss the
    empty instance pins the row `pinned_reason`-vectorless instead, with the per-oracle tallies in
-   the pin wording — the two states flip-flop across re-mints while the gap is open), and it is
+   the pin wording — the two states flip-flop across re-mints while the gap is open; MEASURED
+   2026-07-30 on `alias_positions`, whose subject makes it maximally exposed: re-minting the fixture
+   UNCHANGED demoted `alias_positions.nested` from live vectors to `pinned` for net -37 catalog
+   lines, and which rows fall varies per run, so a re-mint of a named-key-heavy fixture is a LOSSY
+   operation rather than an idempotent one while this gap is open), and it is
    why `alias_positions` — the corpus fixture whose whole subject is aliased (i.e. named-rule) map
    keys — rides `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` with its ruby half left judging: its
    maps sit in MEMBER position, where the empty-map instance that spares the three rows above is not
