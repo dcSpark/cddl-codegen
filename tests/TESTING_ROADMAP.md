@@ -2748,6 +2748,17 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   (Scope: this records the ask as understood from the delivery's response notes; the requester's own
   statement of it is not in-tree.) Reopening signal: a consumer whose layout genuinely forces two
   passes into one json-gen crate and for whom the hand-written composition is not enough.
+- **A machine-readable ownership record for the co-owned `features.std` list.** The human half of
+  the co-ownership contract is asserted in-band — the `# cddl-codegen:` comment block above the key
+  (`STD_OWNERSHIP_COMMENT`, `cargo_manifest.rs`), re-written every run so it cannot rot — but a
+  TOOL wanting to partition the list's entries by provenance (tool-computed vs consumer-added) has
+  only line-prefix parsing to go on. The structural carrier already exists: a list under the
+  manifest's `[package.metadata.cddl-codegen]` table (the `generated-with` stamp's home) would
+  state the tool's current entry set with no new public surface and stay freely revocable. Not
+  built because it has zero consumers today, and duplicating the list without one buys only bytes.
+  Reopening signal (consumer-side, the party who'd measure it): a consumer-side tool or lint that
+  needs the tool/hand partition of `std` entries and says so — a feature request naming the tooling
+  it would unblock.
 
 ## Operational watches
 
@@ -3161,6 +3172,37 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   additive rather than infrastructural. And the "if either diagnostic grows logic" condition has
   fired: every one of these sites is now level-gated, which is a second reason each could go silent
   and a second thing no test watches.
+- **Restructuring `features.std` into a tool-owned sub-feature (a `_cddl-codegen-std` key
+  referenced from a consumer-owned `std`).** Declined because the key layout cannot change the
+  SEMANTICS, and its two legibility benefits are each dominated by a cheaper reversible channel.
+  The semantics are forced to exactly union-plus-prune by three constraints, whatever the keys:
+  the `--rust-dep`/`--std-forward-dep` family is assert-only (a dropped flag carries no name to
+  tombstone, and `merge_dep_spec` never removes a field the tool's current spec doesn't set, so
+  its `default-features = false` outlives the flag un-retractably — retracting the forward while
+  defaults-off persists would hand a `std` consumer the path dep's alloc build silently); a
+  forward to an absent dependency is a manifest cargo rejects (the prune); and hand forwards are
+  uncomputable even in principle (the dependency's feature NAME is unknowable without a registry
+  lookup — itertools spells it `use_std`), so they must union-survive. With semantics fixed, the
+  split would deliver only a visible ownership boundary — the human form of which the asserted
+  `# cddl-codegen:` comment block delivers (and states the RULES, which a key partition cannot),
+  and the machine form of which the metadata-record deferral above delivers strictly better —
+  while the split alone is irreversible: a cargo feature name on published generated crates is
+  public API, and removing one later is a semver break. Every candidate reopening observable
+  routes to a different remedy, which is the decline: consumer confusion recurring AFTER the
+  asserted comment ships reopens the comment's TEXT; a machine consumer appearing fires the
+  metadata deferral; a hand entry lost under the merge is a merge BUG. Nothing observable routes
+  to the split itself.
+- **An ownership journal making a dropped `--std-forward-dep` converge (safe retraction).**
+  Dropping the flag while keeping its `--rust-dep` leaves a stale-but-consistent pair today — the
+  dep keeps `default-features = false`, the `<pkg>/std` forward union-survives beside it — safe,
+  documented on the flag, fixable by hand. Making the tool retract it requires journaling
+  provenance in the manifest (which run wrote the forward AND the `default-features` field, since
+  the tool cannot otherwise tell its own defaults-off from the user's), a qualitatively new use of
+  the bounded existing-manifest read in which a PRIOR run's flag set changes THIS run's asserted
+  content. Declined: a new invariant surface to buy convergence of a documented harmless
+  staleness. Reopening signal: a consumer report in which the surviving pair is a defect for them
+  — they dropped the flag to STOP forwarding and the persistence harms their build — rather than
+  the documented safe leftover.
 
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`

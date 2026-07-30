@@ -560,7 +560,11 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   content by c-style-enum presence, removed without `--wasm`) — is pinned byte-wise by these same
   snapshots; its lifecycle/merge contract (including the CML-shaped regen and the legacy
   feature-list repair) lives in the `feature_gate_*` unit tests beside `ops_for_rust`/`ops_for_wasm`
-  in `cargo_manifest.rs`. The
+  in `cargo_manifest.rs`. These snapshots also pin the `# cddl-codegen:` ownership-comment block
+  above `features.std` byte-wise (`STD_OWNERSHIP_COMMENT` — its wording deliberately spells no TOML
+  table header, and a snapshot diff is where a careless reword would surface); its strip/append and
+  user-comment-survival contract lives in the `std_ownership`/`user_comment` unit tests beside the
+  constant. The
   unconditional keys come from a per-manifest append-only change log (`static/manifest_changes/*.toml`,
   the single source of truth — format and editing rules in `static/manifest_changes/README.md`);
   its fold reader hard-errors on non-contiguous ids or a malformed
