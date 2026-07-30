@@ -146,10 +146,13 @@ impl<'a> DeserializeConfig<'a> {
 
     /// Descend into an `Optional`'s inner: a member position of its OWN, so it spells from its own
     /// declaration (its `Alias` arm lifts it) and must not inherit the outer member's. Without this
-    /// a member typed `maybe_cred = credential / null` emits `MaybeCred::deserialize(raw)` inside
-    /// the `Some(..)` the arm wraps it in — `Some(Option<Credential>)` against a field typed
-    /// `Option<Credential>`, i.e. E0308. `Array`/`Map` inners need no equivalent: they recurse with
-    /// a fresh `DeserializeConfig`.
+    /// a member typed `maybe_cred = credential / null` emits
+    /// `Some(MaybeCred::deserialize(raw)?)` — and since `MaybeCred` IS `Option<Credential>`, the
+    /// call target resolves to a type with no such associated function: `E0599: the variant,
+    /// associated function, or constant 'deserialize' exists for enum 'Option<Credential>', but its
+    /// trait bounds were not satisfied`. (Reproduced by removing this clear, not predicted from the
+    /// shape — the `Some(..)` wrapping makes an E0308 look likelier than it is.) `Array`/`Map`
+    /// inners need no equivalent: they recurse with a fresh `DeserializeConfig`.
     pub(super) fn clear_declared_spelling(mut self) -> Self {
         self.declared_spelling = None;
         self
