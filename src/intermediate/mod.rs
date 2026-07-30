@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comment_ast::{DemandSet, RuleMetadata};
+use crate::parsing::EXTERN_MARKER;
 use crate::utils::{
     cddl_prelude, convert_to_camel_case, convert_to_snake_case, is_identifier_reserved,
     is_identifier_user_defined,
@@ -2905,6 +2906,90 @@ impl<'a> IntermediateTypes<'a> {
                  plain group no rule splices. Remove it from this rule, or move it to the rule that \
                  actually produces the type."
             ));
+        }
+        // The `@custom_serialize`/`@custom_deserialize` pair is a TYPE-level override: it replaces
+        // the codec of the rust type a rule resolves to. The parse-walk rejections cover the
+        // placements that DELETE or BYPASS the node it keys on (`@no_alias`, `@newtype`, an extern /
+        // raw-bytes marker, a row-entry slot). The two below are the placements that MINT a struct
+        // whose generated impls the pair does not displace, so it half-applies:
+        //
+        //   - an ENUM rule (type choice, group choice, or the fixed-value C-style enum): its
+        //     serialize side is generated unconditionally while `generate_deserialize`'s
+        //     `Root(Rust(ident))` arm rewrites every embed site to the named reader — the same
+        //     read-one-format/write-another asymmetry `@newtype` is rejected for.
+        //   - a RECORD rule carrying only ONE half. Serialize-only emits no `Serialize` impl and
+        //     never calls the named function (an undiagnosed non-compiling crate);
+        //     deserialize-only keeps the type's own generated `Deserialize` impl while rewriting
+        //     every embed site, so one type decodes the same bytes two ways — and the rule projects
+        //     OPAQUELY across the extern-interface seam, carrying the divergence to consumers.
+        //     BOTH halves on a record rule is deliberately NOT rejected: it suppresses the generated
+        //     impls for the author to hand-own, which is unspecified-and-at-risk rather than wrong
+        //     (see `docs/docs/comment_dsl.mdx`).
+        //
+        // Deferred to here rather than the parse walk for the same reason `@no_json_schema_export`
+        // above is: the struct KIND decides, and a generic instance only materializes its struct
+        // during the resolution above. Collected into a `BTreeSet` (determinism + no duplicate line
+        // if two registrations ever land on one ident), like the float-key rejections.
+        let mut custom_codec_rejections = BTreeSet::new();
+        for (ident, rust_struct) in &self.rust_structs {
+            let config = rust_struct.config();
+            let enum_shape = match rust_struct.variant() {
+                RustStructType::TypeChoice { .. } => Some("a type-choice rule (`a / b`)"),
+                RustStructType::GroupChoice { .. } => {
+                    Some("a group-choice rule (`{ … } // { … }`)")
+                }
+                RustStructType::CStyleEnum { .. } => {
+                    Some("a fixed-value type-choice rule (`0 / 1`, a C-style enum)")
+                }
+                _ => None,
+            };
+            if let Some(shape) = enum_shape {
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: {shape} mints an enum whose serialize side is \
+                             generated unconditionally, while the deserialize CALL SITES do route \
+                             through the custom reader — so the pair would make the enum read one \
+                             wire format and write another. Put the pair on the rule of the variant \
+                             type that needs the custom format, or declare `{ident}` as a \
+                             {EXTERN_MARKER} rule and hand-write the type in full."
+                        ));
+                    }
+                }
+            }
+            if matches!(rust_struct.variant(), RustStructType::Record(_)) {
+                if config.custom_serialize.is_some() && config.custom_deserialize.is_none() {
+                    custom_codec_rejections.insert(format!(
+                        "@custom_serialize alone on `{ident}`: a record rule with only the serialize \
+                         half emits no `Serialize` impl for the type and never calls the named \
+                         function, so the generated crate does not compile — every site holding a \
+                         `{ident}` calls `.serialize(..)` on a type that has no impl. Move the pair \
+                         to the field (or to the type rule of the member) that needs the custom \
+                         format, or declare `{ident}` as a {EXTERN_MARKER} rule and hand-write the \
+                         type in full."
+                    ));
+                }
+                if config.custom_deserialize.is_some() && config.custom_serialize.is_none() {
+                    custom_codec_rejections.insert(format!(
+                        "@custom_deserialize alone on `{ident}`: a record rule with only the \
+                         deserialize half still emits the type's own generated `Deserialize` impl, \
+                         while every site holding a `{ident}` is rewritten to call the named function \
+                         — so `{ident}::from_cbor_bytes` and a field of type `{ident}` decode the \
+                         same bytes differently. The rule also projects OPAQUELY across the \
+                         extern-interface seam, so a consumer decodes it the generated way. Move the \
+                         pair to the field (or to the type rule of the member) that needs the custom \
+                         format, or declare `{ident}` as a {EXTERN_MARKER} rule and hand-write the \
+                         type in full."
+                    ));
+                }
+            }
+        }
+        for msg in custom_codec_rejections {
+            self.record_rejection(msg);
         }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
         // only run post-generic-resolution). Without this the entry-point check at the top of
