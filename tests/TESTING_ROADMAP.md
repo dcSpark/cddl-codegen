@@ -2490,6 +2490,54 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 
 ## Deferred features (build when a real consumer needs them)
 
+- **Honor `@custom_deserialize` on an open struct-map rest row's key-domain alias (the
+  seek-rollback design).** The rest row's key dispatch must read the raw wire key before it can
+  tell a declared key from a rest key, and the custom-deserialize contract consumes from the
+  deserializer — so today the serialize half IS honored (canonical merge + write arm) while the
+  reader is never called, and the row binds the raw dispatch read instead. The design that fits
+  the existing machinery: capture the reader position before the key read; in the rest branch
+  only, seek back and call the custom fn, filing its returned encoding into the already-existing
+  `rest_key_encodings` sidecar (the `Seek` requirement is already standing — the backtracking
+  type-choice emitter rolls back with `set_position` today). A use-site REJECTION was considered
+  and is wrong twice over: the same alias is legal in table/field positions where the pair works,
+  and a rejection would have to refuse the whole pair (a transforming `@custom_serialize`-only
+  codec is equally divergent), deleting the canonical-merge regression pin that
+  `custom_serialize_canonical_e2e` exists to hold. Interim state, deliberately loud-adjacent: the
+  `rest-row-key-domain-alias` `KNOWN_SILENT_DROP` pin in `dsl_position_tests` (flips the day this
+  is built) plus the comment-DSL "Positions that are still silent" bullet.
+  - **Reopening signal:** a consumer puts a TRANSFORMING codec on a rest-row key domain — their
+    round-trip visibly breaks (writes transformed keys, reads raw ones), which is one failing
+    round-trip test of their own. A CIP-25-shaped open map (hex-text keys ↔ a hash type) is the
+    known candidate shape.
+
+- **Make the BOTH-set custom pair on a named struct rule mean "generated impls that delegate to
+  the named functions" (symmetric delegation).** Today the record-rule both-set spelling
+  suppresses the type's generated impls, rewrites embed-site deserializes to the named reader,
+  and never references the named writer — accepted, pinned as-is by the `record-rule-both-set`
+  control cell in `dsl_position_tests`, and documented as unspecified. The coherent end-state is
+  thin generated `Serialize`/`Deserialize` impls delegating to the two named fns plus the missing
+  serialize-side `Root(Rust(ident))` arm (the deserialize side already has one), applied to every
+  named struct kind — then the pair means the same thing on a record as on an alias,
+  `from_cbor_bytes` agrees with embed sites, and the opaque extern-interface projection stays
+  sound. Deferred rather than shipped because it changes public behavior for a spelling with zero
+  known users; the single-half spellings (which were outright broken) already reject.
+  - **Reopening signal:** a consumer asks for a tool-generated struct with hand-owned wire logic
+    without going full `_CDDL_CODEGEN_EXTERN_TYPE_` (losing the generated struct/API is the cost
+    that makes them ask) — the request itself is the signal, and it names the type shape to
+    design against.
+
+- **Decide whether a TABLE rule's own comment slot can carry the custom pair at all.** Today
+  `t = { * k => v }` with the pair on the RULE is dropped in both directions (pinned:
+  `table-rule` `KNOWN_SILENT_DROP` in `dsl_position_tests`; documented in the comment-DSL silent
+  list). A table rule lowers to a transparent map alias with no single codec slot to override —
+  honoring the pair would mean wrapping the WHOLE map's wire form, which is a different contract
+  from the per-key/per-value overrides that already work. Rejection was not shipped because the
+  rule-position slot is live for other directives (`@duplicates`) and the design question is
+  genuine.
+  - **Reopening signal:** a consumer asks for a whole-map custom wire form that per-key/per-value
+    pairs cannot express (e.g. a map spelled as something other than a CBOR map on the wire) —
+    until then the per-position pairs cover the known shapes.
+
 - **A crate entry that generates only a JSON-schema document (the aggregate package).** An npm
   package composing several generated crates needs one schema document over their union, but is
   often not itself a generated crate — so it carries a hand-written json-gen crate transcribing what
