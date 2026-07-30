@@ -44,9 +44,11 @@
 //!   "spelling-only" property the whole rule claims, and both compile, so they are asserted
 //!   NEGATIVELY here rather than left to review.
 //!
-//! * **The two descents that must NOT carry a declared spelling**, each a silently-wrong spelling
-//!   rather than a failure: an encoding operation's child (the `bytes .cbor` carve-out) and an
-//!   `Optional` inner.
+//! * **Where a declared spelling must NOT reach**, each a silently-wrong spelling rather than a
+//!   failure: the payload of an alias whose own RULE carries the encoding operation (the `bytes
+//!   .cbor` carve-out — and its counterpart, an operation owned by the MEMBER's type expression,
+//!   which the spelling DOES survive, since testing "did we cross an operation" instead gets that
+//!   case wrong), and an `Optional` inner.
 //!
 //! These drive the full in-process generation pipeline (`api::generated_strings`) and assert the
 //! emitted SOURCE, so a regression at any emission path surfaces here rather than in a consumer's
@@ -550,5 +552,77 @@ fn aliased_member_leaves_error_strings_and_variant_paths_alone() {
         src.contains("Cenum::I0") && !src.contains("CenumAlias::I"),
         "enum-variant construction paths name the enum's OWN variants, not the member's declared \
          type:\n{src}"
+    );
+}
+
+/// WHO OWNS the encoding operation decides whether the member's declared spelling survives it — not
+/// whether the descent crossed one.
+///
+/// The seal exists because an alias ident can name the WRAPPED form: `cred_bytes = bytes .cbor
+/// credential` means `CredBytes` IS the bytes-wrapped thing, so the payload position is not what the
+/// ident denotes. That is true exactly when the operation belongs to the alias RULE. When the
+/// operation comes from the MEMBER's own type expression (`f: #6.9(stake_credential)`) the alias still
+/// denotes precisely the value being read there — and the field is typed `StakeCredential`, so
+/// lifting is what closes the disagreement rather than what creates one.
+///
+/// The premise "a tag never has an alias in play, because `x = #6.9(y)` auto-wraps into a newtype"
+/// holds only for the RULE form. The FIELD form keeps the alias, which is why `f` below was a live
+/// instance of the reported defect: a field typed `StakeCredential` filled by
+/// `Credential::deserialize`.
+///
+/// The compound member is the case that separates the ownership test from a "did we cross an
+/// operation" test: `#6.9(cred_bytes)` crosses a member-owned tag AND a rule-owned `.cbor`, and must
+/// seal — on the `.cbor`'s account, not the tag's.
+#[test]
+fn encoding_operation_ownership_decides_whether_the_spelling_survives() {
+    let src = generate(
+        "credential = [idx: uint]\n\
+         stake_credential = credential\n\
+         cred_bytes = bytes .cbor credential\n\
+         holder = [f: #6.9(stake_credential), g: cred_bytes, h: stake_credential, i: #6.9(cred_bytes)]\n",
+        "op_ownership",
+        PRESERVE,
+    )
+    .expect("must generate");
+
+    // The fixture's own premises: `f` and `i` must really carry a MEMBER-owned tag over an alias, or
+    // the two halves below are testing nothing.
+    for (field, ty) in [
+        ("pub f:", "StakeCredential,"),
+        ("pub g:", "CredBytes,"),
+        ("pub h:", "StakeCredential,"),
+        ("pub i:", "CredBytes,"),
+    ] {
+        assert!(
+            src.contains(&format!("{field} {ty}")),
+            "fixture premise: expected `{field} {ty}` — a member-expression tag must keep the \
+             alias on the field, or this pin is vacuous:\n{src}"
+        );
+    }
+
+    // LIFT — the tag is the MEMBER's, so the alias denotes the value read inside it, and the call
+    // target now agrees with the field's own type.
+    assert!(
+        src.contains("(9, tag_enc) => Ok((StakeCredential::deserialize(raw)?, Some(tag_enc)))"),
+        "a member-expression tag over an alias must LIFT the declared spelling — the alias denotes \
+         exactly the value read inside the tag:\n{src}"
+    );
+
+    // SEAL — twice, both on the RULE-owned `.cbor`'s account. `i` additionally crosses a
+    // member-owned tag, which must not change the verdict in either direction.
+    assert_eq!(
+        src.matches("Credential::deserialize(inner_de)").count()
+            - src
+                .matches("StakeCredential::deserialize(inner_de)")
+                .count(),
+        2,
+        "both `.cbor` payload reads must name the alias's TARGET: the alias names the \
+         bytes-wrapped form, so its ident does not denote the payload position — and the compound \
+         member's member-owned tag does not change that:\n{src}"
+    );
+    assert!(
+        !src.contains("CredBytes::deserialize"),
+        "a rule-owned `.cbor` alias must never spell its own ident at the payload read, with or \
+         without a member-owned tag stacked on top:\n{src}"
     );
 }

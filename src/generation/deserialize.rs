@@ -28,24 +28,11 @@ pub(super) struct DeserializeConfig<'a> {
     /// enum-variant path name the struct itself, never the member's declaration — see the
     /// `CStyleEnum` arm).
     ///
+    /// A spelling is lifted only when the alias RULE owns no encoding operation — see the `Alias`
+    /// arm, which is where that test lives (the config cannot see the rule).
+    ///
     /// User doc: `docs/docs/output_format.mdx` § "Type spelling at member positions".
     declared_spelling: Option<String>,
-    /// `true` once this descent has crossed a `CBOREncodingOperation`, which SEALS the declared
-    /// spelling: an `Alias` arm below an operation must not lift one.
-    ///
-    /// The seal, rather than a clear at the operation's descent, is what the arm ORDER forces. A
-    /// `RustType`'s encoding operations wrap its conceptual type (`SerializingRustType::from`), so
-    /// `Root(Alias(..))` is reached only AFTER every operation is consumed — the alias ident of
-    /// `cred_bytes = bytes .cbor credential` therefore arrives at the arm that reads the *payload*,
-    /// which is not the position the ident names. `CredBytes::deserialize(inner_de)` compiles (the
-    /// alias is transparent) and lies: it claims to read a bytes-wrapped value where the payload is
-    /// read. Clearing at the `CBORBytes` descent cannot prevent that, because the lift happens
-    /// below it.
-    ///
-    /// A container inner needs no seal — `Array`/`Map` recurse with a FRESH `DeserializeConfig`
-    /// (so both fields reset, which is what makes an element inside a `.cbor` payload spell its own
-    /// declaration), and `Optional` clears the spelling explicitly at its descent.
-    inside_encoding_op: bool,
     /// number of tag levels already crossed on this member name (0 at the field root). Drives the
     /// `tag`/`tag2`/… encoding-var infix (and the `tag_enc`/`tag_enc2` binding) so stacked tags each
     /// record their own level's size instead of shadowing. See `tag_encoding_infix`.
@@ -63,7 +50,6 @@ impl<'a> DeserializeConfig<'a> {
             read_len_overload: None,
             custom_deserialize: None,
             declared_spelling: None,
-            inside_encoding_op: false,
             tag_depth: 0,
         }
     }
@@ -126,21 +112,13 @@ impl<'a> DeserializeConfig<'a> {
         self
     }
 
-    /// Lift the member's declared spelling (see [`Self::declared_spelling`]). OUTERMOST WINS and an
-    /// operation-sealed descent lifts nothing, both enforced here rather than at the call site so
-    /// the `Alias` arm cannot get either half wrong: `alias_b = alias_a = credential` keeps the
-    /// member's own declared name, and a `bytes .cbor` payload keeps the structural target.
+    /// Lift the member's declared spelling (see [`Self::declared_spelling`]). OUTERMOST WINS,
+    /// enforced here rather than at the call site so the `Alias` arm cannot get it wrong:
+    /// `alias_b = alias_a = credential` keeps the member's own declared name.
     pub(super) fn declare_spelling(mut self, spelling: String) -> Self {
-        if self.declared_spelling.is_none() && !self.inside_encoding_op {
+        if self.declared_spelling.is_none() {
             self.declared_spelling = Some(spelling);
         }
-        self
-    }
-
-    /// Descend into a `CBOREncodingOperation`'s child: the member's declared spelling does not reach
-    /// inside one (see [`Self::inside_encoding_op`]).
-    pub(super) fn inside_encoding_op(mut self) -> Self {
-        self.inside_encoding_op = true;
         self
     }
 
@@ -2397,10 +2375,8 @@ impl GenerationScope {
                     deser_code.throws = true;
                 }
                 SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
-                    let config_for_alias = if let Some(custom_deserialize) = types
-                        .type_aliases()
-                        .get(ident)
-                        .unwrap()
+                    let alias_info = types.type_aliases().get(ident).unwrap();
+                    let config_for_alias = if let Some(custom_deserialize) = alias_info
                         .rule_metadata
                         .as_ref()
                         .and_then(|rmd| rmd.custom_deserialize.clone())
@@ -2414,11 +2390,36 @@ impl GenerationScope {
                     // alias's structural target). Same lift-from-the-alias shape as the
                     // `custom_deserialize` above: the alias influences how its target is emitted.
                     // `AliasIdent::Reserved` is excluded because a prelude name is not a rust ident.
+                    //
+                    // The lift is gated on WHO OWNS the encoding operations this descent crossed,
+                    // which is readable HERE and nowhere else. A `RustType`'s operations wrap its
+                    // conceptual type (`SerializingRustType::from`), so this arm is reached only
+                    // AFTER every one of them is consumed — and the two ownerships need opposite
+                    // answers at that same point:
+                    //
+                    //   * The alias RULE owns them (`cred_bytes = bytes .cbor credential`, whose
+                    //     `base_type` carries the `CBORBytes`). Then the ident names the WRAPPED
+                    //     form, so it does not denote this position at all: `CredBytes` IS the
+                    //     bytes-wrapped thing, and `CredBytes::deserialize(inner_de)` compiles (the
+                    //     alias is transparent) while claiming to read a bytes-wrapped value where
+                    //     the payload is read. Do not lift.
+                    //   * The MEMBER's own type expression owns them (`f: #6.9(stake_credential)`,
+                    //     an alias with a bare `base_type` plus a tag pushed on at the reference).
+                    //     Then the ident denotes exactly the value being read here, and the field is
+                    //     typed `StakeCredential` — so lifting is what makes the call target agree
+                    //     with the field rather than what breaks it.
+                    //
+                    // Testing "did this descent cross an operation" instead cannot tell those apart
+                    // and gets the second one wrong. A member-expression tag over a rule-owned
+                    // `.cbor` (`#6.9(cred_bytes)`) crosses both and must still seal — which it does,
+                    // on the RULE's account, because the test reads only the rule.
                     let config_for_alias = match ident {
-                        AliasIdent::Rust(rust_ident) => {
+                        AliasIdent::Rust(rust_ident)
+                            if alias_info.base_type.encodings.is_empty() =>
+                        {
                             config_for_alias.declare_spelling(rust_ident.to_string())
                         }
-                        AliasIdent::Reserved(_) => config_for_alias,
+                        AliasIdent::Rust(_) | AliasIdent::Reserved(_) => config_for_alias,
                     };
                     // keep the OUTER config: an Alias's inner is a bare ConceptualRustType (no
                     // config of its own — see `as_alias`), so recursing with `(&**ty).into()`
@@ -2473,9 +2474,7 @@ impl GenerationScope {
                         types,
                         *child,
                         before_after,
-                        config
-                            .overload_deserializer(name_overload)
-                            .inside_encoding_op(),
+                        config.overload_deserializer(name_overload),
                         cli,
                     )
                     .add_to_code(&mut deser_code);
@@ -2511,10 +2510,7 @@ impl GenerationScope {
                                 types,
                                 *child,
                                 DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config
-                                    .optional_field(false)
-                                    .tag_depth(tag_level)
-                                    .inside_encoding_op(),
+                                config.optional_field(false).tag_depth(tag_level),
                                 cli,
                             )
                             .mark_and_extract_content(&mut deser_code);
@@ -2539,10 +2535,7 @@ impl GenerationScope {
                                 types,
                                 *child,
                                 DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config
-                                    .optional_field(false)
-                                    .tag_depth(tag_level)
-                                    .inside_encoding_op(),
+                                config.optional_field(false).tag_depth(tag_level),
                                 cli,
                             )
                             .mark_and_extract_content(&mut deser_code);
@@ -2624,10 +2617,7 @@ impl GenerationScope {
                         types,
                         *child,
                         before_after,
-                        config
-                            .optional_field(false)
-                            .tag_depth(tag_level)
-                            .inside_encoding_op(),
+                        config.optional_field(false).tag_depth(tag_level),
                         cli,
                     )
                     .add_to_code(&mut deser_code);
