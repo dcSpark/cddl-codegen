@@ -1,13 +1,13 @@
-//! The declared-type spelling rule at TYPE-DECLARATION positions, and the config-threading
-//! invariant that rule depends on (user doc: `docs/docs/output_format.mdx` § "Type spelling at
-//! member positions").
+//! The declared-type spelling rule at member positions, and the config-threading invariant that
+//! rule depends on (user doc: `docs/docs/output_format.mdx` § "Type spelling at member positions").
 //!
-//! The rule: wherever generated code DECLARES the type of a member position — a data-struct field,
-//! an encoding-struct field, a constructor/accessor signature, a named collection rule's own alias
-//! target — it spells that type as declared, keeping the outermost alias ident. One function spells
-//! member types (`ConceptualRustType::for_rust_member_ct`) and it already keeps the alias, so a
-//! resolved spelling in the output is never a decision to resolve for NAMING: it is a caller that
-//! resolved for STRUCTURAL DISPATCH and then reused the dispatch-normalized value as a naming input.
+//! The rule: wherever generated code NAMES the type of a member position — a data-struct field, an
+//! encoding-struct field, a constructor/accessor signature, a named collection rule's own alias
+//! target, a member-level deserialize CALL TARGET — it spells that type as declared, keeping the
+//! outermost alias ident. One function spells member types
+//! (`ConceptualRustType::for_rust_member_ct`) and it already keeps the alias, so a resolved spelling
+//! in the output is never a decision to resolve for NAMING: it is a caller that resolved for
+//! STRUCTURAL DISPATCH and then reused the dispatch-normalized value as a naming input.
 //!
 //! Pinned here:
 //!
@@ -36,10 +36,21 @@
 //!   not a spelling difference: a `BTreeMap` cannot hold the repeated keys a preserve table exists
 //!   to round-trip, so the sidecar would reject duplicates the wire carries.
 //!
+//! * **The call targets, and the two positions in the SAME code that must not move with them.** A
+//!   member typed `sc: stake_credential` is filled by `StakeCredential::deserialize`; the arm that
+//!   emits that also interpolates the struct ident into a `DeserializeError::new("..")` string
+//!   literal (runtime-observable output a consumer matches on) and into `{ident}::{variant}`
+//!   enum-variant paths (which name the struct's own variants). Respelling either would break the
+//!   "spelling-only" property the whole rule claims, and both compile, so they are asserted
+//!   NEGATIVELY here rather than left to review.
+//!
+//! * **The two descents that must NOT carry a declared spelling**, each a silently-wrong spelling
+//!   rather than a failure: an encoding operation's child (the `bytes .cbor` carve-out) and an
+//!   `Optional` inner.
+//!
 //! These drive the full in-process generation pipeline (`api::generated_strings`) and assert the
 //! emitted SOURCE, so a regression at any emission path surfaces here rather than in a consumer's
-//! regen diff. Call TARGETS (`Credential::deserialize`, `ScriptHash::from_raw_bytes`) are a separate
-//! position class and are deliberately NOT asserted here.
+//! regen diff.
 
 use crate::cli::Cli;
 use clap::Parser;
@@ -290,5 +301,254 @@ fn wasm_collection_wrapper_names_keep_the_declared_alias() {
     assert!(
         !src.contains("pub struct VecU8List(") && !src.contains("pub struct MapU64To"),
         "no wasm wrapper name may be minted from a resolved structural target:\n{src}"
+    );
+}
+
+/// A member-level deserialize CALL TARGET names the member's type as DECLARED, at each of the three
+/// call-target families the `Rust(ident)` arm emits.
+///
+/// `sc: StakeCredential` used to be filled by `Credential::deserialize` while the field, the
+/// constructor parameter and the accessor all said `StakeCredential`. Only one function spells a
+/// member's type and it keeps the alias, so the resolved spelling here was the residue of a
+/// structural dispatch (the arm matched on `Rust(..)` and reused the matched ident as a name), never
+/// a decision to name the structural target.
+///
+/// Both encoding profiles are exercised because `from_raw_bytes` has a SEPARATE format string per
+/// profile (the preserve one threads the `StringEncoding::from(enc)` final expr through), so a
+/// one-profile pin covers one of the two.
+#[test]
+fn member_call_targets_spell_the_declared_alias() {
+    for (profile, extra) in [
+        ("preserve", PRESERVE),
+        (
+            "plain",
+            &["--preserve-encodings=false", "--wasm", "false"] as &[&str],
+        ),
+    ] {
+        let src = generate(
+            "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n\
+             script_hash = hash\n\
+             credential = [idx: uint]\n\
+             stake_credential = credential\n\
+             alias_of_alias = stake_credential\n\
+             delta_coin = int\n\
+             holder = [sc: stake_credential, sh: script_hash, aa: alias_of_alias, dc: delta_coin]\n",
+            &format!("call_targets_{profile}"),
+            extra,
+        )
+        .expect("must generate");
+
+        for expected in [
+            // `T::deserialize` — the nominal record member
+            "StakeCredential::deserialize(raw)",
+            // `T::from_raw_bytes` — one format string per profile
+            "ScriptHash::from_raw_bytes(&bytes)",
+            // OUTERMOST wins: an alias of an alias keeps the MEMBER's declared name
+            "AliasOfAlias::deserialize(raw)",
+            // `int` resolves to a generated `Int` struct, so this is the CML-reported shape
+            "DeltaCoin::deserialize(raw)",
+        ] {
+            assert!(
+                src.contains(expected),
+                "[{profile}] a member call target must spell its type as declared; expected \
+                 `{expected}` in:\n{src}"
+            );
+        }
+        // Counted rather than `!contains`: `StakeCredential::deserialize` CONTAINS
+        // `Credential::deserialize`, so a substring ban is unwritable here. Equal counts say every
+        // occurrence of the structural target's name is part of the declared one.
+        assert_eq!(
+            src.matches("Credential::deserialize").count(),
+            src.matches("StakeCredential::deserialize").count(),
+            "[{profile}] no member call target may name the alias's structural target — every \
+             `credential` member here is declared through an alias:\n{src}"
+        );
+        // same superstring trap: `ScriptHash::from_raw_bytes` contains `Hash::from_raw_bytes`
+        assert_eq!(
+            src.matches("Hash::from_raw_bytes").count(),
+            src.matches("ScriptHash::from_raw_bytes").count(),
+            "[{profile}] a raw-bytes member may not fall back to the structural target:\n{src}"
+        );
+        assert!(
+            !src.contains("Int::deserialize(raw)"),
+            "[{profile}] an `int` member declared through an alias may not fall back to the \
+             generated `Int` struct's own name:\n{src}"
+        );
+    }
+}
+
+/// The `bytes .cbor` CARVE-OUT: the payload read inside an aliased `.cbor` member names the
+/// alias's TARGET, not the alias.
+///
+/// `cred_bytes = bytes .cbor credential` emits `pub type CredBytes = Credential;` and reads its
+/// payload from an `inner_de` positioned INSIDE the already-unwrapped byte string.
+/// `CredBytes::deserialize(inner_de)` compiles — the alias is transparent — and lies: it claims to
+/// read a bytes-wrapped value at the position that reads the payload. The lie is reachable rather
+/// than theoretical because a `RustType`'s encoding operations WRAP its conceptual type, so the
+/// `Alias` arm that lifts the spelling is reached only AFTER the `CBORBytes` operation is consumed —
+/// which is why the mechanism is a seal set on the operation's descent and not a clear (a clear at
+/// the descent would be overwritten by the lift below it).
+///
+/// Without this pin a later "make the spelling uniform everywhere" pass breaks the carve-out and
+/// nothing fails.
+#[test]
+fn cbor_bytes_alias_payload_read_names_the_target() {
+    let src = generate(
+        "credential = [idx: uint]\n\
+         cred_bytes = bytes .cbor credential\n\
+         holder = [cb: cred_bytes]\n",
+        "cbor_carve_out",
+        PRESERVE,
+    )
+    .expect("must generate");
+
+    assert!(
+        src.contains("pub type CredBytes = Credential;") && src.contains("pub cb: CredBytes,"),
+        "the fixture must actually produce an aliased `.cbor` member, or the pin below is \
+         vacuous:\n{src}"
+    );
+    assert!(
+        src.contains("Credential::deserialize(inner_de)"),
+        "the payload read inside an aliased `.cbor` member must name the alias's TARGET — the \
+         position is the payload, not the bytes-wrapped member:\n{src}"
+    );
+    assert!(
+        !src.contains("CredBytes::deserialize"),
+        "the `.cbor` carve-out is broken: the alias names the bytes-wrapped type, so spelling it \
+         at the payload read compiles and lies:\n{src}"
+    );
+}
+
+/// A container inner spells from ITS OWN declaration, never from the outer member's.
+///
+/// `{ * stake_credential => delta_coin }` reads its key with `StakeCredential::deserialize` and its
+/// value with `DeltaCoin::deserialize` — each from its own `Alias` arm — while the member itself is
+/// declared through a further alias (`m: CmapAlias`) whose spelling must not leak down. This works
+/// because the `Array`/`Map` arms recurse with a FRESH `DeserializeConfig`; a future refactor that
+/// threads the outer config into them instead (to carry some new per-member policy) would leak the
+/// spelling, and this is the pin that catches it.
+#[test]
+fn container_inners_spell_their_own_declaration() {
+    let src = generate(
+        "credential = [idx: uint]\n\
+         stake_credential = credential\n\
+         delta_coin = int\n\
+         cmap = {* stake_credential => delta_coin}\n\
+         cmap_alias = cmap\n\
+         carr = [* stake_credential]\n\
+         holder = [m: cmap_alias, a: carr]\n",
+        "container_inners",
+        PRESERVE,
+    )
+    .expect("must generate");
+
+    assert!(
+        src.contains("pub m: CmapAlias,") && src.contains("pub a: Carr,"),
+        "the fixture must declare both members through their own aliases, or a leak of the OUTER \
+         spelling has nothing to leak:\n{src}"
+    );
+    for expected in [
+        "let m_key = StakeCredential::deserialize(raw)?;",
+        "let m_value = DeltaCoin::deserialize(raw)?;",
+        "a_arr.push(StakeCredential::deserialize(raw)?);",
+    ] {
+        assert!(
+            src.contains(expected),
+            "a container inner must spell its own declaration; expected `{expected}` in:\n{src}"
+        );
+    }
+    assert!(
+        !src.contains("CmapAlias::deserialize") && !src.contains("Carr::deserialize"),
+        "the OUTER member's declared spelling leaked into a container inner — `Carr::deserialize` \
+         would even compile as an inherent-method-less path error only at the element type, so \
+         this must be asserted rather than reviewed:\n{src}"
+    );
+}
+
+/// An `Optional`'s inner spells from its own declaration too — and the outer member's spelling must
+/// be CLEARED on that descent, which is a compile error rather than a cosmetic slip.
+///
+/// `maybe_cred = credential / null` emits `pub type MaybeCred = Option<Credential>;`, and the arm
+/// wraps the inner read in `Some(..)`. Carrying the member's spelling down yields
+/// `Some(MaybeCred::deserialize(raw)?)` — `Some(Option<Credential>)` against a field typed
+/// `Option<Credential>` (E0599/E0308 depending on the impl in reach). The inner of a member declared
+/// `opt: stake_credential / null` is the OPPOSITE case: nothing to clear, and its own `Alias` arm
+/// supplies `StakeCredential`.
+///
+/// `Array`/`Map` inners get this for free (fresh config); `Optional` recurses with the outer config,
+/// so it is the one container that needs the clear.
+#[test]
+fn optional_inner_spells_its_own_declaration() {
+    let src = generate(
+        "credential = [idx: uint]\n\
+         stake_credential = credential\n\
+         maybe_cred = credential / null\n\
+         holder = [mc: maybe_cred, opt: stake_credential / null]\n",
+        "optional_inner",
+        PRESERVE,
+    )
+    .expect("must generate");
+
+    assert!(
+        src.contains("pub type MaybeCred = Option<Credential>;")
+            && src.contains("pub mc: MaybeCred,"),
+        "the fixture must produce an alias whose TARGET is the optional, or the clear below has \
+         nothing to clear:\n{src}"
+    );
+    assert!(
+        src.contains("true => Some(Credential::deserialize(raw)?),"),
+        "an alias-of-optional member's inner read names the OPTION'S INNER type — the member's own \
+         spelling names the whole `Option<..>` and does not type-check inside the `Some(..)` the \
+         arm wraps it in:\n{src}"
+    );
+    assert!(
+        !src.contains("MaybeCred::deserialize"),
+        "the member's declared spelling leaked into its `Optional` inner:\n{src}"
+    );
+    assert!(
+        src.contains("true => Some(StakeCredential::deserialize(raw)?),"),
+        "an `Optional` whose INNER is the aliased type still spells that inner declared:\n{src}"
+    );
+}
+
+/// The two things in the SAME arm that must NOT move with the call targets: the error-message
+/// STRING LITERAL and the enum-variant PATHS.
+///
+/// `DeserializeError::new("Cenum", ..)` is runtime-observable output — a consumer matches on that
+/// text, so respelling it would break the "spelling-only" property this rule claims — and
+/// `Cenum::I0` names the enum's own variants, not the member's type. Both would compile if
+/// respelled (`type CenumAlias = Cenum;` admits `CenumAlias::I0`), which is exactly why they are
+/// asserted here: getting a string literal by accident is the way this change goes wrong, and
+/// nothing else fails when it does.
+#[test]
+fn aliased_member_leaves_error_strings_and_variant_paths_alone() {
+    let src = generate(
+        "cenum = 0 / 1 / 2\n\
+         cenum_alias = cenum\n\
+         holder = [ce: cenum_alias]\n",
+        "negative_positions",
+        PRESERVE,
+    )
+    .expect("must generate");
+
+    assert!(
+        src.contains("pub type CenumAlias = Cenum;") && src.contains("pub ce: CenumAlias,"),
+        "the fixture must declare the c-style enum member through an alias, or the negative \
+         assertions below are vacuous:\n{src}"
+    );
+    assert!(
+        src.contains("\"Cenum\""),
+        "the NoVariantMatched error text names the enum STRUCT and is runtime-observable \
+         output:\n{src}"
+    );
+    assert!(
+        !src.contains("\"CenumAlias\""),
+        "an error-message string literal must never carry the member's declared spelling — that \
+         changes consumers' error text, which is not a spelling-only change:\n{src}"
+    );
+    assert!(
+        src.contains("Cenum::I0") && !src.contains("CenumAlias::I"),
+        "enum-variant construction paths name the enum's OWN variants, not the member's declared \
+         type:\n{src}"
     );
 }

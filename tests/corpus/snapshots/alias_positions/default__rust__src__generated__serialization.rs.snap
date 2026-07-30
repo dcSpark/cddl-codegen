@@ -75,9 +75,9 @@ impl Deserialize for Holder {
             read_len.read_elems(4)?;
             read_len.finish()?;
             let pid = Ok(raw.bytes()?).map_err(|e: DeserializeError| e.annotate("pid"))?;
-            let dc = Int::deserialize(raw).map_err(|e: DeserializeError| e.annotate("dc"))?;
-            let sc =
-                Credential::deserialize(raw).map_err(|e: DeserializeError| e.annotate("sc"))?;
+            let dc = DeltaCoin::deserialize(raw).map_err(|e: DeserializeError| e.annotate("dc"))?;
+            let sc = StakeCredential::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("sc"))?;
             let m = (|| -> Result<_, DeserializeError> {
                 let mut m_table = BTreeMap::new();
                 let m_len = raw.map()?;

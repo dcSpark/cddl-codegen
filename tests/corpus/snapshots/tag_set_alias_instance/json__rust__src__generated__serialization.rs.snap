@@ -80,7 +80,7 @@ impl Deserialize for Other {
             read_len.read_elems(2)?;
             read_len.finish()?;
             let rs =
-                NonemptySetU64::deserialize(raw).map_err(|e: DeserializeError| e.annotate("rs"))?;
+                ReqSigners::deserialize(raw).map_err(|e: DeserializeError| e.annotate("rs"))?;
             let more = NonemptySetU64::deserialize(raw)
                 .map_err(|e: DeserializeError| e.annotate("more"))?;
             match len {
