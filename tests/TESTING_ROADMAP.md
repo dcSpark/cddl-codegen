@@ -575,6 +575,30 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       public API loses a name they wrote. That is one grep of their own generated source, and it does
       not require anyone to recognise it as a parse-layer issue.
 
+12. **A field named `raw` shadows the generated deserializer's `raw: &mut Deserializer` parameter,
+    so the generated crate does not compile — and no gate or fixture exercises any
+    generated-local-colliding field name.** Both reps: an array-rep field emits
+    `let raw = Ok(raw.bytes()?)…;` and every later field's read then calls a method on the shadowed
+    binding (E0599); a map-rep field emits `let mut raw = None;` before the read loop with the same
+    class of breakage. Found while authoring a fixture whose first draft named a bytes field `raw`
+    (the custom-serialize hardening delivery); probed on the default profile at `5a59e5ad`,
+    array- and map-rep. Loud, not silent — the failure is a plain compile error in the generated
+    crate — but undiagnosed: the tool reports nothing, and the error surfaces two build steps away
+    from the spec line that caused it.
+    - **The right shape is a reserved-identifier system, not a one-off rename**: the generated
+      bodies also bind `len`, `read`, `read_len`, `serializer`, `orig_deser_order`, `key`,
+      `value`, and the per-field temporaries — none swept. Either mangle colliding field locals
+      (the general fix) or reject the reserved set loudly at parse time with the field's name in
+      the message (the cheap fix); both need a fixture family that enumerates the generated-local
+      vocabulary rather than guessing it (grep the emitters for `let ` bindings, keep the list
+      LOCKSTEP with a test so a new emitter local joins the sweep).
+    - **Not probed**: `--preserve-encodings`/`--canonical-form` (more locals in scope, so at least
+      as broken), wasm-side wrapper locals, and whether any name collides only under one profile.
+    - **Reopening/priority signal:** a consumer spec with a `raw` 
+      (or other reserved-name) field failing to build its generated crate — the field name is in
+      their spec and the compile error names the shadowed binding, so the report reaches us
+      pre-diagnosed.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
