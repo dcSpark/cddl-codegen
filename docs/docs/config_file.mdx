@@ -305,8 +305,8 @@ layer instead.
 
 **`<key>=<value>` flags become sub-tables**, which union per key — a later layer overrides only the
 keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
-are `extern-import`, `extern-wasm-crate`, `extern-wrapper-index`, `wrapper-requests`,
-`key-requests`, `json-schema-dep`, `json-gen-dep`, `wasm-dep` and `rust-dep`:
+are `extern-import`, `component-extern-wit`, `extern-wasm-crate`, `extern-wrapper-index`,
+`wrapper-requests`, `key-requests`, `json-schema-dep`, `json-gen-dep`, `wasm-dep` and `rust-dep`:
 
 ```toml
 [crates.my-extension]
@@ -935,7 +935,8 @@ a named hazard the run repeats back to you.
 ## Paths resolve against the config file
 
 Every path-valued key — `input`, `output`, `static-dir`, `export-static-crate`, and the right-hand
-sides of `extern-import`, `extern-wrapper-index`, `wrapper-requests` and `key-requests` — resolves
+sides of `extern-import`, `component-extern-wit`, `extern-wrapper-index`, `wrapper-requests` and
+`key-requests` — resolves
 against **the directory holding the config file**, never the current working directory. A config
 checked into a repository therefore means the same command works from anywhere, which is what
 retires the trap where `--static-dir static` silently picks up whichever checkout you happen to be

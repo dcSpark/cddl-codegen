@@ -600,6 +600,33 @@ cddl-codegen --input=example --output=export --component=true \
 ```
 :::
 
+:::info `--component-extern-wit`
+Opts one dependency into **import mode** on the component face: its types cross as **imported WIT resources** instead of having no WIT projection at all.
+
+```bash
+cddl-codegen --input=example --output=export --component=true \
+  --extern-import=cml_chain=../chain/extern-interface/cml_chain \
+  --component-extern-wit=cml_chain=../chain/component/wit
+```
+
+**The left side is the extern-deps directory name** — the same value `--extern-import` takes on its left (`cml_chain`, underscored), not a cargo package name. **The right side is the dependency's `component/wit` directory**, i.e. `<dep output>/component/wit`, which is a *different tree* from the `extern-interface/<dep>` one `--extern-import` points at. The two flags answer two questions: the export puts the dependency's types in your spec's namespace, and the WIT says how they cross the component boundary. Each `<dep>` here must therefore also be declared — by `--extern-import` or by a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` stub — or the run is rejected naming the missing declaration. Requires `--component=true`.
+
+**Why it is opt-in.** Without this flag a dependency's types have no WIT projection, so any signature naming one is recorded as `// unexported:` in the emitted WIT. That is the right fallback rather than a failure: a dependency with no component face (a hand-written crate, a stub tree, a crate you cannot regenerate) has no `component/wit` to point at, and a mandatory flag would make such a spec ungeneratable under `--component`. Sharing is the payoff, so sharing is what you opt into.
+
+**What it produces.** The dependency's WIT is **copied, never re-derived** — only its own run knows its `--wit-package` id and the reasons behind its `// unexported:` rows — into `<output>/component/wit/deps/<dep>/`, which is tool-owned and delete-and-recreated each run. Your interfaces then `use cddl:chain/types@0.1.0.{token, …}`, and the guest crate's `wit_bindgen::generate!` carries one **co-required** `with:` row per imported interface (without it the macro panics at *your* build, naming a key nobody wrote). The keys are read out of the copied WIT rather than reconstructed, because `wit_bindgen` matches them against that file.
+
+**Dependency-typed values cross through a CBOR bytes seam**, so every door touching one is fallible: a getter on a dependency-typed field returns `result<foo, string>`, and so does a setter or constructor taking one. That is not defensive — the far side's `from-cbor-bytes` can genuinely fail on a value your own serializer produced when the dependency component and the dependency crate you link disagree about a type's shape, a failure class that is compile-time within one crate. The cost is one serialize + copy + deserialize per dependency-typed value per crossing.
+
+**Two shapes are rejected at generation** rather than emitted:
+
+- a dependency type in a **collection parameter** (list element, map key, map value). `list<borrow<t>>` over an imported resource is legal WIT that wit-bindgen's Rust backend cannot lower (`E0506`), so emitting it would hand you a component crate that fails to compile inside a macro expansion.
+- a signature naming a dependency type the dependency's **own WIT excluded**. The error quotes the dependency's recorded reason verbatim and names the dependency, because the fix is on that side.
+
+**Determinism class.** The dependency's committed WIT is an explicit cross-crate **input** — the same class as `--extern-import` reading `extern-interface/<dep>/**` — and never a read of this run's own prior output; the copy carries a file-class comment saying so. As with `--extern-import`, **regenerate the dependency before the consumer** so the WIT it reads is fresh.
+
+Repeatable.
+:::
+
 :::info `--std-forward-dep`
 Marks a `--rust-dep` package as **std-forwarding**. Two things change in the generated `rust/Cargo.toml`:
 
