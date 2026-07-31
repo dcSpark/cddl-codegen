@@ -1,0 +1,42 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource ext {
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<ext, string>;
+  }
+  resource extern-generic-ext {
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<extern-generic-ext, string>;
+  }
+  resource gen-rule-u64 {
+    constructor(v: u64);
+    v: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<gen-rule-u64, string>;
+  }
+  resource holder {
+    constructor(e: borrow<ext>, r: borrow<raw>, g: borrow<extern-generic-ext>, n: borrow<gen-rule-u64>);
+    e: func() -> ext;
+    r: func() -> raw;
+    g: func() -> extern-generic-ext;
+    n: func() -> gen-rule-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource raw {
+    to-raw-bytes: func() -> list<u8>;
+    from-raw-bytes: static func(bytes: list<u8>) -> result<raw, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

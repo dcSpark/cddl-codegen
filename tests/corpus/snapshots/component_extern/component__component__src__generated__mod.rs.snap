@@ -1,0 +1,154 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Ext = WitExt;
+    type ExternGenericExt = WitExternGenericExt;
+    type GenRuleU64 = WitGenRuleU64;
+    type Holder = WitHolder;
+    type Raw = WitRaw;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitExt(pub RefCell<cddl_lib::Ext>);
+
+impl wit_types::GuestExt for WitExt {
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Ext as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Ext, String> {
+        <cddl_lib::Ext as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Ext::new(WitExt(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitExternGenericExt(pub RefCell<cddl_lib::ExternGenericExt>);
+
+impl wit_types::GuestExternGenericExt for WitExternGenericExt {
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ExternGenericExt as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ExternGenericExt, String> {
+        <cddl_lib::ExternGenericExt as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::ExternGenericExt::new(WitExternGenericExt(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitGenRuleU64(pub RefCell<cddl_lib::GenRuleU64>);
+
+impl wit_types::GuestGenRuleU64 for WitGenRuleU64 {
+    fn new(v: u64) -> Self {
+        let inner = cddl_lib::GenRuleU64::new(v);
+        WitGenRuleU64(RefCell::new(inner))
+    }
+
+    fn v(&self) -> u64 {
+        let me = self.0.borrow();
+        me.v
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::GenRuleU64 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::GenRuleU64, String> {
+        <cddl_lib::GenRuleU64 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::GenRuleU64::new(WitGenRuleU64(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(
+        e: wit_types::ExtBorrow<'_>,
+        r: wit_types::RawBorrow<'_>,
+        g: wit_types::ExternGenericExtBorrow<'_>,
+        n: wit_types::GenRuleU64Borrow<'_>,
+    ) -> Self {
+        let e = e.get::<WitExt>().0.borrow().clone();
+        let r = r.get::<WitRaw>().0.borrow().clone();
+        let g = g.get::<WitExternGenericExt>().0.borrow().clone();
+        let n = n.get::<WitGenRuleU64>().0.borrow().clone();
+        let inner = cddl_lib::Holder::new(e, r, g, n);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn e(&self) -> wit_types::Ext {
+        let me = self.0.borrow();
+        wit_types::Ext::new(WitExt(RefCell::new(me.e.clone())))
+    }
+
+    fn r(&self) -> wit_types::Raw {
+        let me = self.0.borrow();
+        wit_types::Raw::new(WitRaw(RefCell::new(me.r.clone())))
+    }
+
+    fn g(&self) -> wit_types::ExternGenericExt {
+        let me = self.0.borrow();
+        wit_types::ExternGenericExt::new(WitExternGenericExt(RefCell::new(me.g.clone())))
+    }
+
+    fn n(&self) -> wit_types::GenRuleU64 {
+        let me = self.0.borrow();
+        wit_types::GenRuleU64::new(WitGenRuleU64(RefCell::new(me.n.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitRaw(pub RefCell<cddl_lib::Raw>);
+
+impl wit_types::GuestRaw for WitRaw {
+    fn to_raw_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Raw as cddl_lib::serialization::RawBytesEncoding>::to_raw_bytes(&self.0.borrow())
+            .to_vec()
+    }
+
+    fn from_raw_bytes(bytes: Vec<u8>) -> Result<wit_types::Raw, String> {
+        <cddl_lib::Raw as cddl_lib::serialization::RawBytesEncoding>::from_raw_bytes(&bytes)
+            .map(|v| wit_types::Raw::new(WitRaw(RefCell::new(v))))
+            .map_err(err)
+    }
+}

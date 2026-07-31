@@ -1,0 +1,49 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+// cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export
+// each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the
+// user-owned definition. See the extern types section of docs/output_format.
+pub use crate::Ext;
+pub use crate::ExternGeneric;
+pub use crate::Raw;
+
+pub type ExternGenericExt = ExternGeneric<Ext>;
+
+#[derive(Clone, Debug)]
+pub struct GenRuleU64 {
+    pub v: u64,
+}
+
+impl GenRuleU64 {
+    pub fn new(v: u64) -> Self {
+        Self { v }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub e: Ext,
+    pub r: Raw,
+    pub g: ExternGenericExt,
+    pub n: GenRuleU64,
+}
+
+impl Holder {
+    pub fn new(e: Ext, r: Raw, g: ExternGenericExt, n: GenRuleU64) -> Self {
+        Self { e, r, g, n }
+    }
+}

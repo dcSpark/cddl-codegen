@@ -422,6 +422,10 @@ pub(crate) enum WitMemberOp {
     },
     ToCborBytes,
     FromCborBytes,
+    /// A raw-bytes bridge's `to-raw-bytes`, through `RawBytesEncoding` — NOT the cbor seam.
+    ToRawBytes,
+    /// A raw-bytes bridge's `from-raw-bytes` STATIC, through the same trait.
+    FromRawBytes,
     /// A choice's `kind`: match the rust DATA enum and report the `<name>-kind` case.
     ///
     /// The rust `<Name>Kind` enum is emitted only under `cli.wasm`, so the guest may never name it;
@@ -463,6 +467,23 @@ pub(crate) struct WitParam {
     /// emitter that guessed WHICH would either drop a required `TryFrom` door or wrap an infallible
     /// conversion in one that does not exist.
     pub validates: bool,
+    /// The rust type this parameter's value has to become, or `None` for a SYNTHESIZED parameter
+    /// that corresponds to no IR type at all (`bytes` on `from-cbor-bytes`/`from-raw-bytes`,
+    /// `present` on a presence setter, `v` on the free `cbor-kind` function).
+    ///
+    /// Carried because the guest emitter has two independent decisions to make here and neither is
+    /// derivable from `validates` alone: whether the type was DESPECIALIZED (re-enter its `TryFrom`
+    /// door — see [`wit_param_despecialized`]) and whether it carries a VALUE WINDOW (emit the range
+    /// check). `validates` is the union of those and of CDDL `any`, so routing on it conflates them
+    /// — which is how a plain bounded array reached the `TryFrom` door, where `Vec<T>`'s identity
+    /// `TryFrom` compiles while checking nothing. R3: the projection carries the rust fact rather
+    /// than the emitter re-deriving it.
+    ///
+    /// WHERE the window is checked stays a per-SITE decision the emitter owns rather than a property
+    /// of the parameter: a constructor or a `new-<variant>` static delegates to a rust constructor
+    /// that range-checks and whose `Result` the guest already unwraps, so only a SETTER — which
+    /// writes the field directly, with nothing between the caller and the invariant — emits one.
+    pub rust_type: Option<RustType>,
 }
 
 /// An interface-level free function (no `self`).
@@ -588,6 +609,11 @@ pub(crate) fn project(
 ) -> WitPackage {
     let mut staged: BTreeMap<RustIdent, StagedType> = BTreeMap::new();
     let mut excluded: BTreeMap<RustIdent, WitExclusion> = BTreeMap::new();
+    // The bases of generic externs, computed once. `generic_extern_base_idents` — not the narrower
+    // `generic_instance_bases` — is the correct set here for the reason its own doc gives: neither
+    // the parse-time record nor the instance-derived one subsumes the other. (The wasm glue's
+    // narrower call site is not a model to copy.)
+    let generic_extern_bases = types.generic_extern_base_idents();
 
     for (ident, rust_struct) in types.rust_structs() {
         let scope = types.scope(ident);
@@ -610,6 +636,14 @@ pub(crate) fn project(
         ) {
             continue;
         }
+        // A generic extern BASE (`Foo` of `Foo<Bar>`) is skipped for the same reason: it names no
+        // concrete type, so a bridging resource over it would be a resource over nothing. Only its
+        // INSTANCES are bridged, each under the instance ident. Neither included nor excluded — the
+        // WIT is complete without it — and a rule that references the base BARE is excluded at the
+        // reference instead, where the reason can name the shape.
+        if generic_extern_bases.contains(ident) {
+            continue;
+        }
         let name = wit_type_name(ident);
         let mut refs = BTreeSet::new();
         let mut ctx = TypeCtx {
@@ -618,6 +652,7 @@ pub(crate) fn project(
             uses_int: false,
             uses_any_cbor: false,
             resolving: BTreeSet::new(),
+            generic_extern_bases: &generic_extern_bases,
         };
         let projected = project_struct(
             &name,
@@ -771,6 +806,7 @@ fn any_cbor_kind_func() -> WitFunc {
             // The bytes are decoded through `AnyCbor::from_cbor_bytes`, which is exactly the
             // boundary re-check this flag marks.
             validates: true,
+            rust_type: None,
         }],
         result: Some(WitType::AnyCborKind),
         fallible: true,
@@ -815,6 +851,9 @@ struct TypeCtx<'a, 'b> {
     uses_int: bool,
     uses_any_cbor: bool,
     resolving: BTreeSet<RustIdent>,
+    /// The generic-extern bases [`project`] skips, so a reference to one is excluded WITH a reason
+    /// naming the shape rather than falling through the closure as an unexplained missing type.
+    generic_extern_bases: &'a BTreeSet<RustIdent>,
 }
 
 /// Project one IR struct into its WIT type definition(s). A choice mints two (its `resource` and
@@ -861,15 +900,78 @@ fn project_struct(
         RustStructType::GroupChoice { variants, rep } => {
             project_choice(name, ident, variants, Some(*rep), deserializable, ctx)
         }
-        // The reserved `Int` extern is filtered before this point; every OTHER extern needs the
-        // bridging resource over the extern's own `Serialize`/`Deserialize`, which is phase-2 work.
-        RustStructType::Extern => Err(unprojectable(
-            "a hand-written extern type needs a bridging resource, which is not yet projected \
-             (phase 2)",
-        )),
-        RustStructType::RawBytesType => Err(unprojectable(
-            "a raw-bytes type needs a bridging resource, which is not yet projected (phase 2)",
-        )),
+        // The reserved `Int` extern and every generic-extern BASE are filtered before this point;
+        // every OTHER extern gets the bridging resource.
+        RustStructType::Extern => Ok(vec![WitTypeDef::Resource(project_extern_bridge(
+            name,
+            ident,
+            deserializable,
+        ))]),
+        RustStructType::RawBytesType => Ok(vec![WitTypeDef::Resource(project_raw_bytes_bridge(
+            name, ident,
+        ))]),
+    }
+}
+
+/// A hand-written extern type → a resource carrying ONLY the bytes seam.
+///
+/// No constructor and no getters: the tool knows nothing about the user's type beyond the contract
+/// it already imposes on it, which is exactly `Serialize` (+ `Deserialize` where the crate reads
+/// one) — the two traits the seam bridges. Emitting a bridge rather than excluding is what keeps a
+/// CONTAINING record projectable: exclusion is transitive, so one extern would take every type that
+/// reaches it out of the WIT.
+fn project_extern_bridge(name: &str, ident: &RustIdent, deserializable: bool) -> WitResource {
+    WitResource {
+        name: name.to_owned(),
+        ident: ident.clone(),
+        constructor: None,
+        members: bytes_members(deserializable),
+    }
+}
+
+/// A raw-bytes type → a resource carrying the RAW-bytes seam, and no cbor seam at all.
+///
+/// The deviation from the uniform bridging shape is forced by the contract: a
+/// `_CDDL_CODEGEN_RAW_BYTES_TYPE_` is required to implement `RawBytesEncoding` and NOTHING requires
+/// `Serialize` of it — the generated crate reads it through `to_raw_bytes()`/`from_raw_bytes()` at
+/// every site and the emitted extern-interface self-check asserts `RawBytesEncoding` alone. So a
+/// `to-cbor-bytes` bridge would name a trait impl that need not exist, which is a compile error in
+/// generated code — the same class the `no_deserialize` fork exists to prevent.
+///
+/// Both halves are unconditional: `RawBytesEncoding` is ONE trait declaring both methods, so a type
+/// satisfying the contract has both, and the `deserializable` verdict (a rust-face decision about
+/// generated `Deserialize` impls) says nothing about a type the tool generates no impls for.
+fn project_raw_bytes_bridge(name: &str, ident: &RustIdent) -> WitResource {
+    WitResource {
+        name: name.to_owned(),
+        ident: ident.clone(),
+        constructor: None,
+        members: vec![
+            WitMember {
+                name: "to-raw-bytes".to_owned(),
+                is_static: false,
+                params: Vec::new(),
+                result: Some(WitType::List(Box::new(WitType::U8))),
+                fallible: false,
+                op: WitMemberOp::ToRawBytes,
+            },
+            WitMember {
+                name: "from-raw-bytes".to_owned(),
+                is_static: true,
+                params: vec![WitParam {
+                    name: "bytes".to_owned(),
+                    rust_name: "bytes".to_owned(),
+                    ty: WitType::List(Box::new(WitType::U8)),
+                    validates: false,
+                    rust_type: None,
+                }],
+                // The `ok` type is the OWNING resource, filled in by the renderer and the emitter
+                // exactly as `from-cbor-bytes`'s is.
+                result: None,
+                fallible: true,
+                op: WitMemberOp::FromRawBytes,
+            },
+        ],
     }
 }
 
@@ -910,6 +1012,7 @@ fn project_record(
                         rust_name: "present".to_owned(),
                         ty: WitType::Bool,
                         validates: false,
+                        rust_type: None,
                     }],
                     result: None,
                     fallible: false,
@@ -947,6 +1050,7 @@ fn project_record(
                     rust_name: field.name.clone(),
                     ty,
                     validates,
+                    rust_type: Some(field.rust_type.clone()),
                 }],
                 result: None,
                 fallible: validates,
@@ -960,6 +1064,7 @@ fn project_record(
                 rust_name: field.name.clone(),
                 ty,
                 validates,
+                rust_type: Some(field.rust_type.clone()),
             });
             ctor_fallible |= validates;
         }
@@ -1045,6 +1150,7 @@ fn project_wrapper(
                 // NOT `|| bounded`: a bound lives in the rust `new`'s own signature (`can_new_fail`),
                 // so the guest calls a fallible constructor rather than a despecialization door.
                 validates: wit_param_validates(wrapped, ctx.types),
+                rust_type: Some(wrapped.clone()),
             }],
             fallible: bounded || wit_param_validates(wrapped, ctx.types),
         }),
@@ -1195,6 +1301,7 @@ fn choice_variant_shape(
                     rust_name: variant.name_as_var(),
                     ty: map_rust_type(ty, ctx)?,
                     validates: wit_param_validates(ty, ctx.types),
+                    rust_type: Some(ty.clone()),
                 }],
             };
             let payload = if ty.is_fixed_value() {
@@ -1244,6 +1351,7 @@ fn field_param(rust_name: &str, ty: &RustType, ctx: &mut TypeCtx) -> ProjectResu
         rust_name: rust_name.to_owned(),
         ty: map_rust_type(ty, ctx)?,
         validates: wit_param_validates(ty, ctx.types),
+        rust_type: Some(ty.clone()),
     })
 }
 
@@ -1301,6 +1409,7 @@ fn bytes_members(deserializable: bool) -> Vec<WitMember> {
                 rust_name: "bytes".to_owned(),
                 ty: WitType::List(Box::new(WitType::U8)),
                 validates: false,
+                rust_type: None,
             }],
             // The `ok` type is the OWNING resource, which a member cannot name without carrying its
             // own owner; `op` already says so, and the renderer fills it in.
@@ -1373,11 +1482,27 @@ fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
         name: wit_type_name(ident),
         ident: ident.clone(),
     };
+    // A generic extern BASE names no concrete type, so there is nothing for a handle to point at.
+    // Reported here rather than left to the reference closure: the closure can only say "references
+    // excluded <ident>", and the base is not excluded — it is skipped, like a named collection.
+    if ctx.generic_extern_bases.contains(ident)
+        && matches!(rust_struct.variant(), RustStructType::Extern)
+    {
+        return Err(unprojectable(format!(
+            "references the generic extern base `{ident}`, which names no concrete type — only its \
+             instances (`{ident}<…>`) are bridged"
+        )));
+    }
     match rust_struct.variant() {
         RustStructType::Record(_)
         | RustStructType::Wrapper { .. }
         | RustStructType::TypeChoice { .. }
-        | RustStructType::GroupChoice { .. } => {
+        | RustStructType::GroupChoice { .. }
+        // An extern and a raw-bytes type are class-backed too: each has a bridging resource, so a
+        // reference to one is an ordinary handle. Their SEAMS differ (cbor vs raw bytes) but that is
+        // a property of the resource, invisible at a use site.
+        | RustStructType::Extern
+        | RustStructType::RawBytesType => {
             let r = type_ref();
             ctx.refs.insert(ident.clone());
             Ok(WitType::Handle(r))
@@ -1396,14 +1521,6 @@ fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
                 map_rust_type(range, ctx)?,
             ]))))
         }),
-        RustStructType::Extern => Err(unprojectable(format!(
-            "references the extern type `{ident}`, whose bridging resource is not yet projected \
-             (phase 2)"
-        ))),
-        RustStructType::RawBytesType => Err(unprojectable(format!(
-            "references the raw-bytes type `{ident}`, whose bridging resource is not yet projected \
-             (phase 2)"
-        ))),
     }
 }
 
@@ -1492,6 +1609,43 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
         | ConceptualRustType::Rust(_)
         | ConceptualRustType::Alias(_, _) => false,
     }
+}
+
+/// Whether the projection DESPECIALIZED this parameter's type — dropped an invariant the RUST type
+/// enforces in its own type system (`[+ T]`'s `NonEmptyVec`, `@duplicates reject`'s `OrderedSet`),
+/// so the single `TryFrom` door that owns the invariant has to be re-entered where the WIT list is
+/// consumed.
+///
+/// Strictly narrower than [`wit_param_validates`], and deliberately its own function rather than a
+/// reading of that one: `validates` is the UNION of despecialization, a value window and CDDL `any`,
+/// and only the first has a `TryFrom` door at all. A plain bounded array (`[2*5 uint]`) is a
+/// `Vec<T>` on both sides, so routing it through `try_into` resolves to the identity
+/// `TryFrom<Vec<T>>` (`Error = Infallible`) — it compiles, and it checks nothing. A bounded MAP is
+/// worse: `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>` at all, so the same conflation emitted glue
+/// that did not compile.
+pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) -> bool {
+    if ty.is_type_enforced_non_empty() || ty.duplicates_reject() {
+        return true;
+    }
+    // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the
+    // registered alias that carries the bounds) still despecializes — the same second reading
+    // `wit_param_validates` takes off the struct, for the same reason.
+    if let ConceptualRustType::Rust(ident) = ty.conceptual_type.resolve_alias_shallow()
+        && let Some(rust_struct) = types.rust_struct(ident)
+        && matches!(
+            rust_struct.variant(),
+            RustStructType::Array {
+                bounds: Some((Some(1), None)),
+                ..
+            } | RustStructType::Table {
+                bounds: Some((Some(1), None)),
+                ..
+            }
+        )
+    {
+        return true;
+    }
+    false
 }
 
 // =================================================================================================
@@ -1620,12 +1774,15 @@ fn render_params(params: &[WitParam]) -> String {
         .join(", ")
 }
 
-/// A member's return spelling. The two members that mint the OWNING resource — `from-cbor-bytes`
-/// and a choice's `new-<variant>` — cannot name it from inside the member without carrying their own
-/// owner, so the renderer fills it in from the resource it is rendering.
+/// A member's return spelling. The members that mint the OWNING resource — `from-cbor-bytes`,
+/// `from-raw-bytes` and a choice's `new-<variant>` — cannot name it from inside the member without
+/// carrying their own owner, so the renderer fills it in from the resource it is rendering.
 fn render_member_result(member: &WitMember, owner: &str) -> String {
     let ok = match (&member.op, &member.result) {
-        (WitMemberOp::FromCborBytes | WitMemberOp::NewVariant { .. }, _) => Some(wit_escape(owner)),
+        (
+            WitMemberOp::FromCborBytes | WitMemberOp::FromRawBytes | WitMemberOp::NewVariant { .. },
+            _,
+        ) => Some(wit_escape(owner)),
         (_, Some(ty)) => Some(render_type(ty, false)),
         (_, None) => None,
     };
@@ -1879,6 +2036,7 @@ pub(crate) fn wit_scope_cycles(types: &IntermediateTypes, _cli: &Cli) -> Vec<Str
     // message. `BTreeMap` throughout: the message text is generated output and must be reproducible.
     let mut edges: BTreeMap<ModuleScope, BTreeMap<ModuleScope, (RustIdent, RustIdent)>> =
         BTreeMap::new();
+    let generic_extern_bases = types.generic_extern_base_idents();
     for (ident, rust_struct) in types.rust_structs() {
         if types.source_rule_name(ident).is_none() {
             continue;
@@ -1898,7 +2056,7 @@ pub(crate) fn wit_scope_cycles(types: &IntermediateTypes, _cli: &Cli) -> Vec<Str
         if !from.export() {
             continue;
         }
-        for referenced in struct_rule_refs(rust_struct.variant(), types) {
+        for referenced in struct_rule_refs(rust_struct.variant(), types, &generic_extern_bases) {
             let to = types.scope(&referenced);
             if !to.export() || to == from {
                 continue;
@@ -1953,7 +2111,11 @@ pub(crate) fn wit_scope_cycles(types: &IntermediateTypes, _cli: &Cli) -> Vec<Str
 /// The match is EXHAUSTIVE with no `_ =>` arm (module discipline): a new `RustStructType` variant
 /// must be a compile-time decision here, because silently contributing no edges would turn a real
 /// cycle into a spec that generates unresolvable WIT.
-fn struct_rule_refs(variant: &RustStructType, types: &IntermediateTypes) -> BTreeSet<RustIdent> {
+fn struct_rule_refs(
+    variant: &RustStructType,
+    types: &IntermediateTypes,
+    generic_extern_bases: &BTreeSet<RustIdent>,
+) -> BTreeSet<RustIdent> {
     let mut out = BTreeSet::new();
     let mut walk = |ty: &RustType| {
         collect_projected_refs(&ty.conceptual_type, types, &mut BTreeSet::new(), &mut out)
@@ -1996,6 +2158,11 @@ fn struct_rule_refs(variant: &RustStructType, types: &IntermediateTypes) -> BTre
         // A hand-written extern and a raw-bytes type have no IR-visible members to reference.
         RustStructType::Extern | RustStructType::RawBytesType => {}
     }
+    // A generic extern BASE owns no WIT type ([`project`] skips it), so it can be no end of a `use`
+    // edge — the same rule a named collection gets, applied at the far end instead of the near one.
+    // Dropping it from the result is exactly equivalent to resolving through it: an `Extern` has no
+    // members, so it contributes nothing further of its own.
+    out.retain(|ident| !generic_extern_bases.contains(ident));
     out
 }
 

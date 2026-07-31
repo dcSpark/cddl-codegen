@@ -1,0 +1,45 @@
+; The VALUE-WINDOW fixture for the component face: one shape per way a CDDL bound reaches a
+; boundary parameter, plus the two controls that say where a bound must NOT produce an inline check.
+;
+; Every row here is a fact about the generated RUST crate that no WIT gate can see — the WIT
+; signature of a bounded setter (`result<_, string>`) is identical whether the glue checks the window
+; or ignores it — which is why this fixture is in the wasip2 build smoke as well as the WIT sweep.
+
+; a bounded ARRAY: a plain `Vec<T>` on both sides of the boundary, so its window has to be checked
+; inline. Routing it through the despecialization door instead reaches `Vec<T>`'s own identity
+; `TryFrom` (`Error = Infallible`), which compiles and checks nothing.
+sized_list = [2*5 uint]
+
+; a `[+ T]`: the CONTROL for the opposite verdict. Its `>= 1` bound is enforced by the type system
+; (`NonEmptyVec`'s single `TryFrom` door), so the boundary re-enters that door and emits NO inline
+; check — the invalid state is unrepresentable rather than rejected.
+non_empty = [+ uint]
+
+; an `@duplicates reject` set: the OTHER despecialized shape, for the same reason. It crosses as a
+; plain `list<u64>` and its uniqueness is re-imposed by `OrderedSet`'s `TryFrom`.
+unique = [* uint] ; @duplicates reject
+
+bounded = {
+  ; mandatory and bounded: the rust `new` range-checks it and the guest unwraps that `Result`, so
+  ; the boundary adds nothing. A second check here would report the same failure twice.
+  fixed_size: sized_list,
+
+  ; the optional bounded rows — one per bounds-check expression the shared owner renders: a bare
+  ; integer, a float window, and `.len()` over bytes, text, an array and a map. Each reaches a
+  ; SETTER, which is the only door that has to enforce the window itself.
+  ? lim: uint .le 5,
+  ? window: 0.5 .. 10.5,
+  ? digest: bytes .size 4,
+  ? label: text .size (3..14),
+  ? span: sized_list,
+  ; a bounded MAP, spelled INLINE because that is where the window reaches the field's own rust
+  ; type. It matters twice over: `BTreeMap<K, V>` has NO `TryFrom<Vec<(K, V)>>` at all, so a
+  ; boundary that mistook a bounded map for a despecialized collection emitted glue that did not
+  ; compile — and the check itself has to be a `.len()` over the map.
+  ? counts: { * uint => text } .le 3,
+
+  ; the two controls, as optional fields so they reach a SETTER — the one door with no rust
+  ; constructor between the caller and the field.
+  ? ids: non_empty,
+  ? tags: unique,
+}

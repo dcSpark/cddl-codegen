@@ -80,6 +80,11 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         "tests/component-choices/input.cddl",
         &["--preserve-encodings=true"],
     ),
+    ("component-bounds", "tests/component-bounds/input.cddl", &[]),
+    // The bridging classes. A user-owned extern has no generated rust `pub struct`, so it owes the
+    // differential nothing at all — which is itself worth sweeping, since a bridging resource that
+    // started minting rust types would show up here.
+    ("component-extern", "tests/component-extern/inputs", &[]),
     (
         "component-multifile",
         "tests/component-multifile/inputs",

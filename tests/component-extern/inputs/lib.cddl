@@ -1,0 +1,35 @@
+; The BRIDGING fixture for the component face: the type classes whose rust definition the tool does
+; not own, plus the generic shapes that decide whether an ident names a concrete type at all.
+;
+; A DIRECTORY input on purpose — `tests/<dir>/input.cddl` carries a corpus-parity registration
+; obligation and a directory does not, and nothing here needs a second scope.
+;
+; This fixture CANNOT join the wasip2 build smoke, for the same reason `tests/multifile` cannot: its
+; rust crate names user-owned types (`Ext`, `Raw`, `ExternGeneric`) that only a hand-written module
+; can define, so the generated crate does not compile standalone. Its emitted bytes are pinned by
+; the whole-program snapshot instead — the same trade the `extern_deps` snapshot row already makes.
+
+; a hand-written extern -> a bridging resource carrying ONLY the cbor seam. The extern contract
+; already requires `Serialize` (+ `Deserialize`), which is exactly what the seam bridges.
+ext = _CDDL_CODEGEN_EXTERN_TYPE_
+
+; a raw-bytes type -> a bridging resource carrying the RAW-bytes seam and no cbor seam at all. Its
+; contract is `RawBytesEncoding` and nothing requires `Serialize` of it, so a cbor bridge would name
+; a trait impl that need not exist.
+raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+; a generic extern: the BASE names no concrete type and is skipped from the projection entirely,
+; while the INSTANCE below is bridged under its own ident.
+extern_generic = _CDDL_CODEGEN_EXTERN_TYPE_
+
+; a NON-extern generic rule. Its instances are monomorphized before generation, so each is an
+; ordinary record and needs no bridging at all — asserted here rather than in prose.
+gen_rule<t> = [ v: t ]
+
+; one record containing each, so the reference closure has to keep every bridged type staged.
+holder = {
+  e: ext,
+  r: raw,
+  g: extern_generic<ext>,
+  n: gen_rule<uint>,
+}

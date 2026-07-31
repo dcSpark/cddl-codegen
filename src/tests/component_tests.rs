@@ -36,6 +36,12 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
         "tests/component-choices/input.cddl",
         &["--preserve-encodings=true"],
     ),
+    // Value windows: the one class whose WIT signature is identical whether the glue enforces the
+    // window or ignores it, so the WIT sweep alone can never judge it.
+    ("tests/component-bounds/input.cddl", &[]),
+    // The bridging classes — extern, raw bytes, a generic extern base and its instance, and a
+    // non-extern generic instance. A DIRECTORY input, so it carries no corpus-parity obligation.
+    ("tests/component-extern/inputs", &[]),
     ("tests/component-multifile/inputs", &[]),
     // Cross-scope references that run THROUGH a named collection: the projection resolves the
     // collection through, so the cycle detector must agree about which scope the `use` points at.
@@ -263,33 +269,43 @@ fn component_wit_is_wasm_posture_independent() {
 /// why — never a crash and never a silent omission. The reference closure then removes the
 /// containers, naming the ROOT of the chain rather than the immediate neighbour.
 ///
-/// Pointed at the EXTERN class rather than the type choice it used to use: choices are projected as
-/// of phase 2, and the exclude-and-record path must keep a live test rather than lose one when its
-/// last subject is implemented.
+/// Pointed at the GENERIC EXTERN BASE, which is the class that is still unprojectable now that
+/// externs and raw-bytes types are bridged. Re-pointed rather than deleted: the exclude-and-record
+/// path must keep a live test, and losing its last subject to an implementation is exactly when it
+/// would silently go untested.
+///
+/// The subject is not arbitrary. A base names no concrete rust type — only `Base<Args>` instances do
+/// — so there is nothing for a bridging resource to wrap, and it is SKIPPED from the projection the
+/// way a named collection is: neither included nor excluded. That makes a bare reference to one the
+/// shape the exclusion machinery has to speak about, and the positive halves below (the extern and
+/// the instance beside it, both bridged) are what keep the negative half honest.
 #[test]
-fn component_wit_excludes_an_extern_and_everything_that_reaches_it() {
+fn component_wit_excludes_a_generic_extern_base_and_everything_that_reaches_it() {
     let wit = wit_for_spec(
+        // The base must be INSTANTIATED somewhere or it is not a generic extern base at all — a
+        // plain-declared, never-instantiated extern is an ordinary one and gets bridged.
         "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
-         inner = { v: ext }\n\
+         extern_generic = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         inst = { g: extern_generic<ext> }\n\
+         inner = { b: extern_generic }\n\
          outer = { i: inner }\n\
          plain = { n: uint }\n",
         &[],
     );
+    // The base is SKIPPED, not excluded: it owns no WIT type and no exclusion row. A record of it
+    // would be a record of a type the WIT was never going to carry.
     assert!(
-        wit.contains(
-            "// unexported: Ext — a hand-written extern type needs a bridging resource, which is \
-             not yet projected (phase 2)"
-        ),
-        "the extern itself is not recorded:\n{wit}"
+        !wit.contains("unexported: ExternGeneric ") && !wit.contains("resource extern-generic {"),
+        "the generic extern base is being surfaced or recorded rather than skipped:\n{wit}"
     );
-    // A DIRECT reference to an unprojectable shape fails at the field mapping, so it records the
-    // shape rather than the neighbour — strictly more informative than the closure's wording.
+    // A DIRECT reference fails at the field mapping, so it records the SHAPE rather than the
+    // neighbour — strictly more informative than the closure's wording.
     assert!(
         wit.contains(
-            "// unexported: Inner — references the extern type `Ext`, whose bridging resource is \
-             not yet projected (phase 2)"
+            "// unexported: Inner — references the generic extern base `ExternGeneric`, which \
+             names no concrete type — only its instances (`ExternGeneric<…>`) are bridged"
         ),
-        "the directly-containing record is not excluded, or does not name the offending shape:\n{wit}"
+        "the directly-referencing record is not excluded, or does not name the offending shape:\n{wit}"
     );
     // One level further out the closure takes over, and it names the ROOT of the chain rather than
     // its immediate neighbour.
@@ -304,6 +320,13 @@ fn component_wit_excludes_an_extern_and_everything_that_reaches_it() {
     assert!(
         wit.contains("resource plain"),
         "an unrelated type was dropped along with the excluded ones:\n{wit}"
+    );
+    // The positive control: the ordinary extern and the generic INSTANCE are bridged, so what is
+    // excluded above is the base alone and not externs having stopped projecting.
+    assert!(
+        wit.contains("resource ext {") && wit.contains("resource extern-generic-ext {"),
+        "the extern or the generic INSTANCE stopped being bridged, which would make the exclusion \
+         above prove something else entirely:\n{wit}"
     );
 }
 
@@ -461,6 +484,228 @@ fn component_glue_new_variant_statics_unwrap_the_rust_constructor() {
         glue.contains("let inner = cddl_lib::Label::new_labels(labels.try_into().map_err(err)?);"),
         "the despecialized arm's static no longer re-enters the `TryFrom` door, or wrongly unwraps \
          an infallible rust constructor:\n{glue}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// Bridging resources: extern, raw bytes, generics
+// -------------------------------------------------------------------------------------------------
+
+/// The four bridging verdicts, on one fixture. Each is a decision about a type whose rust definition
+/// the tool does NOT own, so each is only checkable against the contract that type already carries.
+///
+/// The raw-bytes row is the one that departs from a uniform "everything gets the cbor seam" rule,
+/// and the departure is forced: a `_CDDL_CODEGEN_RAW_BYTES_TYPE_`'s contract is `RawBytesEncoding`
+/// and nothing requires `Serialize` of it — the emitted extern-interface self-check asserts the
+/// former and not the latter — so a `to-cbor-bytes` bridge would name a trait impl that need not
+/// exist. That is the compile-error-in-generated-code class the `no_deserialize` fork already
+/// exists to prevent, reached from the other direction.
+#[test]
+fn component_wit_bridges_externs_raw_bytes_and_generic_instances() {
+    let wit = wit_of("tests/component-extern/inputs", &[]);
+    let body = |resource: &str| {
+        wit.split(&format!("resource {resource} {{"))
+            .nth(1)
+            .and_then(|rest| rest.split('}').next())
+            .unwrap_or_else(|| panic!("the WIT carries no `resource {resource}`:\n{wit}"))
+            .to_owned()
+    };
+    // An extern: the cbor seam and NOTHING else. No constructor and no getters — the tool knows
+    // nothing about the user's type beyond the contract it already imposes on it.
+    let ext = body("ext");
+    assert!(
+        ext.contains("to-cbor-bytes: func() -> list<u8>;")
+            && ext
+                .contains("from-cbor-bytes: static func(bytes: list<u8>) -> result<ext, string>;")
+            && !ext.contains("constructor("),
+        "the extern bridge is no longer the bare cbor seam:\n{ext}"
+    );
+    // A raw-bytes type: the RAW seam, and no cbor seam at all.
+    let raw = body("raw");
+    assert!(
+        raw.contains("to-raw-bytes: func() -> list<u8>;")
+            && raw.contains("from-raw-bytes: static func(bytes: list<u8>) -> result<raw, string>;"),
+        "the raw-bytes bridge lost its `RawBytesEncoding` seam:\n{raw}"
+    );
+    assert!(
+        !raw.contains("cbor-bytes"),
+        "the raw-bytes bridge grew a cbor seam, which names a `Serialize` impl its contract does \
+         not require:\n{raw}"
+    );
+    // A generic extern: the INSTANCE is bridged under its own ident; the BASE names no concrete
+    // type and is skipped entirely.
+    assert!(
+        wit.contains("resource extern-generic-ext {") && !wit.contains("resource extern-generic {"),
+        "the generic extern's instance/base split changed:\n{wit}"
+    );
+    // A NON-extern generic instance is monomorphized before generation, so it arrives here as an
+    // ordinary record with an ordinary constructor and getter — no bridging involved.
+    let generic = body("gen-rule-u64");
+    assert!(
+        generic.contains("constructor(v: u64);") && generic.contains("v: func() -> u64;"),
+        "the monomorphized non-extern generic instance is no longer an ordinary record:\n{generic}"
+    );
+    // And the containing record still projects: bridging exists precisely so one extern field does
+    // not take every type that reaches it out of the WIT.
+    let holder = body("holder");
+    assert!(
+        holder.contains(
+            "constructor(e: borrow<ext>, r: borrow<raw>, g: borrow<extern-generic-ext>, \
+             n: borrow<gen-rule-u64>);"
+        ) && holder.contains("r: func() -> raw;"),
+        "the record containing the bridged types no longer projects:\n{holder}"
+    );
+}
+
+/// The glue behind those bridges. Both seams name a TRAIT on a type the tool does not define, so
+/// naming the wrong one is a compile error in the USER's crate — and this fixture cannot enter the
+/// build smoke (its rust crate needs hand-written types), so the trait paths are asserted here.
+#[test]
+fn component_glue_bridges_raw_bytes_through_raw_bytes_encoding() {
+    let glue = component_glue("tests/component-extern/inputs", &[]);
+    assert!(
+        glue.contains(
+            "<cddl_lib::Raw as cddl_lib::serialization::RawBytesEncoding>::to_raw_bytes(&self.0.borrow())"
+        ) && glue.contains(
+            "<cddl_lib::Raw as cddl_lib::serialization::RawBytesEncoding>::from_raw_bytes(&bytes)"
+        ),
+        "the raw-bytes glue no longer goes through `RawBytesEncoding`:\n{glue}"
+    );
+    // `to_raw_bytes` hands back a borrow of the type's own storage; the owned copy is this face's
+    // job, and without it the guest returns a reference the canonical ABI cannot lift.
+    assert!(
+        glue.contains("::to_raw_bytes(&self.0.borrow())\n            .to_vec()"),
+        "the raw-bytes getter no longer copies the borrowed slice into an owned Vec:\n{glue}"
+    );
+    assert!(
+        !glue.contains("cddl_lib::Raw as cddl_lib::serialization::Deserialize")
+            && !glue.contains("cddl_lib::Raw as cddl_lib::serialization::ToCBORBytes"),
+        "the raw-bytes glue names a cbor trait its contract does not require:\n{glue}"
+    );
+    // The extern halves, for contrast: the SAME templates every record uses, over the traits the
+    // extern contract does require.
+    assert!(
+        glue.contains(
+            "<cddl_lib::Ext as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())"
+        ) && glue.contains(
+            "<cddl_lib::Ext as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)"
+        ),
+        "the extern glue no longer bridges the cbor seam:\n{glue}"
+    );
+    // A generic extern INSTANCE is named through the `pub type <Instance> = <Base><Args>;` alias the
+    // rust crate emits, so the glue never has to spell the argument list itself.
+    assert!(
+        glue.contains("pub struct WitExternGenericExt(pub RefCell<cddl_lib::ExternGenericExt>);"),
+        "the generic extern instance is no longer reached through its rust alias:\n{glue}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// Value windows at the boundary
+// -------------------------------------------------------------------------------------------------
+
+/// A bounded field's SETTER is declared `result<_, string>`, and this is the assertion that it earns
+/// that signature. A setter is the one member with no rust constructor standing between the caller
+/// and the field, so a setter that merely DECLARED fallibility left this face strictly weaker than
+/// the wasm one, which emits the range check at the same site.
+///
+/// Per shape, because the check expression differs per shape and a single-row test would pass while
+/// the others silently did nothing. The two controls matter as much as the six checks: a `[+ T]` and
+/// an `@duplicates reject` set enforce their invariant in the TYPE system, so they must re-enter
+/// their `TryFrom` door and emit NO inline check.
+#[test]
+fn component_glue_bounded_setters_check_their_window() {
+    let glue = component_glue("tests/component-bounds/input.cddl", &[]);
+    let body = |setter: &str| {
+        glue.split(&format!("fn {setter}("))
+            .nth(1)
+            .and_then(|rest| rest.split("\n    }").next())
+            .unwrap_or_else(|| panic!("the glue carries no `{setter}`:\n{glue}"))
+            .to_owned()
+    };
+    for (setter, cond) in [
+        ("set_lim", "if lim > 5 {"),
+        (
+            "set_window",
+            "if !(window >= 0.5f64 && window <= 10.5f64) {",
+        ),
+        ("set_digest", "if digest.len() != 4 {"),
+        ("set_label", "if label.len() < 3 || label.len() > 14 {"),
+        ("set_span", "if span.len() < 2 || span.len() > 5 {"),
+        ("set_counts", "if counts.len() > 3 {"),
+    ] {
+        let body = body(setter);
+        assert!(
+            body.contains(cond),
+            "`{setter}` does not emit its window check `{cond}` — the WIT promises a \
+             `result<_, string>` the glue never produces:\n{body}"
+        );
+        // The failure is lifted through `DeserializeError::from` because `DeserializeFailure`
+        // implements no `Display`, and this face reports every failure as a `Display`'s `String`.
+        assert!(
+            body.contains("cddl_lib::error::DeserializeError::from(")
+                && body.contains("cddl_lib::error::DeserializeFailure::"),
+            "`{setter}`'s failure is no longer the rust crate's own error type:\n{body}"
+        );
+    }
+    // The check precedes the conversion, and that ordering is forced rather than chosen: a `.len()`
+    // read off a `collect()`-bound local is E0282, because the container type is pinned only by the
+    // assignment that comes after it.
+    let span = body("set_span");
+    assert!(
+        span.find("if span.len()") < span.find("let span = span.into_iter()"),
+        "the window check no longer precedes the conversion:\n{span}"
+    );
+    // The CONTROLS. A type-enforced invariant is re-imposed by its `TryFrom` door, never by an
+    // inline check — the invalid state is unrepresentable rather than rejected.
+    for (setter, door) in [
+        ("set_ids", "let ids: Vec<_> = ids.into_iter().collect();"),
+        ("set_tags", "let tags: Vec<_> = tags.into_iter().collect();"),
+    ] {
+        let body = body(setter);
+        assert!(
+            body.contains(door) && body.contains(".try_into().map_err(err)?"),
+            "`{setter}` no longer re-enters the despecialized type's `TryFrom` door:\n{body}"
+        );
+        assert!(
+            !body.contains("RangeCheck"),
+            "`{setter}` emits an inline window check for an invariant its rust type enforces:\n{body}"
+        );
+    }
+}
+
+/// The OTHER door the same rust type decides, and why it is a TYPE question rather than a "validates
+/// and is a list" one. A plain bounded array is a `Vec<T>` on both sides, so routing it through
+/// `try_into` reaches the identity `TryFrom` (`Error = Infallible`) — it compiles while checking
+/// nothing. A bounded MAP is worse: `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>` at all, so the
+/// same conflation emitted glue that did not compile.
+#[test]
+fn component_glue_routes_only_despecialized_params_through_the_try_from_door() {
+    let glue = component_glue("tests/component-bounds/input.cddl", &[]);
+    for setter in ["set_span", "set_counts"] {
+        let body = glue
+            .split(&format!("fn {setter}("))
+            .nth(1)
+            .and_then(|rest| rest.split("\n    }").next())
+            .unwrap_or_else(|| panic!("the glue carries no `{setter}`:\n{glue}"));
+        assert!(
+            !body.contains("try_into"),
+            "`{setter}` still routes a merely-BOUNDED parameter through the despecialization \
+             door:\n{body}"
+        );
+    }
+    // A MANDATORY bounded field keeps its window enforced by the rust `new`, whose `Result` the
+    // guest unwraps — so the constructor adds neither a door nor a second check.
+    let ctor = glue
+        .split("fn new(fixed_size: Vec<u64>)")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    }").next())
+        .expect("the glue carries no constructor");
+    assert!(
+        ctor.contains("let inner = cddl_lib::Bounded::new(fixed_size).map_err(err)?;")
+            && !ctor.contains("try_into")
+            && !ctor.contains("RangeCheck"),
+        "the mandatory bounded field is no longer left to the rust constructor's own check:\n{ctor}"
     );
 }
 
@@ -1045,6 +1290,14 @@ const BUILD_SMOKE_FIXTURES: &[(&str, &[&str])] = &[
     // interface declares. None of it is reachable from a single-scope fixture, and all of it is a
     // link-time fact no WIT gate can see.
     ("tests/component-multifile/inputs", &[]),
+    // VALUE WINDOWS: every row here is a fact about the generated rust crate that the WIT cannot
+    // express — a bounded setter's `result<_, string>` reads the same whether the check is emitted
+    // or not, and the two despecialization controls decide between a `TryFrom` door and an inline
+    // check whose wrong choice is either a silent no-op or a trait impl that does not exist.
+    // `tests/component-extern/inputs` is deliberately NOT here: its rust crate names user-owned
+    // extern types, so it cannot compile standalone (the same reason `tests/multifile` is absent);
+    // its emitted bytes are pinned by the `component_extern` whole-program snapshot instead.
+    ("tests/component-bounds/input.cddl", &[]),
 ];
 
 /// THE acceptance gate for the guest emitters: a generated component crate that does not compile is

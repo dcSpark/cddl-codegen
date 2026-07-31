@@ -1,0 +1,124 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+// cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export
+// each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the
+// user-owned definition. See the extern types section of docs/output_format.
+pub use crate::Ext;
+pub use crate::ExternGenericExt;
+pub use crate::Raw;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct GenRuleU64(pub(crate) cddl_lib::GenRuleU64);
+
+#[wasm_bindgen]
+impl GenRuleU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<GenRuleU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn v(&self) -> u64 {
+        self.0.v
+    }
+
+    pub fn new(v: u64) -> Self {
+        Self(cddl_lib::GenRuleU64::new(v))
+    }
+}
+
+impl From<cddl_lib::GenRuleU64> for GenRuleU64 {
+    fn from(native: cddl_lib::GenRuleU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<GenRuleU64> for cddl_lib::GenRuleU64 {
+    fn from(wasm: GenRuleU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::GenRuleU64> for GenRuleU64 {
+    fn as_ref(&self) -> &cddl_lib::GenRuleU64 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn e(&self) -> Ext {
+        self.0.e.clone().into()
+    }
+
+    pub fn r(&self) -> Raw {
+        self.0.r.clone().into()
+    }
+
+    pub fn g(&self) -> ExternGenericExt {
+        self.0.g.clone().into()
+    }
+
+    pub fn n(&self) -> GenRuleU64 {
+        self.0.n.clone().into()
+    }
+
+    pub fn new(e: &Ext, r: &Raw, g: &ExternGenericExt, n: &GenRuleU64) -> Self {
+        Self(cddl_lib::Holder::new(
+            e.clone().into(),
+            r.clone().into(),
+            g.clone().into(),
+            n.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}

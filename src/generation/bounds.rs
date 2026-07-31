@@ -281,6 +281,83 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     }
 }
 
+/// The value bounds check line a COMPONENT-face parameter emits, or `None` when the type carries no
+/// value window — or enforces it in its own type system (the `[+ T]` early-out, whose single
+/// `TryFrom` door IS the check, exactly as in [`value_bounds_check_line`]).
+///
+/// The same decision tree as [`value_bounds_check_line`], reached through the SAME condition owners
+/// (`reject_cond`, `bounds_check_expr_rust_type`, `bounds_check_expr_non_negative`,
+/// `nint_bounds_to_u64`, `float_accept_cond`, `float_literal`): only the `Err(..)` construction
+/// forks. Two things force that fork and nothing else does — the component guest reports every
+/// failure as the `String` of the rust error's `Display` (through its own `err` helper), and it
+/// spells the error types through the generated crate's path (`runtime`) rather than bare, because
+/// the guest file imports nothing from that crate. A second CONDITION spelling is precisely the
+/// drift this module was consolidated to prevent, so nothing here re-derives one.
+///
+/// Note the wrap: `DeserializeFailure` derives `Debug` but implements no `Display` — only
+/// `DeserializeError` does — so the failure is lifted through `DeserializeError::from` before it
+/// reaches a `Display`-bounded helper.
+pub(super) fn component_bounds_check_line(ty: &RustType, e: &str, runtime: &str) -> Option<String> {
+    if ty.is_type_enforced_non_empty() {
+        return None;
+    }
+    let wrap = |failure: String| {
+        format!(
+            "return Err(err({runtime}::error::DeserializeError::from({runtime}::error::DeserializeFailure::{failure})));"
+        )
+    };
+    if let Some(window) = &ty.config.float_bounds {
+        let cast_f64 = matches!(
+            ty.resolve_alias_shallow(),
+            ConceptualRustType::Primitive(Primitive::F32)
+        );
+        let opt = |side: Option<(f64, bool)>| match side {
+            Some((v, _)) => format!("Some({})", float_literal(v)),
+            None => "None".to_owned(),
+        };
+        // stored inclusivity is the negation of the parsed exclusivity flag
+        let incl = |side: Option<(f64, bool)>| match side {
+            Some((_, exclusive)) => (!exclusive).to_string(),
+            None => "false".to_owned(),
+        };
+        return Some(format!(
+            "if !({}) {{ {} }}",
+            float_accept_cond(window, e, cast_f64),
+            wrap(format!(
+                "RangeCheckFloat{{ found: {e} as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}",
+                opt(window.0),
+                opt(window.1),
+                incl(window.0),
+                incl(window.1),
+            ))
+        ));
+    }
+    let bounds = ty.config.bounds.as_ref()?;
+    let check_expr = bounds_check_expr_rust_type(ty, e)?;
+    let non_negative = bounds_check_expr_non_negative(ty);
+    // The nint endpoint swap is load-bearing: the magnitude is DECREASING in the signed value, so a
+    // check written against the unswapped bounds is inverted. Both the reported window and the
+    // condition take the swapped pair, exactly as `value_bounds_check_line` does.
+    let bounds = if matches!(
+        ty.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::N64)
+    ) {
+        nint_bounds_to_u64(bounds)
+    } else {
+        *bounds
+    };
+    let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
+    Some(format!(
+        "if {} {{ {} }}",
+        reject_cond(&bounds, non_negative).render(&check_expr),
+        wrap(format!(
+            "RangeCheck{{ found: {check_expr} as i128, min: {}, max: {} }}",
+            opt(bounds.0),
+            opt(bounds.1),
+        ))
+    ))
+}
+
 /// The `if <cond> { Err(RangeCheck..) }` integer bounds check — the single owner of the condition
 /// spelling for every member/setter, primitive-deserialize, and wrapper site. `non_negative` asserts
 /// the checked expression is provably `>= 0` (an unsigned primitive or a `len()`), which lets a

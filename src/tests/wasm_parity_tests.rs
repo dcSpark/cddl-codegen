@@ -190,6 +190,14 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         &[("default", &[])],
     ),
     (
+        // The component face's phase-2 VALUE-WINDOW fixture. Every row is ordinary bounded CDDL —
+        // `.le`, a float window, `.size`, a bounded array/map, `[+ T]`, `@duplicates reject` — so it
+        // is swept here on the same terms as `component-core`; the component gates over it live in
+        // `component_tests`.
+        "component-bounds",
+        &[("default", &[])],
+    ),
+    (
         // The component face's `@name` remedy fixture. The `@name` directives are what keep it
         // generating under `--component`; they are plain comment-DSL rows on every other face.
         "component-rename",
