@@ -18,6 +18,12 @@ as its inline equivalent (`x: [* foo]`) would — the structural `FooList` class
 needs a wrapper, or the direct exposure below when it doesn't — while a NAMED collection rule
 (`foos = [* foo]`) exposes a class under its own rule name.
 
+A named rule may deliberately claim a structural name: writing `foo_list = [* foo]` makes your rule
+*be* the `FooList` class, so a table's `keys()`, a rest row's `keys()`, a rest tail and every inline
+`[* foo]` all share it — the list-side counterpart of a sole-owner table rule aliasing `MapKeyToValue`
+(below). The two must agree on the element: a rule of that ident with any *other* shape is rejected
+by name at generation time, naming the use that mints the class, rather than shadowing it.
+
 A **258 set** is instead **nominal** (see [current capacities](current_capacities), tag-set
 section): a generic instance mints one class per instantiation — `set<foo>` mints its own
 `#[wasm_bindgen]` class `SetFoo` (over the rust nominal), distinct from the inline plain `[* foo]`
