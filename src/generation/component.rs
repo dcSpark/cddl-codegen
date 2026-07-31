@@ -38,8 +38,9 @@
 
 use super::enums::EnumVariantInRust;
 use super::wit::{
-    ImportedDepType, WitConstructor, WitEnum, WitFunc, WitFuncOp, WitInterface, WitMember,
-    WitMemberOp, WitPackage, WitParam, WitResource, WitType, WitTypeDef, WitTypeRef,
+    ImportedDepType, WitAccumulator, WitAccumulatorRef, WitConstructor, WitEnum, WitFunc,
+    WitFuncOp, WitInterface, WitMember, WitMemberOp, WitPackage, WitParam, WitResource, WitType,
+    WitTypeDef, WitTypeRef,
 };
 use crate::cli::Cli;
 use crate::component_wit_deps::DepWitPackages;
@@ -129,11 +130,7 @@ fn imported_interface_alias(dep: &str, iface_name: &str) -> String {
 /// trait (the free functions land on it), so "has a resource" alone would suppress the impl that
 /// this face's `any-cbor` free functions need.
 pub(crate) fn interface_has_guest(iface: &WitInterface) -> bool {
-    !iface.funcs.is_empty()
-        || iface
-            .types
-            .iter()
-            .any(|def| matches!(def, WitTypeDef::Resource(_)))
+    !iface.funcs.is_empty() || declares_resource(iface)
 }
 
 /// A WIT identifier in the rust form `wit_bindgen` gives it for a value position (function, module,
@@ -183,6 +180,15 @@ fn wrap_fallible_element(element: &str, inner: &WitType) -> String {
 /// within its interface — two scopes may each define a `foo`, and both reps live in this one file.
 fn rep_name(ident: &RustIdent) -> String {
     format!("Wit{ident}")
+}
+
+/// Whether the interface declares anything the guest must implement — resources of either kind, or
+/// free functions. See [`interface_has_guest`] for why both halves are load-bearing.
+fn declares_resource(iface: &WitInterface) -> bool {
+    iface
+        .types
+        .iter()
+        .any(|def| matches!(def, WitTypeDef::Resource(_) | WitTypeDef::Accumulator(_)))
 }
 
 /// A conversion expression plus whether it evaluates to a `Result` the caller must unwrap.
@@ -305,6 +311,83 @@ impl Emitter<'_, '_> {
         self.rust_path(&r.ident)
     }
 
+    /// The accumulator behind a reference. Looked up rather than carried inline so the DECLARATION
+    /// stays the single owner of the element shape — the reference is minted at the parameter it
+    /// replaced, and only the declaration knows what the guest must store.
+    fn accumulator(&self, r: &WitAccumulatorRef) -> &WitAccumulator {
+        self.package.interfaces[&r.scope]
+            .types
+            .iter()
+            .find_map(|def| match def {
+                WitTypeDef::Accumulator(a) if a.name == r.name => Some(a),
+                _ => None,
+            })
+            .expect("every accumulator reference is minted together with its declaration")
+    }
+
+    /// The guest REP struct of an accumulator. Keyed by INTERFACE NAME as well as by the WIT name:
+    /// an accumulator's name is unique only within its interface (two interfaces may each carry a
+    /// `token-list`), while every rep in this one file shares one rust namespace. The interface name
+    /// is what the package-level collision detector already proved unique.
+    fn acc_rep_name(&self, r: &WitAccumulatorRef) -> String {
+        format!(
+            "WitAcc{}{}",
+            kebab_to_camel(&self.package.interfaces[&r.scope].name),
+            kebab_to_camel(&r.name)
+        )
+    }
+
+    /// The rust-CRATE type a WIT value becomes once [`Self::wit_to_rust`] has converted it — the
+    /// element type an accumulator's `Vec` has to be declared with.
+    ///
+    /// Spelled rather than inferred because it lands in a STRUCT FIELD, the one position rust has no
+    /// inference for. It mirrors `wit_to_rust`'s result arm for arm, which is a parallel derivation
+    /// and therefore a drift risk; it is bounded by the fact that a mismatch is a compile error in
+    /// the emitted crate, which the cross-crate wasip2 build gate exercises.
+    fn native_rust_type(&self, ty: &WitType) -> String {
+        match ty {
+            WitType::Bool => "bool".to_owned(),
+            WitType::U8 => "u8".to_owned(),
+            WitType::U16 => "u16".to_owned(),
+            WitType::U32 => "u32".to_owned(),
+            WitType::U64 => "u64".to_owned(),
+            WitType::S8 => "i8".to_owned(),
+            WitType::S16 => "i16".to_owned(),
+            WitType::S32 => "i32".to_owned(),
+            WitType::S64 => "i64".to_owned(),
+            WitType::F32 => "f32".to_owned(),
+            WitType::F64 => "f64".to_owned(),
+            WitType::Str => "String".to_owned(),
+            WitType::Handle(r) => {
+                if self.imported(r).is_some() {
+                    self.imported_rust_path(r)
+                } else {
+                    self.rust_path(&r.ident)
+                }
+            }
+            WitType::Enum(r) => self.rust_path(&r.ident),
+            WitType::Int => self.int_path(),
+            WitType::AnyCbor => format!("{}::any_cbor::AnyCbor", self.runtime()),
+            WitType::AnyCborKind => format!("{}::any_cbor::AnyCborKind", self.runtime()),
+            WitType::Option(inner) => format!("Option<{}>", self.native_rust_type(inner)),
+            WitType::List(inner) => format!("Vec<{}>", self.native_rust_type(inner)),
+            WitType::Tuple(parts) => {
+                let parts: Vec<String> = parts.iter().map(|t| self.native_rust_type(t)).collect();
+                if parts.len() == 1 {
+                    format!("({},)", parts[0])
+                } else {
+                    format!("({})", parts.join(", "))
+                }
+            }
+            // A nested accumulator hands over the `Vec` it settled, so the containing one stores
+            // exactly that.
+            WitType::Accumulator(a) => format!(
+                "Vec<{}>",
+                self.native_rust_type(&self.accumulator(a).element)
+            ),
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------
     // The WIT-side rust types `generate!` mints
     // ---------------------------------------------------------------------------------------------
@@ -359,6 +442,20 @@ impl Emitter<'_, '_> {
                     format!("{alias}::{camel}Borrow<'_>")
                 }
             }
+            // An accumulator is a resource THIS package exports, so its borrow takes the exported
+            // template — the `TBorrow<'_>` newtype, not the `&T` an imported handle lowers to.
+            WitType::Accumulator(a) => {
+                let camel = kebab_to_camel(&a.name);
+                let alias = self
+                    .aliases
+                    .get(&a.scope)
+                    .expect("every accumulator's interface has an alias");
+                if param {
+                    format!("{alias}::{camel}Borrow<'_>")
+                } else {
+                    format!("{alias}::{camel}")
+                }
+            }
             WitType::Enum(r) => format!("{}::{}", self.alias_for(r), kebab_to_camel(&r.name)),
             WitType::Int => format!("{iface}::Int"),
             // A transparent alias over raw CBOR item bytes: the same `Vec<u8>` on both sides of the
@@ -408,6 +505,17 @@ impl Emitter<'_, '_> {
             WitType::Handle(r) => Conv::plain(format!(
                 "{expr}.get::<{}>().0.borrow().clone()",
                 rep_name(&r.ident)
+            )),
+            // The accumulator already ran the per-element seam, once per `push`/`insert`, so the
+            // consuming door only clones the settled collection and re-`collect`s it into whatever
+            // container the rust position wants. INFALLIBLE for exactly that reason — which is why
+            // moving the cost to the filling member is what buys the honest signature here.
+            //
+            // The guard is taken and dropped inside this one expression, as every other composite
+            // arm's is: the re-entrancy invariant.
+            WitType::Accumulator(a) => Conv::plain(format!(
+                "{expr}.get::<{}>().0.borrow().clone().into_iter().collect()",
+                self.acc_rep_name(a)
             )),
             WitType::Enum(r) => Conv::plain(format!(
                 "{}_from_wit({expr})",
@@ -601,6 +709,9 @@ impl Emitter<'_, '_> {
                 kebab_to_camel(&r.name),
                 rep_name(&r.ident)
             )),
+            // Never a return: an accumulator exists only because a PARAMETER needed one, and a
+            // collection return keeps `list<own t>`. Spelled for totality.
+            WitType::Accumulator(_) => Conv::plain(deref(expr)),
             WitType::Enum(r) => Conv::plain(format!(
                 "{}_to_wit({})",
                 kebab_to_snake(&convert_ident_to_snake(&r.ident)),
@@ -750,12 +861,7 @@ impl Emitter<'_, '_> {
 
     fn emit(&self) -> String {
         let mut out = String::new();
-        let has_resource = self.package.interfaces.values().any(|iface| {
-            iface
-                .types
-                .iter()
-                .any(|def| matches!(def, WitTypeDef::Resource(_)))
-        });
+        let has_resource = self.package.interfaces.values().any(declares_resource);
         if has_resource {
             out.push_str("use core::cell::RefCell;\n\n");
         }
@@ -867,15 +973,26 @@ impl Emitter<'_, '_> {
                     WitTypeDef::AnyCborKind => out.push_str(&self.emit_any_cbor_kind_bridge(alias)),
                     // A `<name>-kind` enum needs no bridge function: it is only ever RETURNED, by
                     // the one member (`kind`) that matches the rust DATA enum inline.
-                    WitTypeDef::Kind(_) | WitTypeDef::AnyCborAlias | WitTypeDef::Resource(_) => {}
+                    // An accumulator needs none either: it is a rust type of this file's own, so
+                    // there is no `generate!`-minted counterpart to bridge to.
+                    WitTypeDef::Kind(_)
+                    | WitTypeDef::AnyCborAlias
+                    | WitTypeDef::Resource(_)
+                    | WitTypeDef::Accumulator(_) => {}
                 }
             }
         }
 
         for iface in self.package.interfaces.values() {
             for def in &iface.types {
-                if let WitTypeDef::Resource(resource) = def {
-                    out.push_str(&self.emit_resource(resource, iface));
+                match def {
+                    WitTypeDef::Resource(resource) => {
+                        out.push_str(&self.emit_resource(resource, iface))
+                    }
+                    WitTypeDef::Accumulator(acc) => {
+                        out.push_str(&self.emit_accumulator(acc, iface))
+                    }
+                    _ => {}
                 }
             }
         }
@@ -891,13 +1008,27 @@ impl Emitter<'_, '_> {
             .expect("every interface got an alias");
         let mut out = format!("impl {alias}::Guest for Component {{\n");
         for def in &iface.types {
-            if let WitTypeDef::Resource(resource) = def {
-                let _ = writeln!(
-                    out,
-                    "    type {} = {};",
-                    kebab_to_camel(&resource.name),
-                    rep_name(&resource.ident)
-                );
+            match def {
+                WitTypeDef::Resource(resource) => {
+                    let _ = writeln!(
+                        out,
+                        "    type {} = {};",
+                        kebab_to_camel(&resource.name),
+                        rep_name(&resource.ident)
+                    );
+                }
+                WitTypeDef::Accumulator(acc) => {
+                    let _ = writeln!(
+                        out,
+                        "    type {} = {};",
+                        kebab_to_camel(&acc.name),
+                        self.acc_rep_name(&WitAccumulatorRef {
+                            scope: acc.scope.clone(),
+                            name: acc.name.clone(),
+                        })
+                    );
+                }
+                _ => {}
             }
         }
         for func in &iface.funcs {
@@ -1090,6 +1221,105 @@ impl Emitter<'_, '_> {
         for member in &resource.members {
             out.push_str(&self.emit_member(resource, member, alias));
         }
+        out.push_str("}\n\n");
+        out
+    }
+
+    /// One ACCUMULATOR: the guest REP struct — a `RefCell<Vec<..>>` of the rust-crate element type —
+    /// plus its `Guest<Resource>` impl.
+    ///
+    /// The whole point of the shape lives in the filling member: it runs the CBOR seam ONCE PER
+    /// ELEMENT, so by the time the collection reaches the constructor or setter that consumes it,
+    /// there is nothing left to convert and nothing left to fail. That is what moves the fallibility
+    /// off the consuming door and onto `push`/`insert`, and it is why the accumulator exists at all —
+    /// an imported resource may only be borrowed in a NON-REPEATED parameter position, because
+    /// wit-bindgen's Rust backend miscompiles every repeated one (E0506, measured unfixed through
+    /// 0.60.0). See `wit::WitAccumulator`.
+    ///
+    /// The re-entrancy invariant holds here the way it holds everywhere else on this face: the
+    /// element is materialized to an owned rust value in its own statement, and only then is the
+    /// accumulator's own `RefCell` borrowed mutably.
+    fn emit_accumulator(&self, acc: &WitAccumulator, iface: &WitInterface) -> String {
+        let alias = self
+            .aliases
+            .get(&iface.scope)
+            .expect("every interface got an alias");
+        let rep = self.acc_rep_name(&WitAccumulatorRef {
+            scope: acc.scope.clone(),
+            name: acc.name.clone(),
+        });
+        let element = self.native_rust_type(&acc.element);
+        // The cause, restated in the emitted crate for the same reason the emitted WIT restates it:
+        // a reader meeting the indirection here needs to know it is forced, and a future toolchain
+        // fix needs a stated trigger to revisit the shape.
+        let mut out = format!(
+            "/// The carrier the WIT resource `{}` is backed by: a dependency-typed collection\n\
+             /// PARAMETER, already converted. An imported resource may only be borrowed in a\n\
+             /// NON-REPEATED parameter position — wit-bindgen's Rust backend miscompiles every\n\
+             /// repeated one (E0506), measured unfixed through 0.60.0 — so the caller fills this\n\
+             /// one element at a time and the CBOR seam runs once per `{}`.\n\
+             pub struct {rep}(pub RefCell<Vec<{element}>>);\n\n",
+            acc.name,
+            acc.filler()
+        );
+        let _ = writeln!(
+            out,
+            "impl {alias}::Guest{} for {rep} {{",
+            kebab_to_camel(&acc.name)
+        );
+        let _ = write!(
+            out,
+            "\n    fn new() -> Self {{\n        {rep}(RefCell::new(Vec::new()))\n    }}\n"
+        );
+
+        // The filler's parameters, as ordinary `WitParam`s so they go through the SAME
+        // materialization the hand-written doors do — including its re-entrancy discipline.
+        let synthetic = |name: &str, ty: &WitType| WitParam {
+            name: name.to_owned(),
+            rust_name: name.to_owned(),
+            ty: ty.clone(),
+            validates: false,
+            rust_type: None,
+        };
+        let params = match acc.row() {
+            Some((key, value)) => vec![synthetic("k", key), synthetic("v", value)],
+            None => vec![synthetic("v", &acc.element)],
+        };
+        let signature: Vec<String> = params
+            .iter()
+            .map(|p| format!("{}: {}", p.name, self.wit_rust_type(&p.ty, alias, true)))
+            .collect();
+        let ret = if acc.fallible {
+            " -> Result<(), String>"
+        } else {
+            ""
+        };
+        let _ = write!(
+            out,
+            "\n    fn {}(&self, {}){ret} {{\n",
+            acc.filler(),
+            signature.join(", ")
+        );
+        let (lines, args) = self.materialize(&params, alias);
+        for line in lines {
+            let _ = writeln!(out, "        {line}");
+        }
+        let pushed = if args.len() == 1 {
+            args[0].clone()
+        } else {
+            format!("({})", args.join(", "))
+        };
+        let _ = writeln!(out, "        self.0.borrow_mut().push({pushed});");
+        if acc.fallible {
+            out.push_str("        Ok(())\n");
+        }
+        out.push_str("    }\n");
+
+        let _ = write!(
+            out,
+            "\n    fn {}(&self) -> u32 {{\n        self.0.borrow().len() as u32\n    }}\n",
+            super::wit::ACCUMULATOR_LEN_MEMBER
+        );
         out.push_str("}\n\n");
         out
     }

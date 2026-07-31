@@ -8,7 +8,13 @@
 
 ; A record. Projects to a `resource` with a constructor and getters, so a consumer importing it gets
 ; a type it can both mint and read — the shape the whole seam exists to share.
-token = [ name: text, amount: uint ]
+;
+; `@used_as_key` because a consumer uses it as a map KEY (`../consumer-collections`), and key-demand
+; is a property the DEPENDENCY has to satisfy: the consumer's map is a `BTreeMap<dep::Token, _>`, and
+; only the dependency's own run can put `Ord` on the dependency's own type. The inference that would
+; have derived it cannot see across the crate boundary — this spec never uses `token` as a key
+; itself.
+token = [ name: text, amount: uint ] ; @used_as_key
 
 ; A second record, so a consumer can hold two dependency types at once and the `use` line has to
 ; carry both names rather than one.

@@ -1,11 +1,16 @@
-; The CONSUMER shape import mode cannot spell yet: a dependency type in every REPEATED position — a
-; list element, a map key and a map value.
+; The CONSUMER shape import mode spells through an ACCUMULATOR: a dependency type in every REPEATED
+; position — a list element, a map key and a map value.
 ;
-; `list<borrow<t>>` over an IMPORTED resource is legal WIT that wit-bindgen's Rust backend cannot
-; lower (E0506: it hoists one binding out of the loop and reassigns it while a reference is
-; retained), so a generation that emitted it would produce a component crate that does not compile.
-; This spec is therefore a REJECTION fixture today — and the positive fixture for the accumulator
-; shape that replaces the borrow-in-a-list once it lands.
+; `borrow<imported-resource>` is usable only in a NON-REPEATED parameter position: `list<borrow<t>>`
+; is legal WIT whose Rust lowering is E0506 (wit-bindgen hoists one handle binding out of the
+; lowering loop and reassigns it while a reference is retained), measured unfixed from the pinned
+; 0.57.1 through 0.60.0. So each of these parameters is passed as a borrow of a consumer-exported
+; accumulator the caller fills one element at a time, and the CBOR seam runs once per element inside
+; that filler rather than once per collection at the door.
+;
+; Compiled, not only read: the shape's whole reason for existing is a macro-expansion failure no WIT
+; oracle can see, so this fixture is one of the two consumers the cross-crate `wasm32-wasip2` build
+; gate builds.
 
 vault = [
     ; a dependency type as a list element

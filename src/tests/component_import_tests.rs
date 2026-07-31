@@ -14,10 +14,11 @@
 //!
 //! The fixtures live under `tests/component-extern-import/`: two dependencies generated as real
 //! crates (a stub tree has no component face to point at, which is the case the opt-in exists for)
-//! and three consumers — the supported positions, the repeated positions this cddl-codegen refuses,
-//! and the one naming a type the dependency's own WIT excluded. The second dependency exists only
-//! for that last case: the shape whose WIT projection fails is also not a rust type a crate can
-//! hold, and the first dependency has to stay compilable.
+//! and four consumers — the scalar positions, the repeated ones (which cross through an
+//! accumulator), the one whose own rule name converges on a derived accumulator name, and the one
+//! naming a type the dependency's own WIT excluded. The second dependency exists only for that last
+//! case: the shape whose WIT projection fails is also not a rust type a crate can hold, and the
+//! first dependency has to stay compilable.
 
 use crate::cli::Cli;
 use crate::tests::gate_cache;
@@ -291,36 +292,153 @@ fn component_import_crosses_scalar_dep_values_through_the_cbor_bytes_seam() {
 }
 
 // -------------------------------------------------------------------------------------------------
-// The two refusals
+// Dependency-typed collections: the accumulator
 // -------------------------------------------------------------------------------------------------
 
-/// A dependency type in a REPEATED parameter position. `list<borrow<t>>` over an imported resource
-/// is legal WIT that wit-bindgen's Rust backend cannot lower, so emitting it would hand the user a
-/// component crate that fails to compile inside a macro expansion. Refused at generation instead,
-/// naming the position and the remedy.
+/// A dependency type in a REPEATED parameter position, in all three of them: a list element, a map
+/// KEY and a map VALUE.
+///
+/// `borrow<imported-resource>` is usable only in a NON-REPEATED parameter position — wit-bindgen's
+/// Rust backend miscompiles every repeated one (E0506, measured unfixed through 0.60.0) — so the
+/// borrow moves one level up, into a consumer-exported accumulator the caller fills element by
+/// element and then passes by borrow. Returns are unaffected: minting fresh handles is what a return
+/// does, so a collection getter keeps `list<own t>`.
 #[test]
-fn component_import_refuses_a_dep_type_in_a_repeated_parameter_position() {
-    let dep_out = generate_dep("repeated");
-    let err = generate_consumer("consumer-collections", &dep_out, true, "cc")
-        .expect_err("a dependency type in a collection parameter must be refused");
+fn component_import_spells_a_dep_typed_collection_param_as_an_accumulator() {
+    let dep_out = generate_dep("accumulator");
+    let files = generate_consumer("consumer-collections", &dep_out, true, "cc").expect(
+        "a dependency type in a collection parameter must GENERATE, through an accumulator",
+    );
+    let wit = &files["component/wit/world.wit"];
 
-    for position in ["items", "keyed", "valued"] {
+    // One accumulator per distinct element SHAPE, named after that shape: two maps sharing a
+    // dependency-typed key and differing in their value must not converge on one name with two
+    // incompatible `insert` signatures.
+    for declaration in [
+        "resource token-list {",
+        "resource token-u64-map {",
+        "resource u64-token-map {",
+    ] {
         assert!(
-            err.contains(&format!("in parameter `{position}`")),
-            "every repeated position must be reported, not just the first — `{position}` is \
-             missing:\n{err}"
+            wit.contains(declaration),
+            "the accumulator `{declaration}` is missing:\n{wit}"
+        );
+    }
+    // The filling members are where the CBOR seam runs, once per element — which is why they are
+    // fallible and the consuming constructor is not.
+    for filler in [
+        "push: func(v: borrow<token>) -> result<_, string>;",
+        "insert: func(k: borrow<token>, v: u64) -> result<_, string>;",
+        "insert: func(k: u64, v: borrow<token>) -> result<_, string>;",
+    ] {
+        assert!(
+            wit.contains(filler),
+            "the filler `{filler}` is missing:\n{wit}"
         );
     }
     assert!(
-        err.contains(
-            "an imported resource may only be borrowed in a NON-REPEATED parameter position"
-        ) && err.contains("wit-bindgen's Rust backend cannot lower (E0506)"),
-        "the message must name the CAUSE, so a future toolchain fix has something to search \
-         for:\n{err}"
+        wit.contains(
+            "constructor(items: borrow<token-list>, keyed: borrow<token-u64-map>, valued: \
+             borrow<u64-token-map>);"
+        ),
+        "every dependency-typed collection parameter is spelled as an accumulator borrow, and the \
+         constructor is INFALLIBLE — the seam already ran, per element, in the fillers:\n{wit}"
     );
     assert!(
-        err.contains("drop `--component-extern-wit dep=…`"),
-        "the message must name the remedy a user can actually apply today:\n{err}"
+        !wit.contains("borrow<token>>"),
+        "no `borrow<token>` may survive inside a collection anywhere in the package — that is the \
+         exact shape wit-bindgen cannot lower:\n{wit}"
+    );
+    // The cause, stated where the shape is met: a future toolchain fix needs a trigger to revisit.
+    assert!(
+        wit.contains("NON-REPEATED parameter position") && wit.contains("E0506"),
+        "the emitted WIT must name the cause of the accumulator's existence:\n{wit}"
+    );
+    // Returns are the clean control: `list<own imported>` lowers fine, so a collection getter keeps
+    // the direct spelling (and stays fallible, because minting each handle crosses the seam).
+    for getter in [
+        "items: func() -> result<list<token>, string>;",
+        "keyed: func() -> result<list<tuple<token, u64>>, string>;",
+        "valued: func() -> result<list<tuple<u64, token>>, string>;",
+    ] {
+        assert!(
+            wit.contains(getter),
+            "a collection RETURN keeps `list<own t>` — the accumulator is a parameter-only \
+             shape:\n{getter} missing from\n{wit}"
+        );
+    }
+
+    let wit_files: BTreeMap<String, String> = files
+        .iter()
+        .filter(|(path, _)| path.ends_with(".wit"))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let bytes = crate::tests::component_tests::resolve_and_encode(&wit_files)
+        .expect("the accumulator package must resolve and encode");
+    crate::tests::component_tests::validate_component(&bytes)
+        .expect("the encoded accumulator package must validate");
+
+    // The guest half. The rep is the settled rust collection, the filler runs the seam once per
+    // element, and the consuming door only clones and re-`collect`s it.
+    let glue = &files["component/src/generated/mod.rs"];
+    assert!(
+        glue.contains("pub struct WitAccTypesTokenList(pub RefCell<Vec<dep::Token>>);")
+            && glue.contains(
+                "pub struct WitAccTypesU64TokenMap(pub RefCell<Vec<(u64, dep::Token)>>);"
+            ),
+        "the accumulator's rep holds the DEPENDENCY's own rust type, already converted:\n{glue}"
+    );
+    assert!(
+        glue.contains(
+            "fn push(&self, v: &wit_dep_dep_types::Token) -> Result<(), String> {\n        let v = \
+             <dep::Token as cc::serialization::Deserialize>::from_cbor_bytes(&v.to_cbor_bytes())\n            \
+             .map_err(err)?;\n        self.0.borrow_mut().push(v);"
+        ),
+        "`push` must run the seam into an OWNED value and only then borrow the accumulator mutably \
+         — the re-entrancy invariant:\n{glue}"
+    );
+    assert!(
+        glue.contains(
+            "let items = items\n            .get::<WitAccTypesTokenList>()\n            .0\n            \
+             .borrow()\n            .clone()\n            .into_iter()\n            .collect();"
+        ),
+        "the consuming constructor clones the SETTLED collection — nothing left to convert, nothing \
+         left to fail:\n{glue}"
+    );
+    assert!(
+        glue.contains("fn new(\n        items: wit_types::TokenListBorrow<'_>,"),
+        "an accumulator is a resource THIS package exports, so its borrow takes the exported \
+         `TBorrow<'_>` template rather than the `&T` an imported handle lowers to:\n{glue}"
+    );
+}
+
+/// The accumulator's name is an ordinary name in the interface's flat namespace, DERIVED from a
+/// parameter's element shape rather than written by the user — so a spec type that converges on it
+/// is a collision the user cannot see coming.
+///
+/// Reported by the existing three-level detector rather than by a fourth sibling: that function is
+/// already one walk over the projection covering the package, interface and resource levels, and an
+/// accumulator is an ordinary member of the interface level. What the message owes beyond the shared
+/// text is what MINTED the name, since it appears nowhere in the spec.
+#[test]
+fn an_accumulator_name_colliding_with_a_spec_type_is_reported_with_its_cause() {
+    let dep_out = generate_dep("collision");
+    let err = generate_consumer("consumer-collision", &dep_out, true, "cx")
+        .expect_err("a spec type converging on an accumulator name must be refused");
+
+    assert!(
+        err.contains("WIT type name collision under --component")
+            && err.contains("all convert to the WIT identifier `token-list`"),
+        "the collision must be reported by the shared type-level detector:\n{err}"
+    );
+    assert!(
+        err.contains("the accumulator carrying a `token` collection parameter"),
+        "the message must say what minted the derived name — it is the one owner the user cannot \
+         find by searching the spec:\n{err}"
+    );
+    assert!(
+        err.contains("the type `TokenList`") && err.contains("Rename one of the colliding rules"),
+        "the message must name the spec's own type and the remedy that applies to it:\n{err}"
     );
 }
 
@@ -475,8 +593,8 @@ fn a_wit_path_that_is_not_a_dep_package_is_refused_by_name() {
 /// The gate the rest of this suite cannot replace: the emitted consumer component crate COMPILES for
 /// `wasm32-wasip2` against a real generated dependency.
 ///
-/// Two facts about the cross-crate seam are only observable here, and both are macro-expansion
-/// failures rather than anything a reader of the emitted bytes could see:
+/// Three facts about the cross-crate seam are only observable here, and each is a macro-expansion or
+/// type-inference failure rather than anything a reader of the emitted bytes could see:
 ///
 /// - **the `with:` map is co-required.** A materialized `wit/deps` tree alone makes
 ///   `wit_bindgen::generate!` PANIC (``missing `with` mapping for the key …``). A run that emitted
@@ -484,10 +602,17 @@ fn a_wit_path_that_is_not_a_dep_package_is_refused_by_name() {
 ///   that cannot be built.
 /// - **an imported resource's `borrow<t>` lowers to `&T`,** not to the `TBorrow<'_>` newtype an
 ///   exported one gets. The two glue templates are separate, and the WIT is identical either way.
+/// - **the ACCUMULATOR is the shape that lowers at all.** `list<borrow<imported>>` is legal WIT
+///   whose Rust lowering is E0506, so the whole reason the accumulator exists is invisible to every
+///   WIT-level oracle: a package spelling the collection directly resolves, encodes and validates
+///   just as happily. Its consuming side is equally build-only — the settled collection reaches the
+///   rust constructor through a `collect()` whose target type only the call site pins.
 ///
-/// The workspace is three crates because that is what the seam needs: the dependency's rust crate,
-/// the consumer's (a path dependency on it), and the consumer's guest crate (a path dependency on
-/// both). `--common-import-override` points both at ONE serialization runtime, which is what makes
+/// So BOTH consumers are built: `consumer` for the scalar positions, `consumer-collections` for a
+/// dependency type as list element, map key and map value. The workspace is five crates because that
+/// is what the seam needs: the dependency's rust crate, each consumer's (a path dependency on it),
+/// and each consumer's guest crate (a path dependency on both). `--common-import-override` points
+/// them all at ONE serialization runtime, which is what makes
 /// `dep::Token: <runtime>::serialization::Deserialize` true — the same shared-runtime shape every
 /// other cross-crate consumer in this project uses, and the precondition the bytes seam inherits.
 ///
@@ -497,45 +622,49 @@ fn a_wit_path_that_is_not_a_dep_package_is_refused_by_name() {
 fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
     let root = scratch("wasip2");
     let dep_out = root.join("dep");
-    let consumer_out = root.join("consumer");
     let target_dir = root.join("target");
 
-    for (input, out, extra) in [
+    // The dependency-shaped flags every consumer of `dep` passes. Identical for both consumers,
+    // which is the point: the two differ only in the SPEC, so a failure attributes to the shape.
+    let consumes_dep = |lib: &str| {
+        vec![
+            // ONE runtime for both crates, so the dependency's types implement the same
+            // `Deserialize`/`ToCBORBytes` the consumer's glue names across the seam.
+            "--common-import-override".to_owned(),
+            "dep".to_owned(),
+            "--extern-import".to_owned(),
+            format!("dep={}", dep_out.join("extern-interface/dep").display()),
+            "--component-extern-wit".to_owned(),
+            format!("dep={}", dep_out.join("component/wit").display()),
+            // Cargo path dependencies, RELATIVE (they land in committed manifests).
+            "--rust-dep".to_owned(),
+            "dep=../../dep/rust".to_owned(),
+            "--component-dep".to_owned(),
+            "dep=../../dep/rust".to_owned(),
+            "--lib-name".to_owned(),
+            lib.to_owned(),
+        ]
+    };
+    for (spec, lib_name, extra) in [
         (
-            format!("{FIXTURES}/dep/lib.cddl"),
-            &dep_out,
-            Vec::<String>::new(),
+            "dep",
+            "dep",
+            vec!["--lib-name".to_owned(), "dep".to_owned()],
         ),
+        ("consumer", "consumer", consumes_dep("consumer")),
         (
-            format!("{FIXTURES}/consumer/lib.cddl"),
-            &consumer_out,
-            vec![
-                // ONE runtime for both crates, so the dependency's types implement the same
-                // `Deserialize`/`ToCBORBytes` the consumer's glue names across the seam.
-                "--common-import-override".to_owned(),
-                "dep".to_owned(),
-                "--extern-import".to_owned(),
-                format!("dep={}", dep_out.join("extern-interface/dep").display()),
-                "--component-extern-wit".to_owned(),
-                format!("dep={}", dep_out.join("component/wit").display()),
-                // Cargo path dependencies, RELATIVE (they land in committed manifests).
-                "--rust-dep".to_owned(),
-                "dep=../../dep/rust".to_owned(),
-                "--component-dep".to_owned(),
-                "dep=../../dep/rust".to_owned(),
-            ],
+            "consumer-collections",
+            "collections",
+            consumes_dep("collections"),
         ),
     ] {
-        let lib_name = if out == &dep_out { "dep" } else { "consumer" };
         let mut args = vec![
             "--input".to_owned(),
-            input,
+            format!("{FIXTURES}/{spec}/lib.cddl"),
             "--output".to_owned(),
-            out.to_str().unwrap().to_owned(),
+            root.join(lib_name).to_str().unwrap().to_owned(),
             "--wasm=false".to_owned(),
             "--component=true".to_owned(),
-            "--lib-name".to_owned(),
-            lib_name.to_owned(),
         ];
         args.extend(extra);
         let generated = crate::tests::integration_tests::codegen_cmd()
@@ -549,21 +678,19 @@ fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
         );
     }
 
-    // A workspace root so the three crates share one lock and one target dir. Real consumers own
+    // A workspace root so the five crates share one lock and one target dir. Real consumers own
     // this file; the tool never writes one.
     std::fs::write(
         root.join("Cargo.toml"),
         "[workspace]\nresolver = \"3\"\nmembers = [\"dep/rust\", \"consumer/rust\", \
-         \"consumer/component\"]\n",
+         \"consumer/component\", \"collections/rust\", \"collections/component\"]\n",
     )
     .unwrap();
     // The rust crates' `cdylib` output exists for wasm-bindgen's `wasm32-unknown-unknown` target;
     // the guest consumes the rlib, and asking the wasip2 linker for a cdylib is not what this gate
     // is about. Same narrowing the single-crate build smoke does, for the same reason.
-    for manifest in [
-        dep_out.join("rust/Cargo.toml"),
-        consumer_out.join("rust/Cargo.toml"),
-    ] {
+    for lib in ["dep", "consumer", "collections"] {
+        let manifest = root.join(lib).join("rust/Cargo.toml");
         let narrowed = std::fs::read_to_string(&manifest).unwrap().replace(
             "crate-type = [\"cdylib\", \"rlib\"]",
             "crate-type = [\"rlib\"]",
@@ -571,28 +698,29 @@ fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
         std::fs::write(&manifest, narrowed).unwrap();
     }
 
-    let component_dir = consumer_out.join("component");
     let mut failure = None;
     let outcome = gate_cache::run_cached(
         "component_import_wasip2_build",
-        "consumer+dep",
+        "consumer+collections+dep",
         &root,
         &[
             PathBuf::from("consumer/component/Cargo.toml"),
             PathBuf::from("consumer/rust/Cargo.toml"),
+            PathBuf::from("collections/component/Cargo.toml"),
+            PathBuf::from("collections/rust/Cargo.toml"),
             PathBuf::from("dep/rust/Cargo.toml"),
         ],
         &[
-            "cwd=consumer/component".to_owned(),
             "cargo".to_owned(),
             "build".to_owned(),
+            "--workspace".to_owned(),
             "--target".to_owned(),
             "wasm32-wasip2".to_owned(),
         ],
         || {
             let build = crate::tests::integration_tests::tool_cmd("cargo")
-                .args(["build", "--target", "wasm32-wasip2"])
-                .current_dir(&component_dir)
+                .args(["build", "--workspace", "--target", "wasm32-wasip2"])
+                .current_dir(&root)
                 .env("CARGO_TARGET_DIR", &target_dir)
                 .output()
                 .unwrap();
@@ -615,27 +743,28 @@ fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
             }
             // A build that produced no COMPONENT would be a vacuous pass: `wasm32-wasip2` artifacts
             // carry the component-model preamble (layer 1) where a core module carries layer 0.
-            let artifact = target_dir
-                .join("wasm32-wasip2/debug")
-                .join("consumer_component.wasm");
-            match std::fs::read(&artifact) {
-                Ok(bytes) if bytes.starts_with(b"\0asm\x0d\0\x01\0") => true,
-                Ok(bytes) => {
-                    failure = Some(format!(
-                        "{} is not a component-model binary (preamble {:02x?})",
-                        artifact.display(),
-                        &bytes[..8.min(bytes.len())]
-                    ));
-                    false
-                }
-                Err(e) => {
-                    failure = Some(format!(
-                        "the build reported success but wrote no artifact at {}: {e}",
-                        artifact.display()
-                    ));
-                    false
+            for artifact in ["consumer_component.wasm", "collections_component.wasm"] {
+                let artifact = target_dir.join("wasm32-wasip2/debug").join(artifact);
+                match std::fs::read(&artifact) {
+                    Ok(bytes) if bytes.starts_with(b"\0asm\x0d\0\x01\0") => {}
+                    Ok(bytes) => {
+                        failure = Some(format!(
+                            "{} is not a component-model binary (preamble {:02x?})",
+                            artifact.display(),
+                            &bytes[..8.min(bytes.len())]
+                        ));
+                        return false;
+                    }
+                    Err(e) => {
+                        failure = Some(format!(
+                            "the build reported success but wrote no artifact at {}: {e}",
+                            artifact.display()
+                        ));
+                        return false;
+                    }
                 }
             }
+            true
         },
     );
     if gate_cache::enabled() {

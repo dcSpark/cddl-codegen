@@ -809,13 +809,14 @@ export const REGISTRY: Gate[] = [
   // this face whose inputs come from ANOTHER crate's committed output, so a failure here means a
   // consumer's build breaks on a dependency's artifact rather than on its own spec — a distinction
   // worth reading off the tier log. Mostly in-process generation over scratch dirs plus the same
-  // pinned WIT oracle, and ONE nested-cargo cell: a three-crate wasip2 build, which is the only
-  // place two macro-expansion facts are observable at all (the `with:` map is co-required, and an
-  // imported resource's borrow lowers to `&T` rather than to a borrow newtype). That cell is
-  // memoized by the gate cache. Measured on the delivering machine: 28 s for the whole suite on a
-  // cold scratch root.
+  // pinned WIT oracle, and ONE nested-cargo cell: a five-crate wasip2 build (one dependency, two
+  // consumers and their guests), which is the only place three facts are observable at all — the
+  // `with:` map is co-required, an imported resource's borrow lowers to `&T` rather than to a borrow
+  // newtype, and a dependency-typed collection parameter lowers ONLY through the accumulator shape.
+  // Each is a macro-expansion or type-inference failure, so a package that resolves, encodes and
+  // validates says nothing about any of them. That cell is memoized by the gate cache.
   { id: "component_import", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_import"],
-    desc: "component face: cross-crate import mode (dep WIT materialization, `with:` map, bytes seam, wasip2 build)" },
+    desc: "component face: cross-crate import mode (dep WIT materialization, `with:` map, bytes seam, accumulator, wasip2 build)" },
   // The rust->WIT surface differential, named for the same reason: it is the ONLY gate that asks
   // what the boundary DROPPED. Everything else judges what was emitted against itself — a member
   // missing from both the `.wit` and the glue is a package that resolves, validates and builds.
