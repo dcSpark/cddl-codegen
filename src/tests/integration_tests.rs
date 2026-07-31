@@ -136,7 +136,7 @@ pub(crate) fn checkout_hash() -> u64 {
 /// compiled or round-tripped standalone under any emission profile. They remain covered by source
 /// snapshots — and, where a hand-written side exists, by a dedicated integration fixture (e.g.
 /// `extern_generic_raw_bytes`).
-const COMPILE_SKIP: &[&str] = &["dsl_custom", "dsl_copy", "extern_generic_raw_bytes"];
+pub(crate) const COMPILE_SKIP: &[&str] = &["dsl_custom", "dsl_copy", "extern_generic_raw_bytes"];
 
 /// `(fixture stem, profile, reason)` triples whose GENERATION deliberately aborts under that
 /// profile because the fixture reaches a tracked unimplemented path. Unlike `COMPILE_SKIP` (whole

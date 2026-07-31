@@ -1907,3 +1907,274 @@ fn component_crate_builds_for_wasm32_wasip2() {
         failures.join("\n\n")
     );
 }
+
+// -------------------------------------------------------------------------------------------------
+// The corpus-breadth wasip2 compile gate
+// -------------------------------------------------------------------------------------------------
+
+/// Corpus fixtures whose emitted component glue does NOT compile, with the emitter bug each one
+/// reaches. Every entry is a FINDING this gate made, not a decision — the ledger exists so the
+/// classes are recorded mechanically rather than in prose, and so a fix cannot land unnoticed:
+/// staleness is guarded BOTH ways, a listed fixture that starts compiling fails as "the bug is
+/// fixed — remove the pin", an unlisted one that stops compiling fails as a regression.
+///
+/// Four classes, all in `component/src/generated/mod.rs`, all reproduced under `--wasm=true` and
+/// `--wasm=false` alike:
+///
+/// 1. **The empty world.** A spec every rule of which resolves through (aliases, named collections)
+///    exports no interface, so `wit_bindgen::generate!` mints no `export!` macro — while the glue
+///    emits `export!(Component);` regardless.
+/// 2. **The interface with no resources.** A spec whose only projected types are VALUE types
+///    (a c-style enum) gets an interface with no `Guest` trait, while the glue emits
+///    `impl wit_types::Guest for Component {}`.
+/// 3. **The despecialized NonEmpty collect.** A `[+ T]` / `{+ K => V}` in a position the component
+///    fixtures do not reach makes the glue `.collect()` straight into `NonEmptyVec`/`NonEmptyMap`,
+///    which have no `FromIterator` — the `TryFrom` door the bounded fixtures do go through is the
+///    shape that belongs here.
+/// 4. **`@default` fields.** The glue treats a defaulted scalar as if it were a handle.
+///
+/// A fixture that fails to GENERATE belongs in `snapshot_tests::PROFILE_GENERATION_SKIP` instead;
+/// a fixture whose RUST crate cannot compile standalone belongs in
+/// `integration_tests::COMPILE_SKIP`, which this gate shares rather than restating.
+const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
+    (
+        "c_style_enum",
+        "class 2: every projected type is a c-style enum, so the interface has no `Guest` trait for \
+         the emitted `impl wit_types::Guest for Component {}` to implement (E0405)",
+    ),
+    (
+        "c_style_enum_map_key",
+        "class 2: same — the interface's only type is a c-style enum, so there is no `Guest` trait",
+    ),
+    (
+        "dsl_used_as_key_hash_cstyle",
+        "class 2: same — the projection keeps only the c-style enum, so there is no `Guest` trait",
+    ),
+    (
+        "int_alias",
+        "class 1: every rule resolves through as an alias, so the world exports no interface and \
+         `wit_bindgen::generate!` mints no `export!` macro for the emitted `export!(Component);`",
+    ),
+    (
+        "table",
+        "class 1: the only rule is a named collection, resolved through — the world exports nothing",
+    ),
+    (
+        "cbor_nonempty_payload",
+        "class 1: same — every rule resolves through, so the world exports nothing",
+    ),
+    (
+        "composite_map_key",
+        "class 3: the glue `.collect()`s into `NonEmptyVec<u64>`, which has no `FromIterator` \
+         (E0277) — the despecialized parameter has to re-enter its `TryFrom` door",
+    ),
+    (
+        "nonempty_nested_positions",
+        "class 3: same, in both flavors — `NonEmptyVec<u64>` and `NonEmptyMap<u64, u64>`",
+    ),
+    (
+        "default_value",
+        "class 4: a `@default`ed scalar field's glue treats the value as a handle — `as_ref` on a \
+         `u64` (E0599) plus two mismatched types and an unannotated binding",
+    ),
+];
+
+/// Corpus-breadth companion to [`component_crate_builds_for_wasm32_wasip2`]: every
+/// `tests/corpus/*.cddl` fixture's emitted component crate, type-checked for `wasm32-wasip2`.
+///
+/// It exists because nothing else can reach this breadth.
+/// `integration_tests::feature_corpus_compiles` structurally cannot: it hardcodes
+/// `crate_subs = ["rust", "wasm"]` and runs a HOST `cargo check` with no `--target` anywhere, so the
+/// component crate is invisible to it — which is why the `ALL_PROFILES` component row filters out of
+/// that gate rather than flowing into it. The build smoke above compiles five representative
+/// fixtures; this one asks the same question of all 89, and the answer differs, which is the whole
+/// argument for it.
+///
+/// **`check`, not `build`.** The link is already asserted on representative fixtures by the build
+/// smoke, and the class that matters at corpus breadth — glue naming a trait, method or macro that
+/// does not exist — is a TYPE-check failure. Probed rather than assumed: `cargo check
+/// --target wasm32-wasip2` expands `wit_bindgen::generate!` and reports every one of the four
+/// failure classes ledgered above, three of which are exactly "the glue names something the
+/// bindings never minted".
+///
+/// **No sharding.** Measured 89 cells in 100 s wall end to end (generation included): ~10 s for the
+/// first cell, which builds the shared dependency graph, then ~0.4 s each. `feature_corpus_compiles`
+/// shards because its cells cost seconds apiece; sizing this one from that curve rather than from
+/// its own measurement would buy process overhead and nothing else.
+///
+/// Nested cargo, memoized per generated-crate content hash. The per-cell EXPECTATION is part of the
+/// key, so removing a pin re-runs the cell rather than laundering its cached verdict past the new
+/// expectation. `GATE_CACHE=0` forces every check.
+#[test]
+#[ignore]
+fn component_corpus_compiles() {
+    let flags = component_profile_flags();
+    let scratch_name = format!(
+        "cddl_codegen_component_corpus_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    );
+    let _scratch_lock = crate::tests::integration_tests::acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    // Not removed: `target/` under it (measured ≈400 MiB) is the shared dependency graph whose first
+    // build is ~10 s and whose reuse is what makes a cell ~0.4 s.
+    let target_dir = root.join("target");
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let mut entries: Vec<PathBuf> = std::fs::read_dir("tests/corpus")
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    entries.sort();
+
+    let mut failures = Vec::new();
+    let mut resurfaced = Vec::new();
+    let mut swept = 0usize;
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
+
+    for path in &entries {
+        let stem = path.file_stem().unwrap().to_str().unwrap().to_owned();
+        // A fixture that cannot GENERATE under this profile is the snapshot axis' business.
+        if crate::tests::snapshot_tests::PROFILE_GENERATION_SKIP
+            .contains(&(stem.as_str(), crate::tests::COMPONENT_PROFILE))
+        {
+            continue;
+        }
+        // A fixture whose RUST crate references user-supplied code cannot compile standalone under
+        // any profile, component or not. Shared with `feature_corpus_compiles` rather than restated,
+        // so the two gates can never disagree about which fixtures those are.
+        if crate::tests::integration_tests::COMPILE_SKIP.contains(&stem.as_str()) {
+            continue;
+        }
+        let expected_fail = EXPECTED_COMPILE_FAIL.iter().any(|(s, _)| *s == stem);
+        let out = root.join(&stem);
+        // A stale tree would poison the tree hash with files this run did not emit.
+        let _ = std::fs::remove_dir_all(&out);
+        std::fs::create_dir_all(&out).unwrap();
+
+        let mut args = vec![
+            "--input".to_owned(),
+            path.to_str().unwrap().to_owned(),
+            "--output".to_owned(),
+            out.to_str().unwrap().to_owned(),
+            "--component=true".to_owned(),
+        ];
+        args.extend(flags.iter().map(|f| (*f).to_owned()));
+        let generated = crate::tests::integration_tests::codegen_cmd()
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{stem}: generation failed under the component profile — a fixture that cannot generate \
+             belongs in `snapshot_tests::PROFILE_GENERATION_SKIP` with a reason, never here\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        // A workspace root so the emitted crates share one lock and one target dir, and the rust
+        // crate narrowed to `rlib` — the same two edits the build smoke makes, for the same reasons.
+        std::fs::write(
+            out.join("Cargo.toml"),
+            "[workspace]\nresolver = \"3\"\nmembers = [\"rust\", \"component\"]\n",
+        )
+        .unwrap();
+        let rust_manifest = out.join("rust/Cargo.toml");
+        let narrowed = std::fs::read_to_string(&rust_manifest).unwrap().replace(
+            "crate-type = [\"cdylib\", \"rlib\"]",
+            "crate-type = [\"rlib\"]",
+        );
+        std::fs::write(&rust_manifest, narrowed).unwrap();
+
+        let component_dir = out.join("component");
+        let mut stderr = String::new();
+        let outcome = gate_cache::run_cached(
+            "component_corpus_compiles",
+            &stem,
+            &out,
+            &[
+                PathBuf::from("component/Cargo.toml"),
+                PathBuf::from("rust/Cargo.toml"),
+            ],
+            &[
+                // The cell's EXPECTATION is part of the key: removing a pin must re-run the cell
+                // rather than serve a PASS recorded under the old expectation.
+                format!("expect={}", if expected_fail { "fail" } else { "pass" }),
+                "cwd=component".to_owned(),
+                "cargo".to_owned(),
+                "check".to_owned(),
+                "--target".to_owned(),
+                "wasm32-wasip2".to_owned(),
+            ],
+            || {
+                let check = crate::tests::integration_tests::tool_cmd("cargo")
+                    .args(["check", "--target", "wasm32-wasip2"])
+                    .current_dir(&component_dir)
+                    .env("CARGO_TARGET_DIR", &target_dir)
+                    .output()
+                    .unwrap();
+                stderr = String::from_utf8_lossy(&check.stderr).into_owned();
+                if !check.status.success()
+                    && (stderr.contains("can't find crate for `core`")
+                        || stderr.contains("target may not be installed"))
+                {
+                    // A provisioning problem must never read as an emitter failure, and must never
+                    // be absorbed by an expected-fail pin either.
+                    failures.push(format!(
+                        "{stem}: the wasm32-wasip2 target is not installed under the pinned \
+                         toolchain — `rustup target add wasm32-wasip2`"
+                    ));
+                    return false;
+                }
+                check.status.success() != expected_fail
+            },
+        );
+        cache_run += outcome.ran();
+        cache_hit += outcome.cached();
+        if !outcome.success() {
+            if expected_fail {
+                resurfaced.push(format!(
+                    "{stem}: pinned as EXPECTED_COMPILE_FAIL but its component crate now \
+                     type-checks — the emitter bug is fixed, so remove the pin"
+                ));
+            } else if !failures.iter().any(|f: &String| f.starts_with(&stem)) {
+                failures.push(format!(
+                    "{stem}: the emitted component crate does not type-check for \
+                     wasm32-wasip2\n{stderr}"
+                ));
+            }
+        }
+        swept += 1;
+        // The per-cell tree is freed; `target/` (a sibling, not a child) is what survives.
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    if gate_cache::enabled() {
+        println!("component_corpus_compiles gate-cache: {cache_run} run, {cache_hit} cached");
+    }
+    // Stale-pin guard, the direction the sweep itself cannot see: an entry naming a fixture that no
+    // longer exists (or is skipped) would silently excuse nothing forever.
+    let stems: std::collections::BTreeSet<String> = entries
+        .iter()
+        .map(|p| p.file_stem().unwrap().to_str().unwrap().to_owned())
+        .collect();
+    for (stem, _) in EXPECTED_COMPILE_FAIL {
+        assert!(
+            stems.contains(*stem),
+            "EXPECTED_COMPILE_FAIL names corpus fixture `{stem}`, which no longer exists — stale \
+             pin, remove or fix it"
+        );
+    }
+    // Vacuity floor: a filter bug that swept nothing would otherwise pass silently. The corpus only
+    // grows, so this is a lower bound rather than a pin.
+    assert!(
+        swept >= 80,
+        "only {swept} corpus fixtures were compile-checked for the component face (expected >= 80) \
+         — the corpus enumeration or one of the skip filters shrank"
+    );
+    assert!(
+        failures.is_empty() && resurfaced.is_empty(),
+        "corpus component crates do not type-check as expected:\n\n{}\n\n{}",
+        failures.join("\n\n"),
+        resurfaced.join("\n")
+    );
+}

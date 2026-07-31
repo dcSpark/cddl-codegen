@@ -75,6 +75,9 @@
       ]
     },
     {
+      "gate": "component_corpus_compiles"
+    },
+    {
       "gate": "component_host"
     },
     {

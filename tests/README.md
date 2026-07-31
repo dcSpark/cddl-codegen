@@ -53,7 +53,7 @@ not interchangeable: a nominal reference to a collection typedef needed an `enco
 fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the thirteen `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 14 `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check, plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -3169,6 +3169,42 @@ checkout-hash keyed, serialized with `acquire_scratch_lock` and deliberately NOT
 runs — that last number is why. Per-cell output trees are freed; the shared `target/` (≈3.5 GiB) is
 what survives. A machine below the stated scratch or memory floor makes the gate print a loud SKIP
 naming the measured number, never a silent pass.
+
+### component compilation at corpus breadth (`component_tests::component_corpus_compiles`, gate `component_corpus_compiles`, `full`)
+
+Every `tests/corpus/*.cddl` fixture's emitted component crate, type-checked for `wasm32-wasip2`.
+
+It exists because nothing else can reach that breadth.
+`integration_tests::feature_corpus_compiles` structurally cannot: it hardcodes its crate list to the
+rust and wasm trees and runs a HOST `cargo check` with no `--target`, so the wasip2 component crate
+is invisible to it — which is why the `ALL_PROFILES` component row filters OUT of that gate rather
+than flowing into it. `component_tests::component_crate_builds_for_wasm32_wasip2` compiles five
+representative fixtures; this asks the same question of all of them, and the answer differs, which
+is the whole argument for it.
+
+**`check`, not `build`.** The link is already asserted on the representative fixtures by the build
+smoke; the class corpus breadth catches is glue naming a trait, method or macro the bindings never
+minted, and that is a type-check failure. Probed rather than assumed — `cargo check` expands
+`wit_bindgen::generate!` and reports every class the ledger below records.
+
+**No sharding**, sized from this gate's own measurement rather than from
+`feature_corpus_compiles`' curve: the first cell costs ~10 s (it builds the shared dependency graph),
+then ~0.4 s each. Measured **140 s cold / 97 s warm** — a warm run still pays generation and the
+lockfile preflight per cell, which is most of what is left.
+
+`EXPECTED_COMPILE_FAIL` is the ledger of fixtures whose glue does NOT compile, keyed
+`(stem, reason)` and guarded both ways: a listed fixture that starts compiling fails as "the bug is
+fixed — remove the pin", an unlisted one that stops fails as a regression. Every entry is a FINDING
+this gate made rather than a decision, and they fall into four emitter classes, all in the emitted
+`component/src/generated/mod.rs` and all reproducing under either `--wasm` posture: a world that
+exports no interface still emitting `export!(Component);`; an interface whose only types are VALUE
+types still emitting `impl wit_types::Guest for Component {}`; a despecialized `[+ T]` / `{+ K => V}`
+in a position the component fixtures do not reach `.collect()`ing straight into
+`NonEmptyVec`/`NonEmptyMap` instead of re-entering its `TryFrom` door; and a `@default`ed scalar
+field whose glue treats the value as a handle. Fixtures that cannot generate belong in
+`snapshot_tests::PROFILE_GENERATION_SKIP` instead, and fixtures whose RUST crate references
+user-supplied code are excluded through `integration_tests::COMPILE_SKIP`, which this gate shares
+rather than restates.
 
 ## multifile placement matrix (`tests/matrix_multifile/` + `integration_tests::multifile_matrix_{compiles,roundtrips}`)
 
