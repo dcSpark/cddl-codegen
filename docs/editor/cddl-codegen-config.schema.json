@@ -73,6 +73,10 @@
           "type": "boolean",
           "description": "Config key for the `--wasm` flag. See docs/docs/command_line_flags.mdx."
         },
+        "component": {
+          "type": "boolean",
+          "description": "Config key for the `--component` flag. See docs/docs/command_line_flags.mdx."
+        },
         "json-serde-derives": {
           "type": "boolean",
           "description": "Config key for the `--json-serde-derives` flag. See docs/docs/command_line_flags.mdx."
@@ -129,6 +133,10 @@
         "wasm-list-macro": {
           "type": "string",
           "description": "Config key for the `--wasm-list-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wit-package": {
+          "type": "string",
+          "description": "Config key for the `--wit-package` flag. See docs/docs/command_line_flags.mdx."
         },
         "json-schema-root": {
           "type": "array",
@@ -213,6 +221,13 @@
             "type": "string"
           },
           "description": "Config key for the `--rust-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "component-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--component-dep` flag. See docs/docs/command_line_flags.mdx."
         },
         "verbosity": {
           "type": "string",
@@ -307,6 +322,10 @@
           "type": "boolean",
           "description": "Config key for the `--wasm` flag. See docs/docs/command_line_flags.mdx."
         },
+        "component": {
+          "type": "boolean",
+          "description": "Config key for the `--component` flag. See docs/docs/command_line_flags.mdx."
+        },
         "json-serde-derives": {
           "type": "boolean",
           "description": "Config key for the `--json-serde-derives` flag. See docs/docs/command_line_flags.mdx."
@@ -363,6 +382,10 @@
         "wasm-list-macro": {
           "type": "string",
           "description": "Config key for the `--wasm-list-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wit-package": {
+          "type": "string",
+          "description": "Config key for the `--wit-package` flag. See docs/docs/command_line_flags.mdx."
         },
         "json-schema-root": {
           "type": "array",
@@ -447,6 +470,13 @@
             "type": "string"
           },
           "description": "Config key for the `--rust-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "component-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--component-dep` flag. See docs/docs/command_line_flags.mdx."
         },
         "verbosity": {
           "type": "string",

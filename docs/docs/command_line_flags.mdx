@@ -109,6 +109,50 @@ cddl-codegen --input=example --output=export --wasm false
 
 <br/><br/>
 
+:::info `--component`
+Whether to output a WebAssembly **component** crate (`component/`) beside the rust crate: a generated WIT package describing the spec's types, plus the `wit-bindgen` guest glue that implements it over the rust crate. **Off by default.**
+
+It is a third face, **independent of `--wasm`** — both may be on, and neither implies the other — and the two serve different consumers:
+
+- `--wasm` produces `wasm-bindgen` classes for a JavaScript host.
+- `--component` produces a `wasm32-wasip2` component whose surface is a typed WIT contract. That contract composes with other components and is consumable from any component-model host, not only from JS.
+
+The generated crate is pure glue: all CBOR logic stays in the rust crate, which it takes as a path dependency **without** the `--rust-wasm-feature` feature — `#[wasm_bindgen]` attributes emit `__wbindgen_*` imports that componentization cannot resolve on wasip2.
+
+Two API differences from the wasm face are worth knowing before choosing it:
+
+- **Collections cross the boundary as plain `list<…>`**, not as wrapper classes: a consumer builds a native array instead of calling `FooList.new()`/`add()`. The ownership hazard those wrappers exist to prevent does not arise here, because every parameter position takes a `borrow<…>` rather than transferring a handle.
+- **Returned values are snapshots.** A getter hands back a fresh handle over a clone of the field, so mutating what you got does not mutate the parent — the same clone-at-the-boundary rule the wasm face already follows.
+
+It also **constrains what the spec may contain**, because WIT is stricter about names than Rust. Each exported module scope becomes one WIT `interface`, and interfaces linked with `use` must be **acyclic**: a multi-file spec whose scopes reference each other in a cycle generates fine without this flag and is rejected with it, naming the scopes and the references that close the cycle. The remedy is to move a type so the scopes are acyclic, or to put the spec in a single file.
+
+Possible values: true, false
+```bash
+cddl-codegen --input=example --output=export --component true
+```
+:::
+
+<br/><br/>
+
+:::info `--wit-package`
+The identifier of the generated WIT package: `<namespace>:<name>[@<version>]`.
+
+**Default:** `cddl:<--lib-name, kebab-cased>@0.1.0`. Both sides of the `:` are WIT identifiers — lowercase ASCII words joined by `-` — and the version is optional, defaulting to `0.1.0`.
+
+Choose it deliberately, because it is the **linking identity** of everything the component exports. Two components unify a type only when the package id, the interface name and the type's shape all agree, so renaming the package is a composition-breaking change on exactly the same footing as changing a type.
+
+**Versions link by semver, and semver's `0.x` rule applies.** A host resolves an import of `a:b/c@0.2.0` against a defined `0.2.1`, but not against `0.3.0` — so on a `0.x` line a **minor** bump is a link-time break. For wire types that is arguably what you want (an incompatible API fails to link rather than misbehaving at runtime), as long as it is a decision rather than a surprise.
+
+Requires `--component=true`; without it no `.wit` is emitted for the value to title, so the combination is rejected up front.
+
+```bash
+cddl-codegen --input=example --output=export --component=true \
+  --wit-package=acme:ledger@0.2.0
+```
+:::
+
+<br/><br/>
+
 :::info `--rust-wasm-feature`
 Names the cargo feature the generated **rust** crate's only `#[wasm_bindgen]` attribute is gated behind. That attribute is emitted solely on c-style enums (all-fixed-value unions), which are exposed to wasm directly rather than through a wrapper type — see [Output format](output_format.mdx). Under `--wasm` the attribute is emitted as `#[cfg_attr(feature = "<name>", wasm_bindgen::prelude::wasm_bindgen)]`, `wasm-bindgen` is an optional dependency of the rust crate, and the `[features]` table always carries `<name>` (as `<name> = ["dep:wasm-bindgen"]` when a c-style enum exists, otherwise `<name> = []`). The rust crate therefore compiles standalone with the feature off; the generated wasm crate enables it via its path dependency (`{ path = "../rust", features = ["<name>"] }`), so wasm builds are unchanged.
 
@@ -510,6 +554,31 @@ cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era
 ```
 
 **In a config file this is derived** from `deps` alone. `wasm-reexports` contributes nothing here, and the asymmetry is that key's meaning rather than an omission: it says a dependency's wasm classes ship in this crate's package while this crate's spec references none of its types, so no rust line names the crate. See [Config file § The rust manifest](./config_file#the-rust-manifest). Writing the sub-table by hand stays the way to name a crate the config does **not** contain.
+:::
+
+<br/><br/>
+
+:::info `--component-dep`
+Declares a `[dependencies]` entry in the generated `component/Cargo.toml`:
+
+```toml
+<cargo-package-name> = { path = "<path>" }
+```
+
+The fourth of the sibling flags — `--json-gen-dep`, `--wasm-dep`, `--rust-dep` and this one — on the component crate's manifest. Same value shape, same merge contract, same asserted-never-removed consequence.
+
+**The left side is the cargo *package* name**, dashed (`cml-chain-component`), not the underscored Rust crate name a `use` line takes. The accepted charset is cargo's own, `[A-Za-z0-9_-]`; anything else is rejected naming the character.
+
+**The right side is a path, written verbatim, and relative to the manifest**, i.e. counted from `<output>/component/`. The entry the tool already writes for your own rust crate — `<lib-name> = { path = "../rust" }` — is the shape to count from. Absolute paths work too; the tool does not check that the path exists, so an unresolvable one is a cargo error naming it.
+
+**The entry is asserted, never removed**, on exactly its siblings' terms and for the same forced reason: the package name lives only inside the flag value, so a run without the flag has no name to tombstone. It merges field-level into a hand-added entry for the same package, so the two converge rather than duplicating.
+
+Repeatable. Passing the same **package name** twice is a hard error naming it. Requires `--component=true`; without it there is no component crate and no manifest for the entry to land in, so the combination is rejected up front.
+
+```bash
+cddl-codegen --input=example --output=export --component=true \
+  --component-dep=cml-chain-component=../../chain/component
+```
 :::
 
 :::info `--std-forward-dep`

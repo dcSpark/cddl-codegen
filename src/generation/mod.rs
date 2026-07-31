@@ -46,6 +46,12 @@ pub(crate) mod layout;
 // emitter for snapshot fixtures.
 pub(crate) mod extern_interface;
 
+// The WIT face: the naming rules (keyword escaping over the kebab converter), the WIT package
+// identifier `--wit-package` parses into, and the two pre-generation detectors that decide whether a
+// spec can be projected to WIT at all. `pub(crate)` because both readers sit outside `generation/` —
+// `intermediate::finalize` runs the detectors and `cli::Cli::wit_package` mints the package id.
+pub(crate) mod wit;
+
 // The emitted `no-std-check/` shim crate: a second always-clobbered sibling tree, on exactly the
 // terms `extern_interface` states, but built from `Cli` alone (no IR). `pub(crate)` so the test-only
 // `api::no_std_check_strings` helper can reach the producer for snapshot fixtures.

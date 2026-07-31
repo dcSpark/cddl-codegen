@@ -143,6 +143,7 @@ pub(crate) const SETTINGS_KEYS: &[&str] = &[
     "preserve-encodings",
     "canonical-form",
     "wasm",
+    "component",
     "json-serde-derives",
     "emit-tests",
     "emit-tests-conformance",
@@ -157,6 +158,7 @@ pub(crate) const SETTINGS_KEYS: &[&str] = &[
     "wasm-cbor-json-api-macro",
     "wasm-conversions-macro",
     "wasm-list-macro",
+    "wit-package",
     "json-schema-root",
     "workspace-dep",
     "std-forward-dep",
@@ -169,6 +171,7 @@ pub(crate) const SETTINGS_KEYS: &[&str] = &[
     "json-gen-dep",
     "wasm-dep",
     "rust-dep",
+    "component-dep",
     "verbosity",
 ];
 
@@ -368,6 +371,8 @@ pub struct Settings {
     pub preserve_encodings: Option<bool>,
     pub canonical_form: Option<bool>,
     pub wasm: Option<bool>,
+    /// The third face, independent of `wasm`: the wasip2 component crate and its WIT package.
+    pub component: Option<bool>,
     pub json_serde_derives: Option<bool>,
     pub emit_tests: Option<bool>,
     pub emit_tests_conformance: Option<bool>,
@@ -385,6 +390,9 @@ pub struct Settings {
     pub wasm_cbor_json_api_macro: Option<String>,
     pub wasm_conversions_macro: Option<String>,
     pub wasm_list_macro: Option<String>,
+    /// The generated WIT package id (`<ns>:<name>[@<version>]`). A scalar rather than a derivation:
+    /// its default reads `lib-name`, which the flag layer already resolves.
+    pub wit_package: Option<String>,
 
     // --- arrays: CONCATENATED across layers, author order preserved within each ---
     #[serde(default)]
@@ -420,6 +428,9 @@ pub struct Settings {
     /// The third, for `<output>/rust/Cargo.toml`. Same rule, same reason.
     #[serde(default)]
     pub rust_dep: BTreeMap<String, String>,
+    /// The fourth, for `<output>/component/Cargo.toml`. Same rule, same reason.
+    #[serde(default)]
+    pub component_dep: BTreeMap<String, String>,
 
     // --- the level key ---
     /// Typed rather than `Option<String>` for two reasons. A bad value (`verbosity = "loud"`) is
@@ -449,6 +460,7 @@ impl Settings {
             preserve_encodings,
             canonical_form,
             wasm,
+            component,
             json_serde_derives,
             emit_tests,
             emit_tests_conformance,
@@ -463,6 +475,7 @@ impl Settings {
             wasm_cbor_json_api_macro,
             wasm_conversions_macro,
             wasm_list_macro,
+            wit_package,
             json_schema_root,
             workspace_dep,
             std_forward_dep,
@@ -475,6 +488,7 @@ impl Settings {
             json_gen_dep,
             wasm_dep,
             rust_dep,
+            component_dep,
             verbosity,
         } = over;
 
@@ -493,6 +507,7 @@ impl Settings {
             preserve_encodings,
             canonical_form,
             wasm,
+            component,
             json_serde_derives,
             emit_tests,
             emit_tests_conformance,
@@ -507,6 +522,7 @@ impl Settings {
             wasm_cbor_json_api_macro,
             wasm_conversions_macro,
             wasm_list_macro,
+            wit_package,
             verbosity,
         );
 
@@ -535,6 +551,7 @@ impl Settings {
             json_gen_dep,
             wasm_dep,
             rust_dep,
+            component_dep,
         );
     }
 }
@@ -2671,6 +2688,7 @@ fn argv_fragments(
         preserve_encodings,
         canonical_form,
         wasm,
+        component,
         json_serde_derives,
         emit_tests,
         emit_tests_conformance,
@@ -2685,6 +2703,7 @@ fn argv_fragments(
         wasm_cbor_json_api_macro,
         wasm_conversions_macro,
         wasm_list_macro,
+        wit_package,
         json_schema_root,
         workspace_dep,
         std_forward_dep,
@@ -2697,6 +2716,7 @@ fn argv_fragments(
         json_gen_dep,
         wasm_dep,
         rust_dep,
+        component_dep,
         verbosity,
     } = settings;
 
@@ -2757,6 +2777,7 @@ fn argv_fragments(
         preserve_encodings => "preserve-encodings",
         canonical_form => "canonical-form",
         wasm => "wasm",
+        component => "component",
         json_serde_derives => "json-serde-derives",
         emit_tests => "emit-tests",
         emit_tests_conformance => "emit-tests-conformance",
@@ -2809,6 +2830,11 @@ fn argv_fragments(
     }
     if let Some(v) = wasm_list_macro {
         flag!("wasm-list-macro", "wasm-list-macro", v.clone());
+    }
+    // `wit-package` is a plain scalar: the value is a WIT package IDENTIFIER, not a path, so nothing
+    // here resolves it against the config file's directory.
+    if let Some(v) = wit_package {
+        flag!("wit-package", "wit-package", v.clone());
     }
     // `verbosity`, on the same two-arm shape as `static-dir` above and for the same reason: a
     // command-line `--verbosity` overrides the committed key for every crate, and `--print-flags`
@@ -2909,6 +2935,12 @@ fn argv_fragments(
     }
     for (k, v) in rust_dep {
         flag!("rust-dep", "rust-dep", format!("{k}={v}"));
+    }
+    // `component-dep`'s right side is a path on exactly the same terms, into
+    // `<output>/component/Cargo.toml`. No derived half yet — the component face's cross-crate
+    // derivations are not built, so only hand-written entries reach here.
+    for (k, v) in component_dep {
+        flag!("component-dep", "component-dep", format!("{k}={v}"));
     }
     // `--std-forward-dep` is the other half of a `rust-dep` entry, so it emits right after one, on
     // the same derived-before-raw rule. Its value is a bare package name — the path side is the

@@ -58,6 +58,53 @@ pub fn convert_to_snake_case(ident: &str) -> String {
     snake_case
 }
 
+/// A rust identifier (a `RustIdent`, a field name, a module-scope component) as a **WIT
+/// identifier**: lowercase ASCII words joined with `-`.
+///
+/// Built on [`convert_to_snake_case`] rather than as a second case-walk, deliberately: WIT's word
+/// boundaries are the same ones rust's snake case already computes (uppercase runs, `-`, the `$`/`@`
+/// drops, no double separator), and a parallel walk would be a drift source the moment either side
+/// gained a rule. So this is that walk plus exactly one WIT-specific step — the digit rule.
+///
+/// **Digit rule**: a word whose first character is an ASCII digit is MERGED into the word before it
+/// with no separator (`index_0` → `index0`, which the generator emits for unnamed array members).
+/// This is a **consumer-compatibility floor, not a legality constraint**: `index-0` resolves,
+/// encodes, validates and builds at the pinned toolchain floor, and is rejected only by
+/// wasm-tools ≤ 1.231-era consumer tooling. Emitting `index-0` would break every consumer on that
+/// tooling, so the merge stays — but nothing here may be pinned as "`index-0` is illegal WIT".
+///
+/// Keyword escaping is deliberately NOT applied here: the `%` of `%map` is WIT SYNTAX, not part of
+/// the name, and the name-collision detector and the rust↔WIT parity gate both have to compare
+/// UNESCAPED names. See `generation::wit::wit_escape`, applied at render time.
+///
+/// Merging is non-injective (`index_0` and a sibling literally named `index0` converge), which is
+/// why a post-conversion collision detector exists rather than a converter that tries to be clever.
+#[allow(dead_code)] // reached through the WIT projection and `WitPackageId::default_for_lib_name`
+pub fn convert_to_kebab_case(ident: &str) -> String {
+    let snake = convert_to_snake_case(ident);
+    let mut kebab = String::with_capacity(snake.len());
+    for word in snake.split('_').filter(|word| !word.is_empty()) {
+        let digit_led = word.starts_with(|c: char| c.is_ascii_digit());
+        if kebab.is_empty() {
+            // A leading digit is unreachable from any identifier this is called on: `RustIdent`s are
+            // camel-cased (letter-led), and rust field/module idents cannot start with a digit
+            // either. Assert rather than invent a rule for a shape that cannot arrive — a silent
+            // `0foo` would be an invalid WIT identifier discovered three stages later, at encode.
+            assert!(
+                !digit_led,
+                "cannot convert {ident:?} to a WIT identifier: it begins with the digit-led word \
+                 {word:?}, and a WIT identifier must start with a letter. Rename the rule or field \
+                 (the `@name` comment-DSL directive renames a rule without touching the spec's \
+                 wire format)."
+            );
+        } else if !digit_led {
+            kebab.push('-');
+        }
+        kebab.push_str(word);
+    }
+    kebab
+}
+
 pub fn convert_to_camel_case(ident: &str) -> String {
     let mut camel_case = String::new();
     let mut uppercase = true;
@@ -204,5 +251,38 @@ mod tests {
             convert_to_snake_case("already__doubled"),
             "already__doubled"
         );
+    }
+
+    /// The WIT identifier converter's pinned table. Every row is a name the component face actually
+    /// emits, and the two interesting classes are the digit merge and the acronym runs.
+    #[test]
+    fn convert_to_kebab_case_table() {
+        // digit merge: the generator emits `index_0`/`index_1` accessors for unnamed array members
+        // (see tests/extern-deps-wasm), and `index-0` is rejected by wasm-tools <= 1.231 consumers.
+        assert_eq!(convert_to_kebab_case("index_0"), "index0");
+        assert_eq!(convert_to_kebab_case("index_1"), "index1");
+        // acronym runs lowercase, inheriting convert_to_snake_case's boundaries verbatim
+        assert_eq!(convert_to_kebab_case("TxID"), "tx-id");
+        assert_eq!(convert_to_kebab_case("IPAddress"), "ip-address");
+        assert_eq!(convert_to_kebab_case("NFT"), "nft");
+        assert_eq!(convert_to_kebab_case("some_DNS_name"), "some-dns-name");
+        // a WIT keyword converts like any other name — escaping is `wit::wit_escape`'s job, applied
+        // at render time, because the collision detector and the parity gate compare UNESCAPED names
+        assert_eq!(convert_to_kebab_case("Record"), "record");
+        // the fixed method vocabulary
+        assert_eq!(convert_to_kebab_case("to_cbor_bytes"), "to-cbor-bytes");
+        assert_eq!(convert_to_kebab_case("from_cbor_bytes"), "from-cbor-bytes");
+        // an interior digit is a word CONTINUATION, not a word: `Foo2Bar` snake-cases to `foo2_bar`
+        // (the `2` never starts a word), so the digit merge does not fire and the `B` boundary does.
+        // Pinned off what convert_to_snake_case already does rather than invented as a second rule.
+        assert_eq!(convert_to_kebab_case("Foo2Bar"), "foo2-bar");
+    }
+
+    #[test]
+    #[should_panic(expected = "must start with a letter")]
+    fn convert_to_kebab_case_rejects_a_digit_led_name() {
+        // Unreachable from a RustIdent or a rust field/module ident; asserted rather than handled,
+        // so a future caller that finds a way to reach it fails here instead of at WIT encode.
+        let _ = convert_to_kebab_case("0abc");
     }
 }
