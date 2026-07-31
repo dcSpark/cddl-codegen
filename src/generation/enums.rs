@@ -349,16 +349,20 @@ fn add_wasm_enum_getters(
 /// plus helpers to deal with how to pattern match/construct these without
 /// caring about the actual representation.
 #[derive(Debug)]
-struct EnumVariantInRust {
+pub(super) struct EnumVariantInRust {
     name: VariantIdent,
     enc_fields: Vec<EncodingField>,
-    names: Vec<String>,
+    /// The variant's bound names, in arm order — the value name(s) first, then the encoding fields.
+    /// `pub(super)` alongside the three arm-spelling helpers below so the COMPONENT face's `kind` /
+    /// `as-<variant>` arms are spelled by this one owner rather than by a second derivation of the
+    /// same posture fork (see `generation::component`).
+    pub(super) names: Vec<String>,
     types: Vec<String>,
     outer_vars: usize,
 }
 
 impl EnumVariantInRust {
-    fn new(
+    pub(super) fn new(
         types: &IntermediateTypes,
         variant: &EnumVariant,
         rep: Option<Representation>,
@@ -506,7 +510,7 @@ impl EnumVariantInRust {
         }
     }
 
-    fn capture_ignore_all(&self) -> &'static str {
+    pub(super) fn capture_ignore_all(&self) -> &'static str {
         match self.names.len() {
             0 => "",
             1 if self.enc_fields.is_empty() => "(_)",
@@ -514,7 +518,7 @@ impl EnumVariantInRust {
         }
     }
 
-    fn capture_ignore_encodings(&self) -> String {
+    pub(super) fn capture_ignore_encodings(&self) -> String {
         match self.names.len() {
             0 => "".to_owned(),
             1 if self.enc_fields.is_empty() => format!("({})", self.names[0]),

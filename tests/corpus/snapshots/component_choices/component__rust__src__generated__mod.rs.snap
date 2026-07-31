@@ -1,0 +1,160 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+mod extern_interface_check;
+pub mod non_empty;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub o: Outcome,
+    pub l: Label,
+    pub n: Node,
+    pub history: Vec<Outcome>,
+}
+
+impl Holder {
+    pub fn new(o: Outcome, l: Label, n: Node, history: Vec<Outcome>) -> Self {
+        Self { o, l, n, history }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Label {
+    Labels(Labels),
+    U64(u64),
+}
+
+impl Label {
+    pub fn new_labels(labels: Labels) -> Self {
+        Self::Labels(labels)
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+}
+
+/// `[+ String]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Labels = NonEmptyVec<String>;
+
+#[derive(Clone, Debug)]
+pub enum Node {
+    Node0(Stamp),
+    Node1(Node1),
+    I2,
+}
+
+impl Node {
+    pub fn new_node0(leaf: Stamp) -> Result<Self, DeserializeError> {
+        Ok(Self::Node0(leaf))
+    }
+
+    pub fn new_node1(x: u64, y: String) -> Self {
+        Self::Node1(Node1::new(x, y))
+    }
+
+    pub fn new_i2() -> Self {
+        Self::I2
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Node1 {
+    pub x: u64,
+    pub y: String,
+}
+
+impl Node1 {
+    pub fn new(x: u64, y: String) -> Self {
+        Self { x, y }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Outcome {
+    U64(u64),
+    Text(String),
+    Stamp(Stamp),
+    Null,
+}
+
+impl Outcome {
+    pub fn new_uint(uint: u64) -> Result<Self, DeserializeError> {
+        if uint > 5 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: uint as i128,
+                min: None,
+                max: Some(5),
+            }
+            .into());
+        }
+        Ok(Self::U64(uint))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+
+    pub fn new_stamp(stamp: Stamp) -> Self {
+        Self::Stamp(stamp)
+    }
+
+    pub fn new_null() -> Self {
+        Self::Null
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Stamp(pub(crate) Vec<u8>);
+
+impl Stamp {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+        if inner.len() != 4 {
+            return Err(DeserializeError::new(
+                "Stamp",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as i128,
+                    min: Some(4),
+                    max: Some(4),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<Vec<u8>> for Stamp {
+    type Error = DeserializeError;
+
+    fn try_from(inner: Vec<u8>) -> Result<Self, Self::Error> {
+        Stamp::new(inner)
+    }
+}
+
+impl From<Stamp> for Vec<u8> {
+    fn from(wrapper: Stamp) -> Self {
+        wrapper.0
+    }
+}

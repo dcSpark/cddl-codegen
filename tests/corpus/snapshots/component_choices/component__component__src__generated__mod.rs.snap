@@ -1,0 +1,322 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Holder = WitHolder;
+    type Label = WitLabel;
+    type Node = WitNode;
+    type Node1 = WitNode1;
+    type Outcome = WitOutcome;
+    type Stamp = WitStamp;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(
+        o: wit_types::OutcomeBorrow<'_>,
+        l: wit_types::LabelBorrow<'_>,
+        n: wit_types::NodeBorrow<'_>,
+        history: Vec<wit_types::OutcomeBorrow<'_>>,
+    ) -> Self {
+        let o = o.get::<WitOutcome>().0.borrow().clone();
+        let l = l.get::<WitLabel>().0.borrow().clone();
+        let n = n.get::<WitNode>().0.borrow().clone();
+        let history = history
+            .into_iter()
+            .map(|x| x.get::<WitOutcome>().0.borrow().clone())
+            .collect();
+        let inner = cddl_lib::Holder::new(o, l, n, history);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn o(&self) -> wit_types::Outcome {
+        let me = self.0.borrow();
+        wit_types::Outcome::new(WitOutcome(RefCell::new(me.o.clone())))
+    }
+
+    fn l(&self) -> wit_types::Label {
+        let me = self.0.borrow();
+        wit_types::Label::new(WitLabel(RefCell::new(me.l.clone())))
+    }
+
+    fn n(&self) -> wit_types::Node {
+        let me = self.0.borrow();
+        wit_types::Node::new(WitNode(RefCell::new(me.n.clone())))
+    }
+
+    fn history(&self) -> Vec<wit_types::Outcome> {
+        let me = self.0.borrow();
+        me.history
+            .iter()
+            .map(|x| wit_types::Outcome::new(WitOutcome(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitLabel(pub RefCell<cddl_lib::Label>);
+
+impl wit_types::GuestLabel for WitLabel {
+    fn new_labels(labels: Vec<String>) -> Result<wit_types::Label, String> {
+        let labels: Vec<_> = labels.into_iter().collect();
+        let inner = cddl_lib::Label::new_labels(labels.try_into().map_err(err)?);
+        Ok(wit_types::Label::new(WitLabel(RefCell::new(inner))))
+    }
+
+    fn as_labels(&self) -> Option<Vec<String>> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Label::Labels(labels) => Some(labels.iter().map(|x| x.clone()).collect()),
+            _ => None,
+        }
+    }
+
+    fn new_uint(uint: u64) -> wit_types::Label {
+        let inner = cddl_lib::Label::new_uint(uint);
+        wit_types::Label::new(WitLabel(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Label::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::LabelKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Label::Labels(_) => wit_types::LabelKind::Labels,
+            cddl_lib::Label::U64(_) => wit_types::LabelKind::Uint,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Label as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Label, String> {
+        <cddl_lib::Label as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Label::new(WitLabel(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNode(pub RefCell<cddl_lib::Node>);
+
+impl wit_types::GuestNode for WitNode {
+    fn new_node0(leaf: wit_types::StampBorrow<'_>) -> Result<wit_types::Node, String> {
+        let leaf = leaf.get::<WitStamp>().0.borrow().clone();
+        let inner = cddl_lib::Node::new_node0(leaf).map_err(err)?;
+        Ok(wit_types::Node::new(WitNode(RefCell::new(inner))))
+    }
+
+    fn as_node0(&self) -> Option<wit_types::Stamp> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Node::Node0(leaf) => {
+                Some(wit_types::Stamp::new(WitStamp(RefCell::new(leaf.clone()))))
+            }
+            _ => None,
+        }
+    }
+
+    fn new_node1(x: u64, y: String) -> wit_types::Node {
+        let inner = cddl_lib::Node::new_node1(x, y);
+        wit_types::Node::new(WitNode(RefCell::new(inner)))
+    }
+
+    fn as_node1(&self) -> Option<wit_types::Node1> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Node::Node1(node1) => {
+                Some(wit_types::Node1::new(WitNode1(RefCell::new(node1.clone()))))
+            }
+            _ => None,
+        }
+    }
+
+    fn new_i2() -> wit_types::Node {
+        let inner = cddl_lib::Node::new_i2();
+        wit_types::Node::new(WitNode(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::NodeKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Node::Node0(_) => wit_types::NodeKind::Node0,
+            cddl_lib::Node::Node1(_) => wit_types::NodeKind::Node1,
+            cddl_lib::Node::I2 => wit_types::NodeKind::I2,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Node as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Node, String> {
+        <cddl_lib::Node as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Node::new(WitNode(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNode1(pub RefCell<cddl_lib::Node1>);
+
+impl wit_types::GuestNode1 for WitNode1 {
+    fn new(x: u64, y: String) -> Self {
+        let inner = cddl_lib::Node1::new(x, y);
+        WitNode1(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn y(&self) -> String {
+        let me = self.0.borrow();
+        me.y.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Node1 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Node1, String> {
+        <cddl_lib::Node1 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Node1::new(WitNode1(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOutcome(pub RefCell<cddl_lib::Outcome>);
+
+impl wit_types::GuestOutcome for WitOutcome {
+    fn new_uint(uint: u64) -> Result<wit_types::Outcome, String> {
+        let inner = cddl_lib::Outcome::new_uint(uint).map_err(err)?;
+        Ok(wit_types::Outcome::new(WitOutcome(RefCell::new(inner))))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Outcome::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_text(text: String) -> wit_types::Outcome {
+        let inner = cddl_lib::Outcome::new_text(text);
+        wit_types::Outcome::new(WitOutcome(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Outcome::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn new_stamp(stamp: wit_types::StampBorrow<'_>) -> wit_types::Outcome {
+        let stamp = stamp.get::<WitStamp>().0.borrow().clone();
+        let inner = cddl_lib::Outcome::new_stamp(stamp);
+        wit_types::Outcome::new(WitOutcome(RefCell::new(inner)))
+    }
+
+    fn as_stamp(&self) -> Option<wit_types::Stamp> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Outcome::Stamp(stamp) => {
+                Some(wit_types::Stamp::new(WitStamp(RefCell::new(stamp.clone()))))
+            }
+            _ => None,
+        }
+    }
+
+    fn new_null() -> wit_types::Outcome {
+        let inner = cddl_lib::Outcome::new_null();
+        wit_types::Outcome::new(WitOutcome(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::OutcomeKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Outcome::U64(_) => wit_types::OutcomeKind::Uint,
+            cddl_lib::Outcome::Text(_) => wit_types::OutcomeKind::Text,
+            cddl_lib::Outcome::Stamp(_) => wit_types::OutcomeKind::Stamp,
+            cddl_lib::Outcome::Null => wit_types::OutcomeKind::Null,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Outcome as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Outcome, String> {
+        <cddl_lib::Outcome as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Outcome::new(WitOutcome(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitStamp(pub RefCell<cddl_lib::Stamp>);
+
+impl wit_types::GuestStamp for WitStamp {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::Stamp::new(inner).map_err(err)?;
+        Ok(WitStamp(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Stamp as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Stamp, String> {
+        <cddl_lib::Stamp as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Stamp::new(WitStamp(RefCell::new(v))))
+            .map_err(err)
+    }
+}

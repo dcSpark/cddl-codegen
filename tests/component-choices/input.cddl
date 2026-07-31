@@ -1,0 +1,34 @@
+; The phase-2 choice fixture: one shape per row the choice projection has to render, and nothing
+; else. A choice becomes a `resource` with NO constructor — there is nothing to build without
+; picking an arm — so the `new-<variant>` statics replace it, `kind` reports which arm is live and
+; `as-<variant>` hands the payload back.
+
+; a bounded newtype, so a choice arm can name a class-backed type
+stamp = bytes .size 4
+
+; a TYPE choice covering four arm classes at once: a VALUE-BOUNDED primitive (its rust `new_uint`
+; is fallible, so the static unwraps rather than wraps), a plain primitive, a named class-backed arm
+; (crossing as a `borrow<stamp>` in and an owned `stamp` out), and a FIXED-value arm — which gets a
+; `new-null` taking nothing and NO `as-null`, because it carries no payload for one to return
+outcome = uint .le 5 / text / stamp / null
+
+; a type choice whose arm is a DESPECIALIZED collection: `[+ text]` is type-enforced in rust and a
+; plain `list<string>` in WIT, so `new-labels` is fallible for a reason the rust constructor knows
+; nothing about — the boundary has to re-enter the `TryFrom` door itself
+labels = [+ text]
+label = labels / uint
+
+; a GROUP choice, array rep, covering the three arm shapes the rust enum spells differently: an
+; INLINED single-field arm (the payload rides the variant), a multi-field arm (which mints its own
+; struct and whose `new-` takes that struct's fields directly, exactly as the rust ctor does), and a
+; fixed-only arm
+node = [ 0, leaf: stamp // 1, x: uint, y: text // 2 ]
+
+; a record holding each of them — the handle direction — plus a choice inside a collection, which is
+; what makes the reference closure and the element-wise handle minting non-trivial
+holder = {
+  o: outcome,
+  l: label,
+  n: node,
+  history: [* outcome],
+}

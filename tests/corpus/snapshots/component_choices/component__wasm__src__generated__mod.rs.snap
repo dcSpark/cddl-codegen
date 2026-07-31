@@ -1,0 +1,496 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::non_empty::NonEmptyVec;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn o(&self) -> Outcome {
+        self.0.o.clone().into()
+    }
+
+    pub fn l(&self) -> Label {
+        self.0.l.clone().into()
+    }
+
+    pub fn n(&self) -> Node {
+        self.0.n.clone().into()
+    }
+
+    pub fn history(&self) -> OutcomeList {
+        self.0.history.clone().into()
+    }
+
+    pub fn new(o: &Outcome, l: &Label, n: &Node, history: &OutcomeList) -> Self {
+        Self(cddl_lib::Holder::new(
+            o.clone().into(),
+            l.clone().into(),
+            n.clone().into(),
+            history.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Label(pub(crate) cddl_lib::Label);
+
+#[wasm_bindgen]
+impl Label {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Label, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_labels(labels: &Labels) -> Self {
+        Self(cddl_lib::Label::new_labels(labels.clone().into()))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::Label::new_uint(uint))
+    }
+
+    pub fn kind(&self) -> LabelKind {
+        match &self.0 {
+            cddl_lib::Label::Labels(_) => LabelKind::Labels,
+            cddl_lib::Label::U64(_) => LabelKind::U64,
+        }
+    }
+
+    pub fn as_labels(&self) -> Option<Labels> {
+        match &self.0 {
+            cddl_lib::Label::Labels(labels) => Some(labels.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::Label::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Label> for Label {
+    fn from(native: cddl_lib::Label) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Label> for cddl_lib::Label {
+    fn from(wasm: Label) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Label> for Label {
+    fn as_ref(&self) -> &cddl_lib::Label {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum LabelKind {
+    Labels,
+    U64,
+}
+
+/// `[+ String]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Labels(pub(crate) NonEmptyVec<String>);
+
+#[wasm_bindgen]
+impl Labels {
+    pub fn new(first: String) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<String>) -> Result<Labels, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<String>> for Labels {
+    fn from(native: NonEmptyVec<String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Labels> for NonEmptyVec<String> {
+    fn from(wasm: Labels) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<String>> for Labels {
+    fn as_ref(&self) -> &NonEmptyVec<String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Node(pub(crate) cddl_lib::Node);
+
+#[wasm_bindgen]
+impl Node {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Node, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_node0(leaf: &Stamp) -> Self {
+        Self(cddl_lib::Node::new_node0(leaf.clone().into()))
+    }
+
+    pub fn new_node1(x: u64, y: String) -> Self {
+        Self(cddl_lib::Node::new_node1(x, y))
+    }
+
+    pub fn new_i2() -> Self {
+        Self(cddl_lib::Node::new_i2())
+    }
+
+    pub fn kind(&self) -> NodeKind {
+        match &self.0 {
+            cddl_lib::Node::Node0(_) => NodeKind::Node0,
+            cddl_lib::Node::Node1(_) => NodeKind::Node1,
+            cddl_lib::Node::I2 => NodeKind::I2,
+        }
+    }
+
+    pub fn as_node0(&self) -> Option<Stamp> {
+        match &self.0 {
+            cddl_lib::Node::Node0(leaf) => Some(leaf.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_node1(&self) -> Option<Node1> {
+        match &self.0 {
+            cddl_lib::Node::Node1(node1) => Some(node1.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Node> for Node {
+    fn from(native: cddl_lib::Node) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Node> for cddl_lib::Node {
+    fn from(wasm: Node) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Node> for Node {
+    fn as_ref(&self) -> &cddl_lib::Node {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Node1(pub(crate) cddl_lib::Node1);
+
+#[wasm_bindgen]
+impl Node1 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Node1, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn y(&self) -> String {
+        self.0.y.clone()
+    }
+
+    pub fn new(x: u64, y: String) -> Self {
+        Self(cddl_lib::Node1::new(x, y))
+    }
+}
+
+impl From<cddl_lib::Node1> for Node1 {
+    fn from(native: cddl_lib::Node1) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Node1> for cddl_lib::Node1 {
+    fn from(wasm: Node1) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Node1> for Node1 {
+    fn as_ref(&self) -> &cddl_lib::Node1 {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NodeKind {
+    Node0,
+    Node1,
+    I2,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Outcome(pub(crate) cddl_lib::Outcome);
+
+#[wasm_bindgen]
+impl Outcome {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Outcome, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Result<Outcome, JsError> {
+        cddl_lib::Outcome::new_uint(uint)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::Outcome::new_text(text))
+    }
+
+    pub fn new_stamp(stamp: &Stamp) -> Self {
+        Self(cddl_lib::Outcome::new_stamp(stamp.clone().into()))
+    }
+
+    pub fn new_null() -> Self {
+        Self(cddl_lib::Outcome::new_null())
+    }
+
+    pub fn kind(&self) -> OutcomeKind {
+        match &self.0 {
+            cddl_lib::Outcome::U64(_) => OutcomeKind::U64,
+            cddl_lib::Outcome::Text(_) => OutcomeKind::Text,
+            cddl_lib::Outcome::Stamp(_) => OutcomeKind::Stamp,
+            cddl_lib::Outcome::Null => OutcomeKind::Null,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::Outcome::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::Outcome::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_stamp(&self) -> Option<Stamp> {
+        match &self.0 {
+            cddl_lib::Outcome::Stamp(stamp) => Some(stamp.clone().into()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Outcome> for Outcome {
+    fn from(native: cddl_lib::Outcome) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Outcome> for cddl_lib::Outcome {
+    fn from(wasm: Outcome) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Outcome> for Outcome {
+    fn as_ref(&self) -> &cddl_lib::Outcome {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum OutcomeKind {
+    U64,
+    Text,
+    Stamp,
+    Null,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OutcomeList(pub(crate) Vec<cddl_lib::Outcome>);
+
+#[wasm_bindgen]
+impl OutcomeList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Outcome {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Outcome) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Outcome>> for OutcomeList {
+    fn from(native: Vec<cddl_lib::Outcome>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OutcomeList> for Vec<cddl_lib::Outcome> {
+    fn from(wasm: OutcomeList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Outcome>> for OutcomeList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Outcome> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Stamp(pub(crate) cddl_lib::Stamp);
+
+#[wasm_bindgen]
+impl Stamp {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Stamp, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u8>) -> Result<Stamp, JsError> {
+        cddl_lib::Stamp::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
+    }
+}
+
+impl From<cddl_lib::Stamp> for Stamp {
+    fn from(native: cddl_lib::Stamp) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Stamp> for cddl_lib::Stamp {
+    fn from(wasm: Stamp) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Stamp> for Stamp {
+    fn as_ref(&self) -> &cddl_lib::Stamp {
+        &self.0
+    }
+}

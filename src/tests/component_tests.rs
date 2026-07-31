@@ -28,10 +28,21 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
         "tests/component-core/input.cddl",
         &["--preserve-encodings=true"],
     ),
+    // Type and group choices. Swept in BOTH encoding postures because a choice's `kind` / `as-`
+    // arms are the one glue shape `--preserve-encodings` re-spells (tuple arms become named-field
+    // arms), which is exactly the hazard the `int` bridge already carries.
+    ("tests/component-choices/input.cddl", &[]),
+    (
+        "tests/component-choices/input.cddl",
+        &["--preserve-encodings=true"],
+    ),
     ("tests/component-multifile/inputs", &[]),
     // Cross-scope references that run THROUGH a named collection: the projection resolves the
     // collection through, so the cycle detector must agree about which scope the `use` points at.
     ("tests/component-collection-refs/inputs", &[]),
+    // The `@name` remedy every collision message names, applied to the two collision classes a
+    // rename can actually move.
+    ("tests/component-rename/input.cddl", &[]),
     ("tests/multifile/inputs", &[]),
 ];
 
@@ -248,30 +259,35 @@ fn component_wit_is_wasm_posture_independent() {
 // Exclude-and-record
 // -------------------------------------------------------------------------------------------------
 
-/// A spec carrying a phase-2 type class must generate a WIT WITHOUT it — plus a record of why —
-/// never a crash and never a silent omission. The reference closure then removes the containers,
-/// naming the ROOT of the chain rather than the immediate neighbour.
+/// A spec carrying a still-unprojected type class must generate a WIT WITHOUT it — plus a record of
+/// why — never a crash and never a silent omission. The reference closure then removes the
+/// containers, naming the ROOT of the chain rather than the immediate neighbour.
+///
+/// Pointed at the EXTERN class rather than the type choice it used to use: choices are projected as
+/// of phase 2, and the exclude-and-record path must keep a live test rather than lose one when its
+/// last subject is implemented.
 #[test]
-fn component_wit_excludes_a_type_choice_and_everything_that_reaches_it() {
+fn component_wit_excludes_an_extern_and_everything_that_reaches_it() {
     let wit = wit_for_spec(
-        "value = uint / text\n\
-         inner = { v: value }\n\
+        "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         inner = { v: ext }\n\
          outer = { i: inner }\n\
          plain = { n: uint }\n",
         &[],
     );
     assert!(
         wit.contains(
-            "// unexported: Value — type and group choices are not yet projected (phase 2)"
+            "// unexported: Ext — a hand-written extern type needs a bridging resource, which is \
+             not yet projected (phase 2)"
         ),
-        "the type choice itself is not recorded:\n{wit}"
+        "the extern itself is not recorded:\n{wit}"
     );
     // A DIRECT reference to an unprojectable shape fails at the field mapping, so it records the
     // shape rather than the neighbour — strictly more informative than the closure's wording.
     assert!(
         wit.contains(
-            "// unexported: Inner — references `Value`, a type or group choice, which is not yet \
-             projected (phase 2)"
+            "// unexported: Inner — references the extern type `Ext`, whose bridging resource is \
+             not yet projected (phase 2)"
         ),
         "the directly-containing record is not excluded, or does not name the offending shape:\n{wit}"
     );
@@ -288,6 +304,163 @@ fn component_wit_excludes_a_type_choice_and_everything_that_reaches_it() {
     assert!(
         wit.contains("resource plain"),
         "an unrelated type was dropped along with the excluded ones:\n{wit}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// Type and group choices
+// -------------------------------------------------------------------------------------------------
+
+/// A choice's WIT surface. It is the one resource with NO constructor — there is nothing to build
+/// without picking an arm — so the `new-<variant>` statics replace it, `kind` says which arm is
+/// live and `as-<variant>` hands the payload back.
+///
+/// Every name in all three families comes from ONE conversion of `EnumVariant::name_as_var()`, which
+/// is also the source of the rust `new_<variant>` the glue calls. Asserting them together is what
+/// makes a drift between the three visible here rather than as a missing trait method three stages
+/// later.
+#[test]
+fn component_wit_projects_a_choice_as_a_resource_with_statics_a_kind_and_getters() {
+    let wit = wit_of("tests/component-choices/input.cddl", &[]);
+    let outcome = wit
+        .split("resource outcome {")
+        .nth(1)
+        .and_then(|rest| rest.split('}').next())
+        .expect("the type choice must project to a resource");
+    assert!(
+        !outcome.contains("constructor("),
+        "a choice resource carries a constructor — an arm has to be chosen, so there is nothing for \
+         one to build:\n{outcome}"
+    );
+    // A VALUE-BOUNDED arm's rust `new_uint` is fallible, so the static is too; a plain arm's is not.
+    assert!(
+        outcome.contains("new-uint: static func(uint: u64) -> result<outcome, string>;")
+            && outcome.contains("new-text: static func(text: string) -> outcome;"),
+        "the statics no longer track the rust constructors' fallibility per arm:\n{outcome}"
+    );
+    // A class-backed arm borrows IN and hands an owned handle OUT.
+    assert!(
+        outcome.contains("new-stamp: static func(stamp: borrow<stamp>) -> outcome;")
+            && outcome.contains("as-stamp: func() -> option<stamp>;"),
+        "the class-backed arm's ownership positions changed:\n{outcome}"
+    );
+    // A FIXED-value arm takes nothing and has no `as-`: it carries no payload for one to return.
+    assert!(
+        outcome.contains("new-null: static func() -> outcome;") && !outcome.contains("as-null"),
+        "the fixed-value arm no longer has a nullary static and no getter:\n{outcome}"
+    );
+    assert!(
+        outcome.contains("kind: func() -> outcome-kind;"),
+        "the choice lost its discriminant:\n{outcome}"
+    );
+    assert!(
+        wit.contains("enum outcome-kind {\n    uint,\n    text,\n    stamp,\n    null,\n  }"),
+        "the discriminant enum's cases no longer come from the same source the statics do:\n{wit}"
+    );
+    // A GROUP choice's multi-field arm mints its own struct, and its static takes that struct's
+    // FIELDS — exactly as the rust `new_node1` does — while `as-` hands back the struct.
+    let node = wit
+        .split("resource node {")
+        .nth(1)
+        .and_then(|rest| rest.split('}').next())
+        .expect("the group choice must project to a resource");
+    assert!(
+        node.contains("new-node1: static func(x: u64, y: string) -> node;")
+            && node.contains("as-node1: func() -> option<node1>;"),
+        "the multi-field group-choice arm's static no longer takes the arm struct's fields:\n{node}"
+    );
+    // A DESPECIALIZED arm (`[+ text]` → a plain `list<string>`) makes the static fallible for a
+    // reason the rust constructor knows nothing about: the boundary re-enters the `TryFrom` door.
+    assert!(
+        wit.contains("new-labels: static func(labels: list<string>) -> result<label, string>;"),
+        "the despecialized arm's static is no longer fallible:\n{wit}"
+    );
+}
+
+/// The `<name>-kind` enum lives in the interface's ONE flat type namespace, so a user type
+/// converging on it is a collision the detector must report rather than a name silently written
+/// twice. Asserted because the enum is minted by the projection rather than by a rule, which is the
+/// shape a namespace check is easiest to forget.
+#[test]
+fn a_choice_kind_enum_is_in_the_interface_type_namespace() {
+    let err = generate_error(
+        "state = uint / text\n\
+         holder = [\n\
+         \x20 ; @name state_kind\n\
+         \x20 tag: 0, x: uint, y: text //\n\
+         \x20 ; @name other\n\
+         \x20 tag: 1, z: uint, w: text\n\
+         ]\n",
+    )
+    .expect("the colliding spec generated");
+    assert!(
+        err.contains("WIT type name collision under --component:")
+            && err.contains("the discriminant enum of the choice `State`")
+            && err.contains("all convert to the WIT identifier `state-kind`"),
+        "the kind enum is not part of the interface-level namespace check: {err}"
+    );
+}
+
+/// The `kind` / `as-<variant>` arms must match the rust enum's ARM SHAPE, which
+/// `--preserve-encodings` changes from a tuple to named fields — per variant, not per enum: a
+/// `Rust`-typed arm carries no encoding fields and stays a tuple in the same enum where a primitive
+/// arm becomes braced. A `match` written for one shape does not compile against the other, and the
+/// user would get the error in GENERATED code. Sibling of
+/// `component_glue_matches_the_int_arm_shape_of_the_encoding_posture`, on the shape that made the
+/// hazard general.
+#[test]
+fn component_glue_matches_the_choice_arm_shape_of_the_encoding_posture() {
+    let plain = component_glue("tests/component-choices/input.cddl", &[]);
+    assert!(
+        plain.contains("cddl_lib::Outcome::U64(uint) => Some(*uint),")
+            && plain.contains("cddl_lib::Outcome::U64(_) => wit_types::OutcomeKind::Uint,"),
+        "the default posture's choice arms no longer match the tuple shape:\n{plain}"
+    );
+    let preserve = component_glue(
+        "tests/component-choices/input.cddl",
+        &["--preserve-encodings=true"],
+    );
+    assert!(
+        preserve.contains("cddl_lib::Outcome::U64 { uint, .. } => Some(*uint),")
+            && preserve.contains("cddl_lib::Outcome::U64 { .. } => wit_types::OutcomeKind::Uint,"),
+        "the preserve posture's choice arms no longer match the NAMED-field shape:\n{preserve}"
+    );
+    // Same enum, same posture, DIFFERENT arm shape: a `Rust`-typed arm has no encoding fields, so it
+    // stays a tuple. A per-enum fork would get this one wrong.
+    assert!(
+        preserve.contains("cddl_lib::Outcome::Stamp(stamp) =>")
+            && preserve.contains("cddl_lib::Outcome::Stamp(_) => wit_types::OutcomeKind::Stamp,"),
+        "the arm shape is being decided per ENUM rather than per VARIANT:\n{preserve}"
+    );
+    // A fixed-value arm binds nothing at all, in either posture.
+    for glue in [&plain, &preserve] {
+        assert!(
+            glue.contains("cddl_lib::Outcome::Null => wit_types::OutcomeKind::Null,"),
+            "the fixed-value arm no longer matches as a unit variant:\n{glue}"
+        );
+    }
+}
+
+/// A `new-<variant>` static returns the owned HANDLE (the constructor/static asymmetry), and it
+/// unwraps a fallible rust `new_<variant>` rather than wrapping it — the two halves of the shape
+/// that a WIT gate cannot see and that a `Result` in the wrong position turns into a type error.
+#[test]
+fn component_glue_new_variant_statics_unwrap_the_rust_constructor() {
+    let glue = component_glue("tests/component-choices/input.cddl", &[]);
+    assert!(
+        glue.contains(
+            "fn new_uint(uint: u64) -> Result<wit_types::Outcome, String> {\n        let inner = \
+             cddl_lib::Outcome::new_uint(uint).map_err(err)?;\n        \
+             Ok(wit_types::Outcome::new(WitOutcome(RefCell::new(inner))))"
+        ),
+        "the value-bounded arm's static no longer unwraps the fallible rust constructor:\n{glue}"
+    );
+    // The other direction: a static that is fallible for a BOUNDARY reason (a despecialized `[+ T]`
+    // arm) still calls an INFALLIBLE rust constructor, so it must not `?` it.
+    assert!(
+        glue.contains("let inner = cddl_lib::Label::new_labels(labels.try_into().map_err(err)?);"),
+        "the despecialized arm's static no longer re-enters the `TryFrom` door, or wrongly unwraps \
+         an infallible rust constructor:\n{glue}"
     );
 }
 
@@ -571,6 +744,49 @@ fn a_no_deserialize_type_may_carry_a_from_cbor_bytes_field() {
     );
 }
 
+/// Every collision message names `@name` as the remedy, and this is the proof that the remedy works
+/// — exercised through the SAME converter and the SAME detector the message points at, rather than
+/// asserted in prose.
+///
+/// Both un-renamed twins are checked too: a fixture that generates proves nothing about a remedy
+/// unless the thing it remedies is still refused.
+#[test]
+fn a_rename_remedies_the_collisions_the_detector_messages_name() {
+    let wit = wit_of("tests/component-rename/input.cddl", &[]);
+    // RESOURCE level: the field renamed off the resource's own name.
+    assert!(
+        wit.contains("value: func() -> u64;") && !wit.contains("a: func()"),
+        "the `@name`d field's accessor is not the renamed one:\n{wit}"
+    );
+    // INTERFACE level: the arm struct renamed off the choice's discriminant enum.
+    assert!(
+        wit.contains("resource pair {") && wit.contains("enum state-kind {"),
+        "the `@name`d group-choice arm and the discriminant enum no longer coexist:\n{wit}"
+    );
+    // The un-renamed twins, still refused with the pinned messages.
+    let member = generate_error("a = {\n  a: uint,\n}\n").expect("the un-renamed record generated");
+    assert!(
+        member.contains("WIT resource member collision under --component:")
+            && member.contains("the resource's own name"),
+        "the un-renamed field no longer collides, so the remedy above proves nothing: {member}"
+    );
+    let iface = generate_error(
+        "state = uint / text\n\
+         holder = [\n\
+         \x20 ; @name state_kind\n\
+         \x20 tag: 0, x: uint, y: text //\n\
+         \x20 ; @name single\n\
+         \x20 tag: 1, z: uint, w: text\n\
+         ]\n",
+    )
+    .expect("the un-renamed arm generated");
+    assert!(
+        iface.contains("WIT type name collision under --component:")
+            && iface.contains("all convert to the WIT identifier `state-kind`"),
+        "the un-renamed arm no longer collides, so the remedy above proves nothing: {iface}"
+    );
+}
+
 /// The `int` bridge's rust→WIT direction has to match the ARM SHAPE, which `--preserve-encodings`
 /// changes from a tuple to named fields. A `match` written for one posture does not compile under
 /// the other, and the first user to combine the flags would get the error in GENERATED code.
@@ -819,6 +1035,11 @@ const BUILD_SMOKE_FIXTURES: &[(&str, &[&str])] = &[
     // runtime's vec-of-pairs `TryFrom` door, and the value-bounded field (`limit`) makes the rust
     // `Record::new` itself fallible, so the glue must unwrap it rather than wrap it.
     ("tests/component-core/input.cddl", &[]),
+    // CHOICES: the largest new glue surface phase 2 adds, and the one no WIT gate can judge. A
+    // `kind` / `as-<variant>` arm that does not match the rust enum's ARM SHAPE, or a `new-<variant>`
+    // that wraps a `Result` the rust ctor already returns, is a type error in generated code that
+    // resolves, encodes and validates perfectly as WIT.
+    ("tests/component-choices/input.cddl", &[]),
     // The multi-INTERFACE shape: two `Guest` impls on one guest type under one `export!`, a
     // cross-interface `borrow` parameter, and an `own` handle minted for a resource another
     // interface declares. None of it is reachable from a single-scope fixture, and all of it is a

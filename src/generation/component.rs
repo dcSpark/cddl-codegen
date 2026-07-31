@@ -36,12 +36,15 @@
 //! that expanded `generate!`. The per-scope map is plumbed anyway (`GenerationScope::component_scopes`)
 //! so a later phase can split without touching the write loop.
 
+use super::enums::EnumVariantInRust;
 use super::wit::{
     WitConstructor, WitEnum, WitFunc, WitFuncOp, WitInterface, WitMember, WitMemberOp, WitPackage,
     WitParam, WitResource, WitType, WitTypeDef, WitTypeRef,
 };
 use crate::cli::Cli;
-use crate::intermediate::{IntermediateTypes, ModuleScope, RustIdent, RustStructType};
+use crate::intermediate::{
+    EnumVariant, IntermediateTypes, ModuleScope, Representation, RustIdent, RustStructType,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -626,7 +629,9 @@ impl Emitter<'_, '_> {
                     WitTypeDef::Enum(e) => out.push_str(&self.emit_enum_bridges(e, alias)),
                     WitTypeDef::IntVariant => out.push_str(&self.emit_int_bridges(alias)),
                     WitTypeDef::AnyCborKind => out.push_str(&self.emit_any_cbor_kind_bridge(alias)),
-                    WitTypeDef::AnyCborAlias | WitTypeDef::Resource(_) => {}
+                    // A `<name>-kind` enum needs no bridge function: it is only ever RETURNED, by
+                    // the one member (`kind`) that matches the rust DATA enum inline.
+                    WitTypeDef::Kind(_) | WitTypeDef::AnyCborAlias | WitTypeDef::Resource(_) => {}
                 }
             }
         }
@@ -927,11 +932,11 @@ impl Emitter<'_, '_> {
                 self.wit_rust_type(&p.ty, alias, true)
             ));
         }
-        // A `from-cbor-bytes` static returns the OWNING resource, which the projection cannot name
-        // from inside a member without carrying its own owner — so the emitter fills it in, exactly
-        // as the WIT renderer does.
+        // The two members that MINT the owning resource — `from-cbor-bytes` and a choice's
+        // `new-<variant>` — cannot name it from inside the member without carrying their own owner,
+        // so the emitter fills it in, exactly as the WIT renderer does.
         let ret = match member.op {
-            WitMemberOp::FromCborBytes => {
+            WitMemberOp::FromCborBytes | WitMemberOp::NewVariant { .. } => {
                 if member.fallible {
                     format!(" -> Result<{own}, String>")
                 } else {
@@ -945,7 +950,7 @@ impl Emitter<'_, '_> {
             kebab_to_snake(&member.name),
             params.join(", ")
         );
-        let body = self.member_body(member, &rep, &rust, &own, alias);
+        let body = self.member_body(member, &resource.ident, &rep, &rust, &own, alias);
         for line in body {
             let _ = writeln!(out, "        {line}");
         }
@@ -953,9 +958,39 @@ impl Emitter<'_, '_> {
         out
     }
 
+    /// The IR variants (and representation) behind a choice resource, or `None` for anything else.
+    ///
+    /// STRUCTURE read from the IR, which is exactly what this module is allowed to read: the
+    /// projection decided every WIT name, and what it deliberately does not carry is how the rust
+    /// enum's ARMS are spelled — a question about the rust crate that `--preserve-encodings` changes
+    /// and that has exactly one owner (`enums::EnumVariantInRust`).
+    fn choice_variants(
+        &self,
+        ident: &RustIdent,
+    ) -> Option<(&[EnumVariant], Option<Representation>)> {
+        match self.types.rust_struct(ident).map(|s| s.variant()) {
+            Some(RustStructType::TypeChoice { variants }) => Some((variants, None)),
+            Some(RustStructType::GroupChoice { variants, rep }) => Some((variants, Some(*rep))),
+            _ => None,
+        }
+    }
+
+    /// The `<name>-kind` enum a choice's `kind` member returns, found by the choice's rust ident.
+    fn kind_enum(&self, ident: &RustIdent) -> Option<&WitEnum> {
+        self.package
+            .interfaces
+            .values()
+            .flat_map(|iface| &iface.types)
+            .find_map(|def| match def {
+                WitTypeDef::Kind(e) if &e.ident == ident => Some(e),
+                _ => None,
+            })
+    }
+
     fn member_body(
         &self,
         member: &WitMember,
+        ident: &RustIdent,
         rep: &str,
         rust: &str,
         own: &str,
@@ -1020,6 +1055,83 @@ impl Emitter<'_, '_> {
                 ));
                 lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
                 lines.push("    .map_err(err)".to_owned());
+            }
+            // A choice's discriminant, derived by matching the rust DATA enum — never by naming the
+            // rust `<Name>Kind`, which is emitted only under `cli.wasm` and is therefore absent from
+            // exactly the posture this face targets. The arm spelling comes from the single owner the
+            // wasm face's own `kind()` reads, so a preserve/non-preserve arm-shape fork can never
+            // exist here in one spelling and there in another.
+            WitMemberOp::VariantKind => {
+                let (variants, variant_rep) = self
+                    .choice_variants(ident)
+                    .expect("a `kind` member is only projected for a choice");
+                let kind = self
+                    .kind_enum(ident)
+                    .expect("a `kind` member is projected beside its `<name>-kind` enum");
+                let wit_kind = format!("{alias}::{}", kebab_to_camel(&kind.name));
+                lines.push("let me = self.0.borrow();".to_owned());
+                lines.push("match &*me {".to_owned());
+                for (variant, case) in variants.iter().zip(&kind.cases) {
+                    let arm = EnumVariantInRust::new(self.types, variant, variant_rep, self.cli);
+                    lines.push(format!(
+                        "    {rust}::{}{} => {wit_kind}::{},",
+                        variant.name,
+                        arm.capture_ignore_all(),
+                        kebab_to_camel(&case.name)
+                    ));
+                }
+                lines.push("}".to_owned());
+            }
+            // `as-<variant>`: the payload as a SNAPSHOT (every composite arm of `rust_to_wit`
+            // clones), `None` on every other arm.
+            WitMemberOp::AsVariant { rust_variant } => {
+                let (variants, variant_rep) = self
+                    .choice_variants(ident)
+                    .expect("an `as-` member is only projected for a choice");
+                let variant = variants
+                    .iter()
+                    .find(|v| v.name.to_string() == *rust_variant)
+                    .expect("the projection named a variant of this choice");
+                let arm = EnumVariantInRust::new(self.types, variant, variant_rep, self.cli);
+                let Some(WitType::Option(payload)) = member.result.as_ref() else {
+                    unreachable!("an `as-` member always returns an option of its payload");
+                };
+                lines.push("let me = self.0.borrow();".to_owned());
+                lines.push("match &*me {".to_owned());
+                lines.push(format!(
+                    "    {rust}::{}{} => Some({}),",
+                    variant.name,
+                    arm.capture_ignore_encodings(),
+                    self.rust_to_wit(payload, &arm.names[0], alias, true)
+                ));
+                // Emitted only when there IS another arm: a one-variant choice's `_` arm is
+                // unreachable, and rustc warns on it in generated code the user cannot edit.
+                if variants.len() > 1 {
+                    lines.push("    _ => None,".to_owned());
+                }
+                lines.push("}".to_owned());
+            }
+            // `new-<variant>`: a STATIC, so it returns the owned HANDLE rather than the rep type a
+            // fallible constructor returns. Parameters go through `materialize`, so the re-entrancy
+            // invariant holds here exactly as it does in a constructor.
+            WitMemberOp::NewVariant {
+                rust_ctor,
+                rust_can_fail,
+            } => {
+                let (materialized, args) = self.materialize(&member.params, alias);
+                lines.extend(materialized);
+                let call = format!("{rust}::{rust_ctor}({})", args.join(", "));
+                if *rust_can_fail {
+                    lines.push(format!("let inner = {call}.map_err(err)?;"));
+                } else {
+                    lines.push(format!("let inner = {call};"));
+                }
+                let build = format!("{own}::new({rep}(RefCell::new(inner)))");
+                if member.fallible {
+                    lines.push(format!("Ok({build})"));
+                } else {
+                    lines.push(build);
+                }
             }
         }
         lines
