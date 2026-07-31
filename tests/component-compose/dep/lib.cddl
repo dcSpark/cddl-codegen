@@ -1,0 +1,18 @@
+; The DEPENDENCY half of the composition acceptance fixture — the package a composed world exports
+; alongside its consumer, so a host can mint a dependency object and hand it across.
+;
+; Generated with `--component=true` and `--lib-name chain`, which is what makes its WIT package
+; `cddl:chain@0.1.0` — the identifier the hand-written composed world in `../host/wit/world.wit`
+; names, and the identifier the composer registers the built component under. Change the lib name
+; and all three have to move together; a mismatch fails loudly at WIT resolve rather than silently.
+;
+; One rule, carrying exactly what the acceptance flow needs of a dependency type:
+;
+;   name    — a mandatory field, so the resource has a constructor a host can call and a getter whose
+;             value survives the CBOR seam.
+;   amount  — OPTIONAL, which is what mints `set-amount`. That setter is the whole reason this field
+;             is optional: mutating a handle THROUGH the dependency's own exported interface and
+;             reading the new value back is how the gate distinguishes "a live resource in the
+;             dependency instance's table" from "a value the host happens to hold".
+
+token = [ name: text, ? amount: uint ]

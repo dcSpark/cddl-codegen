@@ -1,0 +1,29 @@
+# The composition acceptance crate: it COMPOSES the two generated components in-process and then
+# drives the composed world in wasmtime. Copied into the generated output root (`<out>/host/`) before
+# the gate-cache key is taken, never built where it sits — every input a cached cell reads from
+# scratch must live INSIDE the hashed root, or an edit to an assertion would serve a stale PASS
+# forever.
+#
+# Nested-and-memoized rather than a dev-dep of cddl-codegen: wasmtime and wac-graph in the bin
+# crate's dev-graph would tax every `local`-tier compile.
+[package]
+name = "component-compose-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasmtime = "47"
+wasmtime-wasi = "47"
+# The composer, IN-PROCESS. A `wac` binary would put a tool version outside the lockfile between the
+# gate and its verdict; the crate resolves `wasmparser`/`wasm-encoder`/`wasm-metadata` at 0.247 —
+# the same floor the WIT gates already pin — so composition adds no version skew.
+wac-graph = "0.10"
+# Decoding the composed artifact back to a world is how the dual-export claim is checked against the
+# BYTES rather than against the graph the composer was handed.
+wit-component = "0.247"
+wit-parser = "0.247"
+# Both generated rust crates, so a value built natively in the host can be compared byte-for-byte
+# against what crosses the composed boundary. RELATIVE paths: an absolute scratch path would make
+# every gate-cache key unique to its run.
+chain = { path = "../chain/rust" }
+wallet = { path = "../wallet/rust" }

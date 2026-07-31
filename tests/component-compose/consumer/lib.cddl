@@ -1,0 +1,25 @@
+; The CONSUMER half of the composition acceptance fixture: a crate whose own type is built out of the
+; dependency's, in both parameter shapes the seam supports.
+;
+; Generated with `--lib-name wallet`, so its WIT package is `cddl:wallet@0.1.0` — see `../dep/lib.cddl`
+; on why that identifier is load-bearing.
+;
+; The three fields are three claims the composed world has to make true at RUNTIME, which is the only
+; place any of them is observable:
+;
+;   head    — a dependency type in a NON-REPEATED position: `borrow<token>` into the constructor,
+;             `result<token, string>` out of the getter. One CBOR seam crossing each way, and the
+;             handle that comes back has to be usable by the DEPENDENCY's own exported interface —
+;             which is true only when one dependency instance serves both sides of the composition.
+;   entries — the same type in a REPEATED position, which crosses through the `token-list`
+;             accumulator instead of a `list<borrow<token>>` the Rust lowering cannot compile. The
+;             getter returns `list<token>`, so the accumulator's per-element seam is checked in both
+;             directions rather than only on the way in.
+;   memo    — an own-crate field, so the consumer's own serializer is exercised beside the seam and
+;             the byte-differential against the native crate is not vacuous.
+
+ledger = [
+  head: token,
+  entries: [* token],
+  memo: text,
+]

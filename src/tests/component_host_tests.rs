@@ -47,10 +47,12 @@ const VERDICT_MARKER: &str = "host-behavior-v1";
 
 /// Free scratch below this and the nested build is a coin flip between ENOSPC and a machine-wide
 /// stall, so the gate says so and stops rather than reporting a code verdict it did not reach.
-const SCRATCH_FLOOR_GIB: u64 = 6;
+///
+/// Shared with the composition gate, which builds the same wasmtime-linked shape into its own root.
+pub(crate) const SCRATCH_FLOOR_GIB: u64 = 6;
 /// Same, for memory: a wasmtime build plus a wasip2 build is the shape that has taken a box
 /// unresponsive.
-const MEMORY_FLOOR_GIB: u64 = 2;
+pub(crate) const MEMORY_FLOOR_GIB: u64 = 2;
 
 /// The fixtures this gate RUNS. Deliberately one: the fixture is designed to carry every assertion
 /// class at once (see `tests/component-host/inputs/lib.cddl`'s header), and each row here pays a
@@ -60,7 +62,7 @@ const HOST_FIXTURES: &[(&str, &[&str])] = &[("tests/component-host/inputs", &[])
 
 /// Recursive copy. The host crate is a handful of files, so this is deliberately the simplest thing
 /// that puts them inside the hashed root.
-fn copy_tree(from: &Path, to: &Path) {
+pub(crate) fn copy_tree(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).unwrap();
     for entry in std::fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();
@@ -99,7 +101,12 @@ fn available_memory_gib() -> Option<u64> {
 /// `Some(reason)` when the machine cannot afford the nested build. Never silent: the caller prints
 /// the reason and skips, so an unrun gate is visible in the log rather than indistinguishable from a
 /// pass.
-fn resource_preflight() -> Option<String> {
+///
+/// `gate` names the caller in the unmeasurable-machine warnings, so a log line attributes to the
+/// gate that printed it. Shared with the composition gate rather than copied: the two build the same
+/// wasmtime-linked shape, so the floors that bound one bound the other, and a floor raised in one
+/// place must not leave the other at the old number.
+pub(crate) fn resource_preflight(gate: &str) -> Option<String> {
     match free_scratch_gib() {
         Some(gib) if gib < SCRATCH_FLOOR_GIB => {
             return Some(format!(
@@ -112,8 +119,7 @@ fn resource_preflight() -> Option<String> {
         }
         Some(_) => {}
         None => eprintln!(
-            "component_host: could not measure free scratch space — proceeding without the ENOSPC \
-             preflight"
+            "{gate}: could not measure free scratch space — proceeding without the ENOSPC preflight"
         ),
     }
     match available_memory_gib() {
@@ -126,7 +132,7 @@ fn resource_preflight() -> Option<String> {
         }
         Some(_) => {}
         None => eprintln!(
-            "component_host: could not read /proc/meminfo — proceeding without the memory preflight"
+            "{gate}: could not read /proc/meminfo — proceeding without the memory preflight"
         ),
     }
     None
@@ -137,7 +143,7 @@ fn resource_preflight() -> Option<String> {
 /// the build.
 #[test]
 fn component_host_behavior() {
-    if let Some(reason) = resource_preflight() {
+    if let Some(reason) = resource_preflight("component_host") {
         println!("component_host: SKIPPED — {reason}");
         return;
     }

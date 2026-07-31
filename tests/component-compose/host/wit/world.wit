@@ -1,0 +1,19 @@
+// The world a COMPOSITION produces, written by hand because nothing generates it: the tool emits one
+// package per crate, and the dual-export world only exists after the composer wires them together.
+//
+// It is deliberately the smallest thing that can name the composed shape — two export lines. The
+// packages those lines refer to are NOT checked in: the gate copies each crate's generated
+// `component/wit/world.wit` into `deps/<lib-name>/` before building, so a change to either
+// projection reaches this world automatically and a renamed package fails loudly at WIT resolve
+// rather than drifting.
+//
+// The two identifiers below are `cddl:<lib-name>@0.1.0` for the lib names the gate generates with.
+// They are the same identifiers the composer registers the built components under, so this file, the
+// fixtures' `--lib-name` flags and the composer's package names move together or not at all.
+
+package cddl:composed@0.1.0;
+
+world composed {
+  export cddl:chain/types@0.1.0;
+  export cddl:wallet/types@0.1.0;
+}

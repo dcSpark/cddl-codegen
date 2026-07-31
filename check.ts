@@ -839,6 +839,28 @@ export const REGISTRY: Gate[] = [
   // is why that root is kept between runs rather than deleted.
   { id: "component_host", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_host"],
     desc: "component face: behavioral gate — a real wasip2 component driven through a wasmtime host" },
+  // THE acceptance gate for the whole component face: two independently generated crates, built as
+  // two components, COMPOSED into one dual-export world, and driven through the flow the feature
+  // exists for — mint a dependency object, hand it to a consumer, get one back from a consumer
+  // getter, and keep using it through the dependency's own interface. Every gate above stops one
+  // step short of that: `component_import_wasip2_build` proves the consumer's imported-resource glue
+  // COMPILES, `component_host` proves ONE component behaves. Only here do two crates agree at
+  // runtime, which is the claim the face is for.
+  //
+  // It also pins the instantiate-once finding in both halves: the two-instance topology composes at
+  // exit 0 into a world indistinguishable from the correct one, and the first handle crossing then
+  // fails. That asymmetry is why the prescription is documented rather than delegated to the
+  // composer.
+  //
+  // Nested cargo over a hand-written host crate copied INSIDE the hashed output root, composing
+  // in-process with `wac-graph` (no `wac` binary, whose version would sit outside the lockfile),
+  // memoized by the gate cache. Measured on the delivering machine: 91 s cold (a fresh scratch root,
+  // so wasmtime and wac-graph build), 4 s warm (cache hit), 7 s on a forced run with the scratch
+  // root warm — which is why that root is kept between runs rather than deleted. It is the same cost
+  // class as `component_host` above and cheaper on the re-run path, which is what puts it at `local`
+  // rather than `full`.
+  { id: "component_compose", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_compose"],
+    desc: "component face: cross-crate acceptance — two generated components composed and driven through wasmtime" },
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },
