@@ -28,6 +28,21 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
         "tests/component-core/input.cddl",
         &["--preserve-encodings=true"],
     ),
+    // The FORCE-CANONICAL posture, swept beside the other two for every fixture that carries a
+    // bytes seam: it is the one posture whose composed runtime drops the blanket `ToCBORBytes` impl
+    // and puts both `to_cbor_bytes` and `to_canonical_cbor_bytes` on `Serialize`, so it is the one
+    // that decides whether `to-canonical-cbor-bytes` is projected at all and which trait the glue
+    // names for it.
+    (
+        "tests/component-core/input.cddl",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    // The JSON posture. A flag, not a spec shape — which is why it is swept as extra rows on the
+    // fixtures that already exist rather than as a fixture of its own.
+    (
+        "tests/component-core/input.cddl",
+        &["--json-serde-derives=true"],
+    ),
     // Type and group choices. Swept in BOTH encoding postures because a choice's `kind` / `as-`
     // arms are the one glue shape `--preserve-encodings` re-spells (tuple arms become named-field
     // arms), which is exactly the hazard the `int` bridge already carries.
@@ -36,12 +51,42 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
         "tests/component-choices/input.cddl",
         &["--preserve-encodings=true"],
     ),
+    (
+        "tests/component-choices/input.cddl",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    // A choice is where the JSON seam lands on a resource that has no constructor, so the seam's
+    // two members sit beside the `new-<variant>` statics rather than beside a `constructor`.
+    (
+        "tests/component-choices/input.cddl",
+        &["--json-serde-derives=true"],
+    ),
     // Value windows: the one class whose WIT signature is identical whether the glue enforces the
     // window or ignores it, so the WIT sweep alone can never judge it.
     ("tests/component-bounds/input.cddl", &[]),
+    (
+        "tests/component-bounds/input.cddl",
+        &["--preserve-encodings=true"],
+    ),
+    (
+        "tests/component-bounds/input.cddl",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
     // The bridging classes — extern, raw bytes, a generic extern base and its instance, and a
     // non-extern generic instance. A DIRECTORY input, so it carries no corpus-parity obligation.
     ("tests/component-extern/inputs", &[]),
+    // The bridges in the two flag postures that decide what a bridging resource may NAME: the
+    // canonical one adds `to-canonical-cbor-bytes` to the extern's seam (its contract does require
+    // `Serialize`) and must leave the raw-bytes bridge alone, and the JSON one must add nothing to
+    // either (nothing imposes serde on a user-owned type).
+    (
+        "tests/component-extern/inputs",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    (
+        "tests/component-extern/inputs",
+        &["--json-serde-derives=true"],
+    ),
     ("tests/component-multifile/inputs", &[]),
     // Cross-scope references that run THROUGH a named collection: the projection resolves the
     // collection through, so the cycle detector must agree about which scope the `use` points at.
@@ -710,6 +755,227 @@ fn component_glue_routes_only_despecialized_params_through_the_try_from_door() {
 }
 
 // -------------------------------------------------------------------------------------------------
+// The two flag-gated seams: canonical bytes and JSON
+// -------------------------------------------------------------------------------------------------
+
+/// The body of one `resource <name> { … }` block of an emitted `.wit`.
+fn resource_body(wit: &str, resource: &str) -> String {
+    wit.split(&format!("resource {resource} {{"))
+        .nth(1)
+        .and_then(|rest| rest.split('}').next())
+        .unwrap_or_else(|| panic!("the WIT carries no `resource {resource}`:\n{wit}"))
+        .to_owned()
+}
+
+/// `to-canonical-cbor-bytes` exists in exactly ONE flag posture, and the gate is not a style choice:
+/// the method is declared on the `Serialize` trait, which the runtime composes only from
+/// `serialization_preserve_force_canonical.rs`. Every other posture composes a `ToCBORBytes` that
+/// declares `to_cbor_bytes` alone — so a row emitted there names a method the runtime does not have,
+/// which is a compile error in the user's crate rather than anything a WIT gate can see.
+///
+/// Swept across the four resource classes at once because they reach the seam through ONE owner
+/// (`bytes_members`); the raw-bytes bridge is the control that proves the owner is not simply
+/// unconditional, since its contract is `RawBytesEncoding` and carries no cbor seam at all.
+#[test]
+fn component_wit_carries_the_canonical_seam_only_where_the_runtime_composes_it() {
+    const CANONICAL: &[&str] = &["--preserve-encodings=true", "--canonical-form=true"];
+    for (posture, flags) in [
+        ("default", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+    ] {
+        let wit = wit_of("tests/component-core/input.cddl", flags);
+        assert!(
+            !wit.contains("to-canonical-cbor-bytes"),
+            "the {posture} posture projects `to-canonical-cbor-bytes`, whose method lives on a \
+             `Serialize` trait this posture's runtime does not compose:\n{wit}"
+        );
+    }
+    // A record and a `@newtype` wrapper.
+    let core = wit_of("tests/component-core/input.cddl", CANONICAL);
+    for resource in ["%record", "hash"] {
+        let body = resource_body(&core, resource);
+        assert!(
+            body.contains("to-cbor-bytes: func() -> list<u8>;")
+                && body.contains("to-canonical-cbor-bytes: func() -> list<u8>;"),
+            "`{resource}` lost a half of the bytes seam in the force-canonical posture:\n{body}"
+        );
+    }
+    // A choice, whose seam comes from the same owner even though it has no constructor.
+    let choices = wit_of("tests/component-choices/input.cddl", CANONICAL);
+    assert!(
+        resource_body(&choices, "outcome").contains("to-canonical-cbor-bytes: func() -> list<u8>;"),
+        "a choice resource carries no canonical seam:\n{choices}"
+    );
+    // An EXTERN bridge does carry it — the extern contract requires `Serialize`, which is exactly
+    // the trait the method is declared on — and the RAW-BYTES bridge carries no cbor seam at all.
+    let extern_wit = wit_of("tests/component-extern/inputs", CANONICAL);
+    assert!(
+        resource_body(&extern_wit, "ext").contains("to-canonical-cbor-bytes: func() -> list<u8>;"),
+        "the extern bridge lost the canonical half of the seam its contract does require:\n{extern_wit}"
+    );
+    assert!(
+        !resource_body(&extern_wit, "raw").contains("cbor-bytes"),
+        "the raw-bytes bridge grew a cbor seam in the canonical posture:\n{extern_wit}"
+    );
+}
+
+/// The glue behind that row names `Serialize` — the trait the method is DECLARED on — rather than
+/// the `to_bytes_trait()` fork. The two agree by construction here (the projection's gate is that
+/// same flag pair), and naming the owning trait is what keeps the glue honest if either moves.
+#[test]
+fn component_glue_bridges_the_canonical_seam_through_serialize() {
+    let glue = component_glue(
+        "tests/component-core/input.cddl",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    );
+    assert!(
+        glue.contains(
+            "<cddl_lib::Hash as cddl_lib::serialization::Serialize>::to_canonical_cbor_bytes("
+        ),
+        "the canonical seam no longer goes through `Serialize::to_canonical_cbor_bytes`:\n{glue}"
+    );
+    // And the plain half stays on the same trait in this posture, so the two cannot silently name
+    // different traits for methods the runtime declares side by side.
+    assert!(
+        glue.contains("<cddl_lib::Hash as cddl_lib::serialization::Serialize>::to_cbor_bytes("),
+        "the plain bytes half stopped forking to `Serialize` in the force-canonical posture:\n{glue}"
+    );
+}
+
+/// The JSON seam goes to the types the tool DEFINES and to nothing else.
+///
+/// The exclusion is the load-bearing half. `bytes_members` is shared with the extern bridge and
+/// legitimately so — the extern contract already imposes `Serialize`/`Deserialize`, and the emitted
+/// `extern_interface_check.rs` asserts them — but NOTHING imposes serde on a user-owned type, so a
+/// `to-json` there would name a trait impl that need not exist. That is the same
+/// compile-error-in-generated-code class as the `no_deserialize` fork and the raw-bytes seam split,
+/// reached a third time, which is why the JSON seam has its own owner rather than joining that one.
+#[test]
+fn component_wit_projects_the_json_seam_onto_the_types_the_tool_defines() {
+    const JSON: &[&str] = &["--json-serde-derives=true"];
+    let off = wit_of("tests/component-core/input.cddl", &[]);
+    assert!(
+        !off.contains("to-json") && !off.contains("cbor-to-json"),
+        "the JSON seam is emitted without `--json-serde-derives`:\n{off}"
+    );
+    let core = wit_of("tests/component-core/input.cddl", JSON);
+    for resource in ["%record", "hash"] {
+        let body = resource_body(&core, resource);
+        assert!(
+            body.contains("to-json: func() -> result<string, string>;")
+                && body.contains(&format!(
+                    "from-json: static func(json: string) -> result<{resource}, string>;"
+                )),
+            "`{resource}` is missing a half of the JSON seam:\n{body}"
+        );
+    }
+    // `to-json` is FALLIBLE, deliberately departing from the plan's infallible `string`: the wasm
+    // face's own `to_json` is `Result<String, JsError>`, and rendering genuinely can fail (the
+    // runtime's `AnyCbor` serde fragment reports "key must be a string" for a non-string-keyed map,
+    // which reaches any type holding one).
+    assert!(
+        !core.contains("to-json: func() -> string;"),
+        "`to-json` is declared infallible, so a runtime serde failure has nowhere to go:\n{core}"
+    );
+    // The two free functions on the `any-cbor` alias — the alias is not a resource, so its JSON door
+    // lives at interface level exactly as the `cbor-kind` introspection door does.
+    assert!(
+        core.contains("cbor-to-json: func(v: any-cbor) -> result<string, string>;")
+            && core.contains("cbor-from-json: func(json: string) -> result<any-cbor, string>;"),
+        "the `any-cbor` JSON doors are missing or changed shape:\n{core}"
+    );
+    // A choice carries the seam beside its statics, with no constructor in sight.
+    let choices = wit_of("tests/component-choices/input.cddl", JSON);
+    assert!(
+        resource_body(&choices, "outcome").contains("to-json: func() -> result<string, string>;"),
+        "a choice resource carries no JSON seam:\n{choices}"
+    );
+    // The CONTROLS: neither bridging class gets one, and the monomorphized non-extern generic
+    // instance beside them does — so the exclusion is about the CONTRACT, not about bridging.
+    let extern_wit = wit_of("tests/component-extern/inputs", JSON);
+    for bridge in ["ext", "raw", "extern-generic-ext"] {
+        let body = resource_body(&extern_wit, bridge);
+        assert!(
+            !body.contains("json"),
+            "the bridging resource `{bridge}` grew a JSON seam, which names a serde impl its \
+             contract does not require:\n{body}"
+        );
+    }
+    assert!(
+        resource_body(&extern_wit, "gen-rule-u64").contains("to-json:"),
+        "a tool-defined type in the bridging fixture lost its JSON seam, so the exclusions above \
+         prove nothing:\n{extern_wit}"
+    );
+}
+
+/// The glue behind the JSON seam. Every line here is a fact about two crates that the WIT cannot
+/// express, and the `&*` is the one that bites: `serde_json`'s parameter is GENERIC, so the
+/// auto-deref that lets the cbor seam hand a `Ref<T>` to a `&T` parameter does not apply and a bare
+/// `&self.0.borrow()` fails to satisfy `Serialize`.
+#[test]
+fn component_glue_bridges_json_through_serde_json() {
+    let glue = component_glue(
+        "tests/component-core/input.cddl",
+        &["--json-serde-derives=true"],
+    );
+    assert!(
+        glue.contains("serde_json::to_string_pretty(&*self.0.borrow()).map_err(err)"),
+        "`to-json` no longer dereferences the guard for the generic serde call:\n{glue}"
+    );
+    assert!(
+        glue.contains("serde_json::from_str::<cddl_lib::Hash>(&json)")
+            && glue.contains("    .map(|v| wit_types::Hash::new(WitHash(RefCell::new(v))))"),
+        "`from-json` no longer mints the owned handle from a parsed rust value:\n{glue}"
+    );
+    // The free doors: bytes in, decode, then render — and back.
+    assert!(
+        glue.contains(
+            "<cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&v)"
+        ) && glue.contains(".and_then(|v| serde_json::to_string_pretty(&v).map_err(err))"),
+        "`cbor-to-json` no longer decodes before rendering:\n{glue}"
+    );
+    assert!(
+        glue.contains("serde_json::from_str::<cddl_lib::any_cbor::AnyCbor>(&json)")
+            && glue.contains(
+                ".map(|v| <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&v))"
+            ),
+        "`cbor-from-json` no longer re-encodes the parsed item:\n{glue}"
+    );
+}
+
+/// The component manifest declares `serde_json` exactly under the flag whose glue names it, and
+/// declares neither of `ops_for_wasm`'s other two JSON deps — the emitted guest names neither crate,
+/// and an undeclared-but-unused dependency is noise a consumer inherits.
+///
+/// Both directions are asserted because the op is set-or-REMOVE: a flag flipped back off must strand
+/// nothing.
+#[test]
+fn the_component_manifest_declares_serde_json_exactly_under_the_json_flag() {
+    let manifest = |extra: &[&str]| {
+        crate::api::generated_strings(&cli_for("tests/component-core/input.cddl", extra))
+            .unwrap()
+            .get("component/Cargo.toml")
+            .expect("the component tree always carries its manifest")
+            .clone()
+    };
+    let on = manifest(&["--json-serde-derives=true"]);
+    assert!(
+        on.contains("serde_json = { version = \"1.0.57\", features = [\"float_roundtrip\"] }"),
+        "the JSON posture's component manifest does not declare `serde_json` (or moved off the \
+         version/features `ops_for_wasm` uses):\n{on}"
+    );
+    assert!(
+        !on.contains("\nserde =") && !on.contains("serde-wasm-bindgen"),
+        "the component manifest declares a JSON dep its emitted guest never names:\n{on}"
+    );
+    let off = manifest(&[]);
+    assert!(
+        !off.contains("serde_json"),
+        "`serde_json` is declared without `--json-serde-derives`:\n{off}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
 // The strong-uniqueness detector's three pinned messages
 // -------------------------------------------------------------------------------------------------
 
@@ -747,6 +1013,44 @@ fn wit_interface_type_name_collision_is_rejected() {
             && err.contains("`@name` comment-DSL directive"),
         "unexpected interface-level collision message: {err}"
     );
+}
+
+/// INTERFACE level again, on the half a type-only walk misses: an interface's free FUNCTIONS share
+/// the same flat namespace its types do, and `wit-parser` refuses the package at RESOLVE. So a rule
+/// converging on one of the synthesized `any-cbor` doors has to be reported here rather than reach
+/// the user as a parse failure against a file they did not write.
+///
+/// Asserted on `cbor-to-json` — one of the two doors the JSON seam adds — with the always-present
+/// `cbor-kind` beside it, so the check is about the FUNCTION namespace and not about one name.
+#[test]
+fn wit_interface_function_name_collision_is_rejected() {
+    for (rule, wit_name, flags) in [
+        ("cbor_kind", "cbor-kind", &[][..]),
+        (
+            "cbor_to_json",
+            "cbor-to-json",
+            &["--json-serde-derives=true"][..],
+        ),
+    ] {
+        let dir = scratch_dir("funccollide");
+        let path = dir.join("input.cddl");
+        std::fs::write(
+            &path,
+            format!("{rule} = {{ x: uint }}\nholder = {{ m: any }}\n"),
+        )
+        .unwrap();
+        let err = wit_files(path.to_str().unwrap(), flags);
+        std::fs::remove_dir_all(&dir).ok();
+        let err = err.err().unwrap_or_else(|| {
+            panic!("the spec colliding with the free function `{wit_name}` generated")
+        });
+        assert!(
+            err.contains("WIT type name collision under --component:")
+                && err.contains(&format!("the free function `{wit_name}`"))
+                && err.contains(&format!("all convert to the WIT identifier `{wit_name}`")),
+            "the free-function namespace is not part of the interface-level check: {err}"
+        );
+    }
 }
 
 /// RESOURCE level: a member sharing the resource's own name. The one collision the validity gate
@@ -1298,6 +1602,20 @@ const BUILD_SMOKE_FIXTURES: &[(&str, &[&str])] = &[
     // extern types, so it cannot compile standalone (the same reason `tests/multifile` is absent);
     // its emitted bytes are pinned by the `component_extern` whole-program snapshot instead.
     ("tests/component-bounds/input.cddl", &[]),
+    // The two flag-gated SEAMS, in the one posture that carries both: `to-canonical-cbor-bytes`
+    // (which names a trait method the runtime composes only here) and the JSON pair (which names
+    // `serde_json` and the rust crate's derived serde impls, and needs the dependency the component
+    // manifest adds under the same flag). Every one of those is a fact about the two crates that the
+    // WIT cannot express — a resource declaring `to-json` reads identically whether the method it
+    // bridges exists or not.
+    (
+        "tests/component-core/input.cddl",
+        &[
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+            "--json-serde-derives=true",
+        ],
+    ),
 ];
 
 /// THE acceptance gate for the guest emitters: a generated component crate that does not compile is

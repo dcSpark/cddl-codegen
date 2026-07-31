@@ -1,0 +1,55 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+#[derive(Clone, Debug, Default)]
+pub struct HashEncoding {
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NodeEncoding {
+    pub len_encoding: LenEncoding,
+    pub label_encoding: StringEncoding,
+    pub children_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RecordEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub id_encoding: Option<cbor_event::Sz>,
+    pub id_key_encoding: StringEncoding,
+    pub name_encoding: StringEncoding,
+    pub name_key_encoding: StringEncoding,
+    pub digest_key_encoding: StringEncoding,
+    pub delta_key_encoding: StringEncoding,
+    pub limit_encoding: Option<cbor_event::Sz>,
+    pub limit_key_encoding: StringEncoding,
+    pub tags_encoding: LenEncoding,
+    pub tags_elem_encodings: Vec<StringEncoding>,
+    pub tags_key_encoding: StringEncoding,
+    pub props_encoding: LenEncoding,
+    pub props_key_encodings: BTreeMap<String, StringEncoding>,
+    pub props_value_encodings: BTreeMap<String, Option<cbor_event::Sz>>,
+    pub props_key_encoding: StringEncoding,
+    pub totals_encoding: LenEncoding,
+    pub totals_key_encodings: BTreeMap<String, StringEncoding>,
+    pub totals_value_encodings: BTreeMap<String, Option<cbor_event::Sz>>,
+    pub totals_key_encoding: StringEncoding,
+    pub kind_encoding: Option<cbor_event::Sz>,
+    pub kind_key_encoding: StringEncoding,
+    pub root_key_encoding: StringEncoding,
+    pub meta_key_encoding: StringEncoding,
+    pub note_encoding: StringEncoding,
+    pub note_key_encoding: StringEncoding,
+}

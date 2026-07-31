@@ -1142,9 +1142,25 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
 ///   `wit-bindgen`), declares no `std` feature and consumes the rust crate with default features on,
 ///   so there is nothing here for a `--std-forward-dep` to switch. That is exactly the reason
 ///   [`ops_for_wasm`] states for the same absence;
-/// - **no json/serde conditional deps** — the component face has no JSON surface yet.
+/// - **one json conditional dep, not three** — see the `serde_json` op below.
 pub fn ops_for_component(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     let mut ops = ops_from_log(cli, "manifest_changes/component.toml")?;
+    // The guest's JSON seam (`to-json`/`from-json` per resource, `cbor-to-json`/`cbor-from-json` on
+    // the `any-cbor` alias) is emitted as `serde_json::{to_string_pretty, from_str}` over the serde
+    // impls the RUST crate derives, so this is the one dep the flag adds. Version and features are
+    // `ops_for_wasm`'s verbatim, `float_roundtrip` included for the same reason: `from-json` parses
+    // through `serde_json::from_str` and has to round-trip `f64` bit-for-bit.
+    //
+    // Two deltas from `ops_for_wasm`'s three JSON deps, each because the emitted guest never names
+    // the crate: `serde` itself (the derives live in the rust crate, and the trait bound resolves at
+    // the generic `serde_json` call without a direct dependency) and `serde-wasm-bindgen` (the
+    // `to_json_value` door has no WIT counterpart — there is no `JsValue` at this boundary).
+    // Set-or-REMOVE like every other conditional dep, so flipping the flag off strands nothing.
+    ops.push(dep(
+        "serde_json",
+        "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
+        cli.json_serde_derives,
+    ));
     // `--component-dep=<package>=<path>`: ASSERT-ONLY, on exactly the terms `ops_for_wasm` states
     // for `--wasm-dep` — the package name lives only inside the flag value, so a dropped flag
     // carries no name to tombstone and a stale entry lingers until removed by hand.
