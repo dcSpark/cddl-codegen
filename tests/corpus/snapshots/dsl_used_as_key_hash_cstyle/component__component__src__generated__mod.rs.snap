@@ -9,33 +9,3 @@ wit_bindgen::generate!({
     path: "wit",
     world: "cddl-lib-world",
 });
-
-use exports::cddl::cddl_lib::types as wit_types;
-
-struct Component;
-
-impl wit_types::Guest for Component {}
-
-export!(Component);
-
-/// Every fallible door on this face reports through the rust crate's own error `Display`,
-/// so a WIT `result<_, string>` carries the same text a native caller would see.
-fn err<E: core::fmt::Display>(e: E) -> String {
-    e.to_string()
-}
-
-fn fixed_enum_to_wit(v: &cddl_lib::FixedEnum) -> wit_types::FixedEnum {
-    match v {
-        cddl_lib::FixedEnum::I0 => wit_types::FixedEnum::I0,
-        cddl_lib::FixedEnum::I1 => wit_types::FixedEnum::I1,
-        cddl_lib::FixedEnum::I2 => wit_types::FixedEnum::I2,
-    }
-}
-
-fn fixed_enum_from_wit(v: wit_types::FixedEnum) -> cddl_lib::FixedEnum {
-    match v {
-        wit_types::FixedEnum::I0 => cddl_lib::FixedEnum::I0,
-        wit_types::FixedEnum::I1 => cddl_lib::FixedEnum::I1,
-        wit_types::FixedEnum::I2 => cddl_lib::FixedEnum::I2,
-    }
-}

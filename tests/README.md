@@ -3195,13 +3195,18 @@ lockfile preflight per cell, which is most of what is left.
 `EXPECTED_COMPILE_FAIL` is the ledger of fixtures whose glue does NOT compile, keyed
 `(stem, reason)` and guarded both ways: a listed fixture that starts compiling fails as "the bug is
 fixed — remove the pin", an unlisted one that stops fails as a regression. Every entry is a FINDING
-this gate made rather than a decision, and they fall into four emitter classes, all in the emitted
-`component/src/generated/mod.rs` and all reproducing under either `--wasm` posture: a world that
-exports no interface still emitting `export!(Component);`; an interface whose only types are VALUE
-types still emitting `impl wit_types::Guest for Component {}`; a despecialized `[+ T]` / `{+ K => V}`
-in a position the component fixtures do not reach `.collect()`ing straight into
-`NonEmptyVec`/`NonEmptyMap` instead of re-entering its `TryFrom` door; and a `@default`ed scalar
-field whose glue treats the value as a handle. Fixtures that cannot generate belong in
+this gate made rather than a decision. Two emitter classes remain, both in the emitted
+`component/src/generated/mod.rs` and both reproducing under either `--wasm` posture: a despecialized
+`[+ T]` / `{+ K => V}` reached through a named collection rule as a list ELEMENT or a map KEY, which
+`.collect()`s straight into `NonEmptyVec`/`NonEmptyMap` because the `TryFrom` routing sees only the
+TOP level of a parameter; and a `@default`ed scalar field, which is a plain `T` in the rust struct
+while the projection still treats it as optional. The two classes the gate found in the GUEST BLOCK
+itself — a world exporting no interface still emitting `export!(Component);`, and an interface of
+only value types still emitting `impl wit_types::Guest for Component {}` — are fixed, and the
+emission conditions that replaced them are pinned in `src/tests/component_tests.rs` by
+`component_glue_emits_the_guest_block_only_where_generate_mints_one`,
+`a_value_only_interface_gets_no_guest_impl_beside_an_interface_that_does` and
+`a_free_function_alone_mints_a_guest_trait`. Fixtures that cannot generate belong in
 `snapshot_tests::PROFILE_GENERATION_SKIP` instead, and fixtures whose RUST crate references
 user-supplied code are excluded through `integration_tests::COMPILE_SKIP`, which this gate shares
 rather than restates.
