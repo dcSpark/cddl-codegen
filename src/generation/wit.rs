@@ -425,6 +425,15 @@ pub(crate) struct WitParam {
     #[allow(dead_code)]
     pub rust_name: String,
     pub ty: WitType,
+    /// Whether THIS parameter's WIT→rust conversion is the one that can fail — i.e. whether the
+    /// projection despecialized a type whose invariant has to be re-checked at the boundary (see
+    /// [`wit_param_validates`]).
+    ///
+    /// Carried per parameter rather than re-derived, for the same reason every other rust-side half
+    /// is: the owning signature's `fallible` bit says only that SOMETHING here can fail, and a guest
+    /// emitter that guessed WHICH would either drop a required `TryFrom` door or wrap an infallible
+    /// conversion in one that does not exist.
+    pub validates: bool,
 }
 
 /// An interface-level free function (no `self`).
@@ -501,7 +510,7 @@ const ROOT_INTERFACE_NAME: &str = "types";
 /// The 12 cases of the static runtime's `AnyCborKind`, as (WIT case, rust variant) pairs. Read out
 /// of `static/any_cbor_*.rs`; the pairing is what lets the guest glue bridge both directions
 /// without re-deriving a name.
-const ANY_CBOR_KIND_CASES: &[(&str, &str)] = &[
+pub(crate) const ANY_CBOR_KIND_CASES: &[(&str, &str)] = &[
     ("uint", "UInt"),
     ("nint", "NInt"),
     ("bytes", "Bytes"),
@@ -717,6 +726,9 @@ fn any_cbor_kind_func() -> WitFunc {
             name: "v".to_owned(),
             rust_name: "v".to_owned(),
             ty: WitType::AnyCbor,
+            // The bytes are decoded through `AnyCbor::from_cbor_bytes`, which is exactly the
+            // boundary re-check this flag marks.
+            validates: true,
         }],
         result: Some(WitType::AnyCborKind),
         fallible: true,
@@ -844,6 +856,7 @@ fn project_record(
                         name: "present".to_owned(),
                         rust_name: "present".to_owned(),
                         ty: WitType::Bool,
+                        validates: false,
                     }],
                     result: None,
                     fallible: false,
@@ -880,6 +893,7 @@ fn project_record(
                     name: field_name,
                     rust_name: field.name.clone(),
                     ty,
+                    validates,
                 }],
                 result: None,
                 fallible: validates,
@@ -892,6 +906,7 @@ fn project_record(
                 name: field_name,
                 rust_name: field.name.clone(),
                 ty,
+                validates,
             });
             ctor_fallible |= validates;
         }
@@ -973,6 +988,9 @@ fn project_wrapper(
                 name: "inner".to_owned(),
                 rust_name: "inner".to_owned(),
                 ty,
+                // NOT `|| bounded`: a bound lives in the rust `new`'s own signature (`can_new_fail`),
+                // so the guest calls a fallible constructor rather than a despecialization door.
+                validates: wit_param_validates(wrapped, ctx.types),
             }],
             fallible: bounded || wit_param_validates(wrapped, ctx.types),
         }),
@@ -1020,6 +1038,7 @@ fn bytes_members() -> Vec<WitMember> {
                 name: "bytes".to_owned(),
                 rust_name: "bytes".to_owned(),
                 ty: WitType::List(Box::new(WitType::U8)),
+                validates: false,
             }],
             // The `ok` type is the OWNING resource, which a member cannot name without carrying its
             // own owner; `op` already says so, and the renderer fills it in.
@@ -1169,11 +1188,14 @@ fn map_primitive(p: Primitive) -> WitType {
 /// Whether a WIT parameter of this rust type must be VALIDATED at the boundary — i.e. whether the
 /// projection dropped a constraint the rust type carries in its own type system.
 ///
-/// Two sources: a value bound (`uint .size 2`, a float window), which makes the rust constructor
-/// fallible too; and a DESPECIALIZED collection — `[+ T]`'s `NonEmptyVec` and `@duplicates reject`'s
+/// Three sources: a value bound (`uint .size 2`, a float window), which makes the rust constructor
+/// fallible too; a DESPECIALIZED collection — `[+ T]`'s `NonEmptyVec` and `@duplicates reject`'s
 /// `OrderedSet` both become a plain `list<t>` in WIT, so the invariant their single `TryFrom` door
-/// enforces has to be re-checked where the list is consumed. A plain table is NOT in this class: a
-/// `BTreeMap` carries no invariant a `list<tuple<K, V>>` can violate.
+/// enforces has to be re-checked where the list is consumed; and CDDL `any`, which crosses as the
+/// transparent `any-cbor` BYTE alias and comes back through `AnyCbor::from_cbor_bytes` at the
+/// consuming door — the argument is arbitrary caller-supplied bytes carrying no type-system
+/// invariant, so that decode IS the re-check and it has to be able to fail. A plain table is NOT in
+/// this class: a `BTreeMap` carries no invariant a `list<tuple<K, V>>` can violate.
 fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
     if ty.has_value_bounds() || ty.is_type_enforced_non_empty() || ty.duplicates_reject() {
         return true;
@@ -1203,9 +1225,9 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
         ConceptualRustType::Map(key, value) => {
             wit_param_validates(key, types) || wit_param_validates(value, types)
         }
+        ConceptualRustType::Any => true,
         ConceptualRustType::Primitive(_)
         | ConceptualRustType::Fixed(_)
-        | ConceptualRustType::Any
         | ConceptualRustType::Rust(_)
         | ConceptualRustType::Alias(_, _) => false,
     }
@@ -1412,12 +1434,6 @@ fn render_type(ty: &WitType, param: bool) -> String {
 /// (R5), so a spec carrying a phase-2 type class still regenerates cleanly and the gap is visible in
 /// the emitted file rather than as a generation failure.
 ///
-/// `#[allow(dead_code)]`: the production reader is `export.rs`'s `generated_files`, which lands with
-/// the guest-crate emitters — the component tree is written as a whole or not at all. Until then the
-/// renderer is exercised by the `#[cfg(test)] api::wit_strings` door and the WIT-validity gate, so
-/// the attribute covers a producer that is unwired, not one that is unreachable, and comes off with
-/// that wiring.
-#[allow(dead_code)]
 pub(crate) fn wit_files(types: &IntermediateTypes, cli: &Cli) -> BTreeMap<String, String> {
     render(&project(types, cli))
 }
