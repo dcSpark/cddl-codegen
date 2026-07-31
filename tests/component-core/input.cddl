@@ -43,5 +43,11 @@ record = {
   kind: color,
   root: node,
   meta: any,
+  ; a list whose ELEMENT conversion is FALLIBLE and is not a map row: `any-cbor` decodes on the way
+  ; in and encodes on the way out, so the per-element expression already evaluates to a `Result` in
+  ; both directions. It is the one shape that separates "the element IS the result" from "the element
+  ; is rebuilt from parts each already unwrapped" (a map row), and the difference is visible only to a
+  ; COMPILE — `meta` above is the same conversion in a non-repeated position and never reaches it
+  metas: [* any],
   ? note: text,
 }

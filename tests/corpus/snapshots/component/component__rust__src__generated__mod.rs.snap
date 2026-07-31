@@ -157,6 +157,7 @@ pub struct Record {
     pub kind: Color,
     pub root: Node,
     pub meta: crate::generated::any_cbor::AnyCbor,
+    pub metas: Vec<crate::generated::any_cbor::AnyCbor>,
     pub note: Option<String>,
 }
 
@@ -173,6 +174,7 @@ impl Record {
         kind: Color,
         root: Node,
         meta: crate::generated::any_cbor::AnyCbor,
+        metas: Vec<crate::generated::any_cbor::AnyCbor>,
     ) -> Result<Self, DeserializeError> {
         if limit > 5 {
             return Err(DeserializeFailure::RangeCheck {
@@ -194,6 +196,7 @@ impl Record {
             kind,
             root,
             meta,
+            metas,
             note: None,
         })
     }

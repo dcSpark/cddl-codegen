@@ -208,7 +208,7 @@ impl Serialize for Record {
                 .map(|encs| encs.len_encoding)
                 .unwrap_or_default()
                 .to_len_sz(
-                    11 + match &self.note {
+                    12 + match &self.note {
                         Some(_) => 1,
                         None => 0,
                     },
@@ -221,14 +221,14 @@ impl Serialize for Record {
             .filter(|encs| {
                 !force_canonical
                     && encs.orig_deser_order.len()
-                        == 11
+                        == 12
                             + match &self.note {
                                 Some(_) => 1,
                                 None => 0,
                             }
             })
             .map(|encs| encs.orig_deser_order.clone())
-            .unwrap_or_else(|| vec![0, 8, 10, 1, 11, 9, 5, 3, 4, 6, 2, 7]);
+            .unwrap_or_else(|| vec![0, 8, 10, 1, 12, 9, 5, 3, 4, 11, 6, 2, 7]);
         for field_index in deser_order {
             match field_index {
                 0 => {
@@ -326,7 +326,7 @@ impl Serialize for Record {
                             .to_str_len_sz(self.name.len() as u64, force_canonical),
                     )?;
                 }
-                11 => {
+                12 => {
                     if let Some(field) = &self.note {
                         serializer.write_text_sz(
                             "note",
@@ -422,6 +422,31 @@ impl Serialize for Record {
                             force_canonical,
                         ),
                     )?;
+                }
+                11 => {
+                    serializer.write_text_sz(
+                        "metas",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.metas_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("metas".len() as u64, force_canonical),
+                    )?;
+                    serializer.write_array_sz(
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.metas_encoding)
+                            .unwrap_or_default()
+                            .to_len_sz(self.metas.len() as u64, force_canonical),
+                    )?;
+                    for element in self.metas.iter() {
+                        element.serialize(serializer, force_canonical)?;
+                    }
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.metas_encoding)
+                        .unwrap_or_default()
+                        .end(serializer, force_canonical)?;
                 }
                 6 => {
                     serializer.write_text_sz(
@@ -567,7 +592,7 @@ impl Deserialize for Record {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
             let mut read_len = CBORReadLen::new(len);
-            read_len.read_elems(11)?;
+            read_len.read_elems(12)?;
             let mut orig_deser_order = Vec::new();
             let mut id_encoding = None;
             let mut id_key_encoding = StringEncoding::default();
@@ -594,6 +619,9 @@ impl Deserialize for Record {
             let mut limit_encoding = None;
             let mut limit_key_encoding = StringEncoding::default();
             let mut limit = None;
+            let mut metas_encoding = LenEncoding::default();
+            let mut metas_key_encoding = StringEncoding::default();
+            let mut metas = None;
             let mut props_encoding = LenEncoding::default();
             let mut props_key_encodings = BTreeMap::new();
             let mut props_value_encodings = BTreeMap::new();
@@ -699,7 +727,7 @@ impl Deserialize for Record {
                                 note = Some(tmp_note);
                                 note_encoding = tmp_note_encoding;
                                 note_key_encoding = StringEncoding::from(key_enc);
-                                orig_deser_order.push(11);
+                                orig_deser_order.push(12);
                             },
                             "root" =>  {
                                 if root.is_some() {
@@ -754,6 +782,27 @@ impl Deserialize for Record {
                                 limit_encoding = tmp_limit_encoding;
                                 limit_key_encoding = StringEncoding::from(key_enc);
                                 orig_deser_order.push(4);
+                            },
+                            "metas" =>  {
+                                if metas.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str("metas".into())).into());
+                                }
+                                let (tmp_metas, tmp_metas_encoding) = (|| -> Result<_, DeserializeError> {
+                                    let mut metas_arr = Vec::new();
+                                    let len = raw.array_sz()?;
+                                    let metas_encoding = len.into();
+                                    while match len { cbor_event::LenSz::Len(n, _) => (metas_arr.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
+                                        if matches!(len, cbor_event::LenSz::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                                            break;
+                                        }
+                                        metas_arr.push(crate::generated::any_cbor::AnyCbor::deserialize(raw)?);
+                                    }
+                                    Ok((metas_arr, metas_encoding))
+                                })().map_err(|e| e.annotate("metas"))?;
+                                metas = Some(tmp_metas);
+                                metas_encoding = tmp_metas_encoding;
+                                metas_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(11);
                             },
                             "props" =>  {
                                 if props.is_some() {
@@ -885,6 +934,10 @@ impl Deserialize for Record {
                 Some(x) => x,
                 None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("meta"))).into()),
             };
+            let metas = match metas {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("metas"))).into()),
+            };
             read_len.finish()?;
             Ok(Self {
                 id,
@@ -898,6 +951,7 @@ impl Deserialize for Record {
                 kind,
                 root,
                 meta,
+                metas,
                 note,
                 encodings: Some(RecordEncoding {
                     len_encoding,
@@ -925,6 +979,8 @@ impl Deserialize for Record {
                     kind_encoding,
                     root_key_encoding,
                     meta_key_encoding,
+                    metas_key_encoding,
+                    metas_encoding,
                     note_key_encoding,
                     note_encoding,
                 }),

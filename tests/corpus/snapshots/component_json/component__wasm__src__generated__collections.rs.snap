@@ -11,6 +11,7 @@ expression: content
 // line naming a removed wrapper fails this crate's own build — the index cannot
 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
+pub use crate::generated::AnyList;
 pub use crate::generated::Attrs;
 pub use crate::generated::Counts;
 pub use crate::generated::Names;

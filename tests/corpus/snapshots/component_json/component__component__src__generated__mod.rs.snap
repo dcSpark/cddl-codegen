@@ -208,6 +208,7 @@ impl wit_types::GuestRecord for WitRecord {
         kind: wit_types::Color,
         root: wit_types::NodeBorrow<'_>,
         meta: Vec<u8>,
+        metas: Vec<Vec<u8>>,
     ) -> Result<Self, String> {
         let digest = digest.get::<WitHash>().0.borrow().clone();
         let delta = int_from_wit_types(delta);
@@ -221,6 +222,7 @@ impl wit_types::GuestRecord for WitRecord {
                 &meta,
             )
             .map_err(err)?;
+        let metas = metas.into_iter().map(|x| <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&x).map_err(err)).collect::<Result<Vec<_>, String>>()?;
         let inner = cddl_lib::Record::new(
             id,
             name,
@@ -233,6 +235,7 @@ impl wit_types::GuestRecord for WitRecord {
             kind,
             root,
             meta,
+            metas,
         )
         .map_err(err)?;
         Ok(WitRecord(RefCell::new(inner)))
@@ -291,6 +294,18 @@ impl wit_types::GuestRecord for WitRecord {
     fn meta(&self) -> Vec<u8> {
         let me = self.0.borrow();
         <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Serialize>::to_cbor_bytes(&me.meta)
+    }
+
+    fn metas(&self) -> Vec<Vec<u8>> {
+        let me = self.0.borrow();
+        me.metas
+            .iter()
+            .map(|x| {
+                <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Serialize>::to_cbor_bytes(
+                    x,
+                )
+            })
+            .collect()
     }
 
     fn note(&self) -> Option<String> {

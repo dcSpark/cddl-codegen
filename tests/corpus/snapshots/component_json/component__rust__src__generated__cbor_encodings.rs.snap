@@ -50,6 +50,8 @@ pub struct RecordEncoding {
     pub kind_key_encoding: StringEncoding,
     pub root_key_encoding: StringEncoding,
     pub meta_key_encoding: StringEncoding,
+    pub metas_encoding: LenEncoding,
+    pub metas_key_encoding: StringEncoding,
     pub note_encoding: StringEncoding,
     pub note_key_encoding: StringEncoding,
 }

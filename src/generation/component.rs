@@ -161,6 +161,23 @@ fn kebab_to_camel(name: &str) -> String {
         .collect()
 }
 
+/// The body of a `map` closure over a list whose ELEMENT conversion is fallible, for a
+/// `collect::<Result<Vec<_>, String>>()`.
+///
+/// A tuple element is REBUILT from parts each of which was already unwrapped with `?`, so the tuple
+/// literal is a plain value and owes the closure its `Ok(..)`. Every other element's conversion IS
+/// the `Result` — wrapping it would collect a `Vec<Result<..>>` inside a `Result`, which is a type
+/// error in the emitted crate at the consuming call. The two cases are distinguished by the ELEMENT
+/// TYPE rather than by inspecting the expression text, because the tuple branch is the only producer
+/// of the rebuilt form.
+fn wrap_fallible_element(element: &str, inner: &WitType) -> String {
+    if matches!(inner, WitType::Tuple(_)) {
+        format!("Ok({element})")
+    } else {
+        element.to_owned()
+    }
+}
+
 /// The guest REP struct wrapping one generated rust type. Keyed by the RUST ident rather than the
 /// WIT name because rust idents are unique across the whole IR while a WIT type name is unique only
 /// within its interface — two scopes may each define a `foo`, and both reps live in this one file.
@@ -502,8 +519,8 @@ impl Emitter<'_, '_> {
                 if element.fallible {
                     Conv {
                         expr: format!(
-                            "{expr}.into_iter().map(|{pattern}| Ok({})).collect::<Result<Vec<_>, String>>()",
-                            element.expr
+                            "{expr}.into_iter().map(|{pattern}| {}).collect::<Result<Vec<_>, String>>()",
+                            wrap_fallible_element(&element.expr, inner)
                         ),
                         fallible: true,
                     }
@@ -689,8 +706,8 @@ impl Emitter<'_, '_> {
                 if element.fallible {
                     Conv {
                         expr: format!(
-                            "{expr}.iter().map(|{head}| Ok({})).collect::<Result<Vec<_>, String>>()",
-                            element.expr
+                            "{expr}.iter().map(|{head}| {}).collect::<Result<Vec<_>, String>>()",
+                            wrap_fallible_element(&element.expr, inner)
                         ),
                         fallible: true,
                     }
