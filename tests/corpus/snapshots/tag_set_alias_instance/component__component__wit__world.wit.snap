@@ -1,0 +1,27 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource nonempty-set-u64 {
+    constructor(inner: list<u64>) -> result<nonempty-set-u64, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nonempty-set-u64, string>;
+  }
+  resource other {
+    constructor(rs: borrow<nonempty-set-u64>, more: borrow<nonempty-set-u64>);
+    rs: func() -> nonempty-set-u64;
+    more: func() -> nonempty-set-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<other, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

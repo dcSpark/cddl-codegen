@@ -1,0 +1,49 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource choice {
+    new-uint: static func(uint: u64) -> choice;
+    as-uint: func() -> option<u64>;
+    new-text: static func(text: string) -> choice;
+    as-text: func() -> option<string>;
+    kind: func() -> choice-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<choice, string>;
+  }
+  enum choice-kind {
+    uint,
+    text,
+  }
+  resource holder {
+    constructor(ref-basic: u64, ref-choice: borrow<choice>, ref-newtype: borrow<newtype-via-parens>);
+    ref-basic: func() -> u64;
+    ref-choice: func() -> choice;
+    ref-newtype: func() -> newtype-via-parens;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource nested {
+    constructor(a: u64, b: string);
+    a: func() -> u64;
+    b: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nested, string>;
+  }
+  resource newtype-via-parens {
+    constructor(inner: u64);
+    get: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<newtype-via-parens, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -1,0 +1,112 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type PairUse = WitPairUse;
+    type RangedContainer = WitRangedContainer;
+    type UintContainer = WitUintContainer;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitPairUse(pub RefCell<cddl_lib::PairUse>);
+
+impl wit_types::GuestPairUse for WitPairUse {
+    fn new(k: u64, v: String) -> Self {
+        let inner = cddl_lib::PairUse::new(k, v);
+        WitPairUse(RefCell::new(inner))
+    }
+
+    fn k(&self) -> u64 {
+        let me = self.0.borrow();
+        me.k
+    }
+
+    fn v(&self) -> String {
+        let me = self.0.borrow();
+        me.v.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PairUse as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PairUse, String> {
+        <cddl_lib::PairUse as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PairUse::new(WitPairUse(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitRangedContainer(pub RefCell<cddl_lib::RangedContainer>);
+
+impl wit_types::GuestRangedContainer for WitRangedContainer {
+    fn new(value: u64) -> Result<Self, String> {
+        let inner = cddl_lib::RangedContainer::new(value).map_err(err)?;
+        Ok(WitRangedContainer(RefCell::new(inner)))
+    }
+
+    fn value(&self) -> u64 {
+        let me = self.0.borrow();
+        me.value
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::RangedContainer as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::RangedContainer, String> {
+        <cddl_lib::RangedContainer as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::RangedContainer::new(WitRangedContainer(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitUintContainer(pub RefCell<cddl_lib::UintContainer>);
+
+impl wit_types::GuestUintContainer for WitUintContainer {
+    fn new(value: u64) -> Self {
+        let inner = cddl_lib::UintContainer::new(value);
+        WitUintContainer(RefCell::new(inner))
+    }
+
+    fn value(&self) -> u64 {
+        let me = self.0.borrow();
+        me.value
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::UintContainer as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::UintContainer, String> {
+        <cddl_lib::UintContainer as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::UintContainer::new(WitUintContainer(RefCell::new(v))))
+            .map_err(err)
+    }
+}

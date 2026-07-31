@@ -1,0 +1,40 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource enum-key-holder {
+    constructor(choice-keyed: list<tuple<borrow<ikey>, string>>, int-keyed: list<tuple<int, string>>);
+    choice-keyed: func() -> list<tuple<ikey, string>>;
+    int-keyed: func() -> list<tuple<int, string>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<enum-key-holder, string>;
+  }
+  resource ikey {
+    new-uint: static func(uint: u64) -> ikey;
+    as-uint: func() -> option<u64>;
+    new-n64: static func(n64: u64) -> ikey;
+    as-n64: func() -> option<u64>;
+    kind: func() -> ikey-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<ikey, string>;
+  }
+  enum ikey-kind {
+    uint,
+    n64,
+  }
+  variant int {
+    uint(u64),
+    // a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4
+    nint(u64),
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

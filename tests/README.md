@@ -518,9 +518,13 @@ Drives the generator as a library (`crate::api`) and snapshots the post-rustfmt 
 with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-suites:
 
 - **`feature_corpus`** — one tiny CDDL file per language construct in [`tests/corpus/`](corpus),
-  generated under every flag profile in `ALL_PROFILES` (`default`, `preserve`, `json`), plus an IR
-  dump. A one-feature regression yields a one-file diff. Snapshots are grouped per feature in
-  `tests/corpus/snapshots/<feature>/`. The generated `Cargo.toml` and json-gen `main.rs` are
+  generated under every flag profile in `ALL_PROFILES` (`default`, `preserve`, `json`, `component`),
+  plus an IR dump. A one-feature regression yields a one-file diff. Snapshots are grouped per feature
+  in `tests/corpus/snapshots/<feature>/`. The `component` profile snapshots only its `component/**`
+  files and ASSERTS every other emitted file byte-identical to the `default` profile's — the
+  component face is purely additive, so pinning the rust and wasm trees a fourth time would store
+  duplicates by construction where the assertion states the invariant and fails loudly the day the
+  face starts leaking into the other two. The generated `Cargo.toml` and json-gen `main.rs` are
   *skipped* here — they barely vary by construct, so they'd be repeated noise; they're covered by
   `whole_program` and `serialization_prelude` instead.
 - **`whole_program`** — the larger integration inputs (`core`, `preserve-encodings`, `canonical`,
@@ -2392,8 +2396,8 @@ Two consumers run it:
   wire-ambiguous `TypeChoice` trips the rust value-equality oracle), but the wasm crate builds the rust
   crate as a *non-test* dependency, so none of that compiles here.
 - **`integration_tests::wasm_matrix_roundtrips`** (`#[ignore]`d, manual — the round-trip upgrade of the
-  wasm-ABI matrix compile gate, swept across `ALL_PROFILES` (default / preserve / json); see that
-  section below).
+  wasm-ABI matrix compile gate, swept across `ALL_PROFILES` minus the component row — so default /
+  preserve / json; see that section below).
 
 Run the manual gate with:
 
@@ -2809,8 +2813,9 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   (`#[ignore]`d, manual): same cell enumeration, but each cell is generated `--emit-tests=true` and
   `cargo test`ed so the emitted `cddl_generated_wasm_tests` module (see § "wasm-crate test module" above)
   RUNS its cross-crate byte differential + accessor read-back. It sweeps every cell across
-  `ALL_PROFILES` (default / preserve / json — `--preserve-encodings` and the json flags substantially
-  change codegen, so the wasm behavioural verdict must hold under each); the compile floor above stays
+  `ALL_PROFILES` minus the component row — so default / preserve / json (`--preserve-encodings` and
+  the json flags substantially change codegen, so the wasm behavioural verdict must hold under each,
+  whereas `--component` adds no wasm surface at all); the compile floor above stays
   **default-profile only** by cost policy (non-default compile coverage is subsumed by this gate's
   `cargo test` at full tier). It has its own scratch dir (`cddl_codegen_wasm_matrix_rt`) with one
   shared `CARGO_TARGET_DIR` across all profiles/cells and frees each per-cell output dir after its
@@ -3014,8 +3019,9 @@ check: *semantic* wrongness — an identity `.into()` where a transform was need
 Inputs are every `tests/matrix_wasm/*.cddl` cell (even `WASM_MATRIX_SKIP` ones — parity is
 parse-only, and their emitted sources parse even when they don't standalone *compile*) plus the two
 depth fixtures `tests/core/input.cddl` and `example/test.cddl` (kitchen-sink shapes the minimal cells
-don't reach), each swept across `ALL_PROFILES` (default / preserve / json — the flags substantially
-change the rust surface). A second corpus axis sweeps every committed `tests/*/input.cddl` fixture
+don't reach), each swept across `ALL_PROFILES` minus the component row — so default / preserve /
+json (the flags substantially change the rust surface, whereas `--component` changes neither side of
+the rust↔wasm boundary this gate diffs). A second corpus axis sweeps every committed `tests/*/input.cddl` fixture
 dir under that dir's committed generation profile rows from `integration_tests.rs` (dropping only
 flags irrelevant to the emitted `src/generated` API surface, such as `--emit-tests`,
 `--wasm=false`, and `--package-json`). A completeness guard enumerates `tests/*/input.cddl` at
@@ -3212,7 +3218,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
-  (default / preserve / json) and `cargo test`ed, so the minted `cddl_generated_tests` /
+  minus the component row (default / preserve / json) and `cargo test`ed, so the minted `cddl_generated_tests` /
   `cddl_generated_wasm_tests` modules RUN the cross-module wiring — module `b`'s holder is
   constructed from module `a`'s shape (`Bholder::new(St::new(..))`) and round-tripped, and the wasm
   twin byte-differentials against the fully-qualified `cddl_lib::b::…`/`cddl_lib::a::…` natives.

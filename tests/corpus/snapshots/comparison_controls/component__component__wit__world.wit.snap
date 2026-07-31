@@ -1,0 +1,25 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource comparison-controls {
+    constructor(a: u64, b: u64, c: u64, d: u64, e: u64) -> result<comparison-controls, string>;
+    a: func() -> u64;
+    b: func() -> u64;
+    c: func() -> u64;
+    d: func() -> u64;
+    e: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<comparison-controls, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

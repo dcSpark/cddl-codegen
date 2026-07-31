@@ -1,0 +1,444 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type FixedValueArm = WitFixedValueArm;
+    type FixedValueArm0 = WitFixedValueArm0;
+    type MixedKeyTypes = WitMixedKeyTypes;
+    type MultiFieldArm = WitMultiFieldArm;
+    type MultiFieldArm0 = WitMultiFieldArm0;
+    type NonemptyArm = WitNonemptyArm;
+    type NonemptyArm0 = WitNonemptyArm0;
+    type TextKeyed = WitTextKeyed;
+    type UintKeyed = WitUintKeyed;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitFixedValueArm(pub RefCell<cddl_lib::FixedValueArm>);
+
+impl wit_types::GuestFixedValueArm for WitFixedValueArm {
+    fn new_fixed_value_arm0(key2: u64) -> wit_types::FixedValueArm {
+        let inner = cddl_lib::FixedValueArm::new_fixed_value_arm0(key2);
+        wit_types::FixedValueArm::new(WitFixedValueArm(RefCell::new(inner)))
+    }
+
+    fn as_fixed_value_arm0(&self) -> Option<wit_types::FixedValueArm0> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::FixedValueArm::FixedValueArm0(fixed_value_arm0) => {
+                Some(wit_types::FixedValueArm0::new(WitFixedValueArm0(
+                    RefCell::new(fixed_value_arm0.clone()),
+                )))
+            }
+            _ => None,
+        }
+    }
+
+    fn new_text(text: String) -> wit_types::FixedValueArm {
+        let inner = cddl_lib::FixedValueArm::new_text(text);
+        wit_types::FixedValueArm::new(WitFixedValueArm(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::FixedValueArm::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::FixedValueArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::FixedValueArm::FixedValueArm0(_) => {
+                wit_types::FixedValueArmKind::FixedValueArm0
+            }
+            cddl_lib::FixedValueArm::Text(_) => wit_types::FixedValueArmKind::Text,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::FixedValueArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::FixedValueArm, String> {
+        <cddl_lib::FixedValueArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::FixedValueArm::new(WitFixedValueArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitFixedValueArm0(pub RefCell<cddl_lib::FixedValueArm0>);
+
+impl wit_types::GuestFixedValueArm0 for WitFixedValueArm0 {
+    fn new(key2: u64) -> Self {
+        let inner = cddl_lib::FixedValueArm0::new(key2);
+        WitFixedValueArm0(RefCell::new(inner))
+    }
+
+    fn key2(&self) -> u64 {
+        let me = self.0.borrow();
+        me.key_2
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::FixedValueArm0 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::FixedValueArm0, String> {
+        <cddl_lib::FixedValueArm0 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::FixedValueArm0::new(WitFixedValueArm0(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitMixedKeyTypes(pub RefCell<cddl_lib::MixedKeyTypes>);
+
+impl wit_types::GuestMixedKeyTypes for WitMixedKeyTypes {
+    fn new_uint(uint: u64) -> wit_types::MixedKeyTypes {
+        let inner = cddl_lib::MixedKeyTypes::new_uint(uint);
+        wit_types::MixedKeyTypes::new(WitMixedKeyTypes(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MixedKeyTypes::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_b(b: String) -> wit_types::MixedKeyTypes {
+        let inner = cddl_lib::MixedKeyTypes::new_b(b);
+        wit_types::MixedKeyTypes::new(WitMixedKeyTypes(RefCell::new(inner)))
+    }
+
+    fn as_b(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MixedKeyTypes::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::MixedKeyTypesKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MixedKeyTypes::U64(_) => wit_types::MixedKeyTypesKind::Uint,
+            cddl_lib::MixedKeyTypes::B(_) => wit_types::MixedKeyTypesKind::B,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MixedKeyTypes as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MixedKeyTypes, String> {
+        <cddl_lib::MixedKeyTypes as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MixedKeyTypes::new(WitMixedKeyTypes(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitMultiFieldArm(pub RefCell<cddl_lib::MultiFieldArm>);
+
+impl wit_types::GuestMultiFieldArm for WitMultiFieldArm {
+    fn new_multi_field_arm0(a: u64, x: String) -> wit_types::MultiFieldArm {
+        let inner = cddl_lib::MultiFieldArm::new_multi_field_arm0(a, x);
+        wit_types::MultiFieldArm::new(WitMultiFieldArm(RefCell::new(inner)))
+    }
+
+    fn as_multi_field_arm0(&self) -> Option<wit_types::MultiFieldArm0> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MultiFieldArm::MultiFieldArm0(multi_field_arm0) => {
+                Some(wit_types::MultiFieldArm0::new(WitMultiFieldArm0(
+                    RefCell::new(multi_field_arm0.clone()),
+                )))
+            }
+            _ => None,
+        }
+    }
+
+    fn new_b(b: String) -> wit_types::MultiFieldArm {
+        let inner = cddl_lib::MultiFieldArm::new_b(b);
+        wit_types::MultiFieldArm::new(WitMultiFieldArm(RefCell::new(inner)))
+    }
+
+    fn as_b(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MultiFieldArm::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::MultiFieldArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MultiFieldArm::MultiFieldArm0(_) => {
+                wit_types::MultiFieldArmKind::MultiFieldArm0
+            }
+            cddl_lib::MultiFieldArm::B(_) => wit_types::MultiFieldArmKind::B,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MultiFieldArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MultiFieldArm, String> {
+        <cddl_lib::MultiFieldArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MultiFieldArm::new(WitMultiFieldArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitMultiFieldArm0(pub RefCell<cddl_lib::MultiFieldArm0>);
+
+impl wit_types::GuestMultiFieldArm0 for WitMultiFieldArm0 {
+    fn new(a: u64, x: String) -> Self {
+        let inner = cddl_lib::MultiFieldArm0::new(a, x);
+        WitMultiFieldArm0(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn x(&self) -> String {
+        let me = self.0.borrow();
+        me.x.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MultiFieldArm0 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MultiFieldArm0, String> {
+        <cddl_lib::MultiFieldArm0 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MultiFieldArm0::new(WitMultiFieldArm0(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNonemptyArm(pub RefCell<cddl_lib::NonemptyArm>);
+
+impl wit_types::GuestNonemptyArm for WitNonemptyArm {
+    fn new_nonempty_arm0(f0: Vec<u64>, f1: u64) -> Result<wit_types::NonemptyArm, String> {
+        let f0: Vec<_> = f0.into_iter().collect();
+        let inner = cddl_lib::NonemptyArm::new_nonempty_arm0(f0.try_into().map_err(err)?, f1)
+            .map_err(err)?;
+        Ok(wit_types::NonemptyArm::new(WitNonemptyArm(RefCell::new(
+            inner,
+        ))))
+    }
+
+    fn as_nonempty_arm0(&self) -> Option<wit_types::NonemptyArm0> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NonemptyArm::NonemptyArm0(nonempty_arm0) => Some(
+                wit_types::NonemptyArm0::new(WitNonemptyArm0(RefCell::new(nonempty_arm0.clone()))),
+            ),
+            _ => None,
+        }
+    }
+
+    fn new_zz(zz: String) -> wit_types::NonemptyArm {
+        let inner = cddl_lib::NonemptyArm::new_zz(zz);
+        wit_types::NonemptyArm::new(WitNonemptyArm(RefCell::new(inner)))
+    }
+
+    fn as_zz(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NonemptyArm::Zz(zz) => Some(zz.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::NonemptyArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NonemptyArm::NonemptyArm0(_) => wit_types::NonemptyArmKind::NonemptyArm0,
+            cddl_lib::NonemptyArm::Zz(_) => wit_types::NonemptyArmKind::Zz,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NonemptyArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NonemptyArm, String> {
+        <cddl_lib::NonemptyArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::NonemptyArm::new(WitNonemptyArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNonemptyArm0(pub RefCell<cddl_lib::NonemptyArm0>);
+
+impl wit_types::GuestNonemptyArm0 for WitNonemptyArm0 {
+    fn new(f0: Vec<u64>, f1: u64) -> Result<Self, String> {
+        let f0: Vec<_> = f0.into_iter().collect();
+        let inner = cddl_lib::NonemptyArm0::new(f0.try_into().map_err(err)?, f1).map_err(err)?;
+        Ok(WitNonemptyArm0(RefCell::new(inner)))
+    }
+
+    fn f0(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.f0.iter().map(|x| *x).collect()
+    }
+
+    fn f1(&self) -> u64 {
+        let me = self.0.borrow();
+        me.f1
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NonemptyArm0 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NonemptyArm0, String> {
+        <cddl_lib::NonemptyArm0 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::NonemptyArm0::new(WitNonemptyArm0(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTextKeyed(pub RefCell<cddl_lib::TextKeyed>);
+
+impl wit_types::GuestTextKeyed for WitTextKeyed {
+    fn new_a(a: u64) -> wit_types::TextKeyed {
+        let inner = cddl_lib::TextKeyed::new_a(a);
+        wit_types::TextKeyed::new(WitTextKeyed(RefCell::new(inner)))
+    }
+
+    fn as_a(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TextKeyed::A(a) => Some(*a),
+            _ => None,
+        }
+    }
+
+    fn new_b(b: String) -> wit_types::TextKeyed {
+        let inner = cddl_lib::TextKeyed::new_b(b);
+        wit_types::TextKeyed::new(WitTextKeyed(RefCell::new(inner)))
+    }
+
+    fn as_b(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TextKeyed::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::TextKeyedKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TextKeyed::A(_) => wit_types::TextKeyedKind::A,
+            cddl_lib::TextKeyed::B(_) => wit_types::TextKeyedKind::B,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TextKeyed as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TextKeyed, String> {
+        <cddl_lib::TextKeyed as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TextKeyed::new(WitTextKeyed(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitUintKeyed(pub RefCell<cddl_lib::UintKeyed>);
+
+impl wit_types::GuestUintKeyed for WitUintKeyed {
+    fn new_uint(uint: u64) -> wit_types::UintKeyed {
+        let inner = cddl_lib::UintKeyed::new_uint(uint);
+        wit_types::UintKeyed::new(WitUintKeyed(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::UintKeyed::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_text(text: String) -> wit_types::UintKeyed {
+        let inner = cddl_lib::UintKeyed::new_text(text);
+        wit_types::UintKeyed::new(WitUintKeyed(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::UintKeyed::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::UintKeyedKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::UintKeyed::U64(_) => wit_types::UintKeyedKind::Uint,
+            cddl_lib::UintKeyed::Text(_) => wit_types::UintKeyedKind::Text,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::UintKeyed as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::UintKeyed, String> {
+        <cddl_lib::UintKeyed as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::UintKeyed::new(WitUintKeyed(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -1,0 +1,707 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Prelude = WitPrelude;
+    type PreludeB64legacy = WitPreludeB64legacy;
+    type PreludeB64url = WitPreludeB64url;
+    type PreludeBigfloat = WitPreludeBigfloat;
+    type PreludeBigint = WitPreludeBigint;
+    type PreludeBignint = WitPreludeBignint;
+    type PreludeBiguint = WitPreludeBiguint;
+    type PreludeDecfrac = WitPreludeDecfrac;
+    type PreludeEncodedCbor = WitPreludeEncodedCbor;
+    type PreludeInteger = WitPreludeInteger;
+    type PreludeMimeMessage = WitPreludeMimeMessage;
+    type PreludeRegexp = WitPreludeRegexp;
+    type PreludeTdate = WitPreludeTdate;
+    type PreludeUnsigned = WitPreludeUnsigned;
+    type PreludeUri = WitPreludeUri;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn int_to_wit_types(v: &cddl_lib::Int) -> wit_types::Int {
+    match v {
+        cddl_lib::Int::Uint(value) => wit_types::Int::Uint(*value),
+        cddl_lib::Int::Nint(value) => wit_types::Int::Nint(*value),
+    }
+}
+
+fn int_from_wit_types(v: wit_types::Int) -> cddl_lib::Int {
+    match v {
+        wit_types::Int::Uint(value) => cddl_lib::Int::new_uint(value),
+        wit_types::Int::Nint(value) => cddl_lib::Int::new_nint(value),
+    }
+}
+
+pub struct WitPrelude(pub RefCell<cddl_lib::Prelude>);
+
+impl wit_types::GuestPrelude for WitPrelude {
+    fn new(
+        big_u: wit_types::PreludeBiguintBorrow<'_>,
+        uri: wit_types::PreludeUriBorrow<'_>,
+        big_i: wit_types::PreludeBigintBorrow<'_>,
+        unsigned: wit_types::PreludeUnsignedBorrow<'_>,
+        t: String,
+        b: Vec<u8>,
+        intg: wit_types::PreludeIntegerBorrow<'_>,
+        big_n: wit_types::PreludeBignintBorrow<'_>,
+        date: wit_types::PreludeTdateBorrow<'_>,
+        b64u: wit_types::PreludeB64urlBorrow<'_>,
+        b64l: wit_types::PreludeB64legacyBorrow<'_>,
+        re: wit_types::PreludeRegexpBorrow<'_>,
+        mime: wit_types::PreludeMimeMessageBorrow<'_>,
+        ec: wit_types::PreludeEncodedCborBorrow<'_>,
+        df: wit_types::PreludeDecfracBorrow<'_>,
+        bf: wit_types::PreludeBigfloatBorrow<'_>,
+    ) -> Self {
+        let big_u = big_u.get::<WitPreludeBiguint>().0.borrow().clone();
+        let uri = uri.get::<WitPreludeUri>().0.borrow().clone();
+        let big_i = big_i.get::<WitPreludeBigint>().0.borrow().clone();
+        let unsigned = unsigned.get::<WitPreludeUnsigned>().0.borrow().clone();
+        let b = b.into_iter().collect();
+        let intg = intg.get::<WitPreludeInteger>().0.borrow().clone();
+        let big_n = big_n.get::<WitPreludeBignint>().0.borrow().clone();
+        let date = date.get::<WitPreludeTdate>().0.borrow().clone();
+        let b64u = b64u.get::<WitPreludeB64url>().0.borrow().clone();
+        let b64l = b64l.get::<WitPreludeB64legacy>().0.borrow().clone();
+        let re = re.get::<WitPreludeRegexp>().0.borrow().clone();
+        let mime = mime.get::<WitPreludeMimeMessage>().0.borrow().clone();
+        let ec = ec.get::<WitPreludeEncodedCbor>().0.borrow().clone();
+        let df = df.get::<WitPreludeDecfrac>().0.borrow().clone();
+        let bf = bf.get::<WitPreludeBigfloat>().0.borrow().clone();
+        let inner = cddl_lib::Prelude::new(
+            big_u, uri, big_i, unsigned, t, b, intg, big_n, date, b64u, b64l, re, mime, ec, df, bf,
+        );
+        WitPrelude(RefCell::new(inner))
+    }
+
+    fn big_u(&self) -> wit_types::PreludeBiguint {
+        let me = self.0.borrow();
+        wit_types::PreludeBiguint::new(WitPreludeBiguint(RefCell::new(me.big_u.clone())))
+    }
+
+    fn uri(&self) -> wit_types::PreludeUri {
+        let me = self.0.borrow();
+        wit_types::PreludeUri::new(WitPreludeUri(RefCell::new(me.uri.clone())))
+    }
+
+    fn big_i(&self) -> wit_types::PreludeBigint {
+        let me = self.0.borrow();
+        wit_types::PreludeBigint::new(WitPreludeBigint(RefCell::new(me.big_i.clone())))
+    }
+
+    fn unsigned(&self) -> wit_types::PreludeUnsigned {
+        let me = self.0.borrow();
+        wit_types::PreludeUnsigned::new(WitPreludeUnsigned(RefCell::new(me.unsigned.clone())))
+    }
+
+    fn t(&self) -> String {
+        let me = self.0.borrow();
+        me.t.clone()
+    }
+
+    fn b(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        me.b.iter().map(|x| *x).collect()
+    }
+
+    fn intg(&self) -> wit_types::PreludeInteger {
+        let me = self.0.borrow();
+        wit_types::PreludeInteger::new(WitPreludeInteger(RefCell::new(me.intg.clone())))
+    }
+
+    fn big_n(&self) -> wit_types::PreludeBignint {
+        let me = self.0.borrow();
+        wit_types::PreludeBignint::new(WitPreludeBignint(RefCell::new(me.big_n.clone())))
+    }
+
+    fn date(&self) -> wit_types::PreludeTdate {
+        let me = self.0.borrow();
+        wit_types::PreludeTdate::new(WitPreludeTdate(RefCell::new(me.date.clone())))
+    }
+
+    fn b64u(&self) -> wit_types::PreludeB64url {
+        let me = self.0.borrow();
+        wit_types::PreludeB64url::new(WitPreludeB64url(RefCell::new(me.b64u.clone())))
+    }
+
+    fn b64l(&self) -> wit_types::PreludeB64legacy {
+        let me = self.0.borrow();
+        wit_types::PreludeB64legacy::new(WitPreludeB64legacy(RefCell::new(me.b64l.clone())))
+    }
+
+    fn re(&self) -> wit_types::PreludeRegexp {
+        let me = self.0.borrow();
+        wit_types::PreludeRegexp::new(WitPreludeRegexp(RefCell::new(me.re.clone())))
+    }
+
+    fn mime(&self) -> wit_types::PreludeMimeMessage {
+        let me = self.0.borrow();
+        wit_types::PreludeMimeMessage::new(WitPreludeMimeMessage(RefCell::new(me.mime.clone())))
+    }
+
+    fn ec(&self) -> wit_types::PreludeEncodedCbor {
+        let me = self.0.borrow();
+        wit_types::PreludeEncodedCbor::new(WitPreludeEncodedCbor(RefCell::new(me.ec.clone())))
+    }
+
+    fn df(&self) -> wit_types::PreludeDecfrac {
+        let me = self.0.borrow();
+        wit_types::PreludeDecfrac::new(WitPreludeDecfrac(RefCell::new(me.df.clone())))
+    }
+
+    fn bf(&self) -> wit_types::PreludeBigfloat {
+        let me = self.0.borrow();
+        wit_types::PreludeBigfloat::new(WitPreludeBigfloat(RefCell::new(me.bf.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Prelude as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Prelude, String> {
+        <cddl_lib::Prelude as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Prelude::new(WitPrelude(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeB64legacy(pub RefCell<cddl_lib::PreludeB64legacy>);
+
+impl wit_types::GuestPreludeB64legacy for WitPreludeB64legacy {
+    fn new(inner: String) -> Self {
+        let inner = cddl_lib::PreludeB64legacy::new(inner);
+        WitPreludeB64legacy(RefCell::new(inner))
+    }
+
+    fn get(&self) -> String {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeB64legacy as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeB64legacy, String> {
+        <cddl_lib::PreludeB64legacy as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::PreludeB64legacy::new(WitPreludeB64legacy(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitPreludeB64url(pub RefCell<cddl_lib::PreludeB64url>);
+
+impl wit_types::GuestPreludeB64url for WitPreludeB64url {
+    fn new(inner: String) -> Self {
+        let inner = cddl_lib::PreludeB64url::new(inner);
+        WitPreludeB64url(RefCell::new(inner))
+    }
+
+    fn get(&self) -> String {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeB64url as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeB64url, String> {
+        <cddl_lib::PreludeB64url as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeB64url::new(WitPreludeB64url(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeBigfloat(pub RefCell<cddl_lib::PreludeBigfloat>);
+
+impl wit_types::GuestPreludeBigfloat for WitPreludeBigfloat {
+    fn new(e2: wit_types::Int, m: wit_types::PreludeIntegerBorrow<'_>) -> Self {
+        let e2 = int_from_wit_types(e2);
+        let m = m.get::<WitPreludeInteger>().0.borrow().clone();
+        let inner = cddl_lib::PreludeBigfloat::new(e2, m);
+        WitPreludeBigfloat(RefCell::new(inner))
+    }
+
+    fn e2(&self) -> wit_types::Int {
+        let me = self.0.borrow();
+        int_to_wit_types(&me.e2)
+    }
+
+    fn m(&self) -> wit_types::PreludeInteger {
+        let me = self.0.borrow();
+        wit_types::PreludeInteger::new(WitPreludeInteger(RefCell::new(me.m.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeBigfloat as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeBigfloat, String> {
+        <cddl_lib::PreludeBigfloat as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeBigfloat::new(WitPreludeBigfloat(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeBigint(pub RefCell<cddl_lib::PreludeBigint>);
+
+impl wit_types::GuestPreludeBigint for WitPreludeBigint {
+    fn new_prelude_biguint(
+        prelude_biguint: wit_types::PreludeBiguintBorrow<'_>,
+    ) -> wit_types::PreludeBigint {
+        let prelude_biguint = prelude_biguint
+            .get::<WitPreludeBiguint>()
+            .0
+            .borrow()
+            .clone();
+        let inner = cddl_lib::PreludeBigint::new_prelude_biguint(prelude_biguint);
+        wit_types::PreludeBigint::new(WitPreludeBigint(RefCell::new(inner)))
+    }
+
+    fn as_prelude_biguint(&self) -> Option<wit_types::PreludeBiguint> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeBigint::PreludeBiguint(prelude_biguint) => {
+                Some(wit_types::PreludeBiguint::new(WitPreludeBiguint(
+                    RefCell::new(prelude_biguint.clone()),
+                )))
+            }
+            _ => None,
+        }
+    }
+
+    fn new_prelude_bignint(
+        prelude_bignint: wit_types::PreludeBignintBorrow<'_>,
+    ) -> wit_types::PreludeBigint {
+        let prelude_bignint = prelude_bignint
+            .get::<WitPreludeBignint>()
+            .0
+            .borrow()
+            .clone();
+        let inner = cddl_lib::PreludeBigint::new_prelude_bignint(prelude_bignint);
+        wit_types::PreludeBigint::new(WitPreludeBigint(RefCell::new(inner)))
+    }
+
+    fn as_prelude_bignint(&self) -> Option<wit_types::PreludeBignint> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeBigint::PreludeBignint(prelude_bignint) => {
+                Some(wit_types::PreludeBignint::new(WitPreludeBignint(
+                    RefCell::new(prelude_bignint.clone()),
+                )))
+            }
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::PreludeBigintKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeBigint::PreludeBiguint(_) => {
+                wit_types::PreludeBigintKind::PreludeBiguint
+            }
+            cddl_lib::PreludeBigint::PreludeBignint(_) => {
+                wit_types::PreludeBigintKind::PreludeBignint
+            }
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeBigint as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeBigint, String> {
+        <cddl_lib::PreludeBigint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeBigint::new(WitPreludeBigint(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeBignint(pub RefCell<cddl_lib::PreludeBignint>);
+
+impl wit_types::GuestPreludeBignint for WitPreludeBignint {
+    fn new(inner: Vec<u8>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::PreludeBignint::new(inner);
+        WitPreludeBignint(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeBignint as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeBignint, String> {
+        <cddl_lib::PreludeBignint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeBignint::new(WitPreludeBignint(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeBiguint(pub RefCell<cddl_lib::PreludeBiguint>);
+
+impl wit_types::GuestPreludeBiguint for WitPreludeBiguint {
+    fn new(inner: Vec<u8>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::PreludeBiguint::new(inner);
+        WitPreludeBiguint(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeBiguint as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeBiguint, String> {
+        <cddl_lib::PreludeBiguint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeBiguint::new(WitPreludeBiguint(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeDecfrac(pub RefCell<cddl_lib::PreludeDecfrac>);
+
+impl wit_types::GuestPreludeDecfrac for WitPreludeDecfrac {
+    fn new(e10: wit_types::Int, m: wit_types::PreludeIntegerBorrow<'_>) -> Self {
+        let e10 = int_from_wit_types(e10);
+        let m = m.get::<WitPreludeInteger>().0.borrow().clone();
+        let inner = cddl_lib::PreludeDecfrac::new(e10, m);
+        WitPreludeDecfrac(RefCell::new(inner))
+    }
+
+    fn e10(&self) -> wit_types::Int {
+        let me = self.0.borrow();
+        int_to_wit_types(&me.e10)
+    }
+
+    fn m(&self) -> wit_types::PreludeInteger {
+        let me = self.0.borrow();
+        wit_types::PreludeInteger::new(WitPreludeInteger(RefCell::new(me.m.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeDecfrac as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeDecfrac, String> {
+        <cddl_lib::PreludeDecfrac as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeDecfrac::new(WitPreludeDecfrac(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeEncodedCbor(pub RefCell<cddl_lib::PreludeEncodedCbor>);
+
+impl wit_types::GuestPreludeEncodedCbor for WitPreludeEncodedCbor {
+    fn new(inner: Vec<u8>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::PreludeEncodedCbor::new(inner);
+        WitPreludeEncodedCbor(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeEncodedCbor as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeEncodedCbor, String> {
+        <cddl_lib::PreludeEncodedCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::PreludeEncodedCbor::new(WitPreludeEncodedCbor(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitPreludeInteger(pub RefCell<cddl_lib::PreludeInteger>);
+
+impl wit_types::GuestPreludeInteger for WitPreludeInteger {
+    fn new_int(int: wit_types::Int) -> wit_types::PreludeInteger {
+        let int = int_from_wit_types(int);
+        let inner = cddl_lib::PreludeInteger::new_int(int);
+        wit_types::PreludeInteger::new(WitPreludeInteger(RefCell::new(inner)))
+    }
+
+    fn as_int(&self) -> Option<wit_types::Int> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeInteger::Int(int) => Some(int_to_wit_types(int)),
+            _ => None,
+        }
+    }
+
+    fn new_prelude_bigint(
+        prelude_bigint: wit_types::PreludeBigintBorrow<'_>,
+    ) -> wit_types::PreludeInteger {
+        let prelude_bigint = prelude_bigint.get::<WitPreludeBigint>().0.borrow().clone();
+        let inner = cddl_lib::PreludeInteger::new_prelude_bigint(prelude_bigint);
+        wit_types::PreludeInteger::new(WitPreludeInteger(RefCell::new(inner)))
+    }
+
+    fn as_prelude_bigint(&self) -> Option<wit_types::PreludeBigint> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeInteger::PreludeBigint(prelude_bigint) => {
+                Some(wit_types::PreludeBigint::new(WitPreludeBigint(
+                    RefCell::new(prelude_bigint.clone()),
+                )))
+            }
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::PreludeIntegerKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeInteger::Int(_) => wit_types::PreludeIntegerKind::Int,
+            cddl_lib::PreludeInteger::PreludeBigint(_) => {
+                wit_types::PreludeIntegerKind::PreludeBigint
+            }
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeInteger as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeInteger, String> {
+        <cddl_lib::PreludeInteger as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeInteger::new(WitPreludeInteger(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeMimeMessage(pub RefCell<cddl_lib::PreludeMimeMessage>);
+
+impl wit_types::GuestPreludeMimeMessage for WitPreludeMimeMessage {
+    fn new(inner: String) -> Self {
+        let inner = cddl_lib::PreludeMimeMessage::new(inner);
+        WitPreludeMimeMessage(RefCell::new(inner))
+    }
+
+    fn get(&self) -> String {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeMimeMessage as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeMimeMessage, String> {
+        <cddl_lib::PreludeMimeMessage as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::PreludeMimeMessage::new(WitPreludeMimeMessage(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitPreludeRegexp(pub RefCell<cddl_lib::PreludeRegexp>);
+
+impl wit_types::GuestPreludeRegexp for WitPreludeRegexp {
+    fn new(inner: String) -> Self {
+        let inner = cddl_lib::PreludeRegexp::new(inner);
+        WitPreludeRegexp(RefCell::new(inner))
+    }
+
+    fn get(&self) -> String {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeRegexp as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeRegexp, String> {
+        <cddl_lib::PreludeRegexp as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeRegexp::new(WitPreludeRegexp(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeTdate(pub RefCell<cddl_lib::PreludeTdate>);
+
+impl wit_types::GuestPreludeTdate for WitPreludeTdate {
+    fn new(inner: String) -> Self {
+        let inner = cddl_lib::PreludeTdate::new(inner);
+        WitPreludeTdate(RefCell::new(inner))
+    }
+
+    fn get(&self) -> String {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeTdate as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeTdate, String> {
+        <cddl_lib::PreludeTdate as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeTdate::new(WitPreludeTdate(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeUnsigned(pub RefCell<cddl_lib::PreludeUnsigned>);
+
+impl wit_types::GuestPreludeUnsigned for WitPreludeUnsigned {
+    fn new_uint(uint: u64) -> wit_types::PreludeUnsigned {
+        let inner = cddl_lib::PreludeUnsigned::new_uint(uint);
+        wit_types::PreludeUnsigned::new(WitPreludeUnsigned(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeUnsigned::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_prelude_biguint(
+        prelude_biguint: wit_types::PreludeBiguintBorrow<'_>,
+    ) -> wit_types::PreludeUnsigned {
+        let prelude_biguint = prelude_biguint
+            .get::<WitPreludeBiguint>()
+            .0
+            .borrow()
+            .clone();
+        let inner = cddl_lib::PreludeUnsigned::new_prelude_biguint(prelude_biguint);
+        wit_types::PreludeUnsigned::new(WitPreludeUnsigned(RefCell::new(inner)))
+    }
+
+    fn as_prelude_biguint(&self) -> Option<wit_types::PreludeBiguint> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeUnsigned::PreludeBiguint(prelude_biguint) => {
+                Some(wit_types::PreludeBiguint::new(WitPreludeBiguint(
+                    RefCell::new(prelude_biguint.clone()),
+                )))
+            }
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::PreludeUnsignedKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::PreludeUnsigned::U64(_) => wit_types::PreludeUnsignedKind::Uint,
+            cddl_lib::PreludeUnsigned::PreludeBiguint(_) => {
+                wit_types::PreludeUnsignedKind::PreludeBiguint
+            }
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeUnsigned as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeUnsigned, String> {
+        <cddl_lib::PreludeUnsigned as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeUnsigned::new(WitPreludeUnsigned(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeUri(pub RefCell<cddl_lib::PreludeUri>);
+
+impl wit_types::GuestPreludeUri for WitPreludeUri {
+    fn new(inner: String) -> Self {
+        let inner = cddl_lib::PreludeUri::new(inner);
+        WitPreludeUri(RefCell::new(inner))
+    }
+
+    fn get(&self) -> String {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeUri as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeUri, String> {
+        <cddl_lib::PreludeUri as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeUri::new(WitPreludeUri(RefCell::new(v))))
+            .map_err(err)
+    }
+}

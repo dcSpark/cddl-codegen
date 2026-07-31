@@ -86,8 +86,10 @@
 //! grid — even `WASM_MATRIX_SKIP` ones, whose emitted sources still *parse* even when they don't
 //! standalone *compile*) plus the two depth fixtures `tests/core/input.cddl` and `example/test.cddl`
 //! (kitchen-sink shapes the minimal cells don't reach). Each of those inputs is swept across
-//! `super::ALL_PROFILES` (default / preserve / json — `--preserve-encodings` and the json flags
-//! substantially change the rust surface). A second corpus axis sweeps every committed
+//! `super::ALL_PROFILES` minus the component row (so: default / preserve / json —
+//! `--preserve-encodings` and the json flags substantially change the rust surface, whereas
+//! `--component` changes neither side of this boundary; see `parity_profiles`). A second corpus axis
+//! sweeps every committed
 //! `tests/*/input.cddl` fixture directory under that directory's committed generation profile rows
 //! (the `run_test`/pipeline invocations in `integration_tests.rs`), with a completeness guard that
 //! fails when a new fixture dir is not either added to the table or deliberately excluded. Exclusions
@@ -1038,13 +1040,28 @@ fn flags_enable_preserve(flags: &[&str]) -> bool {
     flags.contains(&"--preserve-encodings=true")
 }
 
+/// The [`super::ALL_PROFILES`] rows this sweep visits. The component profile is filtered out BY
+/// NAME: this differential's subject is the rust↔wasm boundary, and `--component` leaves both sides
+/// byte-identical (it mints a separate wasip2 crate and changes nothing else), so a component column
+/// would re-derive the `default` column's verdict — and would need a fourth `PARITY_EXEMPT` row for
+/// every exemption it duplicated. The rust↔WIT differential is `component_parity_tests`' job.
+///
+/// Used by BOTH the sweep and its vacuity arithmetic below, so the two cannot disagree about how
+/// many profiles a swept input contributes.
+fn parity_profiles() -> Vec<&'static super::Profile> {
+    super::ALL_PROFILES
+        .iter()
+        .filter(|(profile, _)| *profile != super::COMPONENT_PROFILE)
+        .collect()
+}
+
 /// The sweep's (label, input, profile, flags) axis product, built once so the pin guards and the
 /// shards agree on exactly what "a swept pair" means.
 fn parity_sweep_cases() -> Vec<(String, PathBuf, &'static str, &'static [&'static str])> {
     let inputs = parity_inputs();
     let mut sweep_cases: Vec<(String, PathBuf, &'static str, &'static [&'static str])> = vec![];
     for (label, input) in &inputs {
-        for (profile, extra) in super::ALL_PROFILES {
+        for (profile, extra) in parity_profiles() {
             sweep_cases.push((label.clone(), input.clone(), *profile, *extra));
         }
     }
@@ -1117,9 +1134,12 @@ fn wasm_api_parity_axes_and_pins_are_live() {
         cell_count + 2,
         "input enumeration drifted from (matrix_wasm cells + 2 depth fixtures)"
     );
+    // The multiplier is `parity_profiles()` — the rows the sweep actually visits — NOT
+    // `ALL_PROFILES`: the two differ by the filtered component row, and using the wrong one here
+    // would fail this assertion on a sweep that is doing exactly what it should.
     assert_eq!(
         sweep_cases.len(),
-        (cell_count + 2) * super::ALL_PROFILES.len() + total_corpus_profile_rows(),
+        (cell_count + 2) * parity_profiles().len() + total_corpus_profile_rows(),
         "sweep shrank: expected every (input, profile) pair to be visited"
     );
 }

@@ -1,0 +1,91 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Primitives = WitPrimitives;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn int_to_wit_types(v: &cddl_lib::Int) -> wit_types::Int {
+    match v {
+        cddl_lib::Int::Uint(value) => wit_types::Int::Uint(*value),
+        cddl_lib::Int::Nint(value) => wit_types::Int::Nint(*value),
+    }
+}
+
+fn int_from_wit_types(v: wit_types::Int) -> cddl_lib::Int {
+    match v {
+        wit_types::Int::Uint(value) => cddl_lib::Int::new_uint(value),
+        wit_types::Int::Nint(value) => cddl_lib::Int::new_nint(value),
+    }
+}
+
+pub struct WitPrimitives(pub RefCell<cddl_lib::Primitives>);
+
+impl wit_types::GuestPrimitives for WitPrimitives {
+    fn new(a: u64, b: u64, c: wit_types::Int, d: String, e: Vec<u8>) -> Self {
+        let c = int_from_wit_types(c);
+        let e = e.into_iter().collect();
+        let inner = cddl_lib::Primitives::new(a, b, c, d, e);
+        WitPrimitives(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn b(&self) -> u64 {
+        let me = self.0.borrow();
+        me.b
+    }
+
+    fn c(&self) -> wit_types::Int {
+        let me = self.0.borrow();
+        int_to_wit_types(&me.c)
+    }
+
+    fn d(&self) -> String {
+        let me = self.0.borrow();
+        me.d.clone()
+    }
+
+    fn e(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        me.e.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Primitives as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Primitives, String> {
+        <cddl_lib::Primitives as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Primitives::new(WitPrimitives(RefCell::new(v))))
+            .map_err(err)
+    }
+}

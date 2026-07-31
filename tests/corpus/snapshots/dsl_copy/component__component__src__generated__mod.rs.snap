@@ -1,0 +1,163 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Choice = WitChoice;
+    type Ext = WitExt;
+    type Hash = WitHash;
+    type Record = WitRecord;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitChoice(pub RefCell<cddl_lib::Choice>);
+
+impl wit_types::GuestChoice for WitChoice {
+    fn new_hash(hash: wit_types::HashBorrow<'_>) -> wit_types::Choice {
+        let hash = hash.get::<WitHash>().0.borrow().clone();
+        let inner = cddl_lib::Choice::new_hash(hash);
+        wit_types::Choice::new(WitChoice(RefCell::new(inner)))
+    }
+
+    fn as_hash(&self) -> Option<wit_types::Hash> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Choice::Hash(hash) => {
+                Some(wit_types::Hash::new(WitHash(RefCell::new(hash.clone()))))
+            }
+            _ => None,
+        }
+    }
+
+    fn new_uint(uint: u64) -> wit_types::Choice {
+        let inner = cddl_lib::Choice::new_uint(uint);
+        wit_types::Choice::new(WitChoice(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Choice::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::ChoiceKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Choice::Hash(_) => wit_types::ChoiceKind::Hash,
+            cddl_lib::Choice::U64(_) => wit_types::ChoiceKind::Uint,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Choice as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Choice, String> {
+        <cddl_lib::Choice as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Choice::new(WitChoice(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitExt(pub RefCell<cddl_lib::Ext>);
+
+impl wit_types::GuestExt for WitExt {
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Ext as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Ext, String> {
+        <cddl_lib::Ext as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Ext::new(WitExt(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHash(pub RefCell<cddl_lib::Hash>);
+
+impl wit_types::GuestHash for WitHash {
+    fn to_raw_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Hash as cddl_lib::serialization::RawBytesEncoding>::to_raw_bytes(
+            &self.0.borrow(),
+        )
+        .to_vec()
+    }
+
+    fn from_raw_bytes(bytes: Vec<u8>) -> Result<wit_types::Hash, String> {
+        <cddl_lib::Hash as cddl_lib::serialization::RawBytesEncoding>::from_raw_bytes(&bytes)
+            .map(|v| wit_types::Hash::new(WitHash(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitRecord(pub RefCell<cddl_lib::Record>);
+
+impl wit_types::GuestRecord for WitRecord {
+    fn new(key0: wit_types::HashBorrow<'_>, key2: Vec<(wit_types::HashBorrow<'_>, u64)>) -> Self {
+        let key0 = key0.get::<WitHash>().0.borrow().clone();
+        let key2 = key2
+            .into_iter()
+            .map(|(x0, x1)| (x0.get::<WitHash>().0.borrow().clone(), x1))
+            .collect();
+        let inner = cddl_lib::Record::new(key0, key2);
+        WitRecord(RefCell::new(inner))
+    }
+
+    fn key0(&self) -> wit_types::Hash {
+        let me = self.0.borrow();
+        wit_types::Hash::new(WitHash(RefCell::new(me.key_0.clone())))
+    }
+
+    fn key1(&self) -> Option<wit_types::Ext> {
+        let me = self.0.borrow();
+        me.key_1
+            .as_ref()
+            .map(|x| wit_types::Ext::new(WitExt(RefCell::new(x.clone()))))
+    }
+
+    fn set_key1(&self, key1: wit_types::ExtBorrow<'_>) {
+        let key1 = key1.get::<WitExt>().0.borrow().clone();
+        self.0.borrow_mut().key_1 = Some(key1);
+    }
+
+    fn key2(&self) -> Vec<(wit_types::Hash, u64)> {
+        let me = self.0.borrow();
+        me.key_2
+            .iter()
+            .map(|(x0, x1)| (wit_types::Hash::new(WitHash(RefCell::new(x0.clone()))), *x1))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Record as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Record, String> {
+        <cddl_lib::Record as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Record::new(WitRecord(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -1,0 +1,35 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource record-arm {
+    new-a: static func(x: u64, y: string) -> record-arm;
+    as-a: func() -> option<st>;
+    new-b: static func(b: string) -> record-arm;
+    as-b: func() -> option<string>;
+    kind: func() -> record-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<record-arm, string>;
+  }
+  enum record-arm-kind {
+    a,
+    b,
+  }
+  resource st {
+    constructor(x: u64, y: string);
+    x: func() -> u64;
+    y: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<st, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

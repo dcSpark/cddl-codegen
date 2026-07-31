@@ -1,0 +1,94 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Inner = WitInner;
+    type Outer = WitOuter;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitInner(pub RefCell<cddl_lib::Inner>);
+
+impl wit_types::GuestInner for WitInner {
+    fn new(a: u64, b: u64) -> Self {
+        let inner = cddl_lib::Inner::new(a, b);
+        WitInner(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn b(&self) -> u64 {
+        let me = self.0.borrow();
+        me.b
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Inner as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Inner, String> {
+        <cddl_lib::Inner as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Inner::new(WitInner(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOuter(pub RefCell<cddl_lib::Outer>);
+
+impl wit_types::GuestOuter for WitOuter {
+    fn new(x: u64, inner: wit_types::InnerBorrow<'_>, y: u64) -> Self {
+        let inner = inner.get::<WitInner>().0.borrow().clone();
+        let inner = cddl_lib::Outer::new(x, inner, y);
+        WitOuter(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn inner(&self) -> wit_types::Inner {
+        let me = self.0.borrow();
+        wit_types::Inner::new(WitInner(RefCell::new(me.inner.clone())))
+    }
+
+    fn y(&self) -> u64 {
+        let me = self.0.borrow();
+        me.y
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Outer as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Outer, String> {
+        <cddl_lib::Outer as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Outer::new(WitOuter(RefCell::new(v))))
+            .map_err(err)
+    }
+}

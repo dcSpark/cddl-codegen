@@ -1,0 +1,34 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource opt-fixed-float-array {
+    constructor(x: u64, label: string);
+    x: func() -> u64;
+    f: func() -> bool;
+    set-f: func(present: bool);
+    label: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<opt-fixed-float-array, string>;
+  }
+  resource opt-fixed-float-map {
+    constructor(x: u64);
+    x: func() -> u64;
+    amount: func() -> bool;
+    set-amount: func(present: bool);
+    rate: func() -> bool;
+    set-rate: func(present: bool);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<opt-fixed-float-map, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -1,0 +1,79 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type GroupChoice = WitGroupChoice;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitGroupChoice(pub RefCell<cddl_lib::GroupChoice>);
+
+impl wit_types::GuestGroupChoice for WitGroupChoice {
+    fn new_group_choice0(index1: u64) -> wit_types::GroupChoice {
+        let inner = cddl_lib::GroupChoice::new_group_choice0(index1);
+        wit_types::GroupChoice::new(WitGroupChoice(RefCell::new(inner)))
+    }
+
+    fn as_group_choice0(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::GroupChoice::GroupChoice0(index_1) => Some(*index_1),
+            _ => None,
+        }
+    }
+
+    fn new_group_choice1(index1: String) -> wit_types::GroupChoice {
+        let inner = cddl_lib::GroupChoice::new_group_choice1(index1);
+        wit_types::GroupChoice::new(WitGroupChoice(RefCell::new(inner)))
+    }
+
+    fn as_group_choice1(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::GroupChoice::GroupChoice1(index_1) => Some(index_1.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::GroupChoiceKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::GroupChoice::GroupChoice0(_) => wit_types::GroupChoiceKind::GroupChoice0,
+            cddl_lib::GroupChoice::GroupChoice1(_) => wit_types::GroupChoiceKind::GroupChoice1,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::GroupChoice as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::GroupChoice, String> {
+        <cddl_lib::GroupChoice as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::GroupChoice::new(WitGroupChoice(RefCell::new(v))))
+            .map_err(err)
+    }
+}

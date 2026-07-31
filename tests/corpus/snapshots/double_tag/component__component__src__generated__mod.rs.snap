@@ -1,0 +1,206 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ElemTagged = WitElemTagged;
+    type Heterogeneous = WitHeterogeneous;
+    type HeterogeneousSet = WitHeterogeneousSet;
+    type Holder = WitHolder;
+    type Homogeneous = WitHomogeneous;
+    type HomogeneousInner = WitHomogeneousInner;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitElemTagged(pub RefCell<cddl_lib::ElemTagged>);
+
+impl wit_types::GuestElemTagged for WitElemTagged {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::ElemTagged::new(inner.try_into().map_err(err)?);
+        Ok(WitElemTagged(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ElemTagged as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ElemTagged, String> {
+        <cddl_lib::ElemTagged as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ElemTagged::new(WitElemTagged(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHeterogeneous(pub RefCell<cddl_lib::Heterogeneous>);
+
+impl wit_types::GuestHeterogeneous for WitHeterogeneous {
+    fn new(inner: wit_types::HeterogeneousSetBorrow<'_>) -> Self {
+        let inner = inner.get::<WitHeterogeneousSet>().0.borrow().clone();
+        let inner = cddl_lib::Heterogeneous::new(inner);
+        WitHeterogeneous(RefCell::new(inner))
+    }
+
+    fn get(&self) -> wit_types::HeterogeneousSet {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        wit_types::HeterogeneousSet::new(WitHeterogeneousSet(RefCell::new(inner.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Heterogeneous as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Heterogeneous, String> {
+        <cddl_lib::Heterogeneous as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Heterogeneous::new(WitHeterogeneous(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHeterogeneousSet(pub RefCell<cddl_lib::HeterogeneousSet>);
+
+impl wit_types::GuestHeterogeneousSet for WitHeterogeneousSet {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::HeterogeneousSet::new(inner.try_into().map_err(err)?);
+        Ok(WitHeterogeneousSet(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::HeterogeneousSet as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::HeterogeneousSet, String> {
+        <cddl_lib::HeterogeneousSet as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::HeterogeneousSet::new(WitHeterogeneousSet(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(
+        h: wit_types::HomogeneousBorrow<'_>,
+        s: wit_types::HeterogeneousBorrow<'_>,
+        a: Vec<wit_types::ElemTaggedBorrow<'_>>,
+    ) -> Self {
+        let h = h.get::<WitHomogeneous>().0.borrow().clone();
+        let s = s.get::<WitHeterogeneous>().0.borrow().clone();
+        let a = a
+            .into_iter()
+            .map(|x| x.get::<WitElemTagged>().0.borrow().clone())
+            .collect();
+        let inner = cddl_lib::Holder::new(h, s, a);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn h(&self) -> wit_types::Homogeneous {
+        let me = self.0.borrow();
+        wit_types::Homogeneous::new(WitHomogeneous(RefCell::new(me.h.clone())))
+    }
+
+    fn s(&self) -> wit_types::Heterogeneous {
+        let me = self.0.borrow();
+        wit_types::Heterogeneous::new(WitHeterogeneous(RefCell::new(me.s.clone())))
+    }
+
+    fn a(&self) -> Vec<wit_types::ElemTagged> {
+        let me = self.0.borrow();
+        me.a.iter()
+            .map(|x| wit_types::ElemTagged::new(WitElemTagged(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHomogeneous(pub RefCell<cddl_lib::Homogeneous>);
+
+impl wit_types::GuestHomogeneous for WitHomogeneous {
+    fn new(inner: wit_types::HomogeneousInnerBorrow<'_>) -> Self {
+        let inner = inner.get::<WitHomogeneousInner>().0.borrow().clone();
+        let inner = cddl_lib::Homogeneous::new(inner);
+        WitHomogeneous(RefCell::new(inner))
+    }
+
+    fn get(&self) -> wit_types::HomogeneousInner {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        wit_types::HomogeneousInner::new(WitHomogeneousInner(RefCell::new(inner.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Homogeneous as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Homogeneous, String> {
+        <cddl_lib::Homogeneous as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Homogeneous::new(WitHomogeneous(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHomogeneousInner(pub RefCell<cddl_lib::HomogeneousInner>);
+
+impl wit_types::GuestHomogeneousInner for WitHomogeneousInner {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::HomogeneousInner::new(inner.try_into().map_err(err)?);
+        Ok(WitHomogeneousInner(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::HomogeneousInner as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::HomogeneousInner, String> {
+        <cddl_lib::HomogeneousInner as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::HomogeneousInner::new(WitHomogeneousInner(RefCell::new(v))))
+        .map_err(err)
+    }
+}

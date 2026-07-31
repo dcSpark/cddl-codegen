@@ -1,0 +1,50 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource elem-tagged {
+    constructor(inner: list<u64>) -> result<elem-tagged, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<elem-tagged, string>;
+  }
+  resource heterogeneous {
+    constructor(inner: borrow<heterogeneous-set>);
+    get: func() -> heterogeneous-set;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<heterogeneous, string>;
+  }
+  resource heterogeneous-set {
+    constructor(inner: list<u64>) -> result<heterogeneous-set, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<heterogeneous-set, string>;
+  }
+  resource holder {
+    constructor(h: borrow<homogeneous>, s: borrow<heterogeneous>, a: list<borrow<elem-tagged>>);
+    h: func() -> homogeneous;
+    s: func() -> heterogeneous;
+    a: func() -> list<elem-tagged>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource homogeneous {
+    constructor(inner: borrow<homogeneous-inner>);
+    get: func() -> homogeneous-inner;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<homogeneous, string>;
+  }
+  resource homogeneous-inner {
+    constructor(inner: list<u64>) -> result<homogeneous-inner, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<homogeneous-inner, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

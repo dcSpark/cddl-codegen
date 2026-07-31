@@ -1,0 +1,27 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(payload: list<tuple<borrow<prelude-bignint>, u64>>);
+    payload: func() -> list<tuple<prelude-bignint, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource prelude-bignint {
+    constructor(inner: list<u8>);
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-bignint, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -1,0 +1,59 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(s: borrow<single-arm-set>, ns: borrow<single-arm-neset>, r: borrow<plain-reject>, nr: borrow<plain-neset-reject>, o: borrow<opt-out>, t: borrow<plain-table>);
+    s: func() -> single-arm-set;
+    ns: func() -> single-arm-neset;
+    r: func() -> plain-reject;
+    nr: func() -> plain-neset-reject;
+    o: func() -> opt-out;
+    t: func() -> plain-table;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource opt-out {
+    constructor(inner: list<u64>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<opt-out, string>;
+  }
+  resource plain-neset-reject {
+    constructor(inner: list<u64>) -> result<plain-neset-reject, string>;
+    get: func() -> list<u64>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<plain-neset-reject, string>;
+  }
+  resource plain-reject {
+    constructor(inner: list<u64>) -> result<plain-reject, string>;
+    get: func() -> list<u64>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<plain-reject, string>;
+  }
+  resource plain-table {
+    constructor(inner: list<tuple<u64, string>>);
+    get: func() -> list<tuple<u64, string>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<plain-table, string>;
+  }
+  resource single-arm-neset {
+    constructor(inner: list<u64>) -> result<single-arm-neset, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<single-arm-neset, string>;
+  }
+  resource single-arm-set {
+    constructor(inner: list<u64>) -> result<single-arm-set, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<single-arm-set, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -1,0 +1,247 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Holder = WitHolder;
+    type OptOut = WitOptOut;
+    type PlainNesetReject = WitPlainNesetReject;
+    type PlainReject = WitPlainReject;
+    type PlainTable = WitPlainTable;
+    type SingleArmNeset = WitSingleArmNeset;
+    type SingleArmSet = WitSingleArmSet;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(
+        s: wit_types::SingleArmSetBorrow<'_>,
+        ns: wit_types::SingleArmNesetBorrow<'_>,
+        r: wit_types::PlainRejectBorrow<'_>,
+        nr: wit_types::PlainNesetRejectBorrow<'_>,
+        o: wit_types::OptOutBorrow<'_>,
+        t: wit_types::PlainTableBorrow<'_>,
+    ) -> Self {
+        let s = s.get::<WitSingleArmSet>().0.borrow().clone();
+        let ns = ns.get::<WitSingleArmNeset>().0.borrow().clone();
+        let r = r.get::<WitPlainReject>().0.borrow().clone();
+        let nr = nr.get::<WitPlainNesetReject>().0.borrow().clone();
+        let o = o.get::<WitOptOut>().0.borrow().clone();
+        let t = t.get::<WitPlainTable>().0.borrow().clone();
+        let inner = cddl_lib::Holder::new(s, ns, r, nr, o, t);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn s(&self) -> wit_types::SingleArmSet {
+        let me = self.0.borrow();
+        wit_types::SingleArmSet::new(WitSingleArmSet(RefCell::new(me.s.clone())))
+    }
+
+    fn ns(&self) -> wit_types::SingleArmNeset {
+        let me = self.0.borrow();
+        wit_types::SingleArmNeset::new(WitSingleArmNeset(RefCell::new(me.ns.clone())))
+    }
+
+    fn r(&self) -> wit_types::PlainReject {
+        let me = self.0.borrow();
+        wit_types::PlainReject::new(WitPlainReject(RefCell::new(me.r.clone())))
+    }
+
+    fn nr(&self) -> wit_types::PlainNesetReject {
+        let me = self.0.borrow();
+        wit_types::PlainNesetReject::new(WitPlainNesetReject(RefCell::new(me.nr.clone())))
+    }
+
+    fn o(&self) -> wit_types::OptOut {
+        let me = self.0.borrow();
+        wit_types::OptOut::new(WitOptOut(RefCell::new(me.o.clone())))
+    }
+
+    fn t(&self) -> wit_types::PlainTable {
+        let me = self.0.borrow();
+        wit_types::PlainTable::new(WitPlainTable(RefCell::new(me.t.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOptOut(pub RefCell<cddl_lib::OptOut>);
+
+impl wit_types::GuestOptOut for WitOptOut {
+    fn new(inner: Vec<u64>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::OptOut::new(inner);
+        WitOptOut(RefCell::new(inner))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OptOut as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptOut, String> {
+        <cddl_lib::OptOut as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OptOut::new(WitOptOut(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPlainNesetReject(pub RefCell<cddl_lib::PlainNesetReject>);
+
+impl wit_types::GuestPlainNesetReject for WitPlainNesetReject {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::PlainNesetReject::new(inner.try_into().map_err(err)?);
+        Ok(WitPlainNesetReject(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PlainNesetReject as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PlainNesetReject, String> {
+        <cddl_lib::PlainNesetReject as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::PlainNesetReject::new(WitPlainNesetReject(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitPlainReject(pub RefCell<cddl_lib::PlainReject>);
+
+impl wit_types::GuestPlainReject for WitPlainReject {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::PlainReject::new(inner.try_into().map_err(err)?);
+        Ok(WitPlainReject(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PlainReject as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PlainReject, String> {
+        <cddl_lib::PlainReject as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PlainReject::new(WitPlainReject(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPlainTable(pub RefCell<cddl_lib::PlainTable>);
+
+impl wit_types::GuestPlainTable for WitPlainTable {
+    fn new(inner: Vec<(u64, String)>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::PlainTable::new(inner);
+        WitPlainTable(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<(u64, String)> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|(x0, x1)| (*x0, x1.clone())).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PlainTable as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PlainTable, String> {
+        <cddl_lib::PlainTable as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PlainTable::new(WitPlainTable(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSingleArmNeset(pub RefCell<cddl_lib::SingleArmNeset>);
+
+impl wit_types::GuestSingleArmNeset for WitSingleArmNeset {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::SingleArmNeset::new(inner.try_into().map_err(err)?);
+        Ok(WitSingleArmNeset(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::SingleArmNeset as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::SingleArmNeset, String> {
+        <cddl_lib::SingleArmNeset as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::SingleArmNeset::new(WitSingleArmNeset(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSingleArmSet(pub RefCell<cddl_lib::SingleArmSet>);
+
+impl wit_types::GuestSingleArmSet for WitSingleArmSet {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::SingleArmSet::new(inner.try_into().map_err(err)?);
+        Ok(WitSingleArmSet(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::SingleArmSet as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::SingleArmSet, String> {
+        <cddl_lib::SingleArmSet as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::SingleArmSet::new(WitSingleArmSet(RefCell::new(v))))
+            .map_err(err)
+    }
+}

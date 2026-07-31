@@ -1,0 +1,187 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ArrU64OrArrU64 = WitArrU64OrArrU64;
+    type InlineHolder = WitInlineHolder;
+    type SetText = WitSetText;
+    type SetU64 = WitSetU64;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitArrU64OrArrU64(pub RefCell<cddl_lib::ArrU64OrArrU64>);
+
+impl wit_types::GuestArrU64OrArrU64 for WitArrU64OrArrU64 {
+    fn new_arr_u64(arr_u64: wit_types::SetU64Borrow<'_>) -> wit_types::ArrU64OrArrU64 {
+        let arr_u64 = arr_u64.get::<WitSetU64>().0.borrow().clone();
+        let inner = cddl_lib::ArrU64OrArrU64::new_arr_u64(arr_u64);
+        wit_types::ArrU64OrArrU64::new(WitArrU64OrArrU64(RefCell::new(inner)))
+    }
+
+    fn as_arr_u64(&self) -> Option<wit_types::SetU64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ArrU64OrArrU64::ArrU64(arr_u64) => Some(wit_types::SetU64::new(WitSetU64(
+                RefCell::new(arr_u64.clone()),
+            ))),
+            _ => None,
+        }
+    }
+
+    fn new_arr_u642(arr_u642: Vec<u64>) -> wit_types::ArrU64OrArrU64 {
+        let arr_u642 = arr_u642.into_iter().collect();
+        let inner = cddl_lib::ArrU64OrArrU64::new_arr_u642(arr_u642);
+        wit_types::ArrU64OrArrU64::new(WitArrU64OrArrU64(RefCell::new(inner)))
+    }
+
+    fn as_arr_u642(&self) -> Option<Vec<u64>> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ArrU64OrArrU64::ArrU642(arr_u642) => {
+                Some(arr_u642.iter().map(|x| *x).collect())
+            }
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::ArrU64OrArrU64Kind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ArrU64OrArrU64::ArrU64(_) => wit_types::ArrU64OrArrU64Kind::ArrU64,
+            cddl_lib::ArrU64OrArrU64::ArrU642(_) => wit_types::ArrU64OrArrU64Kind::ArrU642,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ArrU64OrArrU64 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ArrU64OrArrU64, String> {
+        <cddl_lib::ArrU64OrArrU64 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ArrU64OrArrU64::new(WitArrU64OrArrU64(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitInlineHolder(pub RefCell<cddl_lib::InlineHolder>);
+
+impl wit_types::GuestInlineHolder for WitInlineHolder {
+    fn new(
+        a: wit_types::SetU64Borrow<'_>,
+        c: Vec<wit_types::SetU64Borrow<'_>>,
+        x: wit_types::ArrU64OrArrU64Borrow<'_>,
+    ) -> Self {
+        let a = a.get::<WitSetU64>().0.borrow().clone();
+        let c = c
+            .into_iter()
+            .map(|x| x.get::<WitSetU64>().0.borrow().clone())
+            .collect();
+        let x = x.get::<WitArrU64OrArrU64>().0.borrow().clone();
+        let inner = cddl_lib::InlineHolder::new(a, c, x);
+        WitInlineHolder(RefCell::new(inner))
+    }
+
+    fn a(&self) -> wit_types::SetU64 {
+        let me = self.0.borrow();
+        wit_types::SetU64::new(WitSetU64(RefCell::new(me.a.clone())))
+    }
+
+    fn b(&self) -> Option<wit_types::SetText> {
+        let me = self.0.borrow();
+        me.b.as_ref()
+            .map(|x| wit_types::SetText::new(WitSetText(RefCell::new(x.clone()))))
+    }
+
+    fn set_b(&self, b: wit_types::SetTextBorrow<'_>) {
+        let b = b.get::<WitSetText>().0.borrow().clone();
+        self.0.borrow_mut().b = Some(b);
+    }
+
+    fn c(&self) -> Vec<wit_types::SetU64> {
+        let me = self.0.borrow();
+        me.c.iter()
+            .map(|x| wit_types::SetU64::new(WitSetU64(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn x(&self) -> wit_types::ArrU64OrArrU64 {
+        let me = self.0.borrow();
+        wit_types::ArrU64OrArrU64::new(WitArrU64OrArrU64(RefCell::new(me.x.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::InlineHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::InlineHolder, String> {
+        <cddl_lib::InlineHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::InlineHolder::new(WitInlineHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSetText(pub RefCell<cddl_lib::SetText>);
+
+impl wit_types::GuestSetText for WitSetText {
+    fn new(inner: Vec<String>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::SetText::new(inner.try_into().map_err(err)?);
+        Ok(WitSetText(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::SetText as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::SetText, String> {
+        <cddl_lib::SetText as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::SetText::new(WitSetText(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSetU64(pub RefCell<cddl_lib::SetU64>);
+
+impl wit_types::GuestSetU64 for WitSetU64 {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::SetU64::new(inner.try_into().map_err(err)?);
+        Ok(WitSetU64(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::SetU64 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::SetU64, String> {
+        <cddl_lib::SetU64 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::SetU64::new(WitSetU64(RefCell::new(v))))
+            .map_err(err)
+    }
+}

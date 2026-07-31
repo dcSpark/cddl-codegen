@@ -1,0 +1,53 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(p: list<tuple<u64, string>>, np: list<tuple<u64, string>>, g: list<tuple<string, u64>>, m: borrow<md>) -> result<holder, string>;
+    p: func() -> list<tuple<u64, string>>;
+    np: func() -> list<tuple<u64, string>>;
+    g: func() -> list<tuple<string, u64>>;
+    m: func() -> md;
+    o: func() -> option<list<tuple<u64, string>>>;
+    set-o: func(o: list<tuple<u64, string>>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  variant int {
+    uint(u64),
+    // a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4
+    nint(u64),
+  }
+  resource md {
+    new-mdmap: static func(mdmap: list<tuple<string, borrow<md>>>) -> md;
+    as-mdmap: func() -> option<list<tuple<string, md>>>;
+    new-arr-md: static func(arr-md: list<borrow<md>>) -> md;
+    as-arr-md: func() -> option<list<md>>;
+    new-int: static func(int: int) -> md;
+    as-int: func() -> option<int>;
+    new-bytes: static func(bytes: list<u8>) -> md;
+    as-bytes: func() -> option<list<u8>>;
+    new-text: static func(text: string) -> md;
+    as-text: func() -> option<string>;
+    kind: func() -> md-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<md, string>;
+  }
+  enum md-kind {
+    mdmap,
+    arr-md,
+    int,
+    bytes,
+    text,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

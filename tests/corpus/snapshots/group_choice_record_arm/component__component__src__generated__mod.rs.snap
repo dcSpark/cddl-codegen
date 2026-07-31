@@ -1,0 +1,109 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type RecordArm = WitRecordArm;
+    type St = WitSt;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitRecordArm(pub RefCell<cddl_lib::RecordArm>);
+
+impl wit_types::GuestRecordArm for WitRecordArm {
+    fn new_a(x: u64, y: String) -> wit_types::RecordArm {
+        let inner = cddl_lib::RecordArm::new_a(x, y);
+        wit_types::RecordArm::new(WitRecordArm(RefCell::new(inner)))
+    }
+
+    fn as_a(&self) -> Option<wit_types::St> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::RecordArm::A(a) => Some(wit_types::St::new(WitSt(RefCell::new(a.clone())))),
+            _ => None,
+        }
+    }
+
+    fn new_b(b: String) -> wit_types::RecordArm {
+        let inner = cddl_lib::RecordArm::new_b(b);
+        wit_types::RecordArm::new(WitRecordArm(RefCell::new(inner)))
+    }
+
+    fn as_b(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::RecordArm::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::RecordArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::RecordArm::A(_) => wit_types::RecordArmKind::A,
+            cddl_lib::RecordArm::B(_) => wit_types::RecordArmKind::B,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::RecordArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::RecordArm, String> {
+        <cddl_lib::RecordArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::RecordArm::new(WitRecordArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSt(pub RefCell<cddl_lib::St>);
+
+impl wit_types::GuestSt for WitSt {
+    fn new(x: u64, y: String) -> Self {
+        let inner = cddl_lib::St::new(x, y);
+        WitSt(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn y(&self) -> String {
+        let me = self.0.borrow();
+        me.y.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::St as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::St, String> {
+        <cddl_lib::St as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::St::new(WitSt(RefCell::new(v))))
+            .map_err(err)
+    }
+}

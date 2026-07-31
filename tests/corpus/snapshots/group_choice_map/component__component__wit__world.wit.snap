@@ -1,0 +1,113 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource fixed-value-arm {
+    new-fixed-value-arm0: static func(key2: u64) -> fixed-value-arm;
+    as-fixed-value-arm0: func() -> option<fixed-value-arm0>;
+    new-text: static func(text: string) -> fixed-value-arm;
+    as-text: func() -> option<string>;
+    kind: func() -> fixed-value-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<fixed-value-arm, string>;
+  }
+  enum fixed-value-arm-kind {
+    fixed-value-arm0,
+    text,
+  }
+  resource fixed-value-arm0 {
+    constructor(key2: u64);
+    key2: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<fixed-value-arm0, string>;
+  }
+  resource mixed-key-types {
+    new-uint: static func(uint: u64) -> mixed-key-types;
+    as-uint: func() -> option<u64>;
+    new-b: static func(b: string) -> mixed-key-types;
+    as-b: func() -> option<string>;
+    kind: func() -> mixed-key-types-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<mixed-key-types, string>;
+  }
+  enum mixed-key-types-kind {
+    uint,
+    b,
+  }
+  resource multi-field-arm {
+    new-multi-field-arm0: static func(a: u64, x: string) -> multi-field-arm;
+    as-multi-field-arm0: func() -> option<multi-field-arm0>;
+    new-b: static func(b: string) -> multi-field-arm;
+    as-b: func() -> option<string>;
+    kind: func() -> multi-field-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<multi-field-arm, string>;
+  }
+  enum multi-field-arm-kind {
+    multi-field-arm0,
+    b,
+  }
+  resource multi-field-arm0 {
+    constructor(a: u64, x: string);
+    a: func() -> u64;
+    x: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<multi-field-arm0, string>;
+  }
+  resource nonempty-arm {
+    new-nonempty-arm0: static func(f0: list<u64>, f1: u64) -> result<nonempty-arm, string>;
+    as-nonempty-arm0: func() -> option<nonempty-arm0>;
+    new-zz: static func(zz: string) -> nonempty-arm;
+    as-zz: func() -> option<string>;
+    kind: func() -> nonempty-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nonempty-arm, string>;
+  }
+  enum nonempty-arm-kind {
+    nonempty-arm0,
+    zz,
+  }
+  resource nonempty-arm0 {
+    constructor(f0: list<u64>, f1: u64) -> result<nonempty-arm0, string>;
+    f0: func() -> list<u64>;
+    f1: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nonempty-arm0, string>;
+  }
+  resource text-keyed {
+    new-a: static func(a: u64) -> text-keyed;
+    as-a: func() -> option<u64>;
+    new-b: static func(b: string) -> text-keyed;
+    as-b: func() -> option<string>;
+    kind: func() -> text-keyed-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<text-keyed, string>;
+  }
+  enum text-keyed-kind {
+    a,
+    b,
+  }
+  resource uint-keyed {
+    new-uint: static func(uint: u64) -> uint-keyed;
+    as-uint: func() -> option<u64>;
+    new-text: static func(text: string) -> uint-keyed;
+    as-text: func() -> option<string>;
+    kind: func() -> uint-keyed-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<uint-keyed, string>;
+  }
+  enum uint-keyed-kind {
+    uint,
+    text,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -1,0 +1,130 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type BoolOrText = WitBoolOrText;
+    type UintOrBool = WitUintOrBool;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitBoolOrText(pub RefCell<cddl_lib::BoolOrText>);
+
+impl wit_types::GuestBoolOrText for WitBoolOrText {
+    fn new_bool(bool: bool) -> wit_types::BoolOrText {
+        let inner = cddl_lib::BoolOrText::new_bool(bool);
+        wit_types::BoolOrText::new(WitBoolOrText(RefCell::new(inner)))
+    }
+
+    fn as_bool(&self) -> Option<bool> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::BoolOrText::Bool(bool) => Some(*bool),
+            _ => None,
+        }
+    }
+
+    fn new_text(text: String) -> wit_types::BoolOrText {
+        let inner = cddl_lib::BoolOrText::new_text(text);
+        wit_types::BoolOrText::new(WitBoolOrText(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::BoolOrText::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::BoolOrTextKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::BoolOrText::Bool(_) => wit_types::BoolOrTextKind::Bool,
+            cddl_lib::BoolOrText::Text(_) => wit_types::BoolOrTextKind::Text,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BoolOrText as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BoolOrText, String> {
+        <cddl_lib::BoolOrText as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::BoolOrText::new(WitBoolOrText(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitUintOrBool(pub RefCell<cddl_lib::UintOrBool>);
+
+impl wit_types::GuestUintOrBool for WitUintOrBool {
+    fn new_uint(uint: u64) -> wit_types::UintOrBool {
+        let inner = cddl_lib::UintOrBool::new_uint(uint);
+        wit_types::UintOrBool::new(WitUintOrBool(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::UintOrBool::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_bool(bool: bool) -> wit_types::UintOrBool {
+        let inner = cddl_lib::UintOrBool::new_bool(bool);
+        wit_types::UintOrBool::new(WitUintOrBool(RefCell::new(inner)))
+    }
+
+    fn as_bool(&self) -> Option<bool> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::UintOrBool::Bool(bool) => Some(*bool),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::UintOrBoolKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::UintOrBool::U64(_) => wit_types::UintOrBoolKind::Uint,
+            cddl_lib::UintOrBool::Bool(_) => wit_types::UintOrBoolKind::Bool,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::UintOrBool as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::UintOrBool, String> {
+        <cddl_lib::UintOrBool as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::UintOrBool::new(WitUintOrBool(RefCell::new(v))))
+            .map_err(err)
+    }
+}

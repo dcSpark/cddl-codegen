@@ -1,0 +1,41 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource ext-set-plain {
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<ext-set-plain, string>;
+  }
+  resource ext-set-pub-key {
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<ext-set-pub-key, string>;
+  }
+  resource plain {
+    constructor(a: u64, b: string);
+    a: func() -> u64;
+    b: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<plain, string>;
+  }
+  resource pub-key {
+    to-raw-bytes: func() -> list<u8>;
+    from-raw-bytes: static func(bytes: list<u8>) -> result<pub-key, string>;
+  }
+  resource using-flavored {
+    constructor(keys: borrow<ext-set-pub-key>, plains: borrow<ext-set-plain>);
+    keys: func() -> ext-set-pub-key;
+    plains: func() -> ext-set-plain;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<using-flavored, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

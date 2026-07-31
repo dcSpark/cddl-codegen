@@ -1,0 +1,74 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type BytesKeyHolder = WitBytesKeyHolder;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitBytesKeyHolder(pub RefCell<cddl_lib::BytesKeyHolder>);
+
+impl wit_types::GuestBytesKeyHolder for WitBytesKeyHolder {
+    fn new(named: Vec<(Vec<u8>, u64)>, inline: Vec<(Vec<u8>, u64)>) -> Self {
+        let named = named
+            .into_iter()
+            .map(|(x0, x1)| (x0.into_iter().collect(), x1))
+            .collect();
+        let inline = inline
+            .into_iter()
+            .map(|(x0, x1)| (x0.into_iter().collect(), x1))
+            .collect();
+        let inner = cddl_lib::BytesKeyHolder::new(named, inline);
+        WitBytesKeyHolder(RefCell::new(inner))
+    }
+
+    fn named(&self) -> Vec<(Vec<u8>, u64)> {
+        let me = self.0.borrow();
+        me.named
+            .iter()
+            .map(|(x0, x1)| (x0.iter().map(|x| *x).collect(), *x1))
+            .collect()
+    }
+
+    fn inline(&self) -> Vec<(Vec<u8>, u64)> {
+        let me = self.0.borrow();
+        me.inline
+            .iter()
+            .map(|(x0, x1)| (x0.iter().map(|x| *x).collect(), *x1))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BytesKeyHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BytesKeyHolder, String> {
+        <cddl_lib::BytesKeyHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::BytesKeyHolder::new(WitBytesKeyHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}

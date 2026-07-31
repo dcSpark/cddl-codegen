@@ -1,0 +1,55 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Hash = WitHash;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitHash(pub RefCell<cddl_lib::Hash>);
+
+impl wit_types::GuestHash for WitHash {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::Hash::new(inner).map_err(err)?;
+        Ok(WitHash(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Hash as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Hash, String> {
+        <cddl_lib::Hash as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Hash::new(WitHash(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -1,0 +1,94 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type TypeChoice = WitTypeChoice;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitTypeChoice(pub RefCell<cddl_lib::TypeChoice>);
+
+impl wit_types::GuestTypeChoice for WitTypeChoice {
+    fn new_uint(uint: u64) -> wit_types::TypeChoice {
+        let inner = cddl_lib::TypeChoice::new_uint(uint);
+        wit_types::TypeChoice::new(WitTypeChoice(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TypeChoice::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_text(text: String) -> wit_types::TypeChoice {
+        let inner = cddl_lib::TypeChoice::new_text(text);
+        wit_types::TypeChoice::new(WitTypeChoice(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TypeChoice::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn new_bytes(bytes: Vec<u8>) -> wit_types::TypeChoice {
+        let bytes = bytes.into_iter().collect();
+        let inner = cddl_lib::TypeChoice::new_bytes(bytes);
+        wit_types::TypeChoice::new(WitTypeChoice(RefCell::new(inner)))
+    }
+
+    fn as_bytes(&self) -> Option<Vec<u8>> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TypeChoice::Bytes(bytes) => Some(bytes.iter().map(|x| *x).collect()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::TypeChoiceKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TypeChoice::U64(_) => wit_types::TypeChoiceKind::Uint,
+            cddl_lib::TypeChoice::Text(_) => wit_types::TypeChoiceKind::Text,
+            cddl_lib::TypeChoice::Bytes(_) => wit_types::TypeChoiceKind::Bytes,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TypeChoice as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TypeChoice, String> {
+        <cddl_lib::TypeChoice as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TypeChoice::new(WitTypeChoice(RefCell::new(v))))
+            .map_err(err)
+    }
+}

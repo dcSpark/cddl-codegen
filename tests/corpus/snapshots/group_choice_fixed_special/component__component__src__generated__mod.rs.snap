@@ -1,0 +1,243 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ArrBoolArm = WitArrBoolArm;
+    type ArrNullArm = WitArrNullArm;
+    type MapBoolArm = WitMapBoolArm;
+    type MapNullArm = WitMapNullArm;
+    type TypeChoiceBool = WitTypeChoiceBool;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitArrBoolArm(pub RefCell<cddl_lib::ArrBoolArm>);
+
+impl wit_types::GuestArrBoolArm for WitArrBoolArm {
+    fn new_flag() -> wit_types::ArrBoolArm {
+        let inner = cddl_lib::ArrBoolArm::new_flag();
+        wit_types::ArrBoolArm::new(WitArrBoolArm(RefCell::new(inner)))
+    }
+
+    fn new_label(label: String) -> wit_types::ArrBoolArm {
+        let inner = cddl_lib::ArrBoolArm::new_label(label);
+        wit_types::ArrBoolArm::new(WitArrBoolArm(RefCell::new(inner)))
+    }
+
+    fn as_label(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ArrBoolArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::ArrBoolArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ArrBoolArm::Flag => wit_types::ArrBoolArmKind::Flag,
+            cddl_lib::ArrBoolArm::Label(_) => wit_types::ArrBoolArmKind::Label,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ArrBoolArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ArrBoolArm, String> {
+        <cddl_lib::ArrBoolArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ArrBoolArm::new(WitArrBoolArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitArrNullArm(pub RefCell<cddl_lib::ArrNullArm>);
+
+impl wit_types::GuestArrNullArm for WitArrNullArm {
+    fn new_absent() -> wit_types::ArrNullArm {
+        let inner = cddl_lib::ArrNullArm::new_absent();
+        wit_types::ArrNullArm::new(WitArrNullArm(RefCell::new(inner)))
+    }
+
+    fn new_label(label: String) -> wit_types::ArrNullArm {
+        let inner = cddl_lib::ArrNullArm::new_label(label);
+        wit_types::ArrNullArm::new(WitArrNullArm(RefCell::new(inner)))
+    }
+
+    fn as_label(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ArrNullArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::ArrNullArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ArrNullArm::Absent => wit_types::ArrNullArmKind::Absent,
+            cddl_lib::ArrNullArm::Label(_) => wit_types::ArrNullArmKind::Label,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ArrNullArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ArrNullArm, String> {
+        <cddl_lib::ArrNullArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ArrNullArm::new(WitArrNullArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitMapBoolArm(pub RefCell<cddl_lib::MapBoolArm>);
+
+impl wit_types::GuestMapBoolArm for WitMapBoolArm {
+    fn new_flag() -> wit_types::MapBoolArm {
+        let inner = cddl_lib::MapBoolArm::new_flag();
+        wit_types::MapBoolArm::new(WitMapBoolArm(RefCell::new(inner)))
+    }
+
+    fn new_label(label: String) -> wit_types::MapBoolArm {
+        let inner = cddl_lib::MapBoolArm::new_label(label);
+        wit_types::MapBoolArm::new(WitMapBoolArm(RefCell::new(inner)))
+    }
+
+    fn as_label(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MapBoolArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::MapBoolArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MapBoolArm::Flag => wit_types::MapBoolArmKind::Flag,
+            cddl_lib::MapBoolArm::Label(_) => wit_types::MapBoolArmKind::Label,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MapBoolArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MapBoolArm, String> {
+        <cddl_lib::MapBoolArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MapBoolArm::new(WitMapBoolArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitMapNullArm(pub RefCell<cddl_lib::MapNullArm>);
+
+impl wit_types::GuestMapNullArm for WitMapNullArm {
+    fn new_absent() -> wit_types::MapNullArm {
+        let inner = cddl_lib::MapNullArm::new_absent();
+        wit_types::MapNullArm::new(WitMapNullArm(RefCell::new(inner)))
+    }
+
+    fn new_label(label: String) -> wit_types::MapNullArm {
+        let inner = cddl_lib::MapNullArm::new_label(label);
+        wit_types::MapNullArm::new(WitMapNullArm(RefCell::new(inner)))
+    }
+
+    fn as_label(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MapNullArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::MapNullArmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::MapNullArm::Absent => wit_types::MapNullArmKind::Absent,
+            cddl_lib::MapNullArm::Label(_) => wit_types::MapNullArmKind::Label,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MapNullArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MapNullArm, String> {
+        <cddl_lib::MapNullArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MapNullArm::new(WitMapNullArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTypeChoiceBool(pub RefCell<cddl_lib::TypeChoiceBool>);
+
+impl wit_types::GuestTypeChoiceBool for WitTypeChoiceBool {
+    fn new_true() -> wit_types::TypeChoiceBool {
+        let inner = cddl_lib::TypeChoiceBool::new_true();
+        wit_types::TypeChoiceBool::new(WitTypeChoiceBool(RefCell::new(inner)))
+    }
+
+    fn new_text(text: String) -> wit_types::TypeChoiceBool {
+        let inner = cddl_lib::TypeChoiceBool::new_text(text);
+        wit_types::TypeChoiceBool::new(WitTypeChoiceBool(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TypeChoiceBool::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::TypeChoiceBoolKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TypeChoiceBool::True => wit_types::TypeChoiceBoolKind::True,
+            cddl_lib::TypeChoiceBool::Text(_) => wit_types::TypeChoiceBoolKind::Text,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TypeChoiceBool as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TypeChoiceBool, String> {
+        <cddl_lib::TypeChoiceBool as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TypeChoiceBool::new(WitTypeChoiceBool(RefCell::new(v))))
+            .map_err(err)
+    }
+}

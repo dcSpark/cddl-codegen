@@ -1,0 +1,78 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type CborEnumHolder = WitCborEnumHolder;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn payload_enum_to_wit(v: &cddl_lib::PayloadEnum) -> wit_types::PayloadEnum {
+    match v {
+        cddl_lib::PayloadEnum::I0 => wit_types::PayloadEnum::I0,
+        cddl_lib::PayloadEnum::I1 => wit_types::PayloadEnum::I1,
+        cddl_lib::PayloadEnum::I2 => wit_types::PayloadEnum::I2,
+    }
+}
+
+fn payload_enum_from_wit(v: wit_types::PayloadEnum) -> cddl_lib::PayloadEnum {
+    match v {
+        wit_types::PayloadEnum::I0 => cddl_lib::PayloadEnum::I0,
+        wit_types::PayloadEnum::I1 => cddl_lib::PayloadEnum::I1,
+        wit_types::PayloadEnum::I2 => cddl_lib::PayloadEnum::I2,
+    }
+}
+
+pub struct WitCborEnumHolder(pub RefCell<cddl_lib::CborEnumHolder>);
+
+impl wit_types::GuestCborEnumHolder for WitCborEnumHolder {
+    fn new(bytes_payload: wit_types::PayloadEnum, tagged_payload: wit_types::PayloadEnum) -> Self {
+        let bytes_payload = payload_enum_from_wit(bytes_payload);
+        let tagged_payload = payload_enum_from_wit(tagged_payload);
+        let inner = cddl_lib::CborEnumHolder::new(bytes_payload, tagged_payload);
+        WitCborEnumHolder(RefCell::new(inner))
+    }
+
+    fn bytes_payload(&self) -> wit_types::PayloadEnum {
+        let me = self.0.borrow();
+        payload_enum_to_wit(&me.bytes_payload)
+    }
+
+    fn tagged_payload(&self) -> wit_types::PayloadEnum {
+        let me = self.0.borrow();
+        payload_enum_to_wit(&me.tagged_payload)
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborEnumHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborEnumHolder, String> {
+        <cddl_lib::CborEnumHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::CborEnumHolder::new(WitCborEnumHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}

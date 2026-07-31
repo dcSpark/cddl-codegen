@@ -1,0 +1,39 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(s: borrow<int-set>, ns: borrow<int-neset>);
+    s: func() -> int-set;
+    ns: func() -> int-neset;
+    t: func() -> option<text-set>;
+    set-t: func(t: borrow<text-set>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource int-neset {
+    constructor(inner: list<u64>) -> result<int-neset, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<int-neset, string>;
+  }
+  resource int-set {
+    constructor(inner: list<u64>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<int-set, string>;
+  }
+  resource text-set {
+    constructor(inner: list<string>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<text-set, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

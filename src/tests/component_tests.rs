@@ -214,6 +214,94 @@ fn component_wit_validates() {
     }
 }
 
+/// The `ALL_PROFILES` component row's flags, as [`cli_for`] needs them. Sourcing them from the row
+/// rather than respelling them keeps this sweep and the corpus SNAPSHOT axis on one posture by
+/// construction: change the row and both move together.
+///
+/// The row's own `--component=true` is dropped, because `cli_for` already supplies it and clap
+/// REJECTS a repeated `--component` outright ("cannot be used multiple times") — `ArgAction::Set` is
+/// set-once, not last-wins. Any other flag the row grows passes straight through.
+fn component_profile_flags() -> Vec<&'static str> {
+    let flags = crate::tests::ALL_PROFILES
+        .iter()
+        .find(|(profile, _)| *profile == crate::tests::COMPONENT_PROFILE)
+        .map(|(_, flags)| *flags)
+        .expect("COMPONENT_PROFILE must name a live ALL_PROFILES row");
+    assert!(
+        flags.contains(&"--component=true"),
+        "the ALL_PROFILES component row no longer turns `--component` on: {flags:?}"
+    );
+    flags
+        .iter()
+        .copied()
+        .filter(|flag| !flag.starts_with("--component"))
+        .collect()
+}
+
+/// Corpus-breadth companion to [`component_wit_validates`]: every `tests/corpus/*.cddl` fixture
+/// through the SAME four stages (resolve → `wit_component::encode` → `wasmparser` validate), under
+/// the `ALL_PROFILES` component row's flags.
+///
+/// This is what makes the corpus' component profile mean "the corpus is component-CLEAN" rather
+/// than "the corpus' component bytes are pinned", and it carries that breadth ALONE:
+/// `integration_tests::feature_corpus_compiles` filters the component profile out (the component
+/// crate is a wasip2 target and that gate `cargo check`s for the host), so nothing else looks at
+/// this face across the whole corpus. In-process and cheap — no cargo, no scratch crate.
+///
+/// It deliberately does NOT assert a non-empty WORLD. Three corpus fixtures — `int_alias`, `table`
+/// and `cbor_nonempty_payload` — project a world with no interface at all (every rule resolves
+/// through as an alias or a named collection), and that is CORRECT output: it resolves, encodes and
+/// validates. An added "the world must export something" assertion would reject them; do not add
+/// one. The vacuity guard that IS wanted here is the emitted-`world.wit` check per fixture plus the
+/// corpus-size floor below.
+///
+/// A fixture that cannot GENERATE under this profile belongs in
+/// `snapshot_tests::PROFILE_GENERATION_SKIP` as `(stem, COMPONENT_PROFILE)` with a reason — the
+/// same list the snapshot axis reads, so the two can never disagree about which cells exist, and
+/// `snapshot_tests::feature_corpus_pins_are_live` already reconciles it against the corpus. A
+/// fixture that GENERATES but fails validity is a BUG, never a pin.
+#[test]
+fn component_wit_validates_the_corpus() {
+    let flags = component_profile_flags();
+    let mut entries: Vec<PathBuf> = std::fs::read_dir("tests/corpus")
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
+        .collect();
+    entries.sort();
+    let mut swept = 0usize;
+    for path in &entries {
+        let stem = path.file_stem().unwrap().to_str().unwrap();
+        if crate::tests::snapshot_tests::PROFILE_GENERATION_SKIP
+            .contains(&(stem, crate::tests::COMPONENT_PROFILE))
+        {
+            continue;
+        }
+        let input = path.to_str().unwrap();
+        let files = wit_files(input, &flags)
+            .unwrap_or_else(|e| panic!("generating corpus fixture {stem} failed: {e}"));
+        assert!(
+            files.contains_key(&format!(
+                "{}/world.wit",
+                crate::generation::layout::COMPONENT_WIT_DIR
+            )),
+            "corpus fixture {stem} emitted no world.wit — its cell would have been vacuous"
+        );
+        let bytes = resolve_and_encode(&files)
+            .unwrap_or_else(|e| panic!("corpus fixture {stem}: {e}\n{files:#?}"));
+        validate_component(&bytes)
+            .unwrap_or_else(|e| panic!("corpus fixture {stem}: {e}\n{files:#?}"));
+        swept += 1;
+    }
+    // Corpus-size floor: a filter bug that swept nothing (or nearly nothing) would otherwise pass
+    // silently. The corpus only grows, so this floor is a lower bound, not a pin.
+    assert!(
+        swept >= 80,
+        "only {swept} corpus fixtures were swept for component-WIT validity (expected >= 80) — the \
+         corpus enumeration or the skip filter shrank"
+    );
+}
+
 /// The gate's NEGATIVE CONTROL. Without it the four-stage chain can silently degrade to a no-op:
 /// the shape it exists to catch is exactly the one that passes the first three stages.
 #[test]

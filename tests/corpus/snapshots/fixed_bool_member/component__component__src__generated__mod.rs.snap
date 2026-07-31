@@ -1,0 +1,114 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ArrMember = WitArrMember;
+    type MapMember = WitMapMember;
+    type TaggedMembers = WitTaggedMembers;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitArrMember(pub RefCell<cddl_lib::ArrMember>);
+
+impl wit_types::GuestArrMember for WitArrMember {
+    fn new(x: u64) -> Self {
+        let inner = cddl_lib::ArrMember::new(x);
+        WitArrMember(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ArrMember as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ArrMember, String> {
+        <cddl_lib::ArrMember as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ArrMember::new(WitArrMember(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitMapMember(pub RefCell<cddl_lib::MapMember>);
+
+impl wit_types::GuestMapMember for WitMapMember {
+    fn new(x: u64) -> Self {
+        let inner = cddl_lib::MapMember::new(x);
+        WitMapMember(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MapMember as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MapMember, String> {
+        <cddl_lib::MapMember as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MapMember::new(WitMapMember(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedMembers(pub RefCell<cddl_lib::TaggedMembers>);
+
+impl wit_types::GuestTaggedMembers for WitTaggedMembers {
+    fn new(x2: u64, x3: u64) -> Self {
+        let inner = cddl_lib::TaggedMembers::new(x2, x3);
+        WitTaggedMembers(RefCell::new(inner))
+    }
+
+    fn x2(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x2
+    }
+
+    fn x3(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x3
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedMembers as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedMembers, String> {
+        <cddl_lib::TaggedMembers as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedMembers::new(WitTaggedMembers(RefCell::new(v))))
+            .map_err(err)
+    }
+}

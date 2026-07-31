@@ -1,0 +1,65 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type OptHolder = WitOptHolder;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitOptHolder(pub RefCell<cddl_lib::OptHolder>);
+
+impl wit_types::GuestOptHolder for WitOptHolder {
+    fn new(x: u64) -> Self {
+        let inner = cddl_lib::OptHolder::new(x);
+        WitOptHolder(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn f(&self) -> Option<Vec<u64>> {
+        let me = self.0.borrow();
+        me.f.as_ref().map(|x| x.iter().map(|x| *x).collect())
+    }
+
+    fn set_f(&self, f: Vec<u64>) {
+        let f = f.into_iter().collect();
+        self.0.borrow_mut().f = Some(f);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OptHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptHolder, String> {
+        <cddl_lib::OptHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OptHolder::new(WitOptHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}

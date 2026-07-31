@@ -11,7 +11,9 @@
 //!   snapshotted under every flag profile plus an IR dump. A one-feature regression yields a
 //!   one-file diff. Grouped under `tests/corpus/snapshots/<feature>/`. The generated `Cargo.toml`
 //!   and the json-gen `main.rs` are skipped here (near-constant — they're covered by
-//!   [`whole_program`], [`cargo_toml_matrix`] and [`serialization_prelude`] instead).
+//!   [`whole_program`], [`cargo_toml_matrix`] and [`serialization_prelude`] instead). The
+//!   `component` profile snapshots only its `component/**` files and ASSERTS the rest byte-equal
+//!   to the `default` profile's — see [`assert_component_face_is_additive`].
 //! * [`whole_program`] — the existing integration inputs (incl. multifile) each under one
 //!   known-safe profile, capturing the *full* output (incl. `Cargo.toml`s) to cover cross-feature
 //!   interactions, the scope/module path, and the edition/deps logic.
@@ -54,10 +56,18 @@ fn is_per_feature_noise(path: &str) -> bool {
 }
 
 /// `(corpus fixture stem, profile)` whose GENERATION deliberately aborts under that profile, so it
-/// has no snapshot to pin there (the fixture is still snapshotted under its other profiles). Mirrors
-/// `integration_tests::feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`; a listed stem absent
-/// from `tests/corpus` fails as a stale pin (checked in [`feature_corpus`]).
-const PROFILE_GENERATION_SKIP: &[(&str, &str)] = &[(
+/// has no snapshot to pin there (the fixture is still snapshotted under its other profiles). A
+/// listed stem absent from `tests/corpus` fails as a stale pin (checked in
+/// [`feature_corpus_pins_are_live`]).
+///
+/// For the `default`/`preserve`/`json` rows this mirrors
+/// `integration_tests::feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL` — the same fixture
+/// aborts in both gates, so a pin here has a twin there. The mirror does NOT extend to
+/// [`super::COMPONENT_PROFILE`]: that gate filters the component row out (the component crate
+/// targets wasip2 and the gate `cargo check`s for the HOST), so a component pin here has no twin
+/// and is reconciled against the corpus alone. The component-face breadth check a pin here excuses
+/// a fixture from is `component_tests::component_wit_validates_the_corpus`, which shares this list.
+pub(super) const PROFILE_GENERATION_SKIP: &[(&str, &str)] = &[(
     // An `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's
     // byte-exact round-trip contract cannot hold for a type that drops unknown entries); default/
     // json snapshot the closed-struct surface.
@@ -65,15 +75,74 @@ const PROFILE_GENERATION_SKIP: &[(&str, &str)] = &[(
     "preserve",
 )];
 
+/// The `component/**` path prefix, taken from the generator's own spelling so the additive split
+/// below can never drift from where the component face actually emits.
+fn is_component_face(path: &str) -> bool {
+    path.starts_with(&format!("{}/", crate::generation::layout::COMPONENT_DIR))
+}
+
+/// The component face is purely ADDITIVE: `--component=true` mints the `component/**` crate and
+/// changes no other emitted byte — not the rust tree, not the wasm tree, not a `Cargo.toml`. Assert
+/// exactly that, by comparing the profile's non-`component/**` output against the `default`
+/// profile's whole output.
+///
+/// This is what lets [`snapshot_input`] snapshot only `component/**` under that profile, and it is
+/// strictly stronger than snapshotting the rust and wasm trees a fourth time: those bytes are
+/// duplicates BY CONSTRUCTION, and pinning them would encode the invariant only implicitly, whereas
+/// this states it — and fails loudly the day the component face starts leaking into the other two,
+/// which is exactly the day it stops being additive.
+fn assert_component_face_is_additive(
+    label: &str,
+    profile: &str,
+    files: &std::collections::BTreeMap<String, String>,
+    default_files: &std::collections::BTreeMap<String, String>,
+) {
+    let rest: std::collections::BTreeMap<&String, &String> = files
+        .iter()
+        .filter(|(path, _)| !is_component_face(path))
+        .collect();
+    let explain = "`--component` is no longer purely additive: it changed a file outside \
+                   `component/**`. Either the component face has started leaking into the rust or \
+                   wasm surface (a bug), or that leak is intended — in which case this profile can \
+                   no longer snapshot `component/**` alone and must pin the whole tree";
+    for (path, content) in &rest {
+        match default_files.get(path.as_str()) {
+            None => panic!(
+                "{label}/{profile}: `{path}` is emitted under this profile but NOT under \
+                 `default` — {explain}"
+            ),
+            Some(baseline) if baseline != *content => panic!(
+                "{label}/{profile}: `{path}` differs from the `default` profile's byte-for-byte — \
+                 {explain}"
+            ),
+            Some(_) => {}
+        }
+    }
+    for path in default_files.keys() {
+        assert!(
+            rest.contains_key(path),
+            "{label}/{profile}: `{path}` is emitted under `default` but NOT under this profile — \
+             {explain}"
+        );
+    }
+}
+
 /// Snapshot the generated source for `input` under each profile (grouped under
 /// `tests/corpus/snapshots/<label>/`). `full` keeps every generated file; otherwise the
 /// near-constant manifest/main files are skipped. `with_ir` adds one IR dump.
+///
+/// `additive_profile` names a profile whose output is snapshotted only for its `component/**`
+/// files, with every other file asserted byte-identical to the `default` profile's
+/// ([`assert_component_face_is_additive`]). Only the corpus sweep passes it: the whole-program
+/// `component` rows deliberately pin the FULL tree (and some of them carry encoding/json flags on
+/// top, so their rust and wasm halves legitimately differ from `default`'s).
 fn snapshot_input(
     input: &std::path::Path,
     label: &str,
     profiles: &[Profile],
     full: bool,
     with_ir: bool,
+    additive_profile: Option<&str>,
 ) {
     let dir = std::env::current_dir()
         .unwrap()
@@ -82,7 +151,9 @@ fn snapshot_input(
     let mut settings = insta::Settings::clone_current();
     settings.set_snapshot_path(dir);
     settings.set_prepend_module_to_snapshot(false);
+    let has_default = profiles.iter().any(|(profile, _)| *profile == "default");
     settings.bind(|| {
+        let mut default_files: Option<std::collections::BTreeMap<String, String>> = None;
         for (profile, extra) in profiles {
             let cli = cli_for(input, extra);
             let files = crate::api::generated_strings(&cli)
@@ -93,12 +164,36 @@ fn snapshot_input(
                 label,
                 profile
             );
-            for (path, content) in files {
-                if !full && is_per_feature_noise(&path) {
+            let additive = additive_profile == Some(*profile);
+            if additive {
+                match &default_files {
+                    Some(baseline) => {
+                        assert_component_face_is_additive(label, profile, &files, baseline)
+                    }
+                    // No baseline to compare against. Legitimate only when this fixture has no
+                    // `default` row at all (a `PROFILE_GENERATION_SKIP` case): the identity check
+                    // is skipped and the `component/**` snapshots still land. If `default` IS in
+                    // the list, the rows are out of order and the check would silently never run.
+                    None => assert!(
+                        !has_default,
+                        "{label}/{profile}: the `default` profile is swept but produced no \
+                         baseline before this row — ALL_PROFILES must keep `default` FIRST, or \
+                         the additive check silently never runs"
+                    ),
+                }
+            }
+            for (path, content) in &files {
+                if additive && !is_component_face(path) {
+                    continue;
+                }
+                if !full && is_per_feature_noise(path) {
                     continue;
                 }
                 let name = format!("{}__{}", profile, path.replace('/', "__"));
                 insta::assert_snapshot!(name, content);
+            }
+            if *profile == "default" {
+                default_files = Some(files);
             }
         }
         if with_ir {
@@ -542,7 +637,14 @@ fn feature_corpus_shard(shard: usize) {
             .filter(|(profile, _)| !PROFILE_GENERATION_SKIP.contains(&(label.as_str(), *profile)))
             .copied()
             .collect();
-        snapshot_input(&path, &label, &profiles, false, true);
+        snapshot_input(
+            &path,
+            &label,
+            &profiles,
+            false,
+            true,
+            Some(super::COMPONENT_PROFILE),
+        );
     }
 }
 
@@ -593,6 +695,11 @@ fn whole_program() {
             std::slice::from_ref(profile),
             true,
             false,
+            // The component rows here pin the FULL tree on purpose: this suite is where the
+            // component `Cargo.toml` and the seed-once root are pinned at all, and the
+            // `component_json` row's extra flags make its rust/wasm halves legitimately differ
+            // from `default`'s.
+            None,
         );
     }
 }
@@ -966,7 +1073,17 @@ fn cargo_toml_matrix() {
     ];
     settings.bind(|| {
         for (label, input) in inputs {
-            for (profile, extra) in ALL_PROFILES {
+            // The component profile is filtered out by name: this gate's subject is
+            // `rust/Cargo.toml`'s conditional deps, and `--component` provably does not touch them
+            // (asserted per corpus fixture by [`assert_component_face_is_additive`]), so a
+            // component column would re-pin the `default` column's bytes. The component crate's own
+            // manifest is pinned by
+            // `component_tests::component_generated_files_carry_the_whole_crate` and by the
+            // whole-program `component` snapshot dir.
+            for (profile, extra) in ALL_PROFILES
+                .iter()
+                .filter(|(profile, _)| *profile != super::COMPONENT_PROFILE)
+            {
                 let cli = cli_for(std::path::Path::new(input), extra);
                 let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| {
                     panic!("generation failed for {}/{}: {}", label, profile, e)

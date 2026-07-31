@@ -1,0 +1,45 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(a: borrow<set-u64>, b: borrow<nonempty-set-text>, c: borrow<nonempty-oset-point>);
+    a: func() -> set-u64;
+    b: func() -> nonempty-set-text;
+    c: func() -> nonempty-oset-point;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource nonempty-oset-point {
+    constructor(inner: list<borrow<point>>) -> result<nonempty-oset-point, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nonempty-oset-point, string>;
+  }
+  resource nonempty-set-text {
+    constructor(inner: list<string>) -> result<nonempty-set-text, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nonempty-set-text, string>;
+  }
+  resource point {
+    constructor(x: u64, y: u64);
+    x: func() -> u64;
+    y: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<point, string>;
+  }
+  resource set-u64 {
+    constructor(inner: list<u64>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<set-u64, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

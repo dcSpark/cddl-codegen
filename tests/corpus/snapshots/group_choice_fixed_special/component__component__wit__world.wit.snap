@@ -1,0 +1,75 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource arr-bool-arm {
+    new-flag: static func() -> arr-bool-arm;
+    new-label: static func(label: string) -> arr-bool-arm;
+    as-label: func() -> option<string>;
+    kind: func() -> arr-bool-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<arr-bool-arm, string>;
+  }
+  enum arr-bool-arm-kind {
+    flag,
+    label,
+  }
+  resource arr-null-arm {
+    new-absent: static func() -> arr-null-arm;
+    new-label: static func(label: string) -> arr-null-arm;
+    as-label: func() -> option<string>;
+    kind: func() -> arr-null-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<arr-null-arm, string>;
+  }
+  enum arr-null-arm-kind {
+    absent,
+    label,
+  }
+  resource map-bool-arm {
+    new-flag: static func() -> map-bool-arm;
+    new-label: static func(label: string) -> map-bool-arm;
+    as-label: func() -> option<string>;
+    kind: func() -> map-bool-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<map-bool-arm, string>;
+  }
+  enum map-bool-arm-kind {
+    flag,
+    label,
+  }
+  resource map-null-arm {
+    new-absent: static func() -> map-null-arm;
+    new-label: static func(label: string) -> map-null-arm;
+    as-label: func() -> option<string>;
+    kind: func() -> map-null-arm-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<map-null-arm, string>;
+  }
+  enum map-null-arm-kind {
+    absent,
+    label,
+  }
+  resource type-choice-bool {
+    new-true: static func() -> type-choice-bool;
+    new-text: static func(text: string) -> type-choice-bool;
+    as-text: func() -> option<string>;
+    kind: func() -> type-choice-bool-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<type-choice-bool, string>;
+  }
+  enum type-choice-bool-kind {
+    true,
+    text,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -1,0 +1,44 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource default-neset {
+    constructor(inner: list<u64>) -> result<default-neset, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<default-neset, string>;
+  }
+  resource default-set {
+    constructor(inner: list<u64>) -> result<default-set, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<default-set, string>;
+  }
+  resource holder {
+    constructor(s: borrow<default-set>, ns: borrow<default-neset>, sa: borrow<single-arm>, o: borrow<opt-out>);
+    s: func() -> default-set;
+    ns: func() -> default-neset;
+    sa: func() -> single-arm;
+    o: func() -> opt-out;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource opt-out {
+    constructor(inner: list<u64>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<opt-out, string>;
+  }
+  resource single-arm {
+    constructor(inner: list<u64>) -> result<single-arm, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<single-arm, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

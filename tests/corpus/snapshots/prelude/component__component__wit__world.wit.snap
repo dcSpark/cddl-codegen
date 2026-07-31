@@ -1,0 +1,148 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  variant int {
+    uint(u64),
+    // a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4
+    nint(u64),
+  }
+  resource prelude {
+    constructor(big-u: borrow<prelude-biguint>, uri: borrow<prelude-uri>, big-i: borrow<prelude-bigint>, unsigned: borrow<prelude-unsigned>, t: string, b: list<u8>, intg: borrow<prelude-integer>, big-n: borrow<prelude-bignint>, date: borrow<prelude-tdate>, b64u: borrow<prelude-b64url>, b64l: borrow<prelude-b64legacy>, re: borrow<prelude-regexp>, mime: borrow<prelude-mime-message>, ec: borrow<prelude-encoded-cbor>, df: borrow<prelude-decfrac>, bf: borrow<prelude-bigfloat>);
+    big-u: func() -> prelude-biguint;
+    uri: func() -> prelude-uri;
+    big-i: func() -> prelude-bigint;
+    unsigned: func() -> prelude-unsigned;
+    t: func() -> string;
+    b: func() -> list<u8>;
+    intg: func() -> prelude-integer;
+    big-n: func() -> prelude-bignint;
+    date: func() -> prelude-tdate;
+    b64u: func() -> prelude-b64url;
+    b64l: func() -> prelude-b64legacy;
+    re: func() -> prelude-regexp;
+    mime: func() -> prelude-mime-message;
+    ec: func() -> prelude-encoded-cbor;
+    df: func() -> prelude-decfrac;
+    bf: func() -> prelude-bigfloat;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude, string>;
+  }
+  resource prelude-b64legacy {
+    constructor(inner: string);
+    get: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-b64legacy, string>;
+  }
+  resource prelude-b64url {
+    constructor(inner: string);
+    get: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-b64url, string>;
+  }
+  resource prelude-bigfloat {
+    constructor(e2: int, m: borrow<prelude-integer>);
+    e2: func() -> int;
+    m: func() -> prelude-integer;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-bigfloat, string>;
+  }
+  resource prelude-bigint {
+    new-prelude-biguint: static func(prelude-biguint: borrow<prelude-biguint>) -> prelude-bigint;
+    as-prelude-biguint: func() -> option<prelude-biguint>;
+    new-prelude-bignint: static func(prelude-bignint: borrow<prelude-bignint>) -> prelude-bigint;
+    as-prelude-bignint: func() -> option<prelude-bignint>;
+    kind: func() -> prelude-bigint-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-bigint, string>;
+  }
+  enum prelude-bigint-kind {
+    prelude-biguint,
+    prelude-bignint,
+  }
+  resource prelude-bignint {
+    constructor(inner: list<u8>);
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-bignint, string>;
+  }
+  resource prelude-biguint {
+    constructor(inner: list<u8>);
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-biguint, string>;
+  }
+  resource prelude-decfrac {
+    constructor(e10: int, m: borrow<prelude-integer>);
+    e10: func() -> int;
+    m: func() -> prelude-integer;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-decfrac, string>;
+  }
+  resource prelude-encoded-cbor {
+    constructor(inner: list<u8>);
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-encoded-cbor, string>;
+  }
+  resource prelude-integer {
+    new-int: static func(int: int) -> prelude-integer;
+    as-int: func() -> option<int>;
+    new-prelude-bigint: static func(prelude-bigint: borrow<prelude-bigint>) -> prelude-integer;
+    as-prelude-bigint: func() -> option<prelude-bigint>;
+    kind: func() -> prelude-integer-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-integer, string>;
+  }
+  enum prelude-integer-kind {
+    int,
+    prelude-bigint,
+  }
+  resource prelude-mime-message {
+    constructor(inner: string);
+    get: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-mime-message, string>;
+  }
+  resource prelude-regexp {
+    constructor(inner: string);
+    get: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-regexp, string>;
+  }
+  resource prelude-tdate {
+    constructor(inner: string);
+    get: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-tdate, string>;
+  }
+  resource prelude-unsigned {
+    new-uint: static func(uint: u64) -> prelude-unsigned;
+    as-uint: func() -> option<u64>;
+    new-prelude-biguint: static func(prelude-biguint: borrow<prelude-biguint>) -> prelude-unsigned;
+    as-prelude-biguint: func() -> option<prelude-biguint>;
+    kind: func() -> prelude-unsigned-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-unsigned, string>;
+  }
+  enum prelude-unsigned-kind {
+    uint,
+    prelude-biguint,
+  }
+  resource prelude-uri {
+    constructor(inner: string);
+    get: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-uri, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

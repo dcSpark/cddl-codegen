@@ -1,0 +1,31 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource arrow-value-keys {
+    constructor();
+    first: func() -> option<string>;
+    set-first: func(first: string);
+    second: func() -> option<u64>;
+    set-second: func(second: u64);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<arrow-value-keys, string>;
+  }
+  resource value-keys {
+    constructor(key1: string, key2: u64);
+    key1: func() -> string;
+    key2: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<value-keys, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

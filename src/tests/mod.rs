@@ -43,7 +43,8 @@ pub(crate) type Profile = (&'static str, &'static [&'static str]);
 ///
 /// Shared by `snapshot_tests` and `integration_tests::feature_corpus_compiles` so the snapshot
 /// axis and the compile gate can never silently diverge (dropping a profile from one must drop it
-/// from both).
+/// from both). A consumer that deliberately skips a row does so BY NAME with a stated reason —
+/// today only [`COMPONENT_PROFILE`], whose crate targets wasip2 and so is not host-checkable.
 pub(crate) const ALL_PROFILES: &[Profile] = &[
     ("default", &[]),
     ("preserve", &["--preserve-encodings=true"]),
@@ -51,4 +52,45 @@ pub(crate) const ALL_PROFILES: &[Profile] = &[
         "json",
         &["--json-serde-derives=true", "--json-schema-export=true"],
     ),
+    // The wasm COMPONENT face (WIT + wasip2 guest glue), which no other profile reaches at all.
+    //
+    // `--wasm` is deliberately left at its DEFAULT (`true`) rather than turned off, for four
+    // reasons:
+    //  1. It is the flag set the repo has already chosen for this face's whole-program snapshots —
+    //     `snapshot_tests::WHOLE_PROGRAM_CASES` carries five `component`-labelled rows spelled
+    //     exactly `&["--component=true"]`. One posture for both snapshot axes.
+    //  2. `--wasm=false` would break the consumers of this const rather than lighten them: clap is
+    //     last-wins, and the sweeps below hardcode `--wasm=true` before appending a profile's
+    //     flags, then treat a missing `wasm/` crate as a de-gating FAILURE (in
+    //     `wasm_parity_tests` it is an outright `panic!`).
+    //  3. It costs no WIT coverage: the emitted `component/wit/**` is byte-identical between the
+    //     two wasm postures — asserted on this face's fixtures by
+    //     `component_tests::component_wit_is_wasm_posture_independent`, and confirmed at corpus
+    //     scale (0 of 89 fixtures differ).
+    //  4. Every corpus fixture generates under it (89 of 89).
+    //
+    // Not every ALL_PROFILES consumer sweeps this row: the ones whose subject is the rust↔wasm
+    // boundary, or which compile for the HOST, filter it out by [`COMPONENT_PROFILE`] with their
+    // own reason. See that constant.
+    ("component", &["--component=true"]),
 ];
+
+/// The [`ALL_PROFILES`] row whose subject is the wasm COMPONENT face, named once so the consumers
+/// that deliberately do NOT sweep it can filter by name rather than by index or count.
+///
+/// A shared name plus the liveness assertion below is what keeps those filters honest: renaming or
+/// deleting the row fails [`component_profile_row_is_live`] loudly instead of turning every filter
+/// into a silent no-op that quietly re-widens the sweeps.
+pub(crate) const COMPONENT_PROFILE: &str = "component";
+
+/// [`COMPONENT_PROFILE`] must name a live [`ALL_PROFILES`] row — see that constant for why.
+#[test]
+fn component_profile_row_is_live() {
+    assert!(
+        ALL_PROFILES
+            .iter()
+            .any(|(name, _)| *name == COMPONENT_PROFILE),
+        "COMPONENT_PROFILE names `{COMPONENT_PROFILE}`, which is not an ALL_PROFILES row — every \
+         consumer filtering by that name has silently become a no-op; fix the name or the row"
+    );
+}

@@ -1,0 +1,48 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource data-enum {
+    new-uint: static func(uint: u64) -> data-enum;
+    as-uint: func() -> option<u64>;
+    new-text: static func(text: string) -> data-enum;
+    as-text: func() -> option<string>;
+    kind: func() -> data-enum-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<data-enum, string>;
+  }
+  enum data-enum-kind {
+    uint,
+    text,
+  }
+  resource nullable-coll-field {
+    constructor(c: option<list<u64>>);
+    c: func() -> option<list<u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nullable-coll-field, string>;
+  }
+  resource nullable-denum-field {
+    constructor(d: option<borrow<data-enum>>);
+    d: func() -> option<data-enum>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nullable-denum-field, string>;
+  }
+  resource nullable-optional-field {
+    constructor(pre: u64);
+    pre: func() -> u64;
+    field0: func() -> option<option<u64>>;
+    set-field0: func(field0: option<u64>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nullable-optional-field, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}
