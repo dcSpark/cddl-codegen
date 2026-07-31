@@ -1,0 +1,15 @@
+; The DEPENDENCY whose own WIT projection cannot render one of its exported types, for the
+; exclusion-propagation case.
+;
+; Separate from `../dep` because the two want opposite things: this one must carry a rule whose WIT
+; projection FAILS, and the unprojectable shape available (a bare reference to a generic extern base)
+; is also not a rust type a crate can hold — so this dependency is projected and never compiled,
+; while `../dep` is compiled and never excludes anything.
+
+; The reference that makes `marker` unprojectable: a generic extern BASE names no concrete type, so
+; only its instances are bridged. The dependency records the reason in its own WIT and still EXPORTS
+; `marker` in its extern-interface — the asymmetry a consumer trips over.
+gen_base = _CDDL_CODEGEN_EXTERN_TYPE_
+leaf = [ a: uint ]
+holder = [ g: gen_base<leaf> ]
+marker = [ v: gen_base, note: text ]

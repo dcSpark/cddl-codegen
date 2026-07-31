@@ -81,6 +81,9 @@
       "gate": "component_host"
     },
     {
+      "gate": "component_import"
+    },
+    {
       "gate": "component_parity",
       "warm_ms": 2000,
       "n": 3,
