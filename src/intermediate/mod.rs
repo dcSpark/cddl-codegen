@@ -3084,8 +3084,9 @@ impl<'a> IntermediateTypes<'a> {
     /// 3. A self-named rule (`bar_list = [+ bar]` — the rule ident IS the element's loose-builder
     ///    name) legitimately claims the name for its RESTRICTED wrapper (it emits with no
     ///    `try_from`; construction is `new(first)` + `add`), but then no OTHER use may need the
-    ///    loose `<Elem>List` builder: a plain non-exposable `[* elem]` mint or a map-key list
-    ///    wrapper of the same element would reference a class of the wrong shape.
+    ///    loose `<Elem>List` builder: a plain non-exposable `[* elem]` mint, a map-key list
+    ///    wrapper of the same element, or an open struct's rest row (a `* K => V` row's `keys()`
+    ///    wrapper, a `* T` tail's own getter) would reference a class of the wrong shape.
     fn non_empty_wrapper_name_collisions(&self) -> Vec<String> {
         // BTreeSet: deterministic message order (repo determinism invariant)
         let mut msgs = BTreeSet::new();
@@ -3119,14 +3120,44 @@ impl<'a> IntermediateTypes<'a> {
         });
         // named tables' keys() wrappers (Table structs aren't visited as Map RustTypes)
         for rs in self.rust_structs.values() {
-            if let RustStructType::Table { domain, .. } = rs.variant()
-                && !ConceptualRustType::Array(Box::new(domain.clone()))
-                    .directly_wasm_exposable_ct(self)
-            {
-                plain_loose_needs.insert(
-                    domain.name_as_wasm_array(self),
-                    "a table keys() wrapper".to_owned(),
-                );
+            match rs.variant() {
+                RustStructType::Table { domain, .. } => {
+                    if !ConceptualRustType::Array(Box::new(domain.clone()))
+                        .directly_wasm_exposable_ct(self)
+                    {
+                        plain_loose_needs.insert(
+                            domain.name_as_wasm_array(self),
+                            "a table keys() wrapper".to_owned(),
+                        );
+                    }
+                }
+                // An open struct's rest row names a list wrapper the same way a field of the row's
+                // CONTAINER type would, and the IR stores the row's inner types flat, so neither the
+                // `visit_all_rust_types` walk above nor the Table arm sees the claim: a `* K => V`
+                // row's wasm class needs the loose `<K>List` for its `keys()`, and a `* T` tail's
+                // getter needs the loose `<T>List` itself. Only a CAPTURED row mints anything — an
+                // `@ignore` row has no field and no getter.
+                RustStructType::Record(record) => {
+                    let Some(rest) = record.captured_rest() else {
+                        continue;
+                    };
+                    if rest.is_array_tail() {
+                        if !rest.container_type().directly_wasm_exposable(self) {
+                            plain_loose_needs.insert(
+                                rest.element().name_as_wasm_array(self),
+                                "an open array `* …` rest tail".to_owned(),
+                            );
+                        }
+                    } else if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
+                        .directly_wasm_exposable_ct(self)
+                    {
+                        plain_loose_needs.insert(
+                            rest.domain().name_as_wasm_array(self),
+                            "an open struct-map rest row's keys() wrapper".to_owned(),
+                        );
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -3213,7 +3244,7 @@ impl<'a> IntermediateTypes<'a> {
     /// Detect wasm-class name conflicts the `{+ k => v}` (NonEmptyMap) emission would otherwise turn
     /// into a non-compiling wasm crate — the map-side twin of `non_empty_wrapper_name_collisions`.
     /// The loose table builder is always `MapKToV` (`name_for_wasm_map`); a map is never directly
-    /// exposable, so (unlike arrays) the loose builder is ALWAYS the `try_from` source. Three classes:
+    /// exposable, so (unlike arrays) the loose builder is ALWAYS the `try_from` source. Four classes:
     ///
     /// 1. An inline `{+ k => v}` with no named owner (see `non_empty_map_named_owner`) mints a
     ///    synthesized `NonEmptyMapKToV` class: a user rule claiming that ident collides.
@@ -3223,8 +3254,12 @@ impl<'a> IntermediateTypes<'a> {
     /// 3. A self-named rule (`map_k_to_v = {+ k => v}` — the rule ident IS the loose-builder name)
     ///    legitimately claims the name for its RESTRICTED wrapper (it emits with no `try_from`;
     ///    construction is `new(first_key, first_value)` + `insert`), but then no OTHER use may need
-    ///    the loose `MapKToV` builder: a plain `{* k => v}` use or an anonymous same-shape map would
-    ///    reference a class of the wrong shape.
+    ///    the loose `MapKToV` builder: a plain `{* k => v}` use, an anonymous same-shape map, or an
+    ///    open struct-map rest row of the same key/value would reference a class of the wrong shape.
+    /// 4. A DEFAULT-flavored open struct-map REST ROW mints the loose `MapKToV` its wasm getter
+    ///    returns: a user rule claiming that ident with any shape other than the shared plain
+    ///    `{* k => v}` table collides. This is the default-flavor twin of the Record leg in
+    ///    `preserve_pair_map_loose_wrapper_name_collisions`.
     fn non_empty_map_wrapper_name_collisions(&self) -> Vec<String> {
         let mut msgs = BTreeSet::new();
 
@@ -3246,23 +3281,49 @@ impl<'a> IntermediateTypes<'a> {
         // named plain tables mint their loose `MapKToV` class too (Table structs aren't visited as
         // Map RustTypes); exclude non-empty tables (their class is the restricted wrapper)
         for rs in self.rust_structs.values() {
-            if let RustStructType::Table {
-                domain,
-                range,
-                bounds,
-            } = rs.variant()
-                && *bounds != Some((Some(1), None))
-            {
-                plain_loose_needs.insert(
-                    ConceptualRustType::name_for_wasm_map(
-                        domain,
-                        range,
-                        rs.config().duplicates
-                            == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
-                    )
-                    .to_string(),
-                    "a plain (`*`-occurrence) table rule".to_owned(),
-                );
+            match rs.variant() {
+                RustStructType::Table {
+                    domain,
+                    range,
+                    bounds,
+                } => {
+                    if *bounds != Some((Some(1), None)) {
+                        plain_loose_needs.insert(
+                            ConceptualRustType::name_for_wasm_map(
+                                domain,
+                                range,
+                                rs.config().duplicates
+                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                            )
+                            .to_string(),
+                            "a plain (`*`-occurrence) table rule".to_owned(),
+                        );
+                    }
+                }
+                // An open struct-map rest row mints the loose builder its wasm getter returns, in
+                // the flavor the row carries — invisible to the walk above because the IR stores the
+                // row's key/value flat. Read the name off `RestRow::container_type`, the one
+                // container spelling the emitter and the scope walk also use, so a row's claim
+                // cannot drift from the class it actually mints.
+                RustStructType::Record(record) => {
+                    let Some(rest) = record.captured_rest().filter(|r| !r.is_array_tail()) else {
+                        continue;
+                    };
+                    let container = rest.container_type();
+                    let ConceptualRustType::Map(k, v) = &container.conceptual_type else {
+                        unreachable!("a map rest row's container is a Map");
+                    };
+                    plain_loose_needs.insert(
+                        ConceptualRustType::name_for_wasm_map(
+                            k,
+                            v,
+                            container.is_preserve_pair_map(),
+                        )
+                        .to_string(),
+                        "an open struct-map rest row".to_owned(),
+                    );
+                }
+                _ => {}
             }
         }
 
@@ -3348,6 +3409,43 @@ impl<'a> IntermediateTypes<'a> {
                     &format!("the named `{{+ …}}` rule '{ident}'"),
                     &mut msgs,
                 );
+            }
+        }
+
+        // (4) a DEFAULT-flavored open struct-map rest row MINTS the loose `MapKToV` class its wasm
+        // getter returns, so a user rule spelling that ident shadows it. The `@duplicates preserve`
+        // twin of this leg lives in `preserve_pair_map_loose_wrapper_name_collisions` (the flavor is
+        // part of the structural name, so the two rows can never contend for one class) — per-kind
+        // siblings with deliberately distinct texts, so a failing spec points at the right flavor.
+        // A rule that IS a plain `{* k => v}` table of the same key/value is not a collision: it
+        // solely owns the shape and the row's getter returns it through its `pub type` alias.
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            let Some(rest) = record.captured_rest().filter(|r| {
+                !r.is_array_tail()
+                    && r.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            }) else {
+                continue;
+            };
+            let structural =
+                ConceptualRustType::name_for_wasm_map(rest.domain(), rest.range(), false)
+                    .to_string();
+            if self.wasm_ident_claimed_by_user_rule(&structural)
+                && !self.provides_compatible_loose_table(
+                    &structural,
+                    &rest.domain().clone().resolve_aliases(),
+                    &rest.range().clone().resolve_aliases(),
+                    false,
+                )
+            {
+                msgs.insert(format!(
+                    "name collision: rule '{structural}' collides with the '{structural}' wasm \
+                     wrapper generated for the open struct-map rest row of '{ident}' — rename the \
+                     rule to avoid shadowing the loose map wrapper (or make it a `{{* …}}` table of \
+                     the same key/value, which IS that wrapper)"
+                ));
             }
         }
 
@@ -3498,7 +3596,9 @@ impl<'a> IntermediateTypes<'a> {
                     check(structural, domain, range, minted_by, &mut msgs);
                 }
                 RustStructType::Record(record) => {
-                    let Some(rest) = record.rest.as_ref().filter(|r| {
+                    // CAPTURED rows only: an `@ignore` row has no field and no getter, so it mints
+                    // no wrapper and can claim no ident (same gate as the mint itself).
+                    let Some(rest) = record.captured_rest().filter(|r| {
                         !r.is_array_tail()
                             && r.duplicates()
                                 == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
