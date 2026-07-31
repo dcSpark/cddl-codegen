@@ -279,11 +279,22 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
     ),
     // The wasm rest accessor over a typed key domain: the getter returns the structural
     // `MapKToV`/`PairMapKToV` class and its `keys()` mints `<K>List` — both generic over `K` already,
-    // so this row is the proof rather than the plumbing.
+    // so this row is the proof rather than the plumbing. Its `wasm_json` sibling is the one profile
+    // where the two surfaces meet: the wasm wrappers over a typed `K` and the json-gen crate that
+    // must derive `JsonSchema` over the same shapes, which is where a K-schema obligation the
+    // K-free rest-map helper does not impose would show up.
     (
         "open_struct_map_typed_wasm",
         "tests/open-struct-map-typed/input.cddl",
         ("wasm", &[]),
+    ),
+    (
+        "open_struct_map_typed_wasm_json",
+        "tests/open-struct-map-typed/input.cddl",
+        (
+            "wasm_json",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        ),
     ),
     // The IGNORE flavor (`@ignore` on the rest row): unknown entries are typed-deserialized and
     // DROPPED — no `rest` field, serialize emits declared members only, and JSON/schemars/wasm are a
