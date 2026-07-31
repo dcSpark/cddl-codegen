@@ -1,0 +1,179 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+mod extern_interface_check;
+pub mod pair_map;
+pub mod serialization;
+
+use crate::generated::pair_map::PairMap;
+
+#[derive(Clone, Debug)]
+pub struct BytesRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: BTreeMap<Vec<u8>, String>,
+}
+
+impl BytesRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DupRest {
+    pub key_9: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: PairMap<Md, String>,
+}
+
+impl DupRest {
+    pub fn new(key_9: u64) -> Self {
+        Self {
+            key_9,
+            rest: PairMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum Int {
+    Uint(u64),
+    Nint(u64),
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint(value)
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint(value)
+    }
+}
+
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Uint(x) => write!(f, "{}", x),
+            Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
+        }
+    }
+}
+
+impl core::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = core::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(Self::Uint)
+        } else {
+            u64::try_from((x + 1).unsigned_abs()).map(Self::Nint)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum Md {
+    Int(Int),
+    Bytes(Vec<u8>),
+    Text(String),
+}
+
+impl Md {
+    pub fn new_int(int: Int) -> Self {
+        Self::Int(int)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes(bytes)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SizedRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: BTreeMap<u8, u64>,
+}
+
+impl SizedRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedRest {
+    pub key_2: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: BTreeMap<u64, u64>,
+}
+
+impl TaggedRest {
+    pub fn new(key_2: u64) -> Self {
+        Self {
+            key_2,
+            rest: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UnionRest {
+    pub key_1: u64,
+    pub nm: String,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: BTreeMap<Md, u64>,
+}
+
+impl UnionRest {
+    pub fn new(key_1: u64, nm: String) -> Self {
+        Self {
+            key_1,
+            nm,
+            rest: BTreeMap::new(),
+        }
+    }
+}

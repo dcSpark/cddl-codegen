@@ -1,0 +1,717 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::pair_map::PairMap;
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesList(pub(crate) Vec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl BytesList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<Vec<u8>>> for BytesList {
+    fn from(native: Vec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesList> for Vec<Vec<u8>> {
+    fn from(wasm: BytesList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<Vec<u8>>> for BytesList {
+    fn as_ref(&self) -> &Vec<Vec<u8>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesRest(pub(crate) cddl_lib::BytesRest);
+
+#[wasm_bindgen]
+impl BytesRest {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesRest, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> u64 {
+        self.0.key_1
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> MapBytesToText {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_1: u64) -> Self {
+        Self(cddl_lib::BytesRest::new(key_1))
+    }
+}
+
+impl From<cddl_lib::BytesRest> for BytesRest {
+    fn from(native: cddl_lib::BytesRest) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesRest> for cddl_lib::BytesRest {
+    fn from(wasm: BytesRest) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesRest> for BytesRest {
+    fn as_ref(&self) -> &cddl_lib::BytesRest {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct DupRest(pub(crate) cddl_lib::DupRest);
+
+#[wasm_bindgen]
+impl DupRest {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<DupRest, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_9(&self) -> u64 {
+        self.0.key_9
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> PairMapMdToText {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_9: u64) -> Self {
+        Self(cddl_lib::DupRest::new(key_9))
+    }
+}
+
+impl From<cddl_lib::DupRest> for DupRest {
+    fn from(native: cddl_lib::DupRest) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DupRest> for cddl_lib::DupRest {
+    fn from(wasm: DupRest) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::DupRest> for DupRest {
+    fn as_ref(&self) -> &cddl_lib::DupRest {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Int(pub(crate) cddl_lib::Int);
+
+#[wasm_bindgen]
+impl Int {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Int, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(x: i64) -> Self {
+        if x >= 0 {
+            Self(cddl_lib::Int::new_uint(x as u64))
+        } else {
+            Self(cddl_lib::Int::new_nint((x + 1).unsigned_abs()))
+        }
+    }
+
+    pub fn new_uint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_uint(value))
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_nint(value))
+    }
+
+    pub fn to_str(&self) -> String {
+        self.0.to_string()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(string: &str) -> Result<Int, JsError> {
+        // have to redefine so it's visible in WASM
+        std::str::FromStr::from_str(string)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("Int.from_str({}): {:?}", string, e)))
+    }
+}
+
+impl From<cddl_lib::Int> for Int {
+    fn from(native: cddl_lib::Int) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Int> for cddl_lib::Int {
+    fn from(wasm: Int) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Int> for Int {
+    fn as_ref(&self) -> &cddl_lib::Int {
+        &self.0
+    }
+}
+
+pub type IntError = JsError;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapBytesToText(pub(crate) BTreeMap<Vec<u8>, String>);
+
+#[wasm_bindgen]
+impl MapBytesToText {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Vec<u8>, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: Vec<u8>) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> BytesList {
+        BytesList(self.0.keys().cloned().collect::<Vec<_>>())
+    }
+}
+
+impl From<BTreeMap<Vec<u8>, String>> for MapBytesToText {
+    fn from(native: BTreeMap<Vec<u8>, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapBytesToText> for BTreeMap<Vec<u8>, String> {
+    fn from(wasm: MapBytesToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<Vec<u8>, String>> for MapBytesToText {
+    fn as_ref(&self) -> &BTreeMap<Vec<u8>, String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapMdToU64(pub(crate) BTreeMap<cddl_lib::Md, u64>);
+
+#[wasm_bindgen]
+impl MapMdToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: &Md, value: u64) -> Option<u64> {
+        self.0.insert(key.clone().into(), value)
+    }
+
+    pub fn get(&self, key: &Md) -> Option<u64> {
+        self.0.get(key.as_ref()).copied()
+    }
+
+    pub fn keys(&self) -> MdList {
+        MdList(self.0.keys().cloned().collect::<Vec<_>>())
+    }
+}
+
+impl From<BTreeMap<cddl_lib::Md, u64>> for MapMdToU64 {
+    fn from(native: BTreeMap<cddl_lib::Md, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapMdToU64> for BTreeMap<cddl_lib::Md, u64> {
+    fn from(wasm: MapMdToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<cddl_lib::Md, u64>> for MapMdToU64 {
+    fn as_ref(&self) -> &BTreeMap<cddl_lib::Md, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToU64(pub(crate) BTreeMap<u64, u64>);
+
+#[wasm_bindgen]
+impl MapU64ToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u64, u64>> for MapU64ToU64 {
+    fn from(native: BTreeMap<u64, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToU64> for BTreeMap<u64, u64> {
+    fn from(wasm: MapU64ToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u64, u64>> for MapU64ToU64 {
+    fn as_ref(&self) -> &BTreeMap<u64, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU8ToU64(pub(crate) BTreeMap<u8, u64>);
+
+#[wasm_bindgen]
+impl MapU8ToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u8, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u8) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<u8> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u8, u64>> for MapU8ToU64 {
+    fn from(native: BTreeMap<u8, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU8ToU64> for BTreeMap<u8, u64> {
+    fn from(wasm: MapU8ToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u8, u64>> for MapU8ToU64 {
+    fn as_ref(&self) -> &BTreeMap<u8, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Md(pub(crate) cddl_lib::Md);
+
+#[wasm_bindgen]
+impl Md {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Md, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_int(int: &Int) -> Self {
+        Self(cddl_lib::Md::new_int(int.clone().into()))
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self(cddl_lib::Md::new_bytes(bytes))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::Md::new_text(text))
+    }
+
+    pub fn kind(&self) -> MdKind {
+        match &self.0 {
+            cddl_lib::Md::Int(_) => MdKind::Int,
+            cddl_lib::Md::Bytes(_) => MdKind::Bytes,
+            cddl_lib::Md::Text(_) => MdKind::Text,
+        }
+    }
+
+    pub fn as_int(&self) -> Option<Int> {
+        match &self.0 {
+            cddl_lib::Md::Int(int) => Some(int.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::Md::Bytes(bytes) => Some(bytes.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::Md::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Md> for Md {
+    fn from(native: cddl_lib::Md) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Md> for cddl_lib::Md {
+    fn from(wasm: Md) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Md> for Md {
+    fn as_ref(&self) -> &cddl_lib::Md {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum MdKind {
+    Int,
+    Bytes,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MdList(pub(crate) Vec<cddl_lib::Md>);
+
+#[wasm_bindgen]
+impl MdList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Md {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Md) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Md>> for MdList {
+    fn from(native: Vec<cddl_lib::Md>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MdList> for Vec<cddl_lib::Md> {
+    fn from(wasm: MdList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Md>> for MdList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Md> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PairMapMdToText(pub(crate) PairMap<cddl_lib::Md, String>);
+
+#[wasm_bindgen]
+impl PairMapMdToText {
+    pub fn new() -> Self {
+        Self(PairMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: &Md, value: String) -> Option<String> {
+        self.0.insert(key.clone().into(), value)
+    }
+
+    pub fn get(&self, key: &Md) -> Option<String> {
+        self.0.get(key.as_ref()).cloned()
+    }
+
+    pub fn keys(&self) -> MdList {
+        MdList(self.0.keys().cloned().collect::<Vec<_>>())
+    }
+}
+
+impl From<PairMap<cddl_lib::Md, String>> for PairMapMdToText {
+    fn from(native: PairMap<cddl_lib::Md, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PairMapMdToText> for PairMap<cddl_lib::Md, String> {
+    fn from(wasm: PairMapMdToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<PairMap<cddl_lib::Md, String>> for PairMapMdToText {
+    fn as_ref(&self) -> &PairMap<cddl_lib::Md, String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SizedRest(pub(crate) cddl_lib::SizedRest);
+
+#[wasm_bindgen]
+impl SizedRest {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SizedRest, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> u64 {
+        self.0.key_1
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> MapU8ToU64 {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_1: u64) -> Self {
+        Self(cddl_lib::SizedRest::new(key_1))
+    }
+}
+
+impl From<cddl_lib::SizedRest> for SizedRest {
+    fn from(native: cddl_lib::SizedRest) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SizedRest> for cddl_lib::SizedRest {
+    fn from(wasm: SizedRest) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SizedRest> for SizedRest {
+    fn as_ref(&self) -> &cddl_lib::SizedRest {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedRest(pub(crate) cddl_lib::TaggedRest);
+
+#[wasm_bindgen]
+impl TaggedRest {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedRest, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_2(&self) -> u64 {
+        self.0.key_2
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> MapU64ToU64 {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_2: u64) -> Self {
+        Self(cddl_lib::TaggedRest::new(key_2))
+    }
+}
+
+impl From<cddl_lib::TaggedRest> for TaggedRest {
+    fn from(native: cddl_lib::TaggedRest) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedRest> for cddl_lib::TaggedRest {
+    fn from(wasm: TaggedRest) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedRest> for TaggedRest {
+    fn as_ref(&self) -> &cddl_lib::TaggedRest {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct UnionRest(pub(crate) cddl_lib::UnionRest);
+
+#[wasm_bindgen]
+impl UnionRest {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<UnionRest, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> u64 {
+        self.0.key_1
+    }
+
+    pub fn nm(&self) -> String {
+        self.0.nm.clone()
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> MapMdToU64 {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_1: u64, nm: String) -> Self {
+        Self(cddl_lib::UnionRest::new(key_1, nm))
+    }
+}
+
+impl From<cddl_lib::UnionRest> for UnionRest {
+    fn from(native: cddl_lib::UnionRest) -> Self {
+        Self(native)
+    }
+}
+
+impl From<UnionRest> for cddl_lib::UnionRest {
+    fn from(wasm: UnionRest) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::UnionRest> for UnionRest {
+    fn as_ref(&self) -> &cddl_lib::UnionRest {
+        &self.0
+    }
+}

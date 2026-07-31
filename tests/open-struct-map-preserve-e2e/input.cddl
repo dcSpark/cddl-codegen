@@ -27,3 +27,17 @@ dup_any_rest = {
   name : text,
   * any => any ; @duplicates preserve
 }
+
+; --- TYPED key domains (the seek path) crossed with the preserve/canonical core ---
+md = int / bstr / text
+; A local union K with a declared uint AND a declared text key: both dispatch arms get a rewinding
+; catch-all, and the rest entries interleave with the declared ones in `orig_deser_order`.
+typed_open = { 1: uint, "nm": text, * md => uint }
+; A `bytes` K under preserve: its `StringEncoding` sidecar is bound by the key's OWN deserialize
+; (the peeked path's `key_enc` does not exist here), so a non-minimal key length header must replay.
+typed_bytes = { 3: uint, * bstr => text }
+; The typed union under `@duplicates preserve`: the PairMap twin with POSITIONAL key sidecars.
+typed_dup = {
+  9: uint,
+  * md => uint ; @duplicates preserve
+}
