@@ -126,6 +126,25 @@ Two API differences from the wasm face are worth knowing before choosing it:
 
 It also **constrains what the spec may contain**, because WIT is stricter about names than Rust. Each exported module scope becomes one WIT `interface`, and interfaces linked with `use` must be **acyclic**: a multi-file spec whose scopes reference each other in a cycle generates fine without this flag and is rejected with it, naming the scopes and the references that close the cycle. The remedy is to move a type so the scopes are acyclic, or to put the spec in a single file.
 
+**Known limitation — narrow the rust crate's `crate-type` before building for `wasm32-wasip2`.** The generated `rust/Cargo.toml` declares `crate-type = ["cdylib", "rlib"]`, because the wasm face needs the `cdylib` for `wasm32-unknown-unknown`. On `wasm32-wasip2` that same `cdylib` can crash the linker in the rust sysroot:
+
+```
+error: linking with `wasm-component-ld` failed: exit status: 1
+error: failed to invoke LLD: signal: 11 (SIGSEGV) (core dumped)
+```
+
+That is a crash inside `wasm-component-ld`/LLD, not a diagnostic about your spec, and it is **spec-dependent** — a multi-scope spec reproduced it under rustc 1.96.1 while several single-file specs built cleanly. Building only the `component/` crate does not avoid it: cargo builds every `crate-type` a path dependency declares, so the `cdylib` is linked either way.
+
+The component face never needs that `cdylib` — it links the rust crate as an `rlib` — so narrow the dependency:
+
+```toml
+# rust/Cargo.toml
+[lib]
+crate-type = ["rlib"]
+```
+
+Do this in the consuming workspace rather than expecting the tool to emit it: the `cdylib` is load-bearing for `--wasm`, and a crate generated with both faces on needs it. This project's own `wasm32-wasip2` build gate applies exactly this narrowing before compiling a generated component crate.
+
 Possible values: true, false
 ```bash
 cddl-codegen --input=example --output=export --component true
