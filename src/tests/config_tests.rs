@@ -700,8 +700,8 @@ core-component = "../../core/component"
     assert_eq!(component_dep, from_flags.component_dep);
     // The component face's cross-crate INPUT path, on the opposite rule from the four manifest
     // sub-tables above: the tool reads this file itself, so the config resolves it against the
-    // config file's directory. Empty on both sides here — the acceptance config exercises no
-    // component dependency, and the `deps`-edge derivation is not built.
+    // config file's directory. Empty on both sides here — this fixture is one crate with no `deps`
+    // edge, so nothing derives; the derivation has its own tests and the acceptance gate.
     assert_eq!(component_extern_wit, from_flags.component_extern_wit);
     assert_eq!(
         component_dep,
@@ -2495,16 +2495,21 @@ fn editor_schema_matches_the_config_surface() {
     );
 }
 
-/// The two `generation::layout` constants whose EMITTER half is a data file rather than code.
+/// The `generation::layout` constants whose EMITTER half is a data file rather than code.
 ///
 /// The layout constants are load-bearing at both ends by construction — the emitter writes the path
 /// the constant names and the config derives its flag values from the same constant, so a rename is
-/// a type-checked edit. The two cargo package suffixes are the exception: the generated
-/// `package.name` is written by the manifest change log, whose derived template carries
-/// `cddl-lib-wasm` / `cddl-lib-json-schema-gen` as TEXT (`ops_from_log` substitutes `--lib-name` for
-/// the `cddl-lib` placeholder). No constant can reach into a `.toml`, so this asserts across the
-/// seam instead: a suffix edited on one side without the other makes every derived `--wasm-dep` /
-/// `--json-gen-dep` name a package cargo cannot resolve.
+/// a type-checked edit. The cargo package suffixes are the exception: the generated `package.name`
+/// is written by the manifest change log, whose derived template carries `cddl-lib-wasm` /
+/// `cddl-lib-json-schema-gen` / `cddl-lib-component` as TEXT (`ops_from_log` substitutes
+/// `--lib-name` for the `cddl-lib` placeholder). No constant can reach into a `.toml`, so this
+/// asserts across the seam instead: a suffix edited on one side without the other makes every
+/// derived `--wasm-dep` / `--json-gen-dep` name a package cargo cannot resolve.
+///
+/// `COMPONENT_PACKAGE_SUFFIX` has no derivation predicting it (nothing depends on a dependency's
+/// component crate — see the constant), so this gate is its ONLY reader, and that is precisely why
+/// it belongs here: a suffix nobody asserts against is a name the emitter and the layout can drift
+/// apart on with no signal at all.
 #[test]
 fn the_package_suffixes_are_the_ones_the_manifest_templates_carry() {
     for (template, suffix) in [
@@ -2515,6 +2520,10 @@ fn the_package_suffixes_are_the_ones_the_manifest_templates_carry() {
         (
             "Cargo_json_gen.toml",
             crate::generation::layout::JSON_GEN_PACKAGE_SUFFIX,
+        ),
+        (
+            "Cargo_component.toml",
+            crate::generation::layout::COMPONENT_PACKAGE_SUFFIX,
         ),
     ] {
         let path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")).join(template);
@@ -2719,10 +2728,15 @@ fn a_rust_only_consumer_derives_only_the_rust_side_reverse_edge() {
 /// nests the cargo crates one level down (`<output>/rust/{rust,wasm}`) to leave the output root to
 /// the npm package. The extern-interface export does NOT move: it is emitted in every mode, rust-only
 /// included, as a sibling of the crate directories rather than a member of them.
+///
+/// The dependency's WIT package sits on the MOVING side of that split, and it is the one derived path
+/// where guessing wrong is invisible without this: the two trees are siblings under a crate's output
+/// in the unnested layout, so a value written in the export's frame is right until somebody turns
+/// `package-json` on.
 #[test]
 fn derived_paths_follow_the_other_crates_package_json_layout() {
     let config = parse(
-        "[defaults]\npackage-json = true\n\
+        "[defaults]\npackage-json = true\ncomponent = true\n\
          [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
          [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
     );
@@ -2744,6 +2758,18 @@ fn derived_paths_follow_the_other_crates_package_json_layout() {
         by_name["ledger"].extern_import,
         vec!["core=gen/core/extern-interface/core"],
         "the export is a sibling of the crates, so the npm nesting does not move it"
+    );
+    assert_eq!(
+        by_name["ledger"].component_extern_wit,
+        vec!["core=gen/core/rust/component/wit"],
+        "the dependency's WIT lives INSIDE its component crate, so it moves with the nesting — the \
+         opposite frame from the extern-interface export it sits beside when the nesting is off"
+    );
+    assert_eq!(
+        by_name["ledger"].component_dep,
+        vec!["core=../../../core/rust/rust"],
+        "the component manifest reaches the dependency's rust crate, and both endpoints move with \
+         their own crate's `package-json`"
     );
 }
 
@@ -4613,6 +4639,66 @@ fn seam_edge(consumer_axis: &str, dep_axis: &str) -> String {
     )
 }
 
+/// The two flags a seam edge derives, and the two it does not.
+///
+/// `--component-extern-wit` is what puts the dependency's types on this crate's component face at
+/// all; without it they are dropped from the projection and every signature naming one is recorded
+/// as unexported, so there is nothing for the edge to decide. `--component-dep` is the manifest half
+/// of the same fact, and it names the dependency's RUST package: the guest glue holds a
+/// dependency-typed value natively and converts it across the bytes seam, while the dependency's own
+/// component crate is wired by the composer rather than by cargo.
+#[test]
+fn a_component_seam_edge_derives_the_deps_wit_and_its_rust_package() {
+    let by_name = expand_all(&seam_edge("", ""));
+    assert_eq!(
+        by_name["consumer"].component_extern_wit,
+        vec!["dep=gen/dep/component/wit"],
+        "the dependency's committed WIT package is the seam's input"
+    );
+    assert_eq!(
+        by_name["consumer"].component_dep,
+        vec!["dep=../../dep/rust"],
+        "the component manifest depends on the dependency's RUST crate, by a RELATIVE path — it \
+         lands in a committed `Cargo.toml`"
+    );
+    assert!(
+        by_name["dep"].component_extern_wit.is_empty() && by_name["dep"].component_dep.is_empty(),
+        "the edge has a direction: nothing is derived for the dependency"
+    );
+
+    // The dependency without a component face of its own has no `component/wit` to point at, so the
+    // edge stays in today's exclude-and-record fallback and neither flag is derived.
+    let by_name = expand_all(
+        "[crates.dep]\ninput = \"d.cddl\"\noutput = \"gen/dep\"\n\
+         [crates.consumer]\ninput = \"c.cddl\"\noutput = \"gen/consumer\"\ncomponent = true\n\
+         deps = [\"dep\"]\n",
+    );
+    assert!(
+        by_name["consumer"].component_extern_wit.is_empty()
+            && by_name["consumer"].component_dep.is_empty(),
+        "a dependency with no component face must derive neither"
+    );
+}
+
+/// A hand-written entry wins over the derived one, silently — the rule every sub-table derivation
+/// follows — and overriding one key does not disable the other.
+#[test]
+fn a_hand_written_component_entry_wins_over_the_derived_one() {
+    let by_name = expand_all(&format!(
+        "{}[crates.consumer.component-extern-wit]\ndep = \"vendor/dep-wit\"\n",
+        seam_edge("", "")
+    ));
+    assert_eq!(
+        by_name["consumer"].component_extern_wit,
+        vec!["dep=vendor/dep-wit"]
+    );
+    assert_eq!(
+        by_name["consumer"].component_dep,
+        vec!["dep=../../dep/rust"],
+        "overriding one key must not disable the rest of the edge"
+    );
+}
+
 /// The seam is byte-exact only while both ends encode the same way, and a mismatch does not fail
 /// anything at generation, at build or at composition — it silently re-encodes on every crossing.
 /// So the refusal happens here, before a byte is written, on the one axis set that makes two
@@ -5563,6 +5649,12 @@ fn write_acceptance_specs(root: &Path) {
 /// `json-schema-root`, and one crate (`basic`) that applies no profile and so deviates from the
 /// others' runtime flavor on both max axes.
 ///
+/// The `deps` edge carries the COMPONENT face on both ends, which is what puts the component
+/// derivations inside this test rather than beside it: `core`'s types cross into `ledger`'s WIT as
+/// imported resources, and `specs/ledger.cddl` names one of them in a collection, so the edge
+/// exercises the accumulator shape as well as the scalar one. `basic` and `extras` stay without it,
+/// so the fixture also covers a crate that derives none of these flags.
+///
 /// `basic` sorts FIRST by name and is deliberately not the runtime carrier: the carrier is derived
 /// as the first crate whose flavor is the join, which is `core`, so a derivation that had simply
 /// taken the alphabetically-first crate would fail the comparison below.
@@ -5592,6 +5684,7 @@ fn acceptance_config_text() -> String {
          output = \"gen/core\"\n\
          lib-name = \"core-lib\"\n\
          profiles = [\"published\"]\n\
+         component = true\n\
          \n\
          [crates.extras]\n\
          input = \"specs/extras.cddl\"\n\
@@ -5604,6 +5697,7 @@ fn acceptance_config_text() -> String {
          output = \"gen/ledger\"\n\
          lib-name = \"ledger-lib\"\n\
          profiles = [\"published\"]\n\
+         component = true\n\
          deps = [\"core\"]\n\
          wasm-reexports = [\"extras\"]\n\
          json-schema-root = [\"ledger_lib::HandWritten\"]\n",
@@ -5632,7 +5726,11 @@ fn acceptance_config_text() -> String {
 /// (`--common-import-override` on every crate, `--export-static-crate` on the derived carrier);
 /// `threading` (`--json-schema-dep` + `--json-gen-dep` per edge); and the manifest derivations
 /// (`--wasm-dep` per package per edge; `--rust-dep` + `--std-forward-dep` once per `deps` edge, and
-/// once more per crate for the `[runtime].lib-name` runtime crate).
+/// once more per crate for the `[runtime].lib-name` runtime crate). The component face adds two more
+/// to a `deps` edge whose two ends both carry it: `--component-extern-wit` (the dependency's
+/// committed WIT, read under the `--package-json` nesting like `--extern-wrapper-index` and unlike
+/// `--extern-import`) and `--component-dep` (the dependency's RUST package, reached from the
+/// component manifest's own directory).
 fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> {
     let p = |rel: &str| root.join(rel).to_string_lossy().into_owned();
     let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static").to_owned();
@@ -5706,6 +5804,8 @@ fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> 
                 ],
                 true,
                 vec![
+                    "--component".to_owned(),
+                    "true".to_owned(),
                     // `[runtime]`: the carrier's invocation is the one that carries the export.
                     "--export-static-crate".to_owned(),
                     p("runtime"),
@@ -5751,13 +5851,21 @@ fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> 
                 ],
                 true,
                 vec![
+                    "--component".to_owned(),
+                    "true".to_owned(),
                     "--json-schema-root".to_owned(),
                     "ledger_lib::HandWritten".to_owned(),
-                    // The four forward edges of `deps = ["core"]`.
+                    // The five forward edges of `deps = ["core"]`.
                     "--workspace-dep".to_owned(),
                     "core_lib".to_owned(),
                     "--extern-import".to_owned(),
                     format!("core_lib={}", p("gen/core/extern-interface/core_lib")),
+                    // The dependency's committed WIT, which puts its types on this crate's component
+                    // face as imported resources. Inside the dependency's component CRATE, so it
+                    // follows the `--package-json` nesting the extern-interface export above does
+                    // not.
+                    "--component-extern-wit".to_owned(),
+                    format!("core_lib={}", p("gen/core/component/wit")),
                     "--extern-wrapper-index".to_owned(),
                     format!(
                         "core_lib={}",
@@ -5790,8 +5898,15 @@ fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> 
                     // `wasm-reexports` contributes none, since no rust line names that crate.
                     "--rust-dep".to_owned(),
                     "core-lib=../../core/rust".to_owned(),
-                    // …and its std-forwarding half, so `default-features = false` on this crate
-                    // reaches `core-lib`'s no_std arm rather than stopping here.
+                    // The COMPONENT manifest's entry for the same edge, and it names the same
+                    // package: the guest glue holds a dependency-typed value as the native
+                    // `core_lib::CoreThing` and converts it across the bytes seam, so the crate it
+                    // has to reach is the dependency's RUST crate. The dependency's own component
+                    // crate is absent because WIT imports are wired by the composer, never by cargo.
+                    "--component-dep".to_owned(),
+                    "core-lib=../../core/rust".to_owned(),
+                    // …and the rust entry's std-forwarding half, so `default-features = false` on
+                    // this crate reaches `core-lib`'s no_std arm rather than stopping here.
                     "--std-forward-dep".to_owned(),
                     "core-lib".to_owned(),
                 ],

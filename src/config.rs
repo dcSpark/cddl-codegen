@@ -41,8 +41,9 @@ use crate::log::Verbosity;
 // The generated layout, from the emitter that writes it rather than re-spelled here — see
 // `generation::layout` for why every one of these is a shared fact and not a local string.
 use crate::generation::layout::{
-    EXTERN_INTERFACE_DIR, JSON_GEN_DIR, JSON_GEN_PACKAGE_SUFFIX, RUST_BORROWED_KEY_TYPES,
-    WASM_BORROWED_COLLECTIONS, WASM_COLLECTIONS_INDEX, WASM_PACKAGE_SUFFIX,
+    COMPONENT_DIR, COMPONENT_WIT_DIR, EXTERN_INTERFACE_DIR, JSON_GEN_DIR, JSON_GEN_PACKAGE_SUFFIX,
+    RUST_BORROWED_KEY_TYPES, WASM_BORROWED_COLLECTIONS, WASM_COLLECTIONS_INDEX,
+    WASM_PACKAGE_SUFFIX,
 };
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1797,6 +1798,7 @@ impl Config {
                 let wasm_deps = self.wasm_deps(&name, entry, &settings, &ungraphed)?;
                 let (rust_deps, std_forward_deps) =
                     self.rust_deps(&name, entry, &settings, &ungraphed)?;
+                let component_deps = self.component_deps(&name, entry, &settings, &ungraphed)?;
                 let fragments = argv_fragments(
                     entry,
                     &settings,
@@ -1804,6 +1806,7 @@ impl Config {
                     &threads,
                     &wasm_deps,
                     &rust_deps,
+                    &component_deps,
                     &std_forward_deps,
                     &derived,
                     self.static_dir_override.as_deref(),
@@ -2204,6 +2207,67 @@ impl Config {
         Ok((out, forwarding))
     }
 
+    /// Every `[dependencies]` entry this crate's generated `component/Cargo.toml` needs, as
+    /// `--component-dep` values.
+    ///
+    /// # One package per seam edge, and it is the dependency's RUST crate
+    ///
+    /// The guest glue holds a dependency-typed value as the NATIVE `<dep>::Foo` and converts it to
+    /// an imported WIT resource handle across the bytes seam, so the package the component crate has
+    /// to reach is the dependency's rust crate — the same package [`Self::rust_deps`] derives, from
+    /// a different manifest's directory. Its COMPONENT crate is deliberately absent: WIT imports are
+    /// wired by the composer at the component level, never by cargo, so nothing in this crate's
+    /// source names it. That is the whole asymmetry with [`Self::wasm_deps`], which derives two
+    /// packages per edge because the wasm pass emits `use <dep>_wasm::…` as well.
+    ///
+    /// Gated on the SEAM ([`Self::component_seam_edge`]) rather than on this crate's `component`
+    /// alone, on exactly the terms `wasm_deps` states for its own gate: without import mode the
+    /// dependency's types are excluded from the projection, no glue line names the crate, and the
+    /// entry would be a path dependency nothing resolves through.
+    ///
+    /// A hand-written `[crates.<name>.component-dep]` entry for the same PACKAGE wins, silently, per
+    /// package — the rule every sub-table derivation in this file follows.
+    fn component_deps(
+        &self,
+        name: &str,
+        entry: &CrateEntry,
+        settings: &Settings,
+        ungraphed: &BTreeMap<String, Cli>,
+    ) -> Result<Vec<DerivedManifestDep>, String> {
+        let consumer_cli = &ungraphed[name];
+        if !consumer_cli.component {
+            return Ok(Vec::new());
+        }
+        let consumer_dir = self.crate_dir(consumer_cli, &entry.output, COMPONENT_DIR);
+        let mut out = Vec::new();
+        for dep in &entry.deps {
+            // Validated to name a configured crate by the `deps` checks.
+            let dep_entry = &self.crates[dep];
+            let dep_cli = &ungraphed[dep.as_str()];
+            if !Self::component_seam_edge(consumer_cli, dep_cli, &normalized(&dep_entry.lib_name)) {
+                continue;
+            }
+            // The cargo PACKAGE name: the `--lib-name` verbatim, exactly as the two sibling manifest
+            // derivations read it off the rust manifest's change log.
+            let package = dep_entry.lib_name.clone();
+            if settings.component_dep.contains_key(&package) {
+                continue;
+            }
+            let dep_dir = self.crate_dir(dep_cli, &dep_entry.output, "rust");
+            let path = manifest_relative_path(&consumer_dir, &dep_dir).map_err(|e| {
+                format!(
+                    "[crates.{name}].deps names `{dep}`, whose rust crate this crate's component \
+                     crate must depend on by path: {e}"
+                )
+            })?;
+            out.push(DerivedManifestDep {
+                key: "deps",
+                value: format!("{package}={path}"),
+            });
+        }
+        Ok(out)
+    }
+
     /// Every crate's `Cli` as its own table alone describes it — before any cross-crate derivation.
     ///
     /// EVERY crate is expanded, selected or not, because the derivations read values (`output`,
@@ -2223,6 +2287,7 @@ impl Config {
                 entry,
                 &settings,
                 &self.base_dir,
+                &[],
                 &[],
                 &[],
                 &[],
@@ -2512,6 +2577,28 @@ impl Config {
                 own_deps(),
             );
 
+            // The dependency's committed WIT package, which puts its types on this crate's component
+            // face as IMPORTED resources instead of leaving them excluded from the projection.
+            //
+            // Under the `--package-json` NESTING, unlike the extern-interface export above: the WIT
+            // tree is emitted inside the component CRATE, so its location depends on the dependency's
+            // own `package-json` — which is what `crate_relative` reads off its expanded `Cli`. This
+            // is the `--extern-wrapper-index` frame, not the `--extern-import` one.
+            //
+            // Derived whenever both ends carry the component face, because there is nothing to
+            // decide: without it the dependency's types are dropped from this crate's WIT and every
+            // signature naming one is recorded as unexported, so import mode is the only shape in
+            // which the edge means anything at all on this face.
+            if Self::component_seam_edge(&ungraphed[name], dep_cli, &key) {
+                derive!(
+                    component_extern_wit,
+                    "component-extern-wit",
+                    key.clone(),
+                    crate_relative(dep_cli, &dep_entry.output, COMPONENT_WIT_DIR),
+                    own_deps(),
+                );
+            }
+
             // The remaining three are all about the dependency's WASM face, so all three are emitted
             // exactly when it has one. `--workspace-dep` in particular is not optional here: it is a
             // hard error without an `--extern-wasm-crate` mapping, so a dependency generating no
@@ -2780,6 +2867,7 @@ fn argv_fragments(
     threads: &[DerivedThread],
     wasm_deps: &[DerivedManifestDep],
     rust_deps: &[DerivedManifestDep],
+    component_deps: &[DerivedManifestDep],
     std_forward_deps: &[DerivedManifestDep],
     derived: &Provenance,
     static_dir_override: Option<&str>,
@@ -3045,8 +3133,10 @@ fn argv_fragments(
         flag!("rust-dep", "rust-dep", format!("{k}={v}"));
     }
     // `component-dep`'s right side is a path on exactly the same terms, into
-    // `<output>/component/Cargo.toml`. No derived half yet — the component face's cross-crate
-    // derivations are not built, so only hand-written entries reach here.
+    // `<output>/component/Cargo.toml`. Derived before raw, matching the three siblings.
+    for derived_dep in component_deps {
+        flag!(derived_dep.key, "component-dep", derived_dep.value.clone());
+    }
     for (k, v) in component_dep {
         flag!("component-dep", "component-dep", format!("{k}={v}"));
     }

@@ -306,7 +306,8 @@ layer instead.
 **`<key>=<value>` flags become sub-tables**, which union per key — a later layer overrides only the
 keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
 are `extern-import`, `component-extern-wit`, `extern-wasm-crate`, `extern-wrapper-index`,
-`wrapper-requests`, `key-requests`, `json-schema-dep`, `json-gen-dep`, `wasm-dep` and `rust-dep`:
+`wrapper-requests`, `key-requests`, `json-schema-dep`, `json-gen-dep`, `wasm-dep`, `rust-dep` and
+`component-dep`:
 
 ```toml
 [crates.my-extension]
@@ -380,6 +381,8 @@ On the **consumer** (`ledger`), from the dependency's own entry:
 | `--workspace-dep core` | being in this config is what "co-generated workspace member" means |
 | `--wasm-dep core=../../core/rust` and `--wasm-dep core-wasm=../../core/wasm` | the dependency's `lib-name` verbatim — the cargo **package** names — plus the paths from your wasm crate to its two crates. See [The wasm manifest](#the-wasm-manifest) |
 | `--rust-dep core=../../core/rust` | the same package name, plus the path from your **rust** crate to the dependency's. See [The rust manifest](#the-rust-manifest) |
+| `--component-extern-wit core=gen/core/component/wit` | the dependency's `output` — **only when both crates have `component = true`**. See [The component face](#the-component-face) |
+| `--component-dep core=../../core/rust` | the dependency's `lib-name` verbatim and the path from your **component** crate to its **rust** crate — same condition |
 
 On the **dependency** (`core`), one pair per consumer, in consumer order:
 
@@ -410,7 +413,33 @@ assumed:
 - **`package-json = true`** moves a crate's cargo crates one level down, to
   `<output>/rust/rust` and `<output>/rust/wasm`, leaving the output root to the npm package. Every
   derived path *into* a crate follows that layout. The `extern-interface/` export does **not** move:
-  it is emitted in every mode, rust-only included, as a sibling of the crate directories.
+  it is emitted in every mode, rust-only included, as a sibling of the crate directories. The
+  dependency's `component/wit` **does** move — it lives inside the component crate, so it sits beside
+  the export only while the nesting is off.
+
+#### The component face
+
+The two component derivations are emitted exactly when the edge carries the component **bytes seam** —
+`component = true` on both crates. Without a component face on the dependency there is no
+`component/wit` to point at, and the dependency's types stay excluded from the consumer's WIT
+projection (the fallback documented in [Component
+differences](./component_differences)); nothing in the consumer's guest crate then names the
+dependency, so neither flag would mean anything. There is nothing for the edge to decide when both
+sides do have one: import mode is the only shape in which such an edge means anything on this face.
+
+`--component-dep` names the dependency's **rust** package, not its component package. The guest glue
+holds a dependency-typed value natively and converts it across the seam, while the dependency's own
+component crate is wired by the composer at the component level and never by cargo.
+
+**Encoding posture is validated on such an edge, and only on such an edge.** A dependency-typed value
+crossing the seam is serialized by one crate and deserialized by the other, so the crossing preserves
+the value only while both agree about what CBOR they write and accept. A mismatch on
+`preserve-encodings`, `canonical-form` or `deserialize-depth-limit` fails nothing — it silently
+re-encodes on every crossing — so a config carrying one is refused before anything is written, naming
+both crates and the axis. A hand-written invocation sees one crate at a time and cannot check this;
+it is documented there as an integration obligation instead. On a `deps` edge *without* the seam the
+dependency's types are reached by ordinary rust linkage, no bytes are produced or parsed at a
+boundary, and the rule does not apply.
 
 A hand-written sub-table entry for the same key always wins, silently — an explicit value is you
 overriding the sugar for a case it does not cover, not a conflict. Only the key it names is
