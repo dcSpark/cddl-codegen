@@ -62,7 +62,7 @@ use std::path::{Path, PathBuf};
 /// Bump on any change to what the cached closure CHECKS (not to the bytes it checks, which the tree
 /// hash already covers). Without it, tightening an assertion would be laundered past every
 /// previously-cached cell.
-const VERDICT_MARKER: &str = "compose-acceptance-v1";
+const VERDICT_MARKER: &str = "compose-acceptance-v2";
 
 const FIXTURES: &str = "tests/component-compose";
 
