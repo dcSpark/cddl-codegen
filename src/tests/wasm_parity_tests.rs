@@ -308,9 +308,10 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
     // key type that is a rust struct (a union, a sized-int newtype, a `bytes` vector) rather than a
     // primitive — the differential validates that each rest field's rust member still carries its
     // `MapKToV`/`PairMapKToV` counterpart, and that the `<K>List` keys mint follows `K`. Swept under
-    // `default`, `preserve` and `json` — the three profiles the snapshot fixture commits;
-    // shape-cleanliness holds here too (no `MapKToV` shape is owned by both a preserve and a
-    // non-preserve rest).
+    // `default`, `preserve` and `json`; shape-cleanliness holds here too (no `MapKToV` shape is owned
+    // by both a preserve and a non-preserve rest). Every profile on this axis carries wasm ON (it is
+    // a wasm differential), so the `json` row is the same flag combination the fixture's `wasm_json`
+    // snapshot profile pins — that one pins the emitted text, this one the rust→wasm correspondence.
     (
         "open-struct-map-typed",
         &[
