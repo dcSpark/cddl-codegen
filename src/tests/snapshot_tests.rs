@@ -245,8 +245,16 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
     // arm (including the plain text arm's lifted `let text_key = raw.text()?;`, which ends the
     // scrutinee's borrow before the arm seeks), `K::deserialize` in the Special and `_` arms, and the
     // key's own encoding vars filing into `rest_key_encodings` under preserve. Its own fixture rather
-    // than rows on `open-struct-map` because that one commits a `json` profile, and a typed domain
-    // rejects under the JSON flags until the typed-K JSON face lands.
+    // than rows on `open-struct-map` because that one's rows are all bare-domain, and the shapes that
+    // make the seek path observable (a union K, a sidecar-bearing K, an encoding-op K) have no home
+    // there.
+    //
+    // The `json` profile pins the typed-K JSON face's two emitted routes side by side: a NOMINAL K
+    // (the union, the `@duplicates preserve` twin) images through its own CBOR bytes
+    // (`typed_rest_key_string` / `rest_key_from_string`), while a PRIMITIVE K (the sized int, the
+    // `bytes` row, the encoding-op row) states its image directly — plus the K-free
+    // `general_key_rest_map_schema` annotation on BOTH containers, which is the one place a typed row
+    // diverges from the bare uint/text rows' schema.
     (
         "open_struct_map_typed_default",
         "tests/open-struct-map-typed/input.cddl",
@@ -256,6 +264,18 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "open_struct_map_typed_preserve",
         "tests/open-struct-map-typed/input.cddl",
         ("preserve", &["--preserve-encodings=true", "--wasm=false"]),
+    ),
+    (
+        "open_struct_map_typed_json",
+        "tests/open-struct-map-typed/input.cddl",
+        (
+            "json",
+            &[
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+                "--wasm=false",
+            ],
+        ),
     ),
     // The wasm rest accessor over a typed key domain: the getter returns the structural
     // `MapKToV`/`PairMapKToV` class and its `keys()` mints `<K>List` — both generic over `K` already,

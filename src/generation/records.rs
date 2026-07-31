@@ -899,6 +899,7 @@ fn emit_rest_flatten_json(
     let owner_snake = crate::utils::convert_to_snake_case(name.as_ref());
     let ser_fn = format!("{}_{}_flatten_serialize", owner_snake, rest.field_name);
     let deser_fn = format!("{}_{}_flatten_deserialize", owner_snake, rest.field_name);
+    let domain = RestKeyDomain::of(types, rest);
 
     let mut annotations = Vec::new();
     if cli.json_serde_derives {
@@ -916,16 +917,27 @@ fn emit_rest_flatten_json(
         // a TYPED range the `BTreeMap<K, V>` schema (uint keys → `patternProperties "^\d+$"`, text
         // keys → `additionalProperties`).
         //
-        // Only the loose (non-preserve) container is left to contribute that typed schema itself: it
-        // IS the `BTreeMap`/`OrderedHashMap` the position calls for, so its delegation and the
-        // position's answer are the same bytes. The `@duplicates preserve` twin is array-shaped
-        // (`PairMap` → `Vec<(K, V)>`, honest for a standalone duplicate-permitting table, wrong for a
-        // FLATTENED row: no index signature, plus array keywords merged onto the parent object), so
-        // it names the position's schema explicitly — via a helper that delegates to the same
-        // `BTreeMap<K, V>`, making the two containers schema-indistinguishable by construction.
+        // For the primitive uint/text domains only the loose (non-preserve) container is left to
+        // contribute that typed schema itself: it IS the `BTreeMap`/`OrderedHashMap` the position
+        // calls for, so its delegation and the position's answer are the same bytes. The
+        // `@duplicates preserve` twin is array-shaped (`PairMap` → `Vec<(K, V)>`, honest for a
+        // standalone duplicate-permitting table, wrong for a FLATTENED row: no index signature, plus
+        // array keywords merged onto the parent object), so it names the position's schema
+        // explicitly — via a helper that delegates to the same `BTreeMap<K, V>`, making the two
+        // containers schema-indistinguishable by construction.
+        //
+        // A GENERAL typed `K` breaks that "the loose container speaks for itself" premise, so BOTH
+        // containers name the position's schema there: the member names are `K`'s key-string image,
+        // which `BTreeMap<K, V>`'s schema (derived from `K`'s own VALUE schema) describes wrongly —
+        // see `general_key_rest_map_schema`.
         if range_is_any {
             annotations.push(format!(
                 "#[schemars(schema_with = \"{base}::natural_any_cbor_map_schema\")]"
+            ));
+        } else if domain == RestKeyDomain::Typed {
+            let value_ty = rest.range().for_rust_member(types, false, cli);
+            annotations.push(format!(
+                "#[schemars(schema_with = \"{flatten}::general_key_rest_map_schema::<{value_ty}>\")]"
             ));
         } else if rest_is_pair_map(rest) {
             let key_ty = rest.domain().for_rust_member(types, false, cli);
@@ -953,14 +965,22 @@ fn emit_rest_flatten_json(
 
     let field = &rest.field_name;
     // Per-domain key <-> string (RFC 8949 §6.1 write, §6.2 read).
-    let (key_closure, key_coerce) = match RestKeyDomain::of(types, rest) {
-        // A general `K` has no string image yet: the flattened-rest JSON surface reads and writes
-        // rest keys as JSON object member names, a convention defined only for the three peeked
-        // domains. `finalize` rejects a typed-domain row under either JSON flag, so this arm is a
-        // seam marker for the typed-K JSON face rather than a reachable branch.
-        RestKeyDomain::Typed => unreachable!(
-            "a typed rest-row key domain is rejected under --json-serde-derives/--json-schema-export"
-        ),
+    let (key_closure, key_coerce) = match domain {
+        // A general `K` images through the `any` domain's key convention applied to `K`'s OWN CBOR
+        // bytes (text verbatim, uint/nint decimal, everything else a loud write error), and reads
+        // back numeric-preferred with a fallback to the text reading — see the two static helpers.
+        //
+        // Both directions name their trait FULLY QUALIFIED rather than calling a method: the flatten
+        // fns are emitted into the generated `mod.rs`, which reaches the traits through
+        // `use serialization::*;` — and under `--common-import-override` / an extern dep that glob
+        // brings in nothing (the consumer's `serialization.rs` only privately globs the dependency's).
+        // A `k.to_cbor_bytes()` spelling would compile in single-crate fixtures and fail in
+        // split-crate consumers. The write trait forks with the flags exactly as the wasm
+        // `to_cbor_bytes` emission does; `Deserialize` has one shape in every flavor.
+        RestKeyDomain::Typed => {
+            let key_ty = rest.domain().for_rust_member(types, false, cli);
+            typed_rest_key_json_arms(rest, &key_ty, &flatten, cli)
+        }
         // A typed-domain key stringify never fails, so the error type is unconstrained by the body —
         // pin it (`Infallible: Display`) so the generic helper's `E: Display` bound resolves.
         RestKeyDomain::Uint => (
@@ -1027,6 +1047,119 @@ fn emit_rest_flatten_json(
     );
     gen_scope.rust(types, name).raw(&functions);
     annotations
+}
+
+/// The `(key_closure, key_coerce)` pair for a TYPED rest-row key domain — the JSON member-name image
+/// of `K` and the reading that recovers `K` from a member name.
+///
+/// The convention is the `any` domain's applied to `K`'s WIRE image (text verbatim, uint/nint in
+/// decimal, every other CBOR major type a loud error at write and an unreadable member name at read),
+/// so the two halves are stated per key shape rather than derived from `K`'s JSON serde — a rest key
+/// is an object MEMBER NAME, which `K`'s own JSON rendering does not describe.
+///
+/// Two routes, because a rest key's CBOR shape is known statically for a PRIMITIVE `K` and only
+/// dynamically for a nominal one:
+///
+/// * A primitive `K` states its image directly (no CBOR round-trip). This also keeps the typed
+///   `uint`-ish/`text` domains reading exactly like their bare (peeked-path) siblings, so which side
+///   of the CBOR routing rule a row falls on never changes its JSON.
+/// * A nominal `K` (a generated struct/union/newtype, an extern, a nominalized collection) images
+///   through its OWN CBOR bytes: `typed_rest_key_string` reads the head, and `rest_key_from_string`
+///   feeds `K`'s decoder the numeric reading first and the text reading as a fallback.
+///
+/// The nominal route names both traits FULLY QUALIFIED rather than calling a method: the flatten fns
+/// are emitted into the generated `mod.rs`, which reaches the traits through `use serialization::*;`
+/// — and under `--common-import-override` / an extern dep that glob brings in nothing (the consumer's
+/// `serialization.rs` only privately globs the dependency's). A `k.to_cbor_bytes()` spelling would
+/// compile in single-crate fixtures and fail in split-crate consumers. The write trait forks with the
+/// flags exactly as the wasm `to_cbor_bytes` emission does; `Deserialize` has one shape in every
+/// flavor.
+///
+/// An encoding operation on the domain (`#6.24(uint)`, `bytes .cbor uint`) is NOT part of the image:
+/// the image is of `K`'s rust member, and the read side rebuilds that same member, so the row's tag /
+/// `.cbor` wrapper is re-applied by the CBOR serializer and the JSON face stays symmetric.
+fn typed_rest_key_json_arms(
+    rest: &RestRow,
+    key_ty: &str,
+    flatten: &str,
+    cli: &Cli,
+) -> (String, String) {
+    // A key shape with no member-name image at all (bytes, bool/null/simple): both directions are a
+    // pure error surface, worded like the head reader's so the two routes report the same thing.
+    let no_image = |cbor_kind: &str| {
+        (
+            format!(
+                "|_k: &{key_ty}| Err::<String, {flatten}::RestKeyImageError>(\
+                 {flatten}::RestKeyImageError(String::from(\
+                 \"map key of CBOR kind {cbor_kind} is not text/uint/nint\")))"
+            ),
+            format!(
+                "let k = Err::<{key_ty}, D::Error>(serde::de::Error::custom(format!(\
+                 \"open struct-map rest key {{ks:?}} is not a valid key: a {cbor_kind} key has no \
+                 JSON member-name image\")))?;"
+            ),
+        )
+    };
+    match rest.domain().conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(Primitive::N64) => (
+            // `nint`'s rust member holds the ENCODED ARGUMENT (`value = -1 - arg`), so neither
+            // direction is the argument's own decimal.
+            format!(
+                "|k: &u64| Ok::<String, core::convert::Infallible>({flatten}::nint_arg_key_string(*k))"
+            ),
+            format!(
+                "let k = {flatten}::nint_arg_key_from_string(&ks).ok_or_else(|| \
+                 serde::de::Error::custom(format!(\
+                 \"open struct-map rest key {{ks:?}} is not a valid nint\")))?;"
+            ),
+        ),
+        ConceptualRustType::Primitive(
+            Primitive::U8
+            | Primitive::U16
+            | Primitive::U32
+            | Primitive::U64
+            | Primitive::I8
+            | Primitive::I16
+            | Primitive::I32
+            | Primitive::I64,
+        ) => (
+            format!("|k: &{key_ty}| Ok::<String, core::convert::Infallible>(k.to_string())"),
+            format!(
+                "let k = ks.parse::<{key_ty}>().map_err(|_| serde::de::Error::custom(format!(\
+                 \"open struct-map rest key {{ks:?}} is not a valid {key_ty}\")))?;"
+            ),
+        ),
+        ConceptualRustType::Primitive(Primitive::Str) => (
+            format!("|k: &{key_ty}| Ok::<String, core::convert::Infallible>(k.clone())"),
+            "let k = ks;".to_owned(),
+        ),
+        ConceptualRustType::Primitive(Primitive::Bytes) => no_image("Bytes"),
+        ConceptualRustType::Primitive(Primitive::Bool) => no_image("Special"),
+        // Floats are rejected as a rest-row key domain long before here (no total order).
+        ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => unreachable!(
+            "a float-containing rest-row key domain is rejected by the key-demand float instrument"
+        ),
+        _ => {
+            let common = cli.common_import_rust();
+            let ser_trait = if cli.preserve_encodings && cli.canonical_form {
+                "Serialize"
+            } else {
+                "ToCBORBytes"
+            };
+            (
+                format!(
+                    "|k: &{key_ty}| {flatten}::typed_rest_key_string(\
+                     &<{key_ty} as {common}::serialization::{ser_trait}>::to_cbor_bytes(k))"
+                ),
+                format!(
+                    "let k = {flatten}::rest_key_from_string(\
+                     &ks, <{key_ty} as {common}::serialization::Deserialize>::from_cbor_bytes)\
+                     .map_err(|e| serde::de::Error::custom(format!(\
+                     \"open struct-map rest key {{ks:?}} is not a valid key: {{e}}\")))?;"
+                ),
+            )
+        }
+    }
 }
 
 /// Emit a rest capture into `block`: account the entry in `read_len`, bind the key (`rest_key`) —

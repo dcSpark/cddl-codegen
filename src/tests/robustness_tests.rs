@@ -4081,39 +4081,59 @@ fn open_struct_map_rest_row_front_end() {
         "a null-admitting key domain must name the break collision, got: {null_domain}"
     );
 
-    // --- guard: TEMPORARY — a typed key domain under the JSON flags ---
-    // The flattened-rest JSON surface images rest keys as strings, a convention defined only for the
-    // three peeked domains. Removed when the typed-K JSON face lands.
+    // --- recognition: a typed key domain GENERATES under either JSON flag ---
+    // The flattened-rest JSON surface images a rest key as an object MEMBER NAME. For a typed `K`
+    // that image is the `any` domain's convention applied to `K`'s own CBOR bytes, so the JSON flags
+    // no longer restrict the key domain — a NOMINAL `K` reads its head at runtime, a PRIMITIVE `K`
+    // states its image directly, and both routes are pinned here at the emission level (the
+    // value-level contract lives in `tests/open-struct-map-json-e2e`).
     let typed_json = run_flags(
         "md = int / bstr\nfoo = { 1: uint, * md => any }\n",
         "typed_json",
         &["--json-serde-derives=true"],
     )
-    .expect_err("a typed key domain under --json-serde-derives must reject");
+    .expect("a typed key domain generates under --json-serde-derives");
     assert!(
-        typed_json.contains("rule `Foo`")
-            && typed_json.contains("typed key domain on an open struct-map rest row")
-            && typed_json.contains("does not yet support the JSON flags"),
-        "a typed key domain under the JSON flags must name the limitation, got: {typed_json}"
+        src(&typed_json).contains("open_struct_rest_json::typed_rest_key_string")
+            && src(&typed_json).contains("open_struct_rest_json::rest_key_from_string"),
+        "a nominal typed key domain must image through its own CBOR bytes, got:\n{}",
+        src(&typed_json)
     );
     let typed_schema = run_flags(
-        "md = int / bstr\nfoo = { 1: uint, * md => any }\n",
+        "md = int / bstr\nfoo = { 1: uint, * md => uint }\n",
         "typed_schema",
         &["--json-schema-export=true"],
     )
-    .expect_err("a typed key domain under --json-schema-export must reject");
+    .expect("a typed key domain generates under --json-schema-export");
     assert!(
-        typed_schema.contains("does not yet support the JSON flags"),
-        "the schema flag must reject the same way, got: {typed_schema}"
+        src(&typed_schema).contains("open_struct_rest_json::general_key_rest_map_schema::<"),
+        "a typed key domain's flattened region must publish the K-free open-object schema, got:\n{}",
+        src(&typed_schema)
     );
-    // …and the same spec WITHOUT the JSON flags generates.
+    // A PRIMITIVE typed key (here a sized int — typed because `.size` keeps it off the peeked path)
+    // states its image directly instead: no CBOR round-trip, and the same reading its bare `uint`
+    // sibling uses, so which side of the CBOR routing rule a row falls on never changes its JSON.
+    let typed_primitive = run_flags(
+        "foo = { 1: uint, * uint .size 1 => uint }\n",
+        "typed_primitive_json",
+        &["--json-serde-derives=true"],
+    )
+    .expect("a primitive typed key domain generates under --json-serde-derives");
+    assert!(
+        src(&typed_primitive).contains("|k: &u8| Ok::<String, core::convert::Infallible>")
+            && src(&typed_primitive).contains("ks.parse::<u8>()"),
+        "a primitive typed key domain must state its image directly, got:\n{}",
+        src(&typed_primitive)
+    );
+    // ...and the same spec WITHOUT the JSON flags generates too, with no flatten machinery at all.
     let typed_plain = run(
         "md = int / bstr\nfoo = { 1: uint, * md => any }\n",
         "typed_plain",
     )
     .expect("a typed key domain generates without the JSON flags");
     assert!(
-        src(&typed_plain).contains("pub rest: BTreeMap<Md, "),
+        src(&typed_plain).contains("pub rest: BTreeMap<Md, ")
+            && !src(&typed_plain).contains("open_struct_rest_json"),
         "a typed union key domain must land in a `BTreeMap<Md, _>` rest field, got:\n{}",
         src(&typed_plain)
     );

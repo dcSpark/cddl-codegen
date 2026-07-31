@@ -2,10 +2,11 @@
 ; `uint`/`text`/`any`). These rows take the seek path: the loop body hoists a `raw.position()`
 ; anchor, a declared-key match arm that falls through rewinds to it, and `K::deserialize` reads the
 ; key itself — so the write and read halves are the same `K` codec, symmetric by construction.
-; Snapshotted in the plain, preserve and wasm flavors. NOT snapshotted under the json flags: the
-; flattened-rest JSON surface images rest keys as strings, a convention defined only for the three
-; peeked domains, so a typed row rejects under `--json-serde-derives`/`--json-schema-export` until
-; that face lands (the rejection itself is pinned in `robustness_tests`).
+; Snapshotted in the plain, preserve, json and wasm flavors. Under the json flags a typed rest key
+; images through the `any` domain's convention applied to `K`'s OWN CBOR bytes — the rows below cover
+; both emitted routes (a NOMINAL K reads its head at runtime; a PRIMITIVE K states its image
+; directly), including the two shapes with no member-name image at all (`bytes`, whose JSON face is a
+; pure error surface). The VALUE-level vectors live in `tests/open-struct-map-json-e2e`.
 md = int / bytes / text
 
 ; Local union K crossed with BOTH declared key kinds: the uint arm and the text arm each get a

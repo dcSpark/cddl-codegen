@@ -2735,9 +2735,6 @@ impl<'a> IntermediateTypes<'a> {
         // `self` immutably. `visit_types` guards recursion with a visited-ident set, so a
         // self-referential key type can't loop.
         let mut float_key_rejections = BTreeSet::new();
-        // Collected beside `float_key_rejections` for the same borrow-checker reason (the loop below
-        // borrows `self` immutably while `record_rejection` needs it mutably).
-        let mut typed_rest_json_rejections = BTreeSet::new();
         fn key_contains_float(ty: &ConceptualRustType, types: &IntermediateTypes<'_>) -> bool {
             let mut found = false;
             ty.visit_types(types, &mut |t| {
@@ -2862,15 +2859,6 @@ impl<'a> IntermediateTypes<'a> {
                 if key_contains_float(&rest.domain().conceptual_type, self) {
                     float_key_rejections.insert(float_rest_key_msg(&rule_ident));
                 }
-                // TEMPORARY (removed when the typed-K JSON face lands): the flattened-rest JSON
-                // surface images a rest key as a STRING, a convention defined today only for the
-                // `uint`/`text`/`any` domains — `emit_rest_flatten_json`'s key closure has no reading
-                // for a general `K`. Reject loudly rather than emit a crate that cannot compile.
-                if cli.json_serde_derives || cli.json_schema_export {
-                    typed_rest_json_rejections.insert(format!(
-                        "rule `{rule_ident}`: a typed key domain on an open struct-map rest row (`* K => V` where `K` is not bare `uint`/`text`/`any`) does not yet support the JSON flags — the flattened-rest JSON surface images rest keys as strings, and that image is only defined for the `uint`/`text`/`any` domains. Generate this spec without `--json-serde-derives`/`--json-schema-export`, or use a `uint`/`text`/`any` key domain."
-                    ));
-                }
             }
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
                 // A `@duplicates preserve` table's key is compared with the pair-map's linear
@@ -2903,9 +2891,6 @@ impl<'a> IntermediateTypes<'a> {
             self.union_key_demand(ident, demand);
         }
         for msg in float_key_rejections {
-            self.record_rejection(msg);
-        }
-        for msg in typed_rest_json_rejections {
             self.record_rejection(msg);
         }
         // NonEmptyVec wasm-wrapper name collisions: an inline `[+ elem]` mints a `NonEmpty<Elem>List`

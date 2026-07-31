@@ -11,3 +11,26 @@ dupp = { 1: uint, * uint => any ; @duplicates preserve
 dupt = { 1: uint, * uint => text ; @duplicates preserve
 }                                           ; TYPED PairMap twin of `typed`: same flattened JSON,
                                             ; so the same JSON Schema (schema-parity vector)
+
+; ---- TYPED key domains (`* K => V` where K is not bare uint/text/any) ----
+; A typed rest key images through the `any` domain's convention applied to K's OWN CBOR bytes (text
+; verbatim, uint/nint decimal, everything else a loud to_json error), and reads back numeric-first
+; with a FALLBACK to the text reading when K refuses the numeric one. The four key rules below pin
+; that convention against the four things K can admit: both readings, text only, uint only, and a
+; bounded text (refinement on read).
+; the metadatum-shaped union: admits BOTH readings
+md = int / bytes / text
+; TEXT-only K (the fallback clause's vector). `@newtype` takes an optional accessor name, so it must
+; be the last thing on its line — a trailing comment after it is read as that name.
+tk = text ; @newtype
+; UINT-only K (both-readings-refused error, and the schema anti-vector)
+uk = uint ; @newtype
+; BOUNDED K: an out-of-bounds member name is a parse error, never a capture
+bt = text .size (1 .. 4) ; @newtype
+
+tkk = { 1: uint, * md => md }                 ; typed K, typed V: values ride V's OWN serde
+tkkp = { 1: uint, * md => md ; @duplicates preserve
+}                                             ; PairMap twin of `tkk` (schema-parity + duplicates)
+tonly = { 1: uint, * tk => uint }
+uonly = { 1: uint, * uk => uint }
+bonly = { 1: uint, * bt => uint }
