@@ -308,14 +308,18 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
     // key type that is a rust struct (a union, a sized-int newtype, a `bytes` vector) rather than a
     // primitive — the differential validates that each rest field's rust member still carries its
     // `MapKToV`/`PairMapKToV` counterpart, and that the `<K>List` keys mint follows `K`. Swept under
-    // `default` and `preserve` only: the fixture's rows reject under the JSON flags (the typed-K JSON
-    // face is a later delivery), and shape-cleanliness holds here too (no `MapKToV` shape is owned by
-    // both a preserve and a non-preserve rest).
+    // `default`, `preserve` and `json` — the three profiles the snapshot fixture commits;
+    // shape-cleanliness holds here too (no `MapKToV` shape is owned by both a preserve and a
+    // non-preserve rest).
     (
         "open-struct-map-typed",
         &[
             ("default", &[]),
             ("preserve", &["--preserve-encodings=true"]),
+            (
+                "json",
+                &["--json-serde-derives=true", "--json-schema-export=true"],
+            ),
         ],
     ),
     // loose-CBOR open ARRAYS: each capture rule's rust `pub rest: Vec<T>` field must carry its
