@@ -1312,7 +1312,9 @@ directives) is verified across the layers:
 - **JSON e2e** — `tests/open-struct-map-json-e2e` (compiled): flatten round-trip, declared-names-
   bind-first loose read, and the write-error postures (declared-name collision, identical
   stringifications — which is also how a pair-list holding real duplicates errors — complex `any`
-  keys/values).
+  keys/values). It is also the fixture carrying the **TS-projection leg**
+  (`assert_schema_projects_to_legal_ts`, § "JSON-schema → TypeScript JS-side pipeline"), because its
+  rest rows cover both open-region spellings with declared members the range does not admit.
 - **Snapshots** — `open_struct_map_default` / `open_struct_map_preserve` profiles over
   `tests/open-struct-map`, which also rides the wasm-parity sweep (the e2e fixtures stay off that
   axis: their integration gates generate `--wasm=false`, so they emit no wasm surface to
@@ -2155,8 +2157,12 @@ cheapest-in-isolation first:
   document is compiled as one unit), resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
   definition, a definition whose own `title` does not become its emitted name, no near-duplicate
   `FooJSON1` from a `$ref` with a sibling annotation, and no synthetic root. It also pins the
-  pattern-catch-all widening — named properties beside a `patternProperties` catch-all, top level and
-  nested, with the optional-property case that needs `undefined` in the widened union — and then
+  catch-all widening — named properties beside a catch-all, in BOTH spellings (`patternProperties`
+  and `additionalProperties`, which is which is a property of the rest row's key domain, not of the
+  projection), top level and nested, with the optional-property case that needs `undefined` in the
+  widened union, plus the two catch-alls that must NOT be widened because they are already legal and
+  exact (one a declared member's schema is structurally equal to, and an everything-admitting one) —
+  and then
   type-checks the emitted file with `tsc --noEmit --strict --target esnext`, the oracle the substring
   asserts cannot be. `--skipLibCheck` stays off (it would make the check vacuous over a `.d.ts`) and
   `--strict` is what makes the optional-property case fail at all; `typescript` is injected into the
@@ -2166,6 +2172,19 @@ cheapest-in-isolation first:
   document that cannot compile, a stale per-type schema beside the document, two documents, and a
   document with no definitions. (Any of them exiting 0 ships a `.d.ts` that silently drops part of
   the JSON surface, with nothing in the build output saying so.)
+- **`assert_schema_projects_to_legal_ts`** is the same two steps over a fixture's REAL emitted
+  document, and is a helper rather than a test of its own: a `--json-schema-export` fixture opts in by
+  calling it after `run_test`, which hands it the document the json-gen crate just wrote (today:
+  `open_struct_map_json_e2e`). What it adds over `js_schema_to_ts` is the only thing a hand-written
+  document cannot supply — that the GENERATOR still emits the shapes that document mimics — and the
+  class it exists for is invisible everywhere else: a schema can be exactly right, with every
+  `tests/*/tests.rs` schema assertion passing, and still project to TypeScript that does not compile,
+  because an index signature ranges over every property while `additionalProperties` ranges only over
+  the unnamed ones. Nothing but a `tsc` run says so, and the consumer's npm build is where it
+  otherwise surfaces. The json-e2e fixture carries both spellings and both failing directions (a
+  typed key domain's `additionalProperties` under a numeric declared member, and a `text` domain's
+  under a string one), and the caller pins that each open type's index signature is the union form
+  rather than the bare range.
 - **`js_d_ts_merge`** runs `json-ts-types.js` in isolation over hand-written fixtures — no
   wasm-pack/json2ts needed — laid out in the shipped `<root>/scripts/*.js` shape the script resolves
   its own paths from. Five cases, one per failure mode: the happy path (specialize + append); a class

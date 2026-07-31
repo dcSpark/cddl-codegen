@@ -42,6 +42,42 @@
       },
       "patternProperties": { "^\\d+$": { "$ref": "#/$defs/Bar" } }
     },
+    "Rest": {
+      "type": "object",
+      "required": ["label"],
+      "properties": {
+        "label": { "type": "string" },
+        "count": { "type": "integer" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/Bar" }
+    },
+    "RestDeep": {
+      "type": "object",
+      "required": ["inner"],
+      "properties": {
+        "inner": {
+          "type": "object",
+          "required": ["titled"],
+          "properties": {
+            "titled": { "$ref": "#/$defs/Titled" },
+            "spare": { "type": "string" }
+          },
+          "additionalProperties": { "$ref": "#/$defs/Bar" }
+        }
+      }
+    },
+    "RestSame": {
+      "type": "object",
+      "required": ["n"],
+      "properties": { "n": { "type": "integer" } },
+      "additionalProperties": { "type": "integer" }
+    },
+    "RestAny": {
+      "type": "object",
+      "required": ["n"],
+      "properties": { "n": { "type": "integer" } },
+      "additionalProperties": {}
+    },
     "Table": {
       "type": "object",
       "additionalProperties": { "type": "integer" }

@@ -18,7 +18,7 @@ directory of per-type files instead needs `declareExternallyReferenced: false` t
 re-declaring what it references, and that leaves exactly those types referenced but never declared —
 a hard `TS2304` for the consumer.
 
-Seven definitions, one per script branch:
+Eleven definitions, one per script branch:
 
 - `Foo` — a struct that references three other definitions, and gets `additionalProperties: false`
   injected (→ no `[k: string]`).
@@ -42,6 +42,21 @@ Seven definitions, one per script branch:
 - `Deep` — the same named-beside-pattern combination one level down, on an inline object property's
   own schema. Proves the widening is a recursive walk rather than a top-level pass, and that a
   nested catch-all is widened exactly once.
+- `Rest` — the same combination spelled with `additionalProperties` instead of `patternProperties`,
+  which is the open region a rest row whose key domain has no member-name pattern emits (a `text`
+  domain, or any typed key). Identical `TS2411`, identical widening; one named property is optional
+  here too. The published document keeps its exact `additionalProperties` — widening *that* would
+  let a rest member matching a declared member's schema validate against a document `from_json`
+  rejects — so the widening is a projection-time copy.
+- `RestDeep` — `Rest`'s combination one level down, for the same reason `Deep` exists.
+- `RestSame` — a declared member whose schema is *structurally equal* to the catch-all (a
+  `* uint => uint` row beside a `uint` member). It contributes nothing to the union, so it is
+  deduplicated away and the emitted index signature is unchanged — which is what keeps the rest rows
+  a consumer sees most from churning. Pinned as an exact string, since a widened union here would
+  still type-check.
+- `RestAny` — an everything-admitting catch-all (the empty schema an `* any => any` row emits). It
+  already projects to an `unknown` index signature every named property satisfies, so it is left
+  alone; also pinned exactly, for the same reason.
 
 The failure directions — a document that does not compile, a stale per-type schema file beside the
 document, two documents, and a document with no definitions — are covered by the same test with

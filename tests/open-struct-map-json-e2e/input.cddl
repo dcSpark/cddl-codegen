@@ -35,6 +35,13 @@ tonly = { 1: uint, * tk => uint }
 uonly = { 1: uint, * uk => uint }
 bonly = { 1: uint, * bt => uint }
 
+; A `text` key domain admits EVERY string as a member name, so its region has no name pattern and
+; publishes as an `additionalProperties` — the same keyword a typed K reaches. Paired here with a
+; declared member whose type is NOT the range's, which is the combination TypeScript cannot state
+; exactly: an index signature ranges over every property, so the declared member has to satisfy it.
+; The TS projection leg (`assert_schema_projects_to_legal_ts`) is what holds that shape legal.
+trow = { name: text, * text => uint }
+
 ; A PRIMITIVE typed K (`.size` keeps it off the peeked path) states its image directly instead of
 ; round-tripping through CBOR, and a `bytes` K has no member-name image at all — its flattened region
 ; is a pure error surface in both directions. Both routes are compiled here, not only snapshotted.

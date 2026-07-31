@@ -6554,6 +6554,32 @@ fn open_struct_map_json_e2e() {
         false,
         &[],
     );
+    // The TS-projection leg, over the document the json-gen crate just wrote. A rest region's
+    // schema is `{properties, additionalProperties}` (or `patternProperties`, for a key domain with
+    // a name pattern), and TypeScript has no exact equivalent: an index signature ranges over every
+    // property, so each declared member must satisfy it. This fixture carries both spellings and both
+    // failing directions — `Tkk`/`Tkkp` (a typed key domain, `key_1: number` under an `Md` range) and
+    // `Trow` (a `text` domain, `name: string` under a `uint` range) — so what it pins is that the
+    // shipped `run-json2ts.js` still projects them to a union rather than a bare signature, which is
+    // the difference between a consumer's `tsc` step passing and eight TS2411s.
+    let Some(dts) = assert_schema_projects_to_legal_ts("open-struct-map-json-e2e", "export") else {
+        return;
+    };
+    for open_type in ["TkkJSON", "TkkpJSON", "TrowJSON"] {
+        let start = dts
+            .find(&format!("export interface {open_type}"))
+            .unwrap_or_else(|| panic!("no `{open_type}` declaration:\n{dts}"));
+        let index = dts[start..]
+            .lines()
+            .find(|line| line.trim_start().starts_with("[k: string]"))
+            .unwrap_or_else(|| panic!("no index signature under `{open_type}`:\n{dts}"))
+            .to_string();
+        assert!(
+            index.contains('|'),
+            "`{open_type}`'s index signature must be the union admitting its declared members, \
+             not a bare range type: {index}"
+        );
+    }
 }
 
 #[test]
@@ -9276,6 +9302,142 @@ fn json_arbitrary_precision() {
     );
 }
 
+/// The TS-PROJECTION leg of a `--json-schema-export` fixture: takes the document the fixture's
+/// json-gen crate actually WROTE, runs the shipped `static/run-json2ts.js` over it with the pinned
+/// `json-schema-to-typescript`, and type-checks the emitted `.d.ts` with `tsc --noEmit --strict`.
+///
+/// `js_schema_to_ts` covers the same two steps over a HAND-WRITTEN document, which is what makes the
+/// script's own branches addressable; it cannot see whether the generator still emits the shapes that
+/// document mimics. This leg closes that gap in the only place it can be closed — over real emitted
+/// bytes — and the class it exists for is silent by construction everywhere else: a schema can be
+/// exactly right (the assertions in `tests/*/tests.rs` pass) and still project to TypeScript that
+/// does not compile, because a TS index signature ranges over EVERY property while
+/// `additionalProperties` ranges only over the unnamed ones. Nothing but a `tsc` run says so.
+///
+/// Returns the emitted `.d.ts` so a caller can pin the shapes it cares about. `--strict` and the
+/// absent `--skipLibCheck` are load-bearing for the same reasons as in `js_schema_to_ts`.
+fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> Option<String> {
+    use std::str::FromStr;
+    let static_dir = std::path::PathBuf::from_str("static").unwrap();
+    let fixture = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join(fixture_dir);
+    let schemas_in = fixture.join(format!("{export_path}/wasm/json-gen/schemas"));
+    // gitignored (tests/*/export*/), so it is regenerated each run and never committed.
+    let work = fixture.join(format!("{export_path}_tsproj"));
+
+    if !(tool_exists("node") && tool_exists("npm")) {
+        // Don't let CI silently skip the only tsc-over-real-output coverage we have.
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "node and npm are required to run the TS projection leg in CI"
+        );
+        eprintln!("skipping the TS projection leg for {fixture_dir}: node/npm not found");
+        return None;
+    }
+
+    let document = std::fs::read_dir(&schemas_in)
+        .unwrap_or_else(|e| panic!("no json-gen schemas dir at {schemas_in:?}: {e}"))
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .find(|name| name.ends_with(".schema.json"))
+        .unwrap_or_else(|| panic!("no *.schema.json document in {schemas_in:?}"));
+
+    // The shipped `--package-json` layout the script resolves its own paths from, holding the
+    // fixture's REAL document.
+    let _ = std::fs::remove_dir_all(work.join("rust"));
+    let schemas_out = work.join("rust/wasm/json-gen/schemas");
+    std::fs::create_dir_all(work.join("scripts")).unwrap();
+    std::fs::create_dir_all(&schemas_out).unwrap();
+    std::fs::copy(
+        static_dir.join("run-json2ts.js"),
+        work.join("scripts/run-json2ts.js"),
+    )
+    .unwrap();
+    std::fs::copy(schemas_in.join(&document), schemas_out.join(&document)).unwrap();
+    // The shipped manifest plus the injected `tsc`, exactly as `js_schema_to_ts` does it: a
+    // consumer's package needs the emitted TYPES, not a type-checker, so the pin that ships stays the
+    // `json-schema-to-typescript` one.
+    let mut manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(static_dir.join("package_json_schemas.json")).unwrap(),
+    )
+    .unwrap();
+    manifest
+        .get_mut("devDependencies")
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("static/package_json_schemas.json must have a devDependencies object")
+        .insert(
+            "typescript".to_string(),
+            serde_json::Value::String("^5.9.0".to_string()),
+        );
+    std::fs::write(
+        work.join("package.json"),
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let npm = std::process::Command::new("npm")
+        .args(["install", "--silent", "--no-audit", "--no-fund"])
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !npm.status.success() {
+        eprintln!(
+            "npm install stderr:\n{}",
+            String::from_utf8_lossy(&npm.stderr)
+        );
+    }
+    assert!(npm.status.success());
+
+    let node = std::process::Command::new("node")
+        .arg("scripts/run-json2ts.js")
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !node.status.success() {
+        eprintln!("node stderr:\n{}", String::from_utf8_lossy(&node.stderr));
+    }
+    assert!(
+        node.status.success(),
+        "run-json2ts.js must compile {document}"
+    );
+
+    let dts = std::fs::read_to_string(work.join("rust/wasm/json-gen/output/json-types.d.ts"))
+        .expect("run-json2ts.js exited 0 without writing json-types.d.ts");
+    println!("{fixture_dir} projected json-types.d.ts:\n{dts}");
+
+    let tsc = work.join("node_modules/typescript/bin/tsc");
+    assert!(
+        tsc.exists(),
+        "the injected `typescript` devDependency must install {}",
+        tsc.display()
+    );
+    let tsc_run = std::process::Command::new("node")
+        .arg(std::fs::canonicalize(&tsc).unwrap())
+        .args([
+            "--noEmit",
+            "--strict",
+            "--target",
+            "esnext",
+            "rust/wasm/json-gen/output/json-types.d.ts",
+        ])
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !tsc_run.status.success() {
+        eprintln!(
+            "tsc stdout:\n{}\ntsc stderr:\n{}",
+            String::from_utf8_lossy(&tsc_run.stdout),
+            String::from_utf8_lossy(&tsc_run.stderr)
+        );
+    }
+    assert!(
+        tsc_run.status.success(),
+        "{fixture_dir}'s emitted schema document must project to TypeScript that compiles"
+    );
+    Some(dts)
+}
+
 /// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over the committed
 /// schema document using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
 /// (installed via `npm install` of that exact file, plus an injected `typescript`), then asserts the
@@ -9396,6 +9558,10 @@ fn js_schema_to_ts() {
         "export interface TitledJSON",
         "export interface OpenJSON",
         "export interface DeepJSON",
+        "export interface RestJSON",
+        "export interface RestDeepJSON",
+        "export interface RestSameJSON",
+        "export interface RestAnyJSON",
     ] {
         assert_eq!(
             dts.matches(declaration).count(),
@@ -9467,6 +9633,56 @@ fn js_schema_to_ts() {
         .to_string();
     assert!(nested_index.contains("TitledJSON"), "{nested_index}");
     assert!(nested_index.contains("undefined"), "{nested_index}");
+
+    // The same named-beside-catch-all combination spelled with `additionalProperties` instead of
+    // `patternProperties` — the shape a rest row whose KEY DOMAIN has no string pattern emits (a
+    // `text` domain, or any typed key). It is the identical TS2411 for the identical reason, so it
+    // gets the identical widening; the published document keeps its exact `additionalProperties`,
+    // since widening THAT would let a rest member matching a declared member's schema validate while
+    // `from_json` rejects it.
+    let index_line_of = |code: &str, declaration: &str| -> String {
+        let start = code
+            .find(declaration)
+            .unwrap_or_else(|| panic!("no `{declaration}`:\n{code}"));
+        code[start..]
+            .lines()
+            .find(|line| line.trim_start().starts_with("[k: string]"))
+            .unwrap_or_else(|| panic!("no index signature under `{declaration}`:\n{code}"))
+            .trim()
+            .to_string()
+    };
+    let rest_block = {
+        let start = dts.find("export interface RestJSON").unwrap();
+        code_only(&dts[start..start + dts[start..].find('}').unwrap()])
+    };
+    assert!(rest_block.contains("label: string"), "{rest_block}");
+    assert!(rest_block.contains("count?: number"), "{rest_block}");
+    let rest_index = index_line_of(&rest_block, "export interface RestJSON");
+    for member in ["BarJSON", "string", "number", "undefined"] {
+        assert!(
+            rest_index.contains(member),
+            "the widened index signature must admit `{member}`: {rest_index}"
+        );
+    }
+    // Recursive here too: an inline object property's own `additionalProperties`.
+    let deep_rest_index = index_line_of(&code, "export interface RestDeepJSON");
+    assert!(deep_rest_index.contains("TitledJSON"), "{deep_rest_index}");
+    assert!(deep_rest_index.contains("undefined"), "{deep_rest_index}");
+    // Two catch-alls stay byte-for-byte what they were, which is what keeps the rest rows a consumer
+    // sees most from churning: a named schema structurally EQUAL to the catch-all (`* uint => uint`
+    // beside a `uint` field) adds nothing to the union and is deduplicated away, and an
+    // everything-admitting catch-all (the empty schema an `* any => any` row emits) already renders
+    // as an `unknown` every named property satisfies.
+    assert_eq!(
+        index_line_of(&code, "export interface RestSameJSON"),
+        "[k: string]: number;",
+        "a catch-all a declared member is structurally equal to must not be widened:\n{code}"
+    );
+    assert_eq!(
+        index_line_of(&code, "export interface RestAnyJSON"),
+        "[k: string]: unknown;",
+        "an everything-admitting catch-all must not be widened:\n{code}"
+    );
 
     // The oracle the substring asserts cannot be: type-check the emitted declaration file. It
     // catches the class as a class — dangling names, duplicate declarations, malformed unions, a
