@@ -1,0 +1,264 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+pub mod ordered_hash_map;
+pub mod pair_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::pair_map::PairMap;
+use crate::generated::serialization::StringEncoding;
+use cbor_encodings::{
+    BytesRestEncoding, DupRestEncoding, SizedRestEncoding, TaggedRestEncoding, UnionRestEncoding,
+};
+
+#[derive(Clone, Debug)]
+pub struct BytesRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: OrderedHashMap<Vec<u8>, String>,
+    pub encodings: Option<BytesRestEncoding>,
+}
+
+impl BytesRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DupRest {
+    pub key_9: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: PairMap<Md, String>,
+    pub encodings: Option<DupRestEncoding>,
+}
+
+impl DupRest {
+    pub fn new(key_9: u64) -> Self {
+        Self {
+            key_9,
+            rest: PairMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(
+    Eq,
+    PartialEq,
+    Ord = "feature_allow_slow_enum",
+    PartialOrd = "feature_allow_slow_enum",
+    Hash
+)]
+pub enum Int {
+    Uint {
+        value: u64,
+        #[derivative(
+            PartialEq = "ignore",
+            Ord = "ignore",
+            PartialOrd = "ignore",
+            Hash = "ignore"
+        )]
+        encoding: Option<cbor_event::Sz>,
+    },
+    Nint {
+        value: u64,
+        #[derivative(
+            PartialEq = "ignore",
+            Ord = "ignore",
+            PartialOrd = "ignore",
+            Hash = "ignore"
+        )]
+        encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint {
+            value,
+            encoding: None,
+        }
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint {
+            value,
+            encoding: None,
+        }
+    }
+}
+
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Uint { value, .. } => write!(f, "{}", value),
+            Self::Nint { value, .. } => write!(f, "{}", -((*value as i128) + 1)),
+        }
+    }
+}
+
+impl core::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = core::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(|x| Self::Uint {
+                value: x,
+                encoding: None,
+            })
+        } else {
+            u64::try_from((x + 1).unsigned_abs()).map(|x| Self::Nint {
+                value: x,
+                encoding: None,
+            })
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(
+    Eq,
+    PartialEq,
+    Ord = "feature_allow_slow_enum",
+    PartialOrd = "feature_allow_slow_enum",
+    Hash
+)]
+pub enum Md {
+    Int(Int),
+    Bytes {
+        bytes: Vec<u8>,
+        #[derivative(
+            PartialEq = "ignore",
+            Ord = "ignore",
+            PartialOrd = "ignore",
+            Hash = "ignore"
+        )]
+        bytes_encoding: StringEncoding,
+    },
+    Text {
+        text: String,
+        #[derivative(
+            PartialEq = "ignore",
+            Ord = "ignore",
+            PartialOrd = "ignore",
+            Hash = "ignore"
+        )]
+        text_encoding: StringEncoding,
+    },
+}
+
+impl Md {
+    pub fn new_int(int: Int) -> Self {
+        Self::Int(int)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes {
+            bytes,
+            bytes_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SizedRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: OrderedHashMap<u8, u64>,
+    pub encodings: Option<SizedRestEncoding>,
+}
+
+impl SizedRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedRest {
+    pub key_2: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: OrderedHashMap<u64, u64>,
+    pub encodings: Option<TaggedRestEncoding>,
+}
+
+impl TaggedRest {
+    pub fn new(key_2: u64) -> Self {
+        Self {
+            key_2,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UnionRest {
+    pub key_1: u64,
+    pub nm: String,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: OrderedHashMap<Md, u64>,
+    pub encodings: Option<UnionRestEncoding>,
+}
+
+impl UnionRest {
+    pub fn new(key_1: u64, nm: String) -> Self {
+        Self {
+            key_1,
+            nm,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}

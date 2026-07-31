@@ -304,6 +304,20 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
             ),
         ],
     ),
+    // TYPED rest-row key domains: same rest-accessor question as `open-struct-map` above, asked of a
+    // key type that is a rust struct (a union, a sized-int newtype, a `bytes` vector) rather than a
+    // primitive — the differential validates that each rest field's rust member still carries its
+    // `MapKToV`/`PairMapKToV` counterpart, and that the `<K>List` keys mint follows `K`. Swept under
+    // `default` and `preserve` only: the fixture's rows reject under the JSON flags (the typed-K JSON
+    // face is a later delivery), and shape-cleanliness holds here too (no `MapKToV` shape is owned by
+    // both a preserve and a non-preserve rest).
+    (
+        "open-struct-map-typed",
+        &[
+            ("default", &[]),
+            ("preserve", &["--preserve-encodings=true"]),
+        ],
+    ),
     // loose-CBOR open ARRAYS: each capture rule's rust `pub rest: Vec<T>` field must carry its
     // `rest()` wasm list-wrapper getter (`TList`/`AnyList`). Swept under `default` and `json` (the two
     // profiles the snapshot fixture commits): the fixture mixes capture and `@ignore` rules, and

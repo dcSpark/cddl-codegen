@@ -239,6 +239,32 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             ],
         ),
     ),
+    // TYPED rest-row key domains (`* K => V` where `K` is not bare `uint`/`text`/`any`): the seek
+    // path. These pin the emitted shape the fast peeked path cannot produce — the hoisted
+    // `let initial_position = raw.position();`, the rewinding catch-all in each declared-key match
+    // arm (including the plain text arm's lifted `let text_key = raw.text()?;`, which ends the
+    // scrutinee's borrow before the arm seeks), `K::deserialize` in the Special and `_` arms, and the
+    // key's own encoding vars filing into `rest_key_encodings` under preserve. Its own fixture rather
+    // than rows on `open-struct-map` because that one commits a `json` profile, and a typed domain
+    // rejects under the JSON flags until the typed-K JSON face lands.
+    (
+        "open_struct_map_typed_default",
+        "tests/open-struct-map-typed/input.cddl",
+        ("default", &["--wasm=false"]),
+    ),
+    (
+        "open_struct_map_typed_preserve",
+        "tests/open-struct-map-typed/input.cddl",
+        ("preserve", &["--preserve-encodings=true", "--wasm=false"]),
+    ),
+    // The wasm rest accessor over a typed key domain: the getter returns the structural
+    // `MapKToV`/`PairMapKToV` class and its `keys()` mints `<K>List` — both generic over `K` already,
+    // so this row is the proof rather than the plumbing.
+    (
+        "open_struct_map_typed_wasm",
+        "tests/open-struct-map-typed/input.cddl",
+        ("wasm", &[]),
+    ),
     // The IGNORE flavor (`@ignore` on the rest row): unknown entries are typed-deserialized and
     // DROPPED — no `rest` field, serialize emits declared members only, and JSON/schemars/wasm are a
     // closed struct's (none of capture's flatten/getter/sidecar machinery). Snapshotted non-preserve

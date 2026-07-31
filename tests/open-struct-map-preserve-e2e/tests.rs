@@ -208,3 +208,93 @@ mod open_struct_map_preserve {
         }
     }
 }
+
+// TYPED key domains on a rest row (`* K => V` where `K` is not bare `uint`/`text`/`any`) crossed with
+// the preserve/canonical core. What is new here versus the peeked domains above: the key's encodings
+// come from `K::deserialize` itself rather than from the record loop's peek, so a sidecar-bearing `K`
+// (`bytes`) only replays byte-exactly if those vars reach `rest_key_encodings`; and a self-carrying
+// `K` (a union) contributes no key sidecar at all, which is what makes the two shapes worth pinning
+// side by side. Every `wire` byte string is hand-written from the CBOR grammar.
+#[cfg(test)]
+mod open_struct_map_typed_preserve {
+    use super::*;
+    use serialization::{Deserialize, Serialize};
+
+    fn bytes(hex: &str) -> Vec<u8> {
+        let hex: String = hex.chars().filter(|c| !c.is_whitespace()).collect();
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn typed_interleave_byte_exact() {
+        // typed_open { 1: uint, "nm": text, * md => uint }.
+        // { 1: 5(two-byte), "zz": 9, "nm": "hi" } — the typed rest entry sits BETWEEN the two declared
+        // keys, so wire order is only reproducible through `orig_deser_order`'s N + i index space.
+        let wire = bytes("a3 01 190005 627a7a 09 626e6d 626869");
+        let v = TypedOpen::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.rest.len(), 1);
+        assert_eq!(*v.rest.get(&Md::new_text("zz".to_string())).unwrap(), 9);
+        assert_eq!(v.to_cbor_bytes(), wire, "byte-exact typed interleave");
+    }
+
+    #[test]
+    fn typed_key_sidecar_byte_exact() {
+        // typed_bytes { 3: uint, * bstr => text }. The key h'ab' is written with a NON-minimal length
+        // header (0x58 0x01 rather than 0x41), which only replays if the `StringEncoding` the key's
+        // own deserialize produced reached `rest_key_encodings` — the peeked path's `key_enc` does not
+        // exist on this row.
+        let wire = bytes("a2 0300 5801ab 617a");
+        let v = TypedBytes::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.rest.len(), 1);
+        assert_eq!(v.rest.get(&vec![0xab]).unwrap(), "z");
+        assert_eq!(v.to_cbor_bytes(), wire, "typed key encoding sidecar byte-exact");
+        // Canonical rewrites the key head minimally (the merge writes with default encodings).
+        assert_eq!(v.to_canonical_cbor_bytes(), bytes("a2 03 00 41ab 617a"));
+    }
+
+    #[test]
+    fn typed_dup_rejected_on_value_equality() {
+        // The loose typed container's `Eq` is VALUE equality (the preserve derives ignore encoding
+        // members), so rest keys 0x05 and 0x1805 — the same `Md::Int(Int::Uint(5))` at two wire
+        // widths — are a DuplicateKey, exactly as for the concrete uint domain.
+        let wire = bytes("a4 0100 626e6d 6161 05 01 1805 02");
+        assert!(
+            TypedOpen::from_cbor_bytes(&wire).is_err(),
+            "0x05 vs 0x1805 are one typed key"
+        );
+    }
+
+    #[test]
+    fn typed_canonical_merge_orders_typed_keys_against_declared() {
+        // typed_open, non-canonical input { "nm": "hi", 1: 0, "zz": 9, -3: 4 }. The runtime merge
+        // serializes each key (declared AND typed rest) and sorts length-first, then bytewise:
+        // 0x01 and 0x22 (one byte) before 0x626e6d and 0x627a7a (three).
+        let v =
+            TypedOpen::from_cbor_bytes(&bytes("a4 626e6d 626869 01 00 627a7a 09 22 04")).unwrap();
+        assert_eq!(v.rest.len(), 2, "a nint and a text rest key");
+        assert_eq!(
+            v.to_canonical_cbor_bytes(),
+            bytes("a4 01 00 22 04 626e6d 626869 627a7a 09"),
+            "typed rest keys sort among the declared keys length-first"
+        );
+    }
+
+    #[test]
+    fn typed_dup_pairlist_keeps_duplicates_byte_exact() {
+        // typed_dup { 9: uint, * md => uint ; @duplicates preserve }: { 9: 0, 5: 1, 5(two-byte): 2 }.
+        // Both entries are the same `Md` VALUE, which the loose container above refuses; the pair-map
+        // keeps both, in wire order, and the POSITIONAL value sidecar keeps each value width aligned.
+        // The key widths ride `Md`'s own encodings (a union self-carries — there is no key sidecar).
+        let wire = bytes("a3 0900 05 01 1805 1802");
+        let v = TypedDup::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.rest.len(), 2, "both duplicate typed keys survive");
+        assert_eq!(
+            v.rest.get_all(&Md::new_int(Int::new_uint(5))),
+            vec![&1u64, &2u64]
+        );
+        assert_eq!(v.to_cbor_bytes(), wire, "byte-exact typed duplicates");
+    }
+}

@@ -1,0 +1,719 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for BytesRest {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(1u64)?;
+        serializer.write_unsigned_integer(self.key_1)?;
+        for (key, value) in self.rest.iter() {
+            serializer.write_bytes(key)?;
+            serializer.write_text(value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for BytesRest {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut key_1 = None;
+            let mut rest = BTreeMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                let initial_position = raw.position();
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        1 => {
+                            if key_1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            key_1 = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("key_1"))?,
+                            );
+                        }
+                        _ => {
+                            raw.set_position(initial_position).unwrap();
+                            read_len.read_elems(1)?;
+                            let rest_key = raw.bytes()?;
+                            let rest_value = raw.text()?;
+                            if rest.insert(rest_key.clone(), rest_value).is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    String::from("<open-map rest key>"),
+                                ))
+                                .into());
+                            }
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        read_len.read_elems(1)?;
+                        let rest_key = raw.bytes()?;
+                        let rest_value = raw.text()?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = raw.bytes()?;
+                        let rest_value = raw.text()?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = raw.bytes()?;
+                        let rest_value = raw.text()?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            let key_1 = match key_1 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into()),
+            };
+            read_len.finish()?;
+            Ok(Self { key_1, rest })
+        })()
+        .map_err(|e| e.annotate("BytesRest"))
+    }
+}
+
+impl cbor_event::se::Serialize for DupRest {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(9u64)?;
+        serializer.write_unsigned_integer(self.key_9)?;
+        for (key, value) in self.rest.iter() {
+            key.serialize(serializer)?;
+            serializer.write_text(value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for DupRest {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut key_9 = None;
+            let mut rest = PairMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                let initial_position = raw.position();
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        9 => {
+                            if key_9.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(9)).into());
+                            }
+                            key_9 = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("key_9"))?,
+                            );
+                        }
+                        _ => {
+                            raw.set_position(initial_position).unwrap();
+                            read_len.read_elems(1)?;
+                            let rest_key = Md::deserialize(raw)?;
+                            let rest_value = raw.text()?;
+                            rest.insert(rest_key.clone(), rest_value);
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = raw.text()?;
+                        rest.insert(rest_key.clone(), rest_value);
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = raw.text()?;
+                        rest.insert(rest_key.clone(), rest_value);
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = raw.text()?;
+                        rest.insert(rest_key.clone(), rest_value);
+                    }
+                }
+                read += 1;
+            }
+            let key_9 = match key_9 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(9)).into()),
+            };
+            read_len.finish()?;
+            Ok(Self { key_9, rest })
+        })()
+        .map_err(|e| e.annotate("DupRest"))
+    }
+}
+
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Self::Uint(x) => serializer.write_unsigned_integer(*x),
+            Self::Nint(x) => serializer
+                .write_negative_integer_sz(-((*x as i128) + 1), cbor_event::Sz::canonical(*x)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),
+                cbor_event::Type::NegativeInteger => Ok(Self::Nint(
+                    (-1 - raw.negative_integer_sz().map(|(x, _enc)| x)?) as u64,
+                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
+impl cbor_event::se::Serialize for Md {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Md::Int(int) => int.serialize(serializer),
+            Md::Bytes(bytes) => serializer.write_bytes(bytes),
+            Md::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for Md {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger | cbor_event::Type::NegativeInteger => {
+                    Ok(Md::Int(Int::deserialize(raw)?))
+                }
+                cbor_event::Type::Bytes => Ok(Md::Bytes(raw.bytes()?)),
+                cbor_event::Type::Text => Ok(Md::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Md"))
+    }
+}
+
+impl cbor_event::se::Serialize for SizedRest {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(1u64)?;
+        serializer.write_unsigned_integer(self.key_1)?;
+        for (key, value) in self.rest.iter() {
+            serializer.write_unsigned_integer(*key as u64)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for SizedRest {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut key_1 = None;
+            let mut rest = BTreeMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                let initial_position = raw.position();
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        1 => {
+                            if key_1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            key_1 = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("key_1"))?,
+                            );
+                        }
+                        _ => {
+                            raw.set_position(initial_position).unwrap();
+                            read_len.read_elems(1)?;
+                            let rest_key = raw
+                                .unsigned_integer()
+                                .map_err(Into::<DeserializeError>::into)
+                                .and_then(|x| {
+                                    if x > 255 {
+                                        Err(DeserializeFailure::RangeCheck {
+                                            found: x as i128,
+                                            min: Some(0),
+                                            max: Some(255),
+                                        }
+                                        .into())
+                                    } else {
+                                        Ok(x)
+                                    }
+                                })? as u8;
+                            let rest_value = raw.unsigned_integer()?;
+                            if rest.insert(rest_key, rest_value).is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    String::from("<open-map rest key>"),
+                                ))
+                                .into());
+                            }
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        read_len.read_elems(1)?;
+                        let rest_key = raw
+                            .unsigned_integer()
+                            .map_err(Into::<DeserializeError>::into)
+                            .and_then(|x| {
+                                if x > 255 {
+                                    Err(DeserializeFailure::RangeCheck {
+                                        found: x as i128,
+                                        min: Some(0),
+                                        max: Some(255),
+                                    }
+                                    .into())
+                                } else {
+                                    Ok(x)
+                                }
+                            })? as u8;
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key, rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = raw
+                            .unsigned_integer()
+                            .map_err(Into::<DeserializeError>::into)
+                            .and_then(|x| {
+                                if x > 255 {
+                                    Err(DeserializeFailure::RangeCheck {
+                                        found: x as i128,
+                                        min: Some(0),
+                                        max: Some(255),
+                                    }
+                                    .into())
+                                } else {
+                                    Ok(x)
+                                }
+                            })? as u8;
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key, rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = raw
+                            .unsigned_integer()
+                            .map_err(Into::<DeserializeError>::into)
+                            .and_then(|x| {
+                                if x > 255 {
+                                    Err(DeserializeFailure::RangeCheck {
+                                        found: x as i128,
+                                        min: Some(0),
+                                        max: Some(255),
+                                    }
+                                    .into())
+                                } else {
+                                    Ok(x)
+                                }
+                            })? as u8;
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key, rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            let key_1 = match key_1 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into()),
+            };
+            read_len.finish()?;
+            Ok(Self { key_1, rest })
+        })()
+        .map_err(|e| e.annotate("SizedRest"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedRest {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(2u64)?;
+        serializer.write_unsigned_integer(self.key_2)?;
+        for (key, value) in self.rest.iter() {
+            serializer.write_tag(24u64)?;
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for TaggedRest {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut key_2 = None;
+            let mut rest = BTreeMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                let initial_position = raw.position();
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        2 => {
+                            if key_2.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(2)).into());
+                            }
+                            key_2 = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("key_2"))?,
+                            );
+                        }
+                        _ => {
+                            raw.set_position(initial_position).unwrap();
+                            read_len.read_elems(1)?;
+                            let rest_key = match raw.tag()? {
+                                24 => raw.unsigned_integer()?,
+                                tag => {
+                                    return Err(DeserializeFailure::TagMismatch {
+                                        found: tag,
+                                        expected: 24,
+                                    }
+                                    .into());
+                                }
+                            };
+                            let rest_value = raw.unsigned_integer()?;
+                            if rest.insert(rest_key, rest_value).is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    String::from("<open-map rest key>"),
+                                ))
+                                .into());
+                            }
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        read_len.read_elems(1)?;
+                        let rest_key = match raw.tag()? {
+                            24 => raw.unsigned_integer()?,
+                            tag => {
+                                return Err(DeserializeFailure::TagMismatch {
+                                    found: tag,
+                                    expected: 24,
+                                }
+                                .into());
+                            }
+                        };
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key, rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = match raw.tag()? {
+                            24 => raw.unsigned_integer()?,
+                            tag => {
+                                return Err(DeserializeFailure::TagMismatch {
+                                    found: tag,
+                                    expected: 24,
+                                }
+                                .into());
+                            }
+                        };
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key, rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = match raw.tag()? {
+                            24 => raw.unsigned_integer()?,
+                            tag => {
+                                return Err(DeserializeFailure::TagMismatch {
+                                    found: tag,
+                                    expected: 24,
+                                }
+                                .into());
+                            }
+                        };
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key, rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            let key_2 = match key_2 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(2)).into()),
+            };
+            read_len.finish()?;
+            Ok(Self { key_2, rest })
+        })()
+        .map_err(|e| e.annotate("TaggedRest"))
+    }
+}
+
+impl cbor_event::se::Serialize for UnionRest {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(2 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(1u64)?;
+        serializer.write_unsigned_integer(self.key_1)?;
+        serializer.write_text("nm")?;
+        serializer.write_text(&self.nm)?;
+        for (key, value) in self.rest.iter() {
+            key.serialize(serializer)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for UnionRest {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let mut key_1 = None;
+            let mut nm = None;
+            let mut rest = BTreeMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                let initial_position = raw.position();
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        1 => {
+                            if key_1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            key_1 = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("key_1"))?,
+                            );
+                        }
+                        _ => {
+                            raw.set_position(initial_position).unwrap();
+                            read_len.read_elems(1)?;
+                            let rest_key = Md::deserialize(raw)?;
+                            let rest_value = raw.unsigned_integer()?;
+                            if rest.insert(rest_key.clone(), rest_value).is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    String::from("<open-map rest key>"),
+                                ))
+                                .into());
+                            }
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        let text_key = raw.text()?;
+                        match text_key.as_str() {
+                            "nm" => {
+                                if nm.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "nm".into(),
+                                    ))
+                                    .into());
+                                }
+                                nm = Some(
+                                    Ok(raw.text()?)
+                                        .map_err(|e: DeserializeError| e.annotate("nm"))?,
+                                );
+                            }
+                            _ => {
+                                raw.set_position(initial_position).unwrap();
+                                read_len.read_elems(1)?;
+                                let rest_key = Md::deserialize(raw)?;
+                                let rest_value = raw.unsigned_integer()?;
+                                if rest.insert(rest_key.clone(), rest_value).is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        String::from("<open-map rest key>"),
+                                    ))
+                                    .into());
+                                }
+                            }
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = raw.unsigned_integer()?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            let key_1 = match key_1 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into()),
+            };
+            let nm = match nm {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("nm")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self { key_1, nm, rest })
+        })()
+        .map_err(|e| e.annotate("UnionRest"))
+    }
+}

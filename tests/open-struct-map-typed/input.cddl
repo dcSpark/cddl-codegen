@@ -1,0 +1,35 @@
+; TYPED key domains on an open struct-map rest row (`* K => V` where `K` is not bare
+; `uint`/`text`/`any`). These rows take the seek path: the loop body hoists a `raw.position()`
+; anchor, a declared-key match arm that falls through rewinds to it, and `K::deserialize` reads the
+; key itself — so the write and read halves are the same `K` codec, symmetric by construction.
+; Snapshotted in the plain, preserve and wasm flavors. NOT snapshotted under the json flags: the
+; flattened-rest JSON surface images rest keys as strings, a convention defined only for the three
+; peeked domains, so a typed row rejects under `--json-serde-derives`/`--json-schema-export` until
+; that face lands (the rejection itself is pinned in `robustness_tests`).
+md = int / bytes / text
+
+; Local union K crossed with BOTH declared key kinds: the uint arm and the text arm each get a
+; rewinding catch-all, and a declared key never reaches `Md::deserialize` (declared keys peel first).
+union_rest = {
+  1: uint,
+  "nm": text,
+  * md => uint
+}
+
+; Sidecar-bearing K: under --preserve-encodings a `bytes` key contributes a `StringEncoding` to
+; `rest_key_encodings`, bound by the key's own deserialize rather than by a peek.
+bytes_rest = { 1: uint, * bytes => text }
+
+; Sized-int K (`u8`): the uint arm's catch-all rewinds and re-reads through the bounds check, so a
+; key outside the u8 range is a parse error rather than a silent capture. `Option<Sz>` sidecar.
+sized_rest = { 1: uint, * uint .size 1 => uint }
+
+; Encoding-op K: the peeked path never saw the tag, so `* #6.24(uint) => v` used to write a tag its
+; deserialize never read. On the typed path the tag rides `K`'s own codec in both directions.
+tagged_rest = { 2: uint, * #6.24(uint) => uint }
+
+; Typed K under `@duplicates preserve`: the PairMap twin, whose keys need only the `ord` demand.
+dup_rest = {
+  9: uint,
+  * md => text ; @duplicates preserve
+}

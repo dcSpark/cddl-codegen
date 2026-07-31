@@ -1,0 +1,62 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+
+#[derive(Clone, Debug, Default)]
+pub struct BytesRestEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub rest_key_encodings: BTreeMap<Vec<u8>, StringEncoding>,
+    pub rest_value_encodings: BTreeMap<Vec<u8>, StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DupRestEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_9_encoding: Option<cbor_event::Sz>,
+    pub key_9_key_encoding: Option<cbor_event::Sz>,
+    pub rest_value_encodings: Vec<StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SizedRestEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub rest_key_encodings: BTreeMap<u8, Option<cbor_event::Sz>>,
+    pub rest_value_encodings: BTreeMap<u8, Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedRestEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_2_encoding: Option<cbor_event::Sz>,
+    pub key_2_key_encoding: Option<cbor_event::Sz>,
+    pub rest_key_encodings: BTreeMap<u64, (Option<cbor_event::Sz>, Option<cbor_event::Sz>)>,
+    pub rest_value_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct UnionRestEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub nm_encoding: StringEncoding,
+    pub nm_key_encoding: StringEncoding,
+    pub rest_value_encodings: BTreeMap<Md, Option<cbor_event::Sz>>,
+}
