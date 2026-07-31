@@ -1214,6 +1214,150 @@ fn component_glue(input: &str, extra: &[&str]) -> String {
         .clone()
 }
 
+/// The emitted glue of a SPEC BODY written to a scratch file, for shapes no committed fixture
+/// carries.
+fn component_glue_for_spec(spec: &str, extra: &[&str]) -> String {
+    component_glue_for_scopes(&[("input.cddl", spec)], extra)
+}
+
+/// The emitted glue of one or more spec bodies. A single `input.cddl` is passed as a FILE; two or
+/// more are written into a scratch directory rooted at `lib.cddl` and passed as a DIRECTORY, which
+/// is how a spec reaches more than one module scope — i.e. more than one WIT interface.
+fn component_glue_for_scopes(files: &[(&str, &str)], extra: &[&str]) -> String {
+    let dir = scratch_dir("glue-spec");
+    for (name, body) in files {
+        std::fs::write(dir.join(name), body).unwrap();
+    }
+    let input = if files.len() == 1 {
+        dir.join(files[0].0)
+    } else {
+        dir.clone()
+    };
+    let generated = crate::api::generated_strings(&cli_for(input.to_str().unwrap(), extra));
+    std::fs::remove_dir_all(&dir).ok();
+    generated
+        .unwrap_or_else(|e| panic!("generating {files:?} with {extra:?} failed: {e}"))
+        .get("component/src/generated/mod.rs")
+        .unwrap_or_else(|| panic!("a `--component` run emitted no glue for {files:?}"))
+        .clone()
+}
+
+/// Every token of the guest block, which stands or falls together.
+const GUEST_BLOCK: &[&str] = &[
+    "struct Component;",
+    "Guest for Component",
+    "export!(Component);",
+    "fn err<",
+];
+
+/// The guest block is emitted only where `wit_bindgen::generate!` mints something for it to name,
+/// and suppressing it is what COMPILES rather than a tidiness choice.
+///
+/// Two ordinary CDDL shapes reach that, and both were corpus-wide wasip2 compile failures before the
+/// emitter asked the question. A spec whose every rule RESOLVES THROUGH — a plain alias, a named
+/// collection — projects no interface at all, so the world exports nothing and `generate!` mints no
+/// `export!` macro for `export!(Component);` to invoke (`cannot find macro export in this scope`).
+/// A spec whose only projected type is a VALUE type — a c-style enum — projects an interface of
+/// pure type declarations, which `generate!` gives a module and no `Guest` trait, so
+/// `impl <iface>::Guest for Component {}` names something that does not exist (E0405).
+///
+/// What is left once the impls are gone has no possible caller — the guest type, its `export!`, the
+/// `err` funnel, the bridges and the interface `use` aliases they are spelled against all exist to
+/// serve a `Guest` impl — so the whole block goes, and the emitted file is the `generate!`
+/// invocation alone. The WIT surface is untouched by that: a world's exports live in the component
+/// type section `generate!` emits whether or not `export!` is invoked.
+#[test]
+fn component_glue_emits_the_guest_block_only_where_generate_mints_one() {
+    let resolved_through = component_glue_for_spec("bare_int = int\nt = { * uint => text }\n", &[]);
+    let value_only = component_glue_for_spec("fixed_enum = 0 / 1 / 2\n", &[]);
+    for (shape, glue) in [
+        ("a world that exports no interface", &resolved_through),
+        ("an interface of only value types", &value_only),
+    ] {
+        for token in GUEST_BLOCK {
+            assert!(
+                !glue.contains(token),
+                "{shape} emitted `{token}`, which `wit_bindgen::generate!` mints nothing for:\n\
+                 {glue}"
+            );
+        }
+    }
+    // The control: ONE resource is enough to bring the whole block back, so what is asserted above
+    // is a condition and not an emitter that stopped emitting.
+    let with_resource = component_glue_for_spec("rec = [a: uint]\n", &[]);
+    for token in GUEST_BLOCK {
+        assert!(
+            with_resource.contains(token),
+            "a spec with a resource no longer emits `{token}`:\n{with_resource}"
+        );
+    }
+}
+
+/// The `Guest`-impl half of that condition is PER INTERFACE, while the guest block's half is per
+/// package: a value-only interface sitting beside one that declares a resource still gets no `impl`,
+/// and still gets its module alias and its enum bridges — the resource's own glue is what may need
+/// to convert that enum.
+#[test]
+fn a_value_only_interface_gets_no_guest_impl_beside_an_interface_that_does() {
+    let glue = component_glue_for_scopes(
+        &[
+            ("lib.cddl", "rec = [n: uint, s: shade]\n"),
+            ("sub.cddl", "shade = 0 / 1\n"),
+        ],
+        &[],
+    );
+    assert!(
+        glue.contains("impl wit_types::Guest for Component {"),
+        "the interface that declares a resource lost its `Guest` impl:\n{glue}"
+    );
+    assert!(
+        !glue.contains("wit_sub::Guest for Component"),
+        "the value-only interface got a `Guest` impl for a trait `generate!` does not mint:\n{glue}"
+    );
+    assert!(
+        glue.contains("as wit_sub;") && glue.contains("fn shade_to_wit("),
+        "the value-only interface lost the alias and bridges its NEIGHBOUR's glue converts \
+         through:\n{glue}"
+    );
+}
+
+/// The exact rule the condition above encodes, at the one position no CDDL spec can currently
+/// reach: an interface with a FREE FUNCTION and no resource.
+///
+/// `wit_bindgen` mints the `Guest` trait for it — free functions land on that trait — so a condition
+/// spelled "has a resource" would suppress the impl this face's `any-cbor` free functions
+/// (`cbor-kind`, `cbor-to-json`/`cbor-from-json`) need, turning one compile error into another.
+/// Probed against `wit-bindgen` 0.57 by hand-adding a `func` to a value-only interface's WIT and
+/// compiling the impl for `wasm32-wasip2`; pinned here because the projection attaches those
+/// functions only to a scope that already stages a resource, so no fixture can hold the rule in
+/// place.
+#[test]
+fn a_free_function_alone_mints_a_guest_trait() {
+    use crate::generation::wit::{WitFunc, WitFuncOp, WitInterface, WitType};
+    let mut iface = WitInterface {
+        name: "types".to_owned(),
+        scope: crate::intermediate::ModuleScope::new(vec!["lib".to_owned()]),
+        uses: BTreeMap::new(),
+        types: Vec::new(),
+        funcs: Vec::new(),
+    };
+    assert!(
+        !crate::generation::component::interface_has_guest(&iface),
+        "an interface with neither a resource nor a function must get no `Guest` impl"
+    );
+    iface.funcs.push(WitFunc {
+        name: "cbor-kind".to_owned(),
+        params: Vec::new(),
+        result: Some(WitType::AnyCborKind),
+        fallible: true,
+        op: WitFuncOp::AnyCborKind,
+    });
+    assert!(
+        crate::generation::component::interface_has_guest(&iface),
+        "an interface whose only member is a free function still has a `Guest` trait to implement"
+    );
+}
+
 /// RE-ENTRANCY. The canonical ABI lets a caller pass the same handle as both receiver and argument
 /// (`x.set-children([x])`), and collection-mediated recursion makes that type-legal for any
 /// self-referential CDDL type. Glue holding two `RefCell` guards at once compiles clean in debug AND
@@ -1918,64 +2062,46 @@ fn component_crate_builds_for_wasm32_wasip2() {
 /// staleness is guarded BOTH ways, a listed fixture that starts compiling fails as "the bug is
 /// fixed — remove the pin", an unlisted one that stops compiling fails as a regression.
 ///
-/// Four classes, all in `component/src/generated/mod.rs`, all reproduced under `--wasm=true` and
-/// `--wasm=false` alike:
+/// Two classes remain, both in `component/src/generated/mod.rs` and both reproducing under
+/// `--wasm=true` and `--wasm=false` alike. Neither is a nested-position accident the emitter can
+/// spell its way out of: each needs a fact the projection does not carry today, which is why they
+/// are ledgered rather than fixed.
 ///
-/// 1. **The empty world.** A spec every rule of which resolves through (aliases, named collections)
-///    exports no interface, so `wit_bindgen::generate!` mints no `export!` macro — while the glue
-///    emits `export!(Component);` regardless.
-/// 2. **The interface with no resources.** A spec whose only projected types are VALUE types
-///    (a c-style enum) gets an interface with no `Guest` trait, while the glue emits
-///    `impl wit_types::Guest for Component {}`.
-/// 3. **The despecialized NonEmpty collect.** A `[+ T]` / `{+ K => V}` in a position the component
-///    fixtures do not reach makes the glue `.collect()` straight into `NonEmptyVec`/`NonEmptyMap`,
-///    which have no `FromIterator` — the `TryFrom` door the bounded fixtures do go through is the
-///    shape that belongs here.
-/// 4. **`@default` fields.** The glue treats a defaulted scalar as if it were a handle.
+/// 1. **The despecialized NonEmpty in a NESTED position.** A `[+ T]` / `{+ K => V}` reached through
+///    a named collection rule — as a list ELEMENT or a map KEY — makes the glue `.collect()`
+///    straight into `NonEmptyVec`/`NonEmptyMap`, which have no `FromIterator` (E0277). The
+///    `TryFrom` door those types own is re-entered only for a parameter that is despecialized at its
+///    TOP level (`materialize` routes off `wit::wit_param_despecialized` of the whole parameter), and
+///    the conversion walk below that point sees WIT types only, so a nested despecialization is
+///    invisible to it. Closing it needs the rust type threaded through the conversion walk beside
+///    the WIT type, AND `wit_param_validates` descending through an alias and a named collection
+///    rule so the WIT signature turns fallible — a surface change, since the door has to have a
+///    `result<_, string>` to report through.
+/// 2. **`@default` fields.** A `.default`ed field is a PLAIN `T` on the rust side (the default fills
+///    absence in), while the projection still treats it as optional — so the glue reads
+///    `me.b.as_ref()` on a `u64` (E0599) and writes `field = Some(v)` into a `u64` (E0308). The fix
+///    is in the projection's optionality rule, not in the glue.
 ///
 /// A fixture that fails to GENERATE belongs in `snapshot_tests::PROFILE_GENERATION_SKIP` instead;
 /// a fixture whose RUST crate cannot compile standalone belongs in
 /// `integration_tests::COMPILE_SKIP`, which this gate shares rather than restating.
 const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
     (
-        "c_style_enum",
-        "class 2: every projected type is a c-style enum, so the interface has no `Guest` trait for \
-         the emitted `impl wit_types::Guest for Component {}` to implement (E0405)",
-    ),
-    (
-        "c_style_enum_map_key",
-        "class 2: same — the interface's only type is a c-style enum, so there is no `Guest` trait",
-    ),
-    (
-        "dsl_used_as_key_hash_cstyle",
-        "class 2: same — the projection keeps only the c-style enum, so there is no `Guest` trait",
-    ),
-    (
-        "int_alias",
-        "class 1: every rule resolves through as an alias, so the world exports no interface and \
-         `wit_bindgen::generate!` mints no `export!` macro for the emitted `export!(Component);`",
-    ),
-    (
-        "table",
-        "class 1: the only rule is a named collection, resolved through — the world exports nothing",
-    ),
-    (
-        "cbor_nonempty_payload",
-        "class 1: same — every rule resolves through, so the world exports nothing",
-    ),
-    (
         "composite_map_key",
-        "class 3: the glue `.collect()`s into `NonEmptyVec<u64>`, which has no `FromIterator` \
-         (E0277) — the despecialized parameter has to re-enter its `TryFrom` door",
+        "class 1: the map KEY of a named table rule is a `NonEmptyVec<u64>`, and the glue \
+         `.collect()`s into it (E0277) — a nested despecialization the top-level `TryFrom` routing \
+         cannot see",
     ),
     (
         "nonempty_nested_positions",
-        "class 3: same, in both flavors — `NonEmptyVec<u64>` and `NonEmptyMap<u64, u64>`",
+        "class 1: same, in both flavors and both nesting positions — a `NonEmptyVec<u64>` list \
+         ELEMENT and a `NonEmptyMap<u64, u64>` map KEY",
     ),
     (
         "default_value",
-        "class 4: a `@default`ed scalar field's glue treats the value as a handle — `as_ref` on a \
-         `u64` (E0599) plus two mismatched types and an unannotated binding",
+        "class 2: a `@default`ed scalar is a plain `u64`/`String` in the rust struct, but the \
+         projection keeps it optional — `as_ref` on a `u64` (E0599), `= Some(v)` into a `u64` \
+         (E0308) and an unannotated binding (E0282)",
     ),
 ];
 

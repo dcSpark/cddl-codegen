@@ -99,6 +99,26 @@ fn interface_alias(iface_name: &str) -> String {
     format!("wit_{}", kebab_to_snake(iface_name))
 }
 
+/// Whether `wit_bindgen::generate!` mints a `Guest` trait for this interface — i.e. whether the
+/// interface has anything a guest must IMPLEMENT.
+///
+/// A resource or a free function mints the trait; a declaration of pure VALUE types does not. So an
+/// interface whose only projected type is a c-style enum gets a module carrying that enum and no
+/// trait in it, and `impl <iface>::Guest for Component {}` there names something that does not exist
+/// (E0405).
+///
+/// Both halves of the condition are load-bearing and each was probed against `wit-bindgen` 0.57
+/// rather than reasoned about: an interface with a free function and NO resource DOES mint the
+/// trait (the free functions land on it), so "has a resource" alone would suppress the impl that
+/// this face's `any-cbor` free functions need.
+pub(crate) fn interface_has_guest(iface: &WitInterface) -> bool {
+    !iface.funcs.is_empty()
+        || iface
+            .types
+            .iter()
+            .any(|def| matches!(def, WitTypeDef::Resource(_)))
+}
+
 /// A WIT identifier in the rust form `wit_bindgen` gives it for a value position (function, module,
 /// parameter): words joined with `_`, keywords suffixed.
 fn kebab_to_snake(name: &str) -> String {
@@ -590,6 +610,30 @@ impl Emitter<'_, '_> {
             wit_dir_tail(),
             self.package.world
         );
+        // Everything below the `generate!` invocation exists to serve a `Guest` impl, so a package
+        // with none of them emits the invocation ALONE — and that is not a tidiness choice, it is
+        // what compiles. `generate!` mints an `export!` macro only for a world that HAS exports, and
+        // a `Guest` trait only for an interface that has something to implement (see
+        // [`interface_has_guest`]); a spec whose every rule resolves through (an alias, a named
+        // collection) projects no interface at all, and one whose only projected type is a c-style
+        // enum projects an interface of pure value declarations. The unconditional block was
+        // `cannot find macro export` on the first and E0405 on the second. What is left once the
+        // impls are gone — the guest type, its `export!`, the `err` funnel every fallible door
+        // reports through, the enum/`int`/`any-cbor-kind` bridges and the interface `use` aliases
+        // they are spelled against — has no possible caller in a package with no resource and no
+        // free function, so it would be dead code in a file the user cannot edit. The WIT surface is
+        // untouched either way: a world's exports live in the component type section `generate!`
+        // emits regardless of `export!`.
+        let guest_interfaces: Vec<&WitInterface> = self
+            .package
+            .interfaces
+            .values()
+            .filter(|iface| interface_has_guest(iface))
+            .collect();
+        if guest_interfaces.is_empty() {
+            return out;
+        }
+
         for (scope, iface) in &self.package.interfaces {
             let _ = writeln!(
                 out,
@@ -604,11 +648,12 @@ impl Emitter<'_, '_> {
         }
         out.push('\n');
 
-        // ONE `Component` implementing every interface's `Guest` trait, covered by ONE `export!`.
-        // That is the shape the component model wants: a world's exports are implemented by a single
-        // guest type, and a second `export!` would emit a second set of canonical-ABI symbols.
+        // ONE `Component` implementing every implementable interface's `Guest` trait, covered by ONE
+        // `export!`. That is the shape the component model wants: a world's exports are implemented
+        // by a single guest type, and a second `export!` would emit a second set of canonical-ABI
+        // symbols.
         out.push_str("struct Component;\n\n");
-        for iface in self.package.interfaces.values() {
+        for iface in &guest_interfaces {
             out.push_str(&self.emit_guest_impl(iface));
         }
         out.push_str("export!(Component);\n\n");
