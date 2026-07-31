@@ -4601,6 +4601,123 @@ fn wasm_reexports_refuses_a_crate_that_generates_no_wasm_crate() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The component face — the bytes seam's posture precondition on a `deps` edge
+// ---------------------------------------------------------------------------------------------
+
+/// A `deps` edge carrying the component seam, spelled so a fixture can vary ONE axis.
+fn seam_edge(consumer_axis: &str, dep_axis: &str) -> String {
+    format!(
+        "[crates.dep]\ninput = \"d.cddl\"\noutput = \"gen/dep\"\ncomponent = true\n{dep_axis}\n\
+         [crates.consumer]\ninput = \"c.cddl\"\noutput = \"gen/consumer\"\ncomponent = true\n\
+         deps = [\"dep\"]\n{consumer_axis}\n"
+    )
+}
+
+/// The seam is byte-exact only while both ends encode the same way, and a mismatch does not fail
+/// anything at generation, at build or at composition — it silently re-encodes on every crossing.
+/// So the refusal happens here, before a byte is written, on the one axis set that makes two
+/// serialization contracts non-interchangeable.
+///
+/// All THREE equality axes, because the seam's stake in each is different and each is real: the two
+/// encoding axes change what bytes come out, the depth limit changes which bytes are accepted.
+#[test]
+fn a_component_seam_over_mismatched_encoding_posture_is_refused_by_axis() {
+    for (axis, consumer, dep, ours, theirs) in [
+        (
+            "preserve-encodings",
+            "preserve-encodings = true",
+            "preserve-encodings = false",
+            "true",
+            "false",
+        ),
+        (
+            // `--canonical-form` rides on `--preserve-encodings`, so both sides carry it: the axis
+            // under test has to be the only thing that differs.
+            "canonical-form",
+            "preserve-encodings = true\ncanonical-form = false",
+            "preserve-encodings = true\ncanonical-form = true",
+            "false",
+            "true",
+        ),
+        (
+            "deserialize-depth-limit",
+            "deserialize-depth-limit = 16",
+            "",
+            "16",
+            "unset",
+        ),
+    ] {
+        let err = expand_error(&seam_edge(consumer, dep));
+        assert!(
+            err.contains("[crates.consumer].deps names `dep`")
+                && err.contains(&format!("disagree on `{axis}`"))
+                && err.contains(&format!("`consumer` has `{ours}`"))
+                && err.contains(&format!("`dep` has `{theirs}`")),
+            "the refusal must name BOTH crates, the axis and each side's value, got: {err}"
+        );
+        assert!(
+            err.contains("silently re-encodes") && err.contains("turn `component` off"),
+            "the refusal must say what a mismatch costs and what the user can do about it, got: \
+             {err}"
+        );
+    }
+}
+
+/// The rule is a property of the CONFIG, so a run selecting neither end still rejects it — the same
+/// rule the wasm-reexports and runtime-carrier refusals follow.
+#[test]
+fn a_subset_run_rejects_a_mismatched_component_seam_it_does_not_generate() {
+    let err = parse(&format!(
+        "{}[crates.other]\ninput = \"o.cddl\"\noutput = \"gen/other\"\n",
+        seam_edge("preserve-encodings = true", "preserve-encodings = false")
+    ))
+    .expand(&["other".to_owned()])
+    .expect_err("a subset run must reject the same config a full run rejects");
+    assert!(
+        err.contains("[crates.consumer].deps names `dep`"),
+        "got: {err}"
+    );
+}
+
+/// The scope, from both sides: the SAME posture mismatch on a `deps` edge that carries no seam is
+/// accepted, and the SAME edge at one posture is accepted.
+///
+/// Without the component face the dependency's types are reached by ordinary rust linkage — no bytes
+/// are produced at a boundary and none are parsed there — so there is no crossing to re-encode and
+/// the rule has nothing to be about. Refusing it anyway would attach an explanation in terms of
+/// crossings to an edge that has none.
+#[test]
+fn the_posture_rule_applies_to_seam_edges_and_only_to_them() {
+    let mismatch = "preserve-encodings = true";
+    let matched = "preserve-encodings = false";
+    for (label, text) in [
+        (
+            "no component face on either end",
+            format!(
+                "[crates.dep]\ninput = \"d.cddl\"\noutput = \"gen/dep\"\n{matched}\n\
+                 [crates.consumer]\ninput = \"c.cddl\"\noutput = \"gen/consumer\"\n\
+                 deps = [\"dep\"]\n{mismatch}\n"
+            ),
+        ),
+        (
+            "the consumer emits a component but the dependency does not, so it is not in import \
+             mode and its types stay excluded from the projection",
+            format!(
+                "[crates.dep]\ninput = \"d.cddl\"\noutput = \"gen/dep\"\n{matched}\n\
+                 [crates.consumer]\ninput = \"c.cddl\"\noutput = \"gen/consumer\"\n\
+                 component = true\ndeps = [\"dep\"]\n{mismatch}\n"
+            ),
+        ),
+        ("a seam at one posture", seam_edge(matched, matched)),
+    ] {
+        assert!(
+            expand_all(&text).contains_key("consumer"),
+            "{label}: this config must expand"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // The wasm manifest — `--wasm-dep` derived from the same two edges
 // ---------------------------------------------------------------------------------------------
 

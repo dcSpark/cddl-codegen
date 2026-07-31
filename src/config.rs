@@ -1156,6 +1156,96 @@ impl Config {
         Ok(())
     }
 
+    /// The component face's BYTES SEAM has a precondition, and this is the one place that can check
+    /// it: both ends of a `deps` edge must ENCODE THE SAME WAY.
+    ///
+    /// A dependency-typed value crossing the component boundary is serialized by one crate and
+    /// deserialized by the other, so the crossing preserves the value only while the two agree about
+    /// what CBOR they write and accept. A mismatch does not fail anything: every crossing silently
+    /// re-encodes, which is the failure class that costs the most to find. Config mode sees both
+    /// ends of the edge, so it refuses before anything is written; a hand-written flag invocation
+    /// sees one crate at a time and can only document the obligation.
+    ///
+    /// # Scope: seam edges only
+    ///
+    /// The check applies to a `deps` edge exactly when the edge CARRIES the seam — this crate has
+    /// `component`, and the dependency is in import mode ([`Self::component_seam_edge`]). On every
+    /// other `deps` edge the dependency's types are reached by ordinary rust linkage: no bytes are
+    /// produced at a boundary and none are parsed there, so there is no crossing to re-encode and
+    /// nothing for this rule to be about. Widening it would attach a message that explains itself in
+    /// terms of crossings to edges that have none, and would newly reject configs that generate
+    /// correctly today. If posture skew across a plain `--extern-import` edge is also a problem it is
+    /// a different one, with a different mechanism and a different remedy, and folding it under a
+    /// component-flavored message would hide it rather than report it.
+    ///
+    /// # Why [`RuntimeFlavor::equality_axes`] rather than a list of its own
+    ///
+    /// It answers the same question at a second level. `[runtime]` asks which flags make two crates'
+    /// serialization contracts non-interchangeable in SOURCE (one runtime crate compiled into both);
+    /// the seam asks it of BYTES (one crate's output parsed by another). Each of the three axes has a
+    /// stake in both: `preserve-encodings` and `canonical-form` change what bytes come out, and
+    /// `deserialize-depth-limit` changes which bytes are accepted, so a crossing the producer
+    /// considers well-formed is one the consumer rejects. A sibling list would be a second copy of a
+    /// fact that changes — a fourth axis minted for the runtime is a fourth axis for the seam, and
+    /// the copy would silently not get it.
+    ///
+    /// Over EVERY crate rather than the selection, for the reason [`Self::validate_wasm_reexports`]
+    /// states: whether an edge can mean anything is a property of the config, so `--config c.toml
+    /// ledger` must reject what a full run rejects.
+    fn validate_component_seam_posture(
+        &self,
+        ungraphed: &BTreeMap<String, Cli>,
+    ) -> Result<(), String> {
+        for (name, entry) in &self.crates {
+            let consumer_cli = &ungraphed[name];
+            for dep in &entry.deps {
+                // Validated to name a configured crate by the `deps` checks in `validate`.
+                let dep_entry = &self.crates[dep];
+                let dep_cli = &ungraphed[dep.as_str()];
+                if !Self::component_seam_edge(
+                    consumer_cli,
+                    dep_cli,
+                    &normalized(&dep_entry.lib_name),
+                ) {
+                    continue;
+                }
+                let ours = RuntimeFlavor::of(consumer_cli).equality_axes();
+                let theirs = RuntimeFlavor::of(dep_cli).equality_axes();
+                for ((axis, ours), (_, theirs)) in ours.iter().zip(theirs.iter()) {
+                    if ours == theirs {
+                        continue;
+                    }
+                    return Err(format!(
+                        "[crates.{name}].deps names `{dep}`, and the two disagree on `{axis}`: \
+                         `{name}` has `{ours}`, `{dep}` has `{theirs}`. With `component` on both, \
+                         `{dep}`'s types cross the component boundary as CBOR bytes — one crate's \
+                         serializer writes them and the other's deserializer reads them — and that \
+                         round trip preserves a value only while both encode by the same rules. A \
+                         mismatch does not fail: every crossing silently re-encodes. Give both \
+                         crates the same `{axis}`, or turn `component` off for one of them (without \
+                         the seam `{dep}`'s types are reached by ordinary rust linkage and the two \
+                         postures are independent)."
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether a `deps` edge carries the component face's bytes seam: this crate emits a component,
+    /// and the dependency is in IMPORT MODE — its types cross as imported WIT resources rather than
+    /// being excluded from the projection.
+    ///
+    /// One predicate for the two readers that must agree about it: [`Self::apply_graph_edges`],
+    /// which derives the flags that CREATE the seam, and [`Self::validate_component_seam_posture`],
+    /// which refuses one that cannot be byte-exact. The `component_extern_wit` term is what keeps
+    /// them agreeing when a user spells the entry by hand for a dependency whose own `component` is
+    /// off: the derivation would not write it, but the seam is there all the same.
+    fn component_seam_edge(consumer: &Cli, dep: &Cli, key: &str) -> bool {
+        consumer.component
+            && (dep.component || consumer.component_extern_wit_paths().contains_key(key))
+    }
+
     /// The `[runtime]` checks that need no expanded `Cli` — an empty table and an unknown
     /// `flavor-from`. The one-export-site rule is [`Self::validate_one_export_site`], which is NOT
     /// here because it must also run when there is no `[runtime]` table.
@@ -1668,6 +1758,11 @@ impl Config {
         // is: whether a declaration can mean anything is a property of the config, so a subset run
         // must reject the configs a full run rejects.
         self.validate_wasm_reexports(&ungraphed)?;
+        // Over EVERY crate for the same reason, and before the runtime carrier for a second one: a
+        // posture the seam cannot survive is a mistake in the crates' own flags, and reporting it
+        // first keeps the diagnosis at the edge that has the problem rather than at whatever the
+        // flavor join happens to make of it.
+        self.validate_component_seam_posture(&ungraphed)?;
         // Derived from EVERY crate, never from the selection: which crate can carry the shared
         // runtime is a property of the config, so `--config c.toml ledger` must reject the same
         // configs a full run rejects rather than pass because the offending crate sat this one out.
