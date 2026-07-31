@@ -705,6 +705,12 @@ hand-written parent impl is exactly the situation the directive exists for.
 If instead the extern *does* implement `schemars::JsonSchema` and you only want it off the published
 surface, no parent annotation is needed.
 
+One embedding position is exempt, because its schema never asks the field type for one: an [open
+struct-map rest row's KEY domain](output_format#typed-key-domains-in-json). A typed rest key is a
+JSON object *member name*, so the flattened region publishes an open object over the RANGE — a shape
+that mentions `K` nowhere. `holder = { 1: uint, * quiet_ext => uint }` therefore compiles with no
+`@custom_json` on the holder, and `quiet_ext` stays absent from the published document.
+
 It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
 wrapper, a collection typedef, a generic instantiation, and a plain group that some rule splices:
 
