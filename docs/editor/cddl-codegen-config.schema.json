@@ -166,6 +166,13 @@
           },
           "description": "Config key for the `--extern-import` flag. See docs/docs/command_line_flags.mdx."
         },
+        "component-extern-wit": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--component-extern-wit` flag. See docs/docs/command_line_flags.mdx."
+        },
         "extern-wasm-crate": {
           "type": "object",
           "additionalProperties": {
@@ -414,6 +421,13 @@
             "type": "string"
           },
           "description": "Config key for the `--extern-import` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "component-extern-wit": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--component-extern-wit` flag. See docs/docs/command_line_flags.mdx."
         },
         "extern-wasm-crate": {
           "type": "object",

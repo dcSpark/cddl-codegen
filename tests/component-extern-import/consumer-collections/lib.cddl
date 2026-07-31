@@ -1,0 +1,17 @@
+; The CONSUMER shape import mode cannot spell yet: a dependency type in every REPEATED position — a
+; list element, a map key and a map value.
+;
+; `list<borrow<t>>` over an IMPORTED resource is legal WIT that wit-bindgen's Rust backend cannot
+; lower (E0506: it hoists one binding out of the loop and reassigns it while a reference is
+; retained), so a generation that emitted it would produce a component crate that does not compile.
+; This spec is therefore a REJECTION fixture today — and the positive fixture for the accumulator
+; shape that replaces the borrow-in-a-list once it lands.
+
+vault = [
+    ; a dependency type as a list element
+    items: [* token],
+    ; ... as a map key
+    keyed: { * token => uint },
+    ; ... and as a map value
+    valued: { * uint => token },
+]

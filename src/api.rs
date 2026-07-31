@@ -437,6 +437,16 @@ fn extern_import_staleness_error(
 /// it is a constraint on what may be added: a rule needing the parsed spec (`--workspace-dep`'s
 /// "names a configured extern dependency", say) cannot live here, because there is no spec to
 /// consult before generation starts.
+/// Whether a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` stub tree in the input declares this
+/// dependency — the alternative to `--extern-import` for a dep that has no export to consume.
+///
+/// A filesystem existence check, and the one in [`validate_flag_combinations`] that reads anything
+/// but `cli`: the two ways to declare a dependency are a flag and a directory, so a rule that
+/// consulted only the flag would refuse a legitimate stub-declared dep.
+fn stub_dir_declares(cli: &Cli, dep: &str) -> bool {
+    cli.input.is_dir() && cli.input.join(parsing::EXTERN_DEPS_DIR).join(dep).is_dir()
+}
+
 pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
     // The canonical toggle is emitted as an extra argument on the preserve-encodings `serialize`
     // signatures; without --preserve-encodings those signatures don't take it, so the generator
@@ -591,6 +601,36 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
              without the component face no `.wit` is emitted for it to title"
                 .to_owned(),
         );
+    }
+    // `--component-extern-wit` materializes a dep's WIT into the component crate's own WIT package
+    // and puts the co-required `with:` entries into its `generate!` invocation. Without --component
+    // neither exists, so the flag would silently do nothing — rejected on exactly the terms its
+    // siblings above are.
+    if !cli.component_extern_wit.is_empty() && !cli.component {
+        return Err(
+            "--component-extern-wit requires --component=true: the dep's WIT is copied into the \
+             component crate's own WIT package and its interfaces are named by that crate's \
+             `wit_bindgen::generate!` invocation, and without the component face neither exists"
+                .to_owned(),
+        );
+    }
+    // A `<dep>` whose WIT is supplied but whose RULES are not is a dependency in name only: the WIT
+    // says how the dep's types cross the component boundary, while `--extern-import` (or a physical
+    // stub tree) is what puts those types in this spec's namespace at all. Only the flag pairing is
+    // checkable here — a physical stub declares the dep too, which `component_wit_deps::load` sees
+    // and this pre-parse check does not.
+    let extern_import_deps = cli.extern_import_paths();
+    for (dep, path) in cli.component_extern_wit_paths() {
+        if !extern_import_deps.contains_key(&dep) && !stub_dir_declares(cli, &dep) {
+            return Err(format!(
+                "--component-extern-wit {dep}={path} names a dependency this run does not declare: \
+                 no --extern-import {dep}=<path/to/extern-interface/{dep}> and no physical \
+                 {stub}/{dep}/ directory in the input tree. The WIT says how {dep}'s types cross \
+                 the component boundary; declaring the dependency is what puts them in this spec's \
+                 namespace in the first place",
+                stub = parsing::EXTERN_DEPS_DIR
+            ));
+        }
     }
     // `--lib-name` reaches the WIT surface twice under --component — it is the default WIT package
     // name and it is the world name — and unlike every other flag feeding a WIT identifier it has no

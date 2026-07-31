@@ -656,6 +656,7 @@ core-component = "../../core/component"
         wrapper_requests,
         key_requests,
         extern_import,
+        component_extern_wit,
         export_static_crate,
         std_forward_dep,
         verbosity,
@@ -697,6 +698,11 @@ core-component = "../../core/component"
     // The third path-valued sub-table on the same terms as the two above: a cargo path dependency,
     // resolved by cargo against `component/Cargo.toml` rather than against the config file.
     assert_eq!(component_dep, from_flags.component_dep);
+    // The component face's cross-crate INPUT path, on the opposite rule from the four manifest
+    // sub-tables above: the tool reads this file itself, so the config resolves it against the
+    // config file's directory. Empty on both sides here — the acceptance config exercises no
+    // component dependency, and the `deps`-edge derivation is not built.
+    assert_eq!(component_extern_wit, from_flags.component_extern_wit);
     assert_eq!(
         component_dep,
         vec!["core-component=../../core/component".to_owned()],

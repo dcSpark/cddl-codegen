@@ -1,0 +1,11 @@
+; The CONSUMER shape the exclusion-propagation rule refuses: a signature naming a dependency type the
+; dependency's own WIT recorded as `// unexported:`.
+;
+; It parses — the name IS in the dependency's extern-interface export — and only the WIT seam knows
+; the type has no projection on the other side. A generation-time error quoting the dependency's
+; recorded reason is the only honest outcome; a `use` of a name the dependency's package does not
+; declare would fail in the consumer's own build with a message about a WIT file nobody wrote.
+
+ledger = [
+    m: marker,
+]

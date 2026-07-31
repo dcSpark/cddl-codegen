@@ -19,12 +19,13 @@
 //! The `--package-json` NESTING RULE is deliberately absent, because it is code and not a string:
 //! see the LOCKSTEP pair on `config::crate_relative` and `GenerationScope::export`'s `rust_dir`.
 //!
-//! # The component face's four
+//! # The component face's five
 //!
 //! The `COMPONENT_*` constants qualify on the same rule read one notch wider: "a second FILE must
 //! know the string", not specifically "a file outside `generation/`". Each names a second reader —
 //! `COMPONENT_DIR` and `COMPONENT_WIT_DIR` are spelled by the WIT projection, the guest emitter and
-//! `export.rs`'s write loop; `COMPONENT_MANIFEST` by `cargo_manifest.rs`'s changeset and
+//! `export.rs`'s write loop; `COMPONENT_WIT_DEPS_DIR` by the dep-WIT materializer and `export.rs`'s
+//! header-stamp exemption; `COMPONENT_MANIFEST` by `cargo_manifest.rs`'s changeset and
 //! `export.rs`'s manifest merge; `COMPONENT_PACKAGE_SUFFIX` by the manifest change log's
 //! `cddl-lib-component` and by any config that has to PREDICT the package name to derive a
 //! `--component-dep`, which is the same predict-the-name problem [`WASM_PACKAGE_SUFFIX`] exists for.
@@ -84,6 +85,20 @@ pub(crate) const COMPONENT_DIR: &str = "component";
 /// DELETE-AND-RECREATED each run, like `extern-interface/`, rather than covered by the stale-file
 /// scan: that scan's collector is `.rs`-only, and delete-and-recreate cannot orphan by construction.
 pub(crate) const COMPONENT_WIT_DIR: &str = "component/wit";
+
+/// Where a dependency's committed WIT package is materialized inside this crate's own WIT tree, one
+/// subdirectory per dep (`component/wit/deps/<dep>/…`). Named by `component_wit_deps.rs` (which keys
+/// the copied files under it) and by `export.rs` (the header-stamp exemption — a copied file keeps
+/// the DEP's provenance banner, and stamping ours on top would misattribute it).
+///
+/// The `deps/` level is REQUIRED, not cosmetic: a `.wit` sitting flat beside `world.wit` is read as
+/// part of THIS package and fails to resolve with a package-identity mismatch. The subdirectory and
+/// file names below it are free.
+///
+/// Under [`COMPONENT_WIT_DIR`], so it inherits that tree's delete-and-recreate treatment for free —
+/// which is what it wants: a dep dropped from `--component-extern-wit` must not leave a live package
+/// declaration behind, and WIT resolves a whole DIRECTORY.
+pub(crate) const COMPONENT_WIT_DEPS_DIR: &str = "component/wit/deps";
 
 /// The component crate's manifest, which `--component-dep` writes path dependencies into and which
 /// `cargo_manifest::ops_for_component` addresses.

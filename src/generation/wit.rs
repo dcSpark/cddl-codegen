@@ -25,6 +25,7 @@
 //! cannot work around a refusal that names scopes the WIT never links.
 
 use crate::cli::Cli;
+use crate::component_wit_deps::{DepWitPackage, DepWitPackages};
 use crate::intermediate::{
     AliasIdent, ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, ModuleScope,
     Primitive, ROOT_SCOPE, Representation, RestKind, RestSemantics, RustField, RustIdent,
@@ -267,6 +268,50 @@ pub(crate) struct WitPackage {
     /// Types kept out of the projection, keyed by rust ident — rendered as `// unexported:` rows in
     /// the interface of the scope that owns them.
     pub excluded: BTreeMap<RustIdent, WitExclusion>,
+    /// Dependency types this package IMPORTS rather than defines, keyed by the rust ident the
+    /// consumer's IR holds. Populated only for deps in import mode (`--component-extern-wit`); empty
+    /// otherwise, which is what makes the flag's absence byte-identical to today.
+    pub imported: BTreeMap<RustIdent, ImportedDepType>,
+    /// The dep packages whose interfaces this package imports, keyed by dep name — the guest
+    /// emitter's source for the `with:` map, which the macro requires one entry of per imported
+    /// interface.
+    pub imported_packages: BTreeMap<String, DepWitPackage>,
+    /// Hard errors the walk found in the CROSS-CRATE seam, one message each.
+    ///
+    /// Carried rather than returned for the same reason the strong-uniqueness collisions are: the
+    /// projection is infallible by construction (an unprojectable SHAPE is excluded and recorded),
+    /// and these are a different class — a consumer signature the dependency's own WIT cannot
+    /// satisfy. They are drained by the two producers that already carry a graceful error channel.
+    pub import_errors: Vec<String>,
+}
+
+/// A dependency type as this package refers to it: the interface it lives in, the package that
+/// interface belongs to, and the WIT name the dependency gave it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ImportedDepType {
+    /// The extern-deps directory name the dependency is declared under.
+    pub dep: String,
+    /// `cddl:chain/types@0.1.0` — the `use` target AND the `with:` key, one spelling for both.
+    pub use_path: String,
+    /// The interface's own name, for the guest crate's module path.
+    pub interface: String,
+    /// The dependency's WIT name for the type, read out of its WIT rather than re-derived.
+    pub wit_name: String,
+    /// The dependency's WIT PACKAGE id (`cddl:chain@0.1.0`), whose namespace and name are the first
+    /// two segments of the rust module path `wit_bindgen` puts an imported interface at.
+    pub package_id: String,
+}
+
+/// The interface an interface-level `use` points at.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum WitUseTarget {
+    /// Another interface in THIS package, named bare: `use types.{foo};`.
+    Local(String),
+    /// An interface of an imported DEPENDENCY package, named in full:
+    /// `use cddl:chain/types@0.1.0.{token};`. A qualified path is not an identifier, so it is never
+    /// `%`-escaped — which is why the two cases are a type rather than one string the renderer would
+    /// have to sniff.
+    Foreign(String),
 }
 
 /// One WIT `interface`, i.e. one exported module scope, i.e. one input file.
@@ -275,8 +320,9 @@ pub(crate) struct WitInterface {
     /// The interface name, UNESCAPED (`a::c` → `a-c`; the root scope → `types`).
     pub name: String,
     pub scope: ModuleScope,
-    /// `use <interface>.{<type>, …};` — the cross-interface edges, by target interface NAME.
-    pub uses: BTreeMap<String, BTreeSet<String>>,
+    /// `use <interface>.{<type>, …};` — the cross-interface edges, keyed by the target interface
+    /// (in this package or in an imported dependency's).
+    pub uses: BTreeMap<WitUseTarget, BTreeSet<String>>,
     /// Type definitions, in render order (sorted by WIT name).
     pub types: Vec<WitTypeDef>,
     /// Free functions (the `any-cbor` introspection door), in render order.
@@ -627,9 +673,16 @@ pub(crate) fn project(
     types: &IntermediateTypes,
     cli: &Cli,
     no_deserialize: &BTreeSet<RustIdent>,
+    dep_wits: &DepWitPackages,
 ) -> WitPackage {
     let mut staged: BTreeMap<RustIdent, StagedType> = BTreeMap::new();
     let mut excluded: BTreeMap<RustIdent, WitExclusion> = BTreeMap::new();
+    // The cross-crate resolution, computed before the walk so a use site can spell an imported
+    // handle without re-reading anything. Types the dependency's WIT cannot satisfy land in
+    // `unresolvable` and become a hard error at the first signature that names one — never a
+    // dangling `use`.
+    let (imported, unresolvable) = resolve_imported_types(types, dep_wits);
+    let mut import_errors: BTreeSet<String> = BTreeSet::new();
     // The bases of generic externs, computed once. `generic_extern_base_idents` — not the narrower
     // `generic_instance_bases` — is the correct set here for the reason its own doc gives: neither
     // the parse-time record nor the instance-derived one subsumes the other. (The wasm glue's
@@ -667,6 +720,7 @@ pub(crate) fn project(
         }
         let name = wit_type_name(ident);
         let mut refs = BTreeSet::new();
+        let mut errors = BTreeSet::new();
         let mut ctx = TypeCtx {
             types,
             cli,
@@ -675,6 +729,9 @@ pub(crate) fn project(
             uses_any_cbor: false,
             resolving: BTreeSet::new(),
             generic_extern_bases: &generic_extern_bases,
+            imported: &imported,
+            unresolvable: &unresolvable,
+            errors: &mut errors,
         };
         let projected = project_struct(
             &name,
@@ -684,6 +741,7 @@ pub(crate) fn project(
             &mut ctx,
         );
         let (uses_int, uses_any_cbor) = (ctx.uses_int, ctx.uses_any_cbor);
+        import_errors.extend(errors);
         match projected {
             Ok(defs) => {
                 staged.insert(
@@ -714,15 +772,21 @@ pub(crate) fn project(
     // so it is excluded too, naming the chain ROOT rather than its immediate neighbour. Monotone
     // (types only ever leave `staged`), so it terminates; deterministic (`BTreeMap` iteration, first
     // offending reference in `BTreeSet` order).
+    //
+    // An IMPORTED type counts as resolved: the consumer does not define it, but the dependency's
+    // package does, and the `use` line makes it nameable — which is the whole point of import mode.
     loop {
         let next = staged.iter().find_map(|(ident, st)| {
-            st.refs.iter().find(|r| !staged.contains_key(*r)).map(|r| {
-                let root = excluded
-                    .get(r)
-                    .map(|e| e.root.clone())
-                    .unwrap_or_else(|| r.to_string());
-                (ident.clone(), root)
-            })
+            st.refs
+                .iter()
+                .find(|r| !staged.contains_key(*r) && !imported.contains_key(*r))
+                .map(|r| {
+                    let root = excluded
+                        .get(r)
+                        .map(|e| e.root.clone())
+                        .unwrap_or_else(|| r.to_string());
+                    (ident.clone(), root)
+                })
         });
         let Some((ident, root)) = next else {
             break;
@@ -764,15 +828,26 @@ pub(crate) fn project(
             // exists per interface for the same reason the `cbor-kind` introspection door does.
             iface.funcs.extend(any_cbor_json_funcs(cli));
         }
-        // Cross-interface `use`: a type defined in ANOTHER exported scope must be imported by name.
+        // Cross-interface `use`: a type defined in ANOTHER exported scope must be imported by name,
+        // and one defined in an imported DEPENDENCY package by its fully-qualified path. Both are
+        // the same edge — a name this interface uses and does not declare — which is why one loop
+        // produces both and the target type carries the difference.
         for referenced in &st.refs {
+            if let Some(dep_type) = imported.get(referenced) {
+                iface
+                    .uses
+                    .entry(WitUseTarget::Foreign(dep_type.use_path.clone()))
+                    .or_default()
+                    .insert(dep_type.wit_name.clone());
+                continue;
+            }
             let target = types.scope(referenced);
             if target == &st.scope {
                 continue;
             }
             iface
                 .uses
-                .entry(interface_name(target))
+                .entry(WitUseTarget::Local(interface_name(target)))
                 .or_default()
                 .insert(wit_type_name(referenced));
         }
@@ -791,11 +866,302 @@ pub(crate) fn project(
         iface.funcs.dedup_by(|a, b| a.name == b.name);
     }
 
+    // Every door touching an imported type is FALLIBLE, because the seam it crosses is a CBOR
+    // round-trip: the value is serialized on one side of the component boundary and deserialized on
+    // the other, and `from_cbor_bytes` can fail on a value this crate's own serializer produced when
+    // the dependency component and the dependency rust crate linked here disagree about a type's
+    // shape. That is a failure class which is compile-time within one crate, so the signature has to
+    // carry it rather than the glue swallowing it.
+    mark_imported_doors_fallible(&mut interfaces, &imported);
+
+    // The one shape import mode cannot spell yet. Checked on the PROJECTED parameters rather than on
+    // the IR, because the rule is about the WIT position (`list<borrow<imported>>`) and the
+    // projection is what decides which IR shapes land there.
+    import_errors.extend(repeated_imported_param_errors(&interfaces, &imported));
+
+    // Only the packages something actually imported: the `with:` map the guest emitter builds from
+    // this is one entry per imported INTERFACE, and an entry for an interface the world never
+    // imports is a mapping `wit_bindgen` has no key to match.
+    let used_deps: BTreeSet<String> = imported
+        .values()
+        .filter(|dep_type| {
+            interfaces.values().any(|iface| {
+                iface
+                    .uses
+                    .contains_key(&WitUseTarget::Foreign(dep_type.use_path.clone()))
+            })
+        })
+        .map(|dep_type| dep_type.dep.clone())
+        .collect();
+
     WitPackage {
         id: cli.wit_package(),
         world: world_name(&cli.lib_name),
         interfaces,
         excluded,
+        imported,
+        imported_packages: dep_wits
+            .iter()
+            .filter(|(dep, _)| used_deps.contains(*dep))
+            .map(|(dep, package)| (dep.clone(), package.clone()))
+            .collect(),
+        import_errors: import_errors.into_iter().collect(),
+    }
+}
+
+/// Mark every constructor, member and free function whose signature touches an imported type as
+/// fallible — see the call site for why the seam forces it.
+///
+/// Applied to the PROJECTED package rather than decided per member during the walk: fallibility is a
+/// property of the whole signature (any parameter or any part of the result), and one pass that can
+/// see the finished signature is both simpler to read and impossible to apply to only half of it.
+fn mark_imported_doors_fallible(
+    interfaces: &mut BTreeMap<ModuleScope, WitInterface>,
+    imported: &BTreeMap<RustIdent, ImportedDepType>,
+) {
+    if imported.is_empty() {
+        return;
+    }
+    let touches = |params: &[WitParam], result: Option<&WitType>| {
+        params
+            .iter()
+            .any(|p| first_imported(&p.ty, imported).is_some())
+            || result.is_some_and(|ty| first_imported(ty, imported).is_some())
+    };
+    for iface in interfaces.values_mut() {
+        for def in &mut iface.types {
+            let WitTypeDef::Resource(resource) = def else {
+                continue;
+            };
+            if let Some(ctor) = &mut resource.constructor
+                && touches(&ctor.params, None)
+            {
+                ctor.fallible = true;
+            }
+            for member in &mut resource.members {
+                if touches(&member.params, member.result.as_ref()) {
+                    member.fallible = true;
+                }
+            }
+        }
+        for func in &mut iface.funcs {
+            if touches(&func.params, func.result.as_ref()) {
+                func.fallible = true;
+            }
+        }
+    }
+}
+
+/// Resolve every dependency type reachable in the IR against the dependency's own WIT, for the deps
+/// in import mode. Returns the resolved map and, beside it, the reason each unresolvable type could
+/// not be resolved (surfaced only at a signature that actually names one — a dependency's export may
+/// legitimately carry rules this consumer never uses).
+///
+/// The dep marker is `!scope.export()`, whose leading remaining component is the dependency's name
+/// (`ModuleScope::from` splits `EXTERN_DEPS_DIR` off) — the same reading every other cross-crate site
+/// in this project uses.
+fn resolve_imported_types(
+    types: &IntermediateTypes,
+    dep_wits: &DepWitPackages,
+) -> (
+    BTreeMap<RustIdent, ImportedDepType>,
+    BTreeMap<RustIdent, String>,
+) {
+    let mut imported = BTreeMap::new();
+    let mut unresolvable = BTreeMap::new();
+    if dep_wits.is_empty() {
+        return (imported, unresolvable);
+    }
+    for ident in types.rust_structs().keys() {
+        let scope = types.scope(ident);
+        if scope.export() {
+            continue;
+        }
+        let Some(dep) = scope.components().first() else {
+            continue;
+        };
+        let Some(package) = dep_wits.get(dep) else {
+            continue;
+        };
+        // The name the DEPENDENCY knows this type by. A consumer derives its own `RustIdent` from
+        // the export's rule name, and the export's `@rust_name` pin is what records the dependency's
+        // own spelling when the two differ — so the pin is read here rather than the derived name
+        // re-derived, exactly as the crate-boundary rust sites do.
+        let dep_name = types
+            .rust_name_pin(ident)
+            .map(str::to_owned)
+            .unwrap_or_else(|| ident.to_string());
+        if let Some(reason) = package.unexported.get(&dep_name) {
+            unresolvable.insert(
+                ident.clone(),
+                format!(
+                    "the dependency `{dep}` records it as unexported from its own WIT: \
+                     \"{reason}\". The fix is on the DEPENDENCY's side — that reason names what its \
+                     projection could not render, and until it changes no consumer can name the \
+                     type on this face."
+                ),
+            );
+            continue;
+        }
+        let wit_name = convert_to_kebab_case(&dep_name);
+        let declaring = package.interfaces_declaring(&wit_name);
+        let interface = match declaring.as_slice() {
+            [only] => (*only).to_owned(),
+            [] => {
+                unresolvable.insert(
+                    ident.clone(),
+                    format!(
+                        "the dependency `{dep}`'s WIT package ({}) declares no type `{wit_name}`. \
+                         Its WIT is read from {} — regenerate `{dep}` so its WIT matches the \
+                         extern-interface export this spec resolves names through.",
+                        package.package_id, package.source
+                    ),
+                );
+                continue;
+            }
+            many => {
+                // Two interfaces of one package may each declare a `foo`; the consumer's own scope
+                // tree says which one this type came from, so it is the tiebreak — and only the
+                // tiebreak, never the primary lookup (§W3: read names out of the WIT).
+                let expected = dep_interface_name(scope);
+                match many.iter().find(|name| **name == expected) {
+                    Some(found) => (*found).to_owned(),
+                    None => {
+                        unresolvable.insert(
+                            ident.clone(),
+                            format!(
+                                "the dependency `{dep}`'s WIT declares `{wit_name}` in {} \
+                                 interfaces ({}) and in none of them under the interface name \
+                                 `{expected}` this spec's scope for it implies. Regenerate `{dep}` \
+                                 so its WIT and its extern-interface export agree.",
+                                many.len(),
+                                many.join(", ")
+                            ),
+                        );
+                        continue;
+                    }
+                }
+            }
+        };
+        imported.insert(
+            ident.clone(),
+            ImportedDepType {
+                dep: dep.clone(),
+                use_path: package.use_path(&interface),
+                interface,
+                wit_name,
+                package_id: package.package_id.clone(),
+            },
+        );
+    }
+    (imported, unresolvable)
+}
+
+/// The interface name a dependency type's scope implies on the DEPENDENCY's side: its scope minus
+/// the leading dep-name component, converted the way the dependency's own projection converts it.
+/// The dep's root scope (a bare `<dep>` scope) is its `types` interface.
+fn dep_interface_name(scope: &ModuleScope) -> String {
+    let rest = &scope.components()[1..];
+    if rest.is_empty() {
+        return ROOT_INTERFACE_NAME.to_owned();
+    }
+    rest.iter()
+        .map(|part| convert_to_kebab_case(part))
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// The C1 boundary: a dependency type in a REPEATED parameter position.
+///
+/// `list<borrow<t>>` over an IMPORTED resource is legal WIT that wit-bindgen's Rust backend cannot
+/// lower (it hoists one binding out of the loop and reassigns it while a reference is retained —
+/// E0506), and every non-repeated position is fine. Refused loudly here rather than emitted: a WIT
+/// package that resolves, encodes and validates and then fails inside the consumer's
+/// `wit_bindgen::generate!` is the most expensive place to learn this.
+fn repeated_imported_param_errors(
+    interfaces: &BTreeMap<ModuleScope, WitInterface>,
+    imported: &BTreeMap<RustIdent, ImportedDepType>,
+) -> Vec<String> {
+    if imported.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut report = |owner: &str, member: &str, param: &WitParam, ty: &ImportedDepType| {
+        out.push(format!(
+            "--component: `{owner}.{member}` takes the dependency type `{name}` (from `{dep}`) \
+             inside a collection, in parameter `{param}`. A dependency type crosses this face as an \
+             IMPORTED WIT resource, and an imported resource may only be borrowed in a NON-REPEATED \
+             parameter position: `list<borrow<{name}>>` is legal WIT that wit-bindgen's Rust \
+             backend cannot lower (E0506), so emitting it would produce a component crate that \
+             fails to compile. Until dep-typed collection parameters are supported, either keep \
+             `{name}` out of collection parameters in this spec, or drop \
+             `--component-extern-wit {dep}=…` for that dependency (its types are then recorded as \
+             `// unexported:` in this crate's WIT rather than imported).",
+            name = ty.wit_name,
+            dep = ty.dep,
+            param = param.name
+        ));
+    };
+    for iface in interfaces.values() {
+        for def in &iface.types {
+            let WitTypeDef::Resource(resource) = def else {
+                continue;
+            };
+            let ctor = resource
+                .constructor
+                .iter()
+                .map(|c| ("constructor", c.params.as_slice()));
+            let members = resource
+                .members
+                .iter()
+                .map(|m| (m.name.as_str(), m.params.as_slice()));
+            for (member, params) in ctor.chain(members) {
+                for param in params {
+                    if let Some(ty) = imported_under_list(&param.ty, imported) {
+                        report(&resource.name, member, param, ty);
+                    }
+                }
+            }
+        }
+        for func in &iface.funcs {
+            for param in &func.params {
+                if let Some(ty) = imported_under_list(&param.ty, imported) {
+                    report(&iface.name, &func.name, param, ty);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The first imported handle sitting anywhere BELOW a `list` in `ty`, or `None`. `option<borrow<t>>`
+/// is deliberately not repeated — it lowers cleanly — so only a `list` opens the window.
+fn imported_under_list<'a>(
+    ty: &WitType,
+    imported: &'a BTreeMap<RustIdent, ImportedDepType>,
+) -> Option<&'a ImportedDepType> {
+    match ty {
+        WitType::List(inner) => {
+            first_imported(inner, imported).or_else(|| imported_under_list(inner, imported))
+        }
+        WitType::Option(inner) => imported_under_list(inner, imported),
+        WitType::Tuple(parts) => parts
+            .iter()
+            .find_map(|part| imported_under_list(part, imported)),
+        _ => None,
+    }
+}
+
+/// The first imported handle anywhere in `ty`, at any depth.
+fn first_imported<'a>(
+    ty: &WitType,
+    imported: &'a BTreeMap<RustIdent, ImportedDepType>,
+) -> Option<&'a ImportedDepType> {
+    match ty {
+        WitType::Handle(r) => imported.get(&r.ident),
+        WitType::List(inner) | WitType::Option(inner) => first_imported(inner, imported),
+        WitType::Tuple(parts) => parts.iter().find_map(|part| first_imported(part, imported)),
+        _ => None,
     }
 }
 
@@ -925,6 +1291,14 @@ struct TypeCtx<'a, 'b> {
     /// The generic-extern bases [`project`] skips, so a reference to one is excluded WITH a reason
     /// naming the shape rather than falling through the closure as an unexplained missing type.
     generic_extern_bases: &'a BTreeSet<RustIdent>,
+    /// The dependency types this package IMPORTS. A reference to one is an ordinary handle whose
+    /// definition lives in another package — nothing about the use site changes.
+    imported: &'a BTreeMap<RustIdent, ImportedDepType>,
+    /// The dependency types the dependency's own WIT could not satisfy, with the reason. Reaching
+    /// one from a signature is a HARD ERROR rather than an exclusion, so the reason is recorded into
+    /// [`TypeCtx::errors`] at that moment and the containing type is excluded so nothing dangles.
+    unresolvable: &'a BTreeMap<RustIdent, String>,
+    errors: &'a mut BTreeSet<String>,
 }
 
 /// Project one IR struct into its WIT type definition(s). A choice mints two (its `resource` and
@@ -1620,6 +1994,29 @@ fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
         ctx.uses_int = true;
         return Ok(WitType::Int);
     }
+    // A dependency type in import mode: an ordinary handle whose definition is another package's. It
+    // is answered BEFORE the local lookup because the local one would find the same `RustStruct` (a
+    // dep's rules are ordinary structs in a non-exported scope by generation time) and project it as
+    // if this crate defined it.
+    if let Some(dep_type) = ctx.imported.get(ident) {
+        ctx.refs.insert(ident.clone());
+        return Ok(WitType::Handle(WitTypeRef {
+            scope: ctx.types.scope(ident).clone(),
+            name: dep_type.wit_name.clone(),
+            ident: ident.clone(),
+        }));
+    }
+    // W7: a signature naming a dependency type the dependency's own WIT cannot satisfy. Recorded as
+    // a hard error (quoting the dependency's recorded reason verbatim) AND excluded, so the run
+    // fails with the reason rather than emitting a `use` of a type that is not there.
+    if let Some(reason) = ctx.unresolvable.get(ident) {
+        ctx.errors.insert(format!(
+            "--component: this spec's surface references `{ident}`, but {reason}"
+        ));
+        return Err(unprojectable(format!(
+            "references `{ident}`, which its dependency's WIT does not export"
+        )));
+    }
     let Some(rust_struct) = ctx.types.rust_struct(ident) else {
         return Err(unprojectable(format!(
             "references `{ident}`, which names no generated type"
@@ -1817,7 +2214,14 @@ pub(crate) fn render(package: &WitPackage) -> BTreeMap<String, String> {
                 .map(|n| wit_escape(n))
                 .collect::<Vec<_>>()
                 .join(", ");
-            out.push_str(&format!("  use {}.{{{names}}};\n", wit_escape(target)));
+            // A LOCAL target is an identifier and takes the keyword escape; a FOREIGN one is a
+            // qualified path (`cddl:chain/types@0.1.0`) whose `:`/`/`/`@` are syntax, so escaping it
+            // would corrupt it. That distinction is why the target is a type and not a string.
+            let target = match target {
+                WitUseTarget::Local(name) => wit_escape(name),
+                WitUseTarget::Foreign(path) => path.clone(),
+            };
+            out.push_str(&format!("  use {target}.{{{names}}};\n"));
         }
         // Exclusion records, sorted by ident: the direct analog of the extern-interface export's
         // `; unexported:` rows, and the carrier a cross-crate consumer reads a reason from.
@@ -2012,8 +2416,15 @@ pub(crate) fn wit_files(
     types: &IntermediateTypes,
     cli: &Cli,
     no_deserialize: &BTreeSet<RustIdent>,
+    dep_wits: &DepWitPackages,
 ) -> BTreeMap<String, String> {
-    render(&project(types, cli, no_deserialize))
+    let mut out = render(&project(types, cli, no_deserialize, dep_wits));
+    // The imported dependencies' packages, materialized beside this crate's own: `use
+    // <dep-package>/<iface>` resolves only against a package present in this WIT source tree, and
+    // WIT resolves a whole DIRECTORY. They ride the same map for the same reason the emitted `.wit`
+    // does — one map, so a package and the deps it needs can never be captured out of step.
+    out.extend(crate::component_wit_deps::materialized_files(dep_wits));
+    out
 }
 
 /// Strong-uniqueness collisions in the WIT surface, one message per collision.
@@ -2034,13 +2445,14 @@ pub(crate) fn wit_name_collisions(
     types: &IntermediateTypes,
     cli: &Cli,
     no_deserialize: &BTreeSet<RustIdent>,
+    dep_wits: &DepWitPackages,
 ) -> Vec<String> {
     // Projected against the REAL no-deserialize verdict, which is why this runs at GENERATION time
     // rather than at IR finalization beside `wit_scope_cycles`. Finalization would have to project
     // with an empty set — the superset of members — and that over-reports for real: a type that gets
     // no `Deserialize` impl AND carries a field named `from_cbor_bytes` would be rejected for a
     // collision between a getter and a static the tool never emits.
-    let package = project(types, cli, no_deserialize);
+    let package = project(types, cli, no_deserialize, dep_wits);
     let mut msgs = Vec::new();
 
     // 1 — package level. Interfaces and the world share one namespace, and the scope flattening

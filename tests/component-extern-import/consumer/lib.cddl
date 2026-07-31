@@ -1,0 +1,19 @@
+; The CONSUMER of `../dep`, in the positions import mode supports today: a dependency type as a
+; direct member (a getter that mints an imported handle) and as an optional one (`option<t>`, the
+; non-repeated borrow position wit-bindgen lowers cleanly).
+;
+; A single-file consumer, so its own rules stay in the root scope and project into one `types`
+; interface — which is also what makes the `use cddl:dep/types@0.1.0.{…}` line unambiguous.
+
+wallet = [
+    ; the direct member: crosses the CBOR seam once per read
+    main: token,
+    ; a second dependency type, so the `use` line carries two names
+    policy: policy,
+    ; a transparent dependency alias, which resolves THROUGH to `uint` and must not reach the `use`
+    balance: coin,
+    ; an optional dependency type: `option<t>` in return position, `option<borrow<t>>` in parameter
+    ? spare: token,
+    ; an own-crate field, so the resource is not made entirely of dependency types
+    label: text,
+]
