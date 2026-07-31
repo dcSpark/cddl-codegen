@@ -4035,15 +4035,87 @@ fn open_struct_map_rest_row_front_end() {
         "a bounded (`+`) rest row must name the `*` requirement, got: {plus}"
     );
 
-    // --- guard: unsupported key domain (bstr) ---
-    let bad_domain = run("foo = { 1: uint, * bstr => any }\n", "bstr")
-        .expect_err("a bstr key domain rest row must reject");
+    // --- general key domain: `bstr` (and every other deserializable key type) GENERATES ---
+    let bytes_domain = run("foo = { 1: uint, * bstr => any }\n", "bstr")
+        .expect("a bstr key domain rest row generates (typed seek path)");
     assert!(
-        bad_domain.contains("rule `foo`")
-            && bad_domain.contains("uint")
-            && bad_domain.contains("text")
-            && bad_domain.contains("any"),
-        "an unsupported key domain must name the supported uint/text/any spellings, got: {bad_domain}"
+        src(&bytes_domain).contains("pub rest: BTreeMap<Vec<u8>, "),
+        "a typed bstr key domain must land in a `BTreeMap<Vec<u8>, _>` rest field, got:\n{}",
+        src(&bytes_domain)
+    );
+
+    // --- guard: float key domain (the one type-level domain rejection left) ---
+    // Fires from `finalize`'s rest-row float instrument, beside the table/set ones — the domain guard
+    // itself no longer restricts the key type.
+    let float_domain = run("foo = { 1: uint, * float => any }\n", "float_key")
+        .expect_err("a float key domain rest row must reject");
+    assert!(
+        float_domain.contains("rule `Foo`")
+            && float_domain.contains("rest-row key type contains a float")
+            && float_domain.contains("no total order"),
+        "a float key domain must be rejected naming the missing total order, got: {float_domain}"
+    );
+    // Reached through a struct too (the visitor walks the domain transitively).
+    let float_nested = run(
+        "k = [x: float64, y: uint]\nfoo = { 1: uint, * k => any }\n",
+        "float_key_nested",
+    )
+    .expect_err("a float-CONTAINING key domain rest row must reject");
+    assert!(
+        float_nested.contains("rest-row key type contains a float"),
+        "a float-containing key domain must be rejected too, got: {float_nested}"
+    );
+
+    // --- guard: null-admitting key domain ---
+    // A `null` key and the indefinite-map break are both CBOR special values, so the row's key
+    // dispatch cannot tell them apart.
+    let null_domain = run(
+        "k = text / null\nfoo = { 1: uint, * k => any }\n",
+        "null_key",
+    )
+    .expect_err("a null-admitting key domain rest row must reject");
+    assert!(
+        null_domain.contains("rule `foo`")
+            && null_domain.contains("null-admitting key domain")
+            && null_domain.contains("break"),
+        "a null-admitting key domain must name the break collision, got: {null_domain}"
+    );
+
+    // --- guard: TEMPORARY — a typed key domain under the JSON flags ---
+    // The flattened-rest JSON surface images rest keys as strings, a convention defined only for the
+    // three peeked domains. Removed when the typed-K JSON face lands.
+    let typed_json = run_flags(
+        "md = int / bstr\nfoo = { 1: uint, * md => any }\n",
+        "typed_json",
+        &["--json-serde-derives=true"],
+    )
+    .expect_err("a typed key domain under --json-serde-derives must reject");
+    assert!(
+        typed_json.contains("rule `Foo`")
+            && typed_json.contains("typed key domain on an open struct-map rest row")
+            && typed_json.contains("does not yet support the JSON flags"),
+        "a typed key domain under the JSON flags must name the limitation, got: {typed_json}"
+    );
+    let typed_schema = run_flags(
+        "md = int / bstr\nfoo = { 1: uint, * md => any }\n",
+        "typed_schema",
+        &["--json-schema-export=true"],
+    )
+    .expect_err("a typed key domain under --json-schema-export must reject");
+    assert!(
+        typed_schema.contains("does not yet support the JSON flags"),
+        "the schema flag must reject the same way, got: {typed_schema}"
+    );
+    // …and the same spec WITHOUT the JSON flags generates.
+    let typed_plain = run(
+        "md = int / bstr\nfoo = { 1: uint, * md => any }\n",
+        "typed_plain",
+    )
+    .expect("a typed key domain generates without the JSON flags");
+    assert!(
+        src(&typed_plain).contains("pub rest: BTreeMap<Md, "),
+        "a typed union key domain must land in a `BTreeMap<Md, _>` rest field, got:\n{}",
+        src(&typed_plain)
     );
 
     // --- guard: lone non-fixed entry (no fixed key before the rest row) ---

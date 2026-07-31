@@ -2459,26 +2459,6 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 
 ## Deferred features (build when a real consumer needs them)
 
-- **Honor `@custom_deserialize` on an open struct-map rest row's key-domain alias (the
-  seek-rollback design).** The rest row's key dispatch must read the raw wire key before it can
-  tell a declared key from a rest key, and the custom-deserialize contract consumes from the
-  deserializer — so today the serialize half IS honored (canonical merge + write arm) while the
-  reader is never called, and the row binds the raw dispatch read instead. The design that fits
-  the existing machinery: capture the reader position before the key read; in the rest branch
-  only, seek back and call the custom fn, filing its returned encoding into the already-existing
-  `rest_key_encodings` sidecar (the `Seek` requirement is already standing — the backtracking
-  type-choice emitter rolls back with `set_position` today). A use-site REJECTION was considered
-  and is wrong twice over: the same alias is legal in table/field positions where the pair works,
-  and a rejection would have to refuse the whole pair (a transforming `@custom_serialize`-only
-  codec is equally divergent), deleting the canonical-merge regression pin that
-  `custom_serialize_canonical_e2e` exists to hold. Interim state, deliberately loud-adjacent: the
-  `rest-row-key-domain-alias` `KNOWN_SILENT_DROP` pin in `dsl_position_tests` (flips the day this
-  is built) plus the comment-DSL "Positions that are still silent" bullet.
-  - **Reopening signal:** a consumer puts a TRANSFORMING codec on a rest-row key domain — their
-    round-trip visibly breaks (writes transformed keys, reads raw ones), which is one failing
-    round-trip test of their own. A CIP-25-shaped open map (hex-text keys ↔ a hash type) is the
-    known candidate shape.
-
 - **Make the BOTH-set custom pair on a named struct rule mean "generated impls that delegate to
   the named functions" (symmetric delegation).** Today the record-rule both-set spelling
   suppresses the type's generated impls, rewrites embed-site deserializes to the named reader,
