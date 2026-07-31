@@ -34,8 +34,10 @@
 #
 # EMISSION-PROFILE AXIS (dotted `emission.<name>.*` keys): the `status`/`evidence` above is the
 #   DEFAULT-flags verdict. A row whose default verdict is `supported` is ALSO probed under each
-#   non-default EMISSION profile (the CLI flag sets from src/tests/mod.rs's ALL_PROFILES:
-#   `preserve` = --preserve-encodings=true, `json` = --json-serde-derives + --json-schema-export),
+#   PROBED non-default EMISSION profile (the CLI flag sets from src/tests/mod.rs's ALL_PROFILES:
+#   `preserve` = --preserve-encodings=true, `json` = --json-serde-derives + --json-schema-export;
+#   the `component` row is NOT probed here — it mints a separate wasip2 crate and leaves every rust
+#   byte identical, so this rust-crate round-trip cannot tell it apart from the default verdict),
 #   recorded as `emission.<name>.status` / `emission.<name>.evidence`. These probes are RUST-ONLY
 #   (same generate -> cargo test -> embed-fallback pipeline with the profile flags appended; NO
 #   ruby/rust re-run — spec validity is a property of the CDDL text, not codegen flags — and NO wasm).
