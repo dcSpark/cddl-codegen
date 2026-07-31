@@ -1010,7 +1010,7 @@ fn wit_interface_type_name_collision_is_rejected() {
     assert!(
         err.contains("WIT type name collision under --component:")
             && err.contains("all convert to the WIT identifier `any-cbor`")
-            && err.contains("`@name` comment-DSL directive"),
+            && err.contains("Rename one of the colliding rules in the CDDL spec itself"),
         "unexpected interface-level collision message: {err}"
     );
 }
