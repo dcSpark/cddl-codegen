@@ -72,10 +72,10 @@ struct Cell {
 /// a position where the directive DOES work, isolating position as the variable — the anon-group
 /// pin's control is the `anon-group-choice-member` cell.
 ///
-/// Six live findings. Four predate the custom-serialize hardening (none fixed by the task that added
-/// them — its scoped fix was the rule-position `@name` rejection); the last two are that delivery's
-/// remainder, deliberately left silent because honoring or refusing either is a design decision, not
-/// a call-site fix. Its RULED placements are cells 23a–23n, which `Reject` rather than pin (23o is
+/// Five live findings. Four predate the custom-serialize hardening (none fixed by the task that added
+/// them — its scoped fix was the rule-position `@name` rejection); the last is that delivery's
+/// remainder, deliberately left silent because honoring or refusing it is a design decision, not a
+/// call-site fix. Its RULED placements are cells 23a–23n, which `Reject` rather than pin (23o is
 /// the accepted-control beside them):
 ///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" rejection advertises `@name`
 ///     as the remedy, but at a MEMBER-position anonymous inline group the comment lands on the
@@ -102,11 +102,6 @@ struct Cell {
 ///     (same rule-trailing placement on a primitive body — it emits both call sites) plus the live
 ///     rule slot itself, since a rule-trailing `@duplicates preserve` on this shape does swap in the
 ///     PairMap twin. Whether a transparent table alias CAN carry the pair is the open question.
-///   - `@custom_serialize+deserialize` @ `rest-row-key-domain-alias`: honored halfway — the write arm
-///     calls the custom serializer, the rest arm never calls the custom deserializer (it binds the
-///     key the row's own key dispatch already consumed). The pin is non-vacuous by construction: the
-///     `my_ser(` half of the expectation IS satisfied, so only the reader is missing. A rule-level
-///     rejection would be wrong — the same alias works in table and field positions.
 const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
     (
         "@name",

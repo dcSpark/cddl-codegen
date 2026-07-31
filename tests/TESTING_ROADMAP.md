@@ -36,9 +36,10 @@ it is shipped CURRENT STATE, not roadmap — first-class `any` on every surface,
 struct-maps (rest rows)", § "Open struct-maps — the `@ignore` (tolerate-and-drop) flavor", and
 § "Open arrays (rest tails)"; user-facing contracts: `docs/docs/current_capacities.mdx` /
 `output_format.mdx` / `comment_dsl.mdx` / `wasm_differences.mdx`. The family's v1 boundaries
-(non-final/multiple/plain-group rest rows, `+`/bounded occurrences, non-uint/text/any key domains)
-are graceful rejections whose candidate-feature entries live in `cddl-matrix/ROADMAP.md`
-§ findings, not here. The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
+(non-final/multiple/plain-group rest rows, `+`/bounded occurrences, and the two key domains a row
+cannot key on — float-containing, which has no total order, and `null`-admitting, which the row's
+key dispatch cannot tell from an indefinite map's break) are graceful rejections whose
+candidate-feature entries live in `cddl-matrix/ROADMAP.md` § findings, not here. The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
 control operators on `any`, and non-last bare `any` choice arms (forced-backtracking catch-all unions
 put the catch-all last, so an earlier one is unreachable dead code) — see the `any` type-choice entry
 in `cddl-matrix/ROADMAP.md`. One deferred coverage item remains: the wasm emit-tests minter has no
@@ -583,6 +584,49 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       (or other reserved-name) field failing to build its generated crate — the field name is in
       their spec and the compile error names the shadowed binding, so the report reaches us
       pre-diagnosed.
+
+13. **A user rule that names a synthesized `<Elem>List` keys-list is REPLACED by it, silently and
+    including its wire format** — the loose list-wrapper family has collision legs for every claim
+    that arrives through a `[+ …]` wrapper and none for a claim that arrives directly.
+    `non_empty_wrapper_name_collisions` already collects every plain use that needs a loose
+    `<Elem>List` builder (a `*`-occurrence array, a map or table `keys()` wrapper, an open struct-map
+    rest row's `keys()`, an open-array rest tail) into `plain_loose_needs`, but consults that map in
+    exactly one place: against a SELF-NAMED `[+ elem]` rule. A spec with no `[+ …]` rule at all never
+    reaches the check. The replacement itself is `create_and_register_array_type`'s last-wins
+    `register_rust_struct`, whose own comment anticipates an authored rule of the structural ident —
+    but only the COMPATIBLE authored shape (`foo_list = [* foo]`, which IS the builder); an
+    incompatible one is overwritten.
+    - **Probed at `895e57d0`**, three probes over the same two rules (`md = [a: uint, b: uint]` and a
+      claiming `md_list = [x: uint, y: text]`, `--wasm=true`), differing only in what needs the
+      `MdList` builder. Via a **table** (`tbl = {* md => text}`): generation exits 0 with no
+      diagnostic, `pub type MdList = Vec<Md>;` stands where the user's record was, and the rust crate
+      `cargo check`s clean. Adding a USE of the claimed rule (`holder = [m: md_list]`) keeps it silent
+      and makes it worse — `holder.m` type-checks and serializes as an array of `Md`, so a crate that
+      builds writes a wire format the spec does not describe. Via a **rest row**
+      (`holder = { 1: uint, * md => text }`): the generic duplicate-top-level-ident backstop fires
+      instead, which is loud but reports the ident rather than the claim. Two sources of one defect,
+      opposite diagnostics.
+    - **The fix** is a direct-claim leg mirroring the map-side ones (the rest-row leg in
+      `non_empty_map_wrapper_name_collisions` and the two Record legs in
+      `preserve_pair_map_loose_wrapper_name_collisions` /
+      `preserve_pair_map_non_empty_wrapper_name_collisions`): over the entries already in
+      `plain_loose_needs`, reject where `wasm_ident_claimed_by_user_rule` holds and
+      `provides_compatible_loose_list` does not — the same two predicates those legs use, with the
+      per-kind message text this family's siblings pin. The map side needs the symmetric leg for its
+      own plain uses, which today reach only the generic backstop.
+    - **Why it is scheduled rather than shipped with the rest-row work that found it**: it changes
+      behaviour for specs that have nothing to do with rest rows. Every committed table spec that
+      names a rule after its key's list ident generates today; the leg makes those a hard generation
+      error. That is the right end state — silence here costs a wire format — but it is a deliberate
+      break, and its blast radius is unmeasured. The detector-before-fix convention applies: arm the
+      leg against the snapshot corpus first and let the count of specs it flags decide how the break
+      is staged.
+    - **Reopening signal:** the cost here is severity, not volume — a single occurrence already emits
+      the wrong bytes — so the signal is incidence, and it is written to be reportable without anyone
+      diagnosing it as a name collision. A consumer reports either a rule they declared that is
+      ABSENT from the generated crate, or a field whose CBOR does not match its declared shape and
+      whose generated type is a `pub type <X>List = Vec<…>` they did not write. Both arrive with the
+      ident in them.
 
 ## Standing-system residuals (recur-first)
 
