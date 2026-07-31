@@ -1,0 +1,24 @@
+// The composition script for LEG 3 of the `component_jco` gate — the known-broken pin.
+//
+// It builds the SAME dual-export world `component_compose` builds in-process with `wac-graph` and
+// drives correctly through wasmtime: one dependency instance, one consumer instance, the consumer's
+// `cddl:chain/types@0.1.0` import satisfied by the dependency instance's export of it, and BOTH
+// interfaces exported so a host can mint a dependency object at all.
+//
+// Written as a `.wac` script driven by the ambient `wac` binary rather than in-process, because this
+// gate has no Rust host crate at all — its whole cost story is "no wasmtime, no composer crate". That
+// is also why leg 3 loud-skips alone when `wac` is absent: it is the only ambient binary here, and
+// the other two legs must never wait on it.
+//
+// The two package names are `--lib-name chain` / `--lib-name wallet`, which is what makes the emitted
+// WIT packages `cddl:chain@0.1.0` and `cddl:wallet@0.1.0`. The gate passes each built component in
+// under that name (`--dep cddl:chain=<artifact>`), and
+// `the_jco_fixture_carries_the_files_the_gate_copies` is what says the three spellings move together.
+
+package cddl:composed@0.1.0;
+
+let chain = new cddl:chain { ... };
+let wallet = new cddl:wallet { "cddl:chain/types@0.1.0": chain["cddl:chain/types@0.1.0"], ... };
+
+export chain["cddl:chain/types@0.1.0"];
+export wallet["cddl:wallet/types@0.1.0"];

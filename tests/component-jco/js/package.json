@@ -1,0 +1,11 @@
+{
+  "name": "cddl-codegen-component-jco-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The JS-host leg of the component face. Copied into the component_jco gate's scratch root; `npm ci` installs from the committed lockfile beside it. EXACT versions, never ranges: the gate pins a measured jco vintage, and a range would let a background npm release change the verdict without changing a byte in this repo.",
+  "dependencies": {
+    "@bytecodealliance/jco": "1.26.1",
+    "@bytecodealliance/preview2-shim": "0.19.0"
+  }
+}
