@@ -18,3 +18,5 @@ impl Baz {
         Self { index_1 }
     }
 }
+
+pub type Epoch = u64;

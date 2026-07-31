@@ -6,7 +6,152 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 use crate::generated::b::bar::{RelayHost, RelayPort};
+use crate::generated::{MapEpochToMapEpochToFoo, MapEpochToRestValue, TailElemList};
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OpenFlat(pub(crate) cddl_lib::qux::OpenFlat);
+
+#[wasm_bindgen]
+impl OpenFlat {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OpenFlat, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> u64 {
+        self.0.key_1
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> MapEpochToRestValue {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_1: u64) -> Self {
+        Self(cddl_lib::qux::OpenFlat::new(key_1))
+    }
+}
+
+impl From<cddl_lib::qux::OpenFlat> for OpenFlat {
+    fn from(native: cddl_lib::qux::OpenFlat) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OpenFlat> for cddl_lib::qux::OpenFlat {
+    fn from(wasm: OpenFlat) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::qux::OpenFlat> for OpenFlat {
+    fn as_ref(&self) -> &cddl_lib::qux::OpenFlat {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OpenNested(pub(crate) cddl_lib::qux::OpenNested);
+
+#[wasm_bindgen]
+impl OpenNested {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OpenNested, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn key_1(&self) -> u64 {
+        self.0.key_1
+    }
+
+    /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
+    pub fn rest(&self) -> MapEpochToMapEpochToFoo {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(key_1: u64) -> Self {
+        Self(cddl_lib::qux::OpenNested::new(key_1))
+    }
+}
+
+impl From<cddl_lib::qux::OpenNested> for OpenNested {
+    fn from(native: cddl_lib::qux::OpenNested) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OpenNested> for cddl_lib::qux::OpenNested {
+    fn from(wasm: OpenNested) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::qux::OpenNested> for OpenNested {
+    fn as_ref(&self) -> &cddl_lib::qux::OpenNested {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OpenTail(pub(crate) cddl_lib::qux::OpenTail);
+
+#[wasm_bindgen]
+impl OpenTail {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OpenTail, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    /// The captured trailing array elements beyond the declared members (CDDL `* t` rest tail), as the wasm list wrapper.
+    pub fn rest(&self) -> TailElemList {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::qux::OpenTail::new(x))
+    }
+}
+
+impl From<cddl_lib::qux::OpenTail> for OpenTail {
+    fn from(native: cddl_lib::qux::OpenTail) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OpenTail> for cddl_lib::qux::OpenTail {
+    fn from(wasm: OpenTail) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::qux::OpenTail> for OpenTail {
+    fn as_ref(&self) -> &cddl_lib::qux::OpenTail {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

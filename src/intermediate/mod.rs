@@ -1442,25 +1442,31 @@ impl<'a> IntermediateTypes<'a> {
                             &field.rust_type,
                         )
                     });
-                    // Open rest (map `* k => v` row or array `* t` tail): its inner types can
-                    // reference named rules (`* uint => metadatum`, `* foo`) that must be marked as
-                    // dependencies too.
+                    // Open rest (map `* k => v` row or array `* t` tail): mark its CONTAINER
+                    // (`RestRow::container_type` — the same `Map(k, v)`/`Array(t)` the rest field's
+                    // member type and its wasm wrapper mint are built from), not the inner types
+                    // flat. The container routes through `mark_refs`' Map/Array arms, so a rest row
+                    // gets EXACTLY what a map/array FIELD of the same shape gets: the wrapper class
+                    // the rest accessor returns imported into THIS scope from its emission scope,
+                    // the `keys()` list wrapper registered at that emission scope, and the inner
+                    // types marked THERE (the wrapper body names them, and it may live in another
+                    // module). Marking the inners flat at the using scope instead left both sides
+                    // dangling (E0425 on the wrapper here and on its key/value at root) for every
+                    // rest row whose inner types are not root-scoped — the same-scope case only
+                    // worked because `current_scope == emit_scope` made the flat marking
+                    // coincidentally correct. Rust-side output is unchanged: with `wasm == false`
+                    // both container arms fall through to marking the inners at the using scope,
+                    // which is what this did.
                     if let Some(rest) = &record.rest {
-                        let rest_inner: Vec<&RustType> = match &rest.kind {
-                            RestKind::MapEntries { domain, range, .. } => vec![domain, range],
-                            RestKind::ArrayTail { element } => vec![element],
-                        };
-                        for rt in rest_inner {
-                            mark_refs(
-                                &mut refs,
-                                self,
-                                wasm,
-                                &table_shape_sole_owners,
-                                deferred,
-                                current_scope,
-                                rt,
-                            );
-                        }
+                        mark_refs(
+                            &mut refs,
+                            self,
+                            wasm,
+                            &table_shape_sole_owners,
+                            deferred,
+                            current_scope,
+                            &rest.container_type(),
+                        );
                     }
                 }
                 RustStructType::Table {

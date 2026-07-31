@@ -9,8 +9,8 @@ use std::process::{Command, Stdio};
 
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RestKind,
-    RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig,
+    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RestRow,
+    RestSemantics, RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig,
     RustStructType, RustType, RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent,
     escape_rust_str,
 };
@@ -611,18 +611,14 @@ impl GenerationScope {
                             if let Some(rest) =
                                 record.captured_rest().filter(|r| !r.is_array_tail())
                             {
-                                let rest_map = ConceptualRustType::Map(
-                                    Box::new(rest.domain().clone()),
-                                    Box::new(rest.range().clone()),
-                                );
+                                let rest_map = rest.container_type();
                                 mint_wasm_wrapper_for_visited_type(
                                     self,
                                     types,
-                                    &rest_map,
+                                    &rest_map.conceptual_type,
                                     &mut wasm_wrappers_generated,
                                     &table_shape_sole_owner,
-                                    rest.duplicates()
-                                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                                    rest_map.is_preserve_pair_map(),
                                     cli,
                                 );
                                 self.ensure_non_empty_wrappers(types, rest.domain(), cli);
@@ -636,12 +632,11 @@ impl GenerationScope {
                             // (its wasm class is a closed struct's).
                             if let Some(rest) = record.captured_rest().filter(|r| r.is_array_tail())
                             {
-                                let rest_list =
-                                    ConceptualRustType::Array(Box::new(rest.element().clone()));
+                                let rest_list = rest.container_type();
                                 mint_wasm_wrapper_for_visited_type(
                                     self,
                                     types,
-                                    &rest_list,
+                                    &rest_list.conceptual_type,
                                     &mut wasm_wrappers_generated,
                                     &table_shape_sole_owner,
                                     // an array tail has no key domain, so no map flavor to carry

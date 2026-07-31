@@ -3014,12 +3014,20 @@ definitions land wherever `types.scope(ident)` puts them — and that region had
 fixture
 (`tests/multifile`, which covers NAMED cross-module refs but no structural-wrapper-ownership
 cells). This sweep enumerates the placement grid, compile-floors it (always-on), and round-trips it
-(manual, full tier). Two placement vectors the grid does NOT enumerate are hand-fixture-owned:
-the group-choice-VARIANT reference position (`tests/multifile`, see Axis 2 below), and the
+(manual, full tier). Three placement vectors the grid does NOT enumerate are hand-fixture-owned:
+the group-choice-VARIANT reference position (`tests/multifile`, see Axis 2 below); the
 extern-shaped type-alias-TARGET position (`tests/extern-generic-scoped` — a generic-EXTERN
 instance aliased from a non-root scope decomposes into a base import at the base's declaring
 scope plus argument imports, never the whole `Base<Args>` type expression; extern shapes sit in
-this grid's SHAPES exclusion, so the compile floor can never enumerate them — see Axis 1).
+this grid's SHAPES exclusion, so the compile floor can never enumerate them — see Axis 1); and the
+open-rest CONTAINER position (`tests/multifile`'s `open_flat` / `open_nested` / `open_tail` in
+`qux.cddl`, whose key/value/element live in `a`, `a/c/foo` and `b/bar`). The last one is a SHAPES
+exclusion of a different kind: a rest row/tail exists only INSIDE a record, so it has no
+self-contained rule spelling to occupy an `a.cddl` cell with, while its container — re-assembled
+by `RestRow::container_type`, since the IR stores the inner types flat — needs the same
+wrapper-into-the-using-scope + inners-at-the-emission-scope routing a map/array FIELD gets. Both
+sides of that routing dangled (`E0425` on the wrapper in `qux` and on its key/value/element at
+root) until the rest arm of `scope_references` marked the container instead of the inner types.
 
 Pipeline (projection → fixtures → gates), the same two-gate shape as the wasm-ABI matrix:
 

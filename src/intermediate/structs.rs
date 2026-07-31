@@ -945,6 +945,37 @@ impl RestRow {
     pub fn is_array_tail(&self) -> bool {
         matches!(self.kind, RestKind::ArrayTail { .. })
     }
+
+    /// The rest row's CONTAINER type — the composite the emitted code actually names: `Array(T)` for
+    /// an array `* T` tail, `Map(K, V)` carrying the row's `@duplicates` policy for a map `* K => V`
+    /// row (so `for_rust_member` routes a `preserve` row to the `PairMap<K, V>` twin and
+    /// `for_wasm_member` / `wasm_collection_wrapper` name the `PairMapKToV` class rather than the
+    /// loose `MapKToV`).
+    ///
+    /// The IR stores the inner types FLAT (`RestKind`), so without this every walk sees a rest row's
+    /// `domain`/`range`/`element` as unrelated occurrences and never as a container — which is why
+    /// the wasm wrapper the rest accessor returns has to be minted explicitly and why the
+    /// dependency walk has to be told about it. Every consumer that needs the container goes
+    /// through HERE (the rust member type, the wasm wrapper mint, `scope_references`' Record rest
+    /// arm), so the container spelling cannot drift between them — a rest row's container is
+    /// indistinguishable from a map/array FIELD's container to each of them.
+    pub fn container_type(&self) -> RustType {
+        match &self.kind {
+            RestKind::ArrayTail { element } => {
+                ConceptualRustType::Array(Box::new(element.clone())).into()
+            }
+            RestKind::MapEntries {
+                domain,
+                range,
+                duplicates,
+            } => {
+                let ty: RustType =
+                    ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
+                        .into();
+                ty.with_duplicates_policy(*duplicates)
+            }
+        }
+    }
 }
 
 impl RustRecord {

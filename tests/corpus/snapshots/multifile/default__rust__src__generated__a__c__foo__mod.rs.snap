@@ -26,3 +26,14 @@ impl Foo {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct TailElem {
+    pub w: String,
+}
+
+impl TailElem {
+    pub fn new(w: String) -> Self {
+        Self { w }
+    }
+}
