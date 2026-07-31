@@ -805,6 +805,13 @@ export const REGISTRY: Gate[] = [
   // memoized per generated-crate content hash by the gate cache, so an unchanged tree re-runs cheap.
   { id: "component_wit", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_tests"],
     desc: "component face: WIT validity (resolve/encode/validate), wasm-posture purity, wasip2 build smoke" },
+  // The rust->WIT surface differential, named for the same reason: it is the ONLY gate that asks
+  // what the boundary DROPPED. Everything else judges what was emitted against itself — a member
+  // missing from both the `.wit` and the glue is a package that resolves, validates and builds.
+  // In-process generation plus parsing, so it is cheap; it is separate from `component_wit` so a
+  // parity regression and a validity regression never arrive under one name.
+  { id: "component_parity", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_parity"],
+    desc: "component face: rust pub surface -> WIT surface differential (ledgered)" },
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },
