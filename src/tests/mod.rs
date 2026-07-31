@@ -59,10 +59,14 @@ pub(crate) const ALL_PROFILES: &[Profile] = &[
     //  1. It is the flag set the repo has already chosen for this face's whole-program snapshots —
     //     `snapshot_tests::WHOLE_PROGRAM_CASES` carries five `component`-labelled rows spelled
     //     exactly `&["--component=true"]`. One posture for both snapshot axes.
-    //  2. `--wasm=false` would break the consumers of this const rather than lighten them: clap is
-    //     last-wins, and the sweeps below hardcode `--wasm=true` before appending a profile's
-    //     flags, then treat a missing `wasm/` crate as a de-gating FAILURE (in
-    //     `wasm_parity_tests` it is an outright `panic!`).
+    //  2. `--wasm=false` would break the consumers of this const rather than lighten them, and it
+    //     would break them EARLIER than "the wasm crate went missing": several sweeps below
+    //     hardcode `--wasm=true` before appending a profile's flags, and clap's `ArgAction::Set`
+    //     is SET-ONCE, not last-wins — a second `--wasm` is rejected outright with
+    //     "the argument '--wasm <WASM>' cannot be used multiple times", so every such cell would
+    //     die at argument parsing rather than at a de-gating missing-crate check.
+    //     (`component_tests::component_profile_flags` drops this row's own `--component=true` for
+    //     exactly the same reason.)
     //  3. It costs no WIT coverage: the emitted `component/wit/**` is byte-identical between the
     //     two wasm postures — asserted on this face's fixtures by
     //     `component_tests::component_wit_is_wasm_posture_independent`, and confirmed at corpus
