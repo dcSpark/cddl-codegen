@@ -109,6 +109,19 @@ impl<K: Ord, V> TryFrom<BTreeMap<K, V>> for NonEmptyMap<K, V> {
     }
 }
 
+impl<K: Ord, V> TryFrom<Vec<(K, V)>> for NonEmptyMap<K, V> {
+    type Error = DeserializeError;
+
+    /// The vec-of-pairs door, the twin of `NonEmptyPairMap`'s. A caller that has entries rather than
+    /// a built map — a boundary that transports a table as a list of pairs, which both the WIT
+    /// component face and any hand-written FFI do — reaches the invariant without staging a map
+    /// first. It delegates to the single map door, so the empty-map refusal error is identical on
+    /// every path, and duplicate keys collapse exactly as they do in a `collect()`.
+    fn try_from(entries: Vec<(K, V)>) -> Result<Self, Self::Error> {
+        Self::try_from(entries.into_iter().collect::<BTreeMap<K, V>>())
+    }
+}
+
 impl<K: Ord, V> From<NonEmptyMap<K, V>> for BTreeMap<K, V> {
     fn from(m: NonEmptyMap<K, V>) -> Self {
         m.0

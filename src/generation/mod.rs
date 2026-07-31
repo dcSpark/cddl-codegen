@@ -1944,7 +1944,11 @@ impl GenerationScope {
         // IR the same way `extern_interface` does, so it needs no walk of its own and gains nothing
         // from being threaded through this one.
         if cli.component {
-            let glue = component::component_glue(types, cli);
+            // The no-deserialize verdicts are complete by here — the rust face's own walk above is
+            // what records them, and the component face runs after it — so the projection can drop
+            // the `from-cbor-bytes` seam of a type that has no `Deserialize` impl to bridge to.
+            let no_deserialize = self.no_deserialize_idents();
+            let glue = component::component_glue(types, cli, &no_deserialize);
             self.component_lib_scope.raw(glue);
         }
 

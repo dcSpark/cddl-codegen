@@ -981,17 +981,23 @@ pub fn extern_interface_strings(
 /// The snapshot-fixture analog of [`extern_interface_strings`], driving the SAME producer the
 /// component face's export writes to disk so the tested and shipped WIT cannot drift.
 ///
-/// A door onto the WIT ALONE (rather than reading the component entries back out of
-/// `generated_strings`) because the two gates over it — the four-stage validity gate and the
-/// wasm-posture purity assertion — care about nothing else in the tree, and the purity assertion in
-/// particular must be able to compare two runs whose rust/wasm halves legitimately differ.
+/// A door onto the WIT ALONE, so the gates over it — the four-stage validity gate and the
+/// wasm-posture purity assertion — see nothing else in the tree; the purity assertion in particular
+/// must be able to compare two runs whose rust/wasm halves legitimately differ.
+///
+/// It FILTERS the full producer rather than calling the projection directly. One member of the
+/// projection (`from-cbor-bytes`) is gated on a verdict only the rust face's own walk reaches —
+/// which types got a `Deserialize` impl — so a shortcut straight to `wit::wit_files` would pin a
+/// WIT the tool never ships.
 #[cfg(test)]
 pub fn wit_strings(
     cli: &Cli,
 ) -> Result<std::collections::BTreeMap<String, String>, Box<dyn std::error::Error>> {
-    with_types(cli, |types, _| {
-        crate::generation::wit::wit_files(types, cli)
-    })
+    let prefix = format!("{}/", crate::generation::layout::COMPONENT_WIT_DIR);
+    Ok(generated_strings(cli)?
+        .into_iter()
+        .filter(|(path, _)| path.starts_with(&prefix))
+        .collect())
 }
 
 /// The emitted no-std-check shim crate's files, keyed by path relative to `<output>`

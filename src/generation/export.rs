@@ -2035,7 +2035,11 @@ impl GenerationScope {
             // `extern-interface/` uses) because it is the guest crate's own input: it has to ride the
             // same map the snapshots capture and the header stamper walks, so a `.wit` and the glue
             // implementing it can never be captured out of step.
-            out.extend(crate::generation::wit::wit_files(types, cli));
+            out.extend(crate::generation::wit::wit_files(
+                types,
+                cli,
+                &self.no_deserialize_idents(),
+            ));
         }
 
         // json-gen crate for exporting JSON schemas

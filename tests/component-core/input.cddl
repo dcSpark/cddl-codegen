@@ -22,14 +22,24 @@ names = [+ text]
 ; a table -> `list<tuple<string, u64>>`, never `map<K, V>`
 attrs = { * text => uint }
 
-; a record: mandatory + optional fields, every primitive row, and one field per container row
+; a NonEmpty TABLE: the map twin of `names`. It despecializes to the SAME `list<tuple<…>>` a plain
+; table becomes, so its non-emptiness is re-checked at the consuming constructor — which reaches the
+; invariant through the runtime's vec-of-pairs door rather than by staging a map first
+counts = {+ text => uint}
+
+; a record: mandatory + optional fields, every primitive row, and one field per container row.
+; `limit` is a VALUE-bounded mandatory field, which is what makes the rust `Record::new` itself
+; fallible — a second, independent reason from the despecialized collections above, and the one the
+; guest constructor has to unwrap rather than wrap
 record = {
   id: uint,
   name: text,
   digest: hash,
   delta: int,
+  limit: uint .le 5,
   tags: names,
   props: attrs,
+  totals: counts,
   kind: color,
   root: node,
   meta: any,

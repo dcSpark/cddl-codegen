@@ -549,7 +549,11 @@ struct StagedType {
 ///
 /// The `match` over `RustStructType` is EXHAUSTIVE (no `_ =>` arm) so a new IR variant forces an
 /// explicit projection decision at compile time rather than silently vanishing from the WIT.
-pub(crate) fn project(types: &IntermediateTypes, cli: &Cli) -> WitPackage {
+pub(crate) fn project(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    no_deserialize: &BTreeSet<RustIdent>,
+) -> WitPackage {
     let mut staged: BTreeMap<RustIdent, StagedType> = BTreeMap::new();
     let mut excluded: BTreeMap<RustIdent, WitExclusion> = BTreeMap::new();
 
@@ -583,7 +587,13 @@ pub(crate) fn project(types: &IntermediateTypes, cli: &Cli) -> WitPackage {
             uses_any_cbor: false,
             resolving: BTreeSet::new(),
         };
-        let projected = project_struct(&name, ident, rust_struct, &mut ctx);
+        let projected = project_struct(
+            &name,
+            ident,
+            rust_struct,
+            !no_deserialize.contains(ident),
+            &mut ctx,
+        );
         let (uses_int, uses_any_cbor) = (ctx.uses_int, ctx.uses_any_cbor);
         match projected {
             Ok(def) => {
@@ -780,11 +790,16 @@ fn project_struct(
     name: &str,
     ident: &RustIdent,
     rust_struct: &RustStruct,
+    deserializable: bool,
     ctx: &mut TypeCtx,
 ) -> ProjectResult<WitTypeDef> {
     match rust_struct.variant() {
         RustStructType::Record(record) => Ok(WitTypeDef::Resource(project_record(
-            name, ident, record, ctx,
+            name,
+            ident,
+            record,
+            deserializable,
+            ctx,
         )?)),
         RustStructType::Wrapper {
             wrapped,
@@ -796,6 +811,7 @@ fn project_struct(
             rust_struct,
             wrapped,
             min_max.is_some() || float_min_max.is_some(),
+            deserializable,
             ctx,
         )?)),
         RustStructType::CStyleEnum { variants } => Ok(WitTypeDef::Enum(project_c_style_enum(
@@ -828,6 +844,7 @@ fn project_record(
     name: &str,
     ident: &RustIdent,
     record: &RustRecord,
+    deserializable: bool,
     ctx: &mut TypeCtx,
 ) -> ProjectResult<WitResource> {
     let mut params = Vec::new();
@@ -938,7 +955,7 @@ fn project_record(
             },
         });
     }
-    members.extend(bytes_members());
+    members.extend(bytes_members(deserializable));
     Ok(WitResource {
         name: name.to_owned(),
         ident: ident.clone(),
@@ -959,6 +976,7 @@ fn project_wrapper(
     rust_struct: &RustStruct,
     wrapped: &RustType,
     bounded: bool,
+    deserializable: bool,
     ctx: &mut TypeCtx,
 ) -> ProjectResult<WitResource> {
     let config = rust_struct.config();
@@ -979,7 +997,7 @@ fn project_wrapper(
             op: WitMemberOp::WrapperGet { getter },
         });
     }
-    members.extend(bytes_members());
+    members.extend(bytes_members(deserializable));
     Ok(WitResource {
         name: name.to_owned(),
         ident: ident.clone(),
@@ -1018,20 +1036,26 @@ fn project_c_style_enum(name: &str, ident: &RustIdent, variants: &[EnumVariant])
     }
 }
 
-/// The bytes seam every class-backed type carries. Emitted unconditionally — NOT gated on
-/// `--to-from-bytes-methods` — because the cross-crate seam and the extern bridging rows both
-/// depend on it (a per-face flag-semantics delta, plan §3).
-fn bytes_members() -> Vec<WitMember> {
-    vec![
-        WitMember {
-            name: "to-cbor-bytes".to_owned(),
-            is_static: false,
-            params: Vec::new(),
-            result: Some(WitType::List(Box::new(WitType::U8))),
-            fallible: false,
-            op: WitMemberOp::ToCborBytes,
-        },
-        WitMember {
+/// The bytes seam every class-backed type carries. The `to-` half is emitted unconditionally — NOT
+/// gated on `--to-from-bytes-methods` — because the cross-crate seam and the extern bridging rows
+/// both depend on it (a per-face flag-semantics delta, plan §3).
+///
+/// The `from-` half is gated on `deserializable`, mirroring the wasm face's own
+/// `if gen_scope.deserialize_generated(ident)` fork. A spec CAN reach a type the rust face declines
+/// to give a `Deserialize` impl (an array struct whose optional field is CBOR-ambiguous with what
+/// follows it), and a WIT declaring `from-cbor-bytes` for such a type forces glue that names a trait
+/// impl which does not exist — a compile error in generated code.
+fn bytes_members(deserializable: bool) -> Vec<WitMember> {
+    let mut members = vec![WitMember {
+        name: "to-cbor-bytes".to_owned(),
+        is_static: false,
+        params: Vec::new(),
+        result: Some(WitType::List(Box::new(WitType::U8))),
+        fallible: false,
+        op: WitMemberOp::ToCborBytes,
+    }];
+    if deserializable {
+        members.push(WitMember {
             name: "from-cbor-bytes".to_owned(),
             is_static: true,
             params: vec![WitParam {
@@ -1045,8 +1069,9 @@ fn bytes_members() -> Vec<WitMember> {
             result: None,
             fallible: true,
             op: WitMemberOp::FromCborBytes,
-        },
-    ]
+        });
+    }
+    members
 }
 
 /// Map one `RustType` occurrence to its WIT spelling.
@@ -1434,8 +1459,15 @@ fn render_type(ty: &WitType, param: bool) -> String {
 /// (R5), so a spec carrying a phase-2 type class still regenerates cleanly and the gap is visible in
 /// the emitted file rather than as a generation failure.
 ///
-pub(crate) fn wit_files(types: &IntermediateTypes, cli: &Cli) -> BTreeMap<String, String> {
-    render(&project(types, cli))
+/// `no_deserialize` is the set of idents the rust face declined to give a `Deserialize` impl — a
+/// GENERATION-time verdict, so it arrives from the caller rather than being re-derived here (see
+/// [`bytes_members`]).
+pub(crate) fn wit_files(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    no_deserialize: &BTreeSet<RustIdent>,
+) -> BTreeMap<String, String> {
+    render(&project(types, cli, no_deserialize))
 }
 
 /// Strong-uniqueness collisions in the WIT surface, one message per collision.
@@ -1453,7 +1485,12 @@ pub(crate) fn wit_files(types: &IntermediateTypes, cli: &Cli) -> BTreeMap<String
 /// failing only at component validation — so without this detector the user's first sighting is a
 /// wasm-level error naming a mangled `[method]` symbol.
 pub(crate) fn wit_name_collisions(types: &IntermediateTypes, cli: &Cli) -> Vec<String> {
-    let package = project(types, cli);
+    // This runs at IR finalization, BEFORE the rust face has decided which types get a
+    // `Deserialize` impl, so it projects with an empty no-deserialize set — the SUPERSET of members.
+    // That direction is the safe one: dropping `from-cbor-bytes` can only remove a collision, never
+    // create one, so the detector may over-report (for a spec whose type both loses its deserialize
+    // AND names a member `from_cbor_bytes`) and can never under-report.
+    let package = project(types, cli, &BTreeSet::new());
     let mut msgs = Vec::new();
 
     // 1 — package level. Interfaces and the world share one namespace, and the scope flattening

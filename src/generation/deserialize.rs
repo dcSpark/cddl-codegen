@@ -2632,6 +2632,12 @@ impl GenerationScope {
         !self.no_deser_reasons.contains_key(name)
     }
 
+    /// Every ident the rust face declined to give a `Deserialize` impl, as a set the WIT projection
+    /// can consult. A verdict, not a rule: it is only complete once the rust face's walk has run.
+    pub(super) fn no_deserialize_idents(&self) -> std::collections::BTreeSet<RustIdent> {
+        self.no_deser_reasons.keys().cloned().collect()
+    }
+
     pub(super) fn deserialize_generated_for_type(
         &self,
         types: &IntermediateTypes,
