@@ -3075,6 +3075,21 @@ rust exposed `Int::new_uint`, `Int::new_nint`, and `IntError` for `int` map keys
 only the signed `Int::new(i64)` constructor and mapped parse failures to `JsError`; wasm now emits
 the two raw-CBOR-argument constructors and a source-level `pub type IntError = JsError` counterpart.
 
+### WIT validity, four stages (`component_tests`, gate `component_wit`)
+
+Every component fixture's emitted `.wit` package goes through resolve → package-encode →
+**package-validate** in-process, at the pinned `wit-parser`/`wit-component`/`wasmparser` floor —
+never through the ambient `wasm-tools` binary, which predates the floor and cannot read these
+packages at all. Stage four is load-bearing rather than belt-and-braces: the strong-uniqueness
+collision class survives resolve AND `wit_component::encode` and fails only at component
+validation, so a gate stopping at encode would pass an unbuildable package. The pinned control is
+`component_wit_validity_gate_fails_a_strong_uniqueness_collision_at_stage_four`, which asserts
+both halves — the collision fixture passes stages 2–3, then fails validation with the pinned
+message — so the control cannot go vacuous in either direction. The posture-purity pin
+(`component_wit_is_wasm_posture_independent`) asserts the emitted WIT is byte-equal under
+`--wasm=true` and `--wasm=false`: the projection resolves through the wasm-gated IR convergence
+rather than reflecting it.
+
 ### rust↔WIT API-surface parity (`component_parity_tests::component_api_parity`)
 
 The component face's sibling of the gate above, asking the same one-directional question of the
