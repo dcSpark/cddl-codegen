@@ -63,6 +63,24 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   fixed-value cell ids (`contain.<role>.prelude.{true,false,null}`, `contain.<role>.type2.value*`,
   `contain.<role>.value.*`), turning the unverified-set pin into the forcing function that lands
   each new cell WITH its wrong-constant vector.
+- **The open struct-map rest row's KEY-DOMAIN axis is unmodelled.** The generator's support
+  boundary moved (typed key domains on rest rows, delivered 2026-08-01: any deserializable
+  non-float, non-null-admitting `K` — named rules, unions, bytes, nint, sized ints, tagged,
+  extern), but the matrix's only rest-row cells are
+  `contain.occurrence-target.memberkey.type1.open_struct{,_plus}`, both spelling `* uint => any` —
+  so the axis along which the boundary moved is invisible to every projection: the grid renders
+  "rest rows: supported" with no key-domain dimension, and neither the widening nor a future
+  regression of it can flip a cell. Regression defense is NOT the gap — it lives in the
+  generator's own fixtures (`tests/open-struct-map-typed/` five profiles, the `open-struct-map-*`
+  e2e vectors, and the float/null rejection pins in `robustness_tests`) — the gap is
+  model-completeness: a matrix consumer cannot ask the matrix about rest-row key domains. The
+  build, when justified: a supported cell family for typed rest-row keys (named-rule `K`, `bytes`,
+  nint) plus reject rows for the two remaining boundaries (float-containing `K`, null-admitting
+  `K`), mirroring how the float TABLE-key boundary is already cell-pinned. Reopening signal,
+  measurable by a party with the problem: a consumer request or support question about rest-row
+  key domains that the grid answers wrongly or cannot answer — i.e. someone asks for (or reports
+  against) a spelling whose verdict the delivered feature already decided, because no cell
+  states it.
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -654,7 +672,13 @@ ledgered here (that's what the probe/gate error messages point at).
   on that gate's `JSON_SURFACE_SKIP` citing this entry (which also suppresses their wasm `from_json`
   sub-leg). Largely a JSON-format limitation rather than a codegen bug; a candidate mitigation is a
   generated serde impl that hex/base64-encodes non-string keys into json strings (and reverses it), at
-  the cost of a non-obvious wire mapping — decide before building.
+  the cost of a non-obvious wire mapping — decide before building. The tree now carries a decided
+  precedent for one position that went the OTHER way: an open struct-map rest row's typed key domain
+  images text/uint/nint keys as natural strings and STRICT-FAILS bytes/composite keys at `to_json`
+  (`docs/docs/output_format.mdx` § "Typed key domains in JSON"), refusing a lossy encoding for the
+  same injectivity reason the natural walk refuses bytes — so building the hex/base64 mitigation for
+  tables means either overturning that rationale or accepting that the two map positions publish
+  different key conventions.
 - **A present-null OPTIONAL field round-trips differently through json than through CBOR re-encode.**
   For `[pre: uint, ? field0: (uint / null)]`, the accept vector `[0, [824, null]]` (the optional field
   PRESENT and null) decodes fine, but the direct CBOR re-encode DROPS the null (`v.to_cbor_bytes()` =
