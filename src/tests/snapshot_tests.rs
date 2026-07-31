@@ -418,6 +418,17 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "tests/component-multifile/inputs",
         ("component", &["--component=true"]),
     ),
+    // The BRIDGING classes on the component face: an extern's cbor seam, a raw-bytes type's RAW
+    // seam, a generic extern base skipped from the projection entirely beside its bridged instance,
+    // and a monomorphized non-extern generic instance. Pinned as bytes because this is the one
+    // component fixture that cannot enter the wasip2 build smoke — its rust crate names user-owned
+    // types — so the snapshot is the only place its emitted glue is checked at all. The same trade
+    // the `extern_deps` row above makes, for the same reason.
+    (
+        "component_extern",
+        "tests/component-extern/inputs",
+        ("component", &["--component=true"]),
+    ),
 ];
 
 /// One tiny CDDL file per language construct → a localized snapshot per feature, across every

@@ -1,0 +1,203 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
+use alloc::string::String;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for GenRuleU64 {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_unsigned_integer(self.v)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for GenRuleU64 {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let v = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("v"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(GenRuleU64 { v })
+        })()
+        .map_err(|e| e.annotate("GenRuleU64"))
+    }
+}
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(4))?;
+        serializer.write_text("e")?;
+        self.e.serialize(serializer)?;
+        serializer.write_text("g")?;
+        self.g.serialize(serializer)?;
+        serializer.write_text("n")?;
+        self.n.serialize(serializer)?;
+        serializer.write_text("r")?;
+        serializer.write_bytes(self.r.to_raw_bytes())?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
+            let mut e = None;
+            let mut g = None;
+            let mut n = None;
+            let mut r = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "e" => {
+                            if e.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("e".into())).into()
+                                );
+                            }
+                            e = Some(
+                                Ext::deserialize(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("e"))?,
+                            );
+                        }
+                        "g" => {
+                            if g.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("g".into())).into()
+                                );
+                            }
+                            g = Some(
+                                ExternGenericExt::deserialize(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("g"))?,
+                            );
+                        }
+                        "n" => {
+                            if n.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("n".into())).into()
+                                );
+                            }
+                            n = Some(
+                                GenRuleU64::deserialize(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("n"))?,
+                            );
+                        }
+                        "r" => {
+                            if r.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("r".into())).into()
+                                );
+                            }
+                            r = Some(
+                                raw.bytes()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .and_then(|bytes| {
+                                        Raw::from_raw_bytes(&bytes).map_err(|e| {
+                                            DeserializeFailure::InvalidStructure(Box::new(e)).into()
+                                        })
+                                    })
+                                    .map_err(|e: DeserializeError| e.annotate("r"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let e = match e {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("e")))
+                            .into(),
+                    );
+                }
+            };
+            let r = match r {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("r")))
+                            .into(),
+                    );
+                }
+            };
+            let g = match g {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("g")))
+                            .into(),
+                    );
+                }
+            };
+            let n = match n {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("n")))
+                            .into(),
+                    );
+                }
+            };
+            Ok(Self { e, r, g, n })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}

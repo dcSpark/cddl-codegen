@@ -898,11 +898,19 @@ impl Emitter<'_, '_> {
         for param in params {
             let name = kebab_to_snake(&param.name);
             let conv = self.wit_to_rust(&param.ty, &name, iface);
-            if param.validates && matches!(param.ty, WitType::List(_)) {
+            let despecialized = param
+                .rust_type
+                .as_ref()
+                .is_some_and(|ty| super::wit::wit_param_despecialized(ty, self.types));
+            if despecialized {
                 // A despecialized collection (`[+ T]`'s `NonEmptyVec`, `@duplicates reject`'s
                 // `OrderedSet`) crosses as a plain list, so its single `TryFrom` door has to be
                 // re-entered here — at exactly the point the rust crate's own decoder enters it. The
                 // `Vec<_>` binding is what makes `collect()` pick the door's input type.
+                //
+                // Routed off the rust TYPE, never off "validates and is a list": that reading also
+                // caught a plain bounded array, whose identity `TryFrom<Vec<T>>` compiles while
+                // checking nothing, and a bounded map, for which no such `TryFrom` exists at all.
                 lines.push(format!("let {name}: Vec<_> = {};", conv.unwrapped()));
                 args.push(format!("{name}.try_into().map_err(err)?"));
             } else if conv.expr == name && !conv.fallible {
@@ -915,6 +923,33 @@ impl Emitter<'_, '_> {
             }
         }
         (lines, args)
+    }
+
+    /// The value-window checks a SETTER owes, emitted against the BOUNDARY value and BEFORE any
+    /// conversion of it.
+    ///
+    /// Both halves of that position are forced, not chosen. It is a setter's job and no other
+    /// member's: every other door that takes a bounded parameter hands it to a rust constructor that
+    /// range-checks it and whose `Result` the guest already unwraps, while a setter writes the field
+    /// directly. And it must precede the conversion, because a `.len()` check on a
+    /// `collect()`-bound local is E0282 in generated code — the container type is pinned only by the
+    /// consuming assignment, which comes after. That is also exactly where the wasm face puts its
+    /// own check (`records.rs` emits `value_bounds_check_line` on the wasm parameter, ahead of
+    /// `from_wasm_boundary_clone`), so the two faces stay structurally parallel.
+    ///
+    /// Reads the CONDITION out of `bounds.rs`, the single owner of every value-window spelling in
+    /// this project; only the `Err(..)` construction is component-specific.
+    fn boundary_bounds_checks(&self, params: &[WitParam]) -> Vec<String> {
+        params
+            .iter()
+            .filter_map(|param| {
+                super::bounds::component_bounds_check_line(
+                    param.rust_type.as_ref()?,
+                    &kebab_to_snake(&param.name),
+                    &self.runtime(),
+                )
+            })
+            .collect()
     }
 
     fn emit_member(&self, resource: &WitResource, member: &WitMember, alias: &str) -> String {
@@ -932,11 +967,13 @@ impl Emitter<'_, '_> {
                 self.wit_rust_type(&p.ty, alias, true)
             ));
         }
-        // The two members that MINT the owning resource — `from-cbor-bytes` and a choice's
-        // `new-<variant>` — cannot name it from inside the member without carrying their own owner,
-        // so the emitter fills it in, exactly as the WIT renderer does.
+        // The members that MINT the owning resource — `from-cbor-bytes`, `from-raw-bytes` and a
+        // choice's `new-<variant>` — cannot name it from inside the member without carrying their
+        // own owner, so the emitter fills it in, exactly as the WIT renderer does.
         let ret = match member.op {
-            WitMemberOp::FromCborBytes | WitMemberOp::NewVariant { .. } => {
+            WitMemberOp::FromCborBytes
+            | WitMemberOp::FromRawBytes
+            | WitMemberOp::NewVariant { .. } => {
                 if member.fallible {
                     format!(" -> Result<{own}, String>")
                 } else {
@@ -1021,6 +1058,11 @@ impl Emitter<'_, '_> {
             // absence, the setter sets presence — so the assignment wraps in `Some`.
             WitMemberOp::Setter { field } => {
                 let param = &member.params[0];
+                // The value window, checked on the boundary value before anything else touches it —
+                // a setter is the one door with no rust constructor between the caller and the
+                // field, so without this the WIT's `result<_, string>` would promise a check the
+                // glue never performs.
+                lines.extend(self.boundary_bounds_checks(std::slice::from_ref(param)));
                 let (materialized, args) = self.materialize(std::slice::from_ref(param), alias);
                 // Every argument guard is released by these statements, BEFORE the `borrow_mut`.
                 lines.extend(materialized);
@@ -1051,6 +1093,26 @@ impl Emitter<'_, '_> {
                 let arg = kebab_to_snake(&member.params[0].name);
                 lines.push(format!(
                     "<{rust} as {rt}::serialization::Deserialize>::from_cbor_bytes(&{arg})",
+                    rt = self.runtime()
+                ));
+                lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
+                lines.push("    .map_err(err)".to_owned());
+            }
+            // The RAW-bytes seam, and deliberately not the cbor one: the contract a
+            // `_CDDL_CODEGEN_RAW_BYTES_TYPE_` imposes on the user's type is `RawBytesEncoding`, and
+            // nothing requires `Serialize` of it — glue naming that trait would not compile.
+            // `to_raw_bytes` hands back a borrow, so the copy to an owned `Vec` is this face's, not
+            // the trait's.
+            WitMemberOp::ToRawBytes => {
+                lines.push(format!(
+                    "<{rust} as {rt}::serialization::RawBytesEncoding>::to_raw_bytes(&self.0.borrow()).to_vec()",
+                    rt = self.runtime()
+                ));
+            }
+            WitMemberOp::FromRawBytes => {
+                let arg = kebab_to_snake(&member.params[0].name);
+                lines.push(format!(
+                    "<{rust} as {rt}::serialization::RawBytesEncoding>::from_raw_bytes(&{arg})",
                     rt = self.runtime()
                 ));
                 lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
