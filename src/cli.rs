@@ -1178,4 +1178,19 @@ impl Cli {
             .clone()
             .unwrap_or_else(|| self.lib_name_code())
     }
+
+    /// The path prefix the `component/` guest crate reaches the common runtime through — the crate
+    /// hosting `serialization` (the bytes seam every resource's `to-cbor-bytes` / `from-cbor-bytes`
+    /// goes through) and `any_cbor`.
+    ///
+    /// Its own accessor on exactly the terms [`Self::common_import_json_gen`] states: the answer
+    /// coincides with the wasm one because both name the **rust** runtime crate, and that
+    /// coincidence is entirely about the rust crate. The wasm face already diverges elsewhere
+    /// (`--extern-wasm-crate` routes the built-in `Int`'s wasm face away from the bare override), so
+    /// a future divergence there must not silently retarget the guest glue's paths.
+    pub fn common_import_component(&self) -> String {
+        self.common_import_override
+            .clone()
+            .unwrap_or_else(|| self.lib_name_code())
+    }
 }
