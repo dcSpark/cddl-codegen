@@ -592,6 +592,23 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
                 .to_owned(),
         );
     }
+    // `--lib-name` reaches the WIT surface twice under --component — it is the default WIT package
+    // name and it is the world name — and unlike every other flag feeding a WIT identifier it has no
+    // `value_parser` at all. A cargo package name may legally begin with a digit, and the kebab
+    // converter refuses a digit-led word with an `assert!`, so without this rule a legal
+    // `--lib-name 4chain --component=true` PANICS inside generation. Flag problems are graceful
+    // errors here, never panics.
+    if cli.component
+        && let Some(problem) = crate::generation::wit::wit_identifier_problem(&cli.lib_name)
+    {
+        return Err(format!(
+            "--lib-name {name:?} cannot be used with --component=true: {problem}. The component \
+             face turns --lib-name into the generated WIT package name and the world name. Choose \
+             a --lib-name that converts to a WIT identifier, or name the package explicitly with \
+             --wit-package (which overrides the derived default).",
+            name = cli.lib_name
+        ));
+    }
     // One package name under two paths is ambiguous, not additive: a manifest holds ONE
     // `[dependencies]` entry per package, so the second value would silently replace the first.
     // Read off the RAW flag lists rather than the `*_deps()` accessors, whose `BTreeMap`s are

@@ -79,7 +79,6 @@ pub fn convert_to_snake_case(ident: &str) -> String {
 ///
 /// Merging is non-injective (`index_0` and a sibling literally named `index0` converge), which is
 /// why a post-conversion collision detector exists rather than a converter that tries to be clever.
-#[allow(dead_code)] // reached through the WIT projection and `WitPackageId::default_for_lib_name`
 pub fn convert_to_kebab_case(ident: &str) -> String {
     let snake = convert_to_snake_case(ident);
     let mut kebab = String::with_capacity(snake.len());

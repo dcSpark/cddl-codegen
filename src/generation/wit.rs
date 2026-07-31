@@ -18,8 +18,9 @@
 
 use crate::cli::Cli;
 use crate::intermediate::{
-    AliasIdent, ConceptualRustType, EnumVariantData, IntermediateTypes, ModuleScope, RestKind,
-    RustIdent, RustStructType, RustType,
+    AliasIdent, ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, ModuleScope,
+    Primitive, ROOT_SCOPE, RestKind, RestSemantics, RustIdent, RustRecord, RustStruct,
+    RustStructType, RustType,
 };
 use crate::utils::convert_to_kebab_case;
 use std::collections::{BTreeMap, BTreeSet};
@@ -45,10 +46,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// underscores to word separators, so a bare `_` cannot be produced, and `%_` is not a valid escaped
 /// identifier anyway (an id must have at least one word).
 ///
-/// `#[allow(dead_code)]`: its only reader is the WIT projection, the component face's next piece.
-/// The naming layer lands first so the detectors and the flag surface are built against a settled
-/// spelling rather than one invented twice.
-#[allow(dead_code)]
 pub(crate) const WIT_KEYWORDS: &[&str] = &[
     "as",
     "async",
@@ -103,7 +100,6 @@ pub(crate) const WIT_KEYWORDS: &[&str] = &[
 /// generated Rust bindings, and both the name-collision detector and the rust↔WIT parity gate
 /// compare the UNESCAPED spelling — so escaping must never be baked into
 /// [`convert_to_kebab_case`].
-#[allow(dead_code)] // see WIT_KEYWORDS above
 pub(crate) fn wit_escape(name: &str) -> String {
     if WIT_KEYWORDS.contains(&name) {
         format!("%{name}")
@@ -126,7 +122,6 @@ pub(crate) struct WitPackageId {
 
 impl WitPackageId {
     /// The default for a `--lib-name`: `cddl:<kebab lib-name>@0.1.0`.
-    #[allow(dead_code)] // reached through `Cli::wit_package`, whose caller is the projection
     pub(crate) fn default_for_lib_name(lib_name: &str) -> Self {
         Self {
             namespace: "cddl".to_owned(),
@@ -220,6 +215,1205 @@ impl std::fmt::Display for WitPackageId {
     }
 }
 
+// =================================================================================================
+// The projection value
+//
+// `component.rs` consumes this, never the rendered text and never the IR — so every member carries
+// BOTH its WIT name and the rust ident/expression it bridges to. A name re-derived at the emitter
+// is a silent-drift source between the two faces and between the emitter and the parity gate.
+// =================================================================================================
+
+/// A shape the phase-1 projection cannot render. Never surfaced to the user as an error: the walk
+/// converts it to an EXCLUSION record (R5), so a spec carrying a phase-2 type class generates a WIT
+/// WITHOUT that type rather than failing.
+#[derive(Clone, Debug)]
+pub(crate) enum WitError {
+    /// The type's own shape has no phase-1 WIT projection.
+    Unprojectable { shape: String },
+}
+
+impl std::fmt::Display for WitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WitError::Unprojectable { shape } => write!(f, "{shape}"),
+        }
+    }
+}
+
+fn unprojectable(shape: impl Into<String>) -> WitError {
+    WitError::Unprojectable {
+        shape: shape.into(),
+    }
+}
+
+type ProjectResult<T> = Result<T, WitError>;
+
+/// The whole WIT package as a value: one interface per exported `ModuleScope`, plus the exclusion
+/// records that make the phase-1 type coverage visible in the emitted file instead of silent.
+#[derive(Clone, Debug)]
+pub(crate) struct WitPackage {
+    pub id: WitPackageId,
+    /// The world name (`<kebab lib-name>-world`), UNESCAPED.
+    pub world: String,
+    pub interfaces: BTreeMap<ModuleScope, WitInterface>,
+    /// Types kept out of the projection, keyed by rust ident — rendered as `// unexported:` rows in
+    /// the interface of the scope that owns them.
+    pub excluded: BTreeMap<RustIdent, WitExclusion>,
+}
+
+/// One WIT `interface`, i.e. one exported module scope, i.e. one input file.
+#[derive(Clone, Debug)]
+pub(crate) struct WitInterface {
+    /// The interface name, UNESCAPED (`a::c` → `a-c`; the root scope → `types`).
+    pub name: String,
+    pub scope: ModuleScope,
+    /// `use <interface>.{<type>, …};` — the cross-interface edges, by target interface NAME.
+    pub uses: BTreeMap<String, BTreeSet<String>>,
+    /// Type definitions, in render order (sorted by WIT name).
+    pub types: Vec<WitTypeDef>,
+    /// Free functions (the `any-cbor` introspection door), in render order.
+    pub funcs: Vec<WitFunc>,
+}
+
+/// A type kept OUT of the projection. `root` names the head of the reference chain, so a
+/// transitively-excluded type points at the original cause rather than at its neighbour.
+#[derive(Clone, Debug)]
+pub(crate) struct WitExclusion {
+    pub scope: ModuleScope,
+    pub reason: String,
+    pub root: String,
+}
+
+/// One item in an interface's type namespace.
+#[derive(Clone, Debug)]
+pub(crate) enum WitTypeDef {
+    Resource(WitResource),
+    Enum(WitEnum),
+    /// The fixed `variant int { uint(u64), nint(u64) }` — emitted into every interface that uses
+    /// it. Its shape is not derived from the IR (the `Int` prelude extern carries none), so it has
+    /// no payload.
+    IntVariant,
+    /// `type any-cbor = list<u8>;`
+    AnyCborAlias,
+    /// `enum any-cbor-kind { … }` — the 12 cases of the static runtime's `AnyCborKind`.
+    AnyCborKind,
+}
+
+impl WitTypeDef {
+    /// The item's WIT name, UNESCAPED — the key the collision detector and the parity gate compare.
+    pub fn name(&self) -> &str {
+        match self {
+            WitTypeDef::Resource(r) => &r.name,
+            WitTypeDef::Enum(e) => &e.name,
+            WitTypeDef::IntVariant => INT_TYPE_NAME,
+            WitTypeDef::AnyCborAlias => ANY_CBOR_TYPE_NAME,
+            WitTypeDef::AnyCborKind => ANY_CBOR_KIND_TYPE_NAME,
+        }
+    }
+}
+
+/// A class-backed type: a WIT `resource` over the rust crate's struct.
+#[derive(Clone, Debug)]
+pub(crate) struct WitResource {
+    /// UNESCAPED WIT name.
+    pub name: String,
+    /// The rust type this resource wraps (`RefCell<<crate>::<ident>>` in the guest).
+    pub ident: RustIdent,
+    pub constructor: Option<WitConstructor>,
+    pub members: Vec<WitMember>,
+}
+
+/// A c-style enum: a WIT `enum` VALUE type. The WIT-side rust type is minted by
+/// `wit_bindgen::generate!`, so the guest needs a per-case bridge — hence each case carries the
+/// rust variant ident it maps to.
+#[derive(Clone, Debug)]
+pub(crate) struct WitEnum {
+    pub name: String,
+    pub ident: RustIdent,
+    pub cases: Vec<WitEnumCase>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WitEnumCase {
+    /// UNESCAPED WIT name.
+    pub name: String,
+    /// The rust enum variant ident (`Color::<rust_variant>`). See [`WitMemberOp`] for why the
+    /// rust-side half of every pair is carried and why it reads as dead until the emitters land.
+    #[allow(dead_code)]
+    pub rust_variant: String,
+}
+
+/// A resource `constructor`. Fallible constructors lower to `fn new(..) -> Result<Self, E>` (Ok =
+/// the guest REP type) while a fallible STATIC lowers to `Result<Handle, E>` — one emitter template
+/// cannot serve both, which is why the two are separate shapes here.
+#[derive(Clone, Debug)]
+pub(crate) struct WitConstructor {
+    pub params: Vec<WitParam>,
+    pub fallible: bool,
+}
+
+/// One `func` on a resource.
+#[derive(Clone, Debug)]
+pub(crate) struct WitMember {
+    /// UNESCAPED WIT name.
+    pub name: String,
+    /// `static func` rather than a method.
+    pub is_static: bool,
+    pub params: Vec<WitParam>,
+    /// The `ok` type, or `None` for `result<_, string>` / a `func()` returning nothing.
+    pub result: Option<WitType>,
+    pub fallible: bool,
+    /// What the guest glue must DO — the half `component.rs` cannot re-derive from a name.
+    pub op: WitMemberOp,
+}
+
+/// The rust-side operation a WIT member bridges to.
+///
+/// `#[allow(dead_code)]` on the payloads (here and on [`WitParam::rust_name`],
+/// [`WitEnumCase::rust_variant`], [`WitFunc::op`]): this is the half of the projection the RENDERER
+/// never reads and the guest emitter reads exclusively. It is carried anyway — that is the whole
+/// point of projecting to a VALUE rather than to text — because an emitter that re-derived a rust
+/// name from a WIT name would drift silently from both this module and the parity gate. The
+/// attributes come off with `component.rs`.
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub(crate) enum WitMemberOp {
+    /// Read `self.0.borrow().<field>` and clone it across the boundary.
+    Getter {
+        field: String,
+    },
+    /// Write `self.0.borrow_mut().<field>`; the value is materialized BEFORE the `borrow_mut`
+    /// (the re-entrancy invariant).
+    Setter {
+        field: String,
+    },
+    /// Read the `bool` presence flag a mandatory-less fixed-value field stores.
+    PresenceGetter {
+        field: String,
+    },
+    /// Write that same presence flag.
+    PresenceSetter {
+        field: String,
+    },
+    /// A `@newtype` wrapper's inner-value getter (`self.0.borrow().<getter>()`).
+    WrapperGet {
+        getter: String,
+    },
+    /// The open-struct rest row's captured content.
+    RestGetter {
+        field: String,
+    },
+    ToCborBytes,
+    FromCborBytes,
+}
+
+/// One parameter of a constructor / method / free function.
+#[derive(Clone, Debug)]
+pub(crate) struct WitParam {
+    /// UNESCAPED WIT name.
+    pub name: String,
+    /// The rust field/argument name this parameter feeds. Positional for constructors, but carried
+    /// anyway so the emitter never re-kebabs a name back. See [`WitMemberOp`].
+    #[allow(dead_code)]
+    pub rust_name: String,
+    pub ty: WitType,
+}
+
+/// An interface-level free function (no `self`).
+#[derive(Clone, Debug)]
+pub(crate) struct WitFunc {
+    pub name: String,
+    pub params: Vec<WitParam>,
+    pub result: Option<WitType>,
+    pub fallible: bool,
+    /// See [`WitMemberOp`].
+    #[allow(dead_code)]
+    pub op: WitFuncOp,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum WitFuncOp {
+    /// `AnyCbor::from_cbor_bytes(v)?.kind()`.
+    AnyCborKind,
+}
+
+/// A WIT type at a USE site. Ownership (`own` vs `borrow`) is a POSITION property applied at render
+/// — never stored — because the same field type appears in both directions.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub(crate) enum WitType {
+    Bool,
+    U8,
+    U16,
+    U32,
+    U64,
+    S8,
+    S16,
+    S32,
+    S64,
+    F32,
+    F64,
+    Str,
+    List(Box<WitType>),
+    Tuple(Vec<WitType>),
+    Option(Box<WitType>),
+    /// A handle to a resource this package defines.
+    Handle(WitTypeRef),
+    /// A c-style enum value type this package defines.
+    Enum(WitTypeRef),
+    Int,
+    AnyCbor,
+    /// The `any-cbor-kind` enum. Synthesized per interface like [`WitType::AnyCbor`], so it needs no
+    /// [`WitTypeRef`] — nothing ever `use`s it across an interface boundary.
+    AnyCborKind,
+}
+
+/// A reference to a named type, carrying the scope that DEFINES it so the `use` graph is computable
+/// without a second IR walk.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub(crate) struct WitTypeRef {
+    pub scope: ModuleScope,
+    /// UNESCAPED WIT name.
+    pub name: String,
+    pub ident: RustIdent,
+}
+
+/// The WIT name of the full-range CBOR integer variant.
+const INT_TYPE_NAME: &str = "int";
+/// The WIT name of the transparent CBOR-item alias.
+const ANY_CBOR_TYPE_NAME: &str = "any-cbor";
+/// The WIT name of its discriminant enum.
+const ANY_CBOR_KIND_TYPE_NAME: &str = "any-cbor-kind";
+/// The free function projecting `AnyCbor::kind()`.
+const ANY_CBOR_KIND_FUNC_NAME: &str = "cbor-kind";
+/// The interface name the ROOT scope (`lib`) projects to. `lib` is a cargo-layout word with no
+/// meaning at the WIT boundary, and `types` is what a hand-written package calls the interface
+/// holding a package's types — the spike's spelling. A spec whose own scope converts to `types`
+/// collides with it, which the package-level collision check reports.
+const ROOT_INTERFACE_NAME: &str = "types";
+/// The 12 cases of the static runtime's `AnyCborKind`, as (WIT case, rust variant) pairs. Read out
+/// of `static/any_cbor_*.rs`; the pairing is what lets the guest glue bridge both directions
+/// without re-deriving a name.
+const ANY_CBOR_KIND_CASES: &[(&str, &str)] = &[
+    ("uint", "UInt"),
+    ("nint", "NInt"),
+    ("bytes", "Bytes"),
+    ("text", "Text"),
+    ("array", "Array"),
+    ("map", "Map"),
+    ("tag", "Tag"),
+    ("bool", "Bool"),
+    ("null", "Null"),
+    ("undefined", "Undefined"),
+    ("unassigned", "Unassigned"),
+    ("float", "Float"),
+];
+/// The ident of the reserved prelude extern for the full CBOR integer range. Spelled the same way
+/// the four other sites that special-case it do (`rust_type.rs`, `extern_interface.rs`,
+/// `emit_tests.rs`, `emit_tests_wasm.rs`) so one grep finds them all.
+const INT_EXTERN_IDENT: &str = "Int";
+
+/// A type staged for inclusion, with the named types it references (for the reference closure) and
+/// whether it pulled in the per-interface `int` / `any-cbor` definitions.
+struct StagedType {
+    scope: ModuleScope,
+    def: WitTypeDef,
+    refs: BTreeSet<RustIdent>,
+    uses_int: bool,
+    uses_any_cbor: bool,
+}
+
+// =================================================================================================
+// The projection walk
+// =================================================================================================
+
+/// Walk the FINALIZED IR into a [`WitPackage`]. INFALLIBLE by construction (R5): a type whose shape
+/// has no phase-1 projection — or which references one — is EXCLUDED AND RECORDED, and the package
+/// still renders.
+///
+/// The `match` over `RustStructType` is EXHAUSTIVE (no `_ =>` arm) so a new IR variant forces an
+/// explicit projection decision at compile time rather than silently vanishing from the WIT.
+pub(crate) fn project(types: &IntermediateTypes, cli: &Cli) -> WitPackage {
+    let mut staged: BTreeMap<RustIdent, StagedType> = BTreeMap::new();
+    let mut excluded: BTreeMap<RustIdent, WitExclusion> = BTreeMap::new();
+
+    for (ident, rust_struct) in types.rust_structs() {
+        let scope = types.scope(ident);
+        if !scope.export() {
+            continue;
+        }
+        // The reserved `int` prelude extern is not a type of its own here: it projects to the `int`
+        // VARIANT at each use site (B3a), so listing it as an unexported extern would be a false
+        // record of a type the WIT actually carries.
+        if ident.to_string() == INT_EXTERN_IDENT {
+            continue;
+        }
+        // A named collection (`names = [+ text]`, `attrs = {* text => uint}`) is RESOLVED THROUGH at
+        // its use sites rather than surfaced — the same rule the CDDL alias row takes, and what
+        // keeps the wasm-posture purity invariant reachable. It is neither included nor excluded:
+        // the WIT is complete without it.
+        if matches!(
+            rust_struct.variant(),
+            RustStructType::Array { .. } | RustStructType::Table { .. }
+        ) {
+            continue;
+        }
+        let name = wit_type_name(ident);
+        let mut refs = BTreeSet::new();
+        let mut ctx = TypeCtx {
+            types,
+            refs: &mut refs,
+            uses_int: false,
+            uses_any_cbor: false,
+            resolving: BTreeSet::new(),
+        };
+        let projected = project_struct(&name, ident, rust_struct, &mut ctx);
+        let (uses_int, uses_any_cbor) = (ctx.uses_int, ctx.uses_any_cbor);
+        match projected {
+            Ok(def) => {
+                staged.insert(
+                    ident.clone(),
+                    StagedType {
+                        scope: scope.clone(),
+                        def,
+                        refs,
+                        uses_int,
+                        uses_any_cbor,
+                    },
+                );
+            }
+            Err(e) => {
+                excluded.insert(
+                    ident.clone(),
+                    WitExclusion {
+                        scope: scope.clone(),
+                        reason: e.to_string(),
+                        root: ident.to_string(),
+                    },
+                );
+            }
+        }
+    }
+
+    // Reference closure to fixpoint: a resource whose signature names an excluded type would dangle,
+    // so it is excluded too, naming the chain ROOT rather than its immediate neighbour. Monotone
+    // (types only ever leave `staged`), so it terminates; deterministic (`BTreeMap` iteration, first
+    // offending reference in `BTreeSet` order).
+    loop {
+        let next = staged.iter().find_map(|(ident, st)| {
+            st.refs.iter().find(|r| !staged.contains_key(*r)).map(|r| {
+                let root = excluded
+                    .get(r)
+                    .map(|e| e.root.clone())
+                    .unwrap_or_else(|| r.to_string());
+                (ident.clone(), root)
+            })
+        });
+        let Some((ident, root)) = next else {
+            break;
+        };
+        let st = staged.remove(&ident).expect("just found in the same map");
+        excluded.insert(
+            ident,
+            WitExclusion {
+                scope: st.scope,
+                reason: format!("references excluded {root}"),
+                root,
+            },
+        );
+    }
+
+    // Assemble the interfaces. Every exported scope carrying a staged OR excluded type gets one; an
+    // interface with nothing in it is still legal WIT and is still emitted (R6).
+    let mut interfaces: BTreeMap<ModuleScope, WitInterface> = BTreeMap::new();
+    for st in staged.values() {
+        ensure_interface(&mut interfaces, &st.scope);
+    }
+    for exc in excluded.values() {
+        ensure_interface(&mut interfaces, &exc.scope);
+    }
+    for st in staged.values() {
+        let iface = interfaces
+            .get_mut(&st.scope)
+            .expect("every staged scope was ensured above");
+        iface.types.push(st.def.clone());
+        if st.uses_int {
+            iface.types.push(WitTypeDef::IntVariant);
+        }
+        if st.uses_any_cbor {
+            iface.types.push(WitTypeDef::AnyCborAlias);
+            iface.types.push(WitTypeDef::AnyCborKind);
+            iface.funcs.push(any_cbor_kind_func());
+        }
+        // Cross-interface `use`: a type defined in ANOTHER exported scope must be imported by name.
+        for referenced in &st.refs {
+            let target = types.scope(referenced);
+            if target == &st.scope {
+                continue;
+            }
+            iface
+                .uses
+                .entry(interface_name(target))
+                .or_default()
+                .insert(wit_type_name(referenced));
+        }
+    }
+    // The per-interface `int` / `any-cbor` definitions are pushed once per USING type above, so
+    // deduplicate them (and give every interface a stable render order) here.
+    for iface in interfaces.values_mut() {
+        iface.types.sort_by(|a, b| a.name().cmp(b.name()));
+        // BOTH sides must be synthesized: a user type that happens to convert to `any-cbor` is a
+        // COLLISION for the detector to report, and collapsing it here would silently swallow the
+        // very thing the detector exists to catch.
+        iface
+            .types
+            .dedup_by(|a, b| synthesized_type(a) && synthesized_type(b) && a.name() == b.name());
+        iface.funcs.sort_by(|a, b| a.name.cmp(&b.name));
+        iface.funcs.dedup_by(|a, b| a.name == b.name);
+    }
+
+    WitPackage {
+        id: cli.wit_package(),
+        world: world_name(&cli.lib_name),
+        interfaces,
+        excluded,
+    }
+}
+
+/// Whether a type definition is one of the fixed, per-interface SYNTHESIZED ones (`int`,
+/// `any-cbor`, `any-cbor-kind`) — the only ones that may legitimately be staged more than once and
+/// therefore the only ones deduplication may collapse. A repeated USER type name is a collision the
+/// detector reports, never something to silently drop.
+fn ensure_interface(interfaces: &mut BTreeMap<ModuleScope, WitInterface>, scope: &ModuleScope) {
+    interfaces
+        .entry(scope.clone())
+        .or_insert_with(|| WitInterface {
+            name: interface_name(scope),
+            scope: scope.clone(),
+            uses: BTreeMap::new(),
+            types: Vec::new(),
+            funcs: Vec::new(),
+        });
+}
+
+fn synthesized_type(def: &WitTypeDef) -> bool {
+    matches!(
+        def,
+        WitTypeDef::IntVariant | WitTypeDef::AnyCborAlias | WitTypeDef::AnyCborKind
+    )
+}
+
+fn any_cbor_kind_func() -> WitFunc {
+    WitFunc {
+        name: ANY_CBOR_KIND_FUNC_NAME.to_owned(),
+        params: vec![WitParam {
+            name: "v".to_owned(),
+            rust_name: "v".to_owned(),
+            ty: WitType::AnyCbor,
+        }],
+        result: Some(WitType::AnyCborKind),
+        fallible: true,
+        op: WitFuncOp::AnyCborKind,
+    }
+}
+
+/// The WIT name of a rust type: its ident, kebab-converted. Deliberately the RUST ident rather than
+/// the CDDL source rule name — the rust↔WIT parity gate compares against the rust surface, and
+/// `@name` renames the rust ident, which is what makes the rename the documented collision remedy.
+fn wit_type_name(ident: &RustIdent) -> String {
+    convert_to_kebab_case(ident.as_ref())
+}
+
+/// The interface name of a module scope: its path segments kebab-converted and joined with `-`
+/// (`a::c` → `a-c`). Flattening is non-injective, which is why the package-level collision check
+/// exists rather than a cleverer join.
+fn interface_name(scope: &ModuleScope) -> String {
+    if scope == &*ROOT_SCOPE {
+        return ROOT_INTERFACE_NAME.to_owned();
+    }
+    scope
+        .components()
+        .iter()
+        .map(|c| convert_to_kebab_case(c))
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// The world name for a `--lib-name`.
+fn world_name(lib_name: &str) -> String {
+    format!("{}-world", convert_to_kebab_case(lib_name))
+}
+
+/// The per-occurrence state a type mapping threads: what it referenced, whether it pulled in a
+/// synthesized definition, and which named collections it is currently resolving THROUGH (a
+/// self-referential collection alias would otherwise recurse forever — a stack overflow is a panic,
+/// and this module never panics).
+struct TypeCtx<'a, 'b> {
+    types: &'a IntermediateTypes<'b>,
+    refs: &'a mut BTreeSet<RustIdent>,
+    uses_int: bool,
+    uses_any_cbor: bool,
+    resolving: BTreeSet<RustIdent>,
+}
+
+/// Project one IR struct into its WIT type definition.
+fn project_struct(
+    name: &str,
+    ident: &RustIdent,
+    rust_struct: &RustStruct,
+    ctx: &mut TypeCtx,
+) -> ProjectResult<WitTypeDef> {
+    match rust_struct.variant() {
+        RustStructType::Record(record) => Ok(WitTypeDef::Resource(project_record(
+            name, ident, record, ctx,
+        )?)),
+        RustStructType::Wrapper {
+            wrapped,
+            min_max,
+            float_min_max,
+        } => Ok(WitTypeDef::Resource(project_wrapper(
+            name,
+            ident,
+            rust_struct,
+            wrapped,
+            min_max.is_some() || float_min_max.is_some(),
+            ctx,
+        )?)),
+        RustStructType::CStyleEnum { variants } => Ok(WitTypeDef::Enum(project_c_style_enum(
+            name, ident, variants,
+        ))),
+        // Resolved through at use sites; never reached (filtered in `project`), but spelled out so
+        // the match stays exhaustive without an `_ =>` arm.
+        RustStructType::Array { .. } | RustStructType::Table { .. } => Err(unprojectable(
+            "a named collection is resolved through at its use sites, never surfaced",
+        )),
+        RustStructType::TypeChoice { .. } | RustStructType::GroupChoice { .. } => Err(
+            unprojectable("type and group choices are not yet projected (phase 2)"),
+        ),
+        // The reserved `Int` extern is filtered before this point; every OTHER extern needs the
+        // bridging resource over the extern's own `Serialize`/`Deserialize`, which is phase-2 work.
+        RustStructType::Extern => Err(unprojectable(
+            "a hand-written extern type needs a bridging resource, which is not yet projected \
+             (phase 2)",
+        )),
+        RustStructType::RawBytesType => Err(unprojectable(
+            "a raw-bytes type needs a bridging resource, which is not yet projected (phase 2)",
+        )),
+    }
+}
+
+/// A record → a `resource`. The surface MIRRORS the wasm face (the maintainer's
+/// parallel-with-documented-deltas ruling): the constructor takes the mandatory non-fixed fields,
+/// every non-fixed field gets a bare getter, and only OPTIONAL fields get a `set-` setter.
+fn project_record(
+    name: &str,
+    ident: &RustIdent,
+    record: &RustRecord,
+    ctx: &mut TypeCtx,
+) -> ProjectResult<WitResource> {
+    let mut params = Vec::new();
+    let mut members = Vec::new();
+    let mut ctor_fallible = false;
+    for field in &record.fields {
+        let field_name = convert_to_kebab_case(&field.name);
+        if field.rust_type.is_fixed_value() {
+            // A mandatory fixed value carries no information and gets no accessor (the rust and wasm
+            // faces agree). An OPTIONAL one stores its presence as a `bool`, which is real state.
+            if field.optional {
+                members.push(WitMember {
+                    name: field_name.clone(),
+                    is_static: false,
+                    params: Vec::new(),
+                    result: Some(WitType::Bool),
+                    fallible: false,
+                    op: WitMemberOp::PresenceGetter {
+                        field: field.name.clone(),
+                    },
+                });
+                members.push(WitMember {
+                    name: format!("set-{field_name}"),
+                    is_static: false,
+                    params: vec![WitParam {
+                        name: "present".to_owned(),
+                        rust_name: "present".to_owned(),
+                        ty: WitType::Bool,
+                    }],
+                    result: None,
+                    fallible: false,
+                    op: WitMemberOp::PresenceSetter {
+                        field: field.name.clone(),
+                    },
+                });
+            }
+            continue;
+        }
+        let ty = map_rust_type(&field.rust_type, ctx)?;
+        let validates = wit_param_validates(&field.rust_type, ctx.types);
+        members.push(WitMember {
+            name: field_name.clone(),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(if field.optional {
+                WitType::Option(Box::new(ty.clone()))
+            } else {
+                ty.clone()
+            }),
+            fallible: false,
+            op: WitMemberOp::Getter {
+                field: field.name.clone(),
+            },
+        });
+        if field.optional {
+            // The setter takes the BARE type, as the wasm face's does — it sets a value, it never
+            // clears one. The getter reports absence, so the two are deliberately asymmetric.
+            members.push(WitMember {
+                name: format!("set-{field_name}"),
+                is_static: false,
+                params: vec![WitParam {
+                    name: field_name,
+                    rust_name: field.name.clone(),
+                    ty,
+                }],
+                result: None,
+                fallible: validates,
+                op: WitMemberOp::Setter {
+                    field: field.name.clone(),
+                },
+            });
+        } else {
+            params.push(WitParam {
+                name: field_name,
+                rust_name: field.name.clone(),
+                ty,
+            });
+            ctor_fallible |= validates;
+        }
+    }
+    // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
+    // `@ignore` row stores nothing, so it has no accessor at all.
+    if let Some(rest) = &record.rest
+        && rest.semantics == RestSemantics::Capture
+    {
+        let ty = match &rest.kind {
+            RestKind::MapEntries { domain, range, .. } => {
+                WitType::List(Box::new(WitType::Tuple(vec![
+                    map_rust_type(domain, ctx)?,
+                    map_rust_type(range, ctx)?,
+                ])))
+            }
+            RestKind::ArrayTail { element } => {
+                WitType::List(Box::new(map_rust_type(element, ctx)?))
+            }
+        };
+        members.push(WitMember {
+            name: convert_to_kebab_case(&rest.field_name),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(ty),
+            fallible: false,
+            op: WitMemberOp::RestGetter {
+                field: rest.field_name.clone(),
+            },
+        });
+    }
+    members.extend(bytes_members());
+    Ok(WitResource {
+        name: name.to_owned(),
+        ident: ident.clone(),
+        constructor: Some(WitConstructor {
+            params,
+            fallible: ctor_fallible,
+        }),
+        members,
+    })
+}
+
+/// A `@newtype` wrapper → a `resource` with a constructor and the inner-value getter. The getter's
+/// name follows the rust one exactly (`@newtype <name>` renames both), and a SET NOMINAL emits no
+/// bare `get` on the rust side, so neither does the WIT.
+fn project_wrapper(
+    name: &str,
+    ident: &RustIdent,
+    rust_struct: &RustStruct,
+    wrapped: &RustType,
+    bounded: bool,
+    ctx: &mut TypeCtx,
+) -> ProjectResult<WitResource> {
+    let config = rust_struct.config();
+    let getter = match config.newtype_getter.as_ref() {
+        Some(Some(custom)) => Some(custom.clone()),
+        _ if config.set_nominal => None,
+        _ => Some("get".to_owned()),
+    };
+    let ty = map_rust_type(wrapped, ctx)?;
+    let mut members = Vec::new();
+    if let Some(getter) = getter {
+        members.push(WitMember {
+            name: convert_to_kebab_case(&getter),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(ty.clone()),
+            fallible: false,
+            op: WitMemberOp::WrapperGet { getter },
+        });
+    }
+    members.extend(bytes_members());
+    Ok(WitResource {
+        name: name.to_owned(),
+        ident: ident.clone(),
+        constructor: Some(WitConstructor {
+            params: vec![WitParam {
+                name: "inner".to_owned(),
+                rust_name: "inner".to_owned(),
+                ty,
+            }],
+            fallible: bounded || wit_param_validates(wrapped, ctx.types),
+        }),
+        members,
+    })
+}
+
+/// A c-style enum → a WIT `enum` VALUE type. Each case carries its rust variant ident: the WIT enum
+/// type is minted by `wit_bindgen::generate!` and is a DISTINCT rust type from the crate's enum, so
+/// the guest needs a per-case bridge in both directions and must not re-derive the pairing.
+fn project_c_style_enum(name: &str, ident: &RustIdent, variants: &[EnumVariant]) -> WitEnum {
+    WitEnum {
+        name: name.to_owned(),
+        ident: ident.clone(),
+        cases: variants
+            .iter()
+            .map(|v| {
+                let rust_variant = v.name.to_string();
+                WitEnumCase {
+                    name: convert_to_kebab_case(&rust_variant),
+                    rust_variant,
+                }
+            })
+            .collect(),
+    }
+}
+
+/// The bytes seam every class-backed type carries. Emitted unconditionally — NOT gated on
+/// `--to-from-bytes-methods` — because the cross-crate seam and the extern bridging rows both
+/// depend on it (a per-face flag-semantics delta, plan §3).
+fn bytes_members() -> Vec<WitMember> {
+    vec![
+        WitMember {
+            name: "to-cbor-bytes".to_owned(),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(WitType::List(Box::new(WitType::U8))),
+            fallible: false,
+            op: WitMemberOp::ToCborBytes,
+        },
+        WitMember {
+            name: "from-cbor-bytes".to_owned(),
+            is_static: true,
+            params: vec![WitParam {
+                name: "bytes".to_owned(),
+                rust_name: "bytes".to_owned(),
+                ty: WitType::List(Box::new(WitType::U8)),
+            }],
+            // The `ok` type is the OWNING resource, which a member cannot name without carrying its
+            // own owner; `op` already says so, and the renderer fills it in.
+            result: None,
+            fallible: true,
+            op: WitMemberOp::FromCborBytes,
+        },
+    ]
+}
+
+/// Map one `RustType` occurrence to its WIT spelling.
+fn map_rust_type(ty: &RustType, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
+    map_conceptual(&ty.conceptual_type, ctx)
+}
+
+/// Map one `ConceptualRustType` occurrence. EXHAUSTIVE with no `_ =>` arm: a new IR variant must be
+/// an explicit projection decision, because silently falling through would emit a WIT that lies
+/// about the rust surface.
+fn map_conceptual(ty: &ConceptualRustType, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
+    match ty {
+        ConceptualRustType::Primitive(p) => Ok(map_primitive(*p)),
+        ConceptualRustType::Fixed(_) => Err(unprojectable(
+            "a fixed value carries no data and has no WIT type",
+        )),
+        ConceptualRustType::Any => {
+            ctx.uses_any_cbor = true;
+            Ok(WitType::AnyCbor)
+        }
+        ConceptualRustType::Rust(ident) => map_named(ident, ctx),
+        ConceptualRustType::Alias(AliasIdent::Rust(ident), base) => {
+            // A CDDL type alias is RESOLVED THROUGH — never surfaced (plan §4). The exception is an
+            // alias whose ident also names a projected struct (a named collection registers both),
+            // which resolves through the STRUCT so the two paths agree.
+            if ctx.types.rust_structs().contains_key(ident) {
+                map_named(ident, ctx)
+            } else {
+                map_conceptual(base, ctx)
+            }
+        }
+        ConceptualRustType::Alias(AliasIdent::Reserved(_), base) => map_conceptual(base, ctx),
+        ConceptualRustType::Optional(inner) => {
+            Ok(WitType::Option(Box::new(map_rust_type(inner, ctx)?)))
+        }
+        ConceptualRustType::Array(inner) => Ok(WitType::List(Box::new(map_rust_type(inner, ctx)?))),
+        // Never `map<K, V>`: its key domain (int/char/bool/string) cannot carry a hash-keyed chain
+        // map, and consumer tooling at the floor rejects it outright.
+        ConceptualRustType::Map(key, value) => Ok(WitType::List(Box::new(WitType::Tuple(vec![
+            map_rust_type(key, ctx)?,
+            map_rust_type(value, ctx)?,
+        ])))),
+    }
+}
+
+/// Map a reference to a named rust type. Named collections resolve THROUGH; the reserved `Int`
+/// extern becomes the `int` variant; everything class-backed becomes a handle or an enum and is
+/// recorded as a reference for the closure and the `use` graph.
+fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
+    if ident.to_string() == INT_EXTERN_IDENT {
+        ctx.uses_int = true;
+        return Ok(WitType::Int);
+    }
+    let Some(rust_struct) = ctx.types.rust_struct(ident) else {
+        return Err(unprojectable(format!(
+            "references `{ident}`, which names no generated type"
+        )));
+    };
+    let type_ref = || WitTypeRef {
+        scope: ctx.types.scope(ident).clone(),
+        name: wit_type_name(ident),
+        ident: ident.clone(),
+    };
+    match rust_struct.variant() {
+        RustStructType::Record(_) | RustStructType::Wrapper { .. } => {
+            let r = type_ref();
+            ctx.refs.insert(ident.clone());
+            Ok(WitType::Handle(r))
+        }
+        RustStructType::CStyleEnum { .. } => {
+            let r = type_ref();
+            ctx.refs.insert(ident.clone());
+            Ok(WitType::Enum(r))
+        }
+        RustStructType::Array { element_type, .. } => resolve_through(ident, ctx, |ctx| {
+            Ok(WitType::List(Box::new(map_rust_type(element_type, ctx)?)))
+        }),
+        RustStructType::Table { domain, range, .. } => resolve_through(ident, ctx, |ctx| {
+            Ok(WitType::List(Box::new(WitType::Tuple(vec![
+                map_rust_type(domain, ctx)?,
+                map_rust_type(range, ctx)?,
+            ]))))
+        }),
+        RustStructType::TypeChoice { .. } | RustStructType::GroupChoice { .. } => {
+            Err(unprojectable(format!(
+                "references `{ident}`, a type or group choice, which is not yet projected (phase 2)"
+            )))
+        }
+        RustStructType::Extern => Err(unprojectable(format!(
+            "references the extern type `{ident}`, whose bridging resource is not yet projected \
+             (phase 2)"
+        ))),
+        RustStructType::RawBytesType => Err(unprojectable(format!(
+            "references the raw-bytes type `{ident}`, whose bridging resource is not yet projected \
+             (phase 2)"
+        ))),
+    }
+}
+
+/// Resolve a named collection through to its element spelling, refusing to re-enter one already on
+/// the stack. A self-referential collection alias would otherwise recurse until the stack ends —
+/// and a stack overflow is a panic, which this module does not do.
+fn resolve_through(
+    ident: &RustIdent,
+    ctx: &mut TypeCtx,
+    f: impl FnOnce(&mut TypeCtx) -> ProjectResult<WitType>,
+) -> ProjectResult<WitType> {
+    if !ctx.resolving.insert(ident.clone()) {
+        return Err(unprojectable(format!(
+            "references `{ident}`, a collection whose element type resolves back to itself"
+        )));
+    }
+    let out = f(ctx);
+    ctx.resolving.remove(ident);
+    out
+}
+
+fn map_primitive(p: Primitive) -> WitType {
+    match p {
+        Primitive::Bool => WitType::Bool,
+        Primitive::F32 => WitType::F32,
+        Primitive::F64 => WitType::F64,
+        Primitive::U8 => WitType::U8,
+        Primitive::U16 => WitType::U16,
+        Primitive::U32 => WitType::U32,
+        Primitive::U64 => WitType::U64,
+        Primitive::I8 => WitType::S8,
+        Primitive::I16 => WitType::S16,
+        Primitive::I32 => WitType::S32,
+        Primitive::I64 => WitType::S64,
+        // `nint` is a `u64` on the rust surface too (the magnitude of a negative number), so the WIT
+        // matches it rather than inventing a signed spelling the rust side does not have.
+        Primitive::N64 => WitType::U64,
+        Primitive::Str => WitType::Str,
+        Primitive::Bytes => WitType::List(Box::new(WitType::U8)),
+    }
+}
+
+/// Whether a WIT parameter of this rust type must be VALIDATED at the boundary — i.e. whether the
+/// projection dropped a constraint the rust type carries in its own type system.
+///
+/// Two sources: a value bound (`uint .size 2`, a float window), which makes the rust constructor
+/// fallible too; and a DESPECIALIZED collection — `[+ T]`'s `NonEmptyVec` and `@duplicates reject`'s
+/// `OrderedSet` both become a plain `list<t>` in WIT, so the invariant their single `TryFrom` door
+/// enforces has to be re-checked where the list is consumed. A plain table is NOT in this class: a
+/// `BTreeMap` carries no invariant a `list<tuple<K, V>>` can violate.
+fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
+    if ty.has_value_bounds() || ty.is_type_enforced_non_empty() || ty.duplicates_reject() {
+        return true;
+    }
+    // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the
+    // registered alias that carries the bounds) still despecializes, so read the bound off the
+    // struct as well.
+    if let ConceptualRustType::Rust(ident) = ty.conceptual_type.resolve_alias_shallow()
+        && let Some(rust_struct) = types.rust_struct(ident)
+        && matches!(
+            rust_struct.variant(),
+            RustStructType::Array {
+                bounds: Some((Some(1), None)),
+                ..
+            } | RustStructType::Table {
+                bounds: Some((Some(1), None)),
+                ..
+            }
+        )
+    {
+        return true;
+    }
+    match &ty.conceptual_type {
+        ConceptualRustType::Optional(inner) | ConceptualRustType::Array(inner) => {
+            wit_param_validates(inner, types)
+        }
+        ConceptualRustType::Map(key, value) => {
+            wit_param_validates(key, types) || wit_param_validates(value, types)
+        }
+        ConceptualRustType::Primitive(_)
+        | ConceptualRustType::Fixed(_)
+        | ConceptualRustType::Any
+        | ConceptualRustType::Rust(_)
+        | ConceptualRustType::Alias(_, _) => false,
+    }
+}
+
+// =================================================================================================
+// Rendering
+// =================================================================================================
+
+/// Render a projected package to its `.wit` files, keyed by path relative to `<output>`.
+///
+/// One file today (`component/wit/world.wit`): WIT resolves a whole DIRECTORY as one package, so the
+/// split into files is presentational, and one file keeps the cross-interface `use` edges readable
+/// in the order the projection computed them.
+pub(crate) fn render(package: &WitPackage) -> BTreeMap<String, String> {
+    let mut out = String::new();
+    out.push_str(&format!("package {};\n", package.id));
+    for iface in package.interfaces.values() {
+        out.push('\n');
+        out.push_str(&format!("interface {} {{\n", wit_escape(&iface.name)));
+        for (target, names) in &iface.uses {
+            let names = names
+                .iter()
+                .map(|n| wit_escape(n))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push_str(&format!("  use {}.{{{names}}};\n", wit_escape(target)));
+        }
+        // Exclusion records, sorted by ident: the direct analog of the extern-interface export's
+        // `; unexported:` rows, and the carrier a cross-crate consumer reads a reason from.
+        for (ident, exc) in &package.excluded {
+            if exc.scope == iface.scope {
+                out.push_str(&format!("  // unexported: {ident} — {}\n", exc.reason));
+            }
+        }
+        for def in &iface.types {
+            out.push_str(&render_type_def(def));
+        }
+        for func in &iface.funcs {
+            out.push_str(&format!(
+                "  {}: func({}){};\n",
+                wit_escape(&func.name),
+                render_params(&func.params),
+                render_result(func.result.as_ref(), func.fallible)
+            ));
+        }
+        out.push_str("}\n");
+    }
+    out.push('\n');
+    out.push_str(&format!("world {} {{\n", wit_escape(&package.world)));
+    for iface in package.interfaces.values() {
+        out.push_str(&format!("  export {};\n", wit_escape(&iface.name)));
+    }
+    out.push_str("}\n");
+
+    let mut files = BTreeMap::new();
+    files.insert(
+        format!("{}/world.wit", crate::generation::layout::COMPONENT_WIT_DIR),
+        out,
+    );
+    files
+}
+
+fn render_type_def(def: &WitTypeDef) -> String {
+    let mut out = String::new();
+    match def {
+        WitTypeDef::Resource(resource) => {
+            out.push_str(&format!("  resource {} {{\n", wit_escape(&resource.name)));
+            if let Some(ctor) = &resource.constructor {
+                let ret = if ctor.fallible {
+                    format!(" -> result<{}, string>", wit_escape(&resource.name))
+                } else {
+                    String::new()
+                };
+                out.push_str(&format!(
+                    "    constructor({}){ret};\n",
+                    render_params(&ctor.params)
+                ));
+            }
+            for member in &resource.members {
+                let statik = if member.is_static { "static " } else { "" };
+                out.push_str(&format!(
+                    "    {}: {statik}func({}){};\n",
+                    wit_escape(&member.name),
+                    render_params(&member.params),
+                    render_member_result(member, &resource.name)
+                ));
+            }
+            out.push_str("  }\n");
+        }
+        WitTypeDef::Enum(e) => {
+            out.push_str(&format!("  enum {} {{\n", wit_escape(&e.name)));
+            for case in &e.cases {
+                out.push_str(&format!("    {},\n", wit_escape(&case.name)));
+            }
+            out.push_str("  }\n");
+        }
+        WitTypeDef::IntVariant => {
+            out.push_str(&format!("  variant {INT_TYPE_NAME} {{\n"));
+            out.push_str("    uint(u64),\n");
+            // Mirrors the rust crate's own `Int::new_nint` doc, deliberately verbatim: the bias is
+            // the single most surprising fact about this type and a second wording would drift.
+            out.push_str(
+                "    // a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. \
+                 to represent -5, pass in 4\n",
+            );
+            out.push_str("    nint(u64),\n");
+            out.push_str("  }\n");
+        }
+        WitTypeDef::AnyCborAlias => {
+            out.push_str(&format!("  type {ANY_CBOR_TYPE_NAME} = list<u8>;\n"));
+        }
+        WitTypeDef::AnyCborKind => {
+            out.push_str(&format!("  enum {ANY_CBOR_KIND_TYPE_NAME} {{\n"));
+            for (case, _) in ANY_CBOR_KIND_CASES {
+                out.push_str(&format!("    {},\n", wit_escape(case)));
+            }
+            out.push_str("  }\n");
+        }
+    }
+    out
+}
+
+fn render_params(params: &[WitParam]) -> String {
+    params
+        .iter()
+        .map(|p| format!("{}: {}", wit_escape(&p.name), render_type(&p.ty, true)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A member's return spelling. A resource's own `from-cbor-bytes` names the resource, which the
+/// projection carries as a placeholder handle so the renderer does not have to thread the owner.
+fn render_member_result(member: &WitMember, owner: &str) -> String {
+    let ok = match (&member.op, &member.result) {
+        (WitMemberOp::FromCborBytes, _) => Some(wit_escape(owner)),
+        (_, Some(ty)) => Some(render_type(ty, false)),
+        (_, None) => None,
+    };
+    render_arrow(ok, member.fallible)
+}
+
+fn render_result(ok: Option<&WitType>, fallible: bool) -> String {
+    render_arrow(ok.map(|ty| render_type(ty, false)), fallible)
+}
+
+/// The ` -> …` tail of a function signature, INCLUDING the arrow — empty when the function returns
+/// nothing and cannot fail, which WIT spells by omitting the arrow rather than by a unit type.
+fn render_arrow(ok: Option<String>, fallible: bool) -> String {
+    match (ok, fallible) {
+        (Some(ok), true) => format!(" -> result<{ok}, string>"),
+        (Some(ok), false) => format!(" -> {ok}"),
+        (None, true) => " -> result<_, string>".to_owned(),
+        (None, false) => String::new(),
+    }
+}
+
+/// Render a type at a use site. `param` selects the OWNERSHIP: every parameter position borrows a
+/// composite (`borrow<t>`, `list<borrow<t>>`) and every return position mints a fresh `own`. The
+/// canonical ABI CONSUMES an `own` handle passed as an argument, so getting this backwards would
+/// silently destroy caller-held objects — and `borrow` in return position is rejected at resolve,
+/// so the mirrored mistake fails the validity gate loudly.
+fn render_type(ty: &WitType, param: bool) -> String {
+    match ty {
+        WitType::Bool => "bool".to_owned(),
+        WitType::U8 => "u8".to_owned(),
+        WitType::U16 => "u16".to_owned(),
+        WitType::U32 => "u32".to_owned(),
+        WitType::U64 => "u64".to_owned(),
+        WitType::S8 => "s8".to_owned(),
+        WitType::S16 => "s16".to_owned(),
+        WitType::S32 => "s32".to_owned(),
+        WitType::S64 => "s64".to_owned(),
+        WitType::F32 => "f32".to_owned(),
+        WitType::F64 => "f64".to_owned(),
+        WitType::Str => "string".to_owned(),
+        WitType::List(inner) => format!("list<{}>", render_type(inner, param)),
+        WitType::Tuple(inner) => format!(
+            "tuple<{}>",
+            inner
+                .iter()
+                .map(|t| render_type(t, param))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        WitType::Option(inner) => format!("option<{}>", render_type(inner, param)),
+        WitType::Handle(r) => {
+            if param {
+                format!("borrow<{}>", wit_escape(&r.name))
+            } else {
+                wit_escape(&r.name)
+            }
+        }
+        WitType::Enum(r) => wit_escape(&r.name),
+        WitType::Int => INT_TYPE_NAME.to_owned(),
+        WitType::AnyCbor => ANY_CBOR_TYPE_NAME.to_owned(),
+        WitType::AnyCborKind => ANY_CBOR_KIND_TYPE_NAME.to_owned(),
+    }
+}
+
+/// The emitted `.wit` files for a spec, keyed by path relative to `<output>`.
+///
+/// INFALLIBLE, exactly like `extern_interface_files`: everything unrenderable is excluded-with-record
+/// (R5), so a spec carrying a phase-2 type class still regenerates cleanly and the gap is visible in
+/// the emitted file rather than as a generation failure.
+///
+/// `#[allow(dead_code)]`: the production reader is `export.rs`'s `generated_files`, which lands with
+/// the guest-crate emitters — the component tree is written as a whole or not at all. Until then the
+/// renderer is exercised by the `#[cfg(test)] api::wit_strings` door and the WIT-validity gate, so
+/// the attribute covers a producer that is unwired, not one that is unreachable, and comes off with
+/// that wiring.
+#[allow(dead_code)]
+pub(crate) fn wit_files(types: &IntermediateTypes, cli: &Cli) -> BTreeMap<String, String> {
+    render(&project(types, cli))
+}
+
 /// Strong-uniqueness collisions in the WIT surface, one message per collision.
 ///
 /// WIT compares names after stripping the `[method]`/`[static]`/`[constructor]` prefixes, and an
@@ -230,12 +1424,139 @@ impl std::fmt::Display for WitPackageId {
 /// sibling detectors — the AGENTS.md parallel-sibling ruling is about the wasm WRAPPER-name family,
 /// whose members have genuinely different inputs.
 ///
-/// Wired at `finalize` now and returning nothing, because every one of the three checks reads the
-/// projection value, which lands with the WIT emitter. The invocation site exists first so the
-/// detector's arrival is a body change rather than a plumbing change — and so the flag surface
-/// shipped in this state cannot be mistaken for one that has already been checked.
-pub(crate) fn wit_name_collisions(_types: &IntermediateTypes, _cli: &Cli) -> Vec<String> {
-    Vec::new()
+/// The resource-level check is the one that cannot be delegated to the validity gate: a
+/// `transaction.transaction` collision survives `wit-parser` resolve AND `wit_component::encode`,
+/// failing only at component validation — so without this detector the user's first sighting is a
+/// wasm-level error naming a mangled `[method]` symbol.
+pub(crate) fn wit_name_collisions(types: &IntermediateTypes, cli: &Cli) -> Vec<String> {
+    let package = project(types, cli);
+    let mut msgs = Vec::new();
+
+    // 1 — package level. Interfaces and the world share one namespace, and the scope flattening
+    // (`a::c` → `a-c`) is not injective.
+    let mut package_names: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for iface in package.interfaces.values() {
+        package_names
+            .entry(iface.name.clone())
+            .or_default()
+            .push(format!("the interface for scope `{}`", iface.scope));
+    }
+    package_names
+        .entry(package.world.clone())
+        .or_default()
+        .push(format!("the world (from --lib-name `{}`)", cli.lib_name));
+    for (name, owners) in &package_names {
+        if owners.len() < 2 {
+            continue;
+        }
+        msgs.push(format!(
+            "WIT package name collision under --component: {owners} all convert to the WIT \
+             identifier `{name}`. A WIT package's interfaces and its world share ONE namespace, and \
+             the flattening of a nested module scope (`a::c` → `a-c`) is not injective, so the \
+             emitted package would declare that name twice and would not resolve. Rename an input \
+             file so the scopes differ after conversion, or move the world off the name with \
+             --lib-name.",
+            owners = owners.join(" and ")
+        ));
+    }
+
+    // 2 — interface level. One flat type namespace per interface.
+    for iface in package.interfaces.values() {
+        let mut type_names: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        for def in &iface.types {
+            type_names.entry(def.name()).or_default().push(match def {
+                WitTypeDef::Resource(r) => format!("the type `{}`", r.ident),
+                WitTypeDef::Enum(e) => format!("the type `{}`", e.ident),
+                WitTypeDef::IntVariant => "the `int` variant".to_owned(),
+                WitTypeDef::AnyCborAlias => "the `any-cbor` alias".to_owned(),
+                WitTypeDef::AnyCborKind => "the `any-cbor-kind` enum".to_owned(),
+            });
+        }
+        for (name, owners) in &type_names {
+            if owners.len() < 2 {
+                continue;
+            }
+            msgs.push(format!(
+                "WIT type name collision under --component: {owners} all convert to the WIT \
+                 identifier `{name}` in interface `{iface}`. A WIT interface is ONE flat namespace, \
+                 so the emitted interface would declare that name twice and would not resolve. \
+                 Rename one of them with the `@name` comment-DSL directive, which renames the \
+                 generated type without touching the spec's wire format.",
+                owners = owners.join(" and "),
+                iface = iface.name
+            ));
+        }
+    }
+
+    // 3 — resource level. Members share one namespace WITH the resource's own name.
+    for iface in package.interfaces.values() {
+        for def in &iface.types {
+            let WitTypeDef::Resource(resource) = def else {
+                continue;
+            };
+            let mut member_names: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+            member_names
+                .entry(resource.name.as_str())
+                .or_default()
+                .push("the resource's own name".to_owned());
+            for member in &resource.members {
+                member_names
+                    .entry(member.name.as_str())
+                    .or_default()
+                    .push(format!("the member `{}`", member.name));
+            }
+            for (name, owners) in &member_names {
+                if owners.len() < 2 {
+                    continue;
+                }
+                msgs.push(format!(
+                    "WIT resource member collision under --component: {owners} in resource \
+                     `{resource}` (interface `{iface}`) all convert to the WIT identifier `{name}`. \
+                     WIT compares member names after stripping the \
+                     `[method]`/`[static]`/`[constructor]` prefixes, and a resource may not carry a \
+                     member named after the resource itself, so the emitted package RESOLVES and \
+                     even ENCODES but fails component validation. Rename the field with the `@name` \
+                     comment-DSL directive, which renames the generated accessor without touching \
+                     the spec's wire format.",
+                    owners = owners.join(" and "),
+                    resource = resource.name,
+                    iface = iface.name
+                ));
+            }
+        }
+    }
+
+    msgs
+}
+
+/// Why `name` cannot be a WIT identifier, or `None` if it can.
+///
+/// The component face converts `--lib-name` into the default WIT package name and the world name,
+/// and `--lib-name` has no `value_parser` — a cargo package name may legally begin with a digit,
+/// which [`convert_to_kebab_case`] refuses with an `assert!`. Flag problems are graceful errors in
+/// this tool, never panics, so `api::validate_flag_combinations` consults this BEFORE any converter
+/// runs.
+pub(crate) fn wit_identifier_problem(name: &str) -> Option<String> {
+    let snake = crate::utils::convert_to_snake_case(name);
+    let words: Vec<&str> = snake.split('_').filter(|w| !w.is_empty()).collect();
+    let Some(first) = words.first() else {
+        return Some("it converts to an empty WIT identifier".to_owned());
+    };
+    if first.starts_with(|c: char| c.is_ascii_digit()) {
+        return Some(format!(
+            "it converts to the digit-led WIT identifier `{first}…`, and a WIT identifier's first \
+             word must start with a letter"
+        ));
+    }
+    if let Some(c) = snake
+        .chars()
+        .find(|c| !matches!(c, 'a'..='z' | '0'..='9' | '_'))
+    {
+        return Some(format!(
+            "it carries the character {c:?}, and a WIT identifier is ASCII kebab-case ([a-z0-9-])"
+        ));
+    }
+    None
 }
 
 /// Cross-scope reference CYCLES, one message per non-trivial strongly-connected component.
