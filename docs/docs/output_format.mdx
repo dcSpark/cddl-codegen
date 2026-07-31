@@ -405,11 +405,6 @@ map) and one admitting **`null`** (a `null` key and the break ending an indefini
 CBOR special values, so the row's key dispatch cannot tell them apart). The value type is unrestricted
 (including `any`).
 
-A key domain outside `uint`/`text`/`any` is CBOR-only for now: it is rejected under
-[`--json-serde-derives`/`--json-schema-export`](command_line_flags), because the flattened-JSON
-surface below images rest keys as JSON object member names and that image is defined only for the
-three fast-path domains.
-
 **The `rest` field.** A `pub` map named `rest` (rename with `@name` on the row — see
 [the comment DSL](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)), keyed by `K`, valued `V`.
 It is **excluded from `new()`** and defaults empty, so adding a rest row to an existing spec is both
@@ -439,7 +434,10 @@ object level as the declared members** (via serde `flatten`), under the natural-
 
 - *Write* (`to_json`) errors if a rest key stringifies to a **declared member's JSON name**, if two
   rest keys stringify identically, or if a rest key/value falls in the natural failure set (a complex
-  `any` key, non-finite float, bytes, …). Values render through the natural walk.
+  `any` key, non-finite float, bytes, …). Values render through the natural walk for an `any` range;
+  a **typed range renders through `V`'s own serde**, so a union value is serde's externally-tagged
+  object (`{"Text": "hi"}`) and a `bytes` union arm is the derive's array of byte numbers — the
+  hex spelling is the typed-bytes *field* convention and a union arm never reaches it.
 - *Read* (`from_json`) binds the **declared member names first**; every other key lands in `rest`
   (loose JSON parsing for free). Typed domains parse deterministically (uint decimal / text verbatim);
   an `any` domain uses the prefer-numeric key rule (a canonical decimal spelling reads back as an
@@ -453,6 +451,44 @@ object level as the declared members** (via serde `flatten`), under the natural-
   container that is: a `@duplicates preserve` row therefore publishes exactly the schema its
   non-preserve twin publishes (the duplicate-key `to_json` failure above is data-dependent and has
   no JSON-Schema expression).
+
+### Typed key domains in JSON
+
+A rest key is a JSON object **member name**, so a general key type `K` needs a *string image* — not
+`K`'s own JSON rendering. The image is the `any` domain's key convention applied to `K`'s **own CBOR
+bytes**: **text verbatim**, **uint/nint in decimal**, and every other CBOR major type has **no image
+at all** (`to_json` errors naming the kind). An encoding operation on the domain (`#6.24(uint)`,
+`bytes .cbor uint`) is not part of the image — the image is of `K`'s rust member, which the read side
+rebuilds and the CBOR serializer re-wraps, so the two faces stay symmetric. Consequences worth
+knowing: a `* bytes => V` row has no JSON image for *any* key, so its flattened region is a pure
+error surface in both directions; and a `nint` domain images the wire **value** (`-5`), not the rust
+member, which holds the CBOR argument (`4`).
+
+Reading a member name back prefers the **numeric** reading and **falls back to the text** reading when
+`K` refuses it; a name every reading refuses is a hard parse error, never a capture. The fallback is
+what makes the JSON fixed point total: a text-only `K` holding the key `"12"` would otherwise write a
+document our own reader rejects. The contract:
+
+| | |
+|---|---|
+| **T1** JSON fixed point, **total** | if `to_json` succeeds with document `J`, `from_json(J)` succeeds and `to_json(from_json(J)) == J`, for every `K` |
+| **T2** value fixed point, **partial** | `from_json(to_json(x)) == x` unless some key of `x` is a TEXT whose content is a canonical decimal spelling *and* `K` also admits the numeric reading of it — the `any` domain's documented ambiguity, now scoped by what `K` admits (CBOR stays authoritative) |
+| **T3** write is loudly fallible on data | `to_json` errors — never substitutes — on a key with no image, on two keys imaging identically, and on a key imaging to a declared member's JSON name |
+| **T4** refinement on read | a member name no reading of `K` admits fails the parse, mirroring the CBOR-side refinement semantics |
+
+T3's collision check is what keeps T2's carve-out bounded: a row can hold text `"12"` **or** uint `12`,
+never both, so the rebinding loses the key's *type* but never merges two entries. It is also why
+`@duplicates preserve` is CBOR-only fidelity — duplicate keys image identically by definition, so a
+row actually carrying duplicates has no JSON image and `to_json` errors naming the collision.
+
+The published **schema** of a typed-`K` region is an **open object over the range**
+(`additionalProperties`), on both containers. Member names are `K`'s key *image*, which no `K`-derived
+schema describes: deriving the region from `BTreeMap<K, V>` would constrain the names by `K`'s *value*
+schema and set `additionalProperties: false`, closing the very region the rest row advertises. The
+`BTreeMap`-derived shape is therefore kept only for the bare `uint`/`text` domains, where `K`'s schema
+and the key image coincide. Because the helper asks nothing of `K`, a key type with no
+`schemars::JsonSchema` impl (an extern carrying [`@no_json_schema_export`](comment_dsl)) still
+compiles — and contributes nothing to the published document.
 
 **wasm.** The rest field is exposed as a **read-only `rest()` getter** returning the minted map wrapper
 (no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);
