@@ -76,9 +76,9 @@
     },
     {
       "gate": "corpus_decode_replay",
-      "warm_ms": 770000,
+      "warm_ms": 936000,
       "n": 20,
-      "measured": "2026-07-28",
+      "measured": "2026-07-31",
       "machine": "86216c55",
       "history": [
         {
@@ -88,6 +88,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 770000
+        },
+        {
+          "date": "2026-07-31",
+          "warm_ms": 936000
         }
       ]
     },
