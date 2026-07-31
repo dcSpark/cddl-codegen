@@ -2540,7 +2540,49 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   fail-safe direction is what makes the count the right instrument rather than any measure of how
   many sites exist).
 
+- **A `wac`-composed component transpiled by jco loses cross-instance resource identity, and the
+  worse half of that is SILENT.** jco 1.26.1 allocates a separate handle table per component
+  *instance* for the same resource type and emits no transfer between them for a JS-held handle, so
+  on the dual-export world `component_compose` drives correctly through wasmtime: a dependency-minted
+  handle passed into a consumer function throws `Resource error: Not a valid "…" resource` (scalar
+  borrow and accumulator alike), and — the half that costs — a consumer getter returning a
+  dependency-typed `own` handle resolves the index in the wrong table and returns a **different
+  object**, with no error anywhere. A second, cheaper symptom sits on the same artifact: both
+  packages' single interface is named `types`, so the root typings emit `export * as types` twice and
+  fail `tsc --strict` with `TS2300`. It is a defect in the transpiler, not in what this tool emits —
+  the identical artifact is correct through wasmtime, and a single generated crate with *two*
+  interfaces transpiles and drives correctly, so the boundary is component instances rather than
+  interfaces. Owned meanwhile by two things: the known-broken pin in
+  `tests/component-jco/js/composed.test.mjs` (gate `component_jco`), whose failure messages each name
+  the work a fix creates, and the consumer instruction in `docs/docs/component_differences.mdx`,
+  cited by "Do not transpile a composed artifact", which prescribes per-component transpile plus
+  `--map` instead. **Retirement observable: that leg FAILING** — a green composed leg means the
+  defect is still there, and a red one is the good news. When it fires the work is one commit:
+  replace the three known-broken assertions with positive ones, drop the hazard section, and
+  re-point the packaging recipe if composing becomes the better shape. Read the gate's own log
+  before concluding either way — the leg **loud-skips alone** when the ambient `wac` is absent or
+  below 0.9, so a green run whose log does not name a `wac` version is silence, not evidence.
+
 ## Deferred features (build when a real consumer needs them)
+
+- **Probe the component face's JS surface on the axes the JS-host gate left untouched.** The
+  `component_jco` gate drives one jco version (1.26.1) and one node version (22) over the default
+  encoding posture, with no JSON doors, in node only — which is what its two reused fixtures carry.
+  Four axes are therefore documented as unprobed in `docs/docs/component_differences.mdx`, cited by
+  "Not probed on this face", each with the probe that would settle it: `--json-serde-derives`'
+  `to-json`/`from-json` doors (generate one of the existing fixtures with the flag and drive both
+  doors from node); the browser build of `@bytecodealliance/preview2-shim` (the same drivers under a
+  headless browser); `--preserve-encodings`' `to-canonical-cbor-bytes` (the surface fixture at that
+  posture, asserting byte-exactness across the JS boundary); and other jco/node versions (a second
+  pinned lockfile, or a second node in the gate's provisioning preflight). Each is a
+  fixture-and-lockfile change rather than new machinery, so what is deferred is coverage breadth and
+  the cold-run cost that buys it — none of the four sits on the path the motivating consumer takes.
+  - **Reopening signal:** a consumer reporting a JS-side failure on one of those axes — the party
+    running the browser build, the preserve posture or a newer jco is the only one who can see it
+    first, and the report names which axis to probe. The gate's exact pins are what make such a
+    report actionable rather than ambiguous: a failure at a version the gate does not pin is a
+    version finding, while a failure at 1.26.1 on node 22 is a regression the gate should already
+    have caught.
 
 - **Make the BOTH-set custom pair on a named struct rule mean "generated impls that delegate to
   the named functions" (symmetric delegation).** Today the record-rule both-set spelling
