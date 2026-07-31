@@ -1131,8 +1131,34 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     Ok(ops)
 }
 
+/// The declarative changeset for `component/Cargo.toml`. The `cddl-lib` path-dep key name (and the
+/// package name) derive from `--lib-name` via the same substring replacement as its siblings'.
+///
+/// Deliberately SHORTER than [`ops_for_wasm`], and each absence is a decision:
+/// - **no `--rust-wasm-feature` op** — the rust path dep stays feature-plain (see the log's entry 5:
+///   `#[wasm_bindgen]` attributes emit `__wbindgen_*` imports that componentization cannot resolve
+///   on wasip2);
+/// - **no `std_feature_op`** — the component crate is `std` by nature (it targets wasip2 and links
+///   `wit-bindgen`), declares no `std` feature and consumes the rust crate with default features on,
+///   so there is nothing here for a `--std-forward-dep` to switch. That is exactly the reason
+///   [`ops_for_wasm`] states for the same absence;
+/// - **no json/serde conditional deps** — the component face has no JSON surface yet.
+pub fn ops_for_component(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
+    let mut ops = ops_from_log(cli, "manifest_changes/component.toml")?;
+    // `--component-dep=<package>=<path>`: ASSERT-ONLY, on exactly the terms `ops_for_wasm` states
+    // for `--wasm-dep` — the package name lives only inside the flag value, so a dropped flag
+    // carries no name to tombstone and a stale entry lingers until removed by hand.
+    ops.extend(manifest_dep_ops(
+        cli.component_deps(),
+        &std::collections::BTreeSet::new(),
+    ));
+
+    ops.push(version_stamp());
+    Ok(ops)
+}
+
 /// `[dependencies].<package> = { path = "<path>" }` per entry of a `--rust-dep` / `--wasm-dep` /
-/// `--json-gen-dep` map, as assert-only [`ManifestOp::Set`]s.
+/// `--json-gen-dep` / `--component-dep` map, as assert-only [`ManifestOp::Set`]s.
 ///
 /// Built through `toml_edit` rather than a formatted snippet so the path is quoted and escaped by
 /// the TOML writer: unlike every value elsewhere in this file, it is user-supplied at the point of

@@ -853,6 +853,12 @@ impl GenerationScope {
                 crate::cargo_manifest::ops_for_json_gen(cli)?,
             ));
         }
+        if cli.component {
+            manifest_ops.push((
+                crate::generation::layout::COMPONENT_MANIFEST,
+                crate::cargo_manifest::ops_for_component(cli)?,
+            ));
+        }
         for (rel_path, ops) in &manifest_ops {
             if files.contains_key(*rel_path) {
                 let existing = std::fs::read_to_string(rust_dir.join(rel_path)).ok();
