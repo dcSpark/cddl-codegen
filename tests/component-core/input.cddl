@@ -1,0 +1,37 @@
+; The phase-1 component fixture: one shape per WIT type-mapping row the projection supports, and
+; nothing else. Type and group choices are deliberately ABSENT — they are excluded-and-recorded
+; until phase 2, and a fixture carrying them would test the exclusion path rather than the mapping.
+
+; a bounded newtype wrapper -> `resource hash` with a FALLIBLE constructor
+hash = bytes .size 32
+
+; a c-style enum -> a WIT `enum` VALUE type
+color = 0 / 1 / 2
+
+; a collection-mediated recursive type: the only recursion spelling the generator produces working
+; rust for, and the shape WIT's resource handles exist to carry
+node = [
+  label: text,
+  children: [* node],
+]
+
+; a NonEmpty list: type-enforced in rust, despecialized to a plain `list<string>` in WIT, so the
+; constraint moves to the consuming constructor/setter
+names = [+ text]
+
+; a table -> `list<tuple<string, u64>>`, never `map<K, V>`
+attrs = { * text => uint }
+
+; a record: mandatory + optional fields, every primitive row, and one field per container row
+record = {
+  id: uint,
+  name: text,
+  digest: hash,
+  delta: int,
+  tags: names,
+  props: attrs,
+  kind: color,
+  root: node,
+  meta: any,
+  ? note: text,
+}

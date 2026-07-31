@@ -118,3 +118,21 @@ schemars = "1.2.1"
 # Harness-side ONLY: `gate_cache` content-addresses generated-crate trees (memoize-and-skip for
 # the nested-cargo gates). Already in-tree transitively, so this adds no lockfile weight.
 sha2 = "0.10"
+
+# Harness-side ONLY (never a generated-crate dep): the WIT-validity gate's ORACLE. The component
+# face's emitted `.wit` is parsed and resolved (`wit-parser`), encoded to a component-model package
+# (`wit-component`) and then VALIDATED (`wasmparser`) — four stages, because the strong-uniqueness
+# collision class the in-generator detector exists for survives resolve AND encode and fails only at
+# validation.
+#
+# All three carry an `=` pin at the toolchain FLOOR made executable: fallible constructors, which
+# this face emits for every bounds-validating type, are REJECTED by wasm-tools 1.231-era tooling and
+# accepted from wit-parser 0.247 on. Since these crates ARE the gate's oracle, a floating version
+# would let the oracle drift off the floor the generated WIT is written against. Bump all three
+# together, and only with a re-probe of the keyword set (`generation::wit::WIT_KEYWORDS`).
+wit-parser = "=0.247.0"
+# Deliberately default-features: the `dummy-module` feature gates a `ComponentEncoder` path that is a
+# FALSE ORACLE for worlds exporting resources (it fails a package that resolves, encodes, validates
+# and builds).
+wit-component = "=0.247.0"
+wasmparser = "=0.247.0"

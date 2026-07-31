@@ -176,6 +176,13 @@ type CorpusParityInput = (&'static str, &'static [CorpusParityProfile]);
 
 const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
     (
+        // The component face's phase-1 fixture. Ordinary CDDL with no component-only construct, so
+        // it is swept here on the same terms as every other input; the component gates over it live
+        // in `component_tests`.
+        "component-core",
+        &[("default", &[])],
+    ),
+    (
         "canonical",
         &[(
             "canonical",
