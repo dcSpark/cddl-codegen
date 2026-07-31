@@ -10,11 +10,19 @@
 //! rust↔WIT parity gate and the cross-crate export both consume the projection, and a
 //! re-derivation at the second consumer is a silent-drift source.
 //!
-//! # What is here now
+//! # Two reference walks, and why they differ
 //!
-//! The naming layer (keyword escaping over [`crate::utils::convert_to_kebab_case`]) and the two
-//! detectors that run at `finalize` under `--component`. The projection value itself, and the
-//! renderers over it, land with the WIT emitter.
+//! [`collect_projected_refs`] answers "which SCOPES does this type reach" for the cycle detector;
+//! [`map_conceptual`] answers "what does this occurrence SPELL in WIT" and collects its references
+//! as a by-product. They agree on the case that matters — a transparent alias is resolved through,
+//! never recorded — but they diverge on a NAMED COLLECTION: the cycle detector records the
+//! collection's own ident, while the projection resolves through it to the element type and records
+//! THAT. Consequence, stated so a reader does not have to re-derive it: a reference that reaches a
+//! third scope only through a named collection (`rec` in `b` holding a `names` in `a` whose element
+//! lives in `c`) produces a `use c.{…}` edge the cycle detector never saw. It is the safe direction
+//! for the emitted WIT — the `use` is correct — but a cycle closed exclusively through such an edge
+//! reaches the user as a `wit-parser` "depends on itself" resolve failure rather than as the
+//! detector's message. Widening the detector's walk is the fix when a spec demands it.
 
 use crate::cli::Cli;
 use crate::intermediate::{
