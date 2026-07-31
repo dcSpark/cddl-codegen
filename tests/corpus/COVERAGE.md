@@ -251,7 +251,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.doc` | ✅ | @doc — rust doc comment | `dsl_doc.cddl` |
 | `dsl.duplicates.preserve` | ✅ | @duplicates preserve — duplicate-preserving pair-map tables | `table_preserve.cddl` |
 | `dsl.duplicates.reject` | ✅ | @duplicates reject — duplicate-free set/array collections | `tag_set_reject.cddl` |
-| `dsl.extern_companions` | ➖ | @extern_companions — reference a sibling crate's wasm companion classes |  — ⚠️ no rationale note yet (overlay gap) |
+| `dsl.extern_companions` | ➕ | @extern_companions — reference a sibling crate's wasm companion classes | supported; declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate |
 | `dsl.ignore` | ✅ | @ignore — tolerate-and-drop open struct-map rest row | `dsl_ignore.cddl` |
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
@@ -436,7 +436,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **118** — ✅ 66 covered · ➕ 24 supported-untested · ⚠️ 1 partial · ➖ 27 not supported
+- Features: **118** — ✅ 66 covered · ➕ 25 supported-untested · ⚠️ 1 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 89
 
@@ -449,6 +449,3 @@ rows above); constructs whose support doesn't vary by role stay feature-axis (th
 top-level). The full role × feature picture — every construct the corpus exercises or the containment
 relation models, in every role — is rendered above in **§ Role × feature containment grid**, joined from
 the whole-corpus floor; that is where a cell nothing models shows up.
-
-**Overlay rationale gap (disclosed).** 1 unsupported feature(s) render ➖ with no rationale note —
-add a `[[note]]` (reason + code_anchor) to the overlay: `dsl.extern_companions`.

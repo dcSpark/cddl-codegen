@@ -114,6 +114,8 @@ const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "dsl.copy": "references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e",
   "dsl.rust_name":
     "pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair",
+  "dsl.extern_companions":
+    "declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate",
 };
 
 // --- EMISSION-PROFILE axis (design rationale: see README.md + ROADMAP.md) ----------------------------------------------
