@@ -372,11 +372,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      boundary that must stay intact. The union-KEYED shape is not the real
      Cardano driver anyway (metadata keys are int/text/bytes; the recursion is in the VALUE, covered
      by the tstr-keyed headline).
-   - **Cross-crate wrapper-request hosting of a preserve table.** `requests.rs` threads
-     `rt.is_preserve_pair_map()` (correct-by-construction), but an inline cross-crate wrapper request
-     carries no directive, so a preserve table hosted purely via `--wrapper-requests` from a consumer
-     is untested (the named-rule and generic-instance paths ARE covered). A cross-crate preserve
-     wrapper-request fixture would close it.
    - **Set-nominalization residuals (Delivery 2 of the set-architecture rethink —
      `d177516`/`816969f`/`13b63a2`/`7daca67`).** Named, generic-instance, and inline `#6.258` sets
      are now nominal wrapper types owning their `{tag, len, elem}` encodings. Three follow-ups
@@ -514,44 +509,25 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    does NOT reproduce — a block that self-clears is a false positive by construction, which is
    exactly how the no_std one was identified.
 
-10. **The wasm crate does not compile for two shape COMBINATIONS, each of whose ingredients is
-    covered alone.** Both were found while probing the declared-type-spelling delivery, both
-    reproduce at that delivery's parent (`a5d8eec6`) with a binary built there, and neither is
-    caused by it — the spelling change moves `EncodingField::type_name` inputs, which reach the rust
-    crate's `cbor_encodings.rs` only, while both failures are in emitted WASM.
-    - **(i) A structural wrapper name is claimed by two different container twins — `E0277`.**
-      `epoch = uint`, `meta = {* epoch => text} ; @duplicates preserve` (referenced by a record) plus
-      an open-struct rest row `* epoch => text`, under `--preserve-encodings --wasm`: the named
-      preserve rule mints the class `Meta` over `PairMap<u64, String>` and claims
-      `pub type MapEpochToText = Meta;`, while the rest row needs the LOOSE
-      `OrderedHashMap<u64, String>` wrapper for the same key/value shape and asks for it under the
-      same name. The rest accessor then emits `self.0.rest.clone().into()` against a class whose
-      `From` is over the pair-map twin: `the trait bound Meta: From<OrderedHashMap<u64, String>> is
-      not satisfied`.
-    - **(ii) An open-struct rest row's wasm surface is not routed across scopes — `E0425` ×2.**
-      A directory input with `epoch`/`policy_id` in module `a` and
-      `open_holder = {1: uint, * epoch => {* policy_id => text}}` in module `b`: `b/mod.rs`'s rest
-      accessor returns `MapEpochToMapPolicyIdToText`, which is minted at the crate ROOT and never
-      imported into `b`; and the root-minted wrapper's own `insert`/getter signatures name `Epoch`,
-      which lives in `a` and is not imported into the root either. The trigger is the REST ROW
-      specifically — the identical nested cross-scope map as a plain FIELD compiles clean, and a
-      cross-scope FLAT map rest row compiles clean, so it is the rest row's wasm surface that misses
-      the ref-marking both a field walk and a flat rest row get.
+10. **An open-struct rest row's wasm surface is not routed across scopes — `E0425` ×2.** Found while
+    probing the declared-type-spelling delivery, reproduces at that delivery's parent (`a5d8eec6`)
+    with a binary built there, and is not caused by it — the spelling change moves
+    `EncodingField::type_name` inputs, which reach the rust crate's `cbor_encodings.rs` only, while
+    the failure is in emitted WASM.
+    A directory input with `epoch`/`policy_id` in module `a` and
+    `open_holder = {1: uint, * epoch => {* policy_id => text}}` in module `b`: `b/mod.rs`'s rest
+    accessor returns `MapEpochToMapPolicyIdToText`, which is minted at the crate ROOT and never
+    imported into `b`; and the root-minted wrapper's own `insert`/getter signatures name `Epoch`,
+    which lives in `a` and is not imported into the root either. The trigger is the REST ROW
+    specifically — the identical nested cross-scope map as a plain FIELD compiles clean, and a
+    cross-scope FLAT map rest row compiles clean, so it is the rest row's wasm surface that misses
+    the ref-marking both a field walk and a flat rest row get.
     - **The missing system is combinatorial wasm compilation, not another fixture.** Every
-      ingredient here is covered in isolation: preserve pair-map tables have fixtures, rest rows have
-      fixtures, cross-scope references have fixtures, nested maps have fixtures. The wasm compile
-      cells are per-feature, so no cell crosses (container twin × rest row) or (rest row × scope ×
-      nesting depth). The cheap version is a small matrix of shape PAIRS compiled wasm-side —
-      generated once per pair, `cargo check`ed, no vectors — which is how both of these would have
-      surfaced before a consumer's build did.
-    - **(i) is a cross-KIND collision, which is why the four per-kind wrapper-name collision
-      detectors miss it.** They are deliberately parallel siblings with distinct pinned message
-      texts, and each sees only its own kind; nothing compares one kind's structural-name claim
-      against another's. A fifth sibling that compares claims ACROSS kinds is consistent with that
-      standing ruling (it needs its own message text anyway); collapsing the four into one generic
-      detector is not. The magnitude dimension is how many twins can claim one name — four today
-      (loose, pair-map, non-empty, reject-set) — so each new `@duplicates`-style twin multiplies the
-      unchecked pairs.
+      ingredient here is covered in isolation: rest rows have fixtures, cross-scope references have
+      fixtures, nested maps have fixtures. The wasm compile cells are per-feature, so no cell
+      crosses (rest row × scope × nesting depth). The cheap version is a small matrix of shape PAIRS
+      compiled wasm-side — generated once per pair, `cargo check`ed, no vectors — which is how this
+      would have surfaced before a consumer's build did.
 
 11. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
     lost one layer above where the spelling rule operates.** `holder = [j: bytes .cbor
@@ -1424,10 +1400,13 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   duplicate-symbol in one cdylib, the exact class workspace mode closes for lists/maps; inference
   from call-site enumeration, no fixture), while a reject rule's loose `try_from` SOURCE is
   defer-capable — "reject wrapper local + loose source deferred" is a live uncelled combination;
-  and the index is NAME-only, flavor-blind (a preserve-flavored `{* k=>v}` derives the same
-  structural name as the non-preserve flavor; the workspace sidecar records flavor, the index has
-  no shape column — unprobed, a probe-then-pin cell, expected symptom a boundary-conversion E0308
-  or silent wrong-container semantics). Arming evidence — the recur-first trigger is over-met,
+  and the index is NAME-only, which is flavor-SAFE rather than flavor-blind, because the structural
+  name carries the container (`PairMapKToV` vs `MapKToV`) — a cross-flavor index match is
+  unrepresentable, not merely unlikely, so the grid needs no hazard cell for it. The flavor's two
+  cross-crate carriers are each pinned end to end (the sidecar shape column by
+  `workspace_requests_hosts_preserve_pair_map_twins`; the paste-able manual-override rule line by
+  `preserve_map_defer_hint_is_paste_able`), which makes a preserve table an ordinary SHAPE ROW of
+  this grid, owed one cell per mode like any other shape. Arming evidence — the recur-first trigger is over-met,
   and every instance was found by reading the emitters, reported by a consumer, or found by a
   probe, never by a gate: (1) NAMED-table × workspace-borrowed (a synthesized keys-list whose
   deferred import only the inline-map reference position ever registered: E0412 stranding plus a
@@ -3317,6 +3296,32 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   staleness. Reopening signal: a consumer report in which the surviving pair is a defect for them
   — they dropped the flag to STOP forwarding and the persistence harms their build — rather than
   the documented safe leftover.
+- **`@wrapper_name` — a user-set name for a synthesized collection wrapper.** Declined in favor of
+  container-encoded structural names, which is what the wrapper-name collision class needed: a name
+  carrying its container (`PairMapKToV` vs `MapKToV`) makes a same-shape/different-flavor claim
+  unrepresentable rather than merely diagnosable. What a user-set name would still buy is the
+  SAME-flavor sibling-crate collision — two crates minting one structural name over same-spelled
+  local types — which is served by re-spelling a key or value alias in one of the two specs. The
+  design surface a future build must settle before it is cheap: two same-shape rows carrying
+  different names, against a structural name that is currently the identity the deferral index, the
+  request sidecars and the wrapper dedup all key on; user-authored names entering the rule-ident
+  collision detectors, which reason about generated spellings only; and name-keyed deferral matching
+  seeing a name no other crate can derive from the shape. Reopening signal: a consumer reports a
+  same-flavor sibling collision where the colliding key/value spelling is semantically load-bearing
+  on BOTH sides — the alias-respelling workaround would then misname a domain concept rather than
+  merely restate it.
+- **Checking `[runtime] flavor-from`'s safety condition rather than stating it.** The `[runtime]`
+  carrier derivation is a maintainer-CLOSED area (`AGENTS.md`), so this records the one build that
+  would be defensible IF that area reopens — not an intent to build it. Shape: error only on a
+  VIOLATED condition in a flavor-mismatched crate (a `{+ K => V}` or `any` construct in its spec, a
+  `--deserialize-depth-limit` divergence), never on the mismatch itself, which the once-per-run
+  carrier note already describes. The depth-limit divergence is the sharp one — it compiles, and
+  silently guards one crate's `any` values at another crate's limit. Cost the check carries: the
+  flag→poisoned-construct map becomes load-bearing and a stale map yields a false "safe", so it owes
+  a lockstep guard tying its construct list to the runtime's flavor-conditional surface. Reopening
+  signal: a consumer report of the silent depth-limit mis-guarding in a `flavor-from` workspace, or
+  of a mismatched crate's spec gaining a poisoned construct with the resulting failure attributed
+  downstream as a consumer bug.
 
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
