@@ -1,0 +1,7 @@
+; The `sub` scope (WIT interface `sub`): a leaf resource and a value-type enum, both reached from
+; the root scope. Nothing here references the root scope, so the interface graph is acyclic —
+; which WIT requires and `wit_scope_cycles` enforces.
+
+leaf = [n: uint]
+
+shade = 0 / 1

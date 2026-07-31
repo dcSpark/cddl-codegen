@@ -798,10 +798,13 @@ export const REGISTRY: Gate[] = [
     desc: "full test suite (incl. corpus + wasm-matrix compile gates)" },
   // Named separately from the `test` sweep above (which also runs it) so a component-face failure is
   // reportable as one: this suite's four-stage WIT-validity gate is the only place the emitted `.wit`
-  // is checked against the pinned component-model toolchain, and a tier log that names it is what
-  // makes that visible without reading the full test output.
+  // is checked against the pinned component-model toolchain, and its wasip2 build smoke the only
+  // place the emitted GUEST GLUE is compiled at all — a package whose WIT resolves, encodes and
+  // validates can still name a trait method that does not exist. A tier log that names this gate is
+  // what makes both visible without reading the full test output. The smoke is nested cargo and is
+  // memoized per generated-crate content hash by the gate cache, so an unchanged tree re-runs cheap.
   { id: "component_wit", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_tests"],
-    desc: "component face: WIT validity (resolve/encode/validate) + wasm-posture purity" },
+    desc: "component face: WIT validity (resolve/encode/validate), wasm-posture purity, wasip2 build smoke" },
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },

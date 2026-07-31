@@ -1,0 +1,11 @@
+; A spec whose SCOPES reference each other. Legal on the rust face (rust modules may reference each
+; other freely) and rejected under `--component`: each scope becomes one WIT interface, and WIT
+; requires `use`-linked interfaces to be acyclic.
+;
+; The cycle is deliberately INTERFACE-level and not type-level — `up` here reaches `down.cddl` and
+; `down` reaches back, but no single type is recursive — because that is the case a type-level
+; detector would miss.
+
+up = [d: down_leaf]
+
+up_leaf = [n: uint]

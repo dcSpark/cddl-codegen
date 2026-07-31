@@ -1,0 +1,14 @@
+; The multi-interface component fixture, ROOT scope (WIT interface `types`).
+;
+; Its record reaches into the `sub` scope, which is what makes the emitted package carry a
+; cross-interface `use` and the guest glue mint an `own` handle for a resource ANOTHER interface
+; declares — the two multi-interface facts a single-scope fixture cannot reach. Deliberately free of
+; externs, so unlike `tests/multifile` the generated rust crate builds with no hand-written
+; re-exports and the wasip2 build smoke can consume it.
+
+holder = {
+  name: text,
+  tip: leaf,
+  shade: shade,
+  tips: [* leaf],
+}
