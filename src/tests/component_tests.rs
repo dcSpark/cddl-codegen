@@ -7,6 +7,7 @@
 //! (1.231-era) rejects the fallible constructors this face emits for every bounds-validating type.
 
 use crate::cli::Cli;
+use crate::tests::gate_cache;
 use clap::Parser;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -18,13 +19,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// `tests/multifile/inputs` is here for two reasons no single-scope fixture can cover: it is a
 /// DIRECTORY input, so it exercises the multi-interface projection and the cross-interface `use`
 /// edges; and it contains externs and type choices, so it exercises exclude-and-record and the
-/// reference closure on a spec nobody wrote for this face.
+/// reference closure on a spec nobody wrote for this face. `tests/component-multifile/inputs` covers
+/// the same multi-interface shape with NO externs, which is what lets the build smoke compile it —
+/// `tests/multifile`'s own rust crate needs a hand-written extern re-export before it builds at all.
 const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
     ("tests/component-core/input.cddl", &[]),
     (
         "tests/component-core/input.cddl",
         &["--preserve-encodings=true"],
     ),
+    ("tests/component-multifile/inputs", &[]),
     ("tests/multifile/inputs", &[]),
 ];
 
@@ -357,4 +361,445 @@ fn a_lib_name_that_is_not_a_wit_identifier_is_a_flag_error_not_a_panic() {
         "4chain",
     ]);
     assert!(crate::api::validate_flag_combinations(&plain).is_ok());
+}
+
+// -------------------------------------------------------------------------------------------------
+// The guest glue's two load-bearing emission invariants
+// -------------------------------------------------------------------------------------------------
+
+/// The emitted `component/src/generated/mod.rs` of a spec, via the full generated-file producer (so
+/// what is asserted is what `export` writes, never a second path).
+fn component_glue(input: &str, extra: &[&str]) -> String {
+    let files = crate::api::generated_strings(&cli_for(input, extra))
+        .unwrap_or_else(|e| panic!("generating {input} with {extra:?} failed: {e}"));
+    files
+        .get("component/src/generated/mod.rs")
+        .unwrap_or_else(|| {
+            panic!(
+                "{input} with {extra:?} emitted no component glue:\n{:#?}",
+                files.keys()
+            )
+        })
+        .clone()
+}
+
+/// RE-ENTRANCY. The canonical ABI lets a caller pass the same handle as both receiver and argument
+/// (`x.set-children([x])`), and collection-mediated recursion makes that type-legal for any
+/// self-referential CDDL type. Glue holding two `RefCell` guards at once compiles clean in debug AND
+/// release and traps only on that call — and a trap poisons the whole component instance, so in a
+/// composed topology one aliased call kills a shared dependency for every consumer.
+///
+/// The mechanical form of the invariant: every argument is bound to an OWNED value by its own `let`
+/// (each borrow released at that statement's end) before any `borrow_mut`. Asserted structurally —
+/// no `borrow_mut` may appear before the last argument materialization in a body.
+#[test]
+fn component_glue_never_holds_two_refcell_guards() {
+    for (input, flags) in COMPONENT_FIXTURES {
+        let glue = component_glue(input, flags);
+        for (index, line) in glue.lines().enumerate() {
+            // The naive shape: a `borrow_mut` of self in the same expression as a `borrow` of an
+            // argument. Two guards live at once is exactly what this looks like textually.
+            assert!(
+                !(line.contains("borrow_mut()") && line.contains(".get::<Wit")),
+                "{input} with {flags:?} line {}: a `borrow_mut` in the same statement as an \
+                 argument's `.get::<Wit…>()` holds two RefCell guards at once — materialize the \
+                 argument into its own `let` first:\n{line}",
+                index + 1
+            );
+        }
+        // And the positive half, so the assertion above can never pass vacuously: the recursive
+        // fixture's constructor DOES materialize a list of borrows, in its own statement.
+        if *input == "tests/component-core/input.cddl" {
+            assert!(
+                glue.contains(
+                    "let children = children\n            .into_iter()\n            .map(|x| x.get::<WitNode>().0.borrow().clone())\n            .collect();"
+                ),
+                "the recursive fixture no longer materializes its `list<borrow<node>>` argument \
+                 into an owned value — the re-entrancy assertion above has gone vacuous:\n{glue}"
+            );
+        }
+    }
+}
+
+/// CLONE-AT-BOUNDARY. A getter mints a FRESH owned handle over a CLONE of the field: a snapshot,
+/// never an alias into the parent. An aliasing handle would let a caller mutate a field it never
+/// asked for, and would reintroduce the two-guard shape through the back door.
+#[test]
+fn component_glue_getters_return_a_snapshot_not_an_alias() {
+    let glue = component_glue("tests/component-core/input.cddl", &[]);
+    // Scalar handle field.
+    assert!(
+        glue.contains("wit_types::Hash::new(WitHash(RefCell::new(me.digest.clone())))"),
+        "the `digest` getter no longer clones the field into a fresh handle:\n{glue}"
+    );
+    // Collection of handles: every element is cloned into its own fresh handle.
+    assert!(
+        glue.contains(".map(|x| wit_types::Node::new(WitNode(RefCell::new(x.clone()))))"),
+        "the `children` getter no longer clones each element into a fresh handle:\n{glue}"
+    );
+}
+
+/// A fallible CONSTRUCTOR lowers to `fn new(..) -> Result<Self, E>` — the Ok type is the guest REP
+/// type, NOT the owned handle a fallible STATIC returns. One emitter template cannot serve both, and
+/// getting it backwards is a type error in generated code rather than anything a WIT gate can see.
+#[test]
+fn component_glue_distinguishes_a_fallible_constructor_from_a_fallible_static() {
+    let glue = component_glue("tests/component-core/input.cddl", &[]);
+    assert!(
+        glue.contains("fn new(inner: Vec<u8>) -> Result<Self, String> {"),
+        "the bounded wrapper's fallible constructor no longer returns the REP type:\n{glue}"
+    );
+    assert!(
+        glue.contains("fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Hash, String> {"),
+        "the fallible static no longer returns the owned handle:\n{glue}"
+    );
+}
+
+/// The `int` bridge's rust→WIT direction has to match the ARM SHAPE, which `--preserve-encodings`
+/// changes from a tuple to named fields. A `match` written for one posture does not compile under
+/// the other, and the first user to combine the flags would get the error in GENERATED code.
+#[test]
+fn component_glue_matches_the_int_arm_shape_of_the_encoding_posture() {
+    let plain = component_glue("tests/component-core/input.cddl", &[]);
+    assert!(
+        plain.contains("cddl_lib::Int::Uint(value) => wit_types::Int::Uint(*value)"),
+        "the default posture's `int` bridge no longer matches the tuple arms:\n{plain}"
+    );
+    let preserve = component_glue(
+        "tests/component-core/input.cddl",
+        &["--preserve-encodings=true"],
+    );
+    assert!(
+        preserve.contains("cddl_lib::Int::Uint { value, .. } => wit_types::Int::Uint(*value)"),
+        "the preserve posture's `int` bridge no longer matches the NAMED-field arms:\n{preserve}"
+    );
+    // Both postures go through the posture-INDEPENDENT constructors in the other direction.
+    for glue in [&plain, &preserve] {
+        assert!(
+            glue.contains("=> cddl_lib::Int::new_uint(value)"),
+            "the WIT→rust `int` bridge no longer goes through `new_uint`:\n{glue}"
+        );
+    }
+}
+
+/// ONE `struct Component` implements every interface's `Guest` trait under ONE `export!`. A second
+/// `export!` would emit a second set of canonical-ABI symbols; a per-interface guest type would not
+/// satisfy the world at all.
+#[test]
+fn component_glue_exports_every_interface_through_one_guest_type() {
+    let glue = component_glue("tests/component-multifile/inputs", &[]);
+    assert_eq!(
+        glue.matches("export!(Component);").count(),
+        1,
+        "the multi-interface glue no longer has exactly one `export!`:\n{glue}"
+    );
+    assert!(
+        glue.contains("impl wit_types::Guest for Component {")
+            && glue.contains("impl wit_sub::Guest for Component {"),
+        "both interfaces' `Guest` traits are no longer implemented by the one guest type:\n{glue}"
+    );
+    // A resource DECLARED in one interface and used from another is one rust type, reached through
+    // the alias of the interface that declares it.
+    assert!(
+        glue.contains("tip: wit_sub::LeafBorrow<'_>"),
+        "a cross-interface borrow no longer resolves through the DECLARING interface:\n{glue}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// Output wiring
+// -------------------------------------------------------------------------------------------------
+
+/// The component tree is written as a WHOLE: the WIT package, the glue that implements it, the
+/// seed-once crate root and the manifest. A half-tree (the `.wit` without the guest, or the guest
+/// without its `wit/`) does not build, and `wit_bindgen::generate!` resolves `path` against
+/// `CARGO_MANIFEST_DIR`, so the two have to land in one layout.
+#[test]
+fn component_generated_files_carry_the_whole_crate() {
+    let files =
+        crate::api::generated_strings(&cli_for("tests/component-core/input.cddl", &[])).unwrap();
+    for expected in [
+        "component/wit/world.wit",
+        "component/src/generated/mod.rs",
+        "component/src/lib.rs",
+        "component/Cargo.toml",
+    ] {
+        assert!(
+            files.contains_key(expected),
+            "the component tree is missing {expected}:\n{:#?}",
+            files.keys()
+        );
+    }
+    // And nothing lands off the flag.
+    let off = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        "tests/component-core/input.cddl",
+        "--output",
+        "component_tests_unused",
+    ]))
+    .unwrap();
+    assert!(
+        !off.keys().any(|k| k.starts_with("component/")),
+        "a component tree was emitted without --component"
+    );
+}
+
+/// The `.wit` files carry the provenance banner like every other tool-owned generated file, and it
+/// is `//`-comment lines, so a stamped file still resolves. Both halves matter: the stamp gates the
+/// `generated_files_start_with_header` sweep, and WIT-legality gates the whole face.
+#[test]
+fn component_wit_is_header_stamped_and_still_resolves() {
+    assert!(crate::generation::export::is_header_stamped_path(
+        "component/wit/world.wit"
+    ));
+    assert!(crate::generation::export::is_header_stamped_path(
+        "component/src/generated/mod.rs"
+    ));
+    // The overlay is a rust-token-stream mechanism, so the WIT is deliberately outside it.
+    assert!(!crate::generation::export::is_preservable_generated_path(
+        "component/wit/world.wit"
+    ));
+    assert!(crate::generation::export::is_preservable_generated_path(
+        "component/src/generated/mod.rs"
+    ));
+    let files =
+        crate::api::generated_strings(&cli_for("tests/component-core/input.cddl", &[])).unwrap();
+    let mut stamped = BTreeMap::new();
+    let wit = files["component/wit/world.wit"].clone();
+    assert!(
+        wit.starts_with("// This file was code-generated"),
+        "the emitted WIT is not header-stamped:\n{wit}"
+    );
+    stamped.insert("component/wit/world.wit".to_owned(), wit);
+    let bytes = resolve_and_encode(&stamped).expect("a stamped .wit must still resolve and encode");
+    validate_component(&bytes).expect("a stamped .wit must still validate");
+}
+
+// -------------------------------------------------------------------------------------------------
+// The cross-scope cycle detector, end to end
+// -------------------------------------------------------------------------------------------------
+
+/// A spec whose SCOPES reference each other generates fine on the rust face and is rejected under
+/// `--component`. The cycle here is interface-level and NOT type-level, which is the case a
+/// type-level detector would miss.
+#[test]
+fn a_cross_scope_cycle_is_rejected_under_component() {
+    let err = wit_files("tests/component-cycle/inputs", &[])
+        .expect_err("the mutually-referencing scopes generated a WIT package");
+    assert!(
+        err.contains("WIT interface cycle under --component:")
+            && err.contains("Move a type so the scopes are acyclic"),
+        "unexpected cycle message: {err}"
+    );
+    // The same spec is fine on the rust face — which is what makes this a `--component`-only rule.
+    let plain = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        "tests/component-cycle/inputs",
+        "--output",
+        "component_tests_unused",
+    ]);
+    assert!(crate::api::generated_strings(&plain).is_ok());
+}
+
+// -------------------------------------------------------------------------------------------------
+// The `--emit-tests` loud skip
+// -------------------------------------------------------------------------------------------------
+
+/// The component face has no generated-test renderer yet, and a `--emit-tests --component` run that
+/// silently emitted nothing would read as a passing test surface that does not exist. Pinned on the
+/// same terms as the wasm module's own loud skip: the MESSAGE TEXT is the contract, and it is
+/// asserted against a real run's stderr rather than against the source string, so the pin covers
+/// both the wording and the fact that it actually reaches the user.
+#[test]
+fn emit_tests_with_component_skips_loudly() {
+    let dir = scratch_dir("emittests");
+    let out = crate::tests::integration_tests::codegen_cmd()
+        .args([
+            "--input",
+            "tests/component-core/input.cddl",
+            "--output",
+            dir.to_str().unwrap(),
+            "--component=true",
+            "--emit-tests=true",
+        ])
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(
+            "cddl-codegen --emit-tests: component module skipped (component test emission not yet \
+             supported)"
+        ),
+        "the pinned `--emit-tests --component` loud skip did not reach stderr:\n{stderr}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// The wasip2 build smoke
+// -------------------------------------------------------------------------------------------------
+
+/// The fixtures the build smoke compiles, and why each earns its nested-cargo cost. Deliberately
+/// smaller than [`COMPONENT_FIXTURES`]: the WIT gates above are cheap and sweep everything, while
+/// this one pays a real link per row.
+const BUILD_SMOKE_FIXTURES: &[(&str, &[&str])] = &[
+    // Every phase-1 type-mapping row in one scope, in the posture the emitters target.
+    ("tests/component-core/input.cddl", &[]),
+    // The multi-INTERFACE shape: two `Guest` impls on one guest type under one `export!`, a
+    // cross-interface `borrow` parameter, and an `own` handle minted for a resource another
+    // interface declares. None of it is reachable from a single-scope fixture, and all of it is a
+    // link-time fact no WIT gate can see.
+    ("tests/component-multifile/inputs", &[]),
+];
+
+/// THE acceptance gate for the guest emitters: a generated component crate that does not compile is
+/// the failure mode the whole face exists to prevent, and every other gate here is blind to it — the
+/// WIT can resolve, encode and validate perfectly while the glue implementing it names a trait method
+/// that does not exist.
+///
+/// Nested cargo, so it is memoized per generated-crate content hash by the gate cache; an unchanged
+/// tree re-runs as a visible cached PASS. `GATE_CACHE=0` forces the build.
+#[test]
+fn component_crate_builds_for_wasm32_wasip2() {
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_component_wasip2_{}",
+        std::process::id()
+    ));
+    let target_dir = scratch.join("target");
+    let mut failures = Vec::new();
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
+
+    for (input, flags) in BUILD_SMOKE_FIXTURES {
+        let label = format!("{input} {flags:?}");
+        let out = scratch.join(format!(
+            "{:x}",
+            input
+                .bytes()
+                .chain(flags.iter().flat_map(|f| f.bytes()))
+                .fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64)
+                    .wrapping_mul(0x0000_0100_0000_01b3))
+        ));
+        std::fs::create_dir_all(&out).unwrap();
+        let mut args = vec![
+            "--input".to_owned(),
+            (*input).to_owned(),
+            "--output".to_owned(),
+            out.to_str().unwrap().to_owned(),
+            "--component=true".to_owned(),
+            // The rust crate is the component crate's path dependency and nothing else here; the
+            // wasm face would only add `__wbindgen_*` imports componentization cannot resolve.
+            "--wasm=false".to_owned(),
+        ];
+        args.extend(flags.iter().map(|f| (*f).to_owned()));
+        let generated = crate::tests::integration_tests::codegen_cmd()
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{label}: generation failed\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        // A workspace root so the two emitted crates share one lock and one target dir. Real
+        // consumers own this file; the tool never writes one.
+        std::fs::write(
+            out.join("Cargo.toml"),
+            "[workspace]\nresolver = \"3\"\nmembers = [\"rust\", \"component\"]\n",
+        )
+        .unwrap();
+        // The rust crate's `cdylib` output exists for wasm-bindgen's `wasm32-unknown-unknown`
+        // target; asking the wasip2 linker for it is not something the component face needs (the
+        // guest consumes the rlib) and `wasm-component-ld` crashes on it for some specs. Narrowing
+        // the dependency to `rlib` HERE keeps the gate's verdict about the component crate, which is
+        // the thing under test.
+        let rust_manifest = out.join("rust/Cargo.toml");
+        let narrowed = std::fs::read_to_string(&rust_manifest).unwrap().replace(
+            "crate-type = [\"cdylib\", \"rlib\"]",
+            "crate-type = [\"rlib\"]",
+        );
+        std::fs::write(&rust_manifest, narrowed).unwrap();
+
+        let component_dir = out.join("component");
+        let outcome = gate_cache::run_cached(
+            "component_wasip2_build",
+            &label,
+            &out,
+            &[
+                std::path::PathBuf::from("component/Cargo.toml"),
+                std::path::PathBuf::from("rust/Cargo.toml"),
+            ],
+            &[
+                "cwd=component".to_owned(),
+                "cargo".to_owned(),
+                "build".to_owned(),
+                "--target".to_owned(),
+                "wasm32-wasip2".to_owned(),
+            ],
+            || {
+                let build = crate::tests::integration_tests::tool_cmd("cargo")
+                    .args(["build", "--target", "wasm32-wasip2"])
+                    .current_dir(&component_dir)
+                    .env("CARGO_TARGET_DIR", &target_dir)
+                    .output()
+                    .unwrap();
+                if !build.status.success() {
+                    let stderr = String::from_utf8_lossy(&build.stderr);
+                    // The target is declared in `rust-toolchain.toml`, so a rustup-managed checkout
+                    // has it; anywhere else this is a provisioning problem, not a code failure, and
+                    // it has to say so rather than read as a broken emitter.
+                    if stderr.contains("can't find crate for `core`")
+                        || stderr.contains("target may not be installed")
+                    {
+                        failures.push(format!(
+                            "{label}: the wasm32-wasip2 target is not installed under the pinned \
+                             toolchain — `rustup target add wasm32-wasip2`"
+                        ));
+                    } else {
+                        failures.push(format!("{label}: cargo build failed\n{stderr}"));
+                    }
+                    return false;
+                }
+                // A build that produced no COMPONENT would be a vacuous pass: `wasm32-wasip2`
+                // artifacts carry the component-model preamble (layer 1), where a core module
+                // carries layer 0.
+                let artifact = target_dir
+                    .join("wasm32-wasip2/debug")
+                    .join("cddl_lib_component.wasm");
+                match std::fs::read(&artifact) {
+                    Ok(bytes) if bytes.starts_with(b"\0asm\x0d\0\x01\0") => true,
+                    Ok(bytes) => {
+                        failures.push(format!(
+                            "{label}: {} is not a component-model binary (preamble {:02x?})",
+                            artifact.display(),
+                            &bytes[..8.min(bytes.len())]
+                        ));
+                        false
+                    }
+                    Err(e) => {
+                        failures.push(format!(
+                            "{label}: the build reported success but wrote no artifact at {}: {e}",
+                            artifact.display()
+                        ));
+                        false
+                    }
+                }
+            },
+        );
+        cache_run += outcome.ran();
+        cache_hit += outcome.cached();
+    }
+
+    if gate_cache::enabled() {
+        println!("component_wasip2_build gate-cache: {cache_run} run, {cache_hit} cached");
+    }
+    let verdict = failures.is_empty();
+    std::fs::remove_dir_all(&scratch).ok();
+    assert!(
+        verdict,
+        "the generated component crate does not build for wasm32-wasip2:\n\n{}",
+        failures.join("\n\n")
+    );
 }
