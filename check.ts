@@ -946,6 +946,20 @@ export const REGISTRY: Gate[] = [
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "feature_corpus_roundtrips_nondefault_profiles", "--", "--ignored"],
     ignoredTest: "feature_corpus_roundtrips_nondefault_profiles",
     desc: "corpus emit-tests round-trip under preserve/json (manual, #[ignore]d)" },
+  // Corpus-breadth component compilation, which `feature_corpus_compiles` structurally cannot give:
+  // that gate hardcodes `crate_subs = ["rust", "wasm"]` and runs a HOST `cargo check` with no
+  // `--target`, so the wasip2 component crate is invisible to it — the reason the `ALL_PROFILES`
+  // component row filters out of it rather than flowing into it. The `local`-tier build smoke
+  // compiles five representative fixtures; this asks the same question of all 89, and the answer
+  // differs. `check` rather than `build`: the link is already asserted on the representative
+  // fixtures, and the class this breadth catches — glue naming a trait, method or macro the bindings
+  // never minted — is a type-check failure. A member of the batch on the same terms as its
+  // neighbours: `#[ignore]`d, `cmd`-shaped, and owner of a flocked scratch root nothing else
+  // touches. Measured 140 s cold / 97 s warm (a warm run still pays generation per cell).
+  { id: "component_corpus_compiles", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_corpus_compiles", "--", "--ignored", "--nocapture"],
+    ignoredTest: "component_corpus_compiles",
+    desc: "component face at corpus breadth: cargo check --target wasm32-wasip2 per fixture (manual, #[ignore]d)" },
   { id: "verify", tier: "full", kind: "fn", run: runVerify, script: "verify.ts",
     desc: "cddl-matrix mechanical verify gate (oracle preflight + probe every feature)" },
   // Registered AFTER `verify` so a `full --cache-transparency` run warms the cache via `verify` first,
