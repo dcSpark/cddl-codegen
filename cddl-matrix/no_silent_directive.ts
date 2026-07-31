@@ -150,6 +150,33 @@ const CORPUS: Cell[] = [
     shape: "collapsed two-arm 258 set idiom (bare @newtype, no getter)",
   },
   {
+    // `@extern_companions` declares that a LOCAL extern's structural WASM companion classes already
+    // exist in a sibling wasm crate. This gate generates RUST-ONLY, where no such class exists at
+    // all (a `[* foo]` member is a plain `Vec<Foo>`), so the directive is legitimately byte-identical
+    // here — the allowlist entry below is the honest record of that, and the wasm-side effect is
+    // pinned by `dsl_position_tests`' `local-extern-rule` cell and
+    // `integration_tests::extern_companions_defers_to_sibling_wasm_crate`. The cell still earns its
+    // place: it proves the directive is ACCEPTED (not rejected) on the one placement that honors it,
+    // which is the half a rejection test cannot assert — and it flips to a loud PASS-by-rejection if
+    // the extern-marker placement is ever wrongly moved onto the rejection path.
+    id: "local_extern_companions_rust_only",
+    ruleBody: "_CDDL_CODEGEN_EXTERN_TYPE_",
+    base: [],
+    toggled: "@extern_companions dep_wasm=FooList",
+    shape: "local _CDDL_CODEGEN_EXTERN_TYPE_ rule, rust-only generation (the classes it defers are wasm-only)",
+  },
+  {
+    // The placement counterpart: on a rule this crate GENERATES, the directive is a LOUD rejection
+    // (a generated rule owns its own companions), which is a PASS — honored-not-silenced. Isolates
+    // the rule KIND as the variable against the accepted cell above, whose spec differs only in its
+    // body being the extern marker.
+    id: "generated_rule_extern_companions_rejected",
+    ruleBody: "[x: uint]",
+    base: [],
+    toggled: "@extern_companions dep_wasm=FooList",
+    shape: "record rule at rule-position @extern_companions (valid only on an extern marker)",
+  },
+  {
     // The rule slot of a multi-choice type rule is the LAST arm's trailing comment. A rule-level
     // directive on an earlier arm is parsed as that variant's own metadata, where only `@name` and
     // `@doc` mean anything, and is discarded — historically byte-identical to omitting it, which is
@@ -204,6 +231,11 @@ const ALLOWLIST: Record<string, string> = {
   // rust-only invisibility.
   plain_group_no_json_schema_export_rust_only:
     "@no_json_schema_export on a plain group suppresses a json-gen row only; rust-only generation emits no rows, so byte-identical no-op",
+  // `@extern_companions` only changes WHICH crate a wasm companion class comes from; rust-only
+  // generation mints no such class at all, so it is byte-identical HERE by construction (and inert
+  // under any flag set without `--wasm`, by design: one spec, many flag sets).
+  local_extern_companions_rust_only:
+    "@extern_companions defers wasm companion classes only; rust-only generation mints none, so byte-identical no-op",
 };
 
 /** The `@`-prefixed directive token used to detect an acknowledging notice/rejection

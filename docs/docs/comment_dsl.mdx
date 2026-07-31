@@ -1000,6 +1000,129 @@ Only the **rust** face changes. The type's **wasm** face is a distinct `#[wasm_b
 
 Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition (or at a field position) is a hard error.
 
+## @extern_companions
+
+Valid **only** on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule declared in **this crate's own spec** (not in a
+`_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope). It declares that specific **structural wasm companion
+classes** of that extern type already exist in a sibling wasm crate, so the generator **references**
+them instead of minting its own:
+
+```cddl
+transaction_metadatum = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions cml_chain_wasm=TransactionMetadatumList
+```
+
+The generated wasm crate then emits `use cml_chain_wasm::TransactionMetadatumList;` and mints no local
+class of that name. The argument is `<use_path_prefix>=<Class>[,<Class>…]` — one prefix (a rust path,
+emitted verbatim as the `use` head) and a comma-separated list of class names, with **no whitespace
+anywhere in the argument**.
+
+### The problem it solves
+
+When a rule declares an extern type, the generator still owns that type's *structural companions* —
+the `<Elem>List`, `Map<K>To<V>` and their siblings it synthesizes for `[* t]` / `{* k => v}` shapes.
+Each is a `#[wasm_bindgen]` class. If the sibling crate that *defines* the extern type also defines a
+class of the same structural name (typically the canonical `<Name>List`), and both wasm crates link
+into one cdylib, the link fails:
+
+```
+rust-lld: error: duplicate symbol: __wbg_transactionmetadatumlist_free
+  >>> defined in …/cml_cip25_wasm….rcgu.o
+  >>> defined in …/libcml_chain_wasm.rlib(…)
+```
+
+Renaming one side (via `@rust_name` on the extern rule) removes the collision but mints a *second* JS
+class for one concept, with no type identity against the sibling's own API — a value obtained from
+the sibling cannot be handed back to it. Referencing the sibling's class is the fix that keeps one
+concept, one class.
+
+### The companion class contract
+
+The referenced class is **not** checked by the tool — it is the consumer's own compile that checks
+it, exactly like the extern marker itself: an absent or wrongly-shaped class fails the emitted `use`
+(or the conversion at its use site) loudly and near. What the generated code requires of it:
+
+- It is **public at `<prefix>::<Class>`** and is a `#[wasm_bindgen]` class (so JS sees one class, and
+  so the ABI symbols it defines are the ones this crate no longer defines).
+- It derives (or implements) **`Clone`** — every boundary crossing clones before converting.
+- **`From<Inner> for <Class>`** and **`From<<Class>> for Inner`**, plus `AsRef<Inner>`, where `Inner`
+  is the rust core type of the shape the class stands for, over **the same rust element type this
+  crate uses** (i.e. the sibling's own rust type, which this crate re-exports for the extern marker):
+
+  | Deferred class | `Inner` |
+  |---|---|
+  | `<Elem>List` (`[* elem]`) | `Vec<Elem>` |
+  | `NonEmpty<Elem>List` (`[+ elem]`) | `NonEmptyVec<Elem>` |
+  | `Map<K>To<V>` (`{* k => v}`) | `BTreeMap<K, V>`, or `OrderedHashMap<K, V>` under `--preserve-encodings` |
+  | `PairMap<K>To<V>` (`{* k => v} ; @duplicates preserve`) | `PairMap<K, V>` |
+  | `NonEmptyMap<K>To<V>` / `NonEmptyPairMap<K>To<V>` (`{+ …}`) | `NonEmptyMap<K, V>` / `NonEmptyPairMap<K, V>` |
+
+  A `From<Vec<_>>` is what a table's `keys()` accessor uses (`…collect::<Vec<_>>().into()`): a
+  cross-crate wrapper's tuple field is private, so the deferred class is never built by tuple-struct
+  syntax.
+- Its JS-visible method surface should match what the generator would have emitted
+  (`new`/`len`/`get`/`add` for a list; `new`/`len`/`insert`/`get`/`keys` for a map) — nothing in the
+  generated *rust* depends on this, but JS callers of this crate's API do. In CML's runtime the
+  `impl_wasm_list!` macro produces exactly this shape.
+
+### Only listed classes defer
+
+The class list is a **filter**, not a blanket opt-out. An unlisted structural companion of the same
+extern type still mints locally — which is what lets a crate borrow the family the sibling owns and
+keep the one it doesn't:
+
+```cddl
+transaction_metadatum = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions cml_chain_wasm=TransactionMetadatumList
+
+; keys() returns the SIBLING's TransactionMetadatumList …
+; … while PairMapTransactionMetadatumToTransactionMetadatum is minted here (the sibling's map class
+; is hand-named something else, so there is no collision to avoid)
+meta = {
+  1: uint,
+  * transaction_metadatum => transaction_metadatum ; @duplicates preserve
+}
+```
+
+A wrapper defers only when **every** named constituent resolves to the declaring extern type. A mixed
+shape (`{* transaction_metadatum => local_thing}`) is not "of" that type and mints locally even if its
+structural name is listed.
+
+### Manifest and flag notes
+
+- **The wasm crate's dependency on the sibling is yours to declare.** The tool adds nothing to
+  `wasm/Cargo.toml` for this directive (pass `--wasm-dep=<pkg>=<path>` if you want the tool to assert
+  the entry). This mirrors the extern re-export contract: the directive states a fact about your
+  workspace, it does not create one.
+- **Inert without `--wasm`.** The classes it governs are a wasm-boundary concern; a rust-only build
+  mints none, so the directive changes nothing. One spec, many flag sets.
+- **`@duplicates reject` set wrappers cannot be deferred.** The `<Elem>OrderedSet` /
+  `NonEmpty<Elem>OrderedSet` emitters consult no deferral seam, so listing such a name has no effect
+  today. Every other structural family (loose/restricted lists, loose/restricted maps, both duplicate
+  flavors) defers.
+
+### When to use this vs the dependency-keyed flags
+
+| Situation | Mechanism |
+|---|---|
+| The type is declared in a `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` scope (or via `--extern-import`) and the dep's own generation minted the wrapper | [`--extern-wrapper-index=<dep>=<dep>/wasm/src/generated/collections.rs`](./command_line_flags) — the dep's committed index is consulted, so the tool knows the class exists |
+| Same, and the whole workspace regenerates together | [`--workspace-dep=<dep>`](./command_line_flags) — defers unconditionally and records a request sidecar so the dep mints what you need |
+| The type is marked extern in **this** crate's spec (a one-type re-export of a sibling's type), and/or the sibling's class is **hand-written** so no generated index lists it | `@extern_companions` |
+
+The first two key on the constituents' owning **dependency**, which a locally-marked extern does not
+have; and an index can only list what generation minted. Using `@extern_companions` on a dep-scoped
+extern is a hard error naming both flags, so the two never compete for one decision.
+
+### Rejected positions
+
+Using it anywhere other than a locally-scoped `_CDDL_CODEGEN_EXTERN_TYPE_` rule is a hard error: on a
+rule this crate generates (a record, a type/group choice, a collection), on a
+`_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule (that type has no generator-minted wasm companions), at a
+field/member position, on a non-last arm of a multi-choice type rule, and on a dep-scoped extern. A
+malformed argument (missing, no `=`, a non-path prefix, an empty or non-identifier class name) is a
+loud parse-time failure rather than a silent drop — a silently dropped declaration re-mints the very
+classes it exists to suppress, and the only symptom would be a duplicate symbol in a *different*
+crate's link. Finally, if a listed class name is also defined by a rule in this crate, generation
+fails naming both: the `use` and the rule would claim one identifier.
+
 ## _CDDL_CODEGEN_RAW_BYTES_TYPE_
 
 Allows encoding as `bytes` but imposing hand-written constraints defined elsewhere.

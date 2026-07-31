@@ -58,6 +58,7 @@ expression: ir
                             no_json_schema_export: false,
                             custom_serialize: None,
                             custom_deserialize: None,
+                            extern_companions: None,
                             comment: Some(
                                 "this is a field-level comment",
                             ),
@@ -95,6 +96,7 @@ expression: ir
                             no_json_schema_export: false,
                             custom_serialize: None,
                             custom_deserialize: None,
+                            extern_companions: None,
                             comment: Some(
                                 "bar is a u64",
                             ),

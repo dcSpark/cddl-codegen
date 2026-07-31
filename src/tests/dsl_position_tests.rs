@@ -885,6 +885,119 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("only valid on"),
     },
+    // ---- @extern_companions ------------------------------------------------------------------
+    // 34. VALID position (the only one): a LOCALLY-scoped `_CDDL_CODEGEN_EXTERN_TYPE_` rule. The
+    //     listed structural companion class is REFERENCED from the declared sibling crate instead of
+    //     minted, so the `use` appears and no local `#[wasm_bindgen]` class of that name does — which
+    //     is the whole point (two such classes in one cdylib duplicate-symbol at link). `wasm: true`:
+    //     the classes it governs are a wasm-boundary concern and do not exist rust-side.
+    Cell {
+        directive: "@extern_companions",
+        position: "local-extern-rule",
+        spec: "tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList\nholder = [items: [* tm]]\n",
+        flags: &[],
+        wasm: true,
+        expect: Expect::Effect {
+            must: &["use dep_wasm::TmList;", "pub fn items(&self) -> TmList"],
+            must_not: &["pub struct TmList"],
+        },
+    },
+    // 34b. UNLISTED companions of the SAME extern still mint locally — the class list is a filter,
+    //      not a blanket opt-out, and this is exactly the reported shape (a sibling owns the List
+    //      family under its canonical name while the map family is the consumer's). One spec carries
+    //      both, so the pair of anchors attributes the difference to the LIST rather than to the
+    //      directive's presence.
+    Cell {
+        directive: "@extern_companions",
+        position: "local-extern-rule-unlisted-companion",
+        spec: "tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList\nholder = {\n  1: uint,\n  * tm => tm\n}\n",
+        flags: &[],
+        wasm: true,
+        expect: Expect::Effect {
+            must: &["use dep_wasm::TmList;", "pub struct MapTmToTm"],
+            must_not: &["pub struct TmList"],
+        },
+    },
+    // 34c. NO-OP WITHOUT --wasm: the SAME tagged spec as cell 34 under the `wasm: false` baseline.
+    //      Docs: "inert without `--wasm`". The rust crate names no collection-wrapper CLASS at all
+    //      (a `[* tm]` member is a plain `Vec<Tm>`), so there is nothing to defer and nothing to
+    //      mint — an Effect cell, not a pin, because the no-op here is CORRECT. The positive control
+    //      is cell 34, the same spec with the wasm build on.
+    Cell {
+        directive: "@extern_companions",
+        position: "local-extern-rule-no-wasm",
+        spec: "tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList\nholder = [items: [* tm]]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub struct Holder"],
+            must_not: &["TmList"],
+        },
+    },
+    // 35. REJECT: a rule this crate GENERATES owns its own companions, so the declaration would
+    //     silently do nothing (and the classes would still be minted — the failure landing as a
+    //     duplicate symbol in a DIFFERENT crate's link).
+    Cell {
+        directive: "@extern_companions",
+        position: "array-struct-rule",
+        spec: "foo = [a: uint] ; @extern_companions dep_wasm=FooList\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ rule"),
+    },
+    // 36. REJECT: the raw-bytes marker — the extern marker's sibling, but a raw-bytes type has no
+    //     generator-minted wasm companion classes, so it is the plain not-an-extern-rule class.
+    Cell {
+        directive: "@extern_companions",
+        position: "raw-bytes-rule",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @extern_companions dep_wasm=RbList\nholder = [f: rb]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ rule"),
+    },
+    // 37. REJECT: a multi-choice type rule can never be an extern marker (its LAST arm is the rule
+    //     slot, so the directive IS seen here — this is the directive being invalid, not unseen).
+    Cell {
+        directive: "@extern_companions",
+        position: "type-choice-rule",
+        spec: "ch = uint ; @name a\n   / text ; @name b @extern_companions dep_wasm=ChList\nholder = [f: ch]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ rule"),
+    },
+    // 38. REJECT: a field/member position. This is also the slot a plain-GROUP rule's TRAILING
+    //     comment binds to (the `@name plain-group-trailing` seam), so it covers that spelling too.
+    Cell {
+        directive: "@extern_companions",
+        position: "field",
+        spec: "tm = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [\n  f: tm, ; @extern_companions dep_wasm=TmList\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("not a field"),
+    },
+    // 39. REJECT: a non-last arm of a multi-choice type rule — the shared rejection every rule-level
+    //     directive gets from `RuleMetadata::non_variant_directives`, pinned per-directive so a new
+    //     directive's omission from that exhaustive list is visible here too.
+    Cell {
+        directive: "@extern_companions",
+        position: "type-choice-non-last-arm",
+        spec: "ch = uint ; @name a @extern_companions dep_wasm=ChList\n   / text ; @name b\nholder = [f: ch]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("on a non-last arm of the multi-choice type rule"),
+    },
+    // 40. REJECT: a listed class that a same-crate RULE also defines. The `use <prefix>::<Class>;`
+    //     and the rule's own class would claim one identifier (E0255) — reported in the spec's terms
+    //     instead. `wasm: true`: the detector sits in `finalize`'s wasm block beside the four
+    //     structural wrapper-name detectors, since the contested name is a wasm class.
+    Cell {
+        directive: "@extern_companions",
+        position: "listed-class-claimed-by-rule",
+        spec: "tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList\ntm_list = [* tm]\nholder = [f: tm_list]\n",
+        flags: &[],
+        wasm: true,
+        expect: Expect::Reject("also defines `TmList`"),
+    },
     // ---- @used_as_elem (wasm-side loose-list wrapper; needs `wasm: true`) ---------------------
     // 30. EFFECT, rule position: a non-exposable struct rule tagged `@used_as_elem` with NO inline
     //     `[* x]` usage anywhere mints the loose-list wrapper class + its `collections.rs` index

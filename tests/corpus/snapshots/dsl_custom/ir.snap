@@ -97,6 +97,7 @@ expression: ir
                             custom_deserialize: Some(
                                 "my_deser",
                             ),
+                            extern_companions: None,
                             comment: None,
                         },
                     },

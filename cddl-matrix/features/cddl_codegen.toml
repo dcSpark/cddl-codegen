@@ -236,6 +236,18 @@ example = '''
 cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser
 holder = [f: cb]'''
 
+[[feature]]
+id = "dsl.extern_companions"
+production = "comment_dsl"
+alt = "@extern_companions"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@extern_companions; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@extern_companions — reference a sibling crate's wasm companion classes"
+desc = "On a LOCALLY-declared _CDDL_CODEGEN_EXTERN_TYPE_ rule, declares that the named STRUCTURAL wasm companion classes of that type (its <Name>List, Map<Name>To…, …) already exist in a sibling wasm crate: the generator emits `use <path>::<Class>;` and mints no local #[wasm_bindgen] class of that name, so both crates can link into one cdylib without a duplicate __wbg_<class>_free symbol. Argument is `<use_path_prefix>=<Class>[,<Class>…]`, whitespace-free; only LISTED classes defer, so an unlisted companion of the same extern still mints locally. The dependency-keyed --extern-wrapper-index / --workspace-dep cannot serve this case (both key on a constituent's owning DEPENDENCY, and a local marker has no dep edge; an index also lists only what generation minted, never a hand-written class), so a dep-scoped extern carrying it is rejected naming those flags. Inert without --wasm."
+example = '''
+tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList
+holder = [items: [* tm]]'''
+
 # ---- sentinel typenames (magic identifiers, not comments) — src/parsing.rs *_MARKER ----
 [[feature]]
 id = "ext.extern"

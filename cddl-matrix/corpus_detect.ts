@@ -185,7 +185,7 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
   "@copy", "@raw_bytes_flavor", "@ignore", "@duplicates", "@custom_json", "@no_json_schema_export",
-  "@custom_serialize", "@custom_deserialize", "@doc",
+  "@custom_serialize", "@custom_deserialize", "@extern_companions", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -272,6 +272,24 @@ const DSL_TAGS: TagParse[] = [
   noArg("dsl.no_json_schema_export", "@no_json_schema_export"),
   argRequired("dsl.custom_serialize", "@custom_serialize"),
   argRequired("dsl.custom_deserialize", "@custom_deserialize"),
+  // @extern_companions: one REQUIRED argument in a strict SHAPE — `<rust_path>=<Class>[,<Class>…]`,
+  // consumed as the arg so a directive after it is still reachable. Unlike @duplicates the argument
+  // has no closed vocabulary, so the mirror models the shape instead: comment_ast PANICS on a missing
+  // arg, a missing `=`, a non-rust-path prefix, or an empty/non-ident class name, and such a fixture
+  // could not have generated — so the mirror refuses the credit rather than false-crediting.
+  s => {
+    if (!s.startsWith("@extern_companions")) return null;
+    const after = ws(s.slice("@extern_companions".length));
+    const m = after.match(/^[^\s@]+/);
+    if (!m) return null; // missing required argument — comment_ast panics
+    const eq = m[0].indexOf("=");
+    if (eq < 0) return null; // malformed argument — comment_ast panics
+    const ident = /^[\p{L}_][\p{L}\p{N}_]*$/u;
+    const prefix = m[0].slice(0, eq);
+    if (prefix === "" || !prefix.split("::").every(seg => ident.test(seg))) return null;
+    if (!m[0].slice(eq + 1).split(",").every(c => ident.test(c))) return null;
+    return { id: "dsl.extern_companions", rest: after.slice(m[0].length) };
+  },
   // @doc: take_while1(c != '@') — prose (incl. leading ws) runs to the next `@` or EOL; fails if the
   // very next char is `@` (so `@doc@newtype` credits nothing, matching comment_ast).
   s => {
@@ -545,6 +563,24 @@ function selfCheck() {
     if (!noCredit("x = uint ; @duplicates")) throw new Error("selfCheck: bare @duplicates (missing required arg) must NOT be credited (comment_ast panics)");
     if (!noCredit("x = uint ; @duplicates allow")) throw new Error("selfCheck: @duplicates with an unknown arg must NOT be credited (comment_ast panics)");
     if (!noCredit("x = uint ; @duplicates @newtype")) throw new Error("selfCheck: @duplicates immediately followed by a directive (no arg) must NOT be credited");
+  }
+  // @extern_companions consumes its one required arg, so a directive after it is still parsed; every
+  // spelling comment_ast PANICS on (missing arg, no `=`, non-path prefix, empty/non-ident class) must
+  // credit NOTHING, since such a fixture could not have generated.
+  {
+    const r = featuresIn("x = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=XList,MapXToY @no_alias").dsl;
+    if (!r.has("dsl.extern_companions") || !r.has("dsl.no_alias")) throw new Error("selfCheck: @extern_companions <arg> @no_alias must credit BOTH");
+    const multi = featuresIn("x = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm::sub=XList").dsl;
+    if (!multi.has("dsl.extern_companions")) throw new Error("selfCheck: a `::`-qualified @extern_companions prefix must be credited");
+    for (const bad of [
+      "x = uint ; @extern_companions",
+      "x = uint ; @extern_companions @newtype",
+      "x = uint ; @extern_companions dep_wasm",
+      "x = uint ; @extern_companions =XList",
+      "x = uint ; @extern_companions dep-wasm=XList",
+      "x = uint ; @extern_companions dep_wasm=XList,",
+    ])
+      if (featuresIn(bad).dsl.has("dsl.extern_companions")) throw new Error(`selfCheck: @extern_companions must NOT be credited for \`${bad}\` (comment_ast panics)`);
   }
   // keyless inline group directly inside a container is grpent.inline_group, NOT type2.parenthesized
   // (the comma form is covered above at line ~265; this is the keyless single-type form).

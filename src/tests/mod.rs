@@ -16,6 +16,7 @@ pub(crate) mod any_choice_tests;
 pub(crate) mod config_tests;
 pub(crate) mod declared_spelling_tests;
 pub(crate) mod dsl_position_tests;
+pub(crate) mod extern_companions_tests;
 pub(crate) mod extern_import_tests;
 pub(crate) mod gate_cache;
 pub(crate) mod generic_collection_tests;

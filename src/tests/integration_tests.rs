@@ -21679,3 +21679,195 @@ fn trace_restores_the_full_ir_dump() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `@extern_companions`: a LOCALLY-marked extern rule declares that a structural wasm companion
+/// class of its type ALREADY EXISTS in a sibling wasm crate, so the generator references it instead
+/// of minting a second `#[wasm_bindgen]` class of the same name. The acceptance is at the LINK,
+/// where the duplication actually fails: both wasm crates into one `wasm32-unknown-unknown` cdylib,
+/// GREEN with the directive and RED (`duplicate symbol __wbg_idxfoolist_free`) without it.
+///
+/// Why no flag can do this — the gap the directive fills. `--extern-wrapper-index` and
+/// `--workspace-dep` both resolve a wrapper's constituents to an OWNING DEPENDENCY (a non-exported
+/// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` scope). This fixture's `idx_foo` is marked extern in the
+/// consumer's OWN spec — the shape a one-type re-export takes — so it has no dep edge to key on and
+/// falls through to a local mint. The index could not answer anyway: `index-dep-crate-wasm`'s
+/// `IdxFooList` is HAND-written, which is the reported case (a generated index has a row only for
+/// what generation minted).
+///
+/// The dep stand-in is the same wasm-clean pair the `--extern-wrapper-index` gate uses
+/// (`index-dep-crate` plain rust / `index-dep-crate-wasm` holding the sole `#[wasm_bindgen] IdxFoo`
+/// and the hand `IdxFooList`), reused rather than duplicated: what changes here is which SIDE of the
+/// spec declares the borrow, not the crate shape. The consumer's own-spec extern re-export contract
+/// (the two `pub use` lines the generator prints) is satisfied by appending them to each crate's
+/// seed-once thin root, exactly as a real consumer does.
+///
+/// Bespoke harness (not `run_test`) for the same reasons as its `--extern-wrapper-index` sibling:
+/// capture stderr (to pin that the not-in-index warning does NOT fire for this arm — there is no
+/// index and none is consulted), and run the honest wasm32 link both ways. Registry note: the
+/// corpus-parity axis (`assert_corpus_axis_complete`) enumerates `tests/<dir>/input.cddl` FILES, so
+/// an `inputs/`-directory fixture like this one owes it no row — the same reason
+/// `tests/extern-deps-wasm-index` has none.
+#[test]
+fn extern_companions_defers_to_sibling_wasm_crate() {
+    use std::io::Write;
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests/extern-companions").unwrap();
+    // The consumer's own-spec extern re-export contract: the rust crate re-exports the sibling's
+    // RUST type, the wasm crate its WASM face. Appended to the seed-once thin roots, which the
+    // generator never clobbers.
+    let seed_roots = |export: &std::path::Path| {
+        for (root, line) in [
+            ("rust/src/lib.rs", "pub use index_dep_crate::IdxFoo;\n"),
+            ("wasm/src/lib.rs", "pub use index_dep_crate_wasm::IdxFoo;\n"),
+        ] {
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(export.join(root))
+                .unwrap();
+            f.write_all(line.as_bytes()).unwrap();
+        }
+        append_manifest_deps(
+            &export.join("rust/Cargo.toml"),
+            &["index-dep-crate = { path = \"../../../index-dep-crate\" }"],
+        );
+        append_manifest_deps(
+            &export.join("wasm/Cargo.toml"),
+            &[
+                "index-dep-crate = { path = \"../../../index-dep-crate\" }",
+                "index-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }",
+            ],
+        );
+    };
+
+    let export = test_path.join("export");
+    let _ = std::fs::remove_dir_all(&export);
+    let generate = codegen_cmd()
+        .arg("--input=tests/extern-companions/inputs")
+        .arg("--output=tests/extern-companions/export")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg("--common-import-override=index_dep_crate")
+        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+        .output()
+        .unwrap();
+    let gen_stderr = String::from_utf8_lossy(&generate.stderr).to_string();
+    assert!(
+        generate.status.success(),
+        "generation failed:\n{gen_stderr}"
+    );
+    seed_roots(&export);
+    // The `--extern-wrapper-index` not-in-index warning must NOT fire for this arm: it belongs to
+    // the index path, which this deferral returns before ever reaching. A warning here would be a
+    // lie (there is no index to be absent from) and would train users to ignore a real one.
+    assert!(
+        !gen_stderr.contains("--extern-wrapper-index"),
+        "the index-absence warning must not fire for an @extern_companions deferral, got stderr:\n{gen_stderr}"
+    );
+    let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
+    assert!(
+        wasm_mod.contains("use index_dep_crate_wasm::IdxFooList;"),
+        "the listed companion must be imported from the declared sibling crate:\n{wasm_mod}"
+    );
+    assert!(
+        !wasm_mod.contains("pub struct IdxFooList"),
+        "the listed companion must NOT be minted locally:\n{wasm_mod}"
+    );
+    assert!(
+        wasm_mod.contains("self.0.keys().cloned().collect::<Vec<_>>().into()"),
+        "keys() must build the deferred list through From<Vec<_>>, not tuple-struct syntax:\n{wasm_mod}"
+    );
+    // The deferred class leaves this crate's own collection index, so a downstream
+    // `--extern-wrapper-index` consumer is never told this crate owns it.
+    let wasm_index =
+        std::fs::read_to_string(export.join("wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        !wasm_index.contains("IdxFooList"),
+        "a deferred companion must be excluded from this crate's own collections.rs:\n{wasm_index}"
+    );
+
+    // Native build first: it isolates every non-link error (imports, conversions, key derives) from
+    // the wasm32 link property below, so a failure there is unambiguous.
+    let wasm_dir = export.join("wasm");
+    let native = tool_cmd("cargo")
+        .arg("build")
+        .current_dir(&wasm_dir)
+        .output()
+        .unwrap();
+    assert!(
+        native.status.success(),
+        "the deferring consumer wasm crate must build natively:\n{}",
+        String::from_utf8_lossy(&native.stderr)
+    );
+
+    // The honest link gate. GREEN: consumer + sibling wasm crates into one wasm32 cdylib.
+    // RED: the same spec with the directive removed re-mints the class locally and the link fails.
+    if !wasm32_target_installed() {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "wasm32-unknown-unknown is required to run extern_companions_defers_to_sibling_wasm_crate's link gate in CI"
+        );
+        eprintln!(
+            "skipping extern_companions_defers_to_sibling_wasm_crate link gate: wasm32-unknown-unknown target not installed"
+        );
+        return;
+    }
+    let green = tool_cmd("cargo")
+        .args(["build", "--target", "wasm32-unknown-unknown"])
+        .current_dir(&wasm_dir)
+        .output()
+        .unwrap();
+    assert!(
+        green.status.success(),
+        "the deferring consumer wasm crate must link for wasm32-unknown-unknown:\n{}",
+        String::from_utf8_lossy(&green.stderr)
+    );
+
+    // RED: same fixture, directive stripped (a scratch copy of `inputs/` — the committed spec is
+    // never edited), so the class is minted locally and the link duplicate-symbols.
+    let red_inputs =
+        std::env::temp_dir().join(format!("cddl_codegen_extcomp_red_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&red_inputs);
+    std::fs::create_dir_all(&red_inputs).unwrap();
+    let spec = std::fs::read_to_string(test_path.join("inputs/lib.cddl")).unwrap();
+    let stripped = spec.replace(" ; @extern_companions index_dep_crate_wasm=IdxFooList", "");
+    assert_ne!(
+        spec, stripped,
+        "the RED edit must actually remove the directive"
+    );
+    std::fs::write(red_inputs.join("lib.cddl"), stripped).unwrap();
+    let red_export = test_path.join("export_nodefer");
+    let _ = std::fs::remove_dir_all(&red_export);
+    let generate_red = codegen_cmd()
+        .arg(format!("--input={}", red_inputs.display()))
+        .arg(format!("--output={}", red_export.display()))
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg("--common-import-override=index_dep_crate")
+        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+        .output()
+        .unwrap();
+    assert!(
+        generate_red.status.success(),
+        "RED generation failed:\n{}",
+        String::from_utf8_lossy(&generate_red.stderr)
+    );
+    seed_roots(&red_export);
+    let red_mod = std::fs::read_to_string(red_export.join("wasm/src/generated/mod.rs")).unwrap();
+    assert!(
+        red_mod.contains("pub struct IdxFooList"),
+        "without the directive the class must be minted locally (the RED premise):\n{red_mod}"
+    );
+    let red = tool_cmd("cargo")
+        .args(["build", "--target", "wasm32-unknown-unknown"])
+        .current_dir(red_export.join("wasm"))
+        .output()
+        .unwrap();
+    let red_stderr = String::from_utf8_lossy(&red.stderr);
+    let _ = std::fs::remove_dir_all(&red_inputs);
+    assert!(
+        !red.status.success() && red_stderr.contains("duplicate symbol"),
+        "without the directive the consumer must fail the wasm32 link with a duplicate symbol; \
+         status_success={}, stderr:\n{red_stderr}",
+        red.status.success()
+    );
+}
