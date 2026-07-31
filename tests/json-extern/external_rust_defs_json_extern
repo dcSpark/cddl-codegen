@@ -40,7 +40,11 @@ impl serialization::Deserialize for MyExtern {
 // `HandJsonParent`'s hand-written impl, so a derived schema for it would be a contradictory
 // artifact. The directive is what keeps the json-gen crate free of a `gen_json_schema!` row that
 // would be an `E0277` here. Do not add a `JsonSchema` impl: its absence IS the assertion.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+// The ordering/hashing derives are the extern side of the rest-row KEY demand (`no_schema_key_rest`
+// keys a `BTreeMap` with this type) — the same contract `extern_interface_check.rs` states.
+#[derive(
+    Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub struct NoSchemaExtern {
     pub value: u64,
 }
