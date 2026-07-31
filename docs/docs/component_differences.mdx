@@ -245,6 +245,151 @@ semver's `0.x` rule: a host resolves `a:b/c@0.2.0` against a defined `0.2.1` but
 what you want — an incompatible API fails to link rather than misbehaving at runtime — as long as
 it is a decision rather than a surprise.
 
+A version bump is not the only link-time break, though: unification is by name **and** shape, so a
+WIT name change sits on exactly the same footing as a shape change — renaming an alias with the
+shape untouched makes a composition that previously linked refuse to link. That makes the naming
+rules load-bearing for interop rather than cosmetic; [Naming](#naming) states the rule and the
+asymmetry in who enforces it.
+
+## Sharing types across packages
+
+The reason this face exists. Point a consumer at a dependency's generated WIT and the dependency's
+types cross as **imported** WIT resources: one dependency component instance serves every consumer,
+and handles minted by one are usable by all of them. Without that, a consumer's dependency types
+would be its own private resources — structurally identical to the dependency's and interchangeable
+with nothing.
+
+### Import mode is opt-in, and the fallback is exclusion
+
+A dependency reached through [`--extern-import`](command_line_flags.mdx) enters import mode only when
+you also supply its WIT with [`--component-extern-wit`](command_line_flags.mdx). Opt-in because a
+dependency need not have a component face at all — a hand-written or stub dependency has no
+`component/wit` to point at, and a mandatory flag would make such a spec ungeneratable with
+`--component`.
+
+Be clear about what the no-flag path gives you, because it is *not* a degraded-but-working surface:
+a dependency type with no WIT projection is excluded, and so is every consumer signature naming one.
+The emitted `world.wit` records each with a `// unexported: <ident> — <reason>` row, exactly as it
+does for any other unprojectable type. A consumer made entirely of dependency types therefore
+projects to an empty interface. Import mode only ever *adds*.
+
+Under `--config`, both flags derive from a `deps` edge whenever both crates have `component = true`;
+see [The component face](./config_file#the-component-face).
+
+### The seam is CBOR bytes, and it costs what that costs
+
+A consumer's rust struct holds the dependency's **native** rust type, because its own serializer
+needs it; the WIT surface carries an imported resource **handle**. Converting between them is a
+serialize on one side and a deserialize on the other:
+
+- a getter returning a dependency type does `ImportedFoo::from_cbor_bytes(&native.to_cbor_bytes())`;
+- a parameter taking one does `dep_crate::Foo::from_cbor_bytes(&handle.to_cbor_bytes())`.
+
+**One serialize + one copy + one deserialize per dependency-typed value, per crossing, in each
+direction.** CBOR is self-delimiting, so the seam is well defined; it is not free, and a design that
+crosses a large collection element-by-element on a hot path will feel it. Said plainly here rather
+than buried: the alternative to knowing the cost is discovering it.
+
+A consequence worth stating on its own: **the object that comes back is live, and the value it
+carries is a copy.** A consumer getter mints a fresh resource in the *dependency instance's* table,
+so the dependency's own exported interface — including its setters — works on the handle you get
+back. It is not the handle you passed in, and mutating one does not reach the other.
+
+### Getters on dependency-typed fields are fallible
+
+`from_cbor_bytes` on the far side can reject a value the consumer's own serializer just produced, if
+the dependency component and the consumer's linked dependency rust crate disagree on a type's shape.
+That is a failure class which is a compile error today, so the signatures say so: a getter returning
+a dependency type is `result<foo, string>`, and a constructor or setter taking one is fallible the
+same way.
+
+The two skews are caught in different places. **API-shape skew** is caught at composition time by WIT
+versioning (a `0.x` minor bump is a link-time break — see above). **Same-API encoding skew** is
+caught only at runtime, by these `Err`s. Version-matching the dependency component against the
+dependency crate the consumer links is the integrator's obligation.
+
+### Dependency-typed collection parameters take an accumulator
+
+A `[* dep_type]` parameter is *not* spelled `list<borrow<token>>`. It is spelled
+`borrow<token-list>`, where `token-list` is a consumer-exported accumulator you fill one element at
+a time:
+
+```wit
+resource token-list {
+  constructor();
+  push: func(v: borrow<token>) -> result<_, string>;
+  len: func() -> u32;
+}
+```
+
+Name the cause, because that is what gives a future toolchain fix a trigger to revisit this:
+**`wit-bindgen`'s Rust backend miscompiles every *repeated* position of `borrow<imported-resource>`.**
+Its lowering hoists a single handle binding out of the loop and reassigns it per iteration while a
+reference to it is retained, which is `E0506`. Measured unfixed from the pinned 0.57.1 through
+0.60.0. The WIT itself is fine — the same package resolves, encodes and validates.
+
+| parameter shape | lowering |
+|---|---|
+| `borrow<t>` | works |
+| `option<borrow<t>>` | works |
+| `list<borrow<t>>` over an **exported** resource | works |
+| `list<borrow<t>>` over an **imported** resource | `E0506` |
+| `list<option<borrow<t>>>`, `list<tuple<u64, borrow<t>>>` | `E0506` |
+
+So the borrow moves one level up, out of the repeated position, and the per-element seam conversion
+happens inside `push` rather than once at the door — which is why `push` is fallible on the same
+grounds as the getters. Map-shaped parameters get the same treatment with
+`insert: func(k: …, v: …)`. The alternatives lost on their own terms: `list<own t>` would **consume
+the caller's handles at the ABI boundary**, which is the exact bug class the borrow rule exists to
+prevent, and `list<list<u8>>` would trade a typed surface for nested bytes. The restriction is on
+imported resources only — own-crate collection parameters keep `list<borrow<t>>`, and collection
+*returns* stay `list<own t>` in both cases.
+
+### Posture matching is an integrator obligation
+
+The seam is byte-exact only while both crates agree about what CBOR they write and accept, so a
+`preserve-encodings`, `canonical-form` or `deserialize-depth-limit` mismatch across it **silently
+re-encodes on every crossing** rather than failing. This is the seam's stake in
+[Encoding posture is a property of the package](#encoding-posture-is-a-property-of-the-package-not-of-a-type),
+which already frames posture as an integration obligation.
+
+`--config` sees both ends of a `deps` edge and refuses a mismatched one before anything is written,
+naming both crates, the axis and each side's value; the rule is stated in
+[The component face](./config_file#the-component-face). A hand-written flag invocation sees one crate
+at a time and cannot check it. The scope is narrow on purpose: it applies only where the seam exists,
+because on any other `deps` edge the dependency's types are reached by ordinary rust linkage, no
+bytes are produced or parsed at a boundary, and there is no crossing to re-encode.
+
+### Instantiate the dependency once — nothing enforces it
+
+Resource types are **generative per instantiation**: two instances of the same dependency component
+have mutually incompatible handle types despite wearing the same interface name. So a composition
+must instantiate the dependency **once** and use that single instance both as every consumer's
+instantiation argument and as the world's re-export.
+
+The trap is that nothing catches the mistake. A two-instance topology **composes at exit 0**,
+validates, and decodes to a world whose exported interfaces are *indistinguishable* from the correct
+one's — measured on this project's own acceptance fixture, the two artifacts differ by 417 bytes of
+instantiation metadata and by nothing a reader of the world would notice. It survives loading into a
+host, too. The mistake surfaces only at the first handle crossing, as `mismatched resource types`.
+
+Prescribed shape: one `instantiate` per package; alias the dependency's exported interface **once**;
+use that alias as the consumer's instantiation argument *and* export it from the world. Do not use
+`wac plug` — it satisfies the consumer's import from the dependency's export and then **drops that
+export**, leaving a single-export world in which a host cannot mint a dependency object at all.
+
+### Known limitation: no binary dedupe
+
+The consumer component still statically contains the dependency's rust code, because its own
+serializer needs it. Module-level dedupe, API dedupe and object identity are achieved; **full binary
+dedupe is not.** Measured on the acceptance fixture's `wasm32-wasip2` debug builds: 4,474,750 B +
+4,862,282 B of parts against a 9,339,587 B composition — composition adds about 2.5 KB of wiring and
+removes nothing.
+
+Eliminating it would mean generating a second serializer that composes the imported
+`to-cbor-bytes` fragments instead of linking the dependency crate. That is real work, and it is
+deferred.
+
 ## Toolchain floor, and the ambient-`wasm-tools` trap
 
 This face emits **fallible constructors** for every bounds-validating type. That is a spec feature
