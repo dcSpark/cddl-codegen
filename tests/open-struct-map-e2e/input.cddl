@@ -16,6 +16,9 @@ quux = { 1: uint, * bstr => uint }
 ; short key is a parse ERROR rather than a capture.
 five = tstr .size 5
 grault = { 1: uint, * five => uint }
+; A sized-int K (`u8`): the UINT arm's catch-all rewinds and re-reads the key through the width check,
+; so a key past 255 is a parse error rather than a capture — the uint-side twin of `grault`.
+waldo = { 1: uint, * uint .size 1 => text }
 ; The typed union under `@duplicates preserve` (the PairMap twin): duplicates are kept, in wire order.
 garply = {
   1: uint,

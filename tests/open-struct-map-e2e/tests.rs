@@ -201,6 +201,22 @@ mod open_struct_map_typed {
     }
 
     #[test]
+    fn sized_int_key_domain_refines_on_the_uint_arm() {
+        // waldo = { 1: uint, * uint .size 1 => text }. The declared uint key 1 makes the uint arm a
+        // match, so an unknown uint key reaches the catch-all, rewinds, and is re-read as a `u8`.
+        // { 1: 0, 255: "a" } round-trips; { 1: 0, 256: "a" } is out of the domain and errors.
+        let wire = bytes("a2 0100 18ff 6161");
+        let w = Waldo::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(w.rest.len(), 1);
+        assert_eq!(w.rest.get(&255u8).unwrap(), "a");
+        assert_eq!(w.to_cbor_bytes(), wire);
+        assert!(
+            Waldo::from_cbor_bytes(&bytes("a2 0100 190100 6161")).is_err(),
+            "a key past the u8 range is a parse error, not a capture"
+        );
+    }
+
+    #[test]
     fn duplicates_preserve_keeps_typed_duplicates_in_wire_order() {
         // garply = { 1: uint, * md => uint ; @duplicates preserve } — the PairMap twin.
         // { 1: 7, 5: 1, 5: 2, "a": 3 }: the repeated `5` is kept, and the pair list re-emits in wire
