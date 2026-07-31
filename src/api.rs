@@ -571,6 +571,27 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
                 .to_owned(),
         );
     }
+    // A `--component-dep` entry is a `[dependencies]` key in the component crate's manifest; without
+    // --component that crate is never generated and neither is its manifest, so the flag would
+    // silently do nothing (the same rule its two siblings above carry, on the third manifest).
+    if !cli.component_dep.is_empty() && !cli.component {
+        return Err(
+            "--component-dep requires --component=true: the entry is written into the component \
+             crate's `Cargo.toml`, so without it there is no crate and no manifest for the \
+             dependency to land in"
+                .to_owned(),
+        );
+    }
+    // `--wit-package` names the generated WIT package, which only the component face emits. Without
+    // --component there is no `.wit` for it to title, so the flag would silently do nothing —
+    // rejected on exactly the terms the manifest-entry rules above are.
+    if cli.wit_package.is_some() && !cli.component {
+        return Err(
+            "--wit-package requires --component=true: it names the generated WIT package, and \
+             without the component face no `.wit` is emitted for it to title"
+                .to_owned(),
+        );
+    }
     // One package name under two paths is ambiguous, not additive: a manifest holds ONE
     // `[dependencies]` entry per package, so the second value would silently replace the first.
     // Read off the RAW flag lists rather than the `*_deps()` accessors, whose `BTreeMap`s are
@@ -582,6 +603,7 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
         ("--json-gen-dep", &cli.json_gen_dep),
         ("--wasm-dep", &cli.wasm_dep),
         ("--rust-dep", &cli.rust_dep),
+        ("--component-dep", &cli.component_dep),
     ] {
         let mut seen = std::collections::BTreeSet::new();
         for entry in entries {

@@ -477,6 +477,7 @@ binary-wrappers = true
 preserve-encodings = true
 canonical-form = true
 wasm = true
+component = true
 json-serde-derives = true
 emit-tests = true
 emit-tests-conformance = true
@@ -491,6 +492,7 @@ common-import-override = "my_runtime"
 wasm-cbor-json-api-macro = "foo::bar::cbor_api"
 wasm-conversions-macro = "foo::bar::conv"
 wasm-list-macro = "foo::bar::list"
+wit-package = "acme:demo@0.2.0"
 json-schema-root = ["demo_lib::hand::Address", "demo_lib::hand::Key"]
 workspace-dep = ["core"]
 std-forward-dep = ["core"]
@@ -522,6 +524,9 @@ core-wasm = "../../core/wasm"
 
 [crates.demo.rust-dep]
 core = "../../core/rust"
+
+[crates.demo.component-dep]
+core-component = "../../core/component"
 "#,
     );
 
@@ -548,6 +553,8 @@ core = "../../core/rust"
         "--canonical-form",
         "true",
         "--wasm",
+        "true",
+        "--component",
         "true",
         "--json-serde-derives",
         "true",
@@ -576,6 +583,8 @@ core = "../../core/rust"
         "foo::bar::conv",
         "--wasm-list-macro",
         "foo::bar::list",
+        "--wit-package",
+        "acme:demo@0.2.0",
         "--json-schema-root",
         "demo_lib::hand::Address",
         "--json-schema-root",
@@ -600,6 +609,8 @@ core = "../../core/rust"
         "core-wasm=../../core/wasm",
         "--rust-dep",
         "core=../../core/rust",
+        "--component-dep",
+        "core-component=../../core/component",
         "--std-forward-dep",
         "core",
         "--verbosity=debug",
@@ -617,6 +628,7 @@ core = "../../core/rust"
         preserve_encodings,
         canonical_form,
         wasm,
+        component,
         rust_wasm_feature,
         json_serde_derives,
         emit_tests,
@@ -630,11 +642,13 @@ core = "../../core/rust"
         json_gen_dep,
         wasm_dep,
         rust_dep,
+        component_dep,
         common_import_override,
         wasm_cbor_json_api_macro,
         wasm_conversions_macro,
         preserve_comments,
         wasm_list_macro,
+        wit_package,
         no_synthesized_rust_collection_aliases,
         extern_wasm_crate,
         extern_wrapper_index,
@@ -657,6 +671,7 @@ core = "../../core/rust"
     assert_eq!(preserve_encodings, from_flags.preserve_encodings);
     assert_eq!(canonical_form, from_flags.canonical_form);
     assert_eq!(wasm, from_flags.wasm);
+    assert_eq!(component, from_flags.component);
     assert_eq!(rust_wasm_feature, from_flags.rust_wasm_feature);
     assert_eq!(json_serde_derives, from_flags.json_serde_derives);
     assert_eq!(emit_tests, from_flags.emit_tests);
@@ -679,6 +694,14 @@ core = "../../core/rust"
     // The other one, for the same reason and against the other manifest.
     assert_eq!(wasm_dep, from_flags.wasm_dep);
     assert_eq!(rust_dep, from_flags.rust_dep);
+    // The third path-valued sub-table on the same terms as the two above: a cargo path dependency,
+    // resolved by cargo against `component/Cargo.toml` rather than against the config file.
+    assert_eq!(component_dep, from_flags.component_dep);
+    assert_eq!(
+        component_dep,
+        vec!["core-component=../../core/component".to_owned()],
+        "a `component-dep` path must reach the flag verbatim, not resolved against the config file"
+    );
     assert_eq!(
         wasm_dep,
         vec!["core-wasm=../../core/wasm".to_owned()],
@@ -696,6 +719,7 @@ core = "../../core/rust"
         "`preserve-comments = false` must reach the negated flag"
     );
     assert_eq!(wasm_list_macro, from_flags.wasm_list_macro);
+    assert_eq!(wit_package, from_flags.wit_package);
     assert_eq!(
         no_synthesized_rust_collection_aliases,
         from_flags.no_synthesized_rust_collection_aliases

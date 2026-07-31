@@ -195,6 +195,26 @@ fn parse_rust_dep(s: &str) -> Result<String, String> {
     parse_manifest_dep(s, "rust-dep", "rust/Cargo.toml", "cml-chain")
 }
 
+/// clap value parser for `--component-dep`, whose value is `<cargo-package-name>=<path>`.
+fn parse_component_dep(s: &str) -> Result<String, String> {
+    parse_manifest_dep(
+        s,
+        "component-dep",
+        "component/Cargo.toml",
+        "cml-chain-component",
+    )
+}
+
+/// clap value parser for `--wit-package`, whose value is `<namespace>:<name>[@<version>]`.
+///
+/// Validates the shape and hands the value back VERBATIM. The parsed
+/// [`WitPackageId`](crate::generation::wit::WitPackageId) is re-derived by [`Cli::wit_package`]:
+/// the flag's absence means "derive from `--lib-name`", and clap cannot express a default that
+/// reads another flag's value.
+fn parse_wit_package(s: &str) -> Result<String, String> {
+    crate::generation::wit::WitPackageId::parse(s).map(|_| s.to_owned())
+}
+
 /// clap value parser for `--std-forward-dep`, whose value is a bare `<cargo-package-name>` (no path:
 /// the path is `--rust-dep`'s, and the two flags are required to agree by
 /// `api::validate_flag_combinations`).
@@ -316,6 +336,52 @@ pub struct Cli {
     /// Generates a wasm_bindgen crate for wasm bindings
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = true)]
     pub wasm: bool,
+
+    /// Generate a WebAssembly COMPONENT crate (`component/`) beside the rust crate: a WIT package
+    /// describing the spec's types plus the `wit-bindgen` guest glue that implements it over the
+    /// rust crate. Off by default.
+    ///
+    /// It is a THIRD face, independent of `--wasm`: both may be on, and neither implies the other.
+    /// The two differ in what a consumer gets. `--wasm` produces `wasm-bindgen` classes for a
+    /// JavaScript host; `--component` produces a wasip2 component whose interface is a typed WIT
+    /// contract, which composes with other components and is consumable from any component-model
+    /// host. Collections cross the component boundary as plain `list<…>` rather than as wrapper
+    /// classes, and every parameter position takes a `borrow<…>`, so the ownership-transfer hazard
+    /// the wasm face's wrapper classes exist to prevent does not arise.
+    ///
+    /// The generated crate is pure glue over the rust crate (all CBOR logic stays there), and the
+    /// rust path dependency is taken WITHOUT `--rust-wasm-feature`: `#[wasm_bindgen]` attributes
+    /// emit imports that componentization cannot resolve on `wasm32-wasip2`.
+    ///
+    /// Constrains what the spec may contain, because WIT is stricter than rust about names: each
+    /// exported module scope becomes one WIT `interface`, and interfaces linked with `use` must be
+    /// ACYCLIC — a spec whose scopes reference each other in a cycle generates fine without this
+    /// flag and is rejected with it.
+    #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
+    pub component: bool,
+
+    /// The identifier of the generated WIT package: `<namespace>:<name>[@<version>]`, as in
+    /// `cddl:my-lib@0.1.0`. Defaults to `cddl:<--lib-name, kebab-cased>@0.1.0`.
+    ///
+    /// Both sides of the `:` are WIT identifiers — lowercase ASCII words joined by `-`. The version
+    /// is optional and defaults to `0.1.0`.
+    ///
+    /// Choose it deliberately, because it is the linking identity of everything the component
+    /// exports: two components unify a type only when the package id, the interface name and the
+    /// type's shape all agree, so a package rename is a composition-breaking change on the same
+    /// footing as a type change. Note also that WIT versions link by SEMVER, and semver's `0.x` rule
+    /// applies — a host resolves an import of `a:b/c@0.2.0` against a defined `0.2.1`, but NOT
+    /// against `0.3.0`. On a `0.x` line a MINOR bump is therefore a link-time break, which is
+    /// arguably what you want for wire types (an incompatible API fails to link rather than at
+    /// runtime) as long as it is a decision rather than a surprise.
+    ///
+    /// Requires `--component=true`.
+    #[clap(
+        long = "wit-package",
+        value_parser = parse_wit_package,
+        value_name = "NS:NAME[@VERSION]"
+    )]
+    pub wit_package: Option<String>,
 
     /// Name of the cargo feature the generated RUST crate's `#[wasm_bindgen]` attribute (emitted
     /// only on c-style enums under `--wasm`) is gated behind, so the rust crate compiles standalone
@@ -547,6 +613,36 @@ pub struct Cli {
         value_name = "PACKAGE=PATH"
     )]
     pub rust_dep: Vec<String>,
+
+    /// Declare a `[dependencies]` entry in the generated `component/Cargo.toml`:
+    /// `<cargo-package-name> = { path = "<path>" }`. The fourth sibling of `--rust-dep`,
+    /// `--wasm-dep` and `--json-gen-dep`, on the component crate's manifest, and it carries their
+    /// contract verbatim.
+    ///
+    /// The LEFT side is the **cargo package name** (`cml-chain-component`) — the dashed spelling
+    /// that goes in a manifest, not the underscored rust crate name a `use` line takes. The RIGHT
+    /// side is written into the manifest VERBATIM, so a relative value means what a cargo path
+    /// dependency always means: relative to the directory holding that manifest, i.e.
+    /// `<output>/component/`. (`../rust`, the entry the tool already writes for this crate's own
+    /// rust crate, is the shape to count from.) The tool does not check that the path exists — an
+    /// unresolvable one is a cargo error naming it.
+    ///
+    /// Merge contract: the entry is ASSERTED, never removed — identical to its three siblings', and
+    /// for the identical forced reason. It merges field-level into whatever `[dependencies]` entry
+    /// is already there (so a hand-added entry for the same package converges rather than
+    /// duplicating, with this flag's `path` winning and the user's other fields surviving), and
+    /// dropping the flag LEAVES THE ENTRY BEHIND: the flag's absence carries no package name, so
+    /// there is nothing for the tool to tombstone. Remove a no-longer-wanted dependency by hand, as
+    /// you would in any manifest.
+    ///
+    /// Repeatable; a repeated package name is a hard error. Requires `--component=true` (without it
+    /// there is no component crate and no manifest for the entry to land in).
+    #[clap(
+        long = "component-dep",
+        value_parser = parse_component_dep,
+        value_name = "PACKAGE=PATH"
+    )]
+    pub component_dep: Vec<String>,
 
     /// Mark a `--rust-dep` path dependency as std-FORWARDING: the generated `rust/Cargo.toml` takes
     /// it with `default-features = false`, and the crate's own `std` feature gains a
@@ -1003,6 +1099,31 @@ impl Cli {
     /// contract as the two directly above, for `rust/Cargo.toml`.
     pub fn rust_deps(&self) -> std::collections::BTreeMap<String, String> {
         manifest_deps(&self.rust_dep, "rust-dep")
+    }
+
+    /// Parsed `--component-dep` mappings: `cargo package name -> path`, SORTED by package name.
+    /// Same contract as the three directly above, for `component/Cargo.toml`.
+    pub fn component_deps(&self) -> std::collections::BTreeMap<String, String> {
+        manifest_deps(&self.component_dep, "component-dep")
+    }
+
+    /// The generated WIT package's identifier: `--wit-package` when given, else the `--lib-name`
+    /// default `cddl:<kebab lib-name>@0.1.0`.
+    ///
+    /// A method rather than a clap `default_value` because the default reads ANOTHER flag, which
+    /// clap's derive cannot express — the same reason the field is an `Option<String>` and not a
+    /// defaulted `String`. The value has already been shape-checked by `parse_wit_package`, so a
+    /// parsed invocation cannot reach the `expect`; a hand-built `Cli` that sets the field to
+    /// garbage can, and gets a message naming the flag.
+    // `pub(crate)`, unlike its neighbours, because `WitPackageId` is a `pub(crate)` type in a
+    // `pub(crate)` module: a `pub` signature naming it would be a private-interface leak.
+    #[allow(dead_code)] // the WIT projection is its caller
+    pub(crate) fn wit_package(&self) -> crate::generation::wit::WitPackageId {
+        match &self.wit_package {
+            Some(raw) => crate::generation::wit::WitPackageId::parse(raw)
+                .unwrap_or_else(|e| panic!("invalid --wit-package value: {e}")),
+            None => crate::generation::wit::WitPackageId::default_for_lib_name(&self.lib_name),
+        }
     }
 
     /// The `--std-forward-dep` packages, deduplicated and SORTED — the order they render in the
