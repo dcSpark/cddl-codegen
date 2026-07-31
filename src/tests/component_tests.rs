@@ -87,6 +87,13 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
         "tests/component-extern/inputs",
         &["--json-serde-derives=true"],
     ),
+    // The BEHAVIORAL fixture. It is swept here for the two things the host gate cannot say cheaply:
+    // its WIT must resolve/encode/validate like every other fixture's, and its glue must satisfy the
+    // never-two-guards invariant STRUCTURALLY — which is the same claim
+    // `component_host_tests::component_host_behavior` makes at runtime, from the other side. A
+    // fixture whose runtime behaviour is asserted and whose emitted shape is not would be the one
+    // place a regression could land with no static gate noticing.
+    ("tests/component-host/inputs", &[]),
     ("tests/component-multifile/inputs", &[]),
     // Cross-scope references that run THROUGH a named collection: the projection resolves the
     // collection through, so the cycle detector must agree about which scope the `use` points at.

@@ -1,0 +1,20 @@
+# The wasmtime host crate the behavioral gate builds. It is COPIED into the generated output root
+# (`<out>/host/`) before the gate-cache key is taken, never built where it sits: every input a
+# cached cell reads from scratch must live INSIDE the hashed root, so a host crate parked beside the
+# hashed tree would serve a stale PASS forever after any edit to its assertions.
+#
+# Nested-and-memoized rather than a dev-dep of cddl-codegen: wasmtime in the bin crate's dev-graph
+# would tax every `local`-tier compile.
+[package]
+name = "component-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasmtime = "47"
+wasmtime-wasi = "47"
+# The SAME generated rust crate the guest links, so a value can be built natively in the host and
+# compared byte-for-byte against what crosses the component boundary. The path is RELATIVE so the
+# copied bytes stay run-independent — an absolute scratch path would make every gate-cache key
+# unique to its run.
+cddl-lib = { path = "../rust" }

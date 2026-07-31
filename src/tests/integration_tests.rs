@@ -289,7 +289,7 @@ const MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
 /// `remove_dir_all`'d; unlinking a held lock file would let a third run acquire a fresh inode while
 /// an earlier run still holds the old one).
 #[must_use = "the lock releases when the returned handle is dropped — bind it for the whole gate"]
-fn acquire_scratch_lock(scratch_name: &str) -> std::fs::File {
+pub(crate) fn acquire_scratch_lock(scratch_name: &str) -> std::fs::File {
     let lock_path = std::env::temp_dir().join(format!("{scratch_name}.lock"));
     let file = std::fs::File::options()
         .create(true)

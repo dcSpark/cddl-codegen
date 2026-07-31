@@ -1,0 +1,69 @@
+; The BEHAVIORAL fixture: one shape per assertion class the wasmtime host harness drives, and
+; nothing else. Every other component fixture is judged by reading emitted bytes; this one is judged
+; by RUNNING the component, so each rule below exists to make one runtime claim checkable.
+;
+; A DIRECTORY input on purpose — `tests/<dir>/input.cddl` carries a corpus-parity registration
+; obligation (`wasm_api_parity_axes_and_pins_are_live` reconciles every such dir against
+; `CORPUS_PARITY_INPUTS`/`CORPUS_PARITY_EXCLUDED`) and a directory does not, and this fixture has no
+; wasm-parity question to answer: its subject is what the COMPONENT boundary does at runtime.
+;
+; Which assertion class each shape serves (the classes are the `#[test]`s in
+; `tests/component-host/host/tests/behavior.rs`):
+;
+;   hash      — the fallible door. A `result<hash, string>` constructor that must return `Err` and
+;               NEVER trap, leaving the instance usable afterwards (a trap poisons it).
+;   color     — a c-style enum crossing the boundary in both directions.
+;   value     — a type choice: `new-<variant>` statics, the `<name>-kind` discriminant, `as-<variant>`.
+;   node      — the RE-ENTRANCY case, and the only one with no wasm-face precedent. `children` is
+;               OPTIONAL, which is what mints a `set-children` taking `list<borrow<node>>` — so
+;               `x.set-children([x])` is expressible, must return normally, and must store a
+;               SNAPSHOT rather than an aliased cycle. It is also the returned-collection snapshot
+;               subject in both directions.
+;   names     — a NonEmpty list. Despecialized to a plain `list<string>` in WIT, so its invariant is
+;               re-imposed at the CONSUMING constructor and setter: `record`'s fallible ctor and the
+;               fallible `set-aliases`.
+;   attrs     — a table: `list<tuple<string, u64>>`, never a `map<K, V>`.
+;   record    — mandatory + optional fields (construction / accessor read-back / byte round-trip),
+;               `delta: int` for the `variant int` bridge and its -(n+1) bias, `meta: any` for the
+;               any-cbor edges, `? extra: any` for the same edges through a SETTER, and
+;               `? nested: text / null` for the three distinct states of `option<option<string>>`.
+
+; a bounded newtype wrapper -> `resource hash` with a FALLIBLE constructor
+hash = bytes .size 32
+
+; a c-style enum -> a WIT `enum` VALUE type
+color = 0 / 1 / 2
+
+; a type choice -> a resource with NO constructor: `new-<variant>` statics, a `kind` discriminant
+; and `as-<variant>` getters
+value = uint / text / bytes
+
+; collection-mediated recursion with the collection field OPTIONAL, which is what gives the resource
+; a `set-children: func(children: list<borrow<node>>)` — the same-handle re-entrancy shape
+node = {
+  label: text,
+  ? children: [* node],
+}
+
+; a NonEmpty list: type-enforced in rust, despecialized to a plain `list<string>` in WIT
+names = [+ text]
+
+; a table -> `list<tuple<string, u64>>`
+attrs = { * text => uint }
+
+record = {
+  id: uint,
+  name: text,
+  digest: hash,
+  delta: int,
+  tags: names,
+  props: attrs,
+  kind: color,
+  choice: value,
+  root: node,
+  meta: any,
+  ? aliases: names,
+  ? extra: any,
+  ? note: text,
+  ? nested: text / null,
+}

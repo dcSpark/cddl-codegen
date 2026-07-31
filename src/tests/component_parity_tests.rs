@@ -125,6 +125,11 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         "tests/component-extern/inputs",
         &["--json-serde-derives=true"],
     ),
+    // The behavioral fixture. Its runtime claims belong to
+    // `component_host_tests::component_host_behavior`; what THIS row adds is the one question that
+    // gate cannot ask — whether a rust member exists that the boundary never offered, which a
+    // harness driving the boundary would simply never think to call.
+    ("component-host", "tests/component-host/inputs", &[]),
     (
         "component-multifile",
         "tests/component-multifile/inputs",
@@ -209,9 +214,28 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
         "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
          member namespace; a caller constructs the arm directly",
     ),
+    // The same class, on the behavioral fixture (its `record` carries a `delta: int` too).
+    (
+        "component-host",
+        "Int::new_uint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-host",
+        "Int::new_nint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
     // The `Int` parse-error enum the rust crate mints beside `Int` (for its `FromStr`/`TryFrom`
     // impls). It is not an IR type at all, so the projection never sees it; the WIT face reports
     // every failure as the `string` of the rust error's `Display`, so there is nothing for it to be.
+    (
+        "component-host",
+        "IntError",
+        "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
+         type, and the WIT face carries every failure as `result<_, string>`",
+    ),
     (
         "component-core",
         "IntError",

@@ -75,6 +75,9 @@
       ]
     },
     {
+      "gate": "component_host"
+    },
+    {
       "gate": "component_parity"
     },
     {
