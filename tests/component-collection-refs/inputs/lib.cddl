@@ -1,0 +1,11 @@
+; A spec whose only cross-scope reference into `c` runs THROUGH a named collection defined in `a`.
+;
+; The projection resolves a named collection through at its use sites — `names` is never a WIT type
+; — so the emitted package links `b -> c` (the ELEMENT's scope) and never `b -> a`, and the `a` rule
+; `names` links nothing at all. A cycle walk that recorded the collection ident instead would see
+; `b -> a` and `a -> c` beside the real `c -> a`, closing a cycle in a spec whose WIT resolves
+; perfectly — a refusal naming scopes the emitted package never links, which a user cannot act on.
+; This fixture must GENERATE; `a_real_cycle_through_a_named_collection_is_still_rejected` covers the
+; other direction, so the agreement is pinned from both sides.
+
+root = { r: rec }

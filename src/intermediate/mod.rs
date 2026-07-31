@@ -3036,18 +3036,17 @@ impl<'a> IntermediateTypes<'a> {
         // the check is flag-gated on the face that has the restriction.
         //
         // Placed HERE — after every `register_rust_struct` in this fn (they all run in the generic
-        // resolution at the top) — because both detectors walk `rust_structs` and `scopes`, which are
+        // resolution at the top) — because the detector walks `rust_structs` and `scopes`, which are
         // complete from that point on.
+        //
+        // Its SIBLING — the strong-uniqueness name-collision detector — deliberately does NOT run
+        // here: its verdict depends on which types the rust face gives a `Deserialize` impl (a
+        // `from-cbor-bytes` static the tool never emits cannot collide with anything), which only
+        // that face's own walk reaches. It runs in `GenerationScope::generate` instead and surfaces
+        // through the graceful error channel `generated_files`/`export` already carry. A spec with
+        // BOTH a cycle and a collision therefore reports the cycle first, which is correct: a cyclic
+        // package has no resolvable WIT to have collisions in.
         if cli.component {
-            // WIT strong uniqueness: an interface is one flat namespace and names compare with the
-            // `[method]`/`[static]`/`[constructor]` prefixes stripped, so a collision that the rust
-            // and wasm faces resolve by scoping is a broken WIT package. The
-            // `<resource>.<resource>` member case in particular survives BOTH resolve and encode and
-            // fails only at binary validation, which is why it is caught here rather than left to a
-            // downstream tool.
-            for msg in crate::generation::wit::wit_name_collisions(self, cli) {
-                self.record_rejection(msg);
-            }
             // WIT requires interfaces linked with `use` to be acyclic, and each exported module
             // scope becomes one interface. Cyclic cross-scope references generate fine on the rust
             // face, so this restriction arrives with `--component` and nowhere else.

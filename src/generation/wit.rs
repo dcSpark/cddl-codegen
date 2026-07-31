@@ -10,19 +10,19 @@
 //! rust↔WIT parity gate and the cross-crate export both consume the projection, and a
 //! re-derivation at the second consumer is a silent-drift source.
 //!
-//! # Two reference walks, and why they differ
+//! # Two reference walks, and why they must agree
 //!
 //! [`collect_projected_refs`] answers "which SCOPES does this type reach" for the cycle detector;
 //! [`map_conceptual`] answers "what does this occurrence SPELL in WIT" and collects its references
-//! as a by-product. They agree on the case that matters — a transparent alias is resolved through,
-//! never recorded — but they diverge on a NAMED COLLECTION: the cycle detector records the
-//! collection's own ident, while the projection resolves through it to the element type and records
-//! THAT. Consequence, stated so a reader does not have to re-derive it: a reference that reaches a
-//! third scope only through a named collection (`rec` in `b` holding a `names` in `a` whose element
-//! lives in `c`) produces a `use c.{…}` edge the cycle detector never saw. It is the safe direction
-//! for the emitted WIT — the `use` is correct — but a cycle closed exclusively through such an edge
-//! reaches the user as a `wit-parser` "depends on itself" resolve failure rather than as the
-//! detector's message. Widening the detector's walk is the fix when a spec demands it.
+//! as a by-product. Both resolve a transparent alias AND a NAMED COLLECTION **through**, never
+//! recording the resolved-through ident: `rec` in `b` holding a `names` in `a` whose element lives
+//! in `c` records the edge `b → c`, which is the `use` the projection emits, and not `b → a`, which
+//! it does not. A collection RULE is skipped by the cycle walk for the same reason [`project`]
+//! skips it — it contributes no WIT type, so it owns no interface and can be no end of an edge.
+//!
+//! Agreement is load-bearing in the FALSE direction rather than the missing one: an edge the
+//! detector invents rejects a spec whose emitted WIT would have resolved perfectly, and a user
+//! cannot work around a refusal that names scopes the WIT never links.
 
 use crate::cli::Cli;
 use crate::intermediate::{
@@ -1484,13 +1484,17 @@ pub(crate) fn wit_files(
 /// `transaction.transaction` collision survives `wit-parser` resolve AND `wit_component::encode`,
 /// failing only at component validation — so without this detector the user's first sighting is a
 /// wasm-level error naming a mangled `[method]` symbol.
-pub(crate) fn wit_name_collisions(types: &IntermediateTypes, cli: &Cli) -> Vec<String> {
-    // This runs at IR finalization, BEFORE the rust face has decided which types get a
-    // `Deserialize` impl, so it projects with an empty no-deserialize set — the SUPERSET of members.
-    // That direction is the safe one: dropping `from-cbor-bytes` can only remove a collision, never
-    // create one, so the detector may over-report (for a spec whose type both loses its deserialize
-    // AND names a member `from_cbor_bytes`) and can never under-report.
-    let package = project(types, cli, &BTreeSet::new());
+pub(crate) fn wit_name_collisions(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    no_deserialize: &BTreeSet<RustIdent>,
+) -> Vec<String> {
+    // Projected against the REAL no-deserialize verdict, which is why this runs at GENERATION time
+    // rather than at IR finalization beside `wit_scope_cycles`. Finalization would have to project
+    // with an empty set — the superset of members — and that over-reports for real: a type that gets
+    // no `Deserialize` impl AND carries a field named `from_cbor_bytes` would be rejected for a
+    // collision between a getter and a static the tool never emits.
+    let package = project(types, cli, no_deserialize);
     let mut msgs = Vec::new();
 
     // 1 — package level. Interfaces and the world share one namespace, and the scope flattening
@@ -1641,6 +1645,17 @@ pub(crate) fn wit_scope_cycles(types: &IntermediateTypes, _cli: &Cli) -> Vec<Str
         if types.source_rule_name(ident).is_none() {
             continue;
         }
+        // A named collection is skipped for the same reason `project` skips it: it surfaces no WIT
+        // type, so it owns nothing in any interface and can be neither end of a `use` edge. Its
+        // element's scope is reached from each USE site instead, through `collect_projected_refs`.
+        // Keeping the rule's own edges here invents a `<collection scope> -> <element scope>` edge
+        // the emitted WIT never carries, which is enough to close a false cycle.
+        if matches!(
+            rust_struct.variant(),
+            RustStructType::Array { .. } | RustStructType::Table { .. }
+        ) {
+            continue;
+        }
         let from = types.scope(ident);
         if !from.export() {
             continue;
@@ -1702,7 +1717,9 @@ pub(crate) fn wit_scope_cycles(types: &IntermediateTypes, _cli: &Cli) -> Vec<Str
 /// cycle into a spec that generates unresolvable WIT.
 fn struct_rule_refs(variant: &RustStructType, types: &IntermediateTypes) -> BTreeSet<RustIdent> {
     let mut out = BTreeSet::new();
-    let mut walk = |ty: &RustType| collect_projected_refs(&ty.conceptual_type, types, &mut out);
+    let mut walk = |ty: &RustType| {
+        collect_projected_refs(&ty.conceptual_type, types, &mut BTreeSet::new(), &mut out)
+    };
     match variant {
         RustStructType::Record(record) => {
             for field in &record.fields {
@@ -1746,39 +1763,39 @@ fn struct_rule_refs(variant: &RustStructType, types: &IntermediateTypes) -> BTre
 
 /// The rules one occurrence references, AS THE PROJECTION SEES THEM.
 ///
-/// Modeled on `extern_interface::collect_rule_refs`, with the one deliberate difference the WIT face
-/// forces: a TRANSPARENT alias is resolved THROUGH rather than recorded. The projection never
-/// surfaces CDDL type aliases as WIT types (a surfaced alias breaks the wasm-posture purity
-/// invariant), so an alias occurrence's real target is its base type — recording the alias ident
-/// instead would attribute the edge to a scope that owns nothing the WIT names. An alias that DOES
-/// back a projected type (an `Array`/`Table` typedef registers both a struct and an alias) is
-/// recorded as itself.
+/// Modeled on `extern_interface::collect_rule_refs`, with the two deliberate differences the WIT
+/// face forces, both of them the same rule: what the projection RESOLVES THROUGH is resolved through
+/// here too, because an ident the emitted WIT never names owns nothing and can be no end of a `use`
+/// edge. That covers a TRANSPARENT alias (whose real target is its base type) and a NAMED COLLECTION
+/// (whose real target is its element/domain/range — see [`map_named`]'s `resolve_through`). An alias
+/// that backs a projected NON-collection type is recorded as itself.
+///
+/// `resolving` is the same re-entry guard `resolve_through` carries, for the same reason: a
+/// self-referential collection would otherwise recurse until the stack ends, and a stack overflow is
+/// a panic.
 fn collect_projected_refs(
     ty: &ConceptualRustType,
     types: &IntermediateTypes,
+    resolving: &mut BTreeSet<RustIdent>,
     out: &mut BTreeSet<RustIdent>,
 ) {
     match ty {
-        ConceptualRustType::Rust(ident) => {
-            if types.source_rule_name(ident).is_some() {
-                out.insert(ident.clone());
-            }
-        }
+        ConceptualRustType::Rust(ident) => collect_named_ref(ident, types, resolving, out),
         ConceptualRustType::Alias(AliasIdent::Rust(ident), base) => {
             if types.rust_structs().contains_key(ident) && types.source_rule_name(ident).is_some() {
-                out.insert(ident.clone());
+                collect_named_ref(ident, types, resolving, out);
             } else {
-                collect_projected_refs(base, types, out);
+                collect_projected_refs(base, types, resolving, out);
             }
         }
         // A reserved alias (`uint`, `text`, …) is a WIT primitive: it names no rule.
         ConceptualRustType::Alias(AliasIdent::Reserved(_), _) => {}
         ConceptualRustType::Optional(inner) | ConceptualRustType::Array(inner) => {
-            collect_projected_refs(&inner.conceptual_type, types, out)
+            collect_projected_refs(&inner.conceptual_type, types, resolving, out)
         }
         ConceptualRustType::Map(key, value) => {
-            collect_projected_refs(&key.conceptual_type, types, out);
-            collect_projected_refs(&value.conceptual_type, types, out);
+            collect_projected_refs(&key.conceptual_type, types, resolving, out);
+            collect_projected_refs(&value.conceptual_type, types, resolving, out);
         }
         // `any` projects to the self-contained `any-cbor` alias; primitives and fixed values to WIT
         // primitives. None of them names a rule.
@@ -1786,6 +1803,34 @@ fn collect_projected_refs(
         | ConceptualRustType::Fixed(_)
         | ConceptualRustType::Any => {}
     }
+}
+
+/// Record a reference to a NAMED rust type, resolving through a collection exactly as [`map_named`]
+/// does so the two walks agree about which scope the emitted `use` edge actually points at.
+fn collect_named_ref(
+    ident: &RustIdent,
+    types: &IntermediateTypes,
+    resolving: &mut BTreeSet<RustIdent>,
+    out: &mut BTreeSet<RustIdent>,
+) {
+    if types.source_rule_name(ident).is_none() {
+        return;
+    }
+    let element = match types.rust_struct(ident).map(RustStruct::variant) {
+        Some(RustStructType::Array { element_type, .. }) => vec![element_type.clone()],
+        Some(RustStructType::Table { domain, range, .. }) => vec![domain.clone(), range.clone()],
+        _ => {
+            out.insert(ident.clone());
+            return;
+        }
+    };
+    if !resolving.insert(ident.clone()) {
+        return;
+    }
+    for ty in &element {
+        collect_projected_refs(&ty.conceptual_type, types, resolving, out);
+    }
+    resolving.remove(ident);
 }
 
 /// The strongly-connected components of a directed graph, as sorted node lists in a deterministic

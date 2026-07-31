@@ -1,0 +1,3 @@
+; The element scope, referencing back into `a` — the one REAL cross-scope edge here.
+
+leaf = { n: other }

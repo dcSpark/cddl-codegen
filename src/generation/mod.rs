@@ -244,6 +244,15 @@ pub struct GenerationScope {
     /// candidates (every entry is a concrete generated type, so name-scan is sound). Empty until
     /// `generate()` populates it at the two `add_imports_from_scope_refs` loops.
     scope_ref_import_idents: BTreeSet<String>,
+    /// WIT strong-uniqueness collisions found during `generate()`, one message per collision.
+    ///
+    /// The check cannot run at IR finalization beside `wit_scope_cycles`, because its verdict depends
+    /// on which types the rust face gives a `Deserialize` impl — a `from-cbor-bytes` static the tool
+    /// never emits cannot collide with anything, and projecting with an empty no-deserialize set
+    /// REJECTS a spec whose no-`Deserialize` type happens to carry a field named `from_cbor_bytes`.
+    /// Recorded here and drained by `generated_files`/`export`, the two producers that already carry
+    /// a graceful error channel. Empty off `--component`.
+    component_name_collisions: Vec<String>,
 }
 
 impl Default for GenerationScope {
@@ -284,7 +293,22 @@ impl GenerationScope {
             required_wasm_reexports: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
             scope_ref_import_idents: BTreeSet::new(),
+            component_name_collisions: Vec::new(),
         }
+    }
+
+    /// The graceful error the WIT strong-uniqueness detector recorded during `generate()`, or `Ok`.
+    ///
+    /// Consulted by BOTH generated-file producers rather than by one of them: `export` writes to
+    /// disk and `generated_files` returns strings, and a spec that fails one must fail the other or
+    /// the pinned collision tests would pass against a tree the tool refuses to write.
+    pub(crate) fn component_collision_check(&self) -> std::io::Result<()> {
+        if self.component_name_collisions.is_empty() {
+            return Ok(());
+        }
+        Err(std::io::Error::other(
+            self.component_name_collisions.join("\n"),
+        ))
     }
 
     /// Generates, i.e. populates the state, based on `types`.
@@ -1948,6 +1972,15 @@ impl GenerationScope {
             // what records them, and the component face runs after it — so the projection can drop
             // the `from-cbor-bytes` seam of a type that has no `Deserialize` impl to bridge to.
             let no_deserialize = self.no_deserialize_idents();
+            // WIT strong uniqueness, against the REAL verdict: an interface is one flat namespace
+            // and names compare with the `[method]`/`[static]`/`[constructor]` prefixes stripped, so
+            // a collision the rust and wasm faces resolve by scoping is a broken WIT package. The
+            // `<resource>.<resource>` member case in particular survives BOTH resolve and encode and
+            // fails only at binary validation, which is why the tool catches it rather than leaving
+            // it to a downstream one. Recorded rather than returned: `generate` populates state and
+            // has no error channel; the two producers below it do.
+            self.component_name_collisions =
+                super::generation::wit::wit_name_collisions(types, cli, &no_deserialize);
             let glue = component::component_glue(types, cli, &no_deserialize);
             self.component_lib_scope.raw(glue);
         }

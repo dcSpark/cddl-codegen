@@ -730,6 +730,9 @@ impl GenerationScope {
         export_raw_bytes_encoding_trait: bool,
         cli: &Cli,
     ) -> std::io::Result<()> {
+        // Before ANY write: a WIT strong-uniqueness collision is a refusal, and a refusal that had
+        // already scattered half a tree across the output directory would be worse than useless.
+        self.component_collision_check()?;
         // check it exists here to get clearer error message
         assert!(std::path::Path::exists(&cli.static_dir));
 
@@ -1407,6 +1410,7 @@ impl GenerationScope {
         export_raw_bytes_encoding_trait: bool,
         cli: &Cli,
     ) -> std::io::Result<BTreeMap<String, String>> {
+        self.component_collision_check()?;
         let mut out = BTreeMap::new();
 
         // rust generated/mod.rs (merged ROOT_SCOPE content + module decls + inner crate attrs) /
