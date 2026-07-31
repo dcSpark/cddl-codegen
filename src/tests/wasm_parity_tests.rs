@@ -290,9 +290,7 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
     // Loose-CBOR open struct-maps: full-surface citizens via the wasm rest
     // accessor (a getter returning the captured entries as the wasm map wrapper). The differential
     // parses `mod.rs` only and validates that each rest field's rust member carries its
-    // `MapKToV`/PairMap-backed wasm counterpart. (This snapshot fixture is shape-clean across
-    // policies — no `MapKToV` shape is owned by both a preserve and a non-preserve rest, which would
-    // conflict on the single minted wrapper's backing container.)
+    // `MapKToV`/PairMap-backed wasm counterpart.
     (
         "open-struct-map",
         &[
@@ -308,8 +306,7 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
     // key type that is a rust struct (a union, a sized-int newtype, a `bytes` vector) rather than a
     // primitive — the differential validates that each rest field's rust member still carries its
     // `MapKToV`/`PairMapKToV` counterpart, and that the `<K>List` keys mint follows `K`. Swept under
-    // `default`, `preserve` and `json`; shape-cleanliness holds here too (no `MapKToV` shape is owned
-    // by both a preserve and a non-preserve rest). Every profile on this axis carries wasm ON (it is
+    // `default`, `preserve` and `json`. Every profile on this axis carries wasm ON (it is
     // a wasm differential), so the `json` row is the same flag combination the fixture's `wasm_json`
     // snapshot profile pins — that one pins the emitted text, this one the rust→wasm correspondence.
     (
@@ -439,10 +436,9 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
     (
         "open-struct-map-preserve-e2e",
         "loose-CBOR open struct-map PRESERVE fidelity e2e fixture: its integration gate generates \
-         --preserve-encodings --canonical-form --wasm=false (CBOR fidelity, not the wasm boundary). \
-         It also mixes a preserve and a non-preserve rest of the SAME `MapU64ToAny` shape, which \
-         would conflict on the single minted wrapper's backing container under --wasm — deliberately \
-         kept off the wasm axis; the shape-clean `open-struct-map` snapshot fixture covers parity",
+         --preserve-encodings --canonical-form --wasm=false (CBOR fidelity, not the wasm boundary); \
+         the wasm rest surface is validated by the `open-struct-map` snapshot fixture's parity rows \
+         above",
     ),
     (
         "custom-serialize-canonical-e2e",
@@ -457,10 +453,8 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
     (
         "open-struct-map-json-e2e",
         "loose-CBOR open struct-map FLATTENED-JSON e2e fixture: its integration gate generates \
-         --json-serde-derives --json-schema-export --wasm=false (it exercises the JSON boundary). It \
-         also mixes a preserve and a non-preserve rest of the same `MapU64ToAny` shape (a wasm-only \
-         wrapper-backing conflict), so it stays off the wasm axis; the `open-struct-map` snapshot \
-         fixture's parity rows cover the wasm rest surface",
+         --json-serde-derives --json-schema-export --wasm=false (it exercises the JSON boundary); \
+         the `open-struct-map` snapshot fixture's parity rows cover the wasm rest surface",
     ),
     (
         "open-struct-map-ignore",

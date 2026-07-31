@@ -1310,9 +1310,9 @@ directives) is verified across the layers:
   stringifications — which is also how a pair-list holding real duplicates errors — complex `any`
   keys/values).
 - **Snapshots** — `open_struct_map_default` / `open_struct_map_preserve` profiles over
-  `tests/open-struct-map`, which also rides the wasm-parity sweep (the preserve/json e2e fixtures
-  deliberately stay off that axis — see the same-shape map-wrapper container-conflict residual in
-  `tests/TESTING_ROADMAP.md`).
+  `tests/open-struct-map`, which also rides the wasm-parity sweep (the e2e fixtures stay off that
+  axis: their integration gates generate `--wasm=false`, so they emit no wasm surface to
+  differential).
 - **Wire KATs** — the `open_map` rule in all three `tests/golden_hex*` fixtures (default /
   preserve verbatim rest-key head / canonical minimized under the merge).
 - **emit-tests** — the `emit_tests_open_struct_rest_execute` gate (see the emit-tests section
