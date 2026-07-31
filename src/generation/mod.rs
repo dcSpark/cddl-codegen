@@ -52,6 +52,12 @@ pub(crate) mod extern_interface;
 // `intermediate::finalize` runs the detectors and `cli::Cli::wit_package` mints the package id.
 pub(crate) mod wit;
 
+// The component face's guest crate: the `wit_bindgen::generate!` call site and the per-type glue
+// bridging the WIT surface to the generated rust crate. Consumes `wit`'s projection value and never
+// re-derives one of its names — the dependency runs one way, and a second derivation would drift
+// from both the emitted `.wit` and the rust↔WIT parity gate.
+pub(crate) mod component;
+
 // The emitted `no-std-check/` shim crate: a second always-clobbered sibling tree, on exactly the
 // terms `extern_interface` states, but built from `Cli` alone (no IR). `pub(crate)` so the test-only
 // `api::no_std_check_strings` helper can reach the producer for snapshot fixtures.
@@ -129,6 +135,15 @@ pub struct GenerationScope {
     serialize_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     wasm_lib_scope: codegen::Scope,
     wasm_scopes: BTreeMap<ModuleScope, codegen::Scope>,
+    /// The component crate's guest glue. ONE scope, not one per module scope: the crate is a
+    /// `cdylib` whose entire surface is the WIT world, and `wit_bindgen::generate!` mints one type
+    /// tree at one invocation site that `export!` must be invoked beside (see the
+    /// [`component`] module doc).
+    component_lib_scope: codegen::Scope,
+    /// The per-scope companion of [`Self::component_lib_scope`], plumbed through the same
+    /// `merge_scopes_to_strings` producer the rust and wasm faces use so a later phase can split the
+    /// glue across files without touching the write loop. Empty in phase 1.
+    component_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     cbor_encodings_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     json_lines: BlocksOrLines,
     already_generated: BTreeSet<RustIdent>,
@@ -246,6 +261,8 @@ impl GenerationScope {
             serialize_scopes: BTreeMap::new(),
             wasm_lib_scope: codegen::Scope::new(),
             wasm_scopes: BTreeMap::new(),
+            component_lib_scope: codegen::Scope::new(),
+            component_scopes: BTreeMap::new(),
             cbor_encodings_scopes: BTreeMap::new(),
             json_lines: BlocksOrLines::default(),
             already_generated: BTreeSet::new(),
@@ -1919,6 +1936,18 @@ impl GenerationScope {
             declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
         }
 
+        // component crate
+        //
+        // ONE block, deliberately — not the 30 interleaved `cli.wasm` gates above. The wasm face
+        // interleaves because it MINTS types during the walk (collection wrappers whose existence
+        // depends on what the walk has already seen); the component face renders from the FINALIZED
+        // IR the same way `extern_interface` does, so it needs no walk of its own and gains nothing
+        // from being threaded through this one.
+        if cli.component {
+            let glue = component::component_glue(types, cli);
+            self.component_lib_scope.raw(glue);
+        }
+
         // optional generated-test module (reject + round-trip halves; off by default, so it
         // doesn't touch the snapshot suite)
         //
@@ -1957,6 +1986,16 @@ impl GenerationScope {
             {
                 self.wasm_lib().raw(&test_mod);
             }
+        }
+        // The component face has no generated-test renderer yet: a component's surface is only
+        // reachable through a runtime that instantiates it, so the round-trip half of the wasm
+        // renderer has no in-crate counterpart to assert against. A LOUD skip on the same terms as
+        // the wasm module's own (stderr, default verbosity) — a `--emit-tests --component` run that
+        // silently emitted nothing would read as a passing test surface that does not exist.
+        if cli.component && cli.emit_tests {
+            crate::warn!(
+                "cddl-codegen --emit-tests: component module skipped (component test emission not yet supported)"
+            );
         }
     }
 
