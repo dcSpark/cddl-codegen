@@ -3170,6 +3170,58 @@ runs — that last number is why. Per-cell output trees are freed; the shared `t
 what survives. A machine below the stated scratch or memory floor makes the gate print a loud SKIP
 naming the measured number, never a silent pass.
 
+### cross-crate composition (`component_compose_tests::component_compose_acceptance`, gate `component_compose`)
+
+**The acceptance gate for the whole component face.** Two independently generated crates
+(`tests/component-compose/dep` and `.../consumer`), built as two `wasm32-wasip2` components, composed
+into one world, and driven through the flow the face exists for. Every gate above stops one step
+short of it: `component_import_wasip2_build` proves the consumer's imported-resource glue *compiles*,
+`component_host` proves *one* component behaves. Only here do two separately generated crates agree
+at runtime — which is the claim, because without it a consumer's dependency types are its own private
+resources, structurally identical to the dependency's and interchangeable with nothing.
+
+- **the composed world exports BOTH interfaces**, read back out of the encoded artifact rather than
+  out of the composer's graph. This is what `wac plug` destroys (it satisfies the consumer's import
+  from the dependency's export and then drops that export) and what a host needs in order to mint a
+  dependency object at all;
+- **a dependency object crosses in and comes back live**: minted on the dependency's exported
+  interface, passed into a consumer constructor, returned by a consumer getter, then read AND MUTATED
+  through the dependency's own interface with the mutation visible on a later read. That last step is
+  what distinguishes a live resource in the dependency instance's table from a value the host is
+  holding. The returned handle is also asserted DISTINCT from the one passed in, and the borrowed
+  original unaffected by the mutation — the seam is CBOR bytes, so the object is live and the value
+  is a copy, and neither half may be read as the other;
+- **the repeated position works end to end**, through the accumulator: elements pushed one at a time,
+  read back as owned dependency handles, order preserved;
+- **the composed boundary's bytes are the native crates' bytes** — the oracle is a path dep on both
+  generated `rust` crates;
+- **the instantiate-once mistake is invisible at compose time and fatal at runtime**, both halves
+  pinned. A second dependency instance composes at exit 0 into a world whose exported interfaces are
+  indistinguishable from the correct one's, and then the first handle crossing fails
+  (`mismatched resource types`, wasmtime's text, asserted loosely). The first half is why the
+  single-instantiation shape is a documented integrator obligation rather than something the composer
+  enforces.
+
+Composition runs **in-process via `wac-graph`**, never a `wac` binary whose version would sit outside
+the lockfile between the gate and its verdict; it resolves `wasmparser`/`wasm-encoder`/`wasm-metadata`
+at the same 0.247 floor the WIT gates pin, so composition adds no version skew.
+
+The host crate is a **nested scratch crate the gate builds** (`tests/component-compose/host/**`),
+copied into the generated output root before the gate-cache key is taken, for the same input-closure
+reason as `component_host`. Its three path deps stay relative and both artifacts arrive by env var;
+the two generated WIT packages are copied into `host/wit/deps/**` inside the same root, so a change to
+either projection reaches the hand-written composed world the host binds against.
+`component_compose_tests::the_compose_fixture_carries_the_files_the_gate_copies` asserts the copy list
+in-process, and also that the package identifiers agree across the three places they are spelled:
+`--lib-name X` mints `cddl:X@0.1.0`, which the composed world exports and the composer registers.
+
+Measured on the delivering machine: **91 s cold** (a fresh scratch root, so wasmtime and wac-graph
+build), **4 s warm** (gate-cache hit), **7 s on a forced run with the scratch root warm**. Same cost
+class as `component_host` and cheaper on the re-run path, which is why it sits at `local`. The scratch
+root is checkout-hash keyed, serialized with `acquire_scratch_lock` and deliberately NOT deleted;
+per-cell output trees are freed, the shared `target/` (3.3 GiB) survives. It shares `component_host`'s
+scratch and memory floors and its loud-SKIP behaviour, never a silent pass.
+
 ### component compilation at corpus breadth (`component_tests::component_corpus_compiles`, gate `component_corpus_compiles`, `full`)
 
 Every `tests/corpus/*.cddl` fixture's emitted component crate, type-checked for `wasm32-wasip2`.
