@@ -253,6 +253,18 @@ pub struct GenerationScope {
     /// Recorded here and drained by `generated_files`/`export`, the two producers that already carry
     /// a graceful error channel. Empty off `--component`.
     component_name_collisions: Vec<String>,
+    /// The dependency WIT packages `--component-extern-wit` names, read once at the top of
+    /// `generate()` and handed to every consumer of the projection.
+    ///
+    /// Loaded HERE rather than at each `wit::project` call site because there are three of them
+    /// (`wit_files`, `wit_name_collisions`, `component_glue`) and a projection that disagreed with
+    /// itself about which deps are in import mode would emit a WIT and a guest crate that do not
+    /// match. Empty off the flag, which is what makes the flag's absence byte-identical to today.
+    component_dep_wits: crate::component_wit_deps::DepWitPackages,
+    /// Cross-crate seam errors: a malformed/unreadable dependency WIT (found at load) and a consumer
+    /// signature the dependency's own WIT cannot satisfy (found by the projection). Same recorded-and
+    /// -drained shape as `component_name_collisions`, and drained by the same check.
+    component_import_errors: Vec<String>,
 }
 
 impl Default for GenerationScope {
@@ -294,21 +306,37 @@ impl GenerationScope {
             no_deser_reasons: BTreeMap::new(),
             scope_ref_import_idents: BTreeSet::new(),
             component_name_collisions: Vec::new(),
+            component_dep_wits: BTreeMap::new(),
+            component_import_errors: Vec::new(),
         }
     }
 
-    /// The graceful error the WIT strong-uniqueness detector recorded during `generate()`, or `Ok`.
+    /// The graceful errors the component face recorded during `generate()`, or `Ok`: the WIT
+    /// strong-uniqueness collisions, and the cross-crate import seam's own refusals.
     ///
     /// Consulted by BOTH generated-file producers rather than by one of them: `export` writes to
     /// disk and `generated_files` returns strings, and a spec that fails one must fail the other or
-    /// the pinned collision tests would pass against a tree the tool refuses to write.
+    /// the pinned tests would pass against a tree the tool refuses to write.
+    ///
+    /// The two classes are joined into one error rather than checked in sequence because they are
+    /// independent verdicts about one run: a spec with both should show the user both, not the first
+    /// one the check happened to reach.
+    /// The dependency WIT packages this run imports, for the producers that emit the WIT tree.
+    pub(crate) fn component_dep_wits(&self) -> &crate::component_wit_deps::DepWitPackages {
+        &self.component_dep_wits
+    }
+
     pub(crate) fn component_collision_check(&self) -> std::io::Result<()> {
-        if self.component_name_collisions.is_empty() {
+        let msgs = self
+            .component_import_errors
+            .iter()
+            .chain(self.component_name_collisions.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        if msgs.is_empty() {
             return Ok(());
         }
-        Err(std::io::Error::other(
-            self.component_name_collisions.join("\n"),
-        ))
+        Err(std::io::Error::other(msgs.join("\n")))
     }
 
     /// Generates, i.e. populates the state, based on `types`.
@@ -1979,9 +2007,29 @@ impl GenerationScope {
             // fails only at binary validation, which is why the tool catches it rather than leaving
             // it to a downstream one. Recorded rather than returned: `generate` populates state and
             // has no error channel; the two producers below it do.
-            self.component_name_collisions =
-                super::generation::wit::wit_name_collisions(types, cli, &no_deserialize);
-            let glue = component::component_glue(types, cli, &no_deserialize);
+            // The dependencies' committed WIT packages, read ONCE for the whole component face.
+            // A read failure is recorded rather than returned for the same reason a collision is:
+            // `generate` populates state and has no error channel, and the two producers below it do.
+            match crate::component_wit_deps::load(cli) {
+                Ok(dep_wits) => self.component_dep_wits = dep_wits,
+                Err(msg) => self.component_import_errors.push(msg),
+            }
+            self.component_name_collisions = super::generation::wit::wit_name_collisions(
+                types,
+                cli,
+                &no_deserialize,
+                &self.component_dep_wits,
+            );
+            let package = super::generation::wit::project(
+                types,
+                cli,
+                &no_deserialize,
+                &self.component_dep_wits,
+            );
+            self.component_import_errors
+                .extend(package.import_errors.iter().cloned());
+            let glue =
+                component::component_glue(types, cli, &no_deserialize, &self.component_dep_wits);
             self.component_lib_scope.raw(glue);
         }
 

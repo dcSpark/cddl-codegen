@@ -163,6 +163,7 @@ pub(crate) const SETTINGS_KEYS: &[&str] = &[
     "workspace-dep",
     "std-forward-dep",
     "extern-import",
+    "component-extern-wit",
     "extern-wasm-crate",
     "extern-wrapper-index",
     "wrapper-requests",
@@ -407,6 +408,14 @@ pub struct Settings {
     // --- `<k>=<v>` sub-tables: per-key UNION across layers, later layer wins per key ---
     #[serde(default)]
     pub extern_import: BTreeMap<String, String>,
+    /// The component face's half of a dependency declaration: the dep's committed `component/wit/`
+    /// package. A path the tool READS, so it resolves against the config file's directory exactly as
+    /// `extern-import` does.
+    ///
+    /// Hand-written only for now — the `deps`-edge derivation is not built, so a config that wants
+    /// import mode spells this sub-table itself.
+    #[serde(default)]
+    pub component_extern_wit: BTreeMap<String, String>,
     #[serde(default)]
     pub extern_wasm_crate: BTreeMap<String, String>,
     #[serde(default)]
@@ -480,6 +489,7 @@ impl Settings {
             workspace_dep,
             std_forward_dep,
             extern_import,
+            component_extern_wit,
             extern_wasm_crate,
             extern_wrapper_index,
             wrapper_requests,
@@ -543,6 +553,7 @@ impl Settings {
         }
         table!(
             extern_import,
+            component_extern_wit,
             extern_wasm_crate,
             extern_wrapper_index,
             wrapper_requests,
@@ -2708,6 +2719,7 @@ fn argv_fragments(
         workspace_dep,
         std_forward_dep,
         extern_import,
+        component_extern_wit,
         extern_wasm_crate,
         extern_wrapper_index,
         wrapper_requests,
@@ -2877,6 +2889,7 @@ fn argv_fragments(
     }
     path_table!(
         extern_import => "extern-import",
+        component_extern_wit => "component-extern-wit",
         extern_wrapper_index => "extern-wrapper-index",
         wrapper_requests => "wrapper-requests",
         key_requests => "key-requests",

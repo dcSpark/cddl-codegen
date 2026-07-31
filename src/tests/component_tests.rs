@@ -171,7 +171,7 @@ fn generate_error(spec: &str) -> Option<String> {
 // -------------------------------------------------------------------------------------------------
 
 /// Stages 1–3: write the files, resolve them, encode the package. Returns the encoded bytes.
-fn resolve_and_encode(files: &BTreeMap<String, String>) -> Result<Vec<u8>, String> {
+pub(super) fn resolve_and_encode(files: &BTreeMap<String, String>) -> Result<Vec<u8>, String> {
     let root = scratch_dir("wit");
     for (path, content) in files {
         let full = root.join(path);
@@ -194,7 +194,7 @@ fn resolve_and_encode_dir(wit_dir: &Path) -> Result<Vec<u8>, String> {
 
 /// Stage 4: validate the encoded component-model bytes. This is the stage the whole gate exists for
 /// — the strong-uniqueness collision class survives resolve AND encode and fails only here.
-fn validate_component(bytes: &[u8]) -> Result<(), String> {
+pub(super) fn validate_component(bytes: &[u8]) -> Result<(), String> {
     let mut validator = wasmparser::Validator::new_with_features(wasmparser::WasmFeatures::all());
     validator
         .validate_all(bytes)

@@ -14,6 +14,7 @@
 pub(crate) mod any_cbor_tests;
 pub(crate) mod any_choice_tests;
 pub(crate) mod component_host_tests;
+pub(crate) mod component_import_tests;
 pub(crate) mod component_parity_tests;
 pub(crate) mod component_tests;
 pub(crate) mod config_tests;

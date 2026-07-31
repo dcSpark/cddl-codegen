@@ -1,0 +1,34 @@
+; The DEPENDENCY of the component face's cross-crate fixture family. Generated with
+; `--component=true`, so it publishes BOTH cross-crate artifacts a consumer needs: its
+; `extern-interface/dep/**` export (which puts these names in the consumer's spec namespace) and its
+; `component/wit/**` package (which says how they cross the component boundary).
+;
+; Deliberately a real generated dependency rather than the stub tree `tests/extern-deps-wasm` uses:
+; a stub has no component face at all, which is exactly the case import mode is OPT-IN for.
+
+; A record. Projects to a `resource` with a constructor and getters, so a consumer importing it gets
+; a type it can both mint and read — the shape the whole seam exists to share.
+token = [ name: text, amount: uint ]
+
+; A second record, so a consumer can hold two dependency types at once and the `use` line has to
+; carry both names rather than one.
+policy = [ id: bytes ]
+
+; A transparent alias. The consumer resolves it THROUGH to `uint`, so it must NOT appear in the
+; consumer's `use` line — the negative control for the import resolution.
+coin = uint
+
+; A type the dependency's own WIT projection cannot render, so the dependency records it as
+; `// unexported: Marker — <reason>` in its WIT while still EXPORTING it in its extern-interface. That
+; asymmetry is exactly the case the exclusion-propagation rule exists for: the consumer's spec parses
+; (the name is in the export) and then has no WIT type to name. A consumer referencing it must fail
+; with the DEPENDENCY's own reason quoted, never emit a `use` of a type that is not there.
+;
+; The shape is a reference to a generic extern BASE, which names no concrete type — only its
+; instances are bridged. Two consequences worth stating: the dependency's own rust crate needs a
+; hand-written `GenBase` (this fixture is never built as a rust crate, only projected), and its
+; generation prints the usual missing-re-export warning.
+gen_base = _CDDL_CODEGEN_EXTERN_TYPE_
+leaf = [ a: uint ]
+holder = [ g: gen_base<leaf> ]
+marker = [ v: gen_base, note: text ]

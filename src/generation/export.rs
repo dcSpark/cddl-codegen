@@ -71,13 +71,21 @@ pub(crate) const CODEGEN_HEADER: &str = "// This file was code-generated using a
 ///
 /// [`CODEGEN_HEADER`] is `//`-comment lines, a legal prefix in WIT as well as in rust, so the `.wit`
 /// family carries the same provenance banner as the `.rs` ones and still resolves.
+///
+/// The one `.wit` exemption is the materialized dependency packages under
+/// [`COMPONENT_WIT_DEPS_DIR`](crate::generation::layout::COMPONENT_WIT_DEPS_DIR): those bytes are
+/// ANOTHER crate's, copied verbatim, and they already carry that crate's own banner. Stamping this
+/// run's on top would both duplicate the banner and attribute a dependency's file to this run —
+/// exactly backwards, since the file's whole point is that it is an input from elsewhere. Their
+/// provenance rides the file-class comment the materializer prepends instead.
 pub(crate) fn is_header_stamped_path(path: &str) -> bool {
     (path.ends_with(".rs")
         && (path.starts_with("rust/src/generated/")
             || path.starts_with("wasm/src/generated/")
             || path.starts_with("component/src/generated/")))
         || (path.ends_with(".wit")
-            && path.starts_with(crate::generation::layout::COMPONENT_WIT_DIR))
+            && path.starts_with(crate::generation::layout::COMPONENT_WIT_DIR)
+            && !path.starts_with(crate::generation::layout::COMPONENT_WIT_DEPS_DIR))
 }
 
 /// True for a `.rs` file the comment-preservation overlay runs on: the tool-owned generated trees
@@ -2043,6 +2051,7 @@ impl GenerationScope {
                 types,
                 cli,
                 &self.no_deserialize_idents(),
+                self.component_dep_wits(),
             ));
         }
 

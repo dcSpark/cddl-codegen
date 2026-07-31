@@ -38,10 +38,11 @@
 
 use super::enums::EnumVariantInRust;
 use super::wit::{
-    WitConstructor, WitEnum, WitFunc, WitFuncOp, WitInterface, WitMember, WitMemberOp, WitPackage,
-    WitParam, WitResource, WitType, WitTypeDef, WitTypeRef,
+    ImportedDepType, WitConstructor, WitEnum, WitFunc, WitFuncOp, WitInterface, WitMember,
+    WitMemberOp, WitPackage, WitParam, WitResource, WitType, WitTypeDef, WitTypeRef,
 };
 use crate::cli::Cli;
+use crate::component_wit_deps::DepWitPackages;
 use crate::intermediate::{
     EnumVariant, IntermediateTypes, ModuleScope, Representation, RustIdent, RustStructType,
 };
@@ -73,8 +74,9 @@ pub(crate) fn component_glue(
     types: &IntermediateTypes,
     cli: &Cli,
     no_deserialize: &BTreeSet<RustIdent>,
+    dep_wits: &DepWitPackages,
 ) -> String {
-    let package = super::wit::project(types, cli, no_deserialize);
+    let package = super::wit::project(types, cli, no_deserialize, dep_wits);
     Emitter {
         types,
         cli,
@@ -97,6 +99,21 @@ pub(crate) fn component_glue(
 /// unique.
 fn interface_alias(iface_name: &str) -> String {
     format!("wit_{}", kebab_to_snake(iface_name))
+}
+
+/// The rust module alias an IMPORTED dependency interface is reached through.
+///
+/// A different prefix family from [`interface_alias`] on purpose: a dependency's interface may be
+/// named exactly like one of this package's (both `types`, the default), and the two are genuinely
+/// different rust modules — `wit_bindgen` puts an EXPORTED interface under `exports::…` and an
+/// IMPORTED one at the crate root, which is the visible form of the transitive-import rule. Keying
+/// the alias on the dep name as well makes the two nameable side by side.
+fn imported_interface_alias(dep: &str, iface_name: &str) -> String {
+    format!(
+        "wit_dep_{}_{}",
+        kebab_to_snake(&dep.replace('-', "_")),
+        kebab_to_snake(iface_name)
+    )
 }
 
 /// Whether `wit_bindgen::generate!` mints a `Guest` trait for this interface — i.e. whether the
@@ -246,11 +263,29 @@ impl Emitter<'_, '_> {
         }
     }
 
-    fn alias_for(&self, r: &WitTypeRef) -> &str {
+    fn alias_for(&self, r: &WitTypeRef) -> String {
+        if let Some(dep_type) = self.imported(r) {
+            return imported_interface_alias(&dep_type.dep, &dep_type.interface);
+        }
         self.aliases
             .get(&r.scope)
-            .map(String::as_str)
+            .cloned()
             .expect("every projected type's scope has an interface")
+    }
+
+    /// The dependency-type record behind a type reference, or `None` for a type this package defines.
+    /// Every place the imported and exported shapes differ asks this — the two are the same WIT
+    /// spelling with two different rust lowerings, and the projection is the only thing that knows
+    /// which is which.
+    fn imported(&self, r: &WitTypeRef) -> Option<&ImportedDepType> {
+        self.package.imported.get(&r.ident)
+    }
+
+    /// The rust path of the DEPENDENCY's own type behind an imported handle — the native value the
+    /// consumer's structs actually hold. Read through the same crate-boundary resolver the rust and
+    /// wasm faces use, so a `@rust_name` pin and the dep's crate name are applied once.
+    fn imported_rust_path(&self, r: &WitTypeRef) -> String {
+        self.rust_path(&r.ident)
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -293,10 +328,18 @@ impl Emitter<'_, '_> {
             }
             WitType::Handle(r) => {
                 let camel = kebab_to_camel(&r.name);
-                if param {
-                    format!("{}::{camel}Borrow<'_>", self.alias_for(r))
+                let alias = self.alias_for(r);
+                if !param {
+                    return format!("{alias}::{camel}");
+                }
+                // C-P4: `borrow<t>` lowers to two different rust shapes. An EXPORTED resource gets a
+                // `TBorrow<'_>` newtype (the guest owns the rep, so the borrow carries a door onto
+                // it); an IMPORTED one is a plain `&T`, because the guest owns nothing to look into
+                // — the handle is the whole value. One template cannot serve both.
+                if self.imported(r).is_some() {
+                    format!("&{alias}::{camel}")
                 } else {
-                    format!("{}::{camel}", self.alias_for(r))
+                    format!("{alias}::{camel}Borrow<'_>")
                 }
             }
             WitType::Enum(r) => format!("{}::{}", self.alias_for(r), kebab_to_camel(&r.name)),
@@ -331,6 +374,20 @@ impl Emitter<'_, '_> {
             | WitType::F32
             | WitType::F64
             | WitType::Str => Conv::plain(expr),
+            // An IMPORTED handle has no guest-side rep to clone out of: the value lives in the
+            // DEPENDENCY's component instance, and the only thing that crosses is bytes. So the
+            // conversion is the CBOR seam — one serialize on the far side, one deserialize here —
+            // and it is fallible because the far side's encoding and this crate's linked dependency
+            // can disagree (§7 precondition 2). Costs one serialize + copy + deserialize per value
+            // per crossing, which is the price of sharing one dependency instance across consumers.
+            WitType::Handle(r) if self.imported(r).is_some() => Conv {
+                expr: format!(
+                    "<{rust} as {rt}::serialization::Deserialize>::from_cbor_bytes(&{expr}.to_cbor_bytes()).map_err(err)",
+                    rust = self.imported_rust_path(r),
+                    rt = self.runtime()
+                ),
+                fallible: true,
+            },
             WitType::Handle(r) => Conv::plain(format!(
                 "{expr}.get::<{}>().0.borrow().clone()",
                 rep_name(&r.ident)
@@ -470,7 +527,13 @@ impl Emitter<'_, '_> {
     /// Every arm that carries a composite CLONES: a handle minted here wraps a fresh `RefCell` over a
     /// copy of the field, so it is a snapshot the caller may mutate freely without reaching back into
     /// the parent.
-    fn rust_to_wit(&self, ty: &WitType, expr: &str, iface: &str, by_ref: bool) -> String {
+    ///
+    /// Returns a [`Conv`] rather than a bare expression because ONE arm can fail: minting an
+    /// IMPORTED handle runs the CBOR seam, and a `from-cbor-bytes` on the far side is fallible. The
+    /// fallibility is carried rather than unwrapped in place for the same reason the parameter
+    /// direction carries it — the same conversion is emitted at statement level and inside a `map`
+    /// closure, and only one of those may spell `?`.
+    fn rust_to_wit(&self, ty: &WitType, expr: &str, iface: &str, by_ref: bool) -> Conv {
         let deref = |e: &str| {
             if by_ref {
                 format!("*{e}")
@@ -496,49 +559,75 @@ impl Emitter<'_, '_> {
             | WitType::S32
             | WitType::S64
             | WitType::F32
-            | WitType::F64 => deref(expr),
-            WitType::Str => format!("{expr}.clone()"),
-            WitType::Handle(r) => format!(
+            | WitType::F64 => Conv::plain(deref(expr)),
+            WitType::Str => Conv::plain(format!("{expr}.clone()")),
+            // The return half of the CBOR seam: this crate holds the DEPENDENCY's native value and
+            // owes the caller a handle into the dependency's component instance, so the value is
+            // serialized here and re-read by the dependency's own `from-cbor-bytes`. Fallible for the
+            // reason the parameter half is, and the reason getters on dependency-typed fields carry a
+            // `result<…, string>` on this face at all.
+            WitType::Handle(r) if self.imported(r).is_some() => Conv {
+                expr: format!(
+                    "{alias}::{camel}::from_cbor_bytes(&<{rust} as {rt}::serialization::{tr}>::to_cbor_bytes({value})).map_err(err)",
+                    alias = self.alias_for(r),
+                    camel = kebab_to_camel(&r.name),
+                    rust = self.imported_rust_path(r),
+                    rt = self.runtime(),
+                    tr = self.to_bytes_trait(),
+                    value = by_reference(expr)
+                ),
+                fallible: true,
+            },
+            WitType::Handle(r) => Conv::plain(format!(
                 "{}::{}::new({}(RefCell::new({expr}.clone())))",
                 self.alias_for(r),
                 kebab_to_camel(&r.name),
                 rep_name(&r.ident)
-            ),
-            WitType::Enum(r) => format!(
+            )),
+            WitType::Enum(r) => Conv::plain(format!(
                 "{}_to_wit({})",
                 kebab_to_snake(&convert_ident_to_snake(&r.ident)),
                 by_reference(expr)
-            ),
-            WitType::Int => format!(
+            )),
+            WitType::Int => Conv::plain(format!(
                 "int_to_wit_{}({})",
                 bridge_suffix(iface),
                 by_reference(expr)
-            ),
-            WitType::AnyCbor => format!(
+            )),
+            WitType::AnyCbor => Conv::plain(format!(
                 "<{}::any_cbor::AnyCbor as {}::serialization::{}>::to_cbor_bytes({})",
                 self.runtime(),
                 self.runtime(),
                 self.to_bytes_trait(),
                 by_reference(expr)
-            ),
-            WitType::AnyCborKind => {
-                format!(
-                    "any_cbor_kind_to_wit_{}({})",
-                    bridge_suffix(iface),
-                    by_reference(expr)
-                )
+            )),
+            WitType::AnyCborKind => Conv::plain(format!(
+                "any_cbor_kind_to_wit_{}({})",
+                bridge_suffix(iface),
+                by_reference(expr)
+            )),
+            WitType::Option(inner) => {
+                let inner_conv = self.rust_to_wit(inner, "x", iface, true);
+                if inner_conv.fallible {
+                    // `map(..).transpose()` turns `Option<Result<T, E>>` into the `Result<Option<T>, E>`
+                    // the signature wants, exactly as the parameter direction does.
+                    Conv {
+                        expr: format!("{expr}.as_ref().map(|x| {}).transpose()", inner_conv.expr),
+                        fallible: true,
+                    }
+                } else {
+                    Conv::plain(format!("{expr}.as_ref().map(|x| {})", inner_conv.expr))
+                }
             }
-            WitType::Option(inner) => format!(
-                "{expr}.as_ref().map(|x| {})",
-                self.rust_to_wit(inner, "x", iface, true)
-            ),
             WitType::Tuple(inner) => {
                 let names: Vec<String> = (0..inner.len()).map(|i| format!("t{i}")).collect();
-                let parts: Vec<String> = inner
+                let convs: Vec<Conv> = inner
                     .iter()
                     .zip(&names)
                     .map(|(t, n)| self.rust_to_wit(t, n, iface, true))
                     .collect();
+                let fallible = convs.iter().any(|c| c.fallible);
+                let parts: Vec<String> = convs.iter().map(|c| c.unwrapped()).collect();
                 let head = if names.len() == 1 {
                     format!("({},)", names[0])
                 } else {
@@ -549,22 +638,34 @@ impl Emitter<'_, '_> {
                 } else {
                     format!("({})", parts.join(", "))
                 };
-                format!("{{ let {head} = {}; {body} }}", by_reference(expr))
+                if fallible {
+                    Conv {
+                        expr: format!(
+                            "(|| -> Result<_, String> {{ let {head} = {}; Ok({body}) }})()",
+                            by_reference(expr)
+                        ),
+                        fallible: true,
+                    }
+                } else {
+                    Conv::plain(format!("{{ let {head} = {}; {body} }}", by_reference(expr)))
+                }
             }
             WitType::List(inner) => {
                 // `iter()` rather than a container-specific door: every rust collection this face can
                 // reach (`Vec`, `NonEmptyVec`, `BTreeMap`, `OrderedHashMap`, `OrderedSet`, `PairMap`)
                 // has one, and the `|(k, v)|` head below destructures both a `&(K, V)` element and a
                 // map's `(&K, &V)` pair identically under default binding modes.
-                match &**inner {
+                let (head, element) = match &**inner {
                     WitType::Tuple(parts) => {
                         let names: Vec<String> =
                             (0..parts.len()).map(|i| format!("x{i}")).collect();
-                        let rendered: Vec<String> = parts
+                        let convs: Vec<Conv> = parts
                             .iter()
                             .zip(&names)
                             .map(|(t, n)| self.rust_to_wit(t, n, iface, true))
                             .collect();
+                        let fallible = convs.iter().any(|c| c.fallible);
+                        let rendered: Vec<String> = convs.iter().map(|c| c.unwrapped()).collect();
                         let head = if names.len() == 1 {
                             format!("({},)", names[0])
                         } else {
@@ -575,12 +676,29 @@ impl Emitter<'_, '_> {
                         } else {
                             format!("({})", rendered.join(", "))
                         };
-                        format!("{expr}.iter().map(|{head}| {body}).collect()")
+                        (
+                            head,
+                            Conv {
+                                expr: body,
+                                fallible,
+                            },
+                        )
                     }
-                    other => format!(
-                        "{expr}.iter().map(|x| {}).collect()",
-                        self.rust_to_wit(other, "x", iface, true)
-                    ),
+                    other => ("x".to_owned(), self.rust_to_wit(other, "x", iface, true)),
+                };
+                if element.fallible {
+                    Conv {
+                        expr: format!(
+                            "{expr}.iter().map(|{head}| Ok({})).collect::<Result<Vec<_>, String>>()",
+                            element.expr
+                        ),
+                        fallible: true,
+                    }
+                } else {
+                    Conv::plain(format!(
+                        "{expr}.iter().map(|{head}| {}).collect()",
+                        element.expr
+                    ))
                 }
             }
         }
@@ -589,6 +707,29 @@ impl Emitter<'_, '_> {
     // ---------------------------------------------------------------------------------------------
     // Emission
     // ---------------------------------------------------------------------------------------------
+
+    /// The `(dep, interface)` pairs this package imports, deduplicated and in a deterministic order.
+    /// Derived from the RESOLVED types rather than from the flag list, so a declared dependency
+    /// nothing actually references contributes no alias and no `with:` row.
+    fn imported_interfaces(&self) -> BTreeSet<(String, String)> {
+        self.package
+            .imported
+            .values()
+            .filter(|dep_type| self.package.imported_packages.contains_key(&dep_type.dep))
+            .map(|dep_type| (dep_type.dep.clone(), dep_type.interface.clone()))
+            .collect()
+    }
+
+    /// The `with:` keys, one per imported interface — the exact `use` paths the emitted WIT names,
+    /// so the two can never disagree about a version or a spelling.
+    fn with_entries(&self) -> BTreeSet<String> {
+        self.package
+            .imported
+            .values()
+            .filter(|dep_type| self.package.imported_packages.contains_key(&dep_type.dep))
+            .map(|dep_type| dep_type.use_path.clone())
+            .collect()
+    }
 
     fn emit(&self) -> String {
         let mut out = String::new();
@@ -604,9 +745,27 @@ impl Emitter<'_, '_> {
         // `path` is resolved against CARGO_MANIFEST_DIR, i.e. the component crate root — NOT against
         // the file holding the macro. So the literal is the bare `wit` tail even though this file
         // sits two directories below it.
+        // C-P1: a materialized `wit/deps` tree is NECESSARY but not SUFFICIENT. With the dep
+        // package present the WIT resolves, encodes and validates, and the macro still panics with
+        // ``missing `with` mapping for the key `<dep-package>/<iface>@<ver>` `` — `wit_bindgen`
+        // refuses to decide silently whether a foreign package's bindings are generated here or
+        // taken from another crate. So the same derivation that produces the deps copy emits one
+        // `with:` row per imported interface, and the keys come out of the DEPENDENCY's own WIT
+        // rather than being reconstructed (they have to match it byte for byte).
+        let with = self.with_entries();
+        let with = if with.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "    with: {{\n{}    }},\n",
+                with.iter()
+                    .map(|key| format!("        \"{key}\": generate,\n"))
+                    .collect::<String>()
+            )
+        };
         let _ = write!(
             out,
-            "wit_bindgen::generate!({{\n    path: \"{}\",\n    world: \"{}\",\n}});\n\n",
+            "wit_bindgen::generate!({{\n    path: \"{}\",\n    world: \"{}\",\n{with}}});\n\n",
             wit_dir_tail(),
             self.package.world
         );
@@ -644,6 +803,21 @@ impl Emitter<'_, '_> {
                 self.aliases
                     .get(scope)
                     .expect("every interface got an alias")
+            );
+        }
+        // An IMPORTED interface's module is at the CRATE ROOT, not under `exports::` — that split is
+        // the visible form of WIT's transitive-import rule (the world exports what the guest
+        // implements and imports what it merely names).
+        for (dep, interface) in self.imported_interfaces() {
+            let package = &self.package.imported_packages[&dep];
+            let (namespace, name) = package_segments(&package.package_id);
+            let _ = writeln!(
+                out,
+                "use {}::{}::{} as {};",
+                kebab_to_snake(&namespace),
+                kebab_to_snake(&name),
+                kebab_to_snake(&interface),
+                imported_interface_alias(&dep, &interface)
             );
         }
         out.push('\n');
@@ -1021,6 +1195,24 @@ impl Emitter<'_, '_> {
             .collect()
     }
 
+    /// A conversion in RETURN position, as the final expression of a member body.
+    ///
+    /// The two axes are independent: the CONVERSION may fail (an imported handle's CBOR seam) and the
+    /// MEMBER may be declared fallible (which the projection does whenever any part of the signature
+    /// touches an imported type). So the `?` comes from the conversion and the `Ok(..)` from the
+    /// declaration, and a member that is fallible for one part of its signature still wraps a
+    /// conversion that cannot fail.
+    fn returned(&self, conv: &Conv, fallible: bool) -> String {
+        match (conv.fallible, fallible) {
+            // The conversion already evaluates to the `Result` the signature declares — `Ok(x?)`
+            // would be the same value spelled twice, and `clippy::needless_question_mark` in the
+            // user's own crate.
+            (true, _) => conv.expr.clone(),
+            (false, true) => format!("Ok({})", conv.expr),
+            (false, false) => conv.expr.clone(),
+        }
+    }
+
     fn emit_member(&self, resource: &WitResource, member: &WitMember, alias: &str) -> String {
         let rep = rep_name(&resource.ident);
         let rust = self.rust_path(&resource.ident);
@@ -1113,7 +1305,8 @@ impl Emitter<'_, '_> {
                     .result
                     .as_ref()
                     .expect("a getter always returns something");
-                lines.push(self.rust_to_wit(ty, &format!("me.{field}"), alias, false));
+                let conv = self.rust_to_wit(ty, &format!("me.{field}"), alias, false);
+                lines.push(self.returned(&conv, member.fallible));
             }
             // An optional FIXED-value field stores only whether it was present, which is a `bool` on
             // both sides and needs no conversion.
@@ -1150,7 +1343,8 @@ impl Emitter<'_, '_> {
                     .result
                     .as_ref()
                     .expect("a wrapper getter always returns something");
-                lines.push(self.rust_to_wit(ty, "inner", alias, false));
+                let conv = self.rust_to_wit(ty, "inner", alias, false);
+                lines.push(self.returned(&conv, member.fallible));
             }
             WitMemberOp::ToCborBytes => {
                 lines.push(format!(
@@ -1253,20 +1447,32 @@ impl Emitter<'_, '_> {
                 let Some(WitType::Option(payload)) = member.result.as_ref() else {
                     unreachable!("an `as-` member always returns an option of its payload");
                 };
+                let conv = self.rust_to_wit(payload, &arm.names[0], alias, true);
                 lines.push("let me = self.0.borrow();".to_owned());
-                lines.push("match &*me {".to_owned());
+                // A fallible payload conversion puts the `?` inside the arm and the `Ok` outside the
+                // whole `match`, so both arms still produce the same `Option<…>` and only the
+                // function's return type changes.
+                lines.push(if member.fallible {
+                    "Ok(match &*me {".to_owned()
+                } else {
+                    "match &*me {".to_owned()
+                });
                 lines.push(format!(
                     "    {rust}::{}{} => Some({}),",
                     variant.name,
                     arm.capture_ignore_encodings(),
-                    self.rust_to_wit(payload, &arm.names[0], alias, true)
+                    conv.unwrapped()
                 ));
                 // Emitted only when there IS another arm: a one-variant choice's `_` arm is
                 // unreachable, and rustc warns on it in generated code the user cannot edit.
                 if variants.len() > 1 {
                     lines.push("    _ => None,".to_owned());
                 }
-                lines.push("}".to_owned());
+                lines.push(if member.fallible {
+                    "})".to_owned()
+                } else {
+                    "}".to_owned()
+                });
             }
             // `new-<variant>`: a STATIC, so it returns the owned HANDLE rather than the rep type a
             // fallible constructor returns. Parameters go through `materialize`, so the re-entrancy
@@ -1292,6 +1498,20 @@ impl Emitter<'_, '_> {
             }
         }
         lines
+    }
+}
+
+/// The namespace and name of a WIT package id (`cddl:chain@0.1.0` -> `("cddl", "chain")`), which are
+/// the first two segments of the rust module path `wit_bindgen` puts an imported interface at.
+///
+/// Read off the DEPENDENCY's own id string rather than re-parsed into `WitPackageId`: the id is
+/// carried verbatim from the dependency's WIT precisely so nothing here re-derives it, and a version
+/// suffix is the only part this split has to drop.
+fn package_segments(package_id: &str) -> (String, String) {
+    let base = package_id.split('@').next().unwrap_or(package_id);
+    match base.split_once(':') {
+        Some((namespace, name)) => (namespace.to_owned(), name.to_owned()),
+        None => (String::new(), base.to_owned()),
     }
 }
 

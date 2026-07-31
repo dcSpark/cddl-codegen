@@ -205,6 +205,38 @@ fn parse_component_dep(s: &str) -> Result<String, String> {
     )
 }
 
+/// clap value parser for `--component-extern-wit`, whose value is `<dep>=<path to the dep's
+/// component/wit directory>`.
+///
+/// The LEFT side is an extern-deps directory name (the same value `--extern-import` takes), not a
+/// cargo package name, so it is checked against the extern-deps charset rather than through
+/// [`parse_manifest_dep`]: nothing here becomes a `[dependencies]` key.
+fn parse_component_extern_wit(s: &str) -> Result<String, String> {
+    let Some((dep, path)) = s.split_once('=') else {
+        return Err(format!(
+            "--component-extern-wit value must be <dep>=<path/to/dep/component/wit>, got: {s:?}"
+        ));
+    };
+    let (dep, path) = (dep.trim(), path.trim());
+    if dep.is_empty() || path.is_empty() {
+        return Err(format!(
+            "--component-extern-wit value must be <dep>=<path/to/dep/component/wit> with both \
+             sides non-empty, got: {s:?}"
+        ));
+    }
+    if let Some(c) = dep
+        .chars()
+        .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-'))
+    {
+        return Err(format!(
+            "--component-extern-wit dep name {dep:?} contains {c:?}; the <dep> side is an \
+             extern-deps directory name (the same value --extern-import takes on its left), which \
+             uses only [A-Za-z0-9_-]"
+        ));
+    }
+    Ok(s.to_owned())
+}
+
 /// clap value parser for `--wit-package`, whose value is `<namespace>:<name>[@<version>]`.
 ///
 /// Validates the shape and hands the value back VERBATIM. The parsed
@@ -644,6 +676,39 @@ pub struct Cli {
     )]
     pub component_dep: Vec<String>,
 
+    /// Consume a dependency's committed WIT package (`<dep output>/component/wit`) so this crate's
+    /// component face IMPORTS the dep's types instead of leaving them unprojected. One
+    /// `<dep>=<path>` per dependency, where `<dep>` is the same extern-deps directory name
+    /// `--extern-import` takes on its left.
+    ///
+    /// This is the OPT-IN half of the cross-crate component story, and it is opt-in because the
+    /// payoff is opt-in: with the flag, a dep type crosses the boundary as a shared, imported WIT
+    /// resource handle (one dep component instance serves every consumer, and handles interchange);
+    /// without it, the dep's types have no WIT projection at all and every consumer signature naming
+    /// one is recorded as `// unexported:` in the emitted WIT. A dependency with no component face
+    /// has no `component/wit` to point at, which is exactly the case the fallback exists for.
+    ///
+    /// The dep's WIT is COPIED, never re-derived: only the dep's own run knows its `--wit-package`
+    /// id and the reasons behind its `// unexported:` rows. The copy lands under
+    /// `<output>/component/wit/deps/<dep>/`, is tool-owned and delete-and-recreated each run, and
+    /// carries the co-required `with:` entries into the guest crate's `wit_bindgen::generate!`
+    /// invocation (that map is not optional — without it the macro panics naming the missing key).
+    ///
+    /// Determinism class: the dep's committed WIT is an explicit cross-crate INPUT — the same class
+    /// as `--extern-import` reading `extern-interface/<dep>/**` — and never a read of this run's own
+    /// prior output. Same inputs still give the same bytes. Regenerate the dependency BEFORE the
+    /// consumer so its WIT is fresh.
+    ///
+    /// Repeatable. Requires `--component=true`, and each `<dep>` must also be declared by an
+    /// `--extern-import <dep>=<path>` — the WIT says how the dep's types cross the component
+    /// boundary, and the extern-interface export is what puts them in this spec's namespace at all.
+    #[clap(
+        long = "component-extern-wit",
+        value_parser = parse_component_extern_wit,
+        value_name = "DEP=PATH"
+    )]
+    pub component_extern_wit: Vec<String>,
+
     /// Mark a `--rust-dep` path dependency as std-FORWARDING: the generated `rust/Cargo.toml` takes
     /// it with `default-features = false`, and the crate's own `std` feature gains a
     /// `<package>/std` entry — so `default-features = false` at your dependant actually reaches
@@ -1045,6 +1110,21 @@ impl Cli {
             map.insert(dep.to_owned(), path.to_owned());
         }
         map
+    }
+
+    /// Parsed `--component-extern-wit` mappings: extern-deps directory name -> path to the dep's
+    /// committed `component/wit/` package. BTreeMap (never HashMap) for deterministic output — the
+    /// materialization order of imported dep packages must not depend on flag order. The value shape
+    /// is validated by the clap parser, so this only splits; a path that does not exist, holds no
+    /// `.wit`, or carries a shape the reader does not understand is a hard error at load time
+    /// (`component_wit_deps::load`). Mirrors [`Cli::extern_import_paths`], whose determinism class it
+    /// shares.
+    pub(crate) fn component_extern_wit_paths(&self) -> std::collections::BTreeMap<String, String> {
+        self.component_extern_wit
+            .iter()
+            .filter_map(|entry| entry.split_once('='))
+            .map(|(dep, path)| (dep.trim().to_owned(), path.trim().to_owned()))
+            .collect()
     }
 
     /// Parsed `--json-schema-dep` mappings: `(dep label, dep json-gen lib name in code form)`, in

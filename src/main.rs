@@ -12,6 +12,7 @@ pub(crate) mod cargo_manifest;
 pub(crate) mod cli;
 pub(crate) mod comment_ast;
 pub(crate) mod comment_preserve;
+pub(crate) mod component_wit_deps;
 pub(crate) mod config;
 pub(crate) mod dep_graph;
 pub(crate) mod emit_tests;
