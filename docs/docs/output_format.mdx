@@ -405,6 +405,22 @@ map) and one admitting **`null`** (a `null` key and the break ending an indefini
 CBOR special values, so the row's key dispatch cannot tell them apart). The value type is unrestricted
 (including `any`).
 
+Which path a domain takes is not a preference but a **fidelity rule**: the fast path can only rebuild
+a key the dispatch already told it everything about, so anything the dispatch does not see keeps its
+own codec. A domain carrying an **encoding operation** (`* #6.24(uint) => v`, `* bytes .cbor uint =>
+v`) or a [`@custom_serialize`/`@custom_deserialize`](comment_dsl#custom_serialize--custom_deserialize)
+pair therefore reads through that codec exactly as it writes through it — the row's two halves are the
+same codec by construction, so what it emits is what it accepts.
+
+**Capture is typed, so it refines rather than tolerates.** An unknown entry whose key or value bytes
+`K` or `V` refuse **fails the parse**; there is no untyped bucket to fall into and no
+capture-on-failure fallback. `* uint .size 1 => uint` rejects a key outside the `u8` range, and a
+union domain rejects a key matching no arm — the same posture typed table keys and typed values take
+everywhere else. A **declared** key always peels first, so a second occurrence of one is a
+`DuplicateKey` error and never a capture. Tolerating unknown entries without storing them is the
+separate [`@ignore`](comment_dsl#ignore) flavor below, which still requires each entry to
+deserialize.
+
 **The `rest` field.** A `pub` map named `rest` (rename with `@name` on the row — see
 [the comment DSL](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)), keyed by `K`, valued `V`.
 It is **excluded from `new()`** and defaults empty, so adding a rest row to an existing spec is both
@@ -429,6 +445,10 @@ header widths are preserved — via per-entry encoding sidecars for concrete dom
 **merged and ordered together** length-first-then-bytewise (a rest key can sort before a declared key),
 and each captured key's header is minimized.
 
+**wasm.** The rest field is exposed as a **read-only `rest()` getter** returning the minted map wrapper
+(no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);
+see [wasm differences](wasm_differences#open-struct-map-rest-rows).
+
 **JSON (`--json-serde-derives`).** Captured entries render **flattened at the same JSON
 object level as the declared members** (via serde `flatten`), under the natural-JSON key rules above:
 
@@ -439,9 +459,10 @@ object level as the declared members** (via serde `flatten`), under the natural-
   object (`{"Text": "hi"}`) and a `bytes` union arm is the derive's array of byte numbers — the
   hex spelling is the typed-bytes *field* convention and a union arm never reaches it.
 - *Read* (`from_json`) binds the **declared member names first**; every other key lands in `rest`
-  (loose JSON parsing for free). Typed domains parse deterministically (uint decimal / text verbatim);
-  an `any` domain uses the prefer-numeric key rule (a canonical decimal spelling reads back as an
-  integer, else text).
+  (loose JSON parsing for free). A bare `uint`/`text` domain parses deterministically (decimal /
+  verbatim); an `any` domain uses the prefer-numeric key rule (a canonical decimal spelling reads back
+  as an integer, else text); every other key domain reads through
+  [its key image](#typed-key-domains-in-json), numeric first and text as a fallback.
 - The JSON Schema emits `properties` (the declared members) **plus the open-region schema**: a
   uint-keyed rest row renders as `patternProperties` (`"^\d+$"` → the range's schema), a text- or
   `any`-keyed one as `additionalProperties` (the range's schema; permissive `{}` for an `any`
@@ -489,10 +510,6 @@ schema and set `additionalProperties: false`, closing the very region the rest r
 and the key image coincide. Because the helper asks nothing of `K`, a key type with no
 `schemars::JsonSchema` impl (an extern carrying [`@no_json_schema_export`](comment_dsl)) still
 compiles — and contributes nothing to the published document.
-
-**wasm.** The rest field is exposed as a **read-only `rest()` getter** returning the minted map wrapper
-(no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);
-see [wasm differences](wasm_differences#open-struct-map-rest-rows).
 
 ### The `@ignore` (tolerate-and-drop) flavor
 

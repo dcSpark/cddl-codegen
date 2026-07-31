@@ -1321,6 +1321,33 @@ directives) is verified across the layers:
 - **Runtime JSON laws** — the natural-walk shims + corpus biconditional in the static-runtime
   property layer (below), which the flatten surface composes.
 
+A **typed key domain** — anything the decode loop's own key dispatch cannot faithfully rebuild, so
+everything except bare `uint`/`text`/`any` — routes the row to the seek path instead, and gets its
+own layer coverage because the two paths share no emitted code:
+
+- **Front end + guards** — the domain legs of `open_struct_map_rest_row_front_end`: the two standing
+  rejections (a float-containing `K`, a `null`-admitting `K`) with their polarity fixtures, plus
+  recognition for the domains the routing rule newly serves.
+- **Snapshots** — `open_struct_map_typed_{default,preserve,json,wasm,wasm_json}` over
+  `tests/open-struct-map-typed`, whose rules are chosen so the seek path is *observable* in the
+  emitted text (a union `K`, a sidecar-bearing `bytes` `K`, a sized-int `K`, an encoding-op `K`, and
+  a `@duplicates preserve` twin). It rides the wasm-parity sweep too, which is where the rest
+  accessor's `MapKToV`/`PairMapKToV` class and its `<K>List` keys mint are proved generic over a
+  struct-typed `K`.
+- **Value-level e2e** — the typed mods of the three e2e fixtures: capture across both declared-key
+  arms with a repeated DECLARED key still a `DuplicateKey`, refinement as a hard error (a float key,
+  an out-of-range `.size` key both text- and uint-side, a wrong-typed value), duplicates in wire
+  order under `preserve`; byte-exact interleave, a NON-minimal `bytes` key header replayed from the
+  key's own sidecar, and the canonical merge sorting typed rest keys among declared ones; and on the
+  JSON side both emitted image routes (nominal `K` through its CBOR bytes, primitive `K` stated
+  directly) plus the imageless `bytes` row asserting both faces error loudly.
+- **Extern K** — `tests/json-extern`'s rest row: a `@no_json_schema_export` extern keys a row in a
+  fixture whose json-gen crate is built and run, which is the compile proof that the region's schema
+  helper asks nothing of `K`.
+- **Cross-crate** — `workspace_key_requests_rest_row_contract` (see the workspace-requests section
+  above): the row's key demand reaches the dependency in the flavor its container needs, and all
+  four wrapper classes the row names defer.
+
 ### Open struct-maps — the `@ignore` (tolerate-and-drop) flavor — test map
 
 The [`@ignore`](../docs/docs/comment_dsl.mdx) rest-row directive drops unknown entries instead of

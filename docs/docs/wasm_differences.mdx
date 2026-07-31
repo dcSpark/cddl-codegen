@@ -229,6 +229,12 @@ There is **no** `rest` constructor argument and **no setter** (v1): the field de
 mutated through the returned wrapper's own `insert`/`get`/`keys` API. The declared members keep their
 ordinary per-field constructor arguments and getters.
 
+A **typed key domain** (`* K => V` with `K` a rule of your own rather than `uint`/`text`/`any`) adds no
+new name family: the getter returns the same structural class named after `K`'s and `V`'s wasm faces
+(`MapMdToText`, or `PairMapMdToText` under `@duplicates preserve`), and that wrapper's `keys()` returns
+what a *table* on the same key type returns — a bare `Vec` when `K` is wasm-native, the minted
+`<K>List` class (`MdList`, `BytesList`) otherwise.
+
 An [open array](output_format#open-arrays-rest-tails) (`[uint, tstr, * t]`) captures its trailing
 elements into a `rest` field the same way. On the wasm boundary that field is a **read-only getter
 named after the field** (`rest()` by default) returning the minted **list** wrapper for the tail's

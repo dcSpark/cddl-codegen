@@ -376,6 +376,15 @@ metadata = {
   `@duplicates preserve` switches the capture container to the byte-exact `PairMap<K, V>` twin so
   duplicate captured keys round-trip verbatim.
 
+The policy is **orthogonal to the key domain**: `K` may be any type the row accepts (see
+[Open struct-maps](output_format#open-struct-maps-rest-rows) for the domain rules), and the two
+compose as they do on a table — a default/`reject` row's container demands the full key bundle of `K`,
+while a `preserve` row's `PairMap` compares keys by scan and so demands only the
+[`@used_as_key ord`](#used_as_key) family. The row places that demand for you, including across the
+workspace seam: when `K` belongs to a dependency crate, the row contributes a row to this crate's
+[`borrowed_key_types.rs`](output_format#borrowed_key_typesrs--the-consumers-map-key-derive-sidecar)
+sidecar — in the flavor its own container needs — exactly as a declared map field would.
+
 :::warning Marker-slot trap
 The directives must trail the **whole entry** (after the `V` type), not the `*` occurrence marker's
 own comment slot. A directive glued to the marker —
@@ -831,6 +840,8 @@ custom_table_positions = [
 ```
 
 Here the key domain and the value range each go through the custom pair, so a `bytes` key can be written as hex text on the wire while staying decoded bytes in memory. Only the type-level spelling reaches these positions — a table row has no field to hang a field-level directive on (see the un-honored positions below).
+
+An [open struct-map rest row](output_format#open-struct-maps-rest-rows) (`{ 1: uint, * k => v }`) is the same two positions, honored the same way in both directions. A custom key codec is in fact what *decides* how the row reads its keys: a row whose domain carries one is read by that codec rather than rebuilt from the decode loop's own key dispatch, which is what keeps the row's write and read halves symmetric.
 
 Two details specific to a table under `--preserve-encodings=true`:
 
