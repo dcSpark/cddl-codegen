@@ -432,18 +432,204 @@ meets it; that account is the single source for it and is not restated here.
   supported)`. Test emission for this face is not built yet, and the tool says so out loud rather
   than silently emitting nothing.
 
-## JavaScript via jco — not yet probed
+## JavaScript via jco
 
-A component is consumable from any component-model host, including JavaScript through `jco`. The
-JS-side specifics have **not yet been probed** by this project, and the following are recorded as
-expectations to verify rather than as documented behaviour:
+A JS host does not *run* a component — it **transpiles** one. `jco` rewrites the component into an
+ES module graph, and the surface it synthesizes is not the wasmtime one, so what a JS consumer meets
+is stated here on its own terms. Everything below is a **runtime observation** against **jco
+1.26.1**, **`@bytecodealliance/preview2-shim` 0.19.0** and **node 22.21.1**, pinned by the
+`component_jco` gate. Runtime rather than typings on purpose: what the emitted `.d.ts` *intends* and
+what the boundary *does* disagreed on the enum face, which is the one delta most likely to break a
+port from the wasm face.
 
-- **WIT `enum`s are expected to surface as string labels in JS**, not as the numbers the wasm
-  face's c-style enums use. This is **not yet probed** — treat it as the most likely place a
-  JS consumer's port from the wasm face will need changing, and confirm it against your own
-  `jco` version.
-- A wasip2 component imports 14 `wasi:*` interfaces even when it is a pure codec (see below), so a
-  JS host needs a preview2 shim to satisfy them.
+### Transpiling: install the shim, map nothing
+
+`jco transpile <component>.wasm -o <dir> --name <module>` is the whole command. The 14 `wasi:*`
+imports every wasip2 artifact carries (see [Binary size](#binary-size)) need no flag: jco rewrites
+them to `@bytecodealliance/preview2-shim` **by default**, so that package must be *installed* and
+must **not** be mapped. A hand-written `--map 'wasi:*=@bytecodealliance/preview2-shim/*'` breaks the
+output, because the shim exposes one module per **subsystem** with named exports
+(`preview2-shim/cli#environment`) rather than one module per interface.
+
+Reach the interface by its **fully-qualified name** — `mod['cddl:my-lib/types@0.1.0']`. jco also
+emits a bare `types` alias; it resolves on a single-component artifact and is a trap on a composed
+one (see [Do not transpile a composed artifact](#do-not-transpile-a-composed-artifact)), so the
+qualified spelling is the one to write everywhere.
+
+### The JS surface, row by row
+
+| WIT | What JS sees |
+|---|---|
+| `resource` | a class, with kebab-case members camelCased (`set-nested` → `setNested`, `from-cbor-bytes` → the static `fromCborBytes`) |
+| `enum` | a **string label**, never a number: `kind()` returns `'i1'`, and passing the number `1` is refused with `TypeError: "1" is not one of the cases of <enum>`, naming the WIT enum |
+| `variant int` | an object literal in both directions — `{ tag: 'uint', val: 5n }` / `{ tag: 'nint', val: 4n }`. The `nint` payload carries its CBOR bias unapplied, exactly as [the WIT variant declares it](#int-is-a-variant-and-its-nint-arm-is-cbor-biased) |
+| `u64` | `bigint` (`42n`), never `number` |
+| `option<t>` in a return | `t` or `undefined` — so an `as-<variant>` that does not match reads as `undefined`, and so does an unset optional field |
+| `option<option<t>>` | the tagged form, because flattening would be ambiguous: `{ tag: 'none' }` (absent), `{ tag: 'some', val: 'x' }` (present with a value), `{ tag: 'some' }` with **no `val` key** (present and null). All three are distinguishable; `setNested(undefined)` produces the third |
+| `any-cbor` | `Uint8Array` in both directions, with trailing data refused where the bytes are consumed |
+| free function | a module-level export beside the classes (`cbor-kind` → `cborKind`) |
+| `result<…, string>` | **thrown**, not returned — see below |
+
+The enum row is the delta to plan a port around: the wasm face's c-style enums take the numeric
+discriminant and this one refuses it. That was the *expected* delta before it was probed; it is now
+measured, and the refusal is a `TypeError` at the JS boundary rather than a deserialize error from
+the component.
+
+Snapshot semantics cross unchanged. A getter hands back a fresh handle rather than a view, and
+lending a handle as receiver *and* argument (`node.setChildren([node])`) returns normally and stores
+a copy — the [same rules](#getters-hand-back-a-snapshot) a wasmtime host sees, asserted again from
+JS because a transpiler is free to get them wrong.
+
+### A refusal is thrown, and the instance survives it
+
+A fallible door does not hand back a `{ tag: 'err' }`. jco **throws** a `ComponentError` whose
+`.payload` is the WIT `string` and whose `.message` is the same text; `e instanceof Error` holds, so
+ordinary `try`/`catch` works:
+
+```js
+try {
+  new T.Hash(new Uint8Array(3));
+} catch (e) {
+  e.payload; // "Deserialization failed in Hash because: 3 not in range 32 - 32"
+}
+new T.Hash(new Uint8Array(32)); // the component is fine — the failure poisoned nothing
+```
+
+That second line is the point of returning `result<…>` instead of trapping: a trap would take the
+whole instance down and every later caller with it. The despecialized bounds behave the same way —
+`setAliases([])` on a `[+ text]` field throws `0 not at least 1` and the object stays usable.
+
+### Disposal is an own property, and reclamation is otherwise GC-driven
+
+jco defines `[Symbol.dispose]` as an **own property on each owned instance**, not on the prototype —
+so `Cls.prototype[Symbol.dispose]` is `undefined` and a feature detect must run against the
+*instance*. `Symbol.dispose` exists in node 22, so `using` declarations work. Calling it frees the
+guest handle, and a later method call on that object throws
+`TypeError: Resource error: Not a valid "…" resource`.
+
+Without an explicit dispose, a `FinalizationRegistry` reclaims the handle on GC. That is the
+sentence a long-running dApp has to care about: handles are cheap to mint and their release is
+**non-deterministic**, so a loop that mints thousands of them holds guest-side table entries until
+the collector gets around to it. Dispose explicitly where the lifetime is known.
+
+### Two generated packages: transpile each one, wire them with `--map`
+
+The prescribed cross-crate shape is **one transpile per component**, with the dependency edge wired
+in the JS module graph:
+
+```bash
+jco transpile chain.wasm  -o chain  --name chain
+jco transpile wallet.wasm -o wallet --name wallet \
+  --map 'cddl:chain/types@0.1.0=@scope/chain#types'
+```
+
+The `--map` value is `<interface id>=<module specifier>#<export>`. Both specifier forms work: a
+relative one (`../chain/chain.js#types`, what the gate drives) and a **bare npm specifier**
+(`@scope/chain#types`) resolved through `node_modules`.
+
+The whole cross-crate flow then behaves as it does through a native host: mint a `chain.Token`,
+push it through the consumer's `wallet.TokenList` accumulator, construct a `wallet.Ledger`, get a
+chain-typed handle back from `ledger.head()`, and mutate it through the *dependency's* own
+interface. Values survive the crossing unmutated, the returned handle is a live resource in the
+dependency's table (`ledger.head() instanceof chain.Token`), and snapshot semantics hold across the
+seam exactly as they do inside one component.
+
+**Instantiate-once comes free here.** The invariant that
+[nothing enforces at composition time](#instantiate-the-dependency-once--nothing-enforces-it) is
+delivered by ES module semantics: every consumer importing the same dependency specifier shares one
+module instance, so there is no two-instance topology to get wrong.
+
+### Do not transpile a composed artifact
+
+Composing the two components into one world *first* and transpiling the result is the obvious
+alternative, and it is **broken under jco 1.26.1** — in two places, one of which is silent. The
+runtime half and the bare-alias resolution are pinned by the `component_jco` gate's composed leg, so
+a jco fix is reported as the good news it is rather than discovered years later; the `tsc` verdict
+below is a measurement beside it rather than a gated one.
+
+- **At build time**, the composed world's root typings do not compile. Both packages' single
+  interface is named `types`, so the `.d.ts` emits `export * as types` twice and `tsc --strict`
+  fails with `TS2300: Duplicate identifier 'types'`. The runtime `.js` disambiguates by exporting
+  the fully-qualified names, so the bare `types` alias silently resolves to the **first** interface
+  only.
+- **At run time**, handles do not cross between the composed instances. Passing a dependency-minted
+  handle into a consumer function throws `TypeError: Resource error: Not a valid "…" resource` — in
+  the scalar-borrow position and through the accumulator alike. Worse, in the other direction a
+  consumer getter returning a dependency-typed `own` handle resolves the index **in the wrong
+  table** and hands back a *different object*: a freshly decoded ledger's `head()` reads correctly,
+  and after three unrelated dependency handles have been minted the same expression returns some
+  other object's fields, with no error anywhere.
+
+The cause, read off the transpiled JS, is that jco allocates a **separate handle table per component
+instance** for the same resource type and emits no transfer between them for a JS-held handle. This
+is a jco defect and not an emitter one: the identical composed artifact is driven correctly through
+wasmtime by `component_compose`.
+
+The short-name collision is general rather than a property of that fixture. Each exported module
+scope becomes one interface, so a **single-scope crate's interface is always named `types`** — any
+two generated packages composed into one world collide on that name.
+
+**The boundary is about instances, not interfaces.** Many interfaces in *one* component is fine:
+a generated two-interface crate whose types take `borrow<leaf>` and `list<borrow<leaf>>` from a
+sibling interface and return `own leaf` transpiles and drives correctly, repeated-borrow position
+and all — measured on such a crate, since the gate's own fixtures are single-interface. It is many
+component *instances* in one composed artifact that jco cannot yet wire. So a single generated crate
+needs nothing special, and a multi-crate consumer transpiles per component.
+
+### Packaging: documented, not generated
+
+There is **no `--package-json` component flavor**, and none is planned on the strength of what is
+known today. The `--map` target is an npm package *name*, and no existing flag carries one:
+[`--component-dep`](command_line_flags.mdx) names the dependency's **rust** package and
+[`--component-extern-wit`](command_line_flags.mdx) names a WIT **directory**. A generated flavor
+therefore needs a new cross-crate flag family with its config keys, its documented rows and its
+`deps`-edge derivation, plus a ruling on how a `component/` package sits under `--package-json`'s
+`rust/`-nesting layout — which is a good deal more than the scripts entry it looks like from
+outside.
+
+What ships instead is the shape itself: **one npm package per generated component**, `jco transpile`
+in its build script, and the dependency wired by `--map` to the dependency package's specifier.
+
+```jsonc
+// @scope/chain — the dependency package
+{
+  "name": "@scope/chain", "type": "module", "exports": "./dist/chain.js",
+  "scripts": { "build": "jco transpile chain_component.wasm -o dist --name chain" }
+}
+// @scope/wallet — the consumer package, dependencies: { "@scope/chain": "…" }
+{
+  "name": "@scope/wallet", "type": "module", "exports": "./dist/wallet.js",
+  "scripts": {
+    "build": "jco transpile wallet_component.wasm -o dist --name wallet --map 'cddl:chain/types@0.1.0=@scope/chain#types'"
+  }
+}
+```
+
+Reach for a generated flavor when the hand-maintained part stops being trackable by hand: a
+generated tree whose consumer crates each carry more than a couple of `deps` edges, where
+regenerating with a changed dependency set leaves a `--map` entry stale or missing and nothing says
+so. That count — dependency edges per consumer — is the dimension the cost grows along, and it is
+visible to the party maintaining the transpile script.
+
+### Not probed on this face
+
+Stated so the remainder is visible rather than implied. Each of these is unprobed **from JS**; the
+underlying feature is exercised elsewhere:
+
+- **`--json-serde-derives`' `to-json` / `from-json` doors.** The fixtures behind `component_jco`
+  carry no JSON methods. Probing it means generating one of them with the flag and driving the two
+  doors from node.
+- **The browser.** Everything here is `preview2-shim`'s *node* build. Probing it means running the
+  same drivers under a headless browser against the shim's browser entry.
+- **`--preserve-encodings`' `to-canonical-cbor-bytes`.** Probing it means generating the surface
+  fixture at that posture and asserting byte-exactness across the JS boundary.
+- **Other versions.** jco 1.26.1 and node 22 only — the gate pins both exactly, which is what makes
+  its verdict a statement about a known vintage rather than about whatever npm resolved today.
+  Probing another means a second pinned lockfile or node version.
+- **jco's other transpile options** — `--instantiation`, `--minify`, `--optimize`, `--tracing`,
+  `--no-wasi-shim`, `--valid-lifting-optimization`, `--import-bindings`. None were needed for any of
+  the above and none were exercised. Note `--optimize` runs `wasm-opt`, which
+  [refuses whole components outright](#binary-size).
 
 ## Binary size
 
