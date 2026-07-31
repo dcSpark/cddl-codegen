@@ -6,6 +6,11 @@ sidebar_position: 4
 
 - Inside of the output directly the tool always produces a `rust/` directory (including Cargo.toml, etc). 
 - Unless we pass in `--wasm=false` the tool also generates a corresponding `wasm/` directory.
+- Under `--component=true` the tool additionally generates a `component/` directory — a wasm
+  *component model* (WIT/wasip2) face beside the wasm-bindgen one: `component/wit/` holds the
+  generated WIT package and `component/src/generated/` the `wit-bindgen` guest glue over the
+  `rust/` crate. Its API shape deliberately parallels the wasm face with documented deltas —
+  see [Component (WIT) differences](component_differences).
 - Two further top-level directories are emitted beside them in **every** mode: `extern-interface/` (this crate's extern-visible type surface, for consumers — see [Extern-interface export](#extern-interface-export)) and `no-std-check/` (a tiny throwaway crate that proves the rust crate still builds without `std` — see [The `no-std-check` shim crate](#the-no-std-check-shim-crate)). Both are tool-owned and delete-and-recreated on every run.
 - Every crate's generated code lives under a tool-owned `src/generated/` subtree (`rust/src/generated/mod.rs` holds the structs, `rust/src/generated/serialization.rs` their (de)serialization implementations/corresponding types, plus the runtime modules `error.rs`/`ordered_hash_map.rs`; a crate with any [`@used_as_key`](./comment_dsl)-tagged rule also carries `key_demand_assertions.rs`, the private compile-time record of which tag demanded which comparison/hash traits). The crate root `src/lib.rs` is a thin, user-owned wrapper (`mod generated; pub use generated::*;`) — see [Generated crate roots](#generated-crate-roots-thin-root-seed-once) below.
 - The `wasm/` directory is full of wasm_bindgen-annotated wrappers (under `wasm/src/generated/`) for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh). Every wasm crate also carries a `wasm/src/generated/collections.rs` index: one `pub use crate::…::<Wrapper>;` re-export per collection wrapper class the crate defines (the `FooList` / `MapKToV` and `NonEmpty…` wrappers minted from `[* T]` / `{* K => V}` shapes), sorted, with no glob. Because it is compiled as part of the crate, a line naming a removed wrapper fails the crate's own build, so the index can never silently drift from the classes it inventories.
@@ -791,7 +796,7 @@ key/value are two distinct classes. See
 
 ## Generated crate roots (thin root, seed-once)
 
-Every generated crate — `rust/`, and (when enabled) `wasm/` and `wasm/json-gen/` — splits into two
+Every generated crate — `rust/`, and (when enabled) `wasm/`, `wasm/json-gen/` and `component/` — splits into two
 halves so your hand edits to the crate root survive regeneration:
 
 - **Tool-owned: `src/generated/**` (clobbered every run).** All generated code lives here —
