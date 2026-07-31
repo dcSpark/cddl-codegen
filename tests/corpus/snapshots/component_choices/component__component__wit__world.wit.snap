@@ -1,0 +1,83 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(o: borrow<outcome>, l: borrow<label>, n: borrow<node>, history: list<borrow<outcome>>);
+    o: func() -> outcome;
+    l: func() -> label;
+    n: func() -> node;
+    history: func() -> list<outcome>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource label {
+    new-labels: static func(labels: list<string>) -> result<label, string>;
+    as-labels: func() -> option<list<string>>;
+    new-uint: static func(uint: u64) -> label;
+    as-uint: func() -> option<u64>;
+    kind: func() -> label-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<label, string>;
+  }
+  enum label-kind {
+    labels,
+    uint,
+  }
+  resource node {
+    new-node0: static func(leaf: borrow<stamp>) -> result<node, string>;
+    as-node0: func() -> option<stamp>;
+    new-node1: static func(x: u64, y: string) -> node;
+    as-node1: func() -> option<node1>;
+    new-i2: static func() -> node;
+    kind: func() -> node-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<node, string>;
+  }
+  enum node-kind {
+    node0,
+    node1,
+    i2,
+  }
+  resource node1 {
+    constructor(x: u64, y: string);
+    x: func() -> u64;
+    y: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<node1, string>;
+  }
+  resource outcome {
+    new-uint: static func(uint: u64) -> result<outcome, string>;
+    as-uint: func() -> option<u64>;
+    new-text: static func(text: string) -> outcome;
+    as-text: func() -> option<string>;
+    new-stamp: static func(stamp: borrow<stamp>) -> outcome;
+    as-stamp: func() -> option<stamp>;
+    new-null: static func() -> outcome;
+    kind: func() -> outcome-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<outcome, string>;
+  }
+  enum outcome-kind {
+    uint,
+    text,
+    stamp,
+    null,
+  }
+  resource stamp {
+    constructor(inner: list<u8>) -> result<stamp, string>;
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<stamp, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

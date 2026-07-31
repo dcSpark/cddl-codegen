@@ -1,0 +1,25 @@
+; The `@name` remedy fixture: every collision message the component face emits names `@name` as the
+; fix, and this is the spec that proves the fix works — through the SAME converter and the SAME
+; detector the message points at. Both rules here collide WITHOUT their `@name`s
+; (`a_rename_remedies_the_collisions_the_detector_messages_name` asserts the un-renamed twins are
+; still refused), so the fixture's own generation IS the remedy's proof.
+
+; RESOURCE-level: a record with a field named after its own rule. WIT compares member names against
+; the resource's own name, so `a.a` fails component validation; `@name` renames the accessor without
+; touching the wire format, and the field is still key `a` on the wire.
+a = {
+  a: uint, ; @name value
+}
+
+; INTERFACE-level: a type choice mints a `<name>-kind` discriminant enum beside its resource, so
+; `state` claims BOTH `state` and `state-kind` in the interface's one flat type namespace. A
+; group-choice arm wide enough to mint its own struct competes for that namespace, and `@name` is
+; what moves it off — here from `state_kind` to `pair`.
+state = uint / text
+
+holder = [
+  ; @name pair
+  tag: 0, x: uint, y: text //
+  ; @name single
+  tag: 1, z: uint, w: text
+]

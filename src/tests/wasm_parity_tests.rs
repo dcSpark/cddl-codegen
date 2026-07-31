@@ -183,6 +183,19 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         &[("default", &[])],
     ),
     (
+        // The component face's phase-2 CHOICE fixture. Ordinary CDDL (a type choice, a group choice
+        // and a despecialized arm) carrying no component-only construct, so it is swept here on the
+        // same terms as `component-core`; the component gates over it live in `component_tests`.
+        "component-choices",
+        &[("default", &[])],
+    ),
+    (
+        // The component face's `@name` remedy fixture. The `@name` directives are what keep it
+        // generating under `--component`; they are plain comment-DSL rows on every other face.
+        "component-rename",
+        &[("default", &[])],
+    ),
+    (
         "canonical",
         &[(
             "canonical",

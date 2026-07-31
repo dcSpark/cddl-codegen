@@ -1,0 +1,502 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(4))?;
+        serializer.write_text("l")?;
+        self.l.serialize(serializer)?;
+        serializer.write_text("n")?;
+        self.n.serialize(serializer)?;
+        serializer.write_text("o")?;
+        self.o.serialize(serializer)?;
+        serializer.write_text("history")?;
+        serializer.write_array(cbor_event::Len::Len(self.history.len() as u64))?;
+        for element in self.history.iter() {
+            element.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
+            let mut l = None;
+            let mut n = None;
+            let mut o = None;
+            let mut history = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "l" => {
+                            if l.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("l".into())).into()
+                                );
+                            }
+                            l = Some(
+                                Label::deserialize(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("l"))?,
+                            );
+                        }
+                        "n" => {
+                            if n.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("n".into())).into()
+                                );
+                            }
+                            n = Some(
+                                Node::deserialize(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("n"))?,
+                            );
+                        }
+                        "o" => {
+                            if o.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("o".into())).into()
+                                );
+                            }
+                            o = Some(
+                                Outcome::deserialize(raw)
+                                    .map_err(|e: DeserializeError| e.annotate("o"))?,
+                            );
+                        }
+                        "history" => {
+                            if history.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "history".into(),
+                                ))
+                                .into());
+                            }
+                            history = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut history_arr = Vec::new();
+                                    let len = raw.array()?;
+                                    while match len {
+                                        cbor_event::Len::Len(n) => (history_arr.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        history_arr.push(Outcome::deserialize(raw)?);
+                                    }
+                                    Ok(history_arr)
+                                })()
+                                .map_err(|e| e.annotate("history"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let o = match o {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("o")))
+                            .into(),
+                    );
+                }
+            };
+            let l = match l {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("l")))
+                            .into(),
+                    );
+                }
+            };
+            let n = match n {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("n")))
+                            .into(),
+                    );
+                }
+            };
+            let history =
+                match history {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("history"),
+                        ))
+                        .into());
+                    }
+                };
+            Ok(Self { o, l, n, history })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}
+
+impl cbor_event::se::Serialize for Label {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Label::Labels(labels) => {
+                serializer.write_array(cbor_event::Len::Len(labels.len() as u64))?;
+                for element in labels.iter() {
+                    serializer.write_text(element)?;
+                }
+                Ok(serializer)
+            }
+            Label::U64(uint) => serializer.write_unsigned_integer(*uint),
+        }
+    }
+}
+
+impl Deserialize for Label {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Array => {
+                    let mut labels_arr = Vec::new();
+                    let len = raw.array()?;
+                    while match len {
+                        cbor_event::Len::Len(n) => (labels_arr.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        labels_arr.push(raw.text()?);
+                    }
+                    let labels_arr = NonEmptyVec::try_from(labels_arr)?;
+                    let labels = labels_arr;
+                    Ok(Self::Labels(labels))
+                }
+                cbor_event::Type::UnsignedInteger => Ok(Label::U64(raw.unsigned_integer()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Label"))
+    }
+}
+
+impl cbor_event::se::Serialize for Node {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Node::Node0(leaf) => {
+                serializer.write_array(cbor_event::Len::Len(2))?;
+                serializer.write_unsigned_integer(0u64)?;
+                leaf.serialize(serializer)?;
+                Ok(serializer)
+            }
+            Node::Node1(node1) => node1.serialize(serializer),
+            Node::I2 => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_unsigned_integer(2u64)
+            }
+        }
+    }
+}
+
+impl Deserialize for Node {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(2)?;
+                read_len.finish()?;
+                (|| -> Result<_, DeserializeError> {
+                    let index_0_value = raw.unsigned_integer()?;
+                    if index_0_value != 0 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(index_0_value),
+                            expected: Key::Uint(0),
+                        }
+                        .into());
+                    }
+                    Ok(())
+                })()
+                .map_err(|e| e.annotate("index_0"))?;
+                let leaf =
+                    Stamp::deserialize(raw).map_err(|e: DeserializeError| e.annotate("leaf"))?;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::Node0(leaf))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Node0"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(3)?;
+                read_len.finish()?;
+                let ret = Node1::deserialize_as_embedded_group(raw, &mut read_len, len);
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(node1) => return Ok(Self::Node1(node1)),
+                Err(e) => {
+                    errs.push(e.annotate("Node1"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let i2_value = raw.unsigned_integer()?;
+                if i2_value != 2 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i2_value),
+                        expected: Key::Uint(2),
+                    }
+                    .into());
+                }
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(Node::I2),
+                Err(e) => {
+                    errs.push(e.annotate("I2"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("Node"))
+    }
+}
+
+impl cbor_event::se::Serialize for Node1 {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(3))?;
+        self.serialize_as_embedded_group(serializer)
+    }
+}
+
+impl SerializeEmbeddedGroup for Node1 {
+    fn serialize_as_embedded_group<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_unsigned_integer(1u64)?;
+        serializer.write_unsigned_integer(self.x)?;
+        serializer.write_text(&self.y)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Node1 {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
+            Ok((len, read_len))
+        })()
+        .map_err(|e| e.annotate("Node1"))?;
+        let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
+        (|| -> Result<_, DeserializeError> {
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(())
+        })()
+        .map_err(|e| e.annotate("Node1"))?;
+        ret
+    }
+}
+
+impl DeserializeEmbeddedGroup for Node1 {
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
+        _read_len: &mut CBORReadLen,
+        _len: cbor_event::Len,
+    ) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            (|| -> Result<_, DeserializeError> {
+                let index_0_value = raw.unsigned_integer()?;
+                if index_0_value != 1 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(index_0_value),
+                        expected: Key::Uint(1),
+                    }
+                    .into());
+                }
+                Ok(())
+            })()
+            .map_err(|e| e.annotate("index_0"))?;
+            let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
+            let y = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("y"))?;
+            Ok(Node1 { x, y })
+        })()
+        .map_err(|e| e.annotate("Node1"))
+    }
+}
+
+impl cbor_event::se::Serialize for Outcome {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Outcome::U64(uint) => serializer.write_unsigned_integer(*uint),
+            Outcome::Text(text) => serializer.write_text(text),
+            Outcome::Stamp(stamp) => stamp.serialize(serializer),
+            Outcome::Null => serializer.write_special(cbor_event::Special::Null),
+        }
+    }
+}
+
+impl Deserialize for Outcome {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Outcome::U64(
+                    raw.unsigned_integer()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|x| {
+                            if x > 5 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: x as i128,
+                                    min: None,
+                                    max: Some(5),
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
+                            }
+                        })?,
+                )),
+                cbor_event::Type::Text => Ok(Outcome::Text(raw.text()?)),
+                cbor_event::Type::Bytes => Ok(Outcome::Stamp(Stamp::deserialize(raw)?)),
+                cbor_event::Type::Special => {
+                    if raw.special()? != cbor_event::Special::Null {
+                        return Err(DeserializeFailure::ExpectedNull.into());
+                    }
+                    Ok(Outcome::Null)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Outcome"))
+    }
+}
+
+impl cbor_event::se::Serialize for Stamp {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_bytes(&self.0)
+    }
+}
+
+impl Deserialize for Stamp {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = raw.bytes()?;
+            if inner.len() != 4 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner.len() as i128,
+                    min: Some(4),
+                    max: Some(4),
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("Stamp"))
+    }
+}

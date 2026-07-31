@@ -71,6 +71,16 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         &["--preserve-encodings=true"],
     ),
     (
+        "component-choices",
+        "tests/component-choices/input.cddl",
+        &[],
+    ),
+    (
+        "component-choices-preserve",
+        "tests/component-choices/input.cddl",
+        &["--preserve-encodings=true"],
+    ),
+    (
         "component-multifile",
         "tests/component-multifile/inputs",
         &[],
@@ -80,6 +90,7 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         "tests/component-collection-refs/inputs",
         &[],
     ),
+    ("component-rename", "tests/component-rename/input.cddl", &[]),
     // Externs and type choices: the exclusion path, on a spec nobody wrote for this face.
     ("multifile", "tests/multifile/inputs", &[]),
     // Mutually-referencing scopes — rejected under `--component` by the cycle detector.

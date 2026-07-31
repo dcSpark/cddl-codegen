@@ -27,8 +27,8 @@
 use crate::cli::Cli;
 use crate::intermediate::{
     AliasIdent, ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, ModuleScope,
-    Primitive, ROOT_SCOPE, RestKind, RestSemantics, RustIdent, RustRecord, RustStruct,
-    RustStructType, RustType,
+    Primitive, ROOT_SCOPE, Representation, RestKind, RestSemantics, RustField, RustIdent,
+    RustRecord, RustStruct, RustStructType, RustType,
 };
 use crate::utils::convert_to_kebab_case;
 use std::collections::{BTreeMap, BTreeSet};
@@ -297,6 +297,15 @@ pub(crate) struct WitExclusion {
 pub(crate) enum WitTypeDef {
     Resource(WitResource),
     Enum(WitEnum),
+    /// `enum <name>-kind { … }` — the discriminant of a type/group choice, one case per variant.
+    ///
+    /// Structurally identical to [`WitTypeDef::Enum`] and deliberately a DISTINCT variant: a c-style
+    /// enum's `ident` names a rust enum the guest bridges both directions, while a kind enum's
+    /// `ident` names the CHOICE it discriminates and has no rust counterpart at all — the rust
+    /// `<Name>Kind` is emitted only under `cli.wasm`, which the component face never requires. The
+    /// guest derives the discriminant by matching the rust DATA enum, so it must never be handed the
+    /// c-style enum's bridge template.
+    Kind(WitEnum),
     /// The fixed `variant int { uint(u64), nint(u64) }` — emitted into every interface that uses
     /// it. Its shape is not derived from the IR (the `Int` prelude extern carries none), so it has
     /// no payload.
@@ -312,7 +321,7 @@ impl WitTypeDef {
     pub fn name(&self) -> &str {
         match self {
             WitTypeDef::Resource(r) => &r.name,
-            WitTypeDef::Enum(e) => &e.name,
+            WitTypeDef::Enum(e) | WitTypeDef::Kind(e) => &e.name,
             WitTypeDef::IntVariant => INT_TYPE_NAME,
             WitTypeDef::AnyCborAlias => ANY_CBOR_TYPE_NAME,
             WitTypeDef::AnyCborKind => ANY_CBOR_KIND_TYPE_NAME,
@@ -413,6 +422,26 @@ pub(crate) enum WitMemberOp {
     },
     ToCborBytes,
     FromCborBytes,
+    /// A choice's `kind`: match the rust DATA enum and report the `<name>-kind` case.
+    ///
+    /// The rust `<Name>Kind` enum is emitted only under `cli.wasm`, so the guest may never name it;
+    /// the arm spelling comes from the same owner the wasm face's `kind()` uses.
+    VariantKind,
+    /// A choice's `as-<variant>`: `Some(payload)` on the matching arm, `None` otherwise. Carries the
+    /// RUST variant ident so the emitter looks the variant up rather than un-kebabbing a WIT name.
+    AsVariant {
+        rust_variant: String,
+    },
+    /// A choice's `new-<variant>` STATIC, bridging the rust enum's own `new_<variant>`.
+    ///
+    /// `rust_can_fail` is the rust ctor's OWN fallibility, which is not the member's: the member is
+    /// also fallible when a despecialized parameter has to be re-validated at the boundary, and the
+    /// rust ctor knows nothing about that. Carried rather than re-derived (R3) — the emitter would
+    /// otherwise have to re-walk the variant's fields to decide whether to `?`.
+    NewVariant {
+        rust_ctor: String,
+        rust_can_fail: bool,
+    },
 }
 
 /// One parameter of a constructor / method / free function.
@@ -533,7 +562,10 @@ const INT_EXTERN_IDENT: &str = "Int";
 /// whether it pulled in the per-interface `int` / `any-cbor` definitions.
 struct StagedType {
     scope: ModuleScope,
-    def: WitTypeDef,
+    /// One rust type may mint MORE than one WIT item: a choice mints its `resource` and the
+    /// `<name>-kind` enum that discriminates it. They stage and unstage together — a kind enum whose
+    /// resource was excluded would name nothing.
+    defs: Vec<WitTypeDef>,
     refs: BTreeSet<RustIdent>,
     uses_int: bool,
     uses_any_cbor: bool,
@@ -596,12 +628,12 @@ pub(crate) fn project(
         );
         let (uses_int, uses_any_cbor) = (ctx.uses_int, ctx.uses_any_cbor);
         match projected {
-            Ok(def) => {
+            Ok(defs) => {
                 staged.insert(
                     ident.clone(),
                     StagedType {
                         scope: scope.clone(),
-                        def,
+                        defs,
                         refs,
                         uses_int,
                         uses_any_cbor,
@@ -662,7 +694,7 @@ pub(crate) fn project(
         let iface = interfaces
             .get_mut(&st.scope)
             .expect("every staged scope was ensured above");
-        iface.types.push(st.def.clone());
+        iface.types.extend(st.defs.iter().cloned());
         if st.uses_int {
             iface.types.push(WitTypeDef::IntVariant);
         }
@@ -785,27 +817,28 @@ struct TypeCtx<'a, 'b> {
     resolving: BTreeSet<RustIdent>,
 }
 
-/// Project one IR struct into its WIT type definition.
+/// Project one IR struct into its WIT type definition(s). A choice mints two (its `resource` and
+/// its `<name>-kind` enum); everything else mints exactly one.
 fn project_struct(
     name: &str,
     ident: &RustIdent,
     rust_struct: &RustStruct,
     deserializable: bool,
     ctx: &mut TypeCtx,
-) -> ProjectResult<WitTypeDef> {
+) -> ProjectResult<Vec<WitTypeDef>> {
     match rust_struct.variant() {
-        RustStructType::Record(record) => Ok(WitTypeDef::Resource(project_record(
+        RustStructType::Record(record) => Ok(vec![WitTypeDef::Resource(project_record(
             name,
             ident,
             record,
             deserializable,
             ctx,
-        )?)),
+        )?)]),
         RustStructType::Wrapper {
             wrapped,
             min_max,
             float_min_max,
-        } => Ok(WitTypeDef::Resource(project_wrapper(
+        } => Ok(vec![WitTypeDef::Resource(project_wrapper(
             name,
             ident,
             rust_struct,
@@ -813,18 +846,21 @@ fn project_struct(
             min_max.is_some() || float_min_max.is_some(),
             deserializable,
             ctx,
-        )?)),
-        RustStructType::CStyleEnum { variants } => Ok(WitTypeDef::Enum(project_c_style_enum(
-            name, ident, variants,
-        ))),
+        )?)]),
+        RustStructType::CStyleEnum { variants } => Ok(vec![WitTypeDef::Enum(
+            project_c_style_enum(name, ident, variants),
+        )]),
         // Resolved through at use sites; never reached (filtered in `project`), but spelled out so
         // the match stays exhaustive without an `_ =>` arm.
         RustStructType::Array { .. } | RustStructType::Table { .. } => Err(unprojectable(
             "a named collection is resolved through at its use sites, never surfaced",
         )),
-        RustStructType::TypeChoice { .. } | RustStructType::GroupChoice { .. } => Err(
-            unprojectable("type and group choices are not yet projected (phase 2)"),
-        ),
+        RustStructType::TypeChoice { variants } => {
+            project_choice(name, ident, variants, None, deserializable, ctx)
+        }
+        RustStructType::GroupChoice { variants, rep } => {
+            project_choice(name, ident, variants, Some(*rep), deserializable, ctx)
+        }
         // The reserved `Int` extern is filtered before this point; every OTHER extern needs the
         // bridging resource over the extern's own `Serialize`/`Deserialize`, which is phase-2 work.
         RustStructType::Extern => Err(unprojectable(
@@ -1036,6 +1072,208 @@ fn project_c_style_enum(name: &str, ident: &RustIdent, variants: &[EnumVariant])
     }
 }
 
+/// The suffix a choice's discriminant enum carries. A user rule that converts to `<choice>-kind` is
+/// a COLLISION the interface-level detector reports, exactly as one converging on `any-cbor` is.
+const KIND_TYPE_SUFFIX: &str = "-kind";
+
+/// A type or group choice → a `resource` with no constructor, one `new-<variant>` STATIC per
+/// variant, a `kind` discriminant and one `as-<variant>` per variant that carries data — plus the
+/// `<name>-kind` enum those three families are spelled from.
+///
+/// A choice has no single constructor (there is nothing to construct *without* picking an arm), so
+/// the statics replace it. `<variant>` is `convert_to_kebab_case(variant.name_as_var())` for all
+/// THREE families from one call, because the rust `new_<name_as_var()>` is what the guest bridges to
+/// and a second spelling would drift from it.
+fn project_choice(
+    name: &str,
+    ident: &RustIdent,
+    variants: &[EnumVariant],
+    rep: Option<Representation>,
+    deserializable: bool,
+    ctx: &mut TypeCtx,
+) -> ProjectResult<Vec<WitTypeDef>> {
+    let kind_name = format!("{name}{KIND_TYPE_SUFFIX}");
+    let kind_ref = WitTypeRef {
+        scope: ctx.types.scope(ident).clone(),
+        name: kind_name.clone(),
+        ident: ident.clone(),
+    };
+    let mut cases = Vec::new();
+    let mut members = Vec::new();
+    for variant in variants {
+        let var = convert_to_kebab_case(&variant.name_as_var());
+        cases.push(WitEnumCase {
+            name: var.clone(),
+            rust_variant: variant.name.to_string(),
+        });
+        let (params, payload) = choice_variant_shape(ident, variant, rep, ctx)?;
+        let rust_can_fail = variant_ctor_can_fail(ident, variant, rep, ctx.types);
+        // The MEMBER is fallible for a second, independent reason the rust ctor knows nothing
+        // about: a despecialized parameter (`[+ T]`, `@duplicates reject`) has to re-enter its
+        // `TryFrom` door here. So `rust_can_fail` implies member-fallible, never the reverse.
+        let fallible = rust_can_fail || params.iter().any(|p| p.validates);
+        members.push(WitMember {
+            name: format!("new-{var}"),
+            is_static: true,
+            params,
+            // The `ok` type is the OWNING resource, filled in by the renderer and the emitter for
+            // the same reason `from-cbor-bytes`'s is.
+            result: None,
+            fallible,
+            op: WitMemberOp::NewVariant {
+                rust_ctor: format!("new_{}", variant.name_as_var()),
+                rust_can_fail,
+            },
+        });
+        // A FIXED-value arm carries no payload, so there is nothing for `as-` to hand back; `kind`
+        // still reports it, which is the whole answer for such an arm.
+        if let Some(payload) = payload {
+            members.push(WitMember {
+                name: format!("as-{var}"),
+                is_static: false,
+                params: Vec::new(),
+                result: Some(WitType::Option(Box::new(payload))),
+                fallible: false,
+                op: WitMemberOp::AsVariant {
+                    rust_variant: variant.name.to_string(),
+                },
+            });
+        }
+    }
+    members.push(WitMember {
+        name: "kind".to_owned(),
+        is_static: false,
+        params: Vec::new(),
+        result: Some(WitType::Enum(kind_ref)),
+        fallible: false,
+        op: WitMemberOp::VariantKind,
+    });
+    members.extend(bytes_members(deserializable));
+    Ok(vec![
+        WitTypeDef::Resource(WitResource {
+            name: name.to_owned(),
+            ident: ident.clone(),
+            // No constructor: an arm has to be chosen, and the `new-<variant>` statics are how.
+            constructor: None,
+            members,
+        }),
+        WitTypeDef::Kind(WitEnum {
+            name: kind_name,
+            ident: ident.clone(),
+            cases,
+        }),
+    ])
+}
+
+/// One choice arm's `new-<variant>` PARAMETERS and its `as-<variant>` PAYLOAD type (`None` for a
+/// fixed-value arm, which has neither).
+///
+/// The parameter list mirrors the rust enum's own `new_<variant>` exactly, because that is what the
+/// guest calls: a group-choice arm naming a RECORD takes the record's mandatory non-fixed FIELDS
+/// (the rust ctor builds the record itself), an INLINED arm takes its non-fixed fields, and every
+/// other arm takes the variant's own type under the variant's name.
+fn choice_variant_shape(
+    ident: &RustIdent,
+    variant: &EnumVariant,
+    rep: Option<Representation>,
+    ctx: &mut TypeCtx,
+) -> ProjectResult<(Vec<WitParam>, Option<WitType>)> {
+    match &variant.data {
+        EnumVariantData::RustType(ty) => {
+            let ctor_fields = rep.and_then(|_| variant.group_ctor_record_fields(ctx.types, ident));
+            let params = match &ctor_fields {
+                Some(fields) => {
+                    let mut params = Vec::new();
+                    for field in fields {
+                        params.push(field_param(&field.name, &field.rust_type, ctx)?);
+                    }
+                    params
+                }
+                None if ty.is_fixed_value() => Vec::new(),
+                None => vec![WitParam {
+                    name: convert_to_kebab_case(&variant.name_as_var()),
+                    rust_name: variant.name_as_var(),
+                    ty: map_rust_type(ty, ctx)?,
+                    validates: wit_param_validates(ty, ctx.types),
+                }],
+            };
+            let payload = if ty.is_fixed_value() {
+                None
+            } else {
+                Some(map_rust_type(ty, ctx)?)
+            };
+            Ok((params, payload))
+        }
+        EnumVariantData::Inlined(record) => {
+            let non_fixed: Vec<&RustField> = record
+                .fields
+                .iter()
+                .filter(|f| !f.rust_type.is_fixed_value())
+                .collect();
+            // The wasm face ASSERTS `<= 1` here; this module never asserts (R2), so the shape its
+            // assert guards against leaves as an exclusion record naming itself.
+            if non_fixed.len() > 1 {
+                return Err(unprojectable(format!(
+                    "the inlined group-choice arm `{}` carries {} non-fixed fields, and an embedded \
+                     arm's payload has no single WIT type",
+                    variant.name,
+                    non_fixed.len()
+                )));
+            }
+            let mut params = Vec::new();
+            for field in &non_fixed {
+                params.push(field_param(
+                    &field.name,
+                    field.to_embedded_rust_type().as_ref(),
+                    ctx,
+                )?);
+            }
+            let payload = match non_fixed.first() {
+                Some(field) => Some(map_rust_type(field.to_embedded_rust_type().as_ref(), ctx)?),
+                None => None,
+            };
+            Ok((params, payload))
+        }
+    }
+}
+
+/// One `WitParam` for a rust FIELD feeding a positional rust constructor argument.
+fn field_param(rust_name: &str, ty: &RustType, ctx: &mut TypeCtx) -> ProjectResult<WitParam> {
+    Ok(WitParam {
+        name: convert_to_kebab_case(rust_name),
+        rust_name: rust_name.to_owned(),
+        ty: map_rust_type(ty, ctx)?,
+        validates: wit_param_validates(ty, ctx.types),
+    })
+}
+
+/// Whether the RUST enum's own `new_<variant>` returns a `Result`.
+///
+/// Mirrors `generation::enums`'s three per-shape rules verbatim, because a glue that guessed wrong
+/// binds a `Result` where the rep expects the value — a type error in generated code no WIT gate can
+/// see. In particular it is `has_value_bounds()` and NOT `needs_bounds_check_if_inlined()` on the
+/// direct-payload arm: both ctors receive an already-constructed value, so a named bounded type's
+/// own fallible `new` already ran upstream.
+fn variant_ctor_can_fail(
+    ident: &RustIdent,
+    variant: &EnumVariant,
+    rep: Option<Representation>,
+    types: &IntermediateTypes,
+) -> bool {
+    match &variant.data {
+        EnumVariantData::RustType(ty) => {
+            match rep.and_then(|_| variant.group_ctor_record_fields(types, ident)) {
+                Some(fields) => fields.iter().any(|f| f.rust_type.has_value_bounds()),
+                None => !ty.is_fixed_value() && ty.has_value_bounds(),
+            }
+        }
+        EnumVariantData::Inlined(record) => record
+            .fields
+            .iter()
+            .any(|f| f.rust_type.needs_bounds_check_if_inlined(types)),
+    }
+}
+
 /// The bytes seam every class-backed type carries. The `to-` half is emitted unconditionally — NOT
 /// gated on `--to-from-bytes-methods` — because the cross-crate seam and the extern bridging rows
 /// both depend on it (a per-face flag-semantics delta, plan §3).
@@ -1136,7 +1374,10 @@ fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
         ident: ident.clone(),
     };
     match rust_struct.variant() {
-        RustStructType::Record(_) | RustStructType::Wrapper { .. } => {
+        RustStructType::Record(_)
+        | RustStructType::Wrapper { .. }
+        | RustStructType::TypeChoice { .. }
+        | RustStructType::GroupChoice { .. } => {
             let r = type_ref();
             ctx.refs.insert(ident.clone());
             Ok(WitType::Handle(r))
@@ -1155,11 +1396,6 @@ fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
                 map_rust_type(range, ctx)?,
             ]))))
         }),
-        RustStructType::TypeChoice { .. } | RustStructType::GroupChoice { .. } => {
-            Err(unprojectable(format!(
-                "references `{ident}`, a type or group choice, which is not yet projected (phase 2)"
-            )))
-        }
         RustStructType::Extern => Err(unprojectable(format!(
             "references the extern type `{ident}`, whose bridging resource is not yet projected \
              (phase 2)"
@@ -1343,7 +1579,7 @@ fn render_type_def(def: &WitTypeDef) -> String {
             }
             out.push_str("  }\n");
         }
-        WitTypeDef::Enum(e) => {
+        WitTypeDef::Enum(e) | WitTypeDef::Kind(e) => {
             out.push_str(&format!("  enum {} {{\n", wit_escape(&e.name)));
             for case in &e.cases {
                 out.push_str(&format!("    {},\n", wit_escape(&case.name)));
@@ -1384,11 +1620,12 @@ fn render_params(params: &[WitParam]) -> String {
         .join(", ")
 }
 
-/// A member's return spelling. A resource's own `from-cbor-bytes` names the resource, which the
-/// projection carries as a placeholder handle so the renderer does not have to thread the owner.
+/// A member's return spelling. The two members that mint the OWNING resource — `from-cbor-bytes`
+/// and a choice's `new-<variant>` — cannot name it from inside the member without carrying their own
+/// owner, so the renderer fills it in from the resource it is rendering.
 fn render_member_result(member: &WitMember, owner: &str) -> String {
     let ok = match (&member.op, &member.result) {
-        (WitMemberOp::FromCborBytes, _) => Some(wit_escape(owner)),
+        (WitMemberOp::FromCborBytes | WitMemberOp::NewVariant { .. }, _) => Some(wit_escape(owner)),
         (_, Some(ty)) => Some(render_type(ty, false)),
         (_, None) => None,
     };
@@ -1532,6 +1769,7 @@ pub(crate) fn wit_name_collisions(
             type_names.entry(def.name()).or_default().push(match def {
                 WitTypeDef::Resource(r) => format!("the type `{}`", r.ident),
                 WitTypeDef::Enum(e) => format!("the type `{}`", e.ident),
+                WitTypeDef::Kind(e) => format!("the discriminant enum of the choice `{}`", e.ident),
                 WitTypeDef::IntVariant => "the `int` variant".to_owned(),
                 WitTypeDef::AnyCborAlias => "the `any-cbor` alias".to_owned(),
                 WitTypeDef::AnyCborKind => "the `any-cbor-kind` enum".to_owned(),

@@ -401,6 +401,15 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "tests/component-core/input.cddl",
         ("component", &["--component=true"]),
     ),
+    // Type and group CHOICES on the component face: the `resource`-with-no-constructor shape, the
+    // `new-<variant>` statics, the `<name>-kind` enum and the `as-<variant>` getters — plus the glue
+    // whose `match` arms bridge them to the rust DATA enum. Pinned as bytes because the arm spelling
+    // is what the encoding posture re-writes and what every WIT gate is blind to.
+    (
+        "component_choices",
+        "tests/component-choices/input.cddl",
+        ("component", &["--component=true"]),
+    ),
     // The multi-INTERFACE shape (a directory input, one interface per file): the cross-interface
     // `use` edge in the WIT and, on the glue side, two `Guest` impls on one guest type under one
     // `export!`. None of it is reachable from a single-scope input.
