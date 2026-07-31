@@ -27,8 +27,9 @@
 //! `export.rs`'s write loop; `COMPONENT_WIT_DEPS_DIR` by the dep-WIT materializer and `export.rs`'s
 //! header-stamp exemption; `COMPONENT_MANIFEST` by `cargo_manifest.rs`'s changeset and
 //! `export.rs`'s manifest merge; `COMPONENT_PACKAGE_SUFFIX` by the manifest change log's
-//! `cddl-lib-component` and by any config that has to PREDICT the package name to derive a
-//! `--component-dep`, which is the same predict-the-name problem [`WASM_PACKAGE_SUFFIX`] exists for.
+//! `cddl-lib-component` and by the drift gate that holds the two spellings together, which is the
+//! same emitter-half-is-a-data-file problem [`WASM_PACKAGE_SUFFIX`] carries (no cross-crate
+//! derivation predicts the component package — see the constant).
 //! They are minted together rather than one at a time because they are one layout decision, and a
 //! half-constant layout is the state in which a rename silently diverges.
 
@@ -68,10 +69,9 @@ pub(crate) const WASM_PACKAGE_SUFFIX: &str = "-wasm";
 /// states for the wasm crate's.
 pub(crate) const JSON_GEN_PACKAGE_SUFFIX: &str = "-json-schema-gen";
 
-// The `#[allow(dead_code)]` on the last of the four below: its reader (a config deriving
-// `--component-dep`) is the component face's phase-4 piece. The layout is minted whole rather than
-// one constant at a time, because a half-constant layout is the state in which a rename silently
-// diverges.
+// The layout is minted whole rather than one constant at a time, because a half-constant layout is
+// the state in which a rename silently diverges. The `#[allow(dead_code)]` on the last of the five
+// below is what that costs here: see its own comment for why nothing in production reads it.
 /// The component crate's directory, a sibling of `rust/` and `wasm/` under a crate's `--output`.
 /// Named by three files: `wit.rs` (which keys the emitted WIT map under it), `component.rs` (the
 /// guest glue), and `export.rs` (write loop, stale-file scan, header stamping). Spelled once so
@@ -107,6 +107,16 @@ pub(crate) const COMPONENT_MANIFEST: &str = "component/Cargo.toml";
 /// The component crate's cargo package name: `--lib-name` plus this, on exactly the terms
 /// [`WASM_PACKAGE_SUFFIX`] states for the wasm crate's. Spelled in the manifest change log as part
 /// of `cddl-lib-component`, which the `cddl-lib` → `--lib-name` substitution turns into the real
-/// name; a config deriving a `--component-dep` has to predict it.
+/// name.
+///
+/// Unlike its two siblings, NO cross-crate derivation predicts it, and the asymmetry is the
+/// component face's shape rather than an omission: a consumer's component crate depends on the
+/// dependency's RUST package (the guest glue holds a dependency-typed value natively and converts it
+/// across the bytes seam), while the dependency's own component crate is wired by the composer at the
+/// component level and never by cargo. The wasm face derives both packages because its pass emits
+/// `use <dep>_wasm::…` as well; nothing on this face emits the equivalent. So the constant's only
+/// reader is the drift gate that asserts it against the template — which is `#[cfg(test)]`, hence the
+/// attribute. It stays spelled here because the layout is one decision, and a suffix living only in a
+/// `.toml` is one nobody can assert against.
 #[allow(dead_code)]
 pub(crate) const COMPONENT_PACKAGE_SUFFIX: &str = "-component";

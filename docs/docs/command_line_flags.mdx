@@ -598,6 +598,8 @@ Repeatable. Passing the same **package name** twice is a hard error naming it. R
 cddl-codegen --input=example --output=export --component=true \
   --component-dep=cml-chain-component=../../chain/component
 ```
+
+**In a config file this is derived** from a `deps` edge whose two crates both have `component = true` — and what it names there is the dependency's **rust** package, not its component package: the guest glue holds a dependency-typed value natively, while the dependency's own component crate is wired by the composer rather than by cargo. See [Config file § The component face](./config_file#the-component-face). Writing the sub-table by hand stays the way to declare anything else the component crate needs.
 :::
 
 :::info `--component-extern-wit`
@@ -617,14 +619,15 @@ cddl-codegen --input=example --output=export --component=true \
 
 **Dependency-typed values cross through a CBOR bytes seam**, so every door touching one is fallible: a getter on a dependency-typed field returns `result<foo, string>`, and so does a setter or constructor taking one. That is not defensive — the far side's `from-cbor-bytes` can genuinely fail on a value your own serializer produced when the dependency component and the dependency crate you link disagree about a type's shape, a failure class that is compile-time within one crate. The cost is one serialize + copy + deserialize per dependency-typed value per crossing.
 
-**Two shapes are rejected at generation** rather than emitted:
+**A dependency type in a collection *parameter*** (list element, map key, map value) is spelled as an **accumulator resource** — `borrow<<dep-type>-list>`, which the caller fills one element at a time — rather than as `list<borrow<t>>`, which is legal WIT that wit-bindgen's Rust backend cannot lower (`E0506`). Collection *returns* are unaffected and keep `list<own t>`.
 
-- a dependency type in a **collection parameter** (list element, map key, map value). `list<borrow<t>>` over an imported resource is legal WIT that wit-bindgen's Rust backend cannot lower (`E0506`), so emitting it would hand you a component crate that fails to compile inside a macro expansion.
-- a signature naming a dependency type the dependency's **own WIT excluded**. The error quotes the dependency's recorded reason verbatim and names the dependency, because the fix is on that side.
+**One shape is rejected at generation** rather than emitted: a signature naming a dependency type the dependency's **own WIT excluded**. The error quotes the dependency's recorded reason verbatim and names the dependency, because the fix is on that side.
 
 **Determinism class.** The dependency's committed WIT is an explicit cross-crate **input** — the same class as `--extern-import` reading `extern-interface/<dep>/**` — and never a read of this run's own prior output; the copy carries a file-class comment saying so. As with `--extern-import`, **regenerate the dependency before the consumer** so the WIT it reads is fresh.
 
 Repeatable.
+
+**In a config file this is derived** from a `deps` edge whose two crates both have `component = true`, together with the `--component-dep` naming the dependency's rust package. A config also refuses such an edge when the two crates' encoding posture differs, which a hand-written invocation cannot check. See [Config file § The component face](./config_file#the-component-face).
 :::
 
 :::info `--std-forward-dep`
