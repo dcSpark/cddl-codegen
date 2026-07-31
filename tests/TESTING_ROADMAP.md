@@ -3289,17 +3289,27 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 - **`@wrapper_name` — a user-set name for a synthesized collection wrapper.** Declined in favor of
   container-encoded structural names, which is what the wrapper-name collision class needed: a name
   carrying its container (`PairMapKToV` vs `MapKToV`) makes a same-shape/different-flavor claim
-  unrepresentable rather than merely diagnosable. What a user-set name would still buy is the
-  SAME-flavor sibling-crate collision — two crates minting one structural name over same-spelled
-  local types — which is served by re-spelling a key or value alias in one of the two specs. The
+  unrepresentable rather than merely diagnosable. The SAME-flavor sibling-crate collision — two
+  crates minting one structural name — splits in two, and only one half is still open.
+  When both sides name **one concept** (a crate re-exporting a sibling's type and minting that
+  type's companion classes over it), renaming is the wrong remedy in principle: it mints a SECOND JS
+  class for one concept, with no type identity against the sibling's own API, so a value obtained
+  from the sibling cannot be handed back to it. That half is **served** by the
+  `@extern_companions` directive (docs: Comment DSL § `@extern_companions`; its link-level
+  acceptance is pinned by `extern_companions_defers_to_sibling_wasm_crate`), which references the
+  sibling's class instead of minting one — the collision becomes unrepresentable rather than
+  renamed-around. What is left for `@wrapper_name` is the genuinely-**two-concepts** collision: two
+  crates whose same-spelled local types are different domain concepts that happen to derive one
+  structural name, where re-spelling a key or value alias in one spec is the current answer. The
   design surface a future build must settle before it is cheap: two same-shape rows carrying
   different names, against a structural name that is currently the identity the deferral index, the
   request sidecars and the wrapper dedup all key on; user-authored names entering the rule-ident
   collision detectors, which reason about generated spellings only; and name-keyed deferral matching
   seeing a name no other crate can derive from the shape. Reopening signal: a consumer reports a
-  same-flavor sibling collision where the colliding key/value spelling is semantically load-bearing
-  on BOTH sides — the alias-respelling workaround would then misname a domain concept rather than
-  merely restate it.
+  same-flavor sibling collision between types that are **distinct domain concepts on the two sides**
+  — so neither crate can reference the other's class, and the alias-respelling workaround would
+  misname one of them rather than merely restate it. (The one-concept flavor no longer fires this:
+  it has a remedy that keeps the shared name.)
 - **Checking `[runtime] flavor-from`'s safety condition rather than stating it.** The `[runtime]`
   carrier derivation is a maintainer-CLOSED area (`AGENTS.md`), so this records the one build that
   would be defensible IF that area reopens — not an intent to build it. Shape: error only on a

@@ -777,6 +777,12 @@ fn parse_type_choices(
                  `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
             ));
         }
+        // A multi-choice type rule can never be an extern marker, so `@extern_companions` cannot
+        // apply here — reject loudly rather than silently ignore it (the silent flavor re-mints the
+        // very classes the directive exists to suppress, and only a distant link fails).
+        if rule_metadata.extern_companions.is_some() {
+            types.record_rejection(extern_companions_not_extern_rejection(name));
+        }
         handle_rust_name_pin(types, name, &rule_metadata);
         // A rule-level directive on a NON-LAST arm is built and thrown away: the rule slot is
         // `type_choices.last()` (read above), and `create_variants_from_type_choices` consumes only
@@ -1526,6 +1532,51 @@ fn register_literal_range(
     }
 }
 
+/// The `@extern_companions`-on-a-non-extern-rule rejection message. One owner, because the directive
+/// is reachable from three rule shapes (single-choice type rule, multi-choice type rule, plain group)
+/// and the text is what a spec author acts on.
+fn extern_companions_not_extern_rejection(type_name: &RustIdent) -> String {
+    format!(
+        "@extern_companions on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} rule — it \
+         declares that the STRUCTURAL wasm companion classes of an externally-defined type (its \
+         `<Name>List`, `Map<Name>To…`, …) already exist in a sibling wasm crate, so this crate \
+         references them instead of minting duplicate `#[wasm_bindgen]` classes. A rule this crate \
+         GENERATES owns its own companions. Remove it from this rule."
+    )
+}
+
+/// Validate and record an `@extern_companions` declaration for the extern rule `type_name`. Valid
+/// only on a LOCALLY-scoped (exported) extern marker: a DEP-scoped extern (a rule in an
+/// `EXTERN_DEPS_DIR` scope) is already served by `--extern-wrapper-index` / `--workspace-dep`, which
+/// key on the constituents' owning dependency and can consult the dep's committed index — so a
+/// directive there would be a second, weaker authority for the same decision. Graceful
+/// `record_rejection` throughout, following the `@rust_name` / `@raw_bytes_flavor` precedent.
+///
+/// The rule's scope is known here for the same reason it is in `handle_rust_name_pin`:
+/// `api::with_types` calls `mark_scope` for every rule before the parse walk runs.
+fn handle_extern_companions(
+    types: &mut IntermediateTypes,
+    type_name: &RustIdent,
+    rule_metadata: &RuleMetadata,
+) {
+    let Some(companions) = rule_metadata.extern_companions.as_ref() else {
+        return;
+    };
+    if !types.scope(type_name).export() {
+        types.record_rejection(format!(
+            "@extern_companions on `{type_name}`: this rule lives in a {EXTERN_DEPS_DIR} scope, so \
+             its collection wrappers are already owned by the dependency-keyed mechanisms — pass \
+             `--extern-wrapper-index=<dep>=<dep>/wasm/src/generated/collections.rs` (defer to the \
+             classes the dependency's own generation committed) or `--workspace-dep=<dep>` (defer \
+             unconditionally). `@extern_companions` exists for the LOCAL marker \
+             (`x = {EXTERN_MARKER}` in this crate's own spec), which has no dependency edge for \
+             those flags to key on. Remove it from this rule."
+        ));
+        return;
+    }
+    types.mark_extern_companions(type_name.clone(), companions.clone());
+}
+
 /// Validate and record a `@rust_name` pin for the rule `type_name`, following the
 /// `@raw_bytes_flavor`-only-on-extern precedent (graceful `record_rejection`, never a panic).
 ///
@@ -1686,6 +1737,14 @@ fn parse_type(
              `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
         ));
     }
+    // `@extern_companions` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule (the extern-marker
+    // branch below records it, after the local-vs-dep scope check). Anywhere else — including a
+    // raw-bytes marker, whose type has no generator-minted wasm companion classes — it would
+    // silently do nothing, so reject loudly here in the house style of the other comment-DSL misuse
+    // rejections.
+    if rule_metadata.extern_companions.is_some() && !is_extern_marker {
+        types.record_rejection(extern_companions_not_extern_rejection(type_name));
+    }
     // The custom (de)serializer pair is a TYPE-LEVEL override: it replaces the codec of the rust type
     // the rule resolves to, keyed on that type's alias node. Three rule-level spellings delete or
     // bypass the thing it keys on, and each one used to accept the directives and generate as if they
@@ -1808,6 +1867,7 @@ fn parse_type(
                 if rule_metadata.copy {
                     types.mark_copy_extern(type_name.clone());
                 }
+                handle_extern_companions(types, type_name, &rule_metadata);
             } else if ident.ident == RAW_BYTES_MARKER {
                 types.register_rust_struct(
                     parent_visitor,
@@ -4002,6 +4062,22 @@ fn parse_record_from_group_choice(
                     "@copy on field `{field_name}` of rule `{source_name}`: this tag is only valid \
                      on a {EXTERN_MARKER} or {RAW_BYTES_MARKER} rule definition, not a field. \
                      Remove it from this entry."
+                ));
+            }
+            // `@extern_companions` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition,
+            // never a field/member position — reject loudly instead of silently ignoring it. This is
+            // also the slot a plain-GROUP rule's TRAILING comment binds to (`grp = (a: uint) ;
+            // @extern_companions …`, the `@name plain-group-trailing` seam), so it covers that
+            // spelling too.
+            if rule_metadata.extern_companions.is_some() {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "@extern_companions on field `{field_name}` of rule `{source_name}`: this tag \
+                     is only valid on a {EXTERN_MARKER} rule definition, not a field. Remove it \
+                     from this entry."
                 ));
             }
             // `@duplicates` is per-rule and never applies at a field/member position — reject loudly

@@ -827,6 +827,12 @@ fn project_extern_interface(
                 if types.is_copy_extern(ident) {
                     annotations.push("@copy".to_string());
                 }
+                // `@extern_companions` deliberately does NOT travel. It answers "where does THIS
+                // crate's wasm face borrow its companion classes from", which is a statement about
+                // this crate's own link graph; a consumer importing this rule gets a DEP-scoped
+                // extern, where the dependency-keyed mechanisms (`--extern-wrapper-index` /
+                // `--workspace-dep`) answer the same question with a dep edge — and where the
+                // directive is a graceful rejection precisely because those own the case.
                 let check = if generic_bases.contains(ident) {
                     ExternCheckKind::None
                 } else {

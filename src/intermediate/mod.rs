@@ -208,6 +208,16 @@ pub struct IntermediateTypes<'a> {
     // `Copy` assertion for each (see `export.rs`), and the tag rides the extern-interface seam like
     // `@raw_bytes_flavor` so `--extern-import` consumers inherit it. See `RuleMetadata::copy`.
     copy_externs: BTreeSet<RustIdent>,
+    // `@extern_companions` declarations, keyed by the LOCAL extern rule that carries one: the sibling
+    // wasm crate path plus the exact structural companion class names that already exist there. The
+    // wasm wrapper-deferral decision (`try_defer_wrapper`) consults this to REFERENCE those classes
+    // instead of minting duplicate `#[wasm_bindgen]` ones. Deliberately NOT part of
+    // `RustStructConfig` for the same reason as `no_json_schema_export`: `RustStruct::new_extern`
+    // builds with `RustStructConfig::default()` and drops rule metadata, and an extern rule is this
+    // directive's ONLY customer. Deliberately does NOT ride the extern-interface seam (unlike
+    // `@copy`): the declaration is about where THIS crate's wasm face borrows from, which a consumer
+    // of this crate answers for itself. Determinism: `BTreeMap`.
+    extern_companions: BTreeMap<RustIdent, crate::comment_ast::ExternCompanions>,
     // Idents of rules tagged `@no_json_schema_export`: the json-gen crate emits no
     // schema-registration row for them (see the row loop in `generation/mod.rs`). Carried as a
     // per-ident marker set rather than a `RustStructConfig` field because `RustStruct::new_extern` /
@@ -293,6 +303,7 @@ impl<'a> IntermediateTypes<'a> {
             used_as_elem: BTreeSet::new(),
             swallowed_structural_list_claims: BTreeMap::new(),
             copy_externs: BTreeSet::new(),
+            extern_companions: BTreeMap::new(),
             no_json_schema_export: BTreeSet::new(),
             raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
@@ -2985,6 +2996,16 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.preserve_pair_map_non_empty_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            // `@extern_companions` names classes this crate must NOT define, so a same-crate RULE of
+            // one of those names is a contradiction the deferral cannot resolve: the `use
+            // <prefix>::<Class>;` and the rule's own class would claim one identifier (rustc E0255).
+            // Sibling in spirit to the four wrapper-name detectors above — a rule ident contending
+            // with a name the generator routes elsewhere — but its own function because the contested
+            // name comes from the SPEC's declaration rather than a structural derivation, so it needs
+            // neither shape reconstruction nor a per-container-kind twin.
+            for msg in self.extern_companion_rule_name_collisions() {
+                self.record_rejection(msg);
+            }
             // `@used_as_elem` mints the loose-list wasm wrapper `<Elem>List` for each tagged
             // element. A directly-wasm-exposable element (e.g. a transparent `coin = uint` alias)
             // has NO such wrapper — the list lowers to a bare `Vec<..>` at the wasm boundary — so
@@ -3840,6 +3861,40 @@ impl<'a> IntermediateTypes<'a> {
         msgs.into_iter().collect()
     }
 
+    /// `@extern_companions` names classes that live in a SIBLING crate, so this crate must not also
+    /// define one. A top-level rule of this crate's own spec whose ident equals a listed class is
+    /// that contradiction: the deferral emits `use <prefix>::<Class>;` while the rule mints a class
+    /// of the same name, which is rustc E0255 in the generated wasm crate — a failure whose message
+    /// names neither the directive nor the rule. Reported here instead, in the spec's own terms.
+    ///
+    /// The claim test is "is a top-level rule of an EXPORTED scope" (`scopes`, populated once per
+    /// parsed rule) rather than the `rust_structs`/`type_aliases` membership the structural detectors
+    /// use: those registries also hold generator-SYNTHESIZED wrappers, and a synthesized wrapper of a
+    /// listed name is precisely what the directive suppresses — reading it as a claim would reject
+    /// every correct use. A same-named rule in a dependency scope is a different crate's business.
+    fn extern_companion_rule_name_collisions(&self) -> Vec<String> {
+        let mut msgs = BTreeSet::new();
+        for (owner, companions) in &self.extern_companions {
+            for class in &companions.classes {
+                let ident = RustIdent::new(CDDLIdent::new(class.clone()));
+                if !self.is_toplevel_rule(&ident) || !self.scope(&ident).export() {
+                    continue;
+                }
+                let claimant = self.source_rule_name(&ident).unwrap_or(class);
+                let prefix = &companions.path_prefix;
+                msgs.insert(format!(
+                    "@extern_companions on `{owner}` declares that `{class}` already exists in \
+                     `{prefix}`, but this crate's own rule `{claimant}` also defines `{class}` — the \
+                     generated wasm crate would both `use {prefix}::{class};` and define it (E0255). \
+                     Either drop `{class}` from the directive's class list (this crate owns it, and \
+                     the sibling's class is a DIFFERENT type across the package boundary), or rename \
+                     the rule."
+                ));
+            }
+        }
+        msgs.into_iter().collect()
+    }
+
     pub fn visit_types<F: FnMut(&ConceptualRustType)>(&self, f: &mut F) {
         for rust_struct in self.rust_structs().values() {
             rust_struct.visit_types(self, f);
@@ -4209,6 +4264,32 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn mark_copy_extern(&mut self, name: RustIdent) {
         self.copy_externs.insert(name);
+    }
+
+    pub fn mark_extern_companions(
+        &mut self,
+        name: RustIdent,
+        companions: crate::comment_ast::ExternCompanions,
+    ) {
+        self.extern_companions.insert(name, companions);
+    }
+
+    /// The whole `@extern_companions` registry, keyed by declaring extern rule. Empty unless some
+    /// rule carries the directive, which is what keeps the deferral arm that reads it inert (and the
+    /// output byte-identical) for every spec that does not.
+    pub fn extern_companions(&self) -> &BTreeMap<RustIdent, crate::comment_ast::ExternCompanions> {
+        &self.extern_companions
+    }
+
+    /// The `use`-path prefix under which `class` is declared to ALREADY exist, given that every named
+    /// constituent of the wrapper resolves to `owner`. `None` when `owner` carries no declaration or
+    /// its declaration does not list `class` — an unlisted structural companion mints locally, which
+    /// is the whole point of the class list being a filter rather than a blanket opt-out.
+    pub fn extern_companion_path(&self, owner: &RustIdent, class: &str) -> Option<&str> {
+        self.extern_companions
+            .get(owner)
+            .filter(|c| c.classes.contains(class))
+            .map(|c| c.path_prefix.as_str())
     }
 
     /// Whether the rule `ident` was declared `@no_json_schema_export` — the spec author's statement

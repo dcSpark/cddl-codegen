@@ -58,6 +58,20 @@ pub enum DuplicatesPolicy {
     Reject,
 }
 
+/// The `@extern_companions <path>=<Class>[,<Class>…]` declaration on a LOCALLY-marked extern rule:
+/// the sibling wasm crate (or module path) where the named STRUCTURAL companion classes of this
+/// extern type already exist, so the generator references them instead of minting duplicates.
+///
+/// `path_prefix` is emitted verbatim as the `use <prefix>::<Class>;` head; `classes` are the exact
+/// generator-derived structural class names that defer (`TransactionMetadatumList`,
+/// `MapFooToBar`, …). Only LISTED names defer — an unlisted structural companion of the same type
+/// still mints locally, which is what lets a consumer borrow one family and own another.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternCompanions {
+    pub path_prefix: String,
+    pub classes: std::collections::BTreeSet<String>,
+}
+
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
@@ -124,6 +138,17 @@ pub struct RuleMetadata {
     pub no_json_schema_export: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
+    /// `@extern_companions <path>=<Class>[,<Class>…]`: valid ONLY on a LOCALLY-scoped
+    /// `_CDDL_CODEGEN_EXTERN_TYPE_` rule. Declares that the named structural wasm companion classes
+    /// of this extern type already exist in a sibling wasm crate, so the generator emits
+    /// `use <path>::<Class>;` and references them instead of minting its own `#[wasm_bindgen]`
+    /// duplicates (which duplicate-symbol at link when both crates enter one cdylib). Only listed
+    /// classes defer. Inert without `--wasm` (the classes it names are a wasm-boundary concern). On
+    /// any other placement — a non-extern rule, or a DEP-scoped extern, which
+    /// `--extern-wrapper-index` / `--workspace-dep` already own — it is a graceful parse-time
+    /// rejection, never silently ignored. See [`ExternCompanions`] and
+    /// `IntermediateTypes::extern_companions`.
+    pub extern_companions: Option<ExternCompanions>,
     pub comment: Option<String>,
 }
 
@@ -166,6 +191,11 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
             r2.custom_deserialize,
             "custom_deserialize"
         ),
+        extern_companions: merge_metadata_fields!(
+            r1.extern_companions,
+            r2.extern_companions,
+            "extern_companions"
+        ),
         comment: merge_metadata_fields!(r1.comment, r2.comment, "comment"),
     };
     merged.verify();
@@ -187,6 +217,7 @@ enum ParseResult {
     NoJsonSchemaExport,
     CustomSerialize(String),
     CustomDeserialize(String),
+    ExternCompanionsTag(ExternCompanions),
     Comment(String),
 }
 
@@ -254,6 +285,9 @@ impl RuleMetadata {
                     custom_deserialize,
                     "custom_deserialize"
                 ),
+                ParseResult::ExternCompanionsTag(companions) => {
+                    merge_parse_fields!(base.extern_companions, companions, "extern_companions")
+                }
                 ParseResult::Comment(comment) => {
                     merge_parse_fields!(base.comment, comment, "comment")
                 }
@@ -296,6 +330,7 @@ impl RuleMetadata {
             no_json_schema_export,
             custom_serialize,
             custom_deserialize,
+            extern_companions,
         } = self;
         let mut found = Vec::new();
         if rust_name.is_some() {
@@ -336,6 +371,9 @@ impl RuleMetadata {
         }
         if custom_deserialize.is_some() {
             found.push("@custom_deserialize");
+        }
+        if extern_companions.is_some() {
+            found.push("@extern_companions");
         }
         found
     }
@@ -525,6 +563,66 @@ fn tag_custom_deserialize(input: &str) -> IResult<&str, ParseResult> {
     ))
 }
 
+/// Whether `path` is a `::`-separated chain of rust identifiers — the shape the `use <path>::<Class>;`
+/// head must have, since it is emitted verbatim into the generated wasm crate. Deliberately syntactic
+/// only (like `@newtype`'s getter bound): whether the crate exists is the CONSUMER'S COMPILE to
+/// decide, which is this directive's whole trust-and-compile contract. What this bounds is the token
+/// that would otherwise reach `rustfmt` as unparseable source.
+fn is_rust_path(path: &str) -> bool {
+    !path.is_empty() && path.split("::").all(is_rust_ident)
+}
+
+fn tag_extern_companions(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@extern_companions")(input)?;
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    // Exactly one REQUIRED argument, in a strict shape. A missing or malformed argument is a PANIC
+    // (matching `@duplicates`/`@used_as_key`): the comment parser otherwise swallows nom errors
+    // (`metadata_from_comments`), so a soft failure would silently drop the whole line's metadata —
+    // here that means silently re-minting the very classes the directive exists to suppress, whose
+    // only symptom is a `rust-lld: duplicate symbol` in a DIFFERENT crate's link. Loud at the cause.
+    if input.is_empty() || input.starts_with('@') {
+        panic!(
+            "@extern_companions: missing required argument; expected \
+             `<use_path_prefix>=<Class>[,<Class>…]` (e.g. \
+             `@extern_companions cml_chain_wasm=TransactionMetadatumList`)."
+        );
+    }
+    let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+    let Some((path_prefix, class_list)) = arg.split_once('=') else {
+        panic!(
+            "@extern_companions: malformed argument {arg:?}; expected \
+             `<use_path_prefix>=<Class>[,<Class>…]` — the `=` separating the sibling crate path from \
+             the comma-separated class names is required, and neither side may contain whitespace."
+        );
+    };
+    if !is_rust_path(path_prefix) {
+        panic!(
+            "@extern_companions: invalid use-path prefix {path_prefix:?}; expected a rust path \
+             (`cml_chain_wasm`, `cml_chain_wasm::auxdata`) — it is emitted verbatim as the head of \
+             `use <prefix>::<Class>;`."
+        );
+    }
+    let mut classes = std::collections::BTreeSet::new();
+    for class in class_list.split(',') {
+        if !is_rust_ident(class) {
+            panic!(
+                "@extern_companions: invalid companion class name {class:?} in {arg:?}; expected a \
+                 comma-separated list of rust type identifiers naming the classes that ALREADY \
+                 exist in {path_prefix} (e.g. `TransactionMetadatumList`). A trailing comma or an \
+                 empty entry reaches here as an empty name."
+            );
+        }
+        classes.insert(class.to_owned());
+    }
+    Ok((
+        rest,
+        ParseResult::ExternCompanionsTag(ExternCompanions {
+            path_prefix: path_prefix.to_owned(),
+            classes,
+        }),
+    ))
+}
+
 fn tag_comment(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@doc")(input)?;
     let (input, comment) = take_while1(|c| c != '@')(input)?;
@@ -552,6 +650,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_no_json_schema_export,
         tag_custom_serialize,
         tag_custom_deserialize,
+        tag_extern_companions,
         tag_comment,
     ))
     .parse(input)?;
@@ -595,6 +694,7 @@ pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@no_json_schema_export",
     "@custom_serialize",
     "@custom_deserialize",
+    "@extern_companions",
     "@doc",
 ];
 
@@ -638,6 +738,7 @@ fn parse_comment_name() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -665,6 +766,7 @@ fn parse_comment_newtype() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -696,6 +798,7 @@ fn parse_comment_newtype_getter_before() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -744,6 +847,7 @@ fn parse_comment_newtype_getter_after() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -771,6 +875,7 @@ fn parse_comment_newtype_and_name() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -802,6 +907,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -833,6 +939,7 @@ fn parse_comment_used_as_key() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -962,6 +1069,7 @@ fn parse_comment_used_as_elem() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -994,6 +1102,7 @@ fn parse_comment_used_as_elem_and_key() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1025,6 +1134,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1053,6 +1163,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1080,6 +1191,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1292,6 +1404,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1319,6 +1432,7 @@ fn parse_comment_name_noalias() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1346,6 +1460,7 @@ fn parse_comment_newtype_and_custom_json() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1379,6 +1494,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 no_json_schema_export: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
+                extern_companions: None,
                 comment: None,
             }
         ))
@@ -1413,6 +1529,7 @@ fn parse_comment_all_except_no_alias() {
                 no_json_schema_export: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
+                extern_companions: None,
                 comment: Some("this is a doc comment".to_string()),
             }
         ))
@@ -1518,6 +1635,152 @@ fn parse_comment_no_json_schema_export() {
                 ..Default::default()
             }
         ))
+    );
+}
+
+// `@extern_companions` parses its one required argument into the strict `ExternCompanions` shape:
+// a `use`-path prefix and the set of class names that already exist there.
+#[test]
+fn parse_comment_extern_companions() {
+    assert_eq!(
+        rule_metadata("@extern_companions cml_chain_wasm=TransactionMetadatumList")
+            .unwrap()
+            .1
+            .extern_companions,
+        Some(ExternCompanions {
+            path_prefix: "cml_chain_wasm".to_owned(),
+            classes: ["TransactionMetadatumList".to_owned()]
+                .into_iter()
+                .collect(),
+        })
+    );
+}
+
+// The class list is comma-separated and order-insensitive (a `BTreeSet`, like every other
+// order-insensitive multi-value directive), and the prefix may be a `::`-qualified module path since
+// it is emitted verbatim as the `use` head.
+#[test]
+fn parse_comment_extern_companions_multiple_classes_and_qualified_prefix() {
+    let md = rule_metadata("@extern_companions cml_chain_wasm::auxdata=MdList,MapMdToMd")
+        .unwrap()
+        .1
+        .extern_companions
+        .unwrap();
+    assert_eq!(md.path_prefix, "cml_chain_wasm::auxdata");
+    assert_eq!(
+        md.classes,
+        ["MapMdToMd".to_owned(), "MdList".to_owned()]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(
+        rule_metadata("@extern_companions d=MapMdToMd,MdList")
+            .unwrap()
+            .1
+            .extern_companions
+            .unwrap()
+            .classes,
+        md.classes
+    );
+}
+
+// The argument is consumed, so a directive AFTER it is still parsed and neither swallows the other
+// (mirrors the ordering coverage of the other arg-taking tags).
+#[test]
+fn parse_comment_extern_companions_and_copy() {
+    let md = rule_metadata("@extern_companions dep_wasm=FooList @copy")
+        .unwrap()
+        .1;
+    assert!(md.extern_companions.is_some());
+    assert!(md.copy);
+    let inverse = rule_metadata("@copy @extern_companions dep_wasm=FooList")
+        .unwrap()
+        .1;
+    assert!(inverse.extern_companions.is_some());
+    assert!(inverse.copy);
+}
+
+// A second `@extern_companions` is the duplicate-key panic (like `@duplicates`/`@rust_name`): one
+// extern type's companions live in ONE sibling crate, so unioning two declarations would be
+// ambiguous about which prefix a class comes from.
+#[test]
+#[should_panic(expected = "\"extern_companions\" specified twice")]
+fn parse_comment_extern_companions_duplicate_panics() {
+    let _ = rule_metadata("@extern_companions a=FooList @extern_companions b=BarList");
+}
+
+#[test]
+#[should_panic(expected = "\"extern_companions\" specified twice")]
+fn merge_metadata_extern_companions_twice_panics() {
+    let one = RuleMetadata {
+        extern_companions: Some(ExternCompanions {
+            path_prefix: "a".to_owned(),
+            classes: ["FooList".to_owned()].into_iter().collect(),
+        }),
+        ..Default::default()
+    };
+    let _ = merge_metadata(&one, &one);
+}
+
+// Every malformed argument is a HARD ERROR, never a silent metadata drop: silently dropping this
+// directive re-mints the very classes it exists to suppress, and the only symptom is a
+// `rust-lld: duplicate symbol` in a different crate's link.
+#[test]
+#[should_panic(expected = "missing required argument")]
+fn parse_comment_extern_companions_missing_arg_panics() {
+    let _ = rule_metadata("@extern_companions");
+}
+
+#[test]
+#[should_panic(expected = "missing required argument")]
+fn parse_comment_extern_companions_missing_arg_before_tag_panics() {
+    let _ = rule_metadata("@extern_companions @newtype");
+}
+
+#[test]
+#[should_panic(expected = "malformed argument")]
+fn parse_comment_extern_companions_no_equals_panics() {
+    let _ = rule_metadata("@extern_companions cml_chain_wasm");
+}
+
+#[test]
+#[should_panic(expected = "invalid use-path prefix")]
+fn parse_comment_extern_companions_bad_prefix_panics() {
+    let _ = rule_metadata("@extern_companions cml-chain-wasm=FooList");
+}
+
+// An empty prefix is the same class of typo as a hyphenated one (`=FooList`), and is caught by the
+// same path bound rather than slipping through as `use ::FooList;`.
+#[test]
+#[should_panic(expected = "invalid use-path prefix")]
+fn parse_comment_extern_companions_empty_prefix_panics() {
+    let _ = rule_metadata("@extern_companions =FooList");
+}
+
+// A trailing comma reaches the class loop as an EMPTY name — the spelling a hand-edited list is
+// likeliest to grow — so it is named as such rather than silently dropped.
+#[test]
+#[should_panic(expected = "invalid companion class name")]
+fn parse_comment_extern_companions_trailing_comma_panics() {
+    let _ = rule_metadata("@extern_companions dep_wasm=FooList,");
+}
+
+// A CDDL comment runs to end of line, so trailing prose after the argument is comment CONTENT that
+// `many0` simply stops at — it must not be swallowed into the class list (the `@newtype` getter
+// trap's shape). The directive still parses, with only its own token consumed.
+#[test]
+fn parse_comment_extern_companions_trailing_prose_is_not_an_argument() {
+    let md = rule_metadata("@extern_companions dep_wasm=FooList borrowed from the sibling")
+        .unwrap()
+        .1
+        .extern_companions
+        .unwrap();
+    assert_eq!(md.path_prefix, "dep_wasm");
+    assert_eq!(
+        md.classes,
+        ["FooList".to_owned()]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
     );
 }
 

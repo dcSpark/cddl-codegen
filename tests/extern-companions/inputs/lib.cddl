@@ -1,0 +1,21 @@
+; The reported CML shape, minimised. `idx_foo` is declared extern LOCALLY (no
+; `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/` scope), which is the right spelling for a one-type re-export of
+; a sibling crate's type — and exactly why neither `--extern-wrapper-index` nor `--workspace-dep`
+; can reach it: both key on the constituents' owning DEPENDENCY, and a local marker has no dep edge.
+; The sibling wasm crate already defines a HAND-written `#[wasm_bindgen] IdxFooList`, so minting a
+; second class of that name duplicate-symbols when both crates link into one cdylib.
+;
+; Only `IdxFooList` is listed. `MapIdxFooToIdxFoo` deliberately is NOT: the sibling does not define
+; it, so it must still mint locally — the class list is a filter, not a blanket opt-out.
+idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions index_dep_crate_wasm=IdxFooList
+
+; A table keyed by the extern: `keys()` returns the deferred `IdxFooList`, built through
+; `From<Vec<_>>` because a cross-crate wrapper's tuple field is private.
+keyed_table = { * idx_foo => idx_foo }
+
+; A plain list field of the same extern — the SECOND mint site for the same class, so the deferral
+; has to be idempotent across emitters, and the import routed at each referencing scope.
+holder = [
+  table: keyed_table,
+  items: [* idx_foo],
+]

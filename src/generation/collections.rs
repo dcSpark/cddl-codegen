@@ -84,17 +84,54 @@ impl GenerationScope {
         rule_declared: bool,
         cli: &Cli,
     ) -> bool {
-        // Fast out only when NEITHER deferral mechanism is active. (Flag-off byte-identity: with both
-        // sets empty this is the same early `false` as before — the workspace branch below is dead
-        // code, criterion 10.)
-        if self.extern_wrapper_index.is_empty() && self.workspace_deps.is_empty() {
-            return false;
-        }
         // Only structural-named wrappers are defer candidates: a rule-declared wrapper
         // (`foo_list = [* extern_foo]`) whose ident DIFFERS from the structural name is the consumer's
         // OWN class and is never suppressed. (A rule whose ident COINCIDES with the structural name
         // passes this guard; workspace mode distinguishes it via `rule_declared` just below.)
+        // Hoisted above the flag fast-out below because the `@extern_companions` arm is FLAGLESS and
+        // needs the same screen; both paths returned `false` here either way, so hoisting it changes
+        // no output.
         if wrapper_ident.as_ref() != structural_name {
+            return false;
+        }
+        // `@extern_companions` (no flag): the spec itself declares that this structural companion
+        // class ALREADY EXISTS in a sibling wasm crate, for an extern type marked LOCALLY (no dep
+        // edge, so neither dependency-keyed mechanism below can reach it). Reference it instead of
+        // minting a second `#[wasm_bindgen]` class of the same name — two such classes in one cdylib
+        // are a `rust-lld: duplicate symbol __wbg_<class>_free`.
+        //
+        // Three things this arm deliberately does NOT do. It consults no index (there is none — the
+        // sibling's class may be HAND-written, which is the reported case), so the not-in-index
+        // warning below must not and does not fire for it; the machine check is the consumer's own
+        // compile, since the emitted `use <prefix>::<Class>;` fails loudly and near if the class is
+        // absent — the same trust-and-compile contract the extern marker itself has. It never
+        // suppresses a RULE-declared class (`rule_declared`), matching the workspace arm's criterion
+        // 9; a rule claiming a LISTED name is rejected in `IntermediateTypes::finalize` before
+        // generation, so this is a belt-and-braces fall-through, not the diagnostic. And it defers
+        // ONLY the listed names: an unlisted structural companion of the same extern still mints
+        // locally, which is what lets a consumer borrow one family and own another.
+        //
+        // Flag-off byte-identity does NOT rest on the fast-out below (which this arm precedes) but on
+        // the registry being empty for every spec that carries no directive — the directive is new
+        // INPUT, so no existing spec can reach the body.
+        if !rule_declared
+            && !types.extern_companions().is_empty()
+            && let Some(owner) = sole_named_leaf(constituents)
+            && let Some(prefix) = types.extern_companion_path(&owner, structural_name)
+        {
+            // A non-exported scope, so `add_imports_from_scope_refs` emits the prefix VERBATIM as the
+            // `use` head (an exported scope would be rooted at `crate::generated`). The same routing
+            // the dependency-keyed arms use, with the path coming from the spec instead of a dep edge.
+            let mut components = vec![crate::parsing::EXTERN_DEPS_DIR.to_owned()];
+            components.extend(prefix.split("::").map(str::to_owned));
+            self.deferred_wrappers
+                .insert(wrapper_ident.clone(), ModuleScope::from(components));
+            return true;
+        }
+        // Fast out only when NEITHER deferral mechanism is active. (Flag-off byte-identity: with both
+        // sets empty this is the same early `false` as before — the workspace branch below is dead
+        // code, criterion 10.)
+        if self.extern_wrapper_index.is_empty() && self.workspace_deps.is_empty() {
             return false;
         }
         // Workspace mode (`--workspace-dep`): an all-one-workspace-dep wrapper DEFERS UNCONDITIONALLY,
@@ -1242,6 +1279,27 @@ fn transitive_named_leaf_idents(ty: &ConceptualRustType) -> Vec<RustIdent> {
         }
         _ => vec![],
     }
+}
+
+/// The ONE named type every constituent of a wrapper transitively resolves to, or `None` when there
+/// are zero named leaves (a primitives-only wrapper) or more than one distinct leaf. This is the
+/// `@extern_companions` arm's candidate test: a companion class is "of" an extern type exactly when
+/// that type is the wrapper's sole named constituent, so `[* tm]`, `{* tm => tm}` and
+/// `NonEmpty[+ tm]` all qualify while `{* tm => local_thing}` does not. Distinct from
+/// `transitive_owner_set`, which resolves leaves to their owning DEPENDENCY (a cross-crate question
+/// a local marker has no answer to) rather than keeping their identity.
+fn sole_named_leaf(constituents: &[&ConceptualRustType]) -> Option<RustIdent> {
+    let mut sole: Option<RustIdent> = None;
+    for c in constituents {
+        for id in transitive_named_leaf_idents(c) {
+            match &sole {
+                None => sole = Some(id),
+                Some(seen) if *seen == id => {}
+                Some(_) => return None,
+            }
+        }
+    }
+    sole
 }
 
 /// The set of element OWNERS of a wrapper's constituents, computed transitively to the named leaves.

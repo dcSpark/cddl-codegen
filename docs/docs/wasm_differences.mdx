@@ -24,6 +24,14 @@ A named rule may deliberately claim a structural name: writing `foo_list = [* fo
 (below). The two must agree on the element: a rule of that ident with any *other* shape is rejected
 by name at generation time, naming the use that mints the class, rather than shadowing it.
 
+A structural class is not *always* minted here, though: when its element/key/value is a type this
+crate declares `_CDDL_CODEGEN_EXTERN_TYPE_` and a sibling wasm crate already publishes that class,
+[`@extern_companions`](./comment_dsl#extern_companions) makes the generated code **reference** the
+sibling's class (`use <crate>::<Class>;`) instead — one JS class for one concept, and no duplicate
+`#[wasm_bindgen]` symbol when both crates link into a single cdylib. The dependency-keyed
+[`--extern-wrapper-index` / `--workspace-dep`](./command_line_flags) flags do the same for wrappers
+over types owned by a declared extern dependency.
+
 A **258 set** is instead **nominal** (see [current capacities](current_capacities), tag-set
 section): a generic instance mints one class per instantiation — `set<foo>` mints its own
 `#[wasm_bindgen]` class `SetFoo` (over the rust nominal), distinct from the inline plain `[* foo]`
