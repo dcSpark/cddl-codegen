@@ -1975,6 +1975,34 @@ user-supplied macro; flag-gated, unexercised by these catalogs). The wasm reject
 `JsError`-panic class). And json laxness (serde derives don't re-enforce CDDL bounds — an
 enforcement-axis question for a future item, not this accept-direction leg).
 
+### Sibling-crate companion classes (`@extern_companions`) — test map
+
+The directive (user doc: `docs/docs/comment_dsl.mdx` § `@extern_companions`,
+`docs/docs/wasm_differences.mdx` § the not-always-minted note) makes a locally-marked extern rule
+REFERENCE a listed structural companion class from a sibling wasm crate instead of minting a
+duplicate. Its defect class is a LINK-time duplicate `#[wasm_bindgen]` symbol, so its acceptance
+sits at the one layer no other fixture family reaches:
+
+- **Two-crate link gate** — `src/tests/extern_companions_tests.rs::
+  extern_companions_defers_to_sibling_wasm_crate` over `tests/extern-companions/`: the dep pair
+  ships a HAND-written `#[wasm_bindgen] IdxFooList` beside its generated tree (hand-written, so no
+  wrapper index could list it — the reported consumer case), and the gate builds consumer + dep
+  wasm crates into ONE wasm32 target — the duplicate-`__wbg_*_free` half with the directive
+  stripped, link-clean with it present, plus the native compile.
+- **Directive grammar + positions** — `comment_ast` malformed-arg panics (family convention:
+  missing arg/`=`, bad prefix, bad class ident, duplicate directive); 9 `dsl_position_tests` GRID
+  cells (honored on the extern marker; unlisted-companion still mints; rust-only inertness; six
+  position rejections); 2 `no_silent_directive` cells.
+- **Collision seam** — `robustness_tests`: a user rule claiming a LISTED class is the
+  `extern_companion_rule_name_collisions` graceful rejection (the `use` + a local class would be
+  E0255), and the dep-scoped-extern / non-extern-rule placements reject naming the flags that own
+  those cases.
+- **Matrix row** — `dsl.extern_companions` in `cddl-matrix/features/cddl_codegen.toml`, its
+  `[[support]]` verdict via the `COMPILE_GATE_EXEMPT` ledger (the standalone example cannot
+  compile by construction — same class as `ext.extern`; the exemption row cites the link gate
+  above), `tests/matrix_supported/dsl.extern_companions.cddl`, and a decode-catalog
+  `pinned_reason` row on the same precedent.
+
 ### JSON-schema document — Rust-side coverage (`run_test`'s per-fixture assertions + the emitted name guard)
 
 `--json-schema-export` is covered in three layers, and this is the first two. The document
