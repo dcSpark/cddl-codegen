@@ -796,6 +796,12 @@ export const REGISTRY: Gate[] = [
     desc: "workspace build" },
   { id: "test", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--all-features", "--all-targets"],
     desc: "full test suite (incl. corpus + wasm-matrix compile gates)" },
+  // Named separately from the `test` sweep above (which also runs it) so a component-face failure is
+  // reportable as one: this suite's four-stage WIT-validity gate is the only place the emitted `.wit`
+  // is checked against the pinned component-model toolchain, and a tier log that names it is what
+  // makes that visible without reading the full test output.
+  { id: "component_wit", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_tests"],
+    desc: "component face: WIT validity (resolve/encode/validate) + wasm-posture purity" },
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },
