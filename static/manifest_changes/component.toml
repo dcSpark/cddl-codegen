@@ -1,0 +1,47 @@
+# Append-only change log for the generated `component/Cargo.toml`.
+# APPEND-ONLY: never edit, delete, or renumber an existing entry — change = append (last write
+# wins), removal = append `remove = true`. Format and rules: README.md in this folder.
+
+[[change]]
+id = 1
+path = "package.name"
+set = '"cddl-lib-component"'
+
+[[change]]
+id = 2
+path = "package.version"
+seed = '"0.1.0"'
+
+# Edition 2024, matching the rust and wasm crates. Probed rather than assumed: the phase-0 spike's
+# guest used 2021, so a `wit-bindgen = "0.57"` guest was rebuilt at 2024 under the repo's pinned
+# 1.96.1 toolchain and produced a valid `wasm32-wasip2` component.
+[[change]]
+id = 3
+path = "package.edition"
+set = '"2024"'
+
+# `cdylib` ONLY, unlike the wasm crate's `["cdylib", "rlib"]`. This crate is a component, not a
+# library dependency: nothing links it as rust, and an `rlib` would build the whole guest surface a
+# second time for no consumer.
+[[change]]
+id = 4
+path = "lib.crate-type"
+set = '["cdylib"]'
+
+# FEATURE-PLAIN, deliberately — do NOT copy `ops_for_wasm`'s dep op, which appends
+# `features = ["<--rust-wasm-feature>"]`. That feature compiles the rust crate's `#[wasm_bindgen]`
+# attributes in, and those emit `__wbindgen_*` imports that componentization cannot resolve on
+# `wasm32-wasip2`. The component face bridges through the rust crate's plain
+# `serialization::{Serialize, Deserialize}` instead, which is always present.
+[[change]]
+id = 5
+path = "dependencies.cddl-lib"
+set = '{ path = "../rust" }'
+
+# Pinned explicitly rather than left to a caret range so generated crates visibly inherit this
+# project's WIT toolchain floor: fallible constructors need wit-parser >= 0.247, which
+# wit-bindgen 0.57 bundles.
+[[change]]
+id = 6
+path = "dependencies.wit-bindgen"
+set = '"0.57"'

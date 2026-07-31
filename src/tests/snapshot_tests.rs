@@ -979,6 +979,7 @@ fn manifest_template_drift() {
         ("manifest_changes/rust.toml", "Cargo_rust.toml"),
         ("manifest_changes/wasm.toml", "Cargo_wasm.toml"),
         ("manifest_changes/json_gen.toml", "Cargo_json_gen.toml"),
+        ("manifest_changes/component.toml", "Cargo_component.toml"),
         (
             "manifest_changes/static_runtime.toml",
             "Cargo_static_runtime.toml",

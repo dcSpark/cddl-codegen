@@ -9,4 +9,6 @@ components = ["rustfmt", "clippy"]
 # wasm_json_roundtrip builds generated bindings with wasm-pack and runs them under node.
 # thumbv7m-none-eabi is a std-less target: the `no_std_check` gate checks the emitted no-std-check
 # shims against it, which a host target cannot do (host targets always link std).
-targets = ["wasm32-unknown-unknown", "thumbv7m-none-eabi"]
+# wasm32-wasip2 is the component face's target: the wasip2 build smoke compiles a generated
+# `component/` crate for it, which is what proves the emitted WIT and the emitted guest glue agree.
+targets = ["wasm32-unknown-unknown", "thumbv7m-none-eabi", "wasm32-wasip2"]

@@ -18,6 +18,18 @@
 //!
 //! The `--package-json` NESTING RULE is deliberately absent, because it is code and not a string:
 //! see the LOCKSTEP pair on `config::crate_relative` and `GenerationScope::export`'s `rust_dir`.
+//!
+//! # The component face's four
+//!
+//! The `COMPONENT_*` constants qualify on the same rule read one notch wider: "a second FILE must
+//! know the string", not specifically "a file outside `generation/`". Each names a second reader —
+//! `COMPONENT_DIR` and `COMPONENT_WIT_DIR` are spelled by the WIT projection, the guest emitter and
+//! `export.rs`'s write loop; `COMPONENT_MANIFEST` by `cargo_manifest.rs`'s changeset and
+//! `export.rs`'s manifest merge; `COMPONENT_PACKAGE_SUFFIX` by the manifest change log's
+//! `cddl-lib-component` and by any config that has to PREDICT the package name to derive a
+//! `--component-dep`, which is the same predict-the-name problem [`WASM_PACKAGE_SUFFIX`] exists for.
+//! They are minted together rather than one at a time because they are one layout decision, and a
+//! half-constant layout is the state in which a rename silently diverges.
 
 /// The dep-side extern-interface export tree, a sibling of `rust/`/`wasm/` under a crate's
 /// `--output`. Emitted in every mode (including rust-only), so it is NOT under the `--package-json`
@@ -54,3 +66,34 @@ pub(crate) const WASM_PACKAGE_SUFFIX: &str = "-wasm";
 /// The json-gen crate's cargo package name suffix, on exactly the terms [`WASM_PACKAGE_SUFFIX`]
 /// states for the wasm crate's.
 pub(crate) const JSON_GEN_PACKAGE_SUFFIX: &str = "-json-schema-gen";
+
+// The `#[allow(dead_code)]`s on three of the four below: their readers (the WIT projection, the
+// guest emitter, `export.rs`'s write loop, and a config deriving `--component-dep`) are the
+// component face's later pieces. The layout is minted whole rather than one constant at a time,
+// because a half-constant layout is the state in which a rename silently diverges.
+/// The component crate's directory, a sibling of `rust/` and `wasm/` under a crate's `--output`.
+/// Named by three files: `wit.rs` (which keys the emitted WIT map under it), `component.rs` (the
+/// guest glue), and `export.rs` (write loop, stale-file scan, header stamping). Spelled once so
+/// moving the face is one edit rather than a grep across three emitters.
+#[allow(dead_code)]
+pub(crate) const COMPONENT_DIR: &str = "component";
+
+/// The generated WIT package's directory. `wit-bindgen::generate!`'s `path` is resolved against
+/// `CARGO_MANIFEST_DIR`, so the emitted macro invocation spells the tail (`"wit"`) while `export.rs`
+/// spells the full path — a second reader of the same fact, and the reason it is a constant.
+///
+/// DELETE-AND-RECREATED each run, like `extern-interface/`, rather than covered by the stale-file
+/// scan: that scan's collector is `.rs`-only, and delete-and-recreate cannot orphan by construction.
+#[allow(dead_code)]
+pub(crate) const COMPONENT_WIT_DIR: &str = "component/wit";
+
+/// The component crate's manifest, which `--component-dep` writes path dependencies into and which
+/// `cargo_manifest::ops_for_component` addresses.
+pub(crate) const COMPONENT_MANIFEST: &str = "component/Cargo.toml";
+
+/// The component crate's cargo package name: `--lib-name` plus this, on exactly the terms
+/// [`WASM_PACKAGE_SUFFIX`] states for the wasm crate's. Spelled in the manifest change log as part
+/// of `cddl-lib-component`, which the `cddl-lib` → `--lib-name` substitution turns into the real
+/// name; a config deriving a `--component-dep` has to predict it.
+#[allow(dead_code)]
+pub(crate) const COMPONENT_PACKAGE_SUFFIX: &str = "-component";
