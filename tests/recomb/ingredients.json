@@ -778,6 +778,10 @@
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },
     {
+      "feature": "dsl.extern_companions",
+      "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
+    },
+    {
       "feature": "dsl.ignore",
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },
