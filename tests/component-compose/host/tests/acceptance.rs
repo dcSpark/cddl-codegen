@@ -252,6 +252,15 @@ fn two_dependency_instances_compose_and_are_indistinguishable() -> Result<()> {
     let (chain_wasm, wallet_wasm) = artifacts();
     let good = compose(&chain_wasm, &wallet_wasm, Topology::Once)?;
     let bad = compose(&chain_wasm, &wallet_wasm, Topology::TwoInstances)?;
+    // Non-vacuity, asserted here rather than inferred from the sibling test below: the two really
+    // are different compositions. They differ only in instantiation metadata — a few hundred bytes
+    // on this fixture — which is precisely the point, and a `Topology` that had stopped producing a
+    // second instance would make everything else in this test pass for the wrong reason.
+    assert_ne!(
+        bad, good,
+        "the two topologies must produce DIFFERENT artifacts — if they do not, this control is \
+         comparing a composition against itself"
+    );
     assert_eq!(
         exported_interfaces(&bad)?,
         exported_interfaces(&good)?,
