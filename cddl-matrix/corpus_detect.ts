@@ -166,7 +166,10 @@ export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "g
 // `@name` + arg `foo`, exactly as comment_ast credits it. The table below is in comment_ast's `alt`
 // order; arg grammars mirror each tag_* fn:
 //   @name / @custom_serialize / @custom_deserialize : ws* then take_while1(!ws) — arg REQUIRED (fails if absent)
-//   @newtype                                         : OPTIONAL ws* then take_while1(!ws && !@)
+//   @newtype                                         : OPTIONAL ws* then take_while1(!ws && !@), which must
+//                                                      be a rust identifier (comment_ast PANICS otherwise, so a
+//                                                      fixture with e.g. a trailing `;` there cannot generate —
+//                                                      the mirror credits nothing)
 //   @no_alias / @used_as_elem / @custom_json
 //     / @no_json_schema_export                       : none
 //   @used_as_key                                     : optional flavor words `hash`/`ord` up to the next `@`/EOL
@@ -198,12 +201,18 @@ const DSL_TAGS: TagParse[] = [
   // and sequenced directly after it, mirroring the alt() order.
   argRequired("dsl.rust_name", "@rust_name"),
   // @newtype: optional getter arg (chars that are neither ws nor `@`); on no arg, comment_ast returns
-  // NewType(None) with the input trim_start()'d (so a following directive is still reachable).
+  // NewType(None) with the input trim_start()'d (so a following directive is still reachable). The arg
+  // is emitted verbatim as a method name, so comment_ast bounds it to a rust identifier and PANICS
+  // otherwise (the trap being a trailing `; prose` on the same line, whose `;` an unbounded read takes
+  // as the getter): such a fixture cannot generate, so the mirror refuses the credit rather than
+  // false-crediting, exactly as for @used_as_key/@duplicates.
   s => {
     if (!s.startsWith("@newtype")) return null;
     const after = s.slice("@newtype".length);
     const m = ws(after).match(/^[^\s@]+/);
-    return m ? { id: "dsl.newtype", rest: ws(after).slice(m[0].length) } : { id: "dsl.newtype", rest: ws(after) };
+    if (!m) return { id: "dsl.newtype", rest: ws(after) };
+    if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(m[0])) return null;
+    return { id: "dsl.newtype", rest: ws(after).slice(m[0].length) };
   },
   noArg("dsl.no_alias", "@no_alias"),
   // @used_as_key: consumes the optional flavor words (`hash`/`ord`) so a directive AFTER them is
