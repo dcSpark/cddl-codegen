@@ -70,6 +70,17 @@ impl From<u64> for RelayPort {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct RestValue {
+    pub z: u64,
+}
+
+impl RestValue {
+    pub fn new(z: u64) -> Self {
+        Self { z }
+    }
+}
+
 impl From<RelayPort> for u64 {
     fn from(wrapper: RelayPort) -> Self {
         wrapper.0

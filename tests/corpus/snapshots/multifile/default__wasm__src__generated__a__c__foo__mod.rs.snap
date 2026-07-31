@@ -57,3 +57,46 @@ impl AsRef<cddl_lib::a::c::foo::Foo> for Foo {
         &self.0
     }
 }
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TailElem(pub(crate) cddl_lib::a::c::foo::TailElem);
+
+#[wasm_bindgen]
+impl TailElem {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TailElem, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn w(&self) -> String {
+        self.0.w.clone()
+    }
+
+    pub fn new(w: String) -> Self {
+        Self(cddl_lib::a::c::foo::TailElem::new(w))
+    }
+}
+
+impl From<cddl_lib::a::c::foo::TailElem> for TailElem {
+    fn from(native: cddl_lib::a::c::foo::TailElem) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TailElem> for cddl_lib::a::c::foo::TailElem {
+    fn from(wasm: TailElem) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::a::c::foo::TailElem> for TailElem {
+    fn as_ref(&self) -> &cddl_lib::a::c::foo::TailElem {
+        &self.0
+    }
+}

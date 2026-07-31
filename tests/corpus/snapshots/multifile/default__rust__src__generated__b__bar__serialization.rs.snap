@@ -415,3 +415,35 @@ impl Deserialize for RelayPort {
             .map_err(|e| e.annotate("RelayPort"))
     }
 }
+
+impl cbor_event::se::Serialize for RestValue {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_unsigned_integer(self.z)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for RestValue {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let z = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("z"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(RestValue { z })
+        })()
+        .map_err(|e| e.annotate("RestValue"))
+    }
+}

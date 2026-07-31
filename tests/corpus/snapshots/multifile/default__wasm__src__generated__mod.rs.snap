@@ -19,9 +19,9 @@ pub mod qux;
 // user-owned definition. See the extern types section of docs/output_format.
 pub use crate::ExternalFoo;
 
-use a::Baz;
-use a::c::foo::Foo;
-use b::bar::{Bar, BarTypedef};
+use a::c::foo::{Foo, TailElem};
+use a::{Baz, Epoch};
+use b::bar::{Bar, BarTypedef, RestValue};
 use qux::Qux;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
@@ -187,6 +187,158 @@ impl AsRef<Vec<cddl_lib::a::c::foo::Foo>> for FooList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct MapEpochToFoo(pub(crate) BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>);
+
+#[wasm_bindgen]
+impl MapEpochToFoo {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Epoch, value: &Foo) -> Option<Foo> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: Epoch) -> Option<Foo> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<Epoch> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>> for MapEpochToFoo {
+    fn from(native: BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapEpochToFoo> for BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo> {
+    fn from(wasm: MapEpochToFoo) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>> for MapEpochToFoo {
+    fn as_ref(&self) -> &BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapEpochToMapEpochToFoo(
+    pub(crate) BTreeMap<cddl_lib::a::Epoch, BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>>,
+);
+
+#[wasm_bindgen]
+impl MapEpochToMapEpochToFoo {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Epoch, value: &MapEpochToFoo) -> Option<MapEpochToFoo> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: Epoch) -> Option<MapEpochToFoo> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<Epoch> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<cddl_lib::a::Epoch, BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>>>
+    for MapEpochToMapEpochToFoo
+{
+    fn from(
+        native: BTreeMap<
+            cddl_lib::a::Epoch,
+            BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>,
+        >,
+    ) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapEpochToMapEpochToFoo>
+    for BTreeMap<cddl_lib::a::Epoch, BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>>
+{
+    fn from(wasm: MapEpochToMapEpochToFoo) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<cddl_lib::a::Epoch, BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>>>
+    for MapEpochToMapEpochToFoo
+{
+    fn as_ref(
+        &self,
+    ) -> &BTreeMap<cddl_lib::a::Epoch, BTreeMap<cddl_lib::a::Epoch, cddl_lib::a::c::foo::Foo>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapEpochToRestValue(
+    pub(crate) BTreeMap<cddl_lib::a::Epoch, cddl_lib::b::bar::RestValue>,
+);
+
+#[wasm_bindgen]
+impl MapEpochToRestValue {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: Epoch, value: &RestValue) -> Option<RestValue> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: Epoch) -> Option<RestValue> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<Epoch> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<cddl_lib::a::Epoch, cddl_lib::b::bar::RestValue>> for MapEpochToRestValue {
+    fn from(native: BTreeMap<cddl_lib::a::Epoch, cddl_lib::b::bar::RestValue>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapEpochToRestValue> for BTreeMap<cddl_lib::a::Epoch, cddl_lib::b::bar::RestValue> {
+    fn from(wasm: MapEpochToRestValue) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<cddl_lib::a::Epoch, cddl_lib::b::bar::RestValue>> for MapEpochToRestValue {
+    fn as_ref(&self) -> &BTreeMap<cddl_lib::a::Epoch, cddl_lib::b::bar::RestValue> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct MapFooToFoo(pub(crate) BTreeMap<cddl_lib::a::c::foo::Foo, cddl_lib::a::c::foo::Foo>);
 
 #[wasm_bindgen]
@@ -273,6 +425,47 @@ impl From<MapU64ToBarTypedef> for BTreeMap<u64, cddl_lib::b::bar::BarTypedef> {
 
 impl AsRef<BTreeMap<u64, cddl_lib::b::bar::BarTypedef>> for MapU64ToBarTypedef {
     fn as_ref(&self) -> &BTreeMap<u64, cddl_lib::b::bar::BarTypedef> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TailElemList(pub(crate) Vec<cddl_lib::a::c::foo::TailElem>);
+
+#[wasm_bindgen]
+impl TailElemList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> TailElem {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &TailElem) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::a::c::foo::TailElem>> for TailElemList {
+    fn from(native: Vec<cddl_lib::a::c::foo::TailElem>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TailElemList> for Vec<cddl_lib::a::c::foo::TailElem> {
+    fn from(wasm: TailElemList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::a::c::foo::TailElem>> for TailElemList {
+    fn as_ref(&self) -> &Vec<cddl_lib::a::c::foo::TailElem> {
         &self.0
     }
 }

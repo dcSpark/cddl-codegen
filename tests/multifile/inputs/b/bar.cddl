@@ -17,3 +17,9 @@ bar_typedef = bar
 ; (scope_references' group-ctor field marking)
 relay_port = uint ; @newtype
 relay_host = (0, port: relay_port, dns_name: text)
+
+; consumed ONLY as the VALUE of an open struct-map rest row in qux.cddl. The row's wrapper class is
+; minted at ROOT and names this type bare there, so root must import it even though no root-scope
+; rule mentions it — the second of the rest position's two import sides (the first being the wrapper
+; itself, imported into qux)
+rest_value = [z: uint]

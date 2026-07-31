@@ -509,25 +509,34 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    does NOT reproduce — a block that self-clears is a false positive by construction, which is
    exactly how the no_std one was identified.
 
-10. **An open-struct rest row's wasm surface is not routed across scopes — `E0425` ×2.** Found while
-    probing the declared-type-spelling delivery, reproduces at that delivery's parent (`a5d8eec6`)
-    with a binary built there, and is not caused by it — the spelling change moves
-    `EncodingField::type_name` inputs, which reach the rust crate's `cbor_encodings.rs` only, while
-    the failure is in emitted WASM.
-    A directory input with `epoch`/`policy_id` in module `a` and
-    `open_holder = {1: uint, * epoch => {* policy_id => text}}` in module `b`: `b/mod.rs`'s rest
-    accessor returns `MapEpochToMapPolicyIdToText`, which is minted at the crate ROOT and never
-    imported into `b`; and the root-minted wrapper's own `insert`/getter signatures name `Epoch`,
-    which lives in `a` and is not imported into the root either. The trigger is the REST ROW
-    specifically — the identical nested cross-scope map as a plain FIELD compiles clean, and a
-    cross-scope FLAT map rest row compiles clean, so it is the rest row's wasm surface that misses
-    the ref-marking both a field walk and a flat rest row get.
-    - **The missing system is combinatorial wasm compilation, not another fixture.** Every
-      ingredient here is covered in isolation: rest rows have fixtures, cross-scope references have
-      fixtures, nested maps have fixtures. The wasm compile cells are per-feature, so no cell
-      crosses (rest row × scope × nesting depth). The cheap version is a small matrix of shape PAIRS
-      compiled wasm-side — generated once per pair, `cargo check`ed, no vectors — which is how this
-      would have surfaced before a consumer's build did.
+10. **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
+    coverage — its placement behaviour rests on one hand cell per construct.** Most of the IR's
+    containers are `Map`/`Array` nodes a walk meets as composites; a few are assembled from inner
+    types stored separately, so every walk that reasons about containers has to be told about them
+    one site at a time. Today there are two — the open struct-map rest row (`* K => V`) and the open
+    array rest tail (`* T`), both re-assembled through `RestRow::container_type` and minted
+    explicitly in `generation/mod.rs` because the conceptual visitor never sees them as composites.
+    Each is pinned cross-module by exactly one hand fixture cell (`tests/multifile`'s `open_flat` /
+    `open_nested` / `open_tail` in `qux.cddl`, whose key/value/element live in `a`, `a/c/foo` and
+    `b/bar`, compiled wasm-side under both fixture profiles) rather than by a grid.
+    - **What one hand cell per construct does not buy, established by the escape that produced this
+      entry.** A rest row whose inner types lived in another file scope emitted two unresolved-name
+      classes at once: the module's rest accessor returned a wrapper class minted at the crate ROOT
+      and imported nowhere, and that root wrapper's own `insert`/`get`/`keys` named the inner types
+      bare with no import there either. Every ingredient had a green fixture of its own — rest rows,
+      cross-scope references, nested maps — and no cell crossed them, so the wasm crate did not
+      compile while every gate stayed green.
+    - **The cheap system is a matrix of shape PAIRS compiled wasm-side** — generated once per pair,
+      `cargo check`ed, no vectors. `tests/matrix_multifile` (shape × reference-mode, wasm-checked per
+      cell) is the nearest existing machinery, but its SHAPES axis enumerates self-contained RULE
+      shapes only; a construct that exists only INSIDE a record has no row it can occupy, which is
+      why the two above are hand cells. Extending that axis to record-embedded shapes is the
+      concrete build.
+    - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
+      explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
+      cannot see the composite (two today, both listed above). At three, per-construct hand cells
+      stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
+      (placement × reference mode × profile) is coverage three constructs are each doing without.
 
 11. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
     lost one layer above where the spelling rule operates.** `holder = [j: bytes .cbor

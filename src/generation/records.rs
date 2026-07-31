@@ -769,21 +769,11 @@ fn rest_container_ctor(rest: &RestRow, cli: &Cli) -> &'static str {
 /// The rest field's member RUST TYPE: `Vec<T>` for an array `* t` tail; for a map row
 /// `PairMap<K, V>` / `OrderedHashMap<K, V>` / `BTreeMap<K, V>` (a `@duplicates preserve` policy on the
 /// `Map` `RustType` routes `for_rust_member` to the pair-map twin, reusing the table machinery).
+///
+/// The container spelling itself is `RestRow::container_type` (the IR), shared with the wasm
+/// wrapper mint and the dependency walk so the three cannot drift.
 fn rest_member_type(rest: &RestRow) -> crate::intermediate::RustType {
-    match &rest.kind {
-        RestKind::ArrayTail { element } => {
-            ConceptualRustType::Array(Box::new(element.clone())).into()
-        }
-        RestKind::MapEntries {
-            domain,
-            range,
-            duplicates,
-        } => {
-            let ty: crate::intermediate::RustType =
-                ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone())).into();
-            ty.with_duplicates_policy(*duplicates)
-        }
-    }
+    rest.container_type()
 }
 
 impl RestKeyDomain {

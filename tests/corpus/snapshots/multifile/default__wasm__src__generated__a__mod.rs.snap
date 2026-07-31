@@ -51,3 +51,5 @@ impl AsRef<cddl_lib::a::Baz> for Baz {
         &self.0
     }
 }
+
+pub type Epoch = u64;

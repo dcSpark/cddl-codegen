@@ -1,1 +1,5 @@
 baz = [0, uint]
+
+; a bare cross-module KEY-DOMAIN alias, consumed only as the key of the open struct-map rest rows
+; in qux.cddl — the position that has to import `Epoch` into the rest wrapper's emission scope
+epoch = uint

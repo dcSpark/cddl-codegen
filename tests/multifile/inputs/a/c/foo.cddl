@@ -1,1 +1,5 @@
 foo = [uint, text, bytes]
+
+; consumed ONLY as the ELEMENT of an open array rest tail in qux.cddl — the array analogue of
+; `rest_value`: `TailElemList` is minted at root and names `TailElem` bare there
+tail_elem = [w: text]

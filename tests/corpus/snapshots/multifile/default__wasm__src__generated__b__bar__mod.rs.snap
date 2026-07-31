@@ -182,3 +182,46 @@ impl AsRef<cddl_lib::b::bar::RelayPort> for RelayPort {
         &self.0
     }
 }
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RestValue(pub(crate) cddl_lib::b::bar::RestValue);
+
+#[wasm_bindgen]
+impl RestValue {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<RestValue, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn z(&self) -> u64 {
+        self.0.z
+    }
+
+    pub fn new(z: u64) -> Self {
+        Self(cddl_lib::b::bar::RestValue::new(z))
+    }
+}
+
+impl From<cddl_lib::b::bar::RestValue> for RestValue {
+    fn from(native: cddl_lib::b::bar::RestValue) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RestValue> for cddl_lib::b::bar::RestValue {
+    fn from(wasm: RestValue) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::b::bar::RestValue> for RestValue {
+    fn as_ref(&self) -> &cddl_lib::b::bar::RestValue {
+        &self.0
+    }
+}
