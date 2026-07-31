@@ -1512,11 +1512,16 @@ across the same layers:
   `duplicates_directive_accepts_live_and_default_noops` (the core lowering: `{*}` → `PairMap`, `{+}` →
   `NonEmptyPairMap`, alongside the live set/array `reject` and the accepted default no-ops),
   `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm` (the `{+}` NonEmptyPairMap wrapper
-  crosses the wasm boundary), `generic_preserve_table_instance_lowers_to_pair_map_under_wasm` (an
-  anonymous generic table instance recovers the pair-map flavor from its shape), and
-  `duplicates_preserve_pair_map_shape_collision_rejects_gracefully` (the fourth-kind collision detector
-  — a preserve table sharing a structural map shape with a genuine inline map or a non-preserve `{+}`
-  table is a distinctly-worded graceful rejection).
+  crosses the wasm boundary over the flavored `PairMapU64ToText` loose source),
+  `generic_preserve_table_instance_lowers_to_pair_map_under_wasm` (an anonymous generic table
+  instance takes the pair-map flavor from its alias base type's own carried policy),
+  `mixed_policy_map_shapes_mint_distinct_flavored_wasm_wrappers` (the flavored-name payoff: a
+  preserve and a non-preserve rest row of the identical `K`/`V` mint two distinct classes, each with
+  its own `From` and getter — before the flavored names this emitted one class and a wasm crate that
+  failed `cargo check` with E0277), and the two rule-ident-vs-wrapper-ident siblings
+  `preserve_pair_map_loose_wrapper_ident_collision_rejects_gracefully` /
+  `preserve_pair_map_non_empty_wrapper_ident_collision_rejects_gracefully` (a user rule spelling
+  `PairMapKToV` / `NonEmptyPairMapKToV` is a distinctly-worded graceful rejection).
 - **Extern-interface projection** —
   `src/tests/extern_import_tests.rs::extern_import_projects_duplicates_preserve_no_cross_crate_skew`:
   the `dep-preserve/lib.cddl` → `consumer-preserve/lib.cddl` two-crate fixture proves the directive

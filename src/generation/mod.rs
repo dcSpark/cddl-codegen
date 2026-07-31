@@ -581,6 +581,10 @@ impl GenerationScope {
                                 ty,
                                 &mut wasm_wrappers_generated,
                                 &table_shape_sole_owner,
+                                // the conceptual visitor is policy-blind, so it mints only
+                                // DEFAULT-flavored wrappers; every `@duplicates preserve` mint comes
+                                // from a RustType-/config-level walk that knows its own flavor
+                                false,
                                 cli,
                             )
                         },
@@ -598,10 +602,12 @@ impl GenerationScope {
                             // `Map(domain, range)` the conceptual visitor above never sees as a
                             // composite (it walks domain/range separately). Mint the map's wasm
                             // wrapper explicitly — the rest field's getter returns it — via the SAME
-                            // path a map field's wrapper takes (policy recovered from
-                            // `map_shape_is_preserve_owned`, so a `@duplicates preserve` rest mints
-                            // the PairMap-backed wrapper). An `@ignore` row has no field/getter, so no
-                            // wasm map wrapper is minted for it (its wasm class is a closed struct's).
+                            // path a map field's wrapper takes, with the flavor read straight off the
+                            // row (`RestRow::duplicates()`): a `@duplicates preserve` rest mints the
+                            // PairMap-backed `PairMapKToV`, a default row the keyed `MapKToV`, so two
+                            // rows of the same key/value and different policies mint two distinct
+                            // classes. An `@ignore` row has no field/getter, so no wasm map wrapper is
+                            // minted for it (its wasm class is a closed struct's).
                             if let Some(rest) =
                                 record.captured_rest().filter(|r| !r.is_array_tail())
                             {
@@ -615,6 +621,8 @@ impl GenerationScope {
                                     &rest_map,
                                     &mut wasm_wrappers_generated,
                                     &table_shape_sole_owner,
+                                    rest.duplicates()
+                                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
                                     cli,
                                 );
                                 self.ensure_non_empty_wrappers(types, rest.domain(), cli);
@@ -636,6 +644,8 @@ impl GenerationScope {
                                     &rest_list,
                                     &mut wasm_wrappers_generated,
                                     &table_shape_sole_owner,
+                                    // an array tail has no key domain, so no map flavor to carry
+                                    false,
                                     cli,
                                 );
                                 self.ensure_non_empty_wrappers(types, rest.element(), cli);
@@ -714,7 +724,12 @@ impl GenerationScope {
                                 cli,
                             );
                         } else if cli.wasm && !anon {
-                            let map_ident = ConceptualRustType::name_for_wasm_map(domain, range);
+                            let map_ident = ConceptualRustType::name_for_wasm_map(
+                                domain,
+                                range,
+                                rust_struct.config().duplicates
+                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                            );
                             if table_shape_sole_owner.get(&map_ident.to_string())
                                 == Some(rust_ident)
                             {
@@ -913,7 +928,46 @@ impl GenerationScope {
             if cli.wasm {
                 for (alias_ident, alias_info) in types.type_aliases() {
                     if matches!(alias_ident, AliasIdent::Rust(_)) && alias_info.gen_wasm_alias {
-                        alias_info.base_type.conceptual_type.visit_types_excluding(
+                        let base = &alias_info.base_type;
+                        // The base type's OWN top-level map carries the rule's `@duplicates` policy
+                        // (`with_duplicates_policy` at registration) — a named/instantiated
+                        // `@duplicates preserve` table's alias line names `PairMapKToV`, so the mint
+                        // must be the pair-map-flavored one. The conceptual visitor below is
+                        // policy-blind, so mint that top level here from the RustType and walk only
+                        // the INNER key/value with the visitor (whose nested maps are inline
+                        // occurrences, always default-flavored).
+                        if base.is_preserve_pair_map()
+                            && let ConceptualRustType::Map(k, v) = &base.conceptual_type
+                        {
+                            mint_wasm_wrapper_for_visited_type(
+                                self,
+                                types,
+                                &base.conceptual_type,
+                                &mut wasm_wrappers_generated,
+                                &table_shape_sole_owner,
+                                true,
+                                cli,
+                            );
+                            for inner in [k, v] {
+                                inner.conceptual_type.visit_types_excluding(
+                                    types,
+                                    &mut |ty| {
+                                        mint_wasm_wrapper_for_visited_type(
+                                            self,
+                                            types,
+                                            ty,
+                                            &mut wasm_wrappers_generated,
+                                            &table_shape_sole_owner,
+                                            false,
+                                            cli,
+                                        )
+                                    },
+                                    &mut existing_aliases,
+                                );
+                            }
+                            continue;
+                        }
+                        base.conceptual_type.visit_types_excluding(
                             types,
                             &mut |ty| {
                                 mint_wasm_wrapper_for_visited_type(
@@ -922,6 +976,7 @@ impl GenerationScope {
                                     ty,
                                     &mut wasm_wrappers_generated,
                                     &table_shape_sole_owner,
+                                    false,
                                     cli,
                                 )
                             },

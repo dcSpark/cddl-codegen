@@ -179,12 +179,6 @@ impl AsRef<cddl_lib::Int> for Int {
 
 pub type IntError = JsError;
 
-pub type MapTextToMd = Mdmap;
-
-pub type MapTextToU64 = PmapTxt;
-
-pub type MapU64ToText = Pmap;
-
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct Md(pub(crate) cddl_lib::Md);
@@ -395,7 +389,7 @@ impl AsRef<cddl_lib::Mdmap> for Mdmap {
     }
 }
 
-/// `{+ k => v}` (`MapU64ToText`): at least one entry, enforced by the `NonEmptyPairMap` representation (an entry-ordered, DUPLICATE-permitting vec of pairs — `insert` APPENDS and never replaces a key, `get` returns the first match).
+/// `{+ k => v}` (`PairMapU64ToText`): at least one entry, enforced by the `NonEmptyPairMap` representation (an entry-ordered, DUPLICATE-permitting vec of pairs — `insert` APPENDS and never replaces a key, `get` returns the first match).
 /// Enter via `try_from` or `new(first_key, first_value)`.
 /// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
@@ -424,7 +418,7 @@ impl Nepmap {
         self.0.keys().copied().collect::<Vec<_>>()
     }
 
-    pub fn try_from(map: &MapU64ToText) -> Result<Nepmap, JsError> {
+    pub fn try_from(map: &PairMapU64ToText) -> Result<Nepmap, JsError> {
         let inner: PairMap<u64, String> = map.clone().into();
         NonEmptyPairMap::try_from(inner)
             .map(Self)
@@ -449,6 +443,12 @@ impl AsRef<NonEmptyPairMap<u64, String>> for Nepmap {
         &self.0
     }
 }
+
+pub type PairMapTextToMd = Mdmap;
+
+pub type PairMapTextToU64 = PmapTxt;
+
+pub type PairMapU64ToText = Pmap;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

@@ -2351,8 +2351,6 @@ impl AsRef<BTreeMap<String, u64>> for MapTextToU64 {
     }
 }
 
-pub type MapU64ToBytes = PreserveUintMap;
-
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MapU64ToText(pub(crate) BTreeMap<u64, String>);
@@ -5078,6 +5076,8 @@ pub enum OverlappingKind {
     B,
     C,
 }
+
+pub type PairMapU64ToBytes = PreserveUintMap;
 
 pub type ParenCbor = String;
 

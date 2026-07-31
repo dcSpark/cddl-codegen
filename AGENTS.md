@@ -148,8 +148,13 @@ changing the *runtime behaviour* of generated code usually means editing `static
   siblings rather than one generic detector (their message texts differ meaningfully and are
   pinned) — the anticipated third
   container kind (`@duplicates reject` sets) appeared 2026-07-20 and was added as exactly such a
-  sibling, and the fourth (`@duplicates preserve` pair-map tables) followed the same day as
-  `preserve_pair_map_wrapper_name_collisions`; a fifth kind gets the same treatment. Two
+  sibling, and the fourth (`@duplicates preserve` pair-map tables) followed the same day; the family
+  now guards rule-ident-vs-wrapper-ident for each name family, the two preserve ones included
+  (`preserve_pair_map_loose_wrapper_name_collisions` /
+  `preserve_pair_map_non_empty_wrapper_name_collisions`). The one detector that was ever
+  wrapper-vs-wrapper — a preserve and a default map of the same shape contending for one structural
+  class — is retired: the class name encodes the container flavor (`PairMapKToV` vs `MapKToV`), so
+  that collision is unrepresentable rather than rejected. A fifth kind gets the same treatment. Two
   further stay-as-is rulings from the 2026-07-28 `--config` review series: the `[runtime]` table's
   carrier derivation stays exactly as shipped — reviewed twice without agreement and ruled CLOSED
   by the maintainer; do not re-investigate, re-litigate, or change it without explicit maintainer

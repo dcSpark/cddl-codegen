@@ -868,8 +868,10 @@ impl RustType {
     /// The wasm-boundary name of the restricted map wrapper for a `{+ k => v}` table. When a NAMED
     /// `{+ k => v}` rule of the same domain/range exists, the inline use DEDUPS to that rule's class
     /// (the spec author's name wins — see `IntermediateTypes::non_empty_map_named_owner`); otherwise a
-    /// `NonEmpty<MapKToV>` class is synthesized (`NonEmptyMapTextToUint` for `{+ text => uint}`). The
-    /// map-side twin of `non_empty_wasm_wrapper_name`. Named `{+ …}` rules keep their rule ident.
+    /// `NonEmpty<MapKToV>` class is synthesized (`NonEmptyMapTextToUint` for `{+ text => uint}`, and
+    /// `NonEmptyPairMapTextToUint` for its `@duplicates preserve` twin — the container flavor composes
+    /// with the min-1 prefix). The map-side twin of `non_empty_wasm_wrapper_name`. Named `{+ …}` rules
+    /// keep their rule ident.
     pub fn non_empty_wasm_map_wrapper_name(&self, types: &IntermediateTypes) -> String {
         match &self.conceptual_type {
             ConceptualRustType::Map(k, v) => match types.non_empty_map_named_owner(k, v) {
@@ -877,9 +879,30 @@ impl RustType {
                 // LOCKSTEP: `generate_non_empty_map_type`'s defer-candidate structural name
                 // duplicates THIS spelling on purpose (it must stay owner-independent — an
                 // owner-named wrapper must never look deferrable). Change both together.
-                None => format!("NonEmpty{}", ConceptualRustType::name_for_wasm_map(k, v)),
+                None => format!(
+                    "NonEmpty{}",
+                    ConceptualRustType::name_for_wasm_map(k, v, self.is_preserve_pair_map())
+                ),
             },
             _ => unreachable!("non_empty_wasm_map_wrapper_name on a non-map: {:?}", self),
+        }
+    }
+
+    /// The wasm-boundary name of the LOOSE `@duplicates preserve` map wrapper (`PairMapKToV`) — the
+    /// pair-map twin of the default `MapKToV` structural class. Unlike the NonEmpty/reject twins there
+    /// is no dedup-to-named lookup: a named preserve `{* …}` table that SOLELY owns the shape has its
+    /// class minted under the rule ident with a `pub type PairMapKToV = <Owner>;` alias beside it
+    /// (`mint_sole_owner_table`), so every reference site names the structural spelling and
+    /// wasm-bindgen folds it onto the owner class.
+    pub fn preserve_pair_map_wasm_wrapper_name(&self) -> String {
+        match &self.conceptual_type {
+            ConceptualRustType::Map(k, v) => {
+                ConceptualRustType::name_for_wasm_map(k, v, true).to_string()
+            }
+            _ => unreachable!(
+                "preserve_pair_map_wasm_wrapper_name on a non-map: {:?}",
+                self
+            ),
         }
     }
 
@@ -948,6 +971,12 @@ impl RustType {
         if self.is_non_empty_map() {
             return self.non_empty_wasm_map_wrapper_name(types);
         }
+        // `@duplicates preserve` loose map: the flavored structural class (`PairMapKToV`). The
+        // conceptual `for_wasm_member_ct` below cannot see the policy, so the flavor branch lives here
+        // — the same seam `is_non_empty_map` uses for the occurrence bound.
+        if self.is_preserve_pair_map() {
+            return self.preserve_pair_map_wasm_wrapper_name();
+        }
         match &self.conceptual_type {
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_wasm_member(types))
@@ -972,6 +1001,9 @@ impl RustType {
         if self.is_non_empty_map() {
             return format!("&{}", self.non_empty_wasm_map_wrapper_name(types));
         }
+        if self.is_preserve_pair_map() {
+            return format!("&{}", self.preserve_pair_map_wasm_wrapper_name());
+        }
         match &self.conceptual_type {
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_wasm_param_impl_rt(types))
@@ -990,6 +1022,9 @@ impl RustType {
         }
         if self.is_non_empty_map() {
             return self.non_empty_wasm_map_wrapper_name(types);
+        }
+        if self.is_preserve_pair_map() {
+            return self.preserve_pair_map_wasm_wrapper_name();
         }
         self.conceptual_type.for_wasm_param_impl(types, true)
     }
@@ -1321,9 +1356,22 @@ impl ConceptualRustType {
         self.for_wasm_member_ct(types)
     }
 
-    pub fn name_for_wasm_map(k: &RustType, v: &RustType) -> RustIdent {
+    /// The structural wasm class name for a table shape. The name derives from the STRUCTURE, and the
+    /// structure includes the backing container: a `@duplicates preserve` map is a `PairMap<K, V>` (a
+    /// duplicate-permitting vec of pairs) while the default flavor is a key-VALUE-keyed
+    /// `OrderedHashMap`/`BTreeMap`, and two structurally different types must not derive one name —
+    /// one class can only have one inner type, so sharing the name emits a wasm crate that does not
+    /// compile. `preserve` therefore prefixes `PairMap` exactly as `NonEmpty` prefixes for the min-1
+    /// occurrence (`NonEmptyPairMapKToV` composes both).
+    ///
+    /// `preserve` is LOCAL information at every call site — a table rule's `config().duplicates`, a
+    /// `RestRow::duplicates()`, or the `RustType`'s own carried policy (`is_preserve_pair_map`). It is
+    /// never recovered from a crate-wide shape lookup: the whole point of encoding the flavor in the
+    /// name is that a shape no longer determines a flavor.
+    pub fn name_for_wasm_map(k: &RustType, v: &RustType, preserve: bool) -> RustIdent {
         RustIdent::new(CDDLIdent::new(format!(
-            "Map{}To{}",
+            "{}Map{}To{}",
+            if preserve { "Pair" } else { "" },
             k.conceptual_type.for_variant(),
             v.conceptual_type.for_variant()
         )))
@@ -1360,7 +1408,11 @@ impl ConceptualRustType {
             Self::Optional(ty) => {
                 format!("Option<{}>", ty.conceptual_type.for_wasm_member_ct(types))
             }
-            Self::Map(k, v) => Self::name_for_wasm_map(k, v).to_string(),
+            // Flavor-blind by construction: a `ConceptualRustType` carries no `@duplicates` policy
+            // (it lives on the enclosing `RustType`), so this names the DEFAULT-flavored class. The
+            // preserve twin is named one level up, by `RustType::for_wasm_member`, which can see the
+            // policy — exactly how the `{+ …}` bound is handled.
+            Self::Map(k, v) => Self::name_for_wasm_map(k, v, false).to_string(),
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
@@ -1449,7 +1501,13 @@ impl ConceptualRustType {
             Self::Optional(ty) => {
                 VariantIdent::new_custom(format!("Opt{}", ty.conceptual_type.for_variant()))
             }
-            Self::Map(k, v) => VariantIdent::new_custom(Self::name_for_wasm_map(k, v).to_string()),
+            // Default-flavored, like `for_wasm_member_ct`: this arm is only reached by a RAW inline
+            // `Map` occurrence (a named preserve table is referenced as an `Alias`, taking the alias
+            // arm below), and an inline occurrence carries no `@duplicates` directive — the policy is
+            // per-RULE, so a preserve map must be given its own named rule.
+            Self::Map(k, v) => {
+                VariantIdent::new_custom(Self::name_for_wasm_map(k, v, false).to_string())
+            }
             Self::Alias(ident, _ty) => match ident {
                 AliasIdent::Rust(rust_ident) => VariantIdent::new_rust(rust_ident.clone()),
                 AliasIdent::Reserved(reserved) => VariantIdent::new_custom(reserved),
