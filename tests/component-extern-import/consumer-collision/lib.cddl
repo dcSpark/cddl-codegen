@@ -1,0 +1,14 @@
+; The CONSUMER shape whose own rule name converges on a DERIVED one: an accumulator carrying a
+; `[* token]` parameter is named `token-list`, and this spec also declares a rule that converts to
+; the same WIT identifier.
+;
+; The name is derived from a parameter's element shape rather than written anywhere, so the user
+; cannot find it by searching the spec — which is why the collision has to be reported with what
+; minted it, and why it belongs in the same three-level detector every other WIT name collision goes
+; through rather than in a sibling of its own.
+
+token_list = [ note: text ]
+
+vault = [
+    items: [* token],
+]

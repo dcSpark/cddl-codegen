@@ -342,6 +342,9 @@ pub(crate) struct WitExclusion {
 #[derive(Clone, Debug)]
 pub(crate) enum WitTypeDef {
     Resource(WitResource),
+    /// An ACCUMULATOR resource: the carrier a dependency-typed collection PARAMETER is spelled
+    /// through. See [`WitAccumulator`] for why the collection cannot be spelled directly.
+    Accumulator(WitAccumulator),
     Enum(WitEnum),
     /// `enum <name>-kind { … }` — the discriminant of a type/group choice, one case per variant.
     ///
@@ -367,6 +370,7 @@ impl WitTypeDef {
     pub fn name(&self) -> &str {
         match self {
             WitTypeDef::Resource(r) => &r.name,
+            WitTypeDef::Accumulator(a) => &a.name,
             WitTypeDef::Enum(e) | WitTypeDef::Kind(e) => &e.name,
             WitTypeDef::IntVariant => INT_TYPE_NAME,
             WitTypeDef::AnyCborAlias => ANY_CBOR_TYPE_NAME,
@@ -384,6 +388,80 @@ pub(crate) struct WitResource {
     pub ident: RustIdent,
     pub constructor: Option<WitConstructor>,
     pub members: Vec<WitMember>,
+}
+
+/// The carrier a dependency-typed COLLECTION PARAMETER is spelled through: a consumer-exported
+/// resource the caller fills one element at a time and then passes by borrow.
+///
+/// # Why the collection cannot be spelled directly
+///
+/// A dependency type crosses this face as an IMPORTED WIT resource, and **`borrow<imported-resource>`
+/// is usable only in a NON-REPEATED parameter position**. `list<borrow<t>>`, `list<option<borrow<t>>>`
+/// and `list<tuple<k, borrow<t>>>` are all legal WIT that `wit-bindgen`'s Rust backend cannot lower:
+/// it hoists ONE handle binding out of the lowering loop and reassigns it on every iteration while a
+/// reference to it is retained, which is `E0506`. Measured unfixed from the pinned 0.57.1 through
+/// 0.60.0, the newest release. The failure is a macro EXPANSION failure, so a WIT that resolves,
+/// encodes and validates says nothing about it — which is why this face refuses to emit the shape at
+/// all rather than letting the user meet it inside `wit_bindgen::generate!`.
+///
+/// So the borrow moves one level UP, out of the repeated position: every parameter that would have
+/// been `list<borrow<t>>` is `borrow<t-list>`, and `t-list` is this resource. Naming the CAUSE here
+/// (and in the emitted glue) is deliberate — a future toolchain fix needs a stated trigger to revisit
+/// the shape.
+///
+/// The alternatives lost on merit rather than on effort: `list<own t>` would CONSUME the caller's
+/// handles at the ABI boundary, which is the exact bug class the borrow rule exists to prevent, and
+/// `list<list<u8>>` would trade a typed surface for nested bytes.
+///
+/// # Scope
+///
+/// Parameters only, and only where a dependency handle sits under the list. A collection RETURN keeps
+/// `list<own t>` (minting fresh handles is what a return does), and an OWN-crate collection parameter
+/// keeps `list<borrow<t>>` — an exported resource's borrow lowers fine.
+#[derive(Clone, Debug)]
+pub(crate) struct WitAccumulator {
+    /// UNESCAPED WIT name (`token-list`, `u64-token-map`). An ordinary name in the interface's flat
+    /// namespace, so [`wit_name_collisions`] reports a spec type that converges on it.
+    pub name: String,
+    /// The interface that declares it — the same one whose parameter minted it, so the `use` line
+    /// the imported element needs is already there.
+    pub scope: ModuleScope,
+    /// The collection ELEMENT, in the spelling the `list` carried before the hoist. A 2-tuple is a
+    /// map row (`insert`); anything else is a plain element (`push`).
+    pub element: WitType,
+    /// Whether the per-element conversion crosses the CBOR seam and can therefore fail. Decided at
+    /// mint rather than by [`mark_imported_doors_fallible`], because a NESTED accumulator's `push`
+    /// takes a borrow of another accumulator — an exported resource, no seam, infallible.
+    pub fallible: bool,
+}
+
+impl WitAccumulator {
+    /// The `(key, value)` of a map row, or `None` for the plain-element form.
+    pub fn row(&self) -> Option<(&WitType, &WitType)> {
+        match &self.element {
+            WitType::Tuple(parts) if parts.len() == 2 => Some((&parts[0], &parts[1])),
+            _ => None,
+        }
+    }
+
+    /// The name of the one filling member: `insert` for a map row, `push` otherwise.
+    pub fn filler(&self) -> &'static str {
+        if self.row().is_some() {
+            ACCUMULATOR_INSERT_MEMBER
+        } else {
+            ACCUMULATOR_PUSH_MEMBER
+        }
+    }
+}
+
+/// A reference to an [`WitAccumulator`] from the parameter it replaced. Scope + name rather than a
+/// `RustIdent`, because an accumulator corresponds to no IR type at all — it is minted by the WIT
+/// position, not projected from a rule.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub(crate) struct WitAccumulatorRef {
+    pub scope: ModuleScope,
+    /// UNESCAPED WIT name.
+    pub name: String,
 }
 
 /// A c-style enum: a WIT `enum` VALUE type. The WIT-side rust type is minted by
@@ -586,6 +664,10 @@ pub(crate) enum WitType {
     Option(Box<WitType>),
     /// A handle to a resource this package defines.
     Handle(WitTypeRef),
+    /// A handle to an ACCUMULATOR this package defines — the parameter-only spelling of a
+    /// dependency-typed collection. See [`WitAccumulator`]; it is minted by the hoist pass and can
+    /// therefore never appear in a return position.
+    Accumulator(WitAccumulatorRef),
     /// A c-style enum value type this package defines.
     Enum(WitTypeRef),
     Int,
@@ -619,6 +701,14 @@ const ANY_CBOR_FROM_JSON_FUNC_NAME: &str = "cbor-from-json";
 /// The WIT member names of the JSON seam every class-backed type the tool DEFINES carries.
 const TO_JSON_MEMBER_NAME: &str = "to-json";
 const FROM_JSON_MEMBER_NAME: &str = "from-json";
+/// The three members of a [`WitAccumulator`], plus the two name suffixes that distinguish the
+/// plain-element form from the map-row one. Named constants because the guest emitter has to spell
+/// the SAME words `wit_bindgen` lowers from the WIT, and a second spelling would drift silently.
+const ACCUMULATOR_PUSH_MEMBER: &str = "push";
+const ACCUMULATOR_INSERT_MEMBER: &str = "insert";
+pub(crate) const ACCUMULATOR_LEN_MEMBER: &str = "len";
+const ACCUMULATOR_LIST_SUFFIX: &str = "list";
+const ACCUMULATOR_MAP_SUFFIX: &str = "map";
 /// The interface name the ROOT scope (`lib`) projects to. `lib` is a cargo-layout word with no
 /// meaning at the WIT boundary, and `types` is what a hand-written package calls the interface
 /// holding a package's types — the spike's spelling. A spec whose own scope converts to `types`
@@ -866,6 +956,17 @@ pub(crate) fn project(
         iface.funcs.dedup_by(|a, b| a.name == b.name);
     }
 
+    // Dependency-typed collection PARAMETERS move to an accumulator resource — the borrow hoisted
+    // one level up, out of the repeated position wit-bindgen cannot lower (see [`WitAccumulator`]).
+    // Applied to the PROJECTED parameters rather than to the IR, because the rule is about the WIT
+    // POSITION and the projection is what decides which IR shapes land in one.
+    //
+    // BEFORE the fallibility pass, and that order is load-bearing in both directions: a parameter
+    // that is now an accumulator borrow crosses NO seam (the consuming door clones a settled
+    // collection, so it must not be marked fallible), while the accumulator's own filling member
+    // does and carries the fallibility it was minted with.
+    hoist_imported_collection_params(&mut interfaces, &imported);
+
     // Every door touching an imported type is FALLIBLE, because the seam it crosses is a CBOR
     // round-trip: the value is serialized on one side of the component boundary and deserialized on
     // the other, and `from_cbor_bytes` can fail on a value this crate's own serializer produced when
@@ -873,11 +974,6 @@ pub(crate) fn project(
     // shape. That is a failure class which is compile-time within one crate, so the signature has to
     // carry it rather than the glue swallowing it.
     mark_imported_doors_fallible(&mut interfaces, &imported);
-
-    // The one shape import mode cannot spell yet. Checked on the PROJECTED parameters rather than on
-    // the IR, because the rule is about the WIT position (`list<borrow<imported>>`) and the
-    // projection is what decides which IR shapes land there.
-    import_errors.extend(repeated_imported_param_errors(&interfaces, &imported));
 
     // Only the packages something actually imported: the `with:` map the guest emitter builds from
     // this is one entry per imported INTERFACE, and an entry for an interface the world never
@@ -1071,84 +1167,144 @@ fn dep_interface_name(scope: &ModuleScope) -> String {
         .join("-")
 }
 
-/// The C1 boundary: a dependency type in a REPEATED parameter position.
+/// Rewrite every PARAMETER whose type carries a dependency handle under a `list` so the list is an
+/// [`WitAccumulator`] borrow instead, and declare the accumulators it minted in the interface that
+/// needs them.
 ///
-/// `list<borrow<t>>` over an IMPORTED resource is legal WIT that wit-bindgen's Rust backend cannot
-/// lower (it hoists one binding out of the loop and reassigns it while a reference is retained —
-/// E0506), and every non-repeated position is fine. Refused loudly here rather than emitted: a WIT
-/// package that resolves, encodes and validates and then fails inside the consumer's
-/// `wit_bindgen::generate!` is the most expensive place to learn this.
-fn repeated_imported_param_errors(
-    interfaces: &BTreeMap<ModuleScope, WitInterface>,
+/// Total by construction rather than by case analysis: a `list` holding a dependency handle at ANY
+/// depth is replaced, and the replacement recurses into its own element first — so a
+/// `list<list<borrow<t>>>` becomes an accumulator of accumulators, and no repeated position for an
+/// imported borrow survives anywhere in a parameter. A `list` with no dependency handle in it is
+/// untouched: an exported resource's `borrow<t>` lowers correctly, so own-crate collections keep the
+/// direct spelling.
+///
+/// One accumulator per distinct ELEMENT type per interface: two parameters of the same shape share a
+/// carrier, and a caller that already filled one can pass it to both.
+fn hoist_imported_collection_params(
+    interfaces: &mut BTreeMap<ModuleScope, WitInterface>,
     imported: &BTreeMap<RustIdent, ImportedDepType>,
-) -> Vec<String> {
+) {
     if imported.is_empty() {
-        return Vec::new();
+        return;
     }
-    let mut out = Vec::new();
-    let mut report = |owner: &str, member: &str, param: &WitParam, ty: &ImportedDepType| {
-        out.push(format!(
-            "--component: `{owner}.{member}` takes the dependency type `{name}` (from `{dep}`) \
-             inside a collection, in parameter `{param}`. A dependency type crosses this face as an \
-             IMPORTED WIT resource, and an imported resource may only be borrowed in a NON-REPEATED \
-             parameter position: `list<borrow<{name}>>` is legal WIT that wit-bindgen's Rust \
-             backend cannot lower (E0506), so emitting it would produce a component crate that \
-             fails to compile. Until dep-typed collection parameters are supported, either keep \
-             `{name}` out of collection parameters in this spec, or drop \
-             `--component-extern-wit {dep}=…` for that dependency (its types are then recorded as \
-             `// unexported:` in this crate's WIT rather than imported).",
-            name = ty.wit_name,
-            dep = ty.dep,
-            param = param.name
-        ));
-    };
-    for iface in interfaces.values() {
-        for def in &iface.types {
+    for (scope, iface) in interfaces.iter_mut() {
+        let mut minted: BTreeMap<String, WitAccumulator> = BTreeMap::new();
+        for def in &mut iface.types {
             let WitTypeDef::Resource(resource) = def else {
                 continue;
             };
-            let ctor = resource
-                .constructor
-                .iter()
-                .map(|c| ("constructor", c.params.as_slice()));
-            let members = resource
-                .members
-                .iter()
-                .map(|m| (m.name.as_str(), m.params.as_slice()));
-            for (member, params) in ctor.chain(members) {
-                for param in params {
-                    if let Some(ty) = imported_under_list(&param.ty, imported) {
-                        report(&resource.name, member, param, ty);
-                    }
+            if let Some(ctor) = &mut resource.constructor {
+                for param in &mut ctor.params {
+                    param.ty = hoist_param_type(&param.ty, scope, imported, &mut minted);
+                }
+            }
+            for member in &mut resource.members {
+                for param in &mut member.params {
+                    param.ty = hoist_param_type(&param.ty, scope, imported, &mut minted);
                 }
             }
         }
-        for func in &iface.funcs {
-            for param in &func.params {
-                if let Some(ty) = imported_under_list(&param.ty, imported) {
-                    report(&iface.name, &func.name, param, ty);
-                }
+        for func in &mut iface.funcs {
+            for param in &mut func.params {
+                param.ty = hoist_param_type(&param.ty, scope, imported, &mut minted);
             }
         }
+        if minted.is_empty() {
+            continue;
+        }
+        iface
+            .types
+            .extend(minted.into_values().map(WitTypeDef::Accumulator));
+        // Re-sorted rather than inserted in place: the interface's render order was already settled
+        // by name above, and an accumulator is an ordinary member of that namespace.
+        iface.types.sort_by(|a, b| a.name().cmp(b.name()));
     }
-    out
 }
 
-/// The first imported handle sitting anywhere BELOW a `list` in `ty`, or `None`. `option<borrow<t>>`
-/// is deliberately not repeated — it lowers cleanly — so only a `list` opens the window.
-fn imported_under_list<'a>(
+/// One parameter type, with every dependency-carrying `list` replaced by its accumulator.
+fn hoist_param_type(
     ty: &WitType,
-    imported: &'a BTreeMap<RustIdent, ImportedDepType>,
-) -> Option<&'a ImportedDepType> {
+    scope: &ModuleScope,
+    imported: &BTreeMap<RustIdent, ImportedDepType>,
+    minted: &mut BTreeMap<String, WitAccumulator>,
+) -> WitType {
     match ty {
-        WitType::List(inner) => {
-            first_imported(inner, imported).or_else(|| imported_under_list(inner, imported))
+        WitType::List(inner) if first_imported(ty, imported).is_some() => {
+            // The ELEMENT is hoisted first, so a nested collection of dependency types becomes a
+            // nested accumulator rather than reintroducing the repeated borrow one level down.
+            let element = hoist_param_type(inner, scope, imported, minted);
+            let name = accumulator_name(&element);
+            let fallible = first_imported(&element, imported).is_some();
+            minted
+                .entry(name.clone())
+                .or_insert_with(|| WitAccumulator {
+                    name: name.clone(),
+                    scope: scope.clone(),
+                    element,
+                    fallible,
+                });
+            WitType::Accumulator(WitAccumulatorRef {
+                scope: scope.clone(),
+                name,
+            })
         }
-        WitType::Option(inner) => imported_under_list(inner, imported),
-        WitType::Tuple(parts) => parts
-            .iter()
-            .find_map(|part| imported_under_list(part, imported)),
-        _ => None,
+        WitType::Option(inner) => {
+            WitType::Option(Box::new(hoist_param_type(inner, scope, imported, minted)))
+        }
+        WitType::Tuple(parts) => WitType::Tuple(
+            parts
+                .iter()
+                .map(|part| hoist_param_type(part, scope, imported, minted))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// The WIT name of the accumulator over `element`: `<element>-list`, or `<key>-<value>-map` for a
+/// map row. Derived from the element's full SHAPE rather than from the dependency type alone, so two
+/// maps that share a dependency-typed key and differ in their value get two carriers rather than one
+/// name with two incompatible `insert` signatures.
+fn accumulator_name(element: &WitType) -> String {
+    match element {
+        WitType::Tuple(parts) if parts.len() == 2 => format!(
+            "{}-{}-{ACCUMULATOR_MAP_SUFFIX}",
+            type_word(&parts[0]),
+            type_word(&parts[1])
+        ),
+        other => format!("{}-{ACCUMULATOR_LIST_SUFFIX}", type_word(other)),
+    }
+}
+
+/// A WIT type as a name FRAGMENT, for [`accumulator_name`]. Injective on the shapes a parameter can
+/// carry, which is what makes the derived names unique; a name that nonetheless converges on a spec
+/// type's is a collision [`wit_name_collisions`] reports.
+fn type_word(ty: &WitType) -> String {
+    match ty {
+        WitType::Bool => "bool".to_owned(),
+        WitType::U8 => "u8".to_owned(),
+        WitType::U16 => "u16".to_owned(),
+        WitType::U32 => "u32".to_owned(),
+        WitType::U64 => "u64".to_owned(),
+        WitType::S8 => "s8".to_owned(),
+        WitType::S16 => "s16".to_owned(),
+        WitType::S32 => "s32".to_owned(),
+        WitType::S64 => "s64".to_owned(),
+        WitType::F32 => "f32".to_owned(),
+        WitType::F64 => "f64".to_owned(),
+        WitType::Str => "string".to_owned(),
+        WitType::List(inner) => format!("list-{}", type_word(inner)),
+        WitType::Tuple(parts) => format!(
+            "tuple-{}",
+            parts.iter().map(type_word).collect::<Vec<_>>().join("-")
+        ),
+        WitType::Option(inner) => format!("option-{}", type_word(inner)),
+        WitType::Handle(r) => r.name.clone(),
+        WitType::Accumulator(a) => a.name.clone(),
+        WitType::Enum(r) => r.name.clone(),
+        WitType::Int => INT_TYPE_NAME.to_owned(),
+        WitType::AnyCbor => ANY_CBOR_TYPE_NAME.to_owned(),
+        WitType::AnyCborKind => ANY_CBOR_KIND_TYPE_NAME.to_owned(),
     }
 }
 
@@ -2285,6 +2441,38 @@ fn render_type_def(def: &WitTypeDef) -> String {
             }
             out.push_str("  }\n");
         }
+        WitTypeDef::Accumulator(acc) => {
+            // The cause, restated where a reader of the emitted WIT meets the shape: without it the
+            // accumulator reads as a gratuitous indirection, and a future toolchain fix has nothing
+            // to search for.
+            out.push_str(
+                "  // Fill it, then pass it by borrow: an imported resource may only be borrowed in \
+                 a\n  // NON-REPEATED parameter position — wit-bindgen's Rust backend miscompiles \
+                 every repeated\n  // one (E0506), measured unfixed through 0.60.0 — so the borrow \
+                 moves one level up.\n",
+            );
+            out.push_str(&format!("  resource {} {{\n", wit_escape(&acc.name)));
+            out.push_str("    constructor();\n");
+            let filler_params = match acc.row() {
+                Some((key, value)) => vec![
+                    ("k".to_owned(), render_type(key, true)),
+                    ("v".to_owned(), render_type(value, true)),
+                ],
+                None => vec![("v".to_owned(), render_type(&acc.element, true))],
+            };
+            out.push_str(&format!(
+                "    {}: func({}){};\n",
+                acc.filler(),
+                filler_params
+                    .iter()
+                    .map(|(name, ty)| format!("{name}: {ty}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                render_arrow(None, acc.fallible)
+            ));
+            out.push_str(&format!("    {ACCUMULATOR_LEN_MEMBER}: func() -> u32;\n"));
+            out.push_str("  }\n");
+        }
         WitTypeDef::Enum(e) | WitTypeDef::Kind(e) => {
             out.push_str(&format!("  enum {} {{\n", wit_escape(&e.name)));
             for case in &e.cases {
@@ -2396,6 +2584,15 @@ fn render_type(ty: &WitType, param: bool) -> String {
                 wit_escape(&r.name)
             }
         }
+        // An accumulator exists ONLY because a parameter needed it, so the `param` fork is spelled
+        // for totality rather than reachability — the hoist pass never puts one in a return.
+        WitType::Accumulator(a) => {
+            if param {
+                format!("borrow<{}>", wit_escape(&a.name))
+            } else {
+                wit_escape(&a.name)
+            }
+        }
         WitType::Enum(r) => wit_escape(&r.name),
         WitType::Int => INT_TYPE_NAME.to_owned(),
         WitType::AnyCbor => ANY_CBOR_TYPE_NAME.to_owned(),
@@ -2494,6 +2691,14 @@ pub(crate) fn wit_name_collisions(
         for def in &iface.types {
             type_names.entry(def.name()).or_default().push(match def {
                 WitTypeDef::Resource(r) => format!("the type `{}`", r.ident),
+                // An accumulator's name is DERIVED from a parameter's element shape, so it is the
+                // one owner here a user cannot find by searching their spec for the name. Say what
+                // minted it, which is also what tells them the remedy (rename the rule, or change
+                // the collection's element type) applies.
+                WitTypeDef::Accumulator(a) => format!(
+                    "the accumulator carrying a `{}` collection parameter",
+                    type_word(&a.element)
+                ),
                 WitTypeDef::Enum(e) => format!("the type `{}`", e.ident),
                 WitTypeDef::Kind(e) => format!("the discriminant enum of the choice `{}`", e.ident),
                 WitTypeDef::IntVariant => "the `int` variant".to_owned(),
