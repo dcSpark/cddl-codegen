@@ -1094,6 +1094,11 @@ structural name is listed.
   workspace, it does not create one.
 - **Inert without `--wasm`.** The classes it governs are a wasm-boundary concern; a rust-only build
   mints none, so the directive changes nothing. One spec, many flag sets.
+- **The prefix is emitted as written, with one remap.** If its leading component names a declared
+  extern dependency, `--extern-wasm-crate` rewrites that component to the dependency's wasm crate —
+  the same rule every cross-crate import obeys. It only bites when you spell a dependency's *rust*
+  crate name here, where the remap yields the wasm crate you meant anyway; spell the wasm crate
+  directly and nothing rewrites.
 - **`@duplicates reject` set wrappers cannot be deferred.** The `<Elem>OrderedSet` /
   `NonEmpty<Elem>OrderedSet` emitters consult no deferral seam, so listing such a name has no effect
   today. Every other structural family (loose/restricted lists, loose/restricted maps, both duplicate
