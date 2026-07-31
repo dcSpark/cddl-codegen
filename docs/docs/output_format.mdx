@@ -434,10 +434,14 @@ object level as the declared members** (via serde `flatten`), under the natural-
   an `any` domain uses the prefer-numeric key rule (a canonical decimal spelling reads back as an
   integer, else text).
 - The JSON Schema emits `properties` (the declared members) **plus the open-region schema**: a
-  uint-keyed rest row renders as schemars' native `patternProperties` (`"^\d+$"` → the range's
-  schema), a text- or `any`-keyed one as `additionalProperties` (the range's schema; permissive
-  `{}` for an `any` range) — the honest open-map shape either way (json2ts → a TS interface with an
-  index signature).
+  uint-keyed rest row renders as `patternProperties` (`"^\d+$"` → the range's schema), a text- or
+  `any`-keyed one as `additionalProperties` (the range's schema; permissive `{}` for an `any`
+  range) — the honest open-map shape either way (json2ts → a TS interface with an index
+  signature). That shape follows the **rest-row position** (key domain × value type), not the
+  container holding the entries, because the flattened JSON is produced the same way whichever
+  container that is: a `@duplicates preserve` row therefore publishes exactly the schema its
+  non-preserve twin publishes (the duplicate-key `to_json` failure above is data-dependent and has
+  no JSON-Schema expression).
 
 **wasm.** The rest field is exposed as a **read-only `rest()` getter** returning the minted map wrapper
 (no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);

@@ -909,14 +909,30 @@ fn emit_rest_flatten_json(
         ));
     }
     if cli.json_schema_export {
-        // The rest field's schema is the honest open-map `additionalProperties`: for an
-        // `any` range it is the permissive "any JSON value" (json2ts → a `{ [k: string]: unknown }`
-        // index signature intersected with the declared `properties`); for a TYPED range schemars'
-        // native flatten-map handling already yields `additionalProperties: <range schema>`, so no
-        // `schema_with` override is emitted there.
+        // The rest field's flattened JSON is produced by the GENERATED flatten fns above, identically
+        // for every rest container — so the schema of the open region belongs to the rest-row POSITION
+        // (key domain × value type), never to the container's own `JsonSchema`. The honest open-map
+        // shape either way: for an `any` range the permissive "any JSON value" (json2ts → a
+        // `{ [k: string]: unknown }` index signature intersected with the declared `properties`); for
+        // a TYPED range the `BTreeMap<K, V>` schema (uint keys → `patternProperties "^\d+$"`, text
+        // keys → `additionalProperties`).
+        //
+        // Only the loose (non-preserve) container is left to contribute that typed schema itself: it
+        // IS the `BTreeMap`/`OrderedHashMap` the position calls for, so its delegation and the
+        // position's answer are the same bytes. The `@duplicates preserve` twin is array-shaped
+        // (`PairMap` → `Vec<(K, V)>`, honest for a standalone duplicate-permitting table, wrong for a
+        // FLATTENED row: no index signature, plus array keywords merged onto the parent object), so
+        // it names the position's schema explicitly — via a helper that delegates to the same
+        // `BTreeMap<K, V>`, making the two containers schema-indistinguishable by construction.
         if range_is_any {
             annotations.push(format!(
                 "#[schemars(schema_with = \"{base}::natural_any_cbor_map_schema\")]"
+            ));
+        } else if rest_is_pair_map(rest) {
+            let key_ty = rest.domain().for_rust_member(types, false, cli);
+            let value_ty = rest.range().for_rust_member(types, false, cli);
+            annotations.push(format!(
+                "#[schemars(schema_with = \"{flatten}::typed_rest_map_schema::<{key_ty}, {value_ty}>\")]"
             ));
         }
     }

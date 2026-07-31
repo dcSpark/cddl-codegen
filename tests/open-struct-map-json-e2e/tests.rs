@@ -3,6 +3,9 @@
 // `flatten`); to_json is fallible on data (R3: a complex `any` key/value, or a rest key colliding
 // with a declared field's JSON name, errors — never a silent substitute/duplicate); from_json is
 // symmetric (declared names bind first, every other key lands in rest — loose JSON parsing for free).
+// The published SCHEMA of that flattened region belongs to the rest-row position, not to the
+// container holding the entries, so the `@duplicates preserve` twin publishes its loose twin's
+// schema (`typed_pair_map_rest_publishes_the_same_schema_as_its_loose_twin`).
 #[cfg(test)]
 mod open_struct_map_json {
     use super::*;
@@ -124,5 +127,39 @@ mod open_struct_map_json {
             format!("{e}").contains("stringify identically"),
             "the error must name the identical-key collision, got: {e}"
         );
+    }
+
+    #[test]
+    fn typed_pair_map_rest_publishes_the_same_schema_as_its_loose_twin() {
+        // A rest row's flattened JSON is produced by the generated flatten fns, identically for every
+        // container — so the published schema of the open region belongs to the rest-row position
+        // (key domain x value type), not to the container. `Dupt` (@duplicates preserve, PairMap) and
+        // `Typed` (loose container) declare the same fixed key and the same `* uint => text` row, so
+        // their schemas must agree everywhere but the type name.
+        let strip = |schema: schemars::Schema| {
+            let mut value = serde_json::to_value(schema).unwrap();
+            value.as_object_mut().unwrap().remove("title");
+            value
+        };
+        let typed = strip(schemars::schema_for!(Typed));
+        let dupt = strip(schemars::schema_for!(Dupt));
+        assert_eq!(
+            dupt, typed,
+            "the PairMap-backed rest row must publish its loose twin's schema"
+        );
+        // The open region is there, keyed by the uint domain's decimal pattern, valued by the range.
+        assert_eq!(
+            dupt.pointer("/patternProperties/^\\d+$/type")
+                .and_then(serde_json::Value::as_str),
+            Some("string"),
+            "the flattened rest region must be a uint-keyed index signature over the range: {dupt}"
+        );
+        // ...and none of the container's own array-of-pairs keywords leaked onto the object schema.
+        for junk in ["items", "prefixItems"] {
+            assert!(
+                dupt.get(junk).is_none(),
+                "the object schema must carry no `{junk}` keyword: {dupt}"
+            );
+        }
     }
 }
