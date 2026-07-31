@@ -2103,8 +2103,9 @@ pub(crate) fn wit_name_collisions(
                 "WIT type name collision under --component: {owners} all convert to the WIT \
                  identifier `{name}` in interface `{iface}`. A WIT interface is ONE flat namespace, \
                  so the emitted interface would declare that name twice and would not resolve. \
-                 Rename one of them with the `@name` comment-DSL directive, which renames the \
-                 generated type without touching the spec's wire format.",
+                 Rename one of the colliding rules in the CDDL spec itself — a rule's name never \
+                 reaches the wire, so the rename changes no encoding. (`@name` cannot rename a \
+                 top-level rule, so it is not the remedy here.)",
                 owners = owners.join(" and "),
                 iface = iface.name
             ));
