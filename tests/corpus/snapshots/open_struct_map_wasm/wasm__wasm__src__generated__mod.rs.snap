@@ -201,7 +201,7 @@ impl DupRest {
     }
 
     /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
-    pub fn rest(&self) -> MapU64ToText {
+    pub fn rest(&self) -> PairMapU64ToText {
         self.0.rest.clone().into()
     }
 
@@ -324,51 +324,6 @@ impl AsRef<BTreeMap<u64, cddl_lib::any_cbor::AnyCbor>> for MapU64ToAny {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToText(pub(crate) PairMap<u64, String>);
-
-#[wasm_bindgen]
-impl MapU64ToText {
-    pub fn new() -> Self {
-        Self(PairMap::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
-        self.0.insert(key, value)
-    }
-
-    pub fn get(&self, key: u64) -> Option<String> {
-        self.0.get(&key).cloned()
-    }
-
-    pub fn keys(&self) -> Vec<u64> {
-        self.0.keys().copied().collect::<Vec<_>>()
-    }
-}
-
-impl From<PairMap<u64, String>> for MapU64ToText {
-    fn from(native: PairMap<u64, String>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<MapU64ToText> for PairMap<u64, String> {
-    fn from(wasm: MapU64ToText) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<PairMap<u64, String>> for MapU64ToText {
-    fn as_ref(&self) -> &PairMap<u64, String> {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
 pub struct MapU64ToU64(pub(crate) BTreeMap<u64, u64>);
 
 #[wasm_bindgen]
@@ -460,6 +415,51 @@ impl From<OptRest> for cddl_lib::OptRest {
 
 impl AsRef<cddl_lib::OptRest> for OptRest {
     fn as_ref(&self) -> &cddl_lib::OptRest {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PairMapU64ToText(pub(crate) PairMap<u64, String>);
+
+#[wasm_bindgen]
+impl PairMapU64ToText {
+    pub fn new() -> Self {
+        Self(PairMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<PairMap<u64, String>> for PairMapU64ToText {
+    fn from(native: PairMap<u64, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PairMapU64ToText> for PairMap<u64, String> {
+    fn from(wasm: PairMapU64ToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<PairMap<u64, String>> for PairMapU64ToText {
+    fn as_ref(&self) -> &PairMap<u64, String> {
         &self.0
     }
 }

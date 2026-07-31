@@ -679,12 +679,18 @@ impl GenerationScope {
         // synthesized spelling changes, change this format! too (and the list twin above).
         let structural_name = format!(
             "NonEmpty{}",
-            ConceptualRustType::name_for_wasm_map(&key_type, &value_type)
+            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
         );
+        // preserve marker: same shape-column contract as the loose twin in `codegen_table_type`
         let shape = format!(
-            "{{+ {} => {}}}",
+            "{{+ {} => {}}}{}",
             render_wrapper_shape(&key_type),
-            render_wrapper_shape(&value_type)
+            render_wrapper_shape(&value_type),
+            if preserve_pair_map {
+                " @duplicates preserve"
+            } else {
+                ""
+            }
         );
         if self.try_defer_wrapper(
             types,
@@ -735,11 +741,14 @@ impl GenerationScope {
         // the loose builder cannot exist — the rule legitimately owns the ident for its restricted
         // class (collision-checked in finalize), so the wrapper emits WITHOUT `try_from` and is built
         // incrementally (`new(first_key, first_value)` + `insert`).
-        let loose_ident = ConceptualRustType::name_for_wasm_map(&key_type, &value_type);
+        // the loose source is the SAME-flavored builder (`PairMapKToV` for preserve, `MapKToV` else)
+        let loose_ident =
+            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map);
         let self_named = loose_ident.to_string() == wrapper_ident.to_string();
 
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
-        let map_wasm = ConceptualRustType::name_for_wasm_map(&key_type, &value_type);
+        let map_wasm =
+            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map);
         let entry_doc = if self_named {
             "The rule name coincides with the loose builder name, so no `try_from` source class \
              exists — build incrementally from the first entry (`new(first_key, first_value)` + \
@@ -1282,12 +1291,18 @@ pub(super) fn dep_owns_element(types: &IntermediateTypes, ident: &RustIdent) -> 
 /// reach identical minting decisions (sole-owner routing, map-key array wrappers). Idempotent via
 /// `wasm_wrappers_generated`; every class body is derived purely from the shape, so the result is
 /// iteration-order-independent.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn mint_wasm_wrapper_for_visited_type(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     ty: &ConceptualRustType,
     wasm_wrappers_generated: &mut BTreeSet<String>,
     table_shape_sole_owner: &BTreeMap<String, RustIdent>,
+    // The container flavor of THIS occurrence, supplied by the caller from LOCAL information (a rest
+    // row's `duplicates()`, an alias base `RustType`'s carried policy). A `ConceptualRustType` carries
+    // no policy of its own, so the conceptual visitor passes `false` — it mints only default-flavored
+    // wrappers, and every preserve-flavored mint comes from a RustType-/config-level walk that knows.
+    preserve_pair_map: bool,
     cli: &Cli,
 ) {
     match ty {
@@ -1306,7 +1321,7 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
             }
         }
         ConceptualRustType::Map(k, v) => {
-            let map_ident = ConceptualRustType::name_for_wasm_map(k, v);
+            let map_ident = ConceptualRustType::name_for_wasm_map(k, v, preserve_pair_map);
             match table_shape_sole_owner.get(&map_ident.to_string()) {
                 // A single named rule owns this shape: this embedded/resolved use
                 // shares that rule-named class (JS-visible under the CDDL
@@ -1330,13 +1345,10 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
                             *k.clone(),
                             *v.clone(),
                             false,
-                            // The visited conceptual `Map` carries no policy of its own, so recover it
-                            // from the SHAPE: a generic `@duplicates preserve` table instance (e.g.
-                            // `ptbl<uint, tstr>` -> the anonymous `PtblU64Text`, excluded from
-                            // sole-ownership) reaches this arm and must mint the `PairMap` structural
-                            // wrapper to match its rust `pub type`. A mixed-policy shape is already
-                            // rejected upstream, so this lookup is unambiguous.
-                            types.map_shape_is_preserve_owned(map_ident.as_ref()),
+                            // The flavor comes from the CALLER's local knowledge (see the parameter's
+                            // doc); the visited conceptual `Map` has none of its own. `map_ident`
+                            // already encodes it, so the class name and its inner cannot disagree.
+                            preserve_pair_map,
                             cli,
                         );
                     }
@@ -1432,16 +1444,25 @@ pub(super) fn codegen_table_type(
     // `name_for_wasm_map`) is a defer candidate — a rule-owned class (`exists_in_rust`) is the
     // consumer's own type. If a mapped dependency owns this exact structural map wrapper, defer to it
     // (import from the dep's `collections` module) instead of re-minting a duplicate class.
+    // The `@duplicates preserve` marker rides the shape column exactly like the reject twin's does on
+    // an array shape, so a cross-crate request round-trips the pair-map FLAVOR (which is what the
+    // structural name now encodes) and not merely the key/value.
     let shape = format!(
-        "{{* {} => {}}}",
+        "{{* {} => {}}}{}",
         render_wrapper_shape(&key_type),
-        render_wrapper_shape(&value_type)
+        render_wrapper_shape(&value_type),
+        if preserve_pair_map {
+            " @duplicates preserve"
+        } else {
+            ""
+        }
     );
     if !exists_in_rust
         && gen_scope.try_defer_wrapper(
             types,
             name,
-            ConceptualRustType::name_for_wasm_map(&key_type, &value_type).as_ref(),
+            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
+                .as_ref(),
             &[&key_type.conceptual_type, &value_type.conceptual_type],
             &shape,
             // Only the anonymous STRUCTURAL map wrapper reaches here (`!exists_in_rust`); a

@@ -369,8 +369,16 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
         }
         ConceptualRustType::Map(key, value) => {
             let occ = if rt.is_non_empty_map() { "+" } else { "*" };
+            // The map-side twin of the array arm's reject marker: a `@duplicates preserve` table's
+            // backing container (`PairMap`) is part of its structural identity, so the shape column
+            // carries the policy and the reconstruction rebuilds the same flavored wrapper.
+            let preserve = if rt.is_preserve_pair_map() {
+                " @duplicates preserve"
+            } else {
+                ""
+            };
             format!(
-                "{{{occ} {} => {}}}",
+                "{{{occ} {} => {}}}{preserve}",
                 render_wrapper_shape(key),
                 render_wrapper_shape(value)
             )
@@ -480,6 +488,9 @@ fn parse_requested_shape(
     // guard and stamp the policy onto the reconstructed `RustType` (only an array-shaped collection
     // ever carries it; the emit dispatch + structural naming key off `is_reject_ordered_set`).
     const REJECT_MARKER: &str = "@duplicates reject";
+    // The map-side twin: a `@duplicates preserve` table's structural wasm name encodes the pair-map
+    // container (`PairMapKToV`), so the flavor must round-trip through the shape column too.
+    const PRESERVE_MARKER: &str = "@duplicates preserve";
     let rest: String = chars[pos..].iter().collect();
     if rest == REJECT_MARKER {
         if !matches!(rt.conceptual_type, ConceptualRustType::Array(_)) {
@@ -490,6 +501,16 @@ fn parse_requested_shape(
             );
         }
         rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
+        pos = chars.len();
+    } else if rest == PRESERVE_MARKER {
+        if !matches!(rt.conceptual_type, ConceptualRustType::Map(_, _)) {
+            panic!(
+                "--wrapper-requests {consumer} ({path}): `@duplicates preserve` on the non-map shape \
+                 {shape:?} (wrapper {listed_name:?}) — the preserve pair-map twin only applies to \
+                 table collections."
+            );
+        }
+        rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
         pos = chars.len();
     }
     if pos != chars.len() {
@@ -707,10 +728,17 @@ fn requested_structural_name(
             }
         }
         ConceptualRustType::Map(k, v) => {
+            // The container flavor is part of the structural name, and the shape column round-trips
+            // it (`@duplicates preserve` marker), so a requested pair-map wrapper reconstructs to the
+            // SAME `PairMapKToV` / `NonEmptyPairMapKToV` spelling the consumer's emitter deferred on.
+            let preserve = rt.is_preserve_pair_map();
             if rt.is_non_empty_map() {
-                format!("NonEmpty{}", ConceptualRustType::name_for_wasm_map(k, v))
+                format!(
+                    "NonEmpty{}",
+                    ConceptualRustType::name_for_wasm_map(k, v, preserve)
+                )
             } else {
-                ConceptualRustType::name_for_wasm_map(k, v).to_string()
+                ConceptualRustType::name_for_wasm_map(k, v, preserve).to_string()
             }
         }
         other => panic!(

@@ -14,5 +14,5 @@ expression: content
 pub use crate::generated::AnyList;
 pub use crate::generated::MapAnyToAny;
 pub use crate::generated::MapU64ToAny;
-pub use crate::generated::MapU64ToText;
 pub use crate::generated::MapU64ToU64;
+pub use crate::generated::PairMapU64ToText;

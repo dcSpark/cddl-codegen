@@ -1745,8 +1745,9 @@ fn inline_258_nominal_name_collision_is_rejected() {
 /// rejected it under `--wasm` is gone). The rule's JS class wraps `NonEmptyPairMap<K, V>` (not the
 /// loose `NonEmptyMap`), enters through a `try_from(&loose_pair_map_wrapper)` door, and its `new`
 /// builds the pair-map twin — so every shape that generates for rust generates for wasm. The loose
-/// `try_from` source wrapper is the `PairMap` twin (`MapU64ToText(pub(crate) PairMap<u64, String>)`),
-/// NOT the keyed `OrderedHashMap`/`BTreeMap` table. A scratch e2e (rust+wasm+json-gen cargo-check)
+/// `try_from` source wrapper is the pair-map-FLAVORED structural class
+/// (`PairMapU64ToText(pub(crate) PairMap<u64, String>)`) — the container flavor is part of the
+/// structural name, so it is never the keyed `MapU64ToText`. A scratch e2e (rust+wasm+json-gen cargo-check)
 /// backs this; the string pins catch a regression without the crate-build cost.
 #[test]
 fn duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm() {
@@ -1778,26 +1779,108 @@ fn duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm() {
         src.contains("NonEmptyPairMap::try_from(inner)"),
         "the wasm wrapper must enter through the NonEmptyPairMap try_from door, got:\n{src}"
     );
-    // the loose `try_from` source wrapper wraps the PairMap twin, not the keyed table
+    // the loose `try_from` source wrapper is the pair-map-flavored class wrapping the PairMap twin
     assert!(
-        src.contains("pub struct MapU64ToText(pub(crate) PairMap<u64, String>)"),
-        "the loose try_from source must wrap PairMap (not OrderedHashMap/BTreeMap), got:\n{src}"
+        src.contains("pub struct PairMapU64ToText(pub(crate) PairMap<u64, String>)"),
+        "the loose try_from source must be the flavored PairMapU64ToText wrapping PairMap, got:\n{src}"
+    );
+    // the keyed structural name is NOT minted for a pure-preserve spec
+    assert!(
+        !src.contains("pub struct MapU64ToText"),
+        "a pure-preserve spec must not mint the default-flavored keyed class, got:\n{src}"
     );
 }
 
-/// A `@duplicates preserve` table and a non-preserve occurrence of the IDENTICAL key/value both need
-/// the single loose structural map wrapper (`MapU64ToText`), but of incompatible inner types (a
-/// `PairMap` vs a keyed `BTreeMap`/`OrderedHashMap`). Under `--wasm` this would emit a silently-broken
-/// crate (one flavor minted, the other's `try_from` referencing the wrong shape), so it must be a
-/// GRACEFUL rejection (the pair-map sibling of the collision-detector family), distinctly worded from
-/// the NonEmpty/reject siblings. A pure-preserve spec of the same shape never collides — that positive
-/// path is covered by the scratch e2e in `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm`.
+/// A `@duplicates preserve` construct and a non-preserve construct of the IDENTICAL key/value both
+/// cross the wasm boundary, each through its OWN structural class: the container flavor is part of
+/// the structural name (`PairMapKToV` vs `MapKToV`), so one name is never asked to be two
+/// structurally different types. The regression vector is the mixed-policy open-struct-map pair —
+/// two rest rows of the same `K`/`V`, one preserve, one not. Before the flavored names this
+/// generated exit-0 with a SINGLE `MapLblToVal` wrapping `PairMap`, both getters returning it, and
+/// the emitted wasm crate failed `cargo check` (E0277: the non-preserve getter's
+/// `From<OrderedHashMap<..>>` did not exist). A scratch e2e (rust+wasm cargo-check of exactly this
+/// spec) backs the compile claim; the string pins catch a regression without the crate-build cost.
 #[test]
-fn duplicates_preserve_pair_map_shape_collision_rejects_gracefully() {
-    const CDDL: &str = "nem = { + uint => text } ; @duplicates preserve\n\
-                        holder = [a: nem, b: { + uint => text }]\n";
+fn mixed_policy_map_shapes_mint_distinct_flavored_wasm_wrappers() {
+    // the rest-row directive trails the WHOLE entry on its own line — a `; @duplicates preserve }`
+    // spelling would swallow the closing brace into the comment
+    const CDDL: &str = "lbl = uint\n\
+                        val = text\n\
+                        pres = {\n\
+                        1: uint,\n\
+                        * lbl => val ; @duplicates preserve\n\
+                        }\n\
+                        plain = {\n\
+                        2: uint,\n\
+                        * lbl => val\n\
+                        }\n";
     let path = std::env::temp_dir().join(format!(
-        "cddl_codegen_dup_pmap_collide_{}.cddl",
+        "cddl_codegen_mixed_policy_flavors_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "mixed_policy_flavors_unused",
+        "--wasm=true",
+        "--preserve-encodings=true",
+        "--canonical-form=true",
+    ]))
+    .expect("a mixed-policy same-shape spec must GENERATE (the flavors no longer collide)");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // two distinct wasm classes, each wrapping its own container
+    assert!(
+        src.contains(
+            "pub struct PairMapLblToVal(pub(crate) PairMap<cddl_lib::Lbl, cddl_lib::Val>)"
+        ),
+        "the preserve rest row must mint its own PairMap-backed class, got:\n{src}"
+    );
+    assert!(
+        src.contains(
+            "pub struct MapLblToVal(pub(crate) OrderedHashMap<cddl_lib::Lbl, cddl_lib::Val>)"
+        ),
+        "the non-preserve rest row must keep the keyed structural class, got:\n{src}"
+    );
+    // each getter returns its OWN class (the E0277 was one name serving both)
+    assert!(
+        src.contains("pub fn rest(&self) -> PairMapLblToVal"),
+        "the preserve struct's rest getter must return the pair-map class, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub fn rest(&self) -> MapLblToVal"),
+        "the non-preserve struct's rest getter must return the keyed class, got:\n{src}"
+    );
+    // each `From` matches its own inner
+    assert!(
+        src.contains("impl From<PairMap<cddl_lib::Lbl, cddl_lib::Val>> for PairMapLblToVal"),
+        "the pair-map class needs its own From, got:\n{src}"
+    );
+    assert!(
+        src.contains("impl From<OrderedHashMap<cddl_lib::Lbl, cddl_lib::Val>> for MapLblToVal"),
+        "the keyed class needs its own From, got:\n{src}"
+    );
+}
+
+/// The rule-ident-vs-wrapper-ident sibling for the LOOSE pair-map wrapper name family: a user rule
+/// spelling `PairMapKToV` shadows the class a `@duplicates preserve` construct mints under exactly
+/// that name. Parallel to the NonEmpty/reject siblings (per-kind detectors with distinct pinned
+/// message texts), so a failing spec points at the right container kind.
+#[test]
+fn preserve_pair_map_loose_wrapper_ident_collision_rejects_gracefully() {
+    // `pair_map_u64_to_text` is a plain struct rule claiming the ident the preserve rest row's
+    // structural wrapper needs.
+    const CDDL: &str = "pair_map_u64_to_text = [x: uint]\n\
+                        holder = {\n\
+                        1: uint,\n\
+                        * uint => text ; @duplicates preserve\n\
+                        }\n\
+                        user = [p: pair_map_u64_to_text]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_pmap_loose_ident_{}.cddl",
         std::process::id()
     ));
     std::fs::write(&path, CDDL).unwrap();
@@ -1806,19 +1889,49 @@ fn duplicates_preserve_pair_map_shape_collision_rejects_gracefully() {
         "--input",
         path.to_str().unwrap(),
         "--output",
-        "dup_pmap_collide_unused",
+        "pmap_loose_ident_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let err = result
+        .expect_err("a user rule claiming the loose pair-map wrapper ident must be a graceful Err");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("PairMapU64ToText") && msg.contains("PairMap wrapper"),
+        "the message must name the claimed ident and the pair-map twin (distinct from the \
+         NonEmpty/reject siblings), got: {msg}"
+    );
+}
+
+/// The min-1 sibling of the above: an ANONYMOUS `@duplicates preserve` `{+ …}` table instance mints
+/// `NonEmptyPairMapKToV`, and a user rule spelling that ident shadows it.
+#[test]
+fn preserve_pair_map_non_empty_wrapper_ident_collision_rejects_gracefully() {
+    const CDDL: &str = "pnetbl<k, v> = { + k => v } ; @duplicates preserve\n\
+                        non_empty_pair_map_u64_to_text = [x: uint]\n\
+                        holder = [t: pnetbl<uint, tstr>, \
+                        c: non_empty_pair_map_u64_to_text]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_pmap_ne_ident_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "pmap_ne_ident_unused",
         "--wasm=true",
     ]));
     std::fs::remove_file(&path).ok();
     let err = result.expect_err(
-        "a preserve table sharing a structural map-shape name with a non-preserve occurrence must be a graceful Err",
+        "a user rule claiming the restricted pair-map wrapper ident must be a graceful Err",
     );
     let msg = err.to_string();
     assert!(
-        msg.contains("@duplicates preserve")
-            && msg.contains("MapU64ToText")
-            && msg.contains("PairMap"),
-        "the collision message must name the preserve twin and the shared shape (distinct from the NonEmpty/reject siblings), got: {msg}"
+        msg.contains("NonEmptyPairMapU64ToText") && msg.contains("NonEmptyPairMap wrapper"),
+        "the message must name the claimed ident and the restricted pair-map twin, got: {msg}"
     );
 }
 
@@ -1864,10 +1977,11 @@ fn generic_table_instance_lowers_to_structural_wrapper_under_wasm() {
 
 /// The generic-table wasm fix ALSO unblocks a generic `@duplicates preserve` table instance across the
 /// wasm boundary: `ptbl<uint, tstr>` (with the directive on the generic base) lowers to the `PairMap`
-/// twin on BOTH sides. Its anonymous structural wrapper (`mint_wasm_wrapper_for_visited_type`) recovers
-/// the preserve policy from the SHAPE (`map_shape_is_preserve_owned`), so the wasm `MapU64ToText` wraps
-/// `PairMap` — matching the rust `pub type PtblU64Text = PairMap<u64, String>` (a keyed wrapper here
-/// would be a silently-broken wasm crate). A scratch e2e (rust+wasm+json-gen cargo-check) backs this.
+/// twin on BOTH sides. Its anonymous structural wrapper takes the preserve flavor from the alias
+/// base type's OWN carried policy (LOCAL information, never a crate-wide shape lookup), so the wasm
+/// class is the flavored `PairMapU64ToText` wrapping `PairMap` — matching the rust
+/// `pub type PtblU64Text = PairMap<u64, String>` (a keyed wrapper here would be a silently-broken
+/// wasm crate). A scratch e2e (rust+wasm+json-gen cargo-check) backs this.
 #[test]
 fn generic_preserve_table_instance_lowers_to_pair_map_under_wasm() {
     const CDDL: &str = "ptbl<k, v> = { * k => v } ; @duplicates preserve\n\
@@ -1894,10 +2008,15 @@ fn generic_preserve_table_instance_lowers_to_pair_map_under_wasm() {
         src.contains("pub type PtblU64Text = PairMap<u64, String>;"),
         "the generic preserve instance's rust type must be the PairMap twin, got:\n{src}"
     );
-    // the anonymous wasm structural wrapper must ALSO wrap PairMap (not the keyed OrderedHashMap)
+    // the anonymous wasm structural wrapper is the FLAVORED class wrapping PairMap
     assert!(
-        src.contains("pub struct MapU64ToText(pub(crate) PairMap<u64, String>)"),
-        "the anonymous structural wasm wrapper must wrap PairMap to match the rust type, got:\n{src}"
+        src.contains("pub struct PairMapU64ToText(pub(crate) PairMap<u64, String>)"),
+        "the anonymous structural wasm wrapper must be PairMapU64ToText wrapping PairMap, got:\n{src}"
+    );
+    // and the instance's passthrough alias points at that flavored name
+    assert!(
+        src.contains("pub type PtblU64Text = PairMapU64ToText;"),
+        "the instance's wasm passthrough alias must name the flavored wrapper, got:\n{src}"
     );
 }
 

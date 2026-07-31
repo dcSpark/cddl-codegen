@@ -48,10 +48,6 @@
 ; positions the same emitting code must NOT respell (an error-message string literal and an
 ; enum-variant path) in
 ; `declared_spelling_tests::aliased_member_leaves_error_strings_and_variant_paths_alone`.
-;
-; Shape constraint worth keeping: no `@duplicates preserve` table sharing a key/value shape with a
-; rest row in this file. That combination trips a pre-existing wasm wrapper-name collision
-; (`MapEpochToText` claimed by both the pair-map twin and the rest row) unrelated to spelling.
 
 policy_id = bytes
 epoch = uint
