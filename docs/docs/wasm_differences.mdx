@@ -7,6 +7,10 @@ sidebar_position: 6
 
 In the wasm crate we can't always go one to one with the rust crate. Here are some differences/extra types in the WASM create. `AsRef` `From` and `Into` are implemented to go between the rust and wasm crate types to help.
 
+This document covers the `wasm-bindgen` face (`wasm/`). The component-model face
+(`component/`, under `--component=true`) has its own sibling document with the same
+charter: [Component (WIT) differences](component_differences).
+
 ## Heterogeneous Arrays
 
 Any array of non-primitives such as `[foo]` will generate another type called `FooList` which supports all basic array operations.

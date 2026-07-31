@@ -414,6 +414,26 @@ only the `component/` crate does not avoid it. The fix — narrowing the rust cr
 on the [`--component` flag](command_line_flags.mdx), which is where a user turning this face on
 meets it; that account is the single source for it and is not restated here.
 
+## Known limitation: shapes whose glue does not yet compile
+
+Two shape classes (three corpus fixtures) currently emit a component crate whose glue does not
+compile. The failure is loud — the generated component crate's own build fails; the `rust/` and
+`wasm/` faces are unaffected — the WIT itself is valid, and each shape is pinned with its
+diagnosis in the corpus compile gate's ledger (`EXPECTED_COMPILE_FAIL`, gate
+`component_corpus_compiles`), so a fix announces itself by turning the pin stale rather than
+needing rediscovery:
+
+- **Nested despecialization**: a constrained collection (`NonEmptyVec`, `NonEmptyMap`) sitting
+  *below* the top level of a parameter — a named table rule whose map key is a non-empty list, or
+  a non-empty list as a list element. The conversion walk sees WIT types only below the top
+  level, so the constrained rust type's `TryFrom` door is never routed.
+- **`@default` fields**: a defaulted field is a plain `T` on the rust side (the default fills
+  absence in) while the projection still treats it as optional, so the glue reads and writes an
+  `Option` that does not exist.
+
+Until these close, a spec relying on either shape should keep `--component` off or restructure
+the shape; every other corpus shape compiles and validates.
+
 ## Flag-semantics deltas
 
 - **`--to-from-bytes-methods` does not gate this face.** `to-cbor-bytes` and `from-cbor-bytes` are

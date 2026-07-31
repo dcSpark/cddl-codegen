@@ -2565,6 +2565,23 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 
 ## Deferred features (build when a real consumer needs them)
 
+- **A workspace-mode `wasm32-wasip2` build gate for the generated rust crate, once the `cdylib`
+  crate-type question is ruled.** The generated `rust/Cargo.toml` declares
+  `crate-type = ["cdylib", "rlib"]` for the wasm face, and building that incidental cdylib for
+  `wasm32-wasip2` can SIGSEGV the sysroot's `wasm-component-ld`/LLD — spec-dependent and
+  reproduced, not inferred (`tests/component-multifile`'s spec crashes it; `component-core` links
+  clean). The user-facing account and the `["rlib"]` workaround live on the `--component` flag's
+  documentation, and the component build gates sidestep it by building only the component
+  package. What is deliberately not built is the decision the gate waits on — dropping or
+  feature-gating the cdylib crate-type in the generated manifest under `--component` — because
+  that changes existing output semantics for every consumer, wasm-face ones included, and is a
+  maintainer call. Whichever way it is ruled, the landing carries this gate: a workspace-mode
+  wasip2 build fixture, red-first against today's crash.
+  - **Reopening signal:** a consumer reporting the linker SIGSEGV from their own workspace's
+    wasip2 build — the flag doc names the exact failure signature, so the report arrives
+    pre-diagnosed, and its existence is the evidence that the documented workaround is not being
+    found or is not enough.
+
 - **Probe the component face's JS surface on the axes the JS-host gate left untouched.** The
   `component_jco` gate drives one jco version (1.26.1) and one node version (22) over the default
   encoding posture, with no JSON doors, in node only — which is what its two reused fixtures carry.
