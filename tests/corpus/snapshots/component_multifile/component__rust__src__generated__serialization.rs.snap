@@ -1,0 +1,153 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(4))?;
+        serializer.write_text("tip")?;
+        self.tip.serialize(serializer)?;
+        serializer.write_text("name")?;
+        serializer.write_text(&self.name)?;
+        serializer.write_text("tips")?;
+        serializer.write_array(cbor_event::Len::Len(self.tips.len() as u64))?;
+        for element in self.tips.iter() {
+            element.serialize(serializer)?;
+        }
+        serializer.write_text("shade")?;
+        match &self.shade {
+            Shade::I0 => serializer.write_unsigned_integer(0u64),
+            Shade::I1 => serializer.write_unsigned_integer(1u64),
+        }?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
+            let mut tip = None;
+            let mut name = None;
+            let mut tips = None;
+            let mut shade = None;
+            let mut read = 0;
+            while match len { cbor_event::Len::Len(n) => read < n, cbor_event::Len::Indefinite => true, } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => return Err(DeserializeFailure::UnknownKey(Key::Uint(raw.unsigned_integer()?)).into()),
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "tip" =>  {
+                            if tip.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("tip".into())).into());
+                            }
+                            tip = Some(Leaf::deserialize(raw).map_err(|e: DeserializeError| e.annotate("tip"))?);
+                        },
+                        "name" =>  {
+                            if name.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("name".into())).into());
+                            }
+                            name = Some(Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("name"))?);
+                        },
+                        "tips" =>  {
+                            if tips.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("tips".into())).into());
+                            }
+                            tips = Some((|| -> Result<_, DeserializeError> {
+                                let mut tips_arr = Vec::new();
+                                let len = raw.array()?;
+                                while match len { cbor_event::Len::Len(n) => (tips_arr.len() as u64) < n, cbor_event::Len::Indefinite => true, } {
+                                    if matches!(len, cbor_event::Len::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                                        break;
+                                    }
+                                    tips_arr.push(Leaf::deserialize(raw)?);
+                                }
+                                Ok(tips_arr)
+                            })().map_err(|e| e.annotate("tips"))?);
+                        },
+                        "shade" =>  {
+                            if shade.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("shade".into())).into());
+                            }
+                            shade = Some((|| -> Result<_, DeserializeError> {
+                                let initial_position = raw.position();
+                                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let i0_value = raw.unsigned_integer()?;
+                                    if i0_value != 0 {
+                                        return Err(DeserializeFailure::FixedValueMismatch{ found: Key::Uint(i0_value), expected: Key::Uint(0) }.into());
+                                    }
+                                    Ok(())
+                                })(raw);
+                                match deser_variant {
+                                    Ok(()) => return Ok(Shade::I0),
+                                    Err(_) => raw.set_position(initial_position).unwrap(),
+                                };
+                                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let i1_value = raw.unsigned_integer()?;
+                                    if i1_value != 1 {
+                                        return Err(DeserializeFailure::FixedValueMismatch{ found: Key::Uint(i1_value), expected: Key::Uint(1) }.into());
+                                    }
+                                    Ok(())
+                                })(raw);
+                                match deser_variant {
+                                    Ok(()) => return Ok(Shade::I1),
+                                    Err(_) => raw.set_position(initial_position).unwrap(),
+                                };
+                                Err(DeserializeError::new("Shade", DeserializeFailure::NoVariantMatched))
+                            })().map_err(|e| e.annotate("shade"))?);
+                        },
+                        unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => return Err(DeserializeFailure::BreakInDefiniteLen.into()),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),
+                }
+                read += 1;
+            }
+            let name = match name {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("name"))).into()),
+            };
+            let tip = match tip {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tip"))).into()),
+            };
+            let shade = match shade {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("shade"))).into()),
+            };
+            let tips = match tips {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tips"))).into()),
+            };
+            Ok(Self {
+                name,
+                tip,
+                shade,
+                tips,
+            })
+        })().map_err(|e| e.annotate("Holder"))
+    }
+}

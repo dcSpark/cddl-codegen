@@ -1,0 +1,41 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+pub mod sub;
+
+use sub::{Leaf, Shade};
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub name: String,
+    pub tip: Leaf,
+    pub shade: Shade,
+    pub tips: Vec<Leaf>,
+}
+
+impl Holder {
+    pub fn new(name: String, tip: Leaf, shade: Shade, tips: Vec<Leaf>) -> Self {
+        Self {
+            name,
+            tip,
+            shade,
+            tips,
+        }
+    }
+}

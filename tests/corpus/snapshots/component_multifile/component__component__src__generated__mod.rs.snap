@@ -1,0 +1,127 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::sub as wit_sub;
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Holder = WitHolder;
+}
+
+impl wit_sub::Guest for Component {
+    type Leaf = WitLeaf;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn shade_to_wit(v: &cddl_lib::sub::Shade) -> wit_sub::Shade {
+    match v {
+        cddl_lib::sub::Shade::I0 => wit_sub::Shade::I0,
+        cddl_lib::sub::Shade::I1 => wit_sub::Shade::I1,
+    }
+}
+
+fn shade_from_wit(v: wit_sub::Shade) -> cddl_lib::sub::Shade {
+    match v {
+        wit_sub::Shade::I0 => cddl_lib::sub::Shade::I0,
+        wit_sub::Shade::I1 => cddl_lib::sub::Shade::I1,
+    }
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(
+        name: String,
+        tip: wit_sub::LeafBorrow<'_>,
+        shade: wit_sub::Shade,
+        tips: Vec<wit_sub::LeafBorrow<'_>>,
+    ) -> Self {
+        let tip = tip.get::<WitLeaf>().0.borrow().clone();
+        let shade = shade_from_wit(shade);
+        let tips = tips
+            .into_iter()
+            .map(|x| x.get::<WitLeaf>().0.borrow().clone())
+            .collect();
+        let inner = cddl_lib::Holder::new(name, tip, shade, tips);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn name(&self) -> String {
+        let me = self.0.borrow();
+        me.name.clone()
+    }
+
+    fn tip(&self) -> wit_sub::Leaf {
+        let me = self.0.borrow();
+        wit_sub::Leaf::new(WitLeaf(RefCell::new(me.tip.clone())))
+    }
+
+    fn shade(&self) -> wit_sub::Shade {
+        let me = self.0.borrow();
+        shade_to_wit(&me.shade)
+    }
+
+    fn tips(&self) -> Vec<wit_sub::Leaf> {
+        let me = self.0.borrow();
+        me.tips
+            .iter()
+            .map(|x| wit_sub::Leaf::new(WitLeaf(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitLeaf(pub RefCell<cddl_lib::sub::Leaf>);
+
+impl wit_sub::GuestLeaf for WitLeaf {
+    fn new(n: u64) -> Self {
+        let inner = cddl_lib::sub::Leaf::new(n);
+        WitLeaf(RefCell::new(inner))
+    }
+
+    fn n(&self) -> u64 {
+        let me = self.0.borrow();
+        me.n
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::sub::Leaf as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_sub::Leaf, String> {
+        <cddl_lib::sub::Leaf as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_sub::Leaf::new(WitLeaf(RefCell::new(v))))
+            .map_err(err)
+    }
+}
