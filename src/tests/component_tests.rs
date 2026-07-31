@@ -698,8 +698,10 @@ fn component_wit_bridges_externs_raw_bytes_and_generic_instances() {
 }
 
 /// The glue behind those bridges. Both seams name a TRAIT on a type the tool does not define, so
-/// naming the wrong one is a compile error in the USER's crate — and this fixture cannot enter the
-/// build smoke (its rust crate needs hand-written types), so the trait paths are asserted here.
+/// naming the wrong one is a compile error in the USER's crate. The build smoke does compile this
+/// fixture (paired with the hand-written definitions a real consumer supplies), and this test still
+/// earns its place beside it: it names the exact trait PATHS at in-process cost, so a regression
+/// reports which seam moved instead of a nested-cargo type error several minutes later.
 #[test]
 fn component_glue_bridges_raw_bytes_through_raw_bytes_encoding() {
     let glue = component_glue("tests/component-extern/inputs", &[]);
@@ -1672,31 +1674,51 @@ fn emit_tests_with_component_skips_loudly() {
 /// The fixtures the build smoke compiles, and why each earns its nested-cargo cost. Deliberately
 /// smaller than [`COMPONENT_FIXTURES`]: the WIT gates above are cheap and sweep everything, while
 /// this one pays a real link per row.
-const BUILD_SMOKE_FIXTURES: &[(&str, &[&str])] = &[
+///
+/// The third column is the hand-written rust definitions of the spec's extern types, appended into
+/// the generated crate's THIN ROOT before the cell is keyed (see the extern rows below). `None` for
+/// a spec that declares no extern — most of them.
+type BuildSmokeRow = (&'static str, &'static [&'static str], Option<&'static str>);
+
+const BUILD_SMOKE_FIXTURES: &[BuildSmokeRow] = &[
     // Every phase-1 type-mapping row in one scope, in the posture the emitters target. Two of those
     // rows are here for a reason no WIT gate can express, because both are TYPE facts about the
     // generated rust crate: the NonEmpty TABLE (`counts`) makes the guest constructor re-enter the
     // runtime's vec-of-pairs `TryFrom` door, and the value-bounded field (`limit`) makes the rust
     // `Record::new` itself fallible, so the glue must unwrap it rather than wrap it.
-    ("tests/component-core/input.cddl", &[]),
+    ("tests/component-core/input.cddl", &[], None),
     // CHOICES: the largest new glue surface phase 2 adds, and the one no WIT gate can judge. A
     // `kind` / `as-<variant>` arm that does not match the rust enum's ARM SHAPE, or a `new-<variant>`
     // that wraps a `Result` the rust ctor already returns, is a type error in generated code that
     // resolves, encodes and validates perfectly as WIT.
-    ("tests/component-choices/input.cddl", &[]),
+    ("tests/component-choices/input.cddl", &[], None),
     // The multi-INTERFACE shape: two `Guest` impls on one guest type under one `export!`, a
     // cross-interface `borrow` parameter, and an `own` handle minted for a resource another
     // interface declares. None of it is reachable from a single-scope fixture, and all of it is a
     // link-time fact no WIT gate can see.
-    ("tests/component-multifile/inputs", &[]),
+    ("tests/component-multifile/inputs", &[], None),
     // VALUE WINDOWS: every row here is a fact about the generated rust crate that the WIT cannot
     // express — a bounded setter's `result<_, string>` reads the same whether the check is emitted
     // or not, and the two despecialization controls decide between a `TryFrom` door and an inline
     // check whose wrong choice is either a silent no-op or a trait impl that does not exist.
-    // `tests/component-extern/inputs` is deliberately NOT here: its rust crate names user-owned
-    // extern types, so it cannot compile standalone (the same reason `tests/multifile` is absent);
-    // its emitted bytes are pinned by the `component_extern` whole-program snapshot instead.
-    ("tests/component-bounds/input.cddl", &[]),
+    ("tests/component-bounds/input.cddl", &[], None),
+    // The BRIDGING classes. Every other row here compiles a crate the tool wrote alone; these two
+    // compile the glue that reaches types the tool does NOT define, which is a different failure
+    // class entirely — the bridge names a TRAIT on a user-owned type, so naming the wrong one is a
+    // compile error in the consumer's crate that no gate reading our output can see. The
+    // hand-written definitions in the third column are what a real consumer supplies, appended into
+    // the generated crate's thin root exactly as `run_test`'s `is_extern_type_def` path does.
+    ("tests/component-extern/inputs", &[], Some(EXTERN_DEFS)),
+    // The same bridges in the FORCE-CANONICAL posture, which is the one that moves them: it adds
+    // `to-canonical-cbor-bytes` to the extern's seam (its contract does require the runtime's own
+    // `Serialize`, on which that method is declared) and must leave the raw-bytes bridge — whose
+    // contract is `RawBytesEncoding` and nothing more — untouched. The defs flavor changes with it,
+    // because the contract the posture imposes on the USER's type changes with it.
+    (
+        "tests/component-extern/inputs",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+        Some(EXTERN_DEFS_CANONICAL),
+    ),
     // The two flag-gated SEAMS, in the one posture that carries both: `to-canonical-cbor-bytes`
     // (which names a trait method the runtime composes only here) and the JSON pair (which names
     // `serde_json` and the rust crate's derived serde impls, and needs the dependency the component
@@ -1710,8 +1732,16 @@ const BUILD_SMOKE_FIXTURES: &[(&str, &[&str])] = &[
             "--canonical-form=true",
             "--json-serde-derives=true",
         ],
+        None,
     ),
 ];
+
+/// The hand-written extern definitions the two bridging rows above pair their spec with. Two
+/// flavors, because the CONTRACT differs by posture: the default one asks an extern for
+/// `cbor_event`'s `Serialize`, the force-canonical one for the runtime's own — which is exactly the
+/// difference the canonical row exists to compile.
+const EXTERN_DEFS: &str = "tests/component-extern/external_rust_defs";
+const EXTERN_DEFS_CANONICAL: &str = "tests/component-extern/external_rust_defs_canonical";
 
 /// THE acceptance gate for the guest emitters: a generated component crate that does not compile is
 /// the failure mode the whole face exists to prevent, and every other gate here is blind to it — the
@@ -1731,7 +1761,7 @@ fn component_crate_builds_for_wasm32_wasip2() {
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
 
-    for (input, flags) in BUILD_SMOKE_FIXTURES {
+    for (input, flags, extern_defs) in BUILD_SMOKE_FIXTURES {
         let label = format!("{input} {flags:?}");
         let out = scratch.join(format!(
             "{:x}",
@@ -1780,6 +1810,21 @@ fn component_crate_builds_for_wasm32_wasip2() {
             "crate-type = [\"rlib\"]",
         );
         std::fs::write(&rust_manifest, narrowed).unwrap();
+
+        // The extern definitions go into the user-owned THIN ROOT, never `generated/**` — that
+        // subtree is clobbered every regen and already carries the glue's own `pub use crate::<Name>;`
+        // re-export of each extern, which a definition beside it would collide with (E0255). Written
+        // BEFORE `run_cached` on purpose: it is an input the cached cell consumes, so it has to be
+        // inside the hashed root or an edit to it would serve the stale PASS forever.
+        if let Some(defs_path) = extern_defs {
+            let defs = std::fs::read_to_string(defs_path)
+                .unwrap_or_else(|e| panic!("{label}: cannot read extern defs {defs_path}: {e}"));
+            let lib_rs = out.join("rust/src/lib.rs");
+            let mut root = std::fs::read_to_string(&lib_rs).unwrap();
+            root.push_str("\n\n");
+            root.push_str(&defs);
+            std::fs::write(&lib_rs, root).unwrap();
+        }
 
         let component_dir = out.join("component");
         let outcome = gate_cache::run_cached(

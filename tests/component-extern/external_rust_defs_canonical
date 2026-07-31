@@ -1,0 +1,77 @@
+// The FORCE-CANONICAL flavor of `external_rust_defs` — keep the two in sync; read that file's
+// header for where these definitions land and why.
+//
+// The single difference, and the reason the canonical build-smoke row exists: under
+// `--preserve-encodings --canonical-form` the runtime composes its OWN `Serialize` trait (the one
+// carrying `force_canonical`, and the one on which `to_canonical_cbor_bytes` is declared), and the
+// emitted `extern_interface_check.rs` asserts THAT trait of an extern rather than `cbor_event`'s.
+// So this flavor models a consumer who satisfies the contract that posture actually imposes — which
+// is what makes the row compile the `to-canonical-cbor-bytes` half of the extern's seam, and prove
+// the raw-bytes bridge was left alone beside it.
+
+/// `ext = _CDDL_CODEGEN_EXTERN_TYPE_`. Contract in this posture: the crate's own `Serialize` +
+/// `Deserialize`.
+#[derive(Clone, Debug)]
+pub struct Ext(pub u64);
+
+impl crate::generated::serialization::Serialize for Ext {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+        _force_canonical: bool,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.0)
+    }
+}
+
+impl crate::generated::serialization::Deserialize for Ext {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, crate::generated::error::DeserializeError> {
+        Ok(Self(raw.unsigned_integer()?))
+    }
+}
+
+/// `extern_generic = _CDDL_CODEGEN_EXTERN_TYPE_`, instantiated as `extern_generic<ext>`.
+#[derive(Clone, Debug)]
+pub struct ExternGeneric<T>(pub T);
+
+impl<T: crate::generated::serialization::Serialize> crate::generated::serialization::Serialize
+    for ExternGeneric<T>
+{
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+        force_canonical: bool,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        self.0.serialize(serializer, force_canonical)
+    }
+}
+
+impl<T: crate::generated::serialization::Deserialize>
+    crate::generated::serialization::Deserialize for ExternGeneric<T>
+{
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, crate::generated::error::DeserializeError> {
+        T::deserialize(raw).map(Self)
+    }
+}
+
+/// `raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_`. Contract: `RawBytesEncoding` and NOTHING else — unchanged
+/// by the posture, which is the point of the control: the canonical row must add
+/// `to-canonical-cbor-bytes` to the extern's seam and leave this bridge exactly as it was.
+#[derive(Clone, Debug)]
+pub struct Raw([u8; 4]);
+
+impl crate::generated::serialization::RawBytesEncoding for Raw {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, crate::generated::error::DeserializeError> {
+        bytes.try_into().map(Raw).map_err(|e| {
+            crate::generated::error::DeserializeFailure::InvalidStructure(Box::new(e)).into()
+        })
+    }
+}
