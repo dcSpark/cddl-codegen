@@ -808,10 +808,14 @@ export const REGISTRY: Gate[] = [
   // The CROSS-CRATE seam, named for the same reason as its siblings: import mode is the one part of
   // this face whose inputs come from ANOTHER crate's committed output, so a failure here means a
   // consumer's build breaks on a dependency's artifact rather than on its own spec — a distinction
-  // worth reading off the tier log. In-process generation over scratch dirs plus the same pinned
-  // WIT oracle, so it is cheap; no nested cargo.
+  // worth reading off the tier log. Mostly in-process generation over scratch dirs plus the same
+  // pinned WIT oracle, and ONE nested-cargo cell: a three-crate wasip2 build, which is the only
+  // place two macro-expansion facts are observable at all (the `with:` map is co-required, and an
+  // imported resource's borrow lowers to `&T` rather than to a borrow newtype). That cell is
+  // memoized by the gate cache. Measured on the delivering machine: 28 s for the whole suite on a
+  // cold scratch root.
   { id: "component_import", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_import"],
-    desc: "component face: cross-crate import mode (dep WIT materialization, `with:` map, bytes seam)" },
+    desc: "component face: cross-crate import mode (dep WIT materialization, `with:` map, bytes seam, wasip2 build)" },
   // The rust->WIT surface differential, named for the same reason: it is the ONLY gate that asks
   // what the boundary DROPPED. Everything else judges what was emitted against itself — a member
   // missing from both the `.wit` and the glue is a package that resolves, validates and builds.

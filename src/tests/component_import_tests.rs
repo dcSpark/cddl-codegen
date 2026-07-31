@@ -12,12 +12,15 @@
 //!   asserted here rather than assumed, because it is the compatibility promise the whole opt-in
 //!   rests on.
 //!
-//! The fixtures live under `tests/component-extern-import/`: one dependency generated as a real
-//! crate (a stub tree has no component face to point at, which is the case the opt-in exists for)
+//! The fixtures live under `tests/component-extern-import/`: two dependencies generated as real
+//! crates (a stub tree has no component face to point at, which is the case the opt-in exists for)
 //! and three consumers — the supported positions, the repeated positions this cddl-codegen refuses,
-//! and the one naming a type the dependency's own WIT excluded.
+//! and the one naming a type the dependency's own WIT excluded. The second dependency exists only
+//! for that last case: the shape whose WIT projection fails is also not a rust type a crate can
+//! hold, and the first dependency has to stay compilable.
 
 use crate::cli::Cli;
+use crate::tests::gate_cache;
 use clap::Parser;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -42,11 +45,16 @@ fn scratch(label: &str) -> PathBuf {
 /// string map because the two flags under test take PATHS: the whole point of this suite is the
 /// consumer reading files another crate's run committed.
 fn generate_dep(label: &str) -> PathBuf {
+    generate_named_dep(label, "dep")
+}
+
+/// The same, for a fixture dependency other than the default one.
+fn generate_named_dep(label: &str, spec: &str) -> PathBuf {
     let out = scratch(label);
     let cli = Cli::parse_from([
         "cddl-codegen",
         "--input",
-        &format!("{FIXTURES}/dep/lib.cddl"),
+        &format!("{FIXTURES}/{spec}/lib.cddl"),
         "--output",
         out.to_str().unwrap(),
         "--wasm",
@@ -322,7 +330,7 @@ fn component_import_refuses_a_dep_type_in_a_repeated_parameter_position() {
 /// reason verbatim rather than inventing one.
 #[test]
 fn component_import_refuses_a_dep_type_the_deps_own_wit_excluded() {
-    let dep_out = generate_dep("excluded");
+    let dep_out = generate_named_dep("excluded", "dep-unexported");
     // The reason is read out of the dependency's committed WIT — the same file the consumer resolves
     // types from — so the test reads it from there too rather than restating it.
     let dep_wit = std::fs::read_to_string(dep_out.join("component/wit/world.wit")).unwrap();
@@ -458,4 +466,190 @@ fn a_wit_path_that_is_not_a_dep_package_is_refused_by_name() {
              {expected}\ngot: {err}"
         );
     }
+}
+
+// -------------------------------------------------------------------------------------------------
+// The cross-crate wasip2 build
+// -------------------------------------------------------------------------------------------------
+
+/// The gate the rest of this suite cannot replace: the emitted consumer component crate COMPILES for
+/// `wasm32-wasip2` against a real generated dependency.
+///
+/// Two facts about the cross-crate seam are only observable here, and both are macro-expansion
+/// failures rather than anything a reader of the emitted bytes could see:
+///
+/// - **the `with:` map is co-required.** A materialized `wit/deps` tree alone makes
+///   `wit_bindgen::generate!` PANIC (``missing `with` mapping for the key …``). A run that emitted
+///   the copy and forgot the map produces a WIT that resolves, encodes and validates, and a crate
+///   that cannot be built.
+/// - **an imported resource's `borrow<t>` lowers to `&T`,** not to the `TBorrow<'_>` newtype an
+///   exported one gets. The two glue templates are separate, and the WIT is identical either way.
+///
+/// The workspace is three crates because that is what the seam needs: the dependency's rust crate,
+/// the consumer's (a path dependency on it), and the consumer's guest crate (a path dependency on
+/// both). `--common-import-override` points both at ONE serialization runtime, which is what makes
+/// `dep::Token: <runtime>::serialization::Deserialize` true — the same shared-runtime shape every
+/// other cross-crate consumer in this project uses, and the precondition the bytes seam inherits.
+///
+/// Nested cargo, memoized per generated-crate content hash by the gate cache; `GATE_CACHE=0` forces
+/// the build.
+#[test]
+fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
+    let root = scratch("wasip2");
+    let dep_out = root.join("dep");
+    let consumer_out = root.join("consumer");
+    let target_dir = root.join("target");
+
+    for (input, out, extra) in [
+        (
+            format!("{FIXTURES}/dep/lib.cddl"),
+            &dep_out,
+            Vec::<String>::new(),
+        ),
+        (
+            format!("{FIXTURES}/consumer/lib.cddl"),
+            &consumer_out,
+            vec![
+                // ONE runtime for both crates, so the dependency's types implement the same
+                // `Deserialize`/`ToCBORBytes` the consumer's glue names across the seam.
+                "--common-import-override".to_owned(),
+                "dep".to_owned(),
+                "--extern-import".to_owned(),
+                format!("dep={}", dep_out.join("extern-interface/dep").display()),
+                "--component-extern-wit".to_owned(),
+                format!("dep={}", dep_out.join("component/wit").display()),
+                // Cargo path dependencies, RELATIVE (they land in committed manifests).
+                "--rust-dep".to_owned(),
+                "dep=../../dep/rust".to_owned(),
+                "--component-dep".to_owned(),
+                "dep=../../dep/rust".to_owned(),
+            ],
+        ),
+    ] {
+        let lib_name = if out == &dep_out { "dep" } else { "consumer" };
+        let mut args = vec![
+            "--input".to_owned(),
+            input,
+            "--output".to_owned(),
+            out.to_str().unwrap().to_owned(),
+            "--wasm=false".to_owned(),
+            "--component=true".to_owned(),
+            "--lib-name".to_owned(),
+            lib_name.to_owned(),
+        ];
+        args.extend(extra);
+        let generated = crate::tests::integration_tests::codegen_cmd()
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "generating {lib_name} failed\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+    }
+
+    // A workspace root so the three crates share one lock and one target dir. Real consumers own
+    // this file; the tool never writes one.
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nresolver = \"3\"\nmembers = [\"dep/rust\", \"consumer/rust\", \
+         \"consumer/component\"]\n",
+    )
+    .unwrap();
+    // The rust crates' `cdylib` output exists for wasm-bindgen's `wasm32-unknown-unknown` target;
+    // the guest consumes the rlib, and asking the wasip2 linker for a cdylib is not what this gate
+    // is about. Same narrowing the single-crate build smoke does, for the same reason.
+    for manifest in [
+        dep_out.join("rust/Cargo.toml"),
+        consumer_out.join("rust/Cargo.toml"),
+    ] {
+        let narrowed = std::fs::read_to_string(&manifest).unwrap().replace(
+            "crate-type = [\"cdylib\", \"rlib\"]",
+            "crate-type = [\"rlib\"]",
+        );
+        std::fs::write(&manifest, narrowed).unwrap();
+    }
+
+    let component_dir = consumer_out.join("component");
+    let mut failure = None;
+    let outcome = gate_cache::run_cached(
+        "component_import_wasip2_build",
+        "consumer+dep",
+        &root,
+        &[
+            PathBuf::from("consumer/component/Cargo.toml"),
+            PathBuf::from("consumer/rust/Cargo.toml"),
+            PathBuf::from("dep/rust/Cargo.toml"),
+        ],
+        &[
+            "cwd=consumer/component".to_owned(),
+            "cargo".to_owned(),
+            "build".to_owned(),
+            "--target".to_owned(),
+            "wasm32-wasip2".to_owned(),
+        ],
+        || {
+            let build = crate::tests::integration_tests::tool_cmd("cargo")
+                .args(["build", "--target", "wasm32-wasip2"])
+                .current_dir(&component_dir)
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            if !build.status.success() {
+                let stderr = String::from_utf8_lossy(&build.stderr);
+                // The target is declared in `rust-toolchain.toml`, so a rustup-managed checkout has
+                // it; anywhere else this is a provisioning problem, not a code failure.
+                failure = Some(
+                    if stderr.contains("can't find crate for `core`")
+                        || stderr.contains("target may not be installed")
+                    {
+                        "the wasm32-wasip2 target is not installed under the pinned toolchain — \
+                     `rustup target add wasm32-wasip2`"
+                            .to_owned()
+                    } else {
+                        format!("cargo build failed\n{stderr}")
+                    },
+                );
+                return false;
+            }
+            // A build that produced no COMPONENT would be a vacuous pass: `wasm32-wasip2` artifacts
+            // carry the component-model preamble (layer 1) where a core module carries layer 0.
+            let artifact = target_dir
+                .join("wasm32-wasip2/debug")
+                .join("consumer_component.wasm");
+            match std::fs::read(&artifact) {
+                Ok(bytes) if bytes.starts_with(b"\0asm\x0d\0\x01\0") => true,
+                Ok(bytes) => {
+                    failure = Some(format!(
+                        "{} is not a component-model binary (preamble {:02x?})",
+                        artifact.display(),
+                        &bytes[..8.min(bytes.len())]
+                    ));
+                    false
+                }
+                Err(e) => {
+                    failure = Some(format!(
+                        "the build reported success but wrote no artifact at {}: {e}",
+                        artifact.display()
+                    ));
+                    false
+                }
+            }
+        },
+    );
+    if gate_cache::enabled() {
+        println!(
+            "component_import_wasip2_build gate-cache: {} run, {} cached",
+            outcome.ran(),
+            outcome.cached()
+        );
+    }
+    let verdict = failure.is_none();
+    let message = failure.unwrap_or_default();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        verdict,
+        "the generated cross-crate component crate does not build for wasm32-wasip2:\n\n{message}"
+    );
 }

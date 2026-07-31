@@ -18,17 +18,7 @@ policy = [ id: bytes ]
 ; consumer's `use` line — the negative control for the import resolution.
 coin = uint
 
-; A type the dependency's own WIT projection cannot render, so the dependency records it as
-; `// unexported: Marker — <reason>` in its WIT while still EXPORTING it in its extern-interface. That
-; asymmetry is exactly the case the exclusion-propagation rule exists for: the consumer's spec parses
-; (the name is in the export) and then has no WIT type to name. A consumer referencing it must fail
-; with the DEPENDENCY's own reason quoted, never emit a `use` of a type that is not there.
-;
-; The shape is a reference to a generic extern BASE, which names no concrete type — only its
-; instances are bridged. Two consequences worth stating: the dependency's own rust crate needs a
-; hand-written `GenBase` (this fixture is never built as a rust crate, only projected), and its
-; generation prints the usual missing-re-export warning.
-gen_base = _CDDL_CODEGEN_EXTERN_TYPE_
-leaf = [ a: uint ]
-holder = [ g: gen_base<leaf> ]
-marker = [ v: gen_base, note: text ]
+; Nothing here is unprojectable, deliberately: this dependency is COMPILED as part of the cross-crate
+; build check, so every rule has to be a rust type a crate can hold. The dependency whose WIT
+; excludes a type — the exclusion-propagation case — is `../dep-unexported`, which is projected but
+; never built.
