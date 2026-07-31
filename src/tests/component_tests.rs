@@ -455,6 +455,65 @@ fn component_glue_distinguishes_a_fallible_constructor_from_a_fallible_static() 
     );
 }
 
+/// A RECORD's `new` is fallible when a mandatory field carries a value bound, and that verdict is
+/// reached by a different rule from the `@newtype` wrapper's (which rides the IR). Glue that
+/// consulted only the wrapper rule binds a `Result` where the rep expects the value — a type error
+/// in generated code that every WIT gate is blind to.
+#[test]
+fn component_glue_unwraps_a_fallible_record_new() {
+    let glue = component_glue("tests/component-core/input.cddl", &[]);
+    assert!(
+        glue.contains("let inner = cddl_lib::Record::new(")
+            && glue.contains("        .map_err(err)?;"),
+        "the value-bounded record's fallible rust `new` is no longer unwrapped:\n{glue}"
+    );
+}
+
+/// A type the rust face declined to give a `Deserialize` impl carries NO `from-cbor-bytes` — and the
+/// WIT and the glue must drop it TOGETHER: a func the world declares but the guest does not
+/// implement does not satisfy the world, and glue naming a trait impl that does not exist does not
+/// compile. The verdict is reached during GENERATION, not at IR finalization, which is why the
+/// projection takes it as an input rather than re-deriving it.
+#[test]
+fn a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes() {
+    // An array struct whose optional field has the same CBOR type as the field after it: a peek
+    // cannot tell them apart, so the rust face emits `Serialize` and refuses `Deserialize`.
+    const SPEC: &str = "ambiguous = [? b: uint, c: uint]\nplain = [n: text]\n";
+    let dir = scratch_dir("nodeser");
+    let path = dir.join("input.cddl");
+    std::fs::write(&path, SPEC).unwrap();
+    let files = crate::api::generated_strings(&cli_for(path.to_str().unwrap(), &[])).unwrap();
+    let wit = files["component/wit/world.wit"].clone();
+    let glue = files["component/src/generated/mod.rs"].clone();
+    let rust = files["rust/src/generated/serialization.rs"].clone();
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert!(
+        !rust.contains("impl Deserialize for Ambiguous"),
+        "the fixture no longer reaches the no-deserialize verdict, so this pin is vacuous:\n{rust}"
+    );
+    let ambiguous_body = wit
+        .split("resource ambiguous {")
+        .nth(1)
+        .and_then(|rest| rest.split('}').next())
+        .expect("the WIT must still carry the resource itself");
+    assert!(
+        ambiguous_body.contains("to-cbor-bytes") && !ambiguous_body.contains("from-cbor-bytes"),
+        "the WIT still declares `from-cbor-bytes` for a type with no `Deserialize` impl (or lost \
+         the `to-` half too):\n{wit}"
+    );
+    assert!(
+        !glue.contains("cddl_lib::Ambiguous as cddl_lib::serialization::Deserialize"),
+        "the glue still names a `Deserialize` impl the rust crate does not emit:\n{glue}"
+    );
+    // The unaffected type keeps both halves, so the gating is per-type and not a blanket drop.
+    assert!(
+        wit.contains("from-cbor-bytes")
+            && glue.contains("cddl_lib::Plain as cddl_lib::serialization::Deserialize"),
+        "the deserializable type lost its bytes seam too — the gate is not per-type:\n{wit}\n{glue}"
+    );
+}
+
 /// The `int` bridge's rust→WIT direction has to match the ARM SHAPE, which `--preserve-encodings`
 /// changes from a tuple to named fields. A `match` written for one posture does not compile under
 /// the other, and the first user to combine the flags would get the error in GENERATED code.
@@ -645,7 +704,11 @@ fn emit_tests_with_component_skips_loudly() {
 /// smaller than [`COMPONENT_FIXTURES`]: the WIT gates above are cheap and sweep everything, while
 /// this one pays a real link per row.
 const BUILD_SMOKE_FIXTURES: &[(&str, &[&str])] = &[
-    // Every phase-1 type-mapping row in one scope, in the posture the emitters target.
+    // Every phase-1 type-mapping row in one scope, in the posture the emitters target. Two of those
+    // rows are here for a reason no WIT gate can express, because both are TYPE facts about the
+    // generated rust crate: the NonEmpty TABLE (`counts`) makes the guest constructor re-enter the
+    // runtime's vec-of-pairs `TryFrom` door, and the value-bounded field (`limit`) makes the rust
+    // `Record::new` itself fallible, so the glue must unwrap it rather than wrap it.
     ("tests/component-core/input.cddl", &[]),
     // The multi-INTERFACE shape: two `Guest` impls on one guest type under one `export!`, a
     // cross-interface `borrow` parameter, and an `own` handle minted for a resource another

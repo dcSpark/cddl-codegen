@@ -41,8 +41,8 @@ use super::wit::{
     WitParam, WitResource, WitType, WitTypeDef, WitTypeRef,
 };
 use crate::cli::Cli;
-use crate::intermediate::{IntermediateTypes, ModuleScope, RustIdent};
-use std::collections::BTreeMap;
+use crate::intermediate::{IntermediateTypes, ModuleScope, RustIdent, RustStructType};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 /// The reserved prelude extern carrying the full CBOR integer range. Spelled the way the other
@@ -66,8 +66,12 @@ const RUST_KEYWORDS: &[&str] = &[
 ///
 /// Infallible for the same reason the projection is: anything phase 1 cannot render was already
 /// EXCLUDED AND RECORDED upstream, so what arrives here is by construction emittable.
-pub(crate) fn component_glue(types: &IntermediateTypes, cli: &Cli) -> String {
-    let package = super::wit::project(types, cli);
+pub(crate) fn component_glue(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    no_deserialize: &BTreeSet<RustIdent>,
+) -> String {
+    let package = super::wit::project(types, cli, no_deserialize);
     Emitter {
         types,
         cli,
@@ -199,6 +203,24 @@ impl Emitter<'_, '_> {
             .find(|ident| ident.as_ref() == INT_EXTERN_IDENT)
             .map(|ident| self.rust_path(ident))
             .unwrap_or_else(|| format!("{}::{INT_EXTERN_IDENT}", self.cli.lib_name_code()))
+    }
+
+    /// Whether the generated rust crate's own `new` for this ident returns a `Result`.
+    ///
+    /// The rust face decides this in TWO places, and a glue that consulted only one emits
+    /// `let inner = Rec::new(..);` for a `Result` — a type error in generated code that no WIT gate
+    /// can see. A `@newtype` wrapper's bound rides the IR (`can_new_fail`, marked at finalization);
+    /// a RECORD's is derived per emission from its mandatory fields, and
+    /// `emit_tests::record_ctor_can_fail` is the already-shared mirror of `records.rs`'s own
+    /// `new_can_fail`, so this reads it rather than minting a third copy of the rule.
+    fn rust_new_can_fail(&self, ident: &RustIdent) -> bool {
+        if self.types.can_new_fail(ident) {
+            return true;
+        }
+        match self.types.rust_struct(ident).map(|s| s.variant()) {
+            Some(RustStructType::Record(record)) => crate::emit_tests::record_ctor_can_fail(record),
+            _ => false,
+        }
     }
 
     fn alias_for(&self, r: &WitTypeRef) -> &str {
@@ -839,12 +861,12 @@ impl Emitter<'_, '_> {
         for line in lines {
             let _ = writeln!(out, "        {line}");
         }
-        // The rust `new` is fallible exactly for a bounded `@newtype` wrapper; a record's is not.
-        // Reading that off the IR rather than off `ctor.fallible` is deliberate: the WIT constructor
-        // is ALSO fallible when a despecialized collection has to be re-validated here, which the
-        // rust `new` knows nothing about.
+        // Whether the rust `new` returns a `Result` is a question about the RUST crate, not about
+        // the WIT: the WIT constructor is ALSO fallible when a despecialized collection has to be
+        // re-validated here, which the rust `new` knows nothing about. So it is read off the rust
+        // face's own rule rather than off `ctor.fallible`.
         let call = format!("{rust}::new({})", args.join(", "));
-        let build = if self.types.can_new_fail(&resource.ident) {
+        let build = if self.rust_new_can_fail(&resource.ident) {
             let _ = writeln!(out, "        let inner = {call}.map_err(err)?;");
             format!("{rep}(RefCell::new(inner))")
         } else {
