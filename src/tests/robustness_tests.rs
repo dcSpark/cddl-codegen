@@ -2048,6 +2048,227 @@ fn rest_row_loose_list_needs_vs_self_named_non_empty_rule_reject_gracefully() {
     );
 }
 
+/// The DIRECT-claim leg of the loose `<Elem>List` family, over every plain use that mints the class.
+/// Every other leg of this detector reaches its needs THROUGH a `[+ …]` shape, so a spec with no
+/// `[+ …]` anywhere never consulted them — and the table-sourced member of that gap was fully
+/// SILENT: `create_and_register_array_type`'s last-wins registration replaced the user's rule with
+/// the keys-list, generation exited 0, and a field of the vanished type serialized as an array of
+/// the key element. Each cell here is one claim source, and the messages must differ by source so a
+/// failing spec points at the use that mints the class.
+#[test]
+fn loose_list_direct_claim_rejects_gracefully_per_source() {
+    let run = |cddl: &str, tag: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_loose_list_direct_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "loose_list_direct_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let msg = result
+            .expect_err("an incompatible direct claim on a loose list ident must be a graceful Err")
+            .to_string();
+        assert!(
+            msg.contains("MdList") && msg.contains("loose list wrapper"),
+            "{tag}: the message must name the claimed ident and the list family, got: {msg}"
+        );
+        msg
+    };
+
+    // (a) a named TABLE's keys() wrapper — the SILENT source. Both rule orders, because the swallow
+    // and the leftover-incompatible-rule are opposite registration orders of one collision.
+    for (tag, cddl) in [
+        (
+            "table",
+            "md = [a: uint, b: uint]\n\
+             md_list = [x: uint, y: text]\n\
+             tbl = {* md => text}\n\
+             holder = [m: md_list]\n",
+        ),
+        (
+            "table_rule_last",
+            "md = [a: uint, b: uint]\n\
+             tbl = {* md => text}\n\
+             md_list = [x: uint, y: text]\n\
+             holder = [m: md_list]\n",
+        ),
+    ] {
+        let msg = run(cddl, tag);
+        assert!(
+            msg.contains("a table keys() wrapper of the same element"),
+            "{tag}: the table leg must name the keys() wrapper as the use, got: {msg}"
+        );
+    }
+
+    // (b) an open struct-map rest row's keys() wrapper
+    let msg = run(
+        "md = [a: uint, b: uint]\n\
+         md_list = [x: uint, y: text]\n\
+         holder = { 1: uint, * md => text }\n\
+         user = [m: md_list]\n",
+        "restrow",
+    );
+    assert!(
+        msg.contains("an open struct-map rest row's keys() wrapper of the same element"),
+        "the rest-row leg must name the row's keys wrapper as the use, got: {msg}"
+    );
+
+    // (c) an open array `* …` rest tail
+    let msg = run(
+        "md = [a: uint, b: uint]\n\
+         md_list = [x: uint, y: text]\n\
+         holder = [1: uint, * md]\n\
+         user = [m: md_list]\n",
+        "tail",
+    );
+    assert!(
+        msg.contains("an open array `* …` rest tail of the same element"),
+        "the tail leg must name the rest tail as the use, got: {msg}"
+    );
+
+    // (d) a plain `*`-occurrence array use
+    let msg = run(
+        "md = [a: uint, b: uint]\n\
+         md_list = [x: uint, y: text]\n\
+         holder = { xs: [* md] }\n\
+         user = [m: md_list]\n",
+        "plain",
+    );
+    assert!(
+        msg.contains("a plain (`*`-occurrence) array use of the same element"),
+        "the plain-array leg must name the array use, got: {msg}"
+    );
+}
+
+/// The COMPATIBLE half of the same mechanism, pinned so it stays deliberate rather than incidental:
+/// a rule that IS `[* elem]` of the claimed ident's element is that very loose builder, so a table
+/// keys-list of the same element ALIASES it — one class, shared — instead of colliding. This is why
+/// the direct-claim leg asks `provides_compatible_loose_list` rather than rejecting every claim, and
+/// why the last-wins re-mint is safe: what it overwrites is byte-identical to what it writes.
+#[test]
+fn compatible_authored_loose_list_rule_aliases_the_keys_list() {
+    // `md_list = [* md]` names the class the table's keys() wrapper mints, with the same element.
+    const CDDL: &str = "md = [a: uint, b: uint]\n\
+                        md_list = [* md]\n\
+                        tbl = {* md => text}\n\
+                        holder = [m: md_list]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_loose_list_alias_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let files = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "loose_list_alias_unused",
+        "--wasm=true",
+    ]))
+    .unwrap_or_else(|e| panic!("the compatible aliasing idiom must generate, got: {e}"));
+    std::fs::remove_file(&path).ok();
+    let find = |suffix: &str| -> String {
+        files
+            .iter()
+            .find(|(p, _)| p.ends_with(suffix))
+            .map(|(_, c)| c.clone())
+            .unwrap_or_else(|| panic!("expected a generated {suffix}"))
+    };
+
+    // ONE transparent rust alias — the authored rule and the keys-list are the same definition, not
+    // two (which is what the duplicate-ident backstop would have caught).
+    let rust = find("rust/src/generated/mod.rs");
+    assert_eq!(
+        rust.matches("pub type MdList = Vec<Md>;").count(),
+        1,
+        "the authored `[* md]` rule and the table's keys-list must be one alias, got:\n{rust}"
+    );
+    // the authored rule's own NAME survives at the member position that declared it
+    assert!(
+        rust.contains("pub m: MdList,"),
+        "the authored rule's declared spelling must survive at its use site, got:\n{rust}"
+    );
+    // ONE wasm class, and the table's keys() returns exactly it
+    let wasm = find("wasm/src/generated/mod.rs");
+    assert_eq!(
+        wasm.matches("pub struct MdList(").count(),
+        1,
+        "the shared loose wrapper must be defined once, got:\n{wasm}"
+    );
+    assert!(
+        wasm.contains("pub fn keys(&self) -> MdList"),
+        "the table's keys() must return the shared class, got:\n{wasm}"
+    );
+}
+
+/// The map-side sibling of the direct-claim leg: a plain `{* k => v}` use or table rule mints the
+/// loose `MapKToV` its wasm boundary returns, so a user rule spelling that ident shadows it. These
+/// reached only the generic duplicate-ident backstop, which is loud but reports the ident rather
+/// than the claim — the asymmetry the DEFAULT rest-row leg had already closed for rows.
+#[test]
+fn loose_map_direct_claim_rejects_gracefully_per_source() {
+    let run = |cddl: &str, tag: &str, ident: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_loose_map_direct_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "loose_map_direct_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let msg = result
+            .expect_err("an incompatible direct claim on a loose map ident must be a graceful Err")
+            .to_string();
+        assert!(
+            msg.contains(ident) && msg.contains("loose map wrapper"),
+            "{tag}: the message must name the claimed ident and the map family, got: {msg}"
+        );
+        assert!(
+            !msg.contains("duplicate top-level ident"),
+            "{tag}: the per-kind detector must fire BEFORE the generic backstop, got: {msg}"
+        );
+        msg
+    };
+
+    let msg = run(
+        "md = [a: uint, b: uint]\n\
+         map_md_to_text = [x: uint, y: text]\n\
+         tbl = {* md => text}\n\
+         holder = [m: map_md_to_text]\n",
+        "table",
+        "MapMdToText",
+    );
+    assert!(
+        msg.contains("a plain (`*`-occurrence) table rule of the same key/value"),
+        "the table leg must name the table rule as the use, got: {msg}"
+    );
+
+    let msg = run(
+        "map_u64_to_text = [x: uint, y: text]\n\
+         holder = { xs: {* uint => text} }\n\
+         user = [m: map_u64_to_text]\n",
+        "plain",
+        "MapU64ToText",
+    );
+    assert!(
+        msg.contains("a plain (`*`-occurrence) map use of the same key/value"),
+        "the plain-map leg must name the map use, got: {msg}"
+    );
+}
+
 /// The min-1 sibling of the above: an ANONYMOUS `@duplicates preserve` `{+ …}` table instance mints
 /// `NonEmptyPairMapKToV`, and a user rule spelling that ident shadows it.
 #[test]
@@ -3812,15 +4033,16 @@ fn input_robustness_catalog() {
     settings.bind(|| insta::assert_snapshot!("catalog", catalog));
 }
 
-/// Message-identity pin for the generation-time duplicate-ident backstop (the plain-loose sibling
-/// of the WI-1 NonEmpty scan). The catalog above only records the `error (graceful)` LABEL; this
-/// asserts the backstop's actual message names the colliding ident (`BarList`) and the offending
-/// file (`wasm/src/generated/mod.rs`), so a future refactor can't silently swap this rejection for
-/// a different (or wrongly-attributed) one. Runs the committed `loose_builder_name_claimed_plain`
-/// fixture through `generated_strings` under DEFAULT (wasm) flags — the backstop lives at the
-/// `generated_files` seam and only fires when the wasm crate mints the wrapper.
+/// Message-identity pin for the DIRECT-claim leg of the loose `<Elem>List` family, from the plain
+/// `[* bar]` side. The catalog above only records the `error (graceful)` LABEL; this asserts the
+/// message is the per-kind one — it names the claimed ident, the plain use that mints the class, and
+/// the two remedies — and that it fires BEFORE the generic `export.rs` duplicate-ident backstop that
+/// used to own this class. Same asymmetry-closing shape as
+/// `default_rest_row_loose_map_wrapper_ident_collision_rejects_gracefully` did on the map side.
+/// Runs the committed `loose_builder_name_claimed_plain` fixture under DEFAULT (wasm) flags — the
+/// whole family is a wasm-class-name concern and does not arise with `--wasm=false`.
 #[test]
-fn loose_builder_name_claimed_plain_message_names_ident_and_file() {
+fn loose_builder_name_claimed_plain_message_names_ident_and_use() {
     let path = std::path::Path::new("tests/robustness/loose_builder_name_claimed_plain.cddl");
     let cli = Cli::parse_from([
         "cddl-codegen",
@@ -3831,9 +4053,47 @@ fn loose_builder_name_claimed_plain_message_names_ident_and_file() {
     ]);
     let msg = crate::api::generated_strings(&cli)
         .map_err(|e| e.to_string())
-        .expect_err(
-            "a plain-loose ident collision must reject gracefully at the generated_files seam",
-        );
+        .expect_err("a plain-loose ident collision must reject gracefully");
+    assert!(
+        msg.contains("BarList")
+            && msg.contains("a plain (`*`-occurrence) array use")
+            && msg.contains("loose list wrapper"),
+        "the per-kind leg must name the claimed ident, the minting use, and the list family, got: {msg}"
+    );
+    assert!(
+        !msg.contains("duplicate top-level ident"),
+        "the per-kind detector must fire BEFORE the generic duplicate-ident backstop, got: {msg}"
+    );
+}
+
+/// The generic `export.rs` duplicate-ident backstop still has message coverage of its own. Every
+/// loose-list claim that arrives through a RustType the IR scan can see is now the per-kind leg's
+/// (the pin above), so the backstop needs a source the scan structurally cannot see: `@used_as_elem`
+/// mints the loose `<Elem>List` wasm class from a TAG on the element, with no `[* elem]` RustType
+/// anywhere in the IR to collect. Pinning it here keeps the backstop's text — which is also the
+/// "this is a cddl-codegen bug" self-report for a collision no rule caused — from going unwitnessed.
+#[test]
+fn used_as_elem_wrapper_ident_collision_reaches_the_duplicate_ident_backstop() {
+    const CDDL: &str = "bar = [x: uint] ; @used_as_elem\n\
+                        bar_list = tstr\n\
+                        holder = { y: bar }\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_used_as_elem_ident_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "used_as_elem_ident_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let msg = result
+        .map_err(|e| e.to_string())
+        .expect_err("a `@used_as_elem` wrapper-ident collision must reject gracefully");
     assert!(
         msg.contains("duplicate top-level ident")
             && msg.contains("BarList")

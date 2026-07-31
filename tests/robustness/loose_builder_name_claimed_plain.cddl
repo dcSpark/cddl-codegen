@@ -1,12 +1,13 @@
 ; A PLAIN loose-list mint (`[* bar]` over a non-exposable element) synthesizes the wasm wrapper
 ; class `BarList`; a user rule of a DIFFERENT shape (`bar_list = tstr`) snake_case-claims that same
 ; ident. Under --wasm=true both would be defined in `wasm/src/generated/mod.rs` — the user `pub type
-; BarList = String;` alias and the synthesized `pub struct BarList(...)` wrapper — an E0428 the
-; generator formerly emitted at exit 0 (a silent miscompile). The generation-time duplicate-ident
-; backstop at the `generated_files` seam owns this class: it scans the emitted `src/generated/**`
-; source and rejects gracefully. Unlike the NonEmpty siblings (`non_empty_loose_builder_name_claimed`
-; et al.), the plain loose/table families have NO IR-level collision scan — the emission-observing
-; backstop is the pinned layer for them.
+; BarList = String;` alias and the synthesized `pub struct BarList(...)` wrapper. The DIRECT-claim
+; leg of `non_empty_wrapper_name_collisions` owns this class: it scans every PLAIN use that mints a
+; loose `<Elem>List` (a `*`-occurrence array, a map or table keys() wrapper, a rest row's keys(), a
+; rest tail) and rejects an incompatible claim in the list family's own voice, naming the use that
+; mints the class and the two remedies. It fires in `finalize`, ahead of the generation-time
+; duplicate-ident backstop that formerly reported this by ident alone. A rule that IS `[* bar]` of
+; the same element is that builder, not a collision.
 bar = [x: uint]
 bar_list = tstr
 holder = { xs: [* bar] }

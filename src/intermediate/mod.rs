@@ -192,6 +192,16 @@ pub struct IntermediateTypes<'a> {
     // `used_as_key`, there is NO transitive expansion — the tag names the element directly, and the
     // wrapper's identity is fully determined by that one element type.
     used_as_elem: BTreeSet<RustIdent>,
+    // Structural `<Elem>List` idents whose keys-list mint OVERWROTE an incompatible authored rule of
+    // the same ident, mapped to the element the list wraps. `create_and_register_array_type`'s
+    // `register_rust_struct` is last-wins, so once it has run the authored rule is GONE from
+    // `rust_structs` and no later scan can tell an overwritten record from a rule that was never
+    // there — the swallow is only observable at the instant it happens. Recorded here (wasm only,
+    // the sole condition under which the mint runs at all) so
+    // `non_empty_wrapper_name_collisions`' direct-claim leg can reject it in the family's voice.
+    // A COMPATIBLE authored rule (`foo_list = [* foo]`, which IS the builder) is deliberate aliasing
+    // and is not recorded: its re-mint is byte-identical. Determinism: `BTreeMap`.
+    swallowed_structural_list_claims: BTreeMap<String, RustType>,
     // Idents of extern / raw-bytes rules tagged `@copy`: the externally-defined rust type derives
     // `Copy`, so `ConceptualRustType::is_copy` treats a `Rust(ident)` reference to one as Copy and
     // the generator drops the defensive boundary `.clone()`. The declaring crate emits a compile-time
@@ -281,6 +291,7 @@ impl<'a> IntermediateTypes<'a> {
             key_demand: BTreeMap::new(),
             key_demand_roots: BTreeMap::new(),
             used_as_elem: BTreeSet::new(),
+            swallowed_structural_list_claims: BTreeMap::new(),
             copy_externs: BTreeSet::new(),
             no_json_schema_export: BTreeSet::new(),
             raw_bytes_flavor: BTreeSet::new(),
@@ -607,6 +618,45 @@ impl<'a> IntermediateTypes<'a> {
             }) if *bounds != Some((Some(1), None))
                 && element_type.clone().resolve_aliases() == *element_resolved
         )
+    }
+
+    /// Whether rule `name` is the SELF-NAMED `[+ elem]` rule of the element whose loose list class is
+    /// spelled `name` (`nev_q_list = [+ nev_q]` -> `NevQList`). Such a rule legitimately owns the
+    /// ident for its RESTRICTED wrapper, and the self-named leg of
+    /// `non_empty_wrapper_name_collisions` reports the resulting conflict with the `[+ …]` rule as
+    /// the named claimant — so the direct-claim leg must not report the same conflict a second time
+    /// in a voice that would tell the author to rename a rule the other message already names.
+    fn claims_ident_as_self_named_non_empty_list(&self, name: &str) -> bool {
+        let ident = RustIdent::new(CDDLIdent::new(name));
+        matches!(
+            self.rust_structs.get(&ident).map(|rs| rs.variant()),
+            Some(RustStructType::Array {
+                element_type,
+                bounds,
+            }) if *bounds == Some((Some(1), None))
+                && element_type.name_as_wasm_array(self) == name
+        )
+    }
+
+    /// The map-side twin of `claims_ident_as_self_named_non_empty_list`: whether rule `name` is the
+    /// SELF-NAMED `{+ k => v}` table whose own loose-builder name is `name`. Owned by the self-named
+    /// leg of `non_empty_map_wrapper_name_collisions`, so the direct-claim leg skips it.
+    fn claims_ident_as_self_named_non_empty_table(&self, name: &str) -> bool {
+        let ident = RustIdent::new(CDDLIdent::new(name));
+        self.rust_structs.get(&ident).is_some_and(|rs| {
+            let preserve =
+                rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+            matches!(
+                rs.variant(),
+                RustStructType::Table {
+                    domain,
+                    range,
+                    bounds,
+                } if *bounds == Some((Some(1), None))
+                    && ConceptualRustType::name_for_wasm_map(domain, range, preserve).to_string()
+                        == name
+            )
+        })
     }
 
     /// Whether rule `name` provides a COMPATIBLE loose table wrapper for `(key, value)` (a plain
@@ -2468,6 +2518,20 @@ impl<'a> IntermediateTypes<'a> {
             // survive `--no-synthesized-rust-collection-aliases` AND still trip the criterion-9 shadow
             // warning. Only a purely-synthesized keys-list (no authored rule) gets the marker.
             let already_registered = self.rust_structs.contains_key(&array_type_ident);
+            // ...and whether that prior registration is INCOMPATIBLE — a rule of this ident that is
+            // not the same-element loose builder. The `register_rust_struct` below is last-wins, so
+            // it is about to delete that rule outright: record the claim while it is still visible,
+            // for `non_empty_wrapper_name_collisions` to reject in `finalize`. Nothing else can see
+            // it afterwards — the overwritten entry is byte-identical to a purely synthesized one.
+            if already_registered
+                && !self.provides_compatible_loose_list(
+                    array_type_name,
+                    &element_type.clone().resolve_aliases(),
+                )
+            {
+                self.swallowed_structural_list_claims
+                    .insert(array_type_name.to_owned(), element_type.clone());
+            }
             // we don't pass in tags here. If a tag-wrapped array is done I think it generates
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
@@ -3072,7 +3136,7 @@ impl<'a> IntermediateTypes<'a> {
     /// Detect wasm-class name conflicts the `[+ elem]` (NonEmptyVec) emission would otherwise turn
     /// into a non-compiling wasm crate — every leg rejects gracefully rather than silently shadow
     /// or emit malformed code. Scans EVERY RustType position (incl. named-array element types and
-    /// alias base types) via `visit_all_rust_types`. Three conflict classes:
+    /// alias base types) via `visit_all_rust_types`. Four conflict classes:
     ///
     /// 1. An inline `[+ elem]` with no named owner (see `non_empty_named_owner` — when an owner
     ///    exists the inline use dedups to the named rule and mints nothing) mints a synthesized
@@ -3087,14 +3151,23 @@ impl<'a> IntermediateTypes<'a> {
     ///    loose `<Elem>List` builder: a plain non-exposable `[* elem]` mint, a map-key list
     ///    wrapper of the same element, or an open struct's rest row (a `* K => V` row's `keys()`
     ///    wrapper, a `* T` tail's own getter) would reference a class of the wrong shape.
+    /// 4. A DIRECT claim: any of those plain uses MINTS the loose `<Elem>List` on its own, with no
+    ///    `[+ …]` shape anywhere, and a user rule of the same ident and an incompatible shape
+    ///    shadows it. Classes 2 and 3 both arrive through a `[+ …]` wrapper, so this is the leg a
+    ///    spec containing no `[+ …]` at all reaches — and the table-keys member of it is the one
+    ///    claim in this family that is otherwise SILENT rather than a compile error
+    ///    (`create_and_register_array_type` overwrites the authored rule; see
+    ///    `swallowed_structural_list_claims`, whose record is that overwrite's only evidence).
     fn non_empty_wrapper_name_collisions(&self) -> Vec<String> {
         // BTreeSet: deterministic message order (repo determinism invariant)
         let mut msgs = BTreeSet::new();
 
         // collect every inline nonempty shape + every loose-builder need from PLAIN array shapes
         let mut inline_non_empty: Vec<RustType> = Vec::new();
-        // loose <Elem>List classes needed by plain (non-`+`) uses: name -> a use description
-        let mut plain_loose_needs: BTreeMap<String, String> = BTreeMap::new();
+        // loose <Elem>List classes needed by plain (non-`+`) uses: name -> (a use description, the
+        // ELEMENT the class wraps). The element rides along so the direct-claim leg below can ask
+        // `provides_compatible_loose_list` whether a rule of that ident IS the builder.
+        let mut plain_loose_needs: BTreeMap<String, (String, RustType)> = BTreeMap::new();
         self.visit_all_rust_types(&mut |rt| {
             if rt.is_non_empty_array() {
                 inline_non_empty.push(rt.clone());
@@ -3103,7 +3176,10 @@ impl<'a> IntermediateTypes<'a> {
             {
                 plain_loose_needs.insert(
                     elem.name_as_wasm_array(self),
-                    "a plain (`*`-occurrence) array use".to_owned(),
+                    (
+                        "a plain (`*`-occurrence) array use".to_owned(),
+                        (**elem).clone(),
+                    ),
                 );
             }
             if let ConceptualRustType::Map(k, _v) = &rt.conceptual_type {
@@ -3113,7 +3189,7 @@ impl<'a> IntermediateTypes<'a> {
                 {
                     plain_loose_needs.insert(
                         k.name_as_wasm_array(self),
-                        "a map keys() wrapper".to_owned(),
+                        ("a map keys() wrapper".to_owned(), (**k).clone()),
                     );
                 }
             }
@@ -3127,7 +3203,7 @@ impl<'a> IntermediateTypes<'a> {
                     {
                         plain_loose_needs.insert(
                             domain.name_as_wasm_array(self),
-                            "a table keys() wrapper".to_owned(),
+                            ("a table keys() wrapper".to_owned(), domain.clone()),
                         );
                     }
                 }
@@ -3145,7 +3221,10 @@ impl<'a> IntermediateTypes<'a> {
                         if !rest.container_type().directly_wasm_exposable(self) {
                             plain_loose_needs.insert(
                                 rest.element().name_as_wasm_array(self),
-                                "an open array `* …` rest tail".to_owned(),
+                                (
+                                    "an open array `* …` rest tail".to_owned(),
+                                    rest.element().clone(),
+                                ),
                             );
                         }
                     } else if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
@@ -3153,7 +3232,10 @@ impl<'a> IntermediateTypes<'a> {
                     {
                         plain_loose_needs.insert(
                             rest.domain().name_as_wasm_array(self),
-                            "an open struct-map rest row's keys() wrapper".to_owned(),
+                            (
+                                "an open struct-map rest row's keys() wrapper".to_owned(),
+                                rest.domain().clone(),
+                            ),
                         );
                     }
                 }
@@ -3222,7 +3304,7 @@ impl<'a> IntermediateTypes<'a> {
             if loose == ident.to_string() {
                 // self-named rule: it owns the ident as its RESTRICTED class (no try_from); any
                 // OTHER use needing the loose builder of this element now has no class to name
-                if let Some(need) = plain_loose_needs.get(&loose) {
+                if let Some((need, _elem)) = plain_loose_needs.get(&loose) {
                     msgs.insert(format!(
                         "name collision: rule '{ident}' (`[+ …]`) claims the ident that {need} of \
                          the same element needs for its loose '{loose}' list wrapper — rename the \
@@ -3238,13 +3320,55 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
 
+        // (4) DIRECT claims. Every leg above reaches `plain_loose_needs` through a `[+ …]` shape —
+        // as a try_from source or as a self-named rule — so a spec with no `[+ …]` anywhere never
+        // consults it, and the plain mints it collects go unchecked. That gap is not merely
+        // undiagnosed: a named table's keys-list is minted into `rust_structs` by
+        // `create_and_register_array_type`, whose last-wins `register_rust_struct` REPLACES a user
+        // rule of the same ident outright — the rule vanishes from the crate, a field of its type
+        // silently becomes an array of the key element, and generation exits 0. The other plain
+        // mints (rest rows, rest tails, inline `[* …]` uses) reach the generic duplicate-ident
+        // backstop instead, which is loud but reports the ident rather than the claim. One leg over
+        // the collected needs covers all of them in this family's voice, exactly as the map side's
+        // rest-row leg does for `MapKToV`.
+        //
+        // A rule that IS `[* elem]` of the same element is NOT a collision: it is that very builder,
+        // and the re-mint is byte-identical (deliberate aliasing — the idiom
+        // `create_and_register_array_type` anticipates). A SELF-NAMED `[+ elem]` rule is skipped
+        // too: leg (3) above owns it, with a message that names the `[+ …]` rule as the claimant.
+        //
+        // A SWALLOWED claim (`swallowed_structural_list_claims`) is reported here too, and is the
+        // only member of this leg that cannot be re-derived from the finalized IR: the mint already
+        // replaced the authored rule, so `provides_compatible_loose_list` now answers about the
+        // BUILDER and says "compatible". The recorded claim is the sole surviving evidence.
+        for (loose, element) in &self.swallowed_structural_list_claims {
+            plain_loose_needs
+                .entry(loose.clone())
+                .or_insert_with(|| ("a table keys() wrapper".to_owned(), element.clone()));
+        }
+        for (loose, (need, element)) in &plain_loose_needs {
+            if self.wasm_ident_claimed_by_user_rule(loose)
+                && (self.swallowed_structural_list_claims.contains_key(loose)
+                    || !self
+                        .provides_compatible_loose_list(loose, &element.clone().resolve_aliases()))
+                && !self.claims_ident_as_self_named_non_empty_list(loose)
+            {
+                msgs.insert(format!(
+                    "name collision: rule '{loose}' collides with the '{loose}' wasm wrapper \
+                     generated for {need} of the same element — rename the rule to avoid shadowing \
+                     the loose list wrapper (or make it a `[* …]` of the same element, which IS \
+                     that wrapper)"
+                ));
+            }
+        }
+
         msgs.into_iter().collect()
     }
 
     /// Detect wasm-class name conflicts the `{+ k => v}` (NonEmptyMap) emission would otherwise turn
     /// into a non-compiling wasm crate — the map-side twin of `non_empty_wrapper_name_collisions`.
     /// The loose table builder is always `MapKToV` (`name_for_wasm_map`); a map is never directly
-    /// exposable, so (unlike arrays) the loose builder is ALWAYS the `try_from` source. Four classes:
+    /// exposable, so (unlike arrays) the loose builder is ALWAYS the `try_from` source. Five classes:
     ///
     /// 1. An inline `{+ k => v}` with no named owner (see `non_empty_map_named_owner`) mints a
     ///    synthesized `NonEmptyMapKToV` class: a user rule claiming that ident collides.
@@ -3260,6 +3384,10 @@ impl<'a> IntermediateTypes<'a> {
     ///    returns: a user rule claiming that ident with any shape other than the shared plain
     ///    `{* k => v}` table collides. This is the default-flavor twin of the Record leg in
     ///    `preserve_pair_map_loose_wrapper_name_collisions`.
+    /// 5. A DIRECT claim on the loose `MapKToV` a plain `{* k => v}` USE or TABLE RULE mints — the
+    ///    symmetric sibling of the list side's class 4. Rest rows are class 4 and preserve-flavored
+    ///    shapes are `preserve_pair_map_loose_wrapper_name_collisions`, so this leg's source set is
+    ///    restricted to keep one collision reported once, in one kind's voice.
     fn non_empty_map_wrapper_name_collisions(&self) -> Vec<String> {
         let mut msgs = BTreeSet::new();
 
@@ -3267,15 +3395,31 @@ impl<'a> IntermediateTypes<'a> {
         let mut inline_non_empty: Vec<RustType> = Vec::new();
         // loose MapKToV classes needed by plain (non-`+`) uses: name -> a use description
         let mut plain_loose_needs: BTreeMap<String, String> = BTreeMap::new();
+        // The subset of those needs the DIRECT-claim leg owns: name -> (use description, key,
+        // value). DEFAULT-flavored plain map uses and plain table rules only — a rest row is leg (4)
+        // and a `@duplicates preserve` shape is
+        // `preserve_pair_map_loose_wrapper_name_collisions`, so restricting the set here is what
+        // keeps one collision to one message in one kind's voice.
+        let mut direct_claim_needs: BTreeMap<String, (String, RustType, RustType)> =
+            BTreeMap::new();
         self.visit_all_rust_types(&mut |rt| {
             if rt.is_non_empty_map() {
                 inline_non_empty.push(rt.clone());
             } else if let ConceptualRustType::Map(k, v) = &rt.conceptual_type {
-                plain_loose_needs.insert(
-                    ConceptualRustType::name_for_wasm_map(k, v, rt.is_preserve_pair_map())
-                        .to_string(),
-                    "a plain (`*`-occurrence) map use".to_owned(),
-                );
+                let preserve = rt.is_preserve_pair_map();
+                let name = ConceptualRustType::name_for_wasm_map(k, v, preserve).to_string();
+                plain_loose_needs
+                    .insert(name.clone(), "a plain (`*`-occurrence) map use".to_owned());
+                if !preserve {
+                    direct_claim_needs.insert(
+                        name,
+                        (
+                            "a plain (`*`-occurrence) map use".to_owned(),
+                            (**k).clone(),
+                            (**v).clone(),
+                        ),
+                    );
+                }
             }
         });
         // named plain tables mint their loose `MapKToV` class too (Table structs aren't visited as
@@ -3288,16 +3432,24 @@ impl<'a> IntermediateTypes<'a> {
                     bounds,
                 } => {
                     if *bounds != Some((Some(1), None)) {
+                        let preserve = rs.config().duplicates
+                            == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+                        let name = ConceptualRustType::name_for_wasm_map(domain, range, preserve)
+                            .to_string();
                         plain_loose_needs.insert(
-                            ConceptualRustType::name_for_wasm_map(
-                                domain,
-                                range,
-                                rs.config().duplicates
-                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
-                            )
-                            .to_string(),
+                            name.clone(),
                             "a plain (`*`-occurrence) table rule".to_owned(),
                         );
+                        if !preserve {
+                            direct_claim_needs.insert(
+                                name,
+                                (
+                                    "a plain (`*`-occurrence) table rule".to_owned(),
+                                    domain.clone(),
+                                    range.clone(),
+                                ),
+                            );
+                        }
                     }
                 }
                 // An open struct-map rest row mints the loose builder its wasm getter returns, in
@@ -3445,6 +3597,29 @@ impl<'a> IntermediateTypes<'a> {
                      wrapper generated for the open struct-map rest row of '{ident}' — rename the \
                      rule to avoid shadowing the loose map wrapper (or make it a `{{* …}}` table of \
                      the same key/value, which IS that wrapper)"
+                ));
+            }
+        }
+
+        // (5) DIRECT claims by a plain `{* k => v}` use or table rule — the symmetric sibling of the
+        // list side's direct-claim leg. Without it these reach only the generic duplicate-ident
+        // backstop, which is loud but reports the ident rather than the claim; the shape here is the
+        // one leg (4) already uses for a rest row, with the plain use named instead of the row.
+        for (loose, (need, key, value)) in &direct_claim_needs {
+            if self.wasm_ident_claimed_by_user_rule(loose)
+                && !self.provides_compatible_loose_table(
+                    loose,
+                    &key.clone().resolve_aliases(),
+                    &value.clone().resolve_aliases(),
+                    false,
+                )
+                && !self.claims_ident_as_self_named_non_empty_table(loose)
+            {
+                msgs.insert(format!(
+                    "name collision: rule '{loose}' collides with the '{loose}' wasm wrapper \
+                     generated for {need} of the same key/value — rename the rule to avoid \
+                     shadowing the loose map wrapper (or make it a `{{* …}}` table of the same \
+                     key/value, which IS that wrapper)"
                 ));
             }
         }
