@@ -360,7 +360,7 @@ fn a_lib_name_that_is_not_a_wit_identifier_is_a_flag_error_not_a_panic() {
         "--lib-name",
         "4chain",
     ]);
-    assert!(crate::api::validate_flag_combinations(&plain).is_ok());
+    crate::api::validate_flag_combinations(&plain).unwrap();
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -659,7 +659,7 @@ fn a_cross_scope_cycle_is_rejected_under_component() {
         "--output",
         "component_tests_unused",
     ]);
-    assert!(crate::api::generated_strings(&plain).is_ok());
+    crate::api::generated_strings(&plain).unwrap();
 }
 
 // -------------------------------------------------------------------------------------------------
