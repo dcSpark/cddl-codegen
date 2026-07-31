@@ -65,23 +65,35 @@ const REGISTRAR_DECL: &str = "let mut reg = Registrar::new(generator);";
 pub(crate) const CODEGEN_HEADER: &str = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n\n";
 
 /// True for the header-stamped scope families: the tool-owned generated trees under
-/// `rust/src/generated/` and `wasm/src/generated/`. The seed-once crate roots (`*/src/lib.rs`),
-/// the json-gen crate, and every `Cargo.toml` are deliberately left unstamped.
+/// `rust/src/generated/`, `wasm/src/generated/` and `component/src/generated/`, plus the emitted WIT
+/// package. The seed-once crate roots (`*/src/lib.rs`), the json-gen crate, and every `Cargo.toml`
+/// are deliberately left unstamped.
+///
+/// [`CODEGEN_HEADER`] is `//`-comment lines, a legal prefix in WIT as well as in rust, so the `.wit`
+/// family carries the same provenance banner as the `.rs` ones and still resolves.
 pub(crate) fn is_header_stamped_path(path: &str) -> bool {
-    path.ends_with(".rs")
-        && (path.starts_with("rust/src/generated/") || path.starts_with("wasm/src/generated/"))
+    (path.ends_with(".rs")
+        && (path.starts_with("rust/src/generated/")
+            || path.starts_with("wasm/src/generated/")
+            || path.starts_with("component/src/generated/")))
+        || (path.ends_with(".wit")
+            && path.starts_with(crate::generation::layout::COMPONENT_WIT_DIR))
 }
 
 /// True for a `.rs` file the comment-preservation overlay runs on: the tool-owned generated trees
-/// (rust, wasm, json-gen) plus the json-gen `main.rs`, which is regenerated wholesale every run
-/// (it is NOT seed-once, unlike the three `lib.rs` roots — those and every `Cargo.toml` are the
-/// files deliberately outside the overlay).
+/// (rust, wasm, json-gen, component) plus the json-gen `main.rs`, which is regenerated wholesale
+/// every run (it is NOT seed-once, unlike the four `lib.rs` roots — those and every `Cargo.toml` are
+/// the files deliberately outside the overlay).
+///
+/// `.rs` only, which is what keeps the emitted WIT package out: the overlay is a rust-token-stream
+/// mechanism, with no WIT lexer behind it.
 pub(crate) fn is_preservable_generated_path(path: &str) -> bool {
     path == "wasm/json-gen/src/main.rs"
         || (path.ends_with(".rs")
             && (path.starts_with("rust/src/generated/")
                 || path.starts_with("wasm/src/generated/")
-                || path.starts_with("wasm/json-gen/src/generated/")))
+                || path.starts_with("wasm/json-gen/src/generated/")
+                || path.starts_with("component/src/generated/")))
 }
 
 /// The preserve-or-clobber write for the composed runtime static files (`error.rs`,
@@ -941,6 +953,20 @@ impl GenerationScope {
             }
         }
 
+        // The emitted WIT package is DELETE-AND-RECREATED, on exactly the terms the
+        // `extern-interface/` export below states: a `.wit` a prior run wrote and this one no longer
+        // does would keep resolving as part of the package (WIT resolves a whole DIRECTORY), so an
+        // orphan here is not a dead file but a live declaration nothing generated. Delete-and-recreate
+        // cannot orphan by construction, which is why this tree is out of the stale-file scan rather
+        // than in it — and the scan's collector is `.rs`-only regardless. The files themselves are
+        // written by the common loop below, so this only has to clear the ground first.
+        if cli.component {
+            let wit_dir = rust_dir.join(crate::generation::layout::COMPONENT_WIT_DIR);
+            if wit_dir.exists() {
+                std::fs::remove_dir_all(&wit_dir)?;
+            }
+        }
+
         // Every generated-tree `.rs` written this run, so the stale-file scan below can tell an
         // orphan (a file a prior run generated but this one no longer does — e.g. a removed/renamed
         // scope) from live output.
@@ -963,7 +989,10 @@ impl GenerationScope {
             // `generated/**` clobbers as always.
             if matches!(
                 rel_path.as_str(),
-                "rust/src/lib.rs" | "wasm/src/lib.rs" | "wasm/json-gen/src/lib.rs"
+                "rust/src/lib.rs"
+                    | "wasm/src/lib.rs"
+                    | "wasm/json-gen/src/lib.rs"
+                    | "component/src/lib.rs"
             ) && path.exists()
             {
                 // Two diagnostics fire here, both reading this already-existing (seed-skipped) root.
@@ -1241,6 +1270,9 @@ impl GenerationScope {
             "rust/src/generated",
             "wasm/src/generated",
             "wasm/json-gen/src/generated",
+            // `component/wit` is deliberately ABSENT: it is delete-and-recreated (below), which
+            // cannot orphan by construction, and this scan's collector is `.rs`-only anyway.
+            "component/src/generated",
         ] {
             let mut orphans = Vec::new();
             collect_rs_files(&rust_dir.join(tree), &mut orphans)?;
@@ -1969,6 +2001,41 @@ impl GenerationScope {
                 )
                 .map_err(std::io::Error::other)?,
             );
+        }
+
+        // component crate: the WIT package plus the guest glue that implements it
+        if cli.component {
+            // Same tool-owned-subtree split as the rust and wasm crates. The per-scope map is empty
+            // in phase 1 (one `generated/mod.rs`, see `generation::component`'s module doc), but the
+            // producer is the shared one so a later split needs no change here.
+            Self::merge_scopes_to_strings(
+                &mut out,
+                "component/src/generated",
+                self.component_lib_scope.clone(),
+                &self.component_scopes,
+                "mod.rs",
+                "mod.rs",
+            )?;
+            out.insert(
+                "component/src/lib.rs".to_owned(),
+                rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
+            );
+            // The `None` here is the FRESH form only, exactly as for the sibling manifests: `export`
+            // re-applies the same ops onto the on-disk file so a hand-added dependency survives.
+            out.insert(
+                crate::generation::layout::COMPONENT_MANIFEST.to_owned(),
+                crate::cargo_manifest::apply(
+                    &crate::cargo_manifest::ops_for_component(cli)?,
+                    None,
+                    crate::generation::layout::COMPONENT_MANIFEST,
+                )
+                .map_err(std::io::Error::other)?,
+            );
+            // The WIT package itself. Produced HERE rather than written straight to disk (the shape
+            // `extern-interface/` uses) because it is the guest crate's own input: it has to ride the
+            // same map the snapshots capture and the header stamper walks, so a `.wit` and the glue
+            // implementing it can never be captured out of step.
+            out.extend(crate::generation::wit::wit_files(types, cli));
         }
 
         // json-gen crate for exporting JSON schemas

@@ -67,15 +67,14 @@ pub(crate) const WASM_PACKAGE_SUFFIX: &str = "-wasm";
 /// states for the wasm crate's.
 pub(crate) const JSON_GEN_PACKAGE_SUFFIX: &str = "-json-schema-gen";
 
-// The `#[allow(dead_code)]`s on two of the four below: their readers (the guest emitter,
-// `export.rs`'s write loop, and a config deriving `--component-dep`) are the component face's later
-// pieces. The layout is minted whole rather than one constant at a time, because a half-constant
-// layout is the state in which a rename silently diverges.
+// The `#[allow(dead_code)]` on the last of the four below: its reader (a config deriving
+// `--component-dep`) is the component face's phase-4 piece. The layout is minted whole rather than
+// one constant at a time, because a half-constant layout is the state in which a rename silently
+// diverges.
 /// The component crate's directory, a sibling of `rust/` and `wasm/` under a crate's `--output`.
 /// Named by three files: `wit.rs` (which keys the emitted WIT map under it), `component.rs` (the
 /// guest glue), and `export.rs` (write loop, stale-file scan, header stamping). Spelled once so
 /// moving the face is one edit rather than a grep across three emitters.
-#[allow(dead_code)]
 pub(crate) const COMPONENT_DIR: &str = "component";
 
 /// The generated WIT package's directory. `wit-bindgen::generate!`'s `path` is resolved against
