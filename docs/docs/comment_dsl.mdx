@@ -268,10 +268,10 @@ alias becomes a byte-exact, duplicate-keyed pair-map — `PairMap<K, V>`, or `No
 the non-empty `{+ …}` flavor (its single `try_from` door composes the min-1 check). A **tag-258** set
 now defaults to `reject` (see *Defaults* below); every other set defaults to `preserve` and tables to
 `reject`. Writing the effective default explicitly is accepted for self-documentation (a no-op). A
-preserve table and a non-preserve map/table of the *identical* key/value shape cannot coexist under
-`--wasm` (they would
-need one structural wrapper class to be two incompatible inner types); that is a graceful,
-distinctly-worded rejection — give one a distinct shape, or align their policy.
+preserve table and a non-preserve map/table of the *identical* key/value **coexist** under `--wasm`:
+the synthesized wasm class name encodes the backing container, so the preserve flavor is
+`PairMap<K>To<V>` (and `NonEmptyPairMap<K>To<V>` for `{+ …}`) while the default flavor keeps
+`Map<K>To<V>` — two distinct classes, each wrapping its own inner type.
 :::
 
 Selects the per-rule policy for how a collection handles duplicate entries on the CBOR wire. CBOR

@@ -142,12 +142,18 @@ and reject cases (a loose builder plus a restricted `try_from`-door wrapper):
 - The **loose `{* k => v}` wrapper** exposes exactly the ordinary map-wrapper surface —
   `new()`, `len()`, `insert(key, value) -> Option<V>`, `get(key) -> Option<V>`, `keys() -> Vec<K>`.
   A **named** rule surfaces under its own identifier (`meta = {* uint => bytes} ; @duplicates
-  preserve` → a `Meta` class); a sole-owner rule's structural `Map<K>To<V>` name becomes a `pub type`
-  alias to it, so anonymous uses of the shape resolve to the same JS class.
+  preserve` → a `Meta` class); a sole-owner rule's structural `PairMap<K>To<V>` name becomes a
+  `pub type` alias to it, so anonymous uses of the shape resolve to the same JS class.
+- **The structural name encodes the container.** A synthesized preserve wrapper is
+  `PairMap<K>To<V>` (`PairMapU64ToText` for `{* uint => text} ; @duplicates preserve`) and its
+  non-empty flavor is `NonEmptyPairMap<K>To<V>` — the `PairMap` prefix composes with the `NonEmpty`
+  one exactly as the containers do. The default flavor keeps `Map<K>To<V>` / `NonEmptyMap<K>To<V>`.
+  Because the name carries the flavor, a preserve and a non-preserve map of the identical key/value
+  are two distinct JS classes rather than one class asked to be two shapes.
 - The **`{+ k => v}` restricted wrapper** wraps the `NonEmptyPairMap` core and is entered via
-  **`try_from(map: &Map<K>To<V>) -> Result<Self, JsError>`** (the min-1 door, borrowing and cloning so
-  the loose map stays valid) or `new(first_key, first_value)`. Parent constructors/setters take it by
-  reference.
+  **`try_from(map: &PairMap<K>To<V>) -> Result<Self, JsError>`** (the min-1 door over the loose
+  wrapper of the SAME flavor, borrowing and cloning so the loose map stays valid) or
+  `new(first_key, first_value)`. Parent constructors/setters take it by reference.
 - **The JS-visible difference from the reject-set wrappers: `insert` is `add`'s opposite.** A reject
   set's `add` returns `Result<(), JsError>` and **throws** on a duplicate; a pair-map's
   `insert(key, value)` returns **`Option<V>`** and **APPENDS** — it never throws and never rejects,
