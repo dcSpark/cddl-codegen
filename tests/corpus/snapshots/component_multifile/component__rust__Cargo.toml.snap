@@ -1,0 +1,26 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+[package]
+name = "cddl-lib"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.cddl-codegen]
+generated-with = "0.1.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+default = ["std"]
+# cddl-codegen: co-owned key. Entries you add here survive regeneration; forwards to
+# cddl-codegen: dependencies that are no longer declared are pruned; the tool re-asserts
+# cddl-codegen: its computed forwards each run. See output_format.mdx, "The `std` feature".
+std = []
+wasm = ["dep:wasm-bindgen"]

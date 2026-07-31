@@ -1,0 +1,72 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  type any-cbor = list<u8>;
+  enum any-cbor-kind {
+    uint,
+    nint,
+    bytes,
+    text,
+    array,
+    %map,
+    tag,
+    %bool,
+    null,
+    undefined,
+    unassigned,
+    float,
+  }
+  enum color {
+    i0,
+    i1,
+    i2,
+  }
+  resource hash {
+    constructor(inner: list<u8>) -> result<hash, string>;
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<hash, string>;
+  }
+  variant int {
+    uint(u64),
+    // a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4
+    nint(u64),
+  }
+  resource node {
+    constructor(label: string, children: list<borrow<node>>);
+    label: func() -> string;
+    children: func() -> list<node>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<node, string>;
+  }
+  resource %record {
+    constructor(id: u64, name: string, digest: borrow<hash>, delta: int, limit: u64, tags: list<string>, props: list<tuple<string, u64>>, totals: list<tuple<string, u64>>, kind: color, root: borrow<node>, meta: any-cbor) -> result<%record, string>;
+    id: func() -> u64;
+    name: func() -> string;
+    digest: func() -> hash;
+    delta: func() -> int;
+    limit: func() -> u64;
+    tags: func() -> list<string>;
+    props: func() -> list<tuple<string, u64>>;
+    totals: func() -> list<tuple<string, u64>>;
+    kind: func() -> color;
+    root: func() -> node;
+    meta: func() -> any-cbor;
+    note: func() -> option<string>;
+    set-note: func(note: string);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<%record, string>;
+  }
+  cbor-kind: func(v: any-cbor) -> result<any-cbor-kind, string>;
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -1,0 +1,26 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod serialization;
+
+#[derive(Clone, Debug)]
+pub struct Leaf {
+    pub n: u64,
+}
+
+impl Leaf {
+    pub fn new(n: u64) -> Self {
+        Self { n }
+    }
+}
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum Shade {
+    I0,
+    I1,
+}

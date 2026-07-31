@@ -1,0 +1,268 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Hash = WitHash;
+    type Node = WitNode;
+    type Record = WitRecord;
+
+    fn cbor_kind(v: Vec<u8>) -> Result<wit_types::AnyCborKind, String> {
+        <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&v)
+            .map(|v| any_cbor_kind_to_wit_types(&v.kind()))
+            .map_err(err)
+    }
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn any_cbor_kind_to_wit_types(v: &cddl_lib::any_cbor::AnyCborKind) -> wit_types::AnyCborKind {
+    match v {
+        cddl_lib::any_cbor::AnyCborKind::UInt => wit_types::AnyCborKind::Uint,
+        cddl_lib::any_cbor::AnyCborKind::NInt => wit_types::AnyCborKind::Nint,
+        cddl_lib::any_cbor::AnyCborKind::Bytes => wit_types::AnyCborKind::Bytes,
+        cddl_lib::any_cbor::AnyCborKind::Text => wit_types::AnyCborKind::Text,
+        cddl_lib::any_cbor::AnyCborKind::Array => wit_types::AnyCborKind::Array,
+        cddl_lib::any_cbor::AnyCborKind::Map => wit_types::AnyCborKind::Map,
+        cddl_lib::any_cbor::AnyCborKind::Tag => wit_types::AnyCborKind::Tag,
+        cddl_lib::any_cbor::AnyCborKind::Bool => wit_types::AnyCborKind::Bool,
+        cddl_lib::any_cbor::AnyCborKind::Null => wit_types::AnyCborKind::Null,
+        cddl_lib::any_cbor::AnyCborKind::Undefined => wit_types::AnyCborKind::Undefined,
+        cddl_lib::any_cbor::AnyCborKind::Unassigned => wit_types::AnyCborKind::Unassigned,
+        cddl_lib::any_cbor::AnyCborKind::Float => wit_types::AnyCborKind::Float,
+    }
+}
+
+fn color_to_wit(v: &cddl_lib::Color) -> wit_types::Color {
+    match v {
+        cddl_lib::Color::I0 => wit_types::Color::I0,
+        cddl_lib::Color::I1 => wit_types::Color::I1,
+        cddl_lib::Color::I2 => wit_types::Color::I2,
+    }
+}
+
+fn color_from_wit(v: wit_types::Color) -> cddl_lib::Color {
+    match v {
+        wit_types::Color::I0 => cddl_lib::Color::I0,
+        wit_types::Color::I1 => cddl_lib::Color::I1,
+        wit_types::Color::I2 => cddl_lib::Color::I2,
+    }
+}
+
+fn int_to_wit_types(v: &cddl_lib::Int) -> wit_types::Int {
+    match v {
+        cddl_lib::Int::Uint(value) => wit_types::Int::Uint(*value),
+        cddl_lib::Int::Nint(value) => wit_types::Int::Nint(*value),
+    }
+}
+
+fn int_from_wit_types(v: wit_types::Int) -> cddl_lib::Int {
+    match v {
+        wit_types::Int::Uint(value) => cddl_lib::Int::new_uint(value),
+        wit_types::Int::Nint(value) => cddl_lib::Int::new_nint(value),
+    }
+}
+
+pub struct WitHash(pub RefCell<cddl_lib::Hash>);
+
+impl wit_types::GuestHash for WitHash {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::Hash::new(inner).map_err(err)?;
+        Ok(WitHash(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Hash as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Hash, String> {
+        <cddl_lib::Hash as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Hash::new(WitHash(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNode(pub RefCell<cddl_lib::Node>);
+
+impl wit_types::GuestNode for WitNode {
+    fn new(label: String, children: Vec<wit_types::NodeBorrow<'_>>) -> Self {
+        let children = children
+            .into_iter()
+            .map(|x| x.get::<WitNode>().0.borrow().clone())
+            .collect();
+        let inner = cddl_lib::Node::new(label, children);
+        WitNode(RefCell::new(inner))
+    }
+
+    fn label(&self) -> String {
+        let me = self.0.borrow();
+        me.label.clone()
+    }
+
+    fn children(&self) -> Vec<wit_types::Node> {
+        let me = self.0.borrow();
+        me.children
+            .iter()
+            .map(|x| wit_types::Node::new(WitNode(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Node as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Node, String> {
+        <cddl_lib::Node as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Node::new(WitNode(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitRecord(pub RefCell<cddl_lib::Record>);
+
+impl wit_types::GuestRecord for WitRecord {
+    fn new(
+        id: u64,
+        name: String,
+        digest: wit_types::HashBorrow<'_>,
+        delta: wit_types::Int,
+        limit: u64,
+        tags: Vec<String>,
+        props: Vec<(String, u64)>,
+        totals: Vec<(String, u64)>,
+        kind: wit_types::Color,
+        root: wit_types::NodeBorrow<'_>,
+        meta: Vec<u8>,
+    ) -> Result<Self, String> {
+        let digest = digest.get::<WitHash>().0.borrow().clone();
+        let delta = int_from_wit_types(delta);
+        let tags: Vec<_> = tags.into_iter().collect();
+        let props = props.into_iter().collect();
+        let totals: Vec<_> = totals.into_iter().collect();
+        let kind = color_from_wit(kind);
+        let root = root.get::<WitNode>().0.borrow().clone();
+        let meta =
+            <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+                &meta,
+            )
+            .map_err(err)?;
+        let inner = cddl_lib::Record::new(
+            id,
+            name,
+            digest,
+            delta,
+            limit,
+            tags.try_into().map_err(err)?,
+            props,
+            totals.try_into().map_err(err)?,
+            kind,
+            root,
+            meta,
+        )
+        .map_err(err)?;
+        Ok(WitRecord(RefCell::new(inner)))
+    }
+
+    fn id(&self) -> u64 {
+        let me = self.0.borrow();
+        me.id
+    }
+
+    fn name(&self) -> String {
+        let me = self.0.borrow();
+        me.name.clone()
+    }
+
+    fn digest(&self) -> wit_types::Hash {
+        let me = self.0.borrow();
+        wit_types::Hash::new(WitHash(RefCell::new(me.digest.clone())))
+    }
+
+    fn delta(&self) -> wit_types::Int {
+        let me = self.0.borrow();
+        int_to_wit_types(&me.delta)
+    }
+
+    fn limit(&self) -> u64 {
+        let me = self.0.borrow();
+        me.limit
+    }
+
+    fn tags(&self) -> Vec<String> {
+        let me = self.0.borrow();
+        me.tags.iter().map(|x| x.clone()).collect()
+    }
+
+    fn props(&self) -> Vec<(String, u64)> {
+        let me = self.0.borrow();
+        me.props.iter().map(|(x0, x1)| (x0.clone(), *x1)).collect()
+    }
+
+    fn totals(&self) -> Vec<(String, u64)> {
+        let me = self.0.borrow();
+        me.totals.iter().map(|(x0, x1)| (x0.clone(), *x1)).collect()
+    }
+
+    fn kind(&self) -> wit_types::Color {
+        let me = self.0.borrow();
+        color_to_wit(&me.kind)
+    }
+
+    fn root(&self) -> wit_types::Node {
+        let me = self.0.borrow();
+        wit_types::Node::new(WitNode(RefCell::new(me.root.clone())))
+    }
+
+    fn meta(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &me.meta,
+        )
+    }
+
+    fn note(&self) -> Option<String> {
+        let me = self.0.borrow();
+        me.note.as_ref().map(|x| x.clone())
+    }
+
+    fn set_note(&self, note: String) {
+        self.0.borrow_mut().note = Some(note);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Record as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Record, String> {
+        <cddl_lib::Record as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Record::new(WitRecord(RefCell::new(v))))
+            .map_err(err)
+    }
+}

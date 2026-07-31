@@ -1,0 +1,200 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod any_cbor;
+pub mod error;
+mod extern_interface_check;
+pub mod non_empty;
+pub mod non_empty_map;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
+use crate::generated::non_empty_map::NonEmptyMap;
+
+pub type Attrs = BTreeMap<String, u64>;
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum Color {
+    I0,
+    I1,
+    I2,
+}
+
+/// `{+ String => u64}`: at least one entry, enforced at the `NonEmptyMap` `TryFrom` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Counts = NonEmptyMap<String, u64>;
+
+#[derive(Clone, Debug)]
+pub struct Hash(pub(crate) Vec<u8>);
+
+impl Hash {
+    pub fn get(&self) -> &Vec<u8> {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+        if inner.len() != 32 {
+            return Err(DeserializeError::new(
+                "Hash",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as i128,
+                    min: Some(32),
+                    max: Some(32),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<Vec<u8>> for Hash {
+    type Error = DeserializeError;
+
+    fn try_from(inner: Vec<u8>) -> Result<Self, Self::Error> {
+        Hash::new(inner)
+    }
+}
+
+impl From<Hash> for Vec<u8> {
+    fn from(wrapper: Hash) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Int {
+    Uint(u64),
+    Nint(u64),
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint(value)
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint(value)
+    }
+}
+
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Uint(x) => write!(f, "{}", x),
+            Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
+        }
+    }
+}
+
+impl core::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = core::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(Self::Uint)
+        } else {
+            u64::try_from((x + 1).unsigned_abs()).map(Self::Nint)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
+}
+
+/// `[+ String]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Names = NonEmptyVec<String>;
+
+#[derive(Clone, Debug)]
+pub struct Node {
+    pub label: String,
+    pub children: Vec<Node>,
+}
+
+impl Node {
+    pub fn new(label: String, children: Vec<Node>) -> Self {
+        Self { label, children }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Record {
+    pub id: u64,
+    pub name: String,
+    pub digest: Hash,
+    pub delta: Int,
+    pub limit: u64,
+    pub tags: Names,
+    pub props: Attrs,
+    pub totals: Counts,
+    pub kind: Color,
+    pub root: Node,
+    pub meta: crate::generated::any_cbor::AnyCbor,
+    pub note: Option<String>,
+}
+
+impl Record {
+    pub fn new(
+        id: u64,
+        name: String,
+        digest: Hash,
+        delta: Int,
+        limit: u64,
+        tags: Names,
+        props: Attrs,
+        totals: Counts,
+        kind: Color,
+        root: Node,
+        meta: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<Self, DeserializeError> {
+        if limit > 5 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: limit as i128,
+                min: None,
+                max: Some(5),
+            }
+            .into());
+        }
+        Ok(Self {
+            id,
+            name,
+            digest,
+            delta,
+            limit,
+            tags,
+            props,
+            totals,
+            kind,
+            root,
+            meta,
+            note: None,
+        })
+    }
+}

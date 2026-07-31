@@ -1,0 +1,431 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::borrow::ToOwned;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Hash {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_bytes(&self.0)
+    }
+}
+
+impl Deserialize for Hash {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = raw.bytes()?;
+            if inner.len() != 32 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner.len() as i128,
+                    min: Some(32),
+                    max: Some(32),
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("Hash"))
+    }
+}
+
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Self::Uint(x) => serializer.write_unsigned_integer(*x),
+            Self::Nint(x) => serializer
+                .write_negative_integer_sz(-((*x as i128) + 1), cbor_event::Sz::canonical(*x)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),
+                cbor_event::Type::NegativeInteger => Ok(Self::Nint(
+                    (-1 - raw.negative_integer_sz().map(|(x, _enc)| x)?) as u64,
+                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
+impl cbor_event::se::Serialize for Node {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        serializer.write_text(&self.label)?;
+        serializer.write_array(cbor_event::Len::Len(self.children.len() as u64))?;
+        for element in self.children.iter() {
+            element.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Node {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let label = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("label"))?;
+            let children = (|| -> Result<_, DeserializeError> {
+                let mut children_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (children_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    children_arr.push(Node::deserialize(raw)?);
+                }
+                Ok(children_arr)
+            })()
+            .map_err(|e| e.annotate("children"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Node { label, children })
+        })()
+        .map_err(|e| e.annotate("Node"))
+    }
+}
+
+impl cbor_event::se::Serialize for Record {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            11 + match &self.note {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        serializer.write_text("id")?;
+        serializer.write_unsigned_integer(self.id)?;
+        serializer.write_text("kind")?;
+        match &self.kind {
+            Color::I0 => serializer.write_unsigned_integer(0u64),
+            Color::I1 => serializer.write_unsigned_integer(1u64),
+            Color::I2 => serializer.write_unsigned_integer(2u64),
+        }?;
+        serializer.write_text("meta")?;
+        self.meta.serialize(serializer)?;
+        serializer.write_text("name")?;
+        serializer.write_text(&self.name)?;
+        if let Some(field) = &self.note {
+            serializer.write_text("note")?;
+            serializer.write_text(field)?;
+        }
+        serializer.write_text("root")?;
+        self.root.serialize(serializer)?;
+        serializer.write_text("tags")?;
+        serializer.write_array(cbor_event::Len::Len(self.tags.len() as u64))?;
+        for element in self.tags.iter() {
+            serializer.write_text(element)?;
+        }
+        serializer.write_text("delta")?;
+        self.delta.serialize(serializer)?;
+        serializer.write_text("limit")?;
+        serializer.write_unsigned_integer(self.limit)?;
+        serializer.write_text("props")?;
+        serializer.write_map(cbor_event::Len::Len(self.props.len() as u64))?;
+        for (key, value) in self.props.iter() {
+            serializer.write_text(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        serializer.write_text("digest")?;
+        self.digest.serialize(serializer)?;
+        serializer.write_text("totals")?;
+        serializer.write_map(cbor_event::Len::Len(self.totals.len() as u64))?;
+        for (key, value) in self.totals.iter() {
+            serializer.write_text(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Record {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(11)?;
+            let mut id = None;
+            let mut kind = None;
+            let mut meta = None;
+            let mut name = None;
+            let mut note = None;
+            let mut root = None;
+            let mut tags = None;
+            let mut delta = None;
+            let mut limit = None;
+            let mut props = None;
+            let mut digest = None;
+            let mut totals = None;
+            let mut read = 0;
+            while match len { cbor_event::Len::Len(n) => read < n, cbor_event::Len::Indefinite => true, } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => return Err(DeserializeFailure::UnknownKey(Key::Uint(raw.unsigned_integer()?)).into()),
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "id" =>  {
+                            if id.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("id".into())).into());
+                            }
+                            id = Some(Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("id"))?);
+                        },
+                        "kind" =>  {
+                            if kind.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("kind".into())).into());
+                            }
+                            kind = Some((|| -> Result<_, DeserializeError> {
+                                let initial_position = raw.position();
+                                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let i0_value = raw.unsigned_integer()?;
+                                    if i0_value != 0 {
+                                        return Err(DeserializeFailure::FixedValueMismatch{ found: Key::Uint(i0_value), expected: Key::Uint(0) }.into());
+                                    }
+                                    Ok(())
+                                })(raw);
+                                match deser_variant {
+                                    Ok(()) => return Ok(Color::I0),
+                                    Err(_) => raw.set_position(initial_position).unwrap(),
+                                };
+                                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let i1_value = raw.unsigned_integer()?;
+                                    if i1_value != 1 {
+                                        return Err(DeserializeFailure::FixedValueMismatch{ found: Key::Uint(i1_value), expected: Key::Uint(1) }.into());
+                                    }
+                                    Ok(())
+                                })(raw);
+                                match deser_variant {
+                                    Ok(()) => return Ok(Color::I1),
+                                    Err(_) => raw.set_position(initial_position).unwrap(),
+                                };
+                                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let i2_value = raw.unsigned_integer()?;
+                                    if i2_value != 2 {
+                                        return Err(DeserializeFailure::FixedValueMismatch{ found: Key::Uint(i2_value), expected: Key::Uint(2) }.into());
+                                    }
+                                    Ok(())
+                                })(raw);
+                                match deser_variant {
+                                    Ok(()) => return Ok(Color::I2),
+                                    Err(_) => raw.set_position(initial_position).unwrap(),
+                                };
+                                Err(DeserializeError::new("Color", DeserializeFailure::NoVariantMatched))
+                            })().map_err(|e| e.annotate("kind"))?);
+                        },
+                        "meta" =>  {
+                            if meta.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("meta".into())).into());
+                            }
+                            meta = Some(crate::generated::any_cbor::AnyCbor::deserialize(raw).map_err(|e: DeserializeError| e.annotate("meta"))?);
+                        },
+                        "name" =>  {
+                            if name.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("name".into())).into());
+                            }
+                            name = Some(Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("name"))?);
+                        },
+                        "note" =>  {
+                            if note.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("note".into())).into());
+                            }
+                            note = Some((|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                Ok(raw.text()?)
+                            })().map_err(|e| e.annotate("note"))?);
+                        },
+                        "root" =>  {
+                            if root.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("root".into())).into());
+                            }
+                            root = Some(Node::deserialize(raw).map_err(|e: DeserializeError| e.annotate("root"))?);
+                        },
+                        "tags" =>  {
+                            if tags.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("tags".into())).into());
+                            }
+                            tags = Some((|| -> Result<_, DeserializeError> {
+                                let mut tags_arr = Vec::new();
+                                let len = raw.array()?;
+                                while match len { cbor_event::Len::Len(n) => (tags_arr.len() as u64) < n, cbor_event::Len::Indefinite => true, } {
+                                    if matches!(len, cbor_event::Len::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                                        break;
+                                    }
+                                    tags_arr.push(raw.text()?);
+                                }
+                                let tags_arr = NonEmptyVec::try_from(tags_arr)?;
+                                Ok(tags_arr)
+                            })().map_err(|e| e.annotate("tags"))?);
+                        },
+                        "delta" =>  {
+                            if delta.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("delta".into())).into());
+                            }
+                            delta = Some(Int::deserialize(raw).map_err(|e: DeserializeError| e.annotate("delta"))?);
+                        },
+                        "limit" =>  {
+                            if limit.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("limit".into())).into());
+                            }
+                            limit = Some(Ok(raw.unsigned_integer().map_err(Into::<DeserializeError>::into).and_then(|x| if x > 5 { Err(DeserializeFailure::RangeCheck{ found: x as i128, min: None, max: Some(5)}.into()) } else { Ok(x) })?).map_err(|e: DeserializeError| e.annotate("limit"))?);
+                        },
+                        "props" =>  {
+                            if props.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("props".into())).into());
+                            }
+                            props = Some((|| -> Result<_, DeserializeError> {
+                                let mut props_table = BTreeMap::new();
+                                let props_len = raw.map()?;
+                                while match props_len { cbor_event::Len::Len(n) => (props_table.len() as u64) < n, cbor_event::Len::Indefinite => true, } {
+                                    if matches!(props_len, cbor_event::Len::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                                        break;
+                                    }
+                                    let props_key = raw.text()?;
+                                    let props_value = raw.unsigned_integer()?;
+                                    if props_table.insert(props_key.clone(), props_value).is_some() {
+                                        return Err(DeserializeFailure::DuplicateKey(Key::Str(props_key)).into());
+                                    }
+                                }
+                                Ok(props_table)
+                            })().map_err(|e| e.annotate("props"))?);
+                        },
+                        "digest" =>  {
+                            if digest.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("digest".into())).into());
+                            }
+                            digest = Some(Hash::deserialize(raw).map_err(|e: DeserializeError| e.annotate("digest"))?);
+                        },
+                        "totals" =>  {
+                            if totals.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("totals".into())).into());
+                            }
+                            totals = Some((|| -> Result<_, DeserializeError> {
+                                let mut totals_table = BTreeMap::new();
+                                let totals_len = raw.map()?;
+                                while match totals_len { cbor_event::Len::Len(n) => (totals_table.len() as u64) < n, cbor_event::Len::Indefinite => true, } {
+                                    if matches!(totals_len, cbor_event::Len::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                                        break;
+                                    }
+                                    let totals_key = raw.text()?;
+                                    let totals_value = raw.unsigned_integer()?;
+                                    if totals_table.insert(totals_key.clone(), totals_value).is_some() {
+                                        return Err(DeserializeFailure::DuplicateKey(Key::Str(totals_key)).into());
+                                    }
+                                }
+                                let totals_table = NonEmptyMap::try_from(totals_table)?;
+                                Ok(totals_table)
+                            })().map_err(|e| e.annotate("totals"))?);
+                        },
+                        unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => return Err(DeserializeFailure::BreakInDefiniteLen.into()),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),
+                }
+                read += 1;
+            }
+            let id = match id {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("id"))).into()),
+            };
+            let name = match name {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("name"))).into()),
+            };
+            let digest = match digest {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("digest"))).into()),
+            };
+            let delta = match delta {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("delta"))).into()),
+            };
+            let limit = match limit {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("limit"))).into()),
+            };
+            let tags = match tags {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tags"))).into()),
+            };
+            let props = match props {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("props"))).into()),
+            };
+            let totals = match totals {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("totals"))).into()),
+            };
+            let kind = match kind {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("kind"))).into()),
+            };
+            let root = match root {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("root"))).into()),
+            };
+            let meta = match meta {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("meta"))).into()),
+            };
+            read_len.finish()?;
+            Ok(Self {
+                id,
+                name,
+                digest,
+                delta,
+                limit,
+                tags,
+                props,
+                totals,
+                kind,
+                root,
+                meta,
+                note,
+            })
+        })().map_err(|e| e.annotate("Record"))
+    }
+}

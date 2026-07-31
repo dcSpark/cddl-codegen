@@ -392,6 +392,23 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         ),
     ),
     ("raw_bytes", "tests/raw-bytes/input.cddl", ("default", &[])),
+    // The WASM COMPONENT face, which no other profile reaches: a `--component=true` run adds a whole
+    // fourth crate (`component/Cargo.toml`, the seed-once root, the guest glue) plus the emitted WIT
+    // package — and the `.wit` is the ONE generated artifact that is not rust, so this is where its
+    // bytes are pinned at all. Profile-limited for the usual reason: the flag posture is specific.
+    (
+        "component",
+        "tests/component-core/input.cddl",
+        ("component", &["--component=true"]),
+    ),
+    // The multi-INTERFACE shape (a directory input, one interface per file): the cross-interface
+    // `use` edge in the WIT and, on the glue side, two `Guest` impls on one guest type under one
+    // `export!`. None of it is reachable from a single-scope input.
+    (
+        "component_multifile",
+        "tests/component-multifile/inputs",
+        ("component", &["--component=true"]),
+    ),
 ];
 
 /// One tiny CDDL file per language construct → a localized snapshot per feature, across every

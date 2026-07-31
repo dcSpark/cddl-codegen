@@ -1,0 +1,39 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  use sub.{leaf, shade};
+  resource holder {
+    constructor(name: string, tip: borrow<leaf>, shade: shade, tips: list<borrow<leaf>>);
+    name: func() -> string;
+    tip: func() -> leaf;
+    shade: func() -> shade;
+    tips: func() -> list<leaf>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+}
+
+interface sub {
+  resource leaf {
+    constructor(n: u64);
+    n: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<leaf, string>;
+  }
+  enum shade {
+    i0,
+    i1,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+  export sub;
+}
