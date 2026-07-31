@@ -3318,10 +3318,19 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   carrier note already describes. The depth-limit divergence is the sharp one — it compiles, and
   silently guards one crate's `any` values at another crate's limit. Cost the check carries: the
   flag→poisoned-construct map becomes load-bearing and a stale map yields a false "safe", so it owes
-  a lockstep guard tying its construct list to the runtime's flavor-conditional surface. Reopening
-  signal: a consumer report of the silent depth-limit mis-guarding in a `flavor-from` workspace, or
-  of a mismatched crate's spec gaining a poisoned construct with the resulting failure attributed
-  downstream as a consumer bug.
+  a lockstep guard tying its construct list to the runtime's flavor-conditional surface. The same
+  divergence class is reachable WITHOUT config mode — hand invocations pairing
+  `--export-static-crate` with `--common-import-override` consumers — and there it has less signage
+  still: no carrier note exists, only the MATCH contract on the flag's own doc. A check on that path
+  is a structurally different build, not a scope extension of the config-mode one: no single hand
+  invocation sees both flag sets (the consumer knows only the runtime's path, used verbatim), so it
+  would need the exported runtime to carry a machine-readable flavor record that consumer generation
+  reads as an explicit cross-crate input (the `--extern-import` class — another crate's committed
+  export, not this run's prior output). That half is not behind the maintainer-CLOSED gate (it never
+  touches the carrier derivation) but carries the same lockstep-map cost. Reopening signal: a
+  consumer report of the silent depth-limit mis-guarding in a shared-runtime workspace — reached via
+  `flavor-from` or via hand-flag `--export-static-crate` — or of a mismatched crate's spec gaining a
+  poisoned construct with the resulting failure attributed downstream as a consumer bug.
 
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
