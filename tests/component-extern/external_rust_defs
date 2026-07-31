@@ -1,0 +1,80 @@
+// Hand-written definitions of the types `inputs/lib.cddl` declares `_CDDL_CODEGEN_EXTERN_TYPE_` /
+// `_CDDL_CODEGEN_RAW_BYTES_TYPE_`. The component build smoke appends this file into the generated
+// rust crate's THIN ROOT (`rust/src/lib.rs`), which is where a real consumer puts them and the only
+// place they CAN go: the generator re-exports every in-crate extern with `pub use crate::<Name>;`
+// into `generated/**`, so a definition there collides E0255 — and that subtree is clobbered on every
+// regen. Same contract as `run_test`'s `is_extern_type_def` path.
+//
+// This is the DEFAULT-posture flavor. The force-canonical sibling (`external_rust_defs_canonical`)
+// differs in exactly one thing: which `Serialize` the extern contract asks for. Under
+// `--preserve-encodings --canonical-form` the runtime composes its OWN `Serialize` (carrying
+// `force_canonical`) and the emitted `extern_interface_check.rs` asserts that one instead of
+// `cbor_event`'s — which is precisely the fact the canonical build-smoke row exists to compile.
+//
+// Every type is deliberately trivial. What the smoke is judging is the generated BRIDGE, not these:
+// their only job is to satisfy the contract the tool imposes so the glue has something real to name.
+
+/// `ext = _CDDL_CODEGEN_EXTERN_TYPE_`. Contract: `Serialize` + `Deserialize`.
+#[derive(Clone, Debug)]
+pub struct Ext(pub u64);
+
+impl cbor_event::se::Serialize for Ext {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.0)
+    }
+}
+
+impl crate::generated::serialization::Deserialize for Ext {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, crate::generated::error::DeserializeError> {
+        Ok(Self(raw.unsigned_integer()?))
+    }
+}
+
+/// `extern_generic = _CDDL_CODEGEN_EXTERN_TYPE_`, instantiated as `extern_generic<ext>`. The BASE
+/// names no concrete type — only the instance does — so this is the definition the generated
+/// `pub type ExternGenericExt = ExternGeneric<Ext>;` alias resolves through.
+#[derive(Clone, Debug)]
+pub struct ExternGeneric<T>(pub T);
+
+impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for ExternGeneric<T> {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<T: crate::generated::serialization::Deserialize>
+    crate::generated::serialization::Deserialize for ExternGeneric<T>
+{
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, crate::generated::error::DeserializeError> {
+        T::deserialize(raw).map(Self)
+    }
+}
+
+/// `raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_`. Contract: `RawBytesEncoding` and NOTHING else — nothing
+/// requires `Serialize` of it, which is why the component face gives it the raw seam and no cbor
+/// seam at all. This type's silence about `Serialize` is what makes that a real check rather than a
+/// coincidence.
+#[derive(Clone, Debug)]
+pub struct Raw([u8; 4]);
+
+impl crate::generated::serialization::RawBytesEncoding for Raw {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, crate::generated::error::DeserializeError> {
+        bytes.try_into().map(Raw).map_err(|e| {
+            crate::generated::error::DeserializeFailure::InvalidStructure(Box::new(e)).into()
+        })
+    }
+}

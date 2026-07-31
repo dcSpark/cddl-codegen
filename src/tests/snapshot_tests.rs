@@ -515,10 +515,12 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
     ),
     // The BRIDGING classes on the component face: an extern's cbor seam, a raw-bytes type's RAW
     // seam, a generic extern base skipped from the projection entirely beside its bridged instance,
-    // and a monomorphized non-extern generic instance. Pinned as bytes because this is the one
-    // component fixture that cannot enter the wasip2 build smoke — its rust crate names user-owned
-    // types — so the snapshot is the only place its emitted glue is checked at all. The same trade
-    // the `extern_deps` row above makes, for the same reason.
+    // and a monomorphized non-extern generic instance. Pinned as bytes for what compilation cannot
+    // judge: a bridge's WIT reads identically whether it names the right trait or the wrong one, and
+    // what is EXCLUDED (the generic base, which names no concrete type) is a decision rather than a
+    // build outcome. The build smoke compiles this fixture too, pairing it with the hand-written
+    // extern definitions a real consumer supplies — the two halves ask different questions of it
+    // rather than one standing in for the other.
     (
         "component_extern",
         "tests/component-extern/inputs",
