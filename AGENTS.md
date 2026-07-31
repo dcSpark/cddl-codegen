@@ -451,7 +451,8 @@ Additionally, `draft/` is the recommended location for scratchpads (for agents t
 - `tests/README.md` — how the test layers work and how to add/bless snapshots.
 - `tests/TESTING_ROADMAP.md` — prioritized plan for the next testing improvements.
 - `docs/docs/*.mdx` — authoritative user-facing reference: `current_capacities` (supported CDDL +
-  limitations), `command_line_flags`, `comment_dsl`, `output_format`, `wasm_differences`.
+  limitations), `command_line_flags`, `comment_dsl`, `output_format`, `wasm_differences`,
+  `component_differences`.
 - `supported.cddl` and `example/` — example specs to run the tool against.
 - `GENERATING_MULTIPLATFORM_LIB.md` — an example document provided by CML - a consumer of this library
 - specifications (ex: RFCs) for CBOR and CDDL can be found here in cddl-matrix/sources/

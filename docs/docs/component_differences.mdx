@@ -1,0 +1,338 @@
+---
+sidebar_position: 7
+---
+
+
+# Component Differences
+
+[`--component`](command_line_flags.mdx) emits a third face beside the rust and wasm crates: a
+generated **WIT** package plus the `wit-bindgen` guest glue that implements it over the rust crate,
+built for `wasm32-wasip2`. This document is to that face what
+[Wasm differences](wasm_differences.mdx) is to the `wasm-bindgen` one — the record of *why* the
+boundary looks the way it does, so that a shape you did not expect reads as a decision rather than
+an accident.
+
+The two faces answer to different type systems, so they differ in ways that are worth knowing
+before you build against either. Where a difference exists, it is stated here as a difference —
+this face is a **parallel with documented deltas**, not a re-skin of the wasm one.
+
+## Resources, not records
+
+Every type the tool defines crosses the boundary as a WIT `resource` — an opaque handle — rather
+than as a `record` value. Four reasons, in the order they actually bind:
+
+- **Invariant safety.** A WIT `record` has no validated construction, so any constrained type
+  (a value bound, a `[+ …]` non-empty container, a `@duplicates reject` set) could be built
+  through by a caller in a state the rust type forbids. A resource's constructor is the only door.
+- **Recursion.** WIT `record`s and `variant`s may not be recursive; CDDL specs routinely are.
+  Handles are opaque, so `resource node { children: func() -> list<node>; }` is legal and
+  recursion costs nothing.
+- **Copying.** The canonical ABI *copies* values across the boundary; handles are table
+  operations. A record-of-records API copies its whole transitive contents on every call.
+- **Encoding state.** Under `--preserve-encodings` a type carries a hidden `*Encoding` sidecar
+  that is not representable as a WIT value and must stay behind the handle for byte-exact
+  round-trips.
+
+**Parameters borrow, returns own.** Every parameter position — constructors, setters, statics,
+methods — takes `borrow<t>` for a composite, and `list<borrow<t>>` for a collection of them. Every
+return position mints fresh `own` handles. That is not a style preference: the canonical ABI
+*transfers* ownership of an `own` handle at the call boundary (lifting an `own` removes it from the
+caller's table), so a `list<own<t>>` parameter would consume **every element** of the caller's
+array. That is the same bug class the wasm face's `FooList` wrapper classes exist to prevent — see
+[Wasm differences](wasm_differences.mdx#heterogeneous-arrays) — reached here by a position rule
+instead of by wrapper classes. `borrow` is parameter-position only; a return that transitively
+contains one is rejected when the WIT is resolved.
+
+A type the projection cannot render is **excluded and recorded**, never silently dropped: the
+emitted `world.wit` carries a `// unexported: <ident> — <reason>` comment row for it, and any
+signature that would have referenced it is excluded with the same reason. The generated WIT's
+validity is gated by `component_wit_validates` and, at corpus breadth, by
+`component_wit_validates_the_corpus`.
+
+## Getters hand back a snapshot
+
+A getter clones the field and returns a fresh owned handle. Mutating what you got does **not**
+mutate the parent, and mutating the parent afterwards does not change what you got — in both the
+return and the parameter direction. This is the same clone-at-the-boundary rule the wasm face
+already follows, and it is asserted end to end by the behavioural gate `component_host`.
+
+## Collections are plain lists
+
+There are **no wrapper classes** on this face. An array field is `list<t>`, a map field is
+`list<tuple<k, v>>`, and a consumer builds a native array rather than calling
+`FooList.new()`/`add()`. The wasm face's wrappers exist for ownership safety first and type-support
+gaps second; the borrow-parameter rule above covers the ownership half, and WIT's type system has
+neither of the gaps (nested lists, lists of handles and nested `option`s are all expressible).
+
+The consequence is that **constraints move from the type to the door**. A `[+ t]` non-empty
+container, a `@duplicates reject` set and a `@duplicates preserve` pair-map all despecialize to a
+plain `list<…>`, and the invariant is re-checked where the list is *consumed* — the constructor or
+setter that takes it returns `result<…, string>` and reports the same refusal the rust crate's own
+`TryFrom` door would. Nothing is lost; the check simply happens at the call that would have
+violated it.
+
+**Access granularity is coarser than the wasm face's.** A map-typed field's only read is the
+whole-map getter: it materializes every entry and mints a fresh handle per resource-typed entry on
+every call. There is no `get(key)` and no incremental `insert` as the wasm face's table wrappers
+have. If whole-map materialization ever dominates a real profile, keyed accessors on the parent
+resource are the follow-up that would address it.
+
+## Setters exist only for optional fields
+
+The constructor takes every **mandatory** non-fixed field, and each non-fixed field gets a bare
+getter named after it. Only an **optional** field additionally gets a `set-<field>` — a mandatory
+field has no setter at all, because the constructor is the only place its value can be established.
+There is no indexed setter of any kind (no `set-<field>-at(i, v)`); a collection field is written
+whole.
+
+Getter and setter are deliberately asymmetric: the getter of an optional field returns
+`option<t>`, while its setter takes the **bare** `t`. A setter sets a value; it never clears one.
+An optional *fixed-value* field — one whose only information is whether it is present — instead
+gets a `bool` presence getter and a `set-<field>(present: bool)`.
+
+A setter whose type carries a bound is fallible (`result<_, string>`); one whose type does not is
+infallible, so the signature tells you whether a value can be refused.
+
+## Passing a resource into itself stores a snapshot
+
+Because exported resource methods take `&self`, the guest holds each type in a `RefCell`. The
+canonical ABI permits lending the same handle twice into one call, so `x.set-children([x])` is a
+legal thing for a caller to write, and recursive CDDL types make it type-legal in many places.
+
+Generated glue **materializes every parameter to an owned value before it touches `self`**, so such
+a call returns normally and `x` stays usable. What is stored is a **value copy** — a snapshot taken
+at the moment of the call — so mutating `x` afterwards leaves the stored child untouched. An
+aliased cycle is impossible by construction.
+
+This matters more than it looks. Glue that held two `RefCell` guards at once would panic, and a
+panic in a component is a **trap**; a trap poisons the instance, so every subsequent call on it
+fails. In a composed topology, where one instance of a shared library component serves every
+consumer, that is an availability failure and not merely a failed call. The emission rule is pinned
+by `component_glue_never_holds_two_refcell_guards`, and its runtime consequence by `component_host`.
+
+## Nested options work
+
+`option<option<t>>` is a legal WIT type, so a nullable value in a position that adds its own
+presence-`option` keeps all three states — absent, present-and-null, present-with-value — directly
+in the signature. The wasm face's flattening plus additive `has_*` accessors (see
+[Wasm differences](wasm_differences.mdx#nullable--nested-options)) is a `wasm-bindgen` workaround
+that this face does not need and does not emit.
+
+## Naming
+
+WIT identifiers are kebab-case ASCII, and an interface is one flat namespace with a
+*strong-uniqueness* rule — names compare equal after acronym lowercasing and after stripping the
+`[method]`/`[static]`/`[constructor]` prefixes, so a resource may not carry a member with the
+resource's own name. The tool converts rust identifiers deterministically and refuses a spec whose
+converted names collide, naming the collision; the remedy is the
+[`@name`](comment_dsl.mdx) comment-DSL rename, which changes no wire bytes.
+
+Four rules are worth knowing because they are visible in the emitted WIT:
+
+- **Digit-led words merge into the word before them** — `index_0` becomes `index0`, not `index-0`.
+  This is a **consumer-compatibility floor, not a legality constraint**: `index-0` is accepted end
+  to end by the toolchain floor below (it resolves, encodes, validates, and builds), and is
+  rejected only by wasm-tools 1.231-era consumer tooling. The merge is what keeps generated
+  packages readable by those consumers.
+- **Keywords are `%`-escaped against the union of keyword sets across supported toolchain
+  versions**, because the set has moved in *both* directions: `map` is a keyword at the pinned
+  floor and was not at 1.231, while `float32`/`float64` were keywords at the older end and are not
+  now. Escaping a non-keyword is accepted everywhere, so the union is the only choice compatible in
+  both directions. The `%` is WIT syntax and never reaches the generated Rust bindings.
+- **A choice's member names follow the rust CONSTRUCTOR name, never the enum arm identifier.** A
+  rust `Value::new_uint(u64)` whose arm is spelled `Value::U64` projects to `new-uint` and
+  `as-uint`, never `new-u64`. The `new-`/`as-`/`kind` families all derive from that one source, so
+  they agree with each other by construction.
+- **Each exported module scope becomes one `interface`**, nested scope paths flatten with `-`
+  (`a::c` → `a-c`), and the world is `<lib-name>-world`. Interfaces linked with `use` must be
+  acyclic, which is why a multi-file spec with mutually-referencing scopes generates without
+  `--component` and is refused with it.
+
+**A name change is a composition-breaking change, on the same footing as a shape change.** Two
+components unify a type only when the package id, the interface name, the type name and the shape
+all agree — renaming a type, an interface, or a `variant` arm makes a composition that previously
+linked refuse to link. Note the asymmetry in *who enforces it*: a composer such as `wac` checks the
+named type exports and refuses a mismatch, while a `wasmtime::Linker` satisfies an import by
+**function set** and will happily accept a structurally identical type under a different name. Do
+not conclude from a host harness that a rename was safe.
+
+## `Int` is a variant, and its `nint` arm is CBOR-biased
+
+CDDL's `int` spans the full CBOR uint/nint range, which exceeds `s64`, so it crosses as a value
+type rather than a handle:
+
+```wit
+variant int {
+  uint(u64),
+  nint(u64),
+}
+```
+
+**The `nint` payload is the CBOR-encoded magnitude, not the absolute value:** `nint(n)` means
+`-(n + 1)`, so `nint(4)` is **−5**. The arm names follow CBOR's major-type terminology and the rust
+constructors (`Int::new_uint` / `Int::new_nint`), and nothing in the WIT type expresses the bias —
+which is why the emitted WIT carries the bias as a comment on the arm, and why it is stated here.
+
+Because arm names participate in cross-package unification, this spelling is frozen: changing
+`nint` to something more self-describing would break every already-composed consumer.
+
+## `any-cbor` is bytes, exactly one item, canonically re-encoded
+
+CDDL [`any`](current_capacities.mdx#the-any-type-loose-cbor) crosses as a transparent alias:
+
+```wit
+type any-cbor = list<u8>;
+```
+
+A structural recursive variant is impossible (WIT forbids recursive value types), and a resource
+would fail composability exactly where `any` matters most — metadata extension points shared
+between libraries. Bytes are the one representation two independently generated packages can agree
+on without a shared package. Three consequences, all of which have bitten in probing:
+
+- **Exactly one CBOR item.** Validity is checked where the bytes are *consumed*; getters always
+  return valid bytes. Trailing data is an error rather than a silent truncation: handing `0102`
+  (two items) to a door returns `Err(Unexpected trailing data in CBOR)` rather than accepting the
+  first item.
+- **Byte-exact means "against the rust crate's serialization", not "against what you passed in".**
+  Under the default (non-preserve) posture a stored `any` is re-encoded canonically on read-back:
+  set an indefinite-length `9f0102ff` and the getter returns the definite-length `820102`. That is
+  the same rule every type in that posture follows — `any` is simply where a caller is most likely
+  to assume otherwise. Under `--preserve-encodings` the original encoding is retained as it is for
+  every other type.
+- **Introspection is a free function, and it is fallible.**
+  `cbor-kind: func(v: any-cbor) -> result<any-cbor-kind, string>`
+  takes caller-supplied bytes, so decoding *is* the check; the
+  fallible shape keeps `any-cbor-kind` a 1:1 projection of the runtime discriminant with no
+  synthetic `invalid` case. Under `--json-serde-derives` the free functions `cbor-to-json` and
+  `cbor-from-json` join it, both fallible for the same reason. Invalid bytes always cross as a
+  normal `Err`, never as a trap.
+
+## Fallible doors return the rust error text
+
+Anything that can refuse — a bounds-checking constructor, a despecialized collection door, a
+`from-cbor-bytes`, a JSON door — returns `result<…, string>`, and the string is the rust type's
+`Display` text, equal to the native `DeserializeError` a direct rust caller would see (e.g.
+`Deserialization failed in Hash because: 31 not in range 32 - 32`). A structured error `variant` is
+a possible future refinement; today the text is the contract. A refusal is a normal `Err` and never
+a trap, so the instance stays usable afterwards.
+
+Note a template-level distinction visible in the WIT: a fallible **constructor** is
+`constructor(...) -> result<t, string>`, while a fallible **static** is
+`from-cbor-bytes: static func(...) -> result<t, string>`. A resource cannot carry both a
+`constructor` and a static named `new` — `wit-bindgen` lowers both to the same Rust method — so the
+generated vocabulary avoids that collision by construction.
+
+## Encoding posture is a property of the package, not of a type
+
+There are no flavored types — no `canonical-int` beside a `preserve-int`. Posture is decided by the
+flags the crate was generated with and belongs to the package as a whole:
+
+- **Value types are pure semantics.** Encoding state never crosses the boundary as part of a value.
+  This is not new: the wasm face has always returned bare values from getters, with preserve state
+  riding the *container's* hidden sidecar.
+- **Byte-exactness attaches to handles.** A resource never loses its encoding state, because that
+  state never leaves the component that owns it. If you need a byte-exact embedding, take a
+  `borrow<t>` or take `list<u8>` — never a bare value type. In generated code this is automatic; in
+  hand-written WIT that composes with a generated package, it is the rule to follow.
+- **A posture change is a package change.** A preserve-generated crate and a canonical-generated
+  crate of the same spec have different surfaces (`to-canonical-cbor-bytes` exists or does not), so
+  they are different packages, which is what package identity already expresses. Composing across a
+  posture mismatch is an integration-time obligation, not something the type system catches.
+
+The [`--wit-package`](command_line_flags.mdx) flag names that identity, and its version follows
+semver's `0.x` rule: a host resolves `a:b/c@0.2.0` against a defined `0.2.1` but not against
+`0.3.0`, so on a `0.x` line a **minor** bump is a link-time break. For wire types that is arguably
+what you want — an incompatible API fails to link rather than misbehaving at runtime — as long as
+it is a decision rather than a surprise.
+
+## Toolchain floor, and the ambient-`wasm-tools` trap
+
+This face emits **fallible constructors** for every bounds-validating type. That is a spec feature
+with a real minimum: `wasm-tools` 1.231.0 rejects them both at parse time and when validating a
+built artifact, while `wit-parser`/`wit-component` 0.247, `wit-bindgen` 0.57, rustc 1.96's
+`wasm-component-ld` and wasmtime 47 all accept them. **Consumers need 0.247-era tooling or newer.**
+
+The practical trap is that a `wasm-tools` binary already on your `PATH` may be older than that, in
+which case it cannot read these artifacts *at all* — it will report an invalid constructor export
+or an invalid identifier for a package that is perfectly valid. An old `wasm-tools` is not evidence
+about a component; check its version before believing it. This project's own gates never shell out
+to an ambient binary for that reason: `component_wit_validates` uses in-process `wit-parser` /
+`wit-component` / `wasmparser` pinned at the floor.
+
+## Known limitation: the `wasm32-wasip2` cdylib link crash
+
+The generated `rust/Cargo.toml` declares `crate-type = ["cdylib", "rlib"]` for the wasm face's sake,
+and on `wasm32-wasip2` that `cdylib` can crash the linker in the rust sysroot with a SIGSEGV inside
+`wasm-component-ld`/LLD. It is spec-dependent, it is not a diagnostic about your spec, and building
+only the `component/` crate does not avoid it. The fix — narrowing the rust crate to
+`crate-type = ["rlib"]` in the consuming workspace — and the exact failure signature are documented
+on the [`--component` flag](command_line_flags.mdx), which is where a user turning this face on
+meets it; that account is the single source for it and is not restated here.
+
+## Flag-semantics deltas
+
+- **`--to-from-bytes-methods` does not gate this face.** `to-cbor-bytes` and `from-cbor-bytes` are
+  always emitted, because the bytes seam is load-bearing for cross-crate composition and for the
+  extern-type bridges, both of which have nothing else to cross on.
+  `to-canonical-cbor-bytes` is the exception that *is* posture-gated: it appears only under
+  `--preserve-encodings --canonical-form`, the one posture whose composed runtime declares it.
+- **`--json-serde-derives`** adds a fallible `to-json` / `from-json` pair to each type the tool
+  defines, plus the `cbor-to-json` / `cbor-from-json` free functions. They are strings only; there
+  is no `JsValue` equivalent to mirror the wasm face's `to_json_value()`.
+- **`--json-schema-export` and the json-gen crate are orthogonal and untouched.** They are gated on
+  their own flag and exist even under `--wasm=false`, so a `--component --wasm=false` user loses
+  nothing.
+- **`--emit-tests` with `--component` prints a one-line skip and continues** —
+  `cddl-codegen --emit-tests: component module skipped (component test emission not yet
+  supported)`. Test emission for this face is not built yet, and the tool says so out loud rather
+  than silently emitting nothing.
+
+## JavaScript via jco — not yet probed
+
+A component is consumable from any component-model host, including JavaScript through `jco`. The
+JS-side specifics have **not yet been probed** by this project, and the following are recorded as
+expectations to verify rather than as documented behaviour:
+
+- **WIT `enum`s are expected to surface as string labels in JS**, not as the numbers the wasm
+  face's c-style enums use. This is **not yet probed** — treat it as the most likely place a
+  JS consumer's port from the wasm face will need changing, and confirm it against your own
+  `jco` version.
+- A wasip2 component imports 14 `wasi:*` interfaces even when it is a pure codec (see below), so a
+  JS host needs a preview2 shim to satisfy them.
+
+## Binary size
+
+Measured on this project's own generated output under rustc 1.96.1, `--target wasm32-wasip2`,
+`[profile.release] opt-level = "s"`, with the rust crate narrowed to `crate-type = ["rlib"]`:
+
+| Spec | Component `.wasm` | With `[profile.release] strip = true` |
+|---|---|---|
+| A small single-scope spec (records, a choice, a bounded type, a map, an `any` field) | 275,768 B | 211,930 B (−23.1 %) |
+| A larger single-scope spec (the project's `json` fixture) | 338,772 B | 251,406 B (−25.8 %) |
+| The smallest real spec measured (one bounded-bytes rule) | 145,020 B | — |
+
+Three things to take from that:
+
+- **The floor is the rust crate, not the glue.** A one-rule spec still produces a 145 KB component,
+  because every generated component statically links the CBOR runtime it bridges to. Spec size
+  moves the number far less than its presence does.
+- **`strip = true` is the cheap win, and it is a cargo profile key rather than a post-processing
+  step.** Roughly a quarter of an unstripped artifact is the wasm `name` section (63,825 B of the
+  small fixture's core module). Note that stripping also removes the `target_features` custom
+  section, which post-processing tools read — if you then run one, you may have to re-declare the
+  features explicitly.
+- **`wasm-opt` cannot process a component at all.** Binaryen 125 refuses the file outright
+  (`this looks like a wasm component, which Binaryen does not support yet`), so there is no
+  post-`wasm-opt` component size to quote. As an upper bound on what a component-aware Binaryen
+  would recover, running `wasm-opt -Os` on the *embedded core module* takes the small fixture's
+  257,255 B module to 158,872 B (−38.2 %) and the large one's 296,870 B to 169,504 B (−42.9 %) —
+  but most of that is the same `name`-section stripping `strip = true` already gives you; the
+  optimisation itself accounts for about 7 % of the module.
+
+**The WASI import surface is a fixed floor, not a function of your spec.** Every artifact measured
+above — including the 145 KB one — imports exactly **14** `wasi:*` interfaces
+(`wasi:io/{poll,error,streams}`, `wasi:clocks/monotonic-clock`, and ten `wasi:cli/*`, all at
+`@0.2.9` under this toolchain) and exports exactly one interface. Those imports come from the
+sysroot's reactor adapter, not from generated code, and a host must satisfy them even for a pure
+codec: an empty host linker fails on `wasi:io/poll` before your code runs. The generated WIT itself
+stays WASI-free.
