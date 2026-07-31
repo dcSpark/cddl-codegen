@@ -32,3 +32,10 @@ big_thing = [e: my_extern, s: my_set]
 ; fails this fixture's json-gen run, which is the only place the decode is load-bearing.
 encoded_name = _CDDL_CODEGEN_EXTERN_TYPE_
 encoded_holder = [e: encoded_name]
+
+; A `@no_json_schema_export` extern as an open struct-map rest row's KEY domain, under
+; --json-schema-export. The rest row's flattened region publishes a K-FREE open-object schema, so the
+; key's missing `schemars::JsonSchema` impl is not an E0277 here — which is the whole reason that
+; helper asks nothing of K. (The parent still derives `JsonSchema`: the rest field is answered by the
+; `schema_with` annotation, so the derive never asks the field type for one.)
+no_schema_key_rest = { 1: uint, * no_schema_extern => uint }

@@ -23,6 +23,31 @@ mod tests {
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
     }
 
+    // A `@no_json_schema_export` extern as a rest row's KEY domain, under --json-schema-export. The
+    // json-gen build is again the compile proof (a K-bounded schema helper would be an E0277 there);
+    // this pins the resulting shape: the flattened region is an OPEN object over the RANGE, and the
+    // key type contributes nothing to the document at all — which is exactly why the helper can ask
+    // nothing of K.
+    #[test]
+    fn no_json_schema_export_key_publishes_an_open_object() {
+        let schema = serde_json::to_value(schemars::schema_for!(NoSchemaKeyRest)).unwrap();
+        assert_eq!(
+            schema
+                .pointer("/additionalProperties/type")
+                .and_then(serde_json::Value::as_str),
+            Some("integer"),
+            "the open region is typed by the range: {schema}"
+        );
+        assert!(
+            schema.pointer("/properties/key_1").is_some(),
+            "the declared field survives the flatten merge: {schema}"
+        );
+        assert!(
+            !serde_json::to_string(&schema).unwrap().contains("NoSchemaExtern"),
+            "the key type must not be referenced by the published schema: {schema}"
+        );
+    }
+
     #[test]
     fn big_thing_round_trip() {
         let orig = BigThing::new(MyExtern::new(42), ExtSet::new(vec![1u64, 2, 3]));
