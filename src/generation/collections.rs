@@ -119,9 +119,14 @@ impl GenerationScope {
             && let Some(owner) = sole_named_leaf(constituents)
             && let Some(prefix) = types.extern_companion_path(&owner, structural_name)
         {
-            // A non-exported scope, so `add_imports_from_scope_refs` emits the prefix VERBATIM as the
-            // `use` head (an exported scope would be rooted at `crate::generated`). The same routing
-            // the dependency-keyed arms use, with the path coming from the spec instead of a dep edge.
+            // A non-exported scope, so `add_imports_from_scope_refs` emits the prefix as the `use`
+            // head unrooted (an exported scope would be rooted at `crate::generated`). The same
+            // routing the dependency-keyed arms use, with the path coming from the spec instead of a
+            // dep edge — including that seam's `--extern-wasm-crate` remap, which rewrites the
+            // LEADING component when it names a declared extern dependency. That is reachable here
+            // only if the author spells a dep's RUST crate name as the companion path, where the
+            // remap yields the dep's wasm crate — the path they meant — so it is left to apply
+            // rather than special-cased away (documented on the directive).
             let mut components = vec![crate::parsing::EXTERN_DEPS_DIR.to_owned()];
             components.extend(prefix.split("::").map(str::to_owned));
             self.deferred_wrappers
