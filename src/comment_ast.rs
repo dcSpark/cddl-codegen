@@ -357,13 +357,42 @@ fn tag_rust_name(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::RustName(rust_name.to_string())))
 }
 
+/// A syntactic rust identifier: the shape `@newtype`'s optional getter argument must have, since it
+/// is emitted verbatim as a method name. Deliberately syntactic only — a keyword getter (`match`)
+/// still reaches the compiler, which names it precisely; what this bounds is the token that would
+/// otherwise reach `rustfmt` as unparseable source.
+fn is_rust_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) if first.is_alphabetic() || first == '_' => {}
+        _ => return false,
+    }
+    chars.all(|ch| ch.is_alphanumeric() || ch == '_')
+}
+
 fn tag_newtype(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@newtype")(input)?;
     // to get around type annotations
     fn parse_newtype(input: &str) -> IResult<&str, ParseResult> {
         let (input, _) = take_while(char::is_whitespace)(input)?;
         let (input, getter) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
-        Ok((input, ParseResult::NewType(Some(getter.trim().to_owned()))))
+        let getter = getter.trim();
+        // `@newtype` is the one directive whose argument is both OPTIONAL and free-form, so it is
+        // the one that can capture text the author never meant as an argument. A CDDL comment runs
+        // to end of line, which makes the second `;` in `tk = text ; @newtype ; my comment` comment
+        // CONTENT: an unbounded token read takes `;` as the getter and emits `pub fn ;(&self)`,
+        // which surfaces as a rustfmt parse failure blaming the generator. Bounding the token to a
+        // rust identifier and PANICking otherwise (matching `@used_as_key`/`@duplicates`'
+        // unknown-argument handling) names the cause at the cause.
+        if !is_rust_ident(getter) {
+            panic!(
+                "@newtype: invalid getter name {getter:?}; expected a rust identifier \
+                 (`@newtype inner`) or bare `@newtype`. A CDDL comment runs to end of line, so a \
+                 second `;` on the line is comment CONTENT and is read as the getter — put prose in \
+                 `@doc`."
+            );
+        }
+        Ok((input, ParseResult::NewType(Some(getter.to_owned()))))
     }
     match parse_newtype(input) {
         Ok(ret) => Ok(ret),
@@ -671,6 +700,23 @@ fn parse_comment_newtype_getter_before() {
             }
         ))
     );
+}
+
+/// The getter bound is syntactic, so it must not narrow the spellings that legitimately reach it.
+#[test]
+fn parse_comment_newtype_getter_underscore_ident() {
+    let md = rule_metadata("@newtype _inner").unwrap().1;
+    assert_eq!(md.newtype, Some(Some("_inner".to_owned())));
+}
+
+/// A CDDL comment runs to end of line, so the `;` in `; @newtype ; my comment` is comment CONTENT.
+/// Unbounded, the optional getter reads it and emits `pub fn ;(&self)` — invalid rust that surfaces
+/// as a rustfmt parse failure blaming the generator, a whole pipeline away from the spec line that
+/// caused it. Pinned loud at the cause instead.
+#[test]
+#[should_panic(expected = "@newtype: invalid getter name \";\"")]
+fn parse_comment_newtype_trailing_comment_is_not_a_getter() {
+    let _ = rule_metadata("@newtype    ; my comment");
 }
 
 #[test]
