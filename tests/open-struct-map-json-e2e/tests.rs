@@ -428,6 +428,41 @@ mod open_struct_map_typed_key_json {
     }
 
     #[test]
+    fn a_primitive_typed_key_reads_like_its_bare_sibling() {
+        // A primitive typed K (`uint .size 1` — typed only because the bound keeps it off the peeked
+        // path) states its image directly: decimal both ways, exactly what the bare `uint` domain
+        // does, so which side of the CBOR routing rule a row falls on never changes its JSON. The
+        // bound is still K's, so an out-of-range member name is a parse error.
+        let mut p = Pk::new(1);
+        p.rest.insert(200, 5);
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"200\":5"), "{json}");
+        let back: Pk = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+        assert!(
+            serde_json::from_str::<Pk>(r#"{"key_1":1,"300":5}"#).is_err(),
+            "a member name outside the key's own range must fail the parse"
+        );
+    }
+
+    #[test]
+    fn a_bytes_key_domain_has_no_json_image_in_either_direction() {
+        // A `bytes` K's wire form is a byte string, which has no member-name image at all — so this
+        // row's flattened region is a pure error surface, loudly, on both faces. Compiled rather than
+        // only snapshotted: the write side of this route has no `to_cbor_bytes` to lean on.
+        let mut b = Bk::new(1);
+        b.rest.insert(vec![0xde, 0xad], 5);
+        let e = serde_json::to_string(&b).expect_err("a bytes key must error on to_json");
+        assert!(format!("{e}").contains("Bytes"), "got: {e}");
+        let e = serde_json::from_str::<Bk>(r#"{"key_1":1,"dead":5}"#)
+            .expect_err("no member name reads back as a bytes key");
+        assert!(format!("{e}").contains("is not a valid key"), "got: {e}");
+        // ...and the CBOR face is untouched by the JSON one.
+        let bytes = ToCBORBytes::to_cbor_bytes(&b);
+        assert_eq!(Bk::from_cbor_bytes(&bytes).unwrap().rest, b.rest);
+    }
+
+    #[test]
     fn typed_key_pair_map_publishes_the_same_schema_as_its_loose_twin() {
         // (16) The published schema of the flattened region belongs to the rest-row POSITION (key
         // domain x value type), never to the container holding the entries — so the PairMap twin and

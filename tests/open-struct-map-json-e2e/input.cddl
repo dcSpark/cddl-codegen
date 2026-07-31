@@ -34,3 +34,9 @@ tkkp = { 1: uint, * md => md ; @duplicates preserve
 tonly = { 1: uint, * tk => uint }
 uonly = { 1: uint, * uk => uint }
 bonly = { 1: uint, * bt => uint }
+
+; A PRIMITIVE typed K (`.size` keeps it off the peeked path) states its image directly instead of
+; round-tripping through CBOR, and a `bytes` K has no member-name image at all — its flattened region
+; is a pure error surface in both directions. Both routes are compiled here, not only snapshotted.
+pk = { 1: uint, * uint .size 1 => uint }
+bk = { 1: uint, * bytes => uint }
