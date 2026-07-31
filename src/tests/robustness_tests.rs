@@ -1903,6 +1903,151 @@ fn preserve_pair_map_loose_wrapper_ident_collision_rejects_gracefully() {
     );
 }
 
+/// The DEFAULT-flavored twin of the pin above: an open struct-map rest row with no `@duplicates`
+/// directive mints the loose `MapKToV` its wasm getter returns, so a user rule spelling that ident
+/// shadows it exactly as the preserve row shadows `PairMapKToV`. Until this leg existed the default
+/// flavor fell through to the generic `export.rs` duplicate-ident backstop while its preserve twin
+/// got a per-kind message — the message text here is what closes that asymmetry, so it is pinned.
+#[test]
+fn default_rest_row_loose_map_wrapper_ident_collision_rejects_gracefully() {
+    // `map_u64_to_text` is a plain struct rule claiming the ident the DEFAULT rest row's structural
+    // wrapper mints.
+    const CDDL: &str = "map_u64_to_text = [x: uint]\n\
+                        holder = {\n\
+                        1: uint,\n\
+                        * uint => text\n\
+                        }\n\
+                        user = [p: map_u64_to_text]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_rest_loose_map_ident_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "rest_loose_map_ident_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let err = result
+        .expect_err("a user rule claiming the loose map wrapper ident must be a graceful Err");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("MapU64ToText")
+            && msg.contains("open struct-map rest row of 'Holder'")
+            && msg.contains("loose map wrapper"),
+        "the message must name the claimed ident, the rest row that mints it, and the DEFAULT \
+         (non-PairMap) flavor, got: {msg}"
+    );
+    assert!(
+        !msg.contains("duplicate top-level ident"),
+        "the per-kind detector must fire BEFORE the generic duplicate-ident backstop, got: {msg}"
+    );
+}
+
+/// The self-named leg of the same family, from the rest row's side: a `{+ k => v}` rule whose ident
+/// IS the loose builder name owns that ident for its RESTRICTED class, so a rest row of the same
+/// key/value has no loose class left to return. The row's need is invisible to the conceptual walk
+/// (the IR stores its key/value flat), so it is registered from the row's container type.
+#[test]
+fn rest_row_loose_map_need_vs_self_named_non_empty_rule_rejects_gracefully() {
+    const CDDL: &str = "map_u64_to_text = {+ uint => text}\n\
+                        holder = {\n\
+                        1: uint,\n\
+                        * uint => text\n\
+                        }\n\
+                        user = [p: map_u64_to_text]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_rest_loose_map_need_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "rest_loose_map_need_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let err = result.expect_err(
+        "a self-named `{+ …}` rule starving a rest row of its loose builder must be a graceful Err",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains(
+            "an open struct-map rest row of the same key/value needs for its loose \
+                      'MapU64ToText' table wrapper"
+        ),
+        "the self-named leg must name the rest row as the use that needs the loose builder, got: \
+         {msg}"
+    );
+}
+
+/// The LIST-family sibling of the pin above, both rest shapes: a `* K => V` row's wasm class needs
+/// the loose `<K>List` for its `keys()`, and a `* T` tail's getter needs the loose `<T>List` itself.
+/// A self-named `[+ elem]` rule owns that ident for its restricted class, leaving neither with a
+/// class of the right shape.
+#[test]
+fn rest_row_loose_list_needs_vs_self_named_non_empty_rule_reject_gracefully() {
+    let run = |cddl: &str, tag: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_rest_loose_list_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "rest_loose_list_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        result
+            .expect_err("a self-named `[+ …]` rule starving a rest row must be a graceful Err")
+            .to_string()
+    };
+
+    // (a) the map row's keys() wrapper
+    let msg = run(
+        "md = int / bytes / text\n\
+         md_list = [+ md]\n\
+         holder = {\n\
+         1: uint,\n\
+         * md => text\n\
+         }\n",
+        "keys",
+    );
+    assert!(
+        msg.contains(
+            "an open struct-map rest row's keys() wrapper of the same element needs for its loose \
+             'MdList' list wrapper"
+        ),
+        "the keys() leg must name the rest row's keys wrapper as the use, got: {msg}"
+    );
+
+    // (b) the array `* t` tail's own getter
+    let msg = run(
+        "inner = [q: uint, r: text]\n\
+         inner_list = [+ inner]\n\
+         holder = [x: uint, * inner]\n",
+        "tail",
+    );
+    assert!(
+        msg.contains(
+            "an open array `* …` rest tail of the same element needs for its loose 'InnerList' \
+             list wrapper"
+        ),
+        "the tail leg must name the rest tail as the use, got: {msg}"
+    );
+}
+
 /// The min-1 sibling of the above: an ANONYMOUS `@duplicates preserve` `{+ …}` table instance mints
 /// `NonEmptyPairMapKToV`, and a user rule spelling that ident shadows it.
 #[test]
