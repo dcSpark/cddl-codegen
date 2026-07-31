@@ -507,6 +507,46 @@ mod open_struct_map_typed_key_json {
     }
 
     #[test]
+    fn a_text_key_domain_flattens_beside_a_declared_member_of_another_type() {
+        // (19) `Trow = { name: text, * text => uint }`: every string is a valid member name, so the
+        // declared name binds first and the remainder lands in rest — the same split the numeric
+        // domains make, over a key space that contains the declared name itself.
+        let mut trow = Trow::new("ada".to_string());
+        trow.rest.insert("era".to_string(), 3);
+        let json = serde_json::to_string(&trow).unwrap();
+        assert!(json.contains("\"name\":\"ada\""), "declared field: {json}");
+        assert!(json.contains("\"era\":3"), "rest text key flattened: {json}");
+        let back: Trow = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "ada");
+        assert_eq!(back.rest.get("era"), Some(&3));
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+    }
+
+    #[test]
+    fn a_text_key_domain_publishes_an_unpatterned_open_region() {
+        // (20) The schema half of the vector above, and the pre-existing member of the class the TS
+        // projection leg covers: a `text` domain constrains no member NAME, so the region is an
+        // `additionalProperties` over the range with no pattern beside it — and the declared member's
+        // type is not the range's, which is what TypeScript's index signature cannot say exactly.
+        let schema = serde_json::to_value(schemars::schema_for!(Trow)).unwrap();
+        assert!(
+            schema.pointer("/properties/name").is_some(),
+            "the declared field survives the flatten merge: {schema}"
+        );
+        assert!(
+            schema.get("patternProperties").is_none(),
+            "a text domain admits every name, so nothing may pattern them: {schema}"
+        );
+        assert_eq!(
+            schema
+                .pointer("/additionalProperties/type")
+                .and_then(serde_json::Value::as_str),
+            Some("integer"),
+            "the open region is typed by the RANGE: {schema}"
+        );
+    }
+
+    #[test]
     fn a_key_whose_own_schema_is_constrained_still_publishes_an_open_object() {
         // (18) The anti-vector for the K-free schema helper. `Uk`'s own `JsonSchema` is a constrained
         // NUMBER, and `BTreeMap<Uk, u64>`'s schema would turn that into `patternProperties "^\d+$"`

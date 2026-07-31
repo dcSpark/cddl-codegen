@@ -160,13 +160,22 @@ for (const [name, body] of Object.entries(sourceDefs)) {
 }
 
 // TypeScript requires every named property to be assignable to the type's index signature, which
-// is what json2ts renders `patternProperties` as. A schema declaring BOTH — named keys beside a
-// pattern catch-all, the shape a CDDL open-map rest row (`* k => v`) flattened into a record
-// produces — is valid JSON Schema, since the two key spaces are disjoint, but has no exact
-// TypeScript equivalent: json2ts emits the named properties beside the index signature and every
-// one of them fails TS2411 against it. Widen each catch-all to also accept the named property
-// types: the emitted declaration is legal and loses only the disjointness. Recursive, because the
-// combination is just as expressible (and just as uncompilable) on a nested object schema.
+// is what json2ts renders a catch-all — `patternProperties` or `additionalProperties` — as. A schema
+// declaring named keys BESIDE a catch-all, the shape a CDDL open-map rest row (`* k => v`) flattened
+// into a record produces, is valid JSON Schema, since the two key spaces are disjoint (a catch-all
+// ranges over exactly the members the named keys do not match), but has no exact TypeScript
+// equivalent: json2ts emits the named properties beside the index signature and every one of them
+// fails TS2411 against it. Widen each catch-all to also accept the named property types: the emitted
+// declaration is legal and loses only the disjointness, which is the least-false legal TypeScript
+// available. Recursive, because the combination is just as expressible (and just as uncompilable) on
+// a nested object schema.
+//
+// This is a PROJECTION-only transform on an in-memory copy — the published schema document keeps the
+// exact `additionalProperties`, because widening THAT would make the document over-accept: a rest
+// member matching a declared member's schema would validate while `from_json` rejects it. Which key
+// domains reach which keyword is the generator's business (a `uint` domain has a string pattern and
+// arrives as `patternProperties`; a `text` or typed domain has none and arrives as
+// `additionalProperties`), and both spellings project through here identically.
 //
 // An OPTIONAL named property needs one member more than its own schema. Under `strictNullChecks`
 // the type checked against the index signature for `a?: T` is `T | undefined`, so the named schemas
@@ -174,6 +183,14 @@ for (const [name, body] of Object.entries(sourceDefs)) {
 // for emitting a raw TypeScript type verbatim, and is what puts `undefined` in the union. A
 // property counts as optional unless `required` positively lists it, since `required` may be
 // absent, not an array, or name keys that `properties` does not have.
+//
+// Two catch-alls are left exactly as they are, so the common rest rows keep projecting to the same
+// bytes they always have. One that admits every value (`true`, or the empty schema `{}` an `* any =>
+// any` row emits) already renders as an `unknown` index signature every named property satisfies —
+// widening it would only spell `unknown` more noisily. And a named schema STRUCTURALLY equal to the
+// catch-all (a `* uint => uint` row beside a `uint` field) contributes nothing to the union, so the
+// members are deduplicated against the catch-all and against each other; when that empties the
+// member list the node is not rewritten at all.
 //
 // The wrap decision must only ever be evaluated on a node that IS a schema. The recursion stays
 // generic (as `rewriteRefs` above is), but two keyword classes are handled by name so that every
@@ -192,9 +209,15 @@ for (const [name, body] of Object.entries(sourceDefs)) {
 const SCHEMA_MAP_KEYWORDS =
   ['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas', 'dependencies'];
 const DATA_KEYWORDS = ['enum', 'const', 'default', 'examples'];
-const widenPatternCatchAlls = (node) => {
+// Structural identity for the dedup above. Key order carries no meaning in a schema, so the object
+// keys are sorted on the way out; `JSON.stringify` then serializes each object in that order.
+const schemaKey = (schema) => JSON.stringify(schema, (_, value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+    : value);
+const widenCatchAlls = (node) => {
   if (Array.isArray(node)) {
-    node.forEach(widenPatternCatchAlls);
+    node.forEach(widenCatchAlls);
     return;
   }
   if (node === null || typeof node !== 'object') return;
@@ -202,25 +225,40 @@ const widenPatternCatchAlls = (node) => {
     if (DATA_KEYWORDS.includes(key)) continue;
     if (SCHEMA_MAP_KEYWORDS.includes(key)) {
       if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-        Object.values(value).forEach(widenPatternCatchAlls);
+        Object.values(value).forEach(widenCatchAlls);
       }
     } else {
-      widenPatternCatchAlls(value);
+      widenCatchAlls(value);
     }
   }
-  if (node.patternProperties == null) return;
   const named = Object.entries(node.properties || {});
   if (named.length === 0) return;
-  const members = named.map(([, schema]) => schema);
-  if (named.some(([key]) => !Array.isArray(node.required) || !node.required.includes(key))) {
-    members.push({ tsType: 'undefined' });
+  const optional =
+    named.some(([key]) => !Array.isArray(node.required) || !node.required.includes(key));
+  const widen = (owner, key) => {
+    const catchAll = owner[key];
+    if (catchAll === null || typeof catchAll !== 'object' || Array.isArray(catchAll)) return;
+    if (Object.keys(catchAll).length === 0) return;
+    const seen = new Set([schemaKey(catchAll)]);
+    const members = [];
+    for (const [, schema] of named) {
+      const identity = schemaKey(schema);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      members.push(schema);
+    }
+    if (optional) members.push({ tsType: 'undefined' });
+    if (members.length === 0) return;
+    owner[key] = { anyOf: [catchAll, ...members] };
+  };
+  const patterns = node.patternProperties;
+  if (patterns !== null && typeof patterns === 'object' && !Array.isArray(patterns)) {
+    for (const pattern of Object.keys(patterns)) widen(patterns, pattern);
   }
-  for (const [pattern, patternSchema] of Object.entries(node.patternProperties)) {
-    node.patternProperties[pattern] = { anyOf: [patternSchema, ...members] };
-  }
+  widen(node, 'additionalProperties');
 };
 // `defs` is a map OF schemas, not a schema, so each definition is what enters the walk.
-Object.values(defs).forEach(widenPatternCatchAlls);
+Object.values(defs).forEach(widenCatchAlls);
 
 const merged = {
   $schema: document.$schema || 'https://json-schema.org/draft/2020-12/schema',

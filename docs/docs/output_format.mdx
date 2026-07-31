@@ -478,6 +478,25 @@ object level as the declared members** (via serde `flatten`), under the natural-
   non-preserve twin publishes (the duplicate-key `to_json` failure above is data-dependent and has
   no JSON-Schema expression).
 
+**The TypeScript projection of an open region is a union.** A JSON-Schema catch-all
+(`additionalProperties`/`patternProperties`) ranges over exactly the members the declared
+`properties` do *not* match; a TypeScript index signature has no such scoping — it ranges over
+**every** property, and the language requires each declared member to satisfy it. The two are
+therefore not the same statement, and the exact one is inexpressible. `run-json2ts.js` compiles the
+open region as `[k: string]: <range> | <the declared members' types>` (plus `undefined` when a
+declared member is optional), which is the least-false legal TypeScript: it loses the disjointness
+and nothing else. Emitting the range alone would instead be **illegal** TypeScript — one `TS2411`
+per declared member whose type the range does not admit, which is every rest row over a range that
+is not the declared members' type.
+
+That widening is a projection step, applied to an in-memory copy while compiling. The **published
+schema keeps its exact `additionalProperties`**: widening the document itself would make it
+over-accept, since a rest member matching a declared member's schema would validate against a
+document `from_json` rejects. Two catch-alls are left as they are, because they are already legal
+and already exact: one that admits every value (an `any` range's `{}`, which projects to
+`unknown`), and one a declared member's schema is structurally equal to (a `* uint => uint` row
+beside a `uint` member — the declared type adds nothing to the union).
+
 ### Typed key domains in JSON
 
 A rest key is a JSON object **member name**, so a general key type `K` needs a *string image* — not

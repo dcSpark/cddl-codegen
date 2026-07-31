@@ -2887,8 +2887,23 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   Mechanical layer: a property over the `AnyCbor` fuzz corpus asserting
   `from_edn(to_edn(x))` byte-identity against the existing span oracle
   (`src/tests/any_cbor_tests.rs`).
+- **Run the TS-projection leg over every `--json-schema-export` fixture, not one.**
+  `assert_schema_projects_to_legal_ts` type-checks the document a fixture's json-gen crate actually
+  wrote, and `open_struct_map_json_e2e` is the only caller — chosen because its rest rows are where
+  a schema that is exactly right still projects to TypeScript that does not compile. Every other
+  `--json-schema-export` fixture is covered for its schema and not for its projection, so a shape
+  none of those rows has (a `oneOf` a consumer's `tsc` chokes on, a `$ref` cycle json2ts unrolls) is
+  invisible until a consumer's npm build finds it. Deferred on cost, not value: the leg is an `npm
+  install` plus a `tsc` run per fixture, and `run_test` has 27 call sites passing that flag. The
+  cheap build when it is worth it is a work dir whose `node_modules` is installed once and shared
+  (under `acquire_scratch_lock`, since `cargo test` runs the fixtures in parallel), leaving each
+  fixture a node + `tsc` run of a few seconds. Reopening signal: a second projection defect reaches a
+  consumer through a fixture the leg does not run on — or the flag's call-site count grows past
+  roughly forty, at which point the shared-install build is cheaper than deciding case by case which
+  fixture deserves the leg.
 - **Type-check the MERGED `.d.ts` with `tsc --noEmit`.** The type-checker oracle covers the json2ts
-  output alone (`js_schema_to_ts`); the merged file — wasm-pack's bindings with the JSON interfaces
+  output alone (`js_schema_to_ts`, and `assert_schema_projects_to_legal_ts` over real emitted
+  documents); the merged file — wasm-pack's bindings with the JSON interfaces
   appended and each `to_json_value()` specialized, produced by `js_d_ts_merge` and
   `package_json_pipeline` — is still asserted on *substrings* of the emitted TypeScript, so it can
   only catch the wrongness it was told to look for. A real type-checker over the merged file is the
