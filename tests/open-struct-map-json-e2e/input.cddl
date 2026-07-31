@@ -8,3 +8,6 @@ baz = { 1: uint, * any => any }             ; any key domain, complex keys error
 typed = { 1: uint, * uint => text }         ; fully-typed rest (no any anywhere)
 dupp = { 1: uint, * uint => any ; @duplicates preserve
 }                                           ; PairMap twin: actual duplicate keys error on to_json
+dupt = { 1: uint, * uint => text ; @duplicates preserve
+}                                           ; TYPED PairMap twin of `typed`: same flattened JSON,
+                                            ; so the same JSON Schema (schema-parity vector)

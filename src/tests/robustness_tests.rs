@@ -4035,6 +4035,91 @@ fn open_struct_map_rest_row_front_end() {
         !typed_src.contains("map(|(k, v)| (k, v))"),
         "a typed-range rest row must not emit an identity map (clippy::map_identity), got:\n{typed_src}"
     );
+    // --- flattened rest SCHEMA ownership (--json-schema-export): the open region's schema comes from
+    // the rest-row POSITION (key domain × value type), never from the container's own `JsonSchema`.
+    // The `@duplicates preserve` twin is array-shaped (`PairMap` → `Vec<(K, V)>`), so a TYPED preserve
+    // row names the position's schema explicitly; its non-preserve twin IS the `BTreeMap`/
+    // `OrderedHashMap` the position calls for, so it keeps delegating and emits no attribute; an `any`
+    // range keeps the permissive natural-any override in either container. The helper the preserve arm
+    // names delegates to `BTreeMap<K, V>`, so the two containers are schema-indistinguishable. ---
+    let schema_flags = &["--json-serde-derives=true", "--json-schema-export=true"];
+    for (spec, tag, k_v) in [
+        (
+            "foo = { 1: uint, * uint => text ; @duplicates preserve\n}\n",
+            "schema_dup_uint",
+            "u64, String",
+        ),
+        (
+            "foo = { 1: uint, * text => uint ; @duplicates preserve\n}\n",
+            "schema_dup_text",
+            "String, u64",
+        ),
+    ] {
+        let dup = run_flags(spec, tag, schema_flags)
+            .expect("a typed `@duplicates preserve` rest row GENERATES under the json flags");
+        let dup_src = src(&dup);
+        // the attribute text only (rustfmt line-breaks the surrounding `#[schemars(…)]` when the
+        // path is long, so the wrapper is not part of the pin).
+        let expected = format!(
+            "schema_with = \
+             \"crate::generated::open_struct_rest_json::typed_rest_map_schema::<{k_v}>\""
+        );
+        assert!(
+            dup_src.contains(&expected),
+            "a typed `@duplicates preserve` rest row must own its flattened schema via \
+             `{expected}` (the PairMap container's own schema is an array of pairs), got:\n{dup_src}"
+        );
+    }
+    // The non-preserve typed twin delegates to its own container (which IS the `BTreeMap` the
+    // position calls for) — no attribute, and the same shape by construction.
+    let typed_schema = run_flags(
+        "foo = { 1: uint, * uint => text }\n",
+        "schema_typed",
+        schema_flags,
+    )
+    .expect("a typed non-preserve rest row GENERATES under the json flags");
+    assert!(
+        !src(&typed_schema).contains("schemars(schema_with"),
+        "a typed NON-preserve rest row must keep delegating to its container's schema (no \
+         `schema_with` override), got:\n{}",
+        src(&typed_schema)
+    );
+    // An `any` range takes the permissive natural-any override whichever container holds it — the
+    // `PairMap`'s array-of-pairs schema is replaced wholesale there too.
+    let any_dup = run_flags(
+        "foo = { 1: uint, * uint => any ; @duplicates preserve\n}\n",
+        "schema_dup_any",
+        schema_flags,
+    )
+    .expect("an `any`-range `@duplicates preserve` rest row GENERATES under the json flags");
+    let any_dup_src = src(&any_dup);
+    assert!(
+        any_dup_src
+            .contains("schema_with = \"crate::generated::any_cbor::natural_any_cbor_map_schema\"")
+            && !any_dup_src.contains("typed_rest_map_schema"),
+        "an `any`-range rest row must keep the natural-any override in every container, got:\n{any_dup_src}"
+    );
+    // `--json-schema-export` ALONE (no serde derives): the schema surface is the subject, so the
+    // attribute is emitted and the helper's module is declared — from its schemars fragment only, the
+    // serde-dependent half staying behind `--json-serde-derives` (that crate declares no `serde`).
+    let schema_only = run_flags(
+        "foo = { 1: uint, * uint => text ; @duplicates preserve\n}\n",
+        "schema_only",
+        &["--json-schema-export=true"],
+    )
+    .expect("a typed `@duplicates preserve` rest row GENERATES under --json-schema-export alone");
+    let schema_only_src = src(&schema_only);
+    assert!(
+        schema_only_src.contains(
+            "schema_with = \
+             \"crate::generated::open_struct_rest_json::typed_rest_map_schema::<u64, String>\""
+        ) && schema_only_src.contains("pub mod open_struct_rest_json;"),
+        "under --json-schema-export alone the rest-row schema helper must still be reachable, got:\n{schema_only_src}"
+    );
+    assert!(
+        !schema_only_src.contains("serialize_flattened_rest"),
+        "the serde flatten mechanics stay behind --json-serde-derives, got:\n{schema_only_src}"
+    );
     // --- wasm rest surface: open structs GENERATE under --wasm (the default), the wasm wrapper
     // gaining a `rest` getter that returns the captured entries as the minted map wrapper.
     // --wasm=true is the default, so pin generation by NOT passing --wasm=false. ---

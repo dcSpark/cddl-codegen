@@ -1128,9 +1128,12 @@ impl GenerationScope {
                 self.rust_lib().raw("pub mod any_cbor;");
             }
             // only crates with an open struct-map rest row pull in the flatten JSON helpers, and only
-            // under --json-serde-derives (the module is serde-dependent) — keeps every other crate's
-            // output byte-identical.
-            if cli.json_serde_derives && types.uses_open_struct_rest() {
+            // under a json flag — keeps every other crate's output byte-identical. Either flag: the
+            // module carries the serde flatten mechanics under --json-serde-derives and the rest-row
+            // schema helper under --json-schema-export, each its own fragment (see
+            // `composed_runtime_static_files`), so a schema-only crate gets the helper without the
+            // serde-dependent half.
+            if (cli.json_serde_derives || cli.json_schema_export) && types.uses_open_struct_rest() {
                 self.rust_lib().raw("pub mod open_struct_rest_json;");
             }
             // the honest `serde_json::Value`/`Number` serializer walk. Flag-gated, never spec-gated

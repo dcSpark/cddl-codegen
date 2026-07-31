@@ -208,9 +208,22 @@ fn composed_runtime_static_files(
 
     // open_struct_rest_json.rs (the flatten JSON helpers for open struct-map rest rows).
     // JSON-only and `any`-free — a fully-typed `* uint => text` rest row needs it without the AnyCbor
-    // runtime, so it is its own module rather than a fragment of `any_cbor.rs`.
-    if include_open_struct_rest_json && cli.json_serde_derives {
-        let content = std::fs::read_to_string(cli.static_dir.join("open_struct_rest_json.rs"))?;
+    // runtime, so it is its own module rather than a fragment of `any_cbor.rs`. Two fragments under
+    // independent flags, so the module exists under EITHER json flag: the serde flatten mechanics
+    // (`--json-serde-derives`; serde-dependent, and `serde` is a dependency only under that flag) and
+    // the rest-row schema helper (`--json-schema-export`, the schemars companion the other runtimes
+    // append the same way).
+    if include_open_struct_rest_json && (cli.json_serde_derives || cli.json_schema_export) {
+        let mut content = if cli.json_serde_derives {
+            std::fs::read_to_string(cli.static_dir.join("open_struct_rest_json.rs"))?
+        } else {
+            String::new()
+        };
+        if cli.json_schema_export {
+            content.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("open_struct_rest_json_schemars.rs"),
+            )?);
+        }
         out.push((
             "open_struct_rest_json.rs".to_owned(),
             rustfmt_generated_string(&content)?.into_owned(),

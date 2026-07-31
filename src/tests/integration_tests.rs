@@ -19669,20 +19669,25 @@ fn export_static_crate_warns_on_new_files_only() {
         "a still-present runtime file must NOT be warned about:\n{stderr3}"
     );
 
-    // 4. Turning on `--json-schema-export` brings a file into the set that no earlier run wrote, so
-    //    the notice fires for it and for nothing else. This is the whole channel by which a consumer
+    // 4. Turning on `--json-schema-export` brings files into the set that no earlier run wrote, so
+    //    the notice fires for those and for nothing else. This is the whole channel by which a consumer
     //    learns they owe `pub mod json_schema_gen;` — and the prerequisite for the hand feature-gating
     //    recipe in `--export-static-crate`'s docs, which starts from that declaration being theirs.
+    //    The flag brings exactly two: the json-gen helper hub, and `open_struct_rest_json.rs`, whose
+    //    serde flatten half stays behind `--json-serde-derives` while its rest-row schema helper is
+    //    this flag's (the exported dir is a pure function of the flag set, never of the spec).
     let stderr4 = export_with(&["--json-schema-export=true"]);
+    for module in ["json_schema_gen", "open_struct_rest_json"] {
+        assert!(
+            stderr4.contains(&format!("NEW static file {module}.rs"))
+                && stderr4.contains(&format!("declare `pub mod {module};`")),
+            "enabling --json-schema-export must warn that {module}.rs needs a \
+             `pub mod {module};` declaration:\n{stderr4}"
+        );
+    }
     assert!(
-        stderr4.contains("NEW static file json_schema_gen.rs")
-            && stderr4.contains("declare `pub mod json_schema_gen;`"),
-        "enabling --json-schema-export must warn that json_schema_gen.rs needs a \
-         `pub mod json_schema_gen;` declaration:\n{stderr4}"
-    );
-    assert!(
-        stderr4.matches("NEW static file").count() == 1,
-        "only the flag-introduced file is new — every other runtime file was already \
+        stderr4.matches("NEW static file").count() == 2,
+        "only the flag-introduced files are new — every other runtime file was already \
          written:\n{stderr4}"
     );
 
