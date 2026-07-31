@@ -396,8 +396,19 @@ map entry is captured into a generated `rest` field instead of being an error (a
 rejects unknown keys). This is the loose-CBOR "capture" shape for forward-compatible schemas. The rest
 row must be the map's **last** entry, must occur exactly `*`, and must follow ≥1 fixed member; other
 spellings (a bounded/`+` occurrence, a non-final rest row, a rest row in a group-choice arm or a plain
-group) are graceful rejections naming the supported form. Key domains supported today: `uint`, `text`,
-and `any`; the value type is unrestricted (including `any`).
+group) are graceful rejections naming the supported form. The **key domain is a general type** —
+`uint`, `text` and `any` take a fast path that reconstructs the key from the dispatch the decode loop
+already ran, and every other key type (bytes, nint, sized ints, bool, unions, structs, tagged and
+`.cbor` domains, externs, generic instances, aliases) is read and written by its own codec. Two key
+domains are rejected: one containing a **float** (floats have no total order, so they cannot key a
+map) and one admitting **`null`** (a `null` key and the break ending an indefinite-length map are both
+CBOR special values, so the row's key dispatch cannot tell them apart). The value type is unrestricted
+(including `any`).
+
+A key domain outside `uint`/`text`/`any` is CBOR-only for now: it is rejected under
+[`--json-serde-derives`/`--json-schema-export`](command_line_flags), because the flattened-JSON
+surface below images rest keys as JSON object member names and that image is defined only for the
+three fast-path domains.
 
 **The `rest` field.** A `pub` map named `rest` (rename with `@name` on the row — see
 [the comment DSL](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)), keyed by `K`, valued `V`.
