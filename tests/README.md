@@ -938,6 +938,18 @@ facets, each with its own pins:
   named family (a hash-only borrow does NOT force `Ord` through the dep's Ord-refusing field),
   both crates compile against each other, and widening the flavor to `bare` fails the dep compile
   naming `Ord`.
+- **Rest-row key domains.** An open struct-map's rest row (`* K => V`) is a key-demand source that
+  no conceptual IR walk sees: the row stores its key/value flat, so its `Map(K, V)` container exists
+  only through `RestRow::container_type`, and both cross-crate channels read that container.
+  `workspace_key_requests_rest_row_contract` is the compiled round trip over
+  `tests/workspace-requests/consumer_inputs_rest` + `dep_inputs_rest`: a DEFAULT row's key demands
+  `bare` (its `BTreeMap` needs the full bundle), a `@duplicates preserve` row's key demands the `ord`
+  relaxation (its `PairMap` compares by linear scan), an Ord-refusing `@used_as_key hash` borrow
+  beside them keeps its narrower flavor, the dep derives per row through `--key-requests`, and all
+  four wrapper classes the rows name (both containers plus their keys-lists) defer to the dep through
+  `--wrapper-requests` — with both rust crates compiling against each other and both wasm crates
+  linking for wasm32, which is what proves ONE `#[wasm_bindgen]` definition of each class across the
+  pair.
 - **Scoped self-check paths.** The self-check asserts each borrowed key at the dep's REAL module
   path — scoped (`wr_dep::sub::module::ScopedKey`) when the type lives in a non-root scope, the
   same path the consumer's own generated `use` lines take — while rows stay the bare

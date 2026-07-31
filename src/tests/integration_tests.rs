@@ -13336,6 +13336,313 @@ fn workspace_key_requests_flavored_contract() {
     );
 }
 
+/// An open struct-map REST ROW keyed on a dep-owned type, end-to-end across two crates — the
+/// W1 -> W3 round trip for the one key-demand source that is invisible to every conceptual IR walk.
+/// A rest row stores its key/value FLAT (`RestKind`), so the row's `Map(K, V)` container exists only
+/// through `RestRow::container_type`; both channels that carry a cross-crate demand read that
+/// container, and neither is exercised by a table rule or a `@used_as_key` tag. What only a compiled
+/// pair proves: the demand actually reaches the dep, the dep's derives satisfy the containers the
+/// consumer instantiates, and the deferred wrapper classes resolve to ONE definition across the pair.
+///
+/// Fixtures: `consumer_inputs_rest` (a DEFAULT rest row keyed on `idx_plain`, a `@duplicates
+/// preserve` rest row keyed on `idx_ord`, and the Ord-refusing `idx_key` at a PLAIN field carrying
+/// only its `@used_as_key hash` tag) over `dep_inputs_rest` (owns all three; `idx_key = [h: opaque]`
+/// puts a hand-written Hash+Eq-but-not-Ord extern inside it, so the Ord question is compile-observable).
+///
+/// Legs: (a) the consumer emits one row per rest row with the flavor its CONTAINER needs — `bare` for
+/// the `BTreeMap`-backed default row, the `ord` relaxation for the `PairMap`-backed preserve row —
+/// while the hash-only borrow beside them stays Ord-free; (b) the consumer defers all four rest-row
+/// wrapper classes (both maps and both keys-lists) and mints none locally; (c) the dep picks the
+/// demand up through `--key-requests` and derives exactly the named family per row; (d) the dep hosts
+/// the four deferred wrappers through `--wrapper-requests`; (e) both rust crates compile against each
+/// other; (f) both WASM crates link for wasm32 — the honest proof that one `#[wasm_bindgen]`
+/// definition of each class exists across the pair (two would be a duplicate `__wbg_*_free` symbol).
+///
+/// The `bare`-widening RED that proves the flavor column is load-bearing is already pinned by
+/// `workspace_key_requests_flavored_contract`; this test does not repeat it.
+#[test]
+fn workspace_key_requests_rest_row_contract() {
+    use std::io::Write;
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    // One shared CARGO_TARGET_DIR per host triple (like the flavored contract's), so the dep crate
+    // and cbor_event build once across the four nested cargo invocations.
+    let target_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_rest_key_requests_{:016x}",
+        checkout_hash()
+    ));
+    let consumer_out = base.join("export_rest_consumer");
+    let dep_out = base.join("export_rest_dep");
+    for out in [&consumer_out, &dep_out] {
+        let _ = std::fs::remove_dir_all(out);
+    }
+    let read = |root: &std::path::Path, rel: &str| -> String {
+        std::fs::read_to_string(root.join(rel)).unwrap()
+    };
+
+    // ===== Leg (a): CONSUMER EMIT — one demand row per rest row, in its container's flavor. =====
+    let c = codegen_cmd()
+        .arg("--input=tests/workspace-requests/consumer_inputs_rest")
+        .arg("--output=tests/workspace-requests/export_rest_consumer")
+        .arg("--lib-name=rest-consumer")
+        .arg("--workspace-dep=wr_dep")
+        .arg("--common-import-override=wr_dep")
+        .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+        .arg("--wasm=true")
+        .output()
+        .unwrap();
+    assert!(
+        c.status.success(),
+        "consumer generate failed:\n{}",
+        String::from_utf8_lossy(&c.stderr)
+    );
+    let sidecar_rel = "rust/src/generated/borrowed_key_types.rs";
+    let sidecar = read(&consumer_out, sidecar_rel);
+    assert!(
+        sidecar.contains("(\"wr_dep\", \"idx_plain\", \"bare\"),"),
+        "the DEFAULT rest row's key must demand the full bare bundle its BTreeMap needs:\n{sidecar}"
+    );
+    assert!(
+        sidecar.contains("(\"wr_dep\", \"idx_ord\", \"ord\"),"),
+        "the `@duplicates preserve` rest row's key must demand the `ord` relaxation its PairMap \
+         needs, not `bare`:\n{sidecar}"
+    );
+    assert!(
+        sidecar.contains("(\"wr_dep\", \"idx_key\", \"hash\"),"),
+        "the hash-only tagged borrow beside the rest rows must keep its own flavor:\n{sidecar}"
+    );
+    assert!(
+        sidecar.contains("_assert_key_traits_ord::<wr_dep::IdxOrd>();")
+            && sidecar.contains("_assert_key_traits_bare::<wr_dep::IdxPlain>();")
+            && sidecar.contains("_assert_key_traits_hash::<wr_dep::IdxKey>();"),
+        "each rest-row key must be self-checked through ITS flavor's carrier:\n{sidecar}"
+    );
+    assert!(
+        sidecar.contains("fn _assert_key_traits_ord<K: Eq + Ord + PartialOrd>() {}"),
+        "the `ord` carrier must bound the Eq-containing bundle without Hash:\n{sidecar}"
+    );
+
+    // ===== Leg (b): the rest rows' wrapper classes are DEFERRED, never minted locally. =====
+    // A rest row names four classes: the container the getter returns and that container's
+    // keys-list. All four are all-one-dep, so all four are recorded as borrows.
+    let borrowed = read(&consumer_out, "wasm/src/generated/borrowed_collections.rs");
+    for (name, shape) in [
+        ("MapIdxPlainToU64", "{* idx_plain => uint}"),
+        ("IdxPlainList", "[* idx_plain]"),
+        (
+            "PairMapIdxOrdToU64",
+            "{* idx_ord => uint} @duplicates preserve",
+        ),
+        ("IdxOrdList", "[* idx_ord]"),
+    ] {
+        assert!(
+            borrowed.contains(&format!("use wr_dep_wasm::collections::{name};")),
+            "the rest row's {name} must be borrowed from the dep:\n{borrowed}"
+        );
+        assert!(
+            borrowed.contains(&format!("{name:?}")) && borrowed.contains(&format!("{shape:?}")),
+            "the borrow row for {name} must record the shape `{shape}`:\n{borrowed}"
+        );
+    }
+    let consumer_wasm = read(&consumer_out, "wasm/src/generated/mod.rs");
+    for name in [
+        "MapIdxPlainToU64",
+        "IdxPlainList",
+        "PairMapIdxOrdToU64",
+        "IdxOrdList",
+    ] {
+        assert!(
+            !consumer_wasm.contains(&format!("pub struct {name}(")),
+            "a deferred rest-row wrapper must NOT be re-minted in the consumer ({name}):\n{consumer_wasm}"
+        );
+    }
+    assert!(
+        consumer_wasm
+            .contains("use wr_dep_wasm::collections::{MapIdxPlainToU64, PairMapIdxOrdToU64};")
+            && consumer_wasm.contains("pub fn rest(&self) -> MapIdxPlainToU64 {")
+            && consumer_wasm.contains("pub fn rest(&self) -> PairMapIdxOrdToU64 {"),
+        "each rest accessor must return the DEP's class, imported from the dep's index:\n{consumer_wasm}"
+    );
+
+    // ===== Legs (c) + (d): the dep picks up both channels. =====
+    let d = codegen_cmd()
+        .arg("--input=tests/workspace-requests/dep_inputs_rest")
+        .arg("--output=tests/workspace-requests/export_rest_dep")
+        .arg("--lib-name=wr-dep")
+        .arg("--wasm=true")
+        .arg(format!(
+            "--key-requests=rest_consumer={}",
+            consumer_out.join(sidecar_rel).to_str().unwrap()
+        ))
+        .arg(format!(
+            "--wrapper-requests=rest_consumer={}",
+            consumer_out
+                .join("wasm/src/generated/borrowed_collections.rs")
+                .to_str()
+                .unwrap()
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        d.status.success(),
+        "dep generate failed:\n{}",
+        String::from_utf8_lossy(&d.stderr)
+    );
+    let dep_mod = read(&dep_out, "rust/src/generated/mod.rs");
+    // The default row's key gets the full bundle; the preserve row's key gets the same Eq/Ord family
+    // (the `ord` relaxation drops only `Hash`, which the default profile does not derive anyway).
+    for ty in ["IdxPlain", "IdxOrd"] {
+        assert!(
+            dep_mod.contains(&format!(
+                "#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]\npub struct {ty}"
+            )),
+            "the rest-row demand must make the dep derive the Eq/Ord bundle on {ty}:\n{dep_mod}"
+        );
+    }
+    assert!(
+        dep_mod.contains("#[derive(Clone, Debug, Eq, PartialEq, Hash)]\npub struct IdxKey"),
+        "the hash-only borrow must derive Hash/Eq on IdxKey, with no Ord:\n{dep_mod}"
+    );
+    let requested = read(&dep_out, "wasm/src/generated/requested_collections.rs");
+    let dep_index = read(&dep_out, "wasm/src/generated/collections.rs");
+    for name in [
+        "MapIdxPlainToU64",
+        "IdxPlainList",
+        "PairMapIdxOrdToU64",
+        "IdxOrdList",
+    ] {
+        assert!(
+            requested.contains(&format!(
+                "/// Generated at the request of: rest_consumer.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct {name}("
+            )),
+            "the dep must host {name} for the rest row that requested it:\n{requested}"
+        );
+        assert!(
+            dep_index.contains(&format!(
+                "pub use crate::generated::requested_collections::{name};"
+            )),
+            "{name} must be re-exported from the dep's index so the consumer's borrow resolves"
+        );
+    }
+
+    // ===== Leg (e): both rust crates compile against each other. =====
+    // The hand-written Ord-refusing extern (Hash+Eq, deliberately NOT Ord) plus the codec impls the
+    // generated dep code calls, appended to the dep's seed-once lib.rs.
+    let mut dep_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(dep_out.join("rust/src/lib.rs"))
+        .unwrap();
+    dep_lib
+        .write_all(
+            b"\nuse serialization::*;\n\n\
+            #[derive(Clone, Debug, Eq, PartialEq, Hash)]\n\
+            pub struct Opaque(pub u64);\n\
+            impl cbor_event::se::Serialize for Opaque {\n\
+                fn serialize<'se>(&self, serializer: &'se mut cbor_event::se::Serializer) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {\n\
+                    serializer.write_unsigned_integer(self.0)\n\
+                }\n\
+            }\n\
+            impl serialization::Deserialize for Opaque {\n\
+                fn deserialize(raw: &mut cbor_event::de::Deserializer) -> Result<Self, error::DeserializeError> {\n\
+                    Ok(Opaque(raw.unsigned_integer()?))\n\
+                }\n\
+            }\n",
+        )
+        .unwrap();
+    let check = |crate_root: std::path::PathBuf| -> std::process::Output {
+        tool_cmd("cargo")
+            .arg("check")
+            .current_dir(crate_root)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap()
+    };
+    let dep_check = check(dep_out.join("rust"));
+    assert!(
+        dep_check.status.success(),
+        "the dep must compile: the rest rows' Ord demands land on IdxPlain/IdxOrd, never on the \
+         hash-only IdxKey whose `Opaque` field refuses Ord:\n{}",
+        String::from_utf8_lossy(&dep_check.stderr)
+    );
+    append_manifest_deps(
+        &consumer_out.join("rust/Cargo.toml"),
+        &["wr-dep = { path = \"../../export_rest_dep/rust\" }"],
+    );
+    let consumer_check = check(consumer_out.join("rust"));
+    assert!(
+        consumer_check.status.success(),
+        "the consumer must compile against the dep: `BTreeMap<IdxPlain, u64>` needs the dep-derived \
+         Ord and `PairMap<IdxOrd, u64>` the dep-derived Eq, both requested by rest rows alone:\n{}",
+        String::from_utf8_lossy(&consumer_check.stderr)
+    );
+
+    // ===== Leg (f): both wasm crates link for wasm32 — one definition of each class. =====
+    if !wasm32_target_installed() {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "wasm32-unknown-unknown is required to run workspace_key_requests_rest_row_contract's link gate in CI"
+        );
+        eprintln!(
+            "skipping workspace_key_requests_rest_row_contract link gate: wasm32-unknown-unknown target not installed"
+        );
+        return;
+    }
+    // The wasm face of the same hand-written extern: a `#[wasm_bindgen]` newtype over the dep's rust
+    // `Opaque` plus the two conversions the generated boundary code uses.
+    let mut dep_wasm_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(dep_out.join("wasm/src/lib.rs"))
+        .unwrap();
+    dep_wasm_lib
+        .write_all(
+            b"\nuse wasm_bindgen::prelude::wasm_bindgen;\n\n\
+            #[derive(Clone, Debug)]\n\
+            #[wasm_bindgen]\n\
+            pub struct Opaque(pub(crate) wr_dep::Opaque);\n\n\
+            #[wasm_bindgen]\n\
+            impl Opaque {\n\
+                pub fn new(inner: u64) -> Self {\n\
+                    Self(wr_dep::Opaque(inner))\n\
+                }\n\
+            }\n\n\
+            impl From<wr_dep::Opaque> for Opaque {\n\
+                fn from(native: wr_dep::Opaque) -> Self {\n\
+                    Self(native)\n\
+                }\n\
+            }\n\n\
+            impl From<Opaque> for wr_dep::Opaque {\n\
+                fn from(wasm: Opaque) -> Self {\n\
+                    wasm.0\n\
+                }\n\
+            }\n",
+        )
+        .unwrap();
+    append_manifest_deps(
+        &consumer_out.join("wasm/Cargo.toml"),
+        &[
+            "wr-dep = { path = \"../../export_rest_dep/rust\" }",
+            "wr-dep-wasm = { path = \"../../export_rest_dep/wasm\" }",
+        ],
+    );
+    for wasm_root in [dep_out.join("wasm"), consumer_out.join("wasm")] {
+        let build = tool_cmd("cargo")
+            .args(["build", "--target", "wasm32-unknown-unknown"])
+            .current_dir(&wasm_root)
+            .env("CARGO_TARGET_DIR", target_dir.join("wasm32"))
+            .output()
+            .unwrap();
+        assert!(
+            build.status.success(),
+            "{} must link for wasm32-unknown-unknown:\n{}",
+            wasm_root.display(),
+            String::from_utf8_lossy(&build.stderr)
+        );
+    }
+}
+
 /// The borrowed_key_types.rs self-check must assert on a borrowed key type's TRUE module path when
 /// that dep type lives in a NON-ROOT scope — the compiled cross-crate seam the unit layer
 /// (`borrowed_key_types_self_check_carries_scoped_dep_path` in `extern_import_tests.rs`, plus the

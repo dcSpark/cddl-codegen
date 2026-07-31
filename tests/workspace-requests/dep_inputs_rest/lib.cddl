@@ -1,0 +1,13 @@
+; REST-ROW key-domain DEP spec. The dep OWNS the three borrowed types.
+;
+; `idx_key` contains a field of the Ord-REFUSING extern `opaque` (a hand-written type appended to the
+; generated crate's lib.rs deriving Hash+Eq but deliberately NOT Ord), exactly as `dep_inputs_flavored`
+; does — that is what makes the Ord question compile-observable: the consumer's rest rows must derive
+; Ord on `idx_plain`/`idx_ord` WITHOUT dragging it onto `idx_key`, whose `opaque` field would refuse it.
+;
+; `idx_plain` and `idx_ord` are plain records the rest rows key on.
+opaque = _CDDL_CODEGEN_EXTERN_TYPE_
+idx_key = [h: opaque]
+idx_plain = [n: uint]
+idx_ord = [m: tstr]
+root = [a: idx_key, b: idx_plain, c: idx_ord]
