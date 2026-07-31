@@ -75,19 +75,49 @@
       ]
     },
     {
-      "gate": "component_compose"
+      "gate": "component_compose",
+      "warm_ms": 2000,
+      "n": 3,
+      "measured": "2026-07-31",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-31",
+          "warm_ms": 2000
+        }
+      ]
     },
     {
       "gate": "component_corpus_compiles"
     },
     {
-      "gate": "component_host"
+      "gate": "component_host",
+      "warm_ms": 2000,
+      "n": 4,
+      "measured": "2026-07-31",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-31",
+          "warm_ms": 2000
+        }
+      ]
+    },
+    {
+      "gate": "component_import",
+      "warm_ms": 1000,
+      "n": 3,
+      "measured": "2026-07-31",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-31",
+          "warm_ms": 1000
+        }
+      ]
     },
     {
       "gate": "component_jco"
-    },
-    {
-      "gate": "component_import"
     },
     {
       "gate": "component_parity",
