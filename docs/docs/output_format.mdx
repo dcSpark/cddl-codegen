@@ -719,7 +719,10 @@ therefore an **array** schema, not an object/`additionalProperties` one, and the
 refuses an empty `[]` on the JSON path with the same min-1 error as the wire path.
 
 The wasm boundary mirrors the set twins' two-wrapper pattern, except the loose `PairMap`'s `insert`
-**appends** (returning `Option`) rather than rejecting — see
+**appends** (returning `Option`) rather than rejecting. The synthesized wasm class name carries the
+container flavor — `PairMap<K>To<V>` and `NonEmptyPairMap<K>To<V>`, against the default flavor's
+`Map<K>To<V>` / `NonEmptyMap<K>To<V>` — so a preserve and a non-preserve map of the identical
+key/value are two distinct classes. See
 [Wasm Differences](./wasm_differences.mdx#preserve-duplicates-tables).
 
 ## Generated crate roots (thin root, seed-once)
