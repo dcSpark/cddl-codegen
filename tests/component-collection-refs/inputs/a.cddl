@@ -1,0 +1,6 @@
+; The named collection whose element lives in a THIRD scope, plus an ordinary type `c` references
+; back. The collection surfaces no WIT type, so this scope is the target of no `use` edge from `b`.
+
+names = [* leaf]
+
+other = { x: uint }

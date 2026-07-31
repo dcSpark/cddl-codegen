@@ -75,6 +75,11 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         "tests/component-multifile/inputs",
         &[],
     ),
+    (
+        "component-collection-refs",
+        "tests/component-collection-refs/inputs",
+        &[],
+    ),
     // Externs and type choices: the exclusion path, on a spec nobody wrote for this face.
     ("multifile", "tests/multifile/inputs", &[]),
     // Mutually-referencing scopes — rejected under `--component` by the cycle detector.

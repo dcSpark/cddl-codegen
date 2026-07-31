@@ -29,6 +29,9 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
         &["--preserve-encodings=true"],
     ),
     ("tests/component-multifile/inputs", &[]),
+    // Cross-scope references that run THROUGH a named collection: the projection resolves the
+    // collection through, so the cycle detector must agree about which scope the `use` points at.
+    ("tests/component-collection-refs/inputs", &[]),
     ("tests/multifile/inputs", &[]),
 ];
 
@@ -71,6 +74,15 @@ fn wit_for_spec(spec: &str, extra: &[&str]) -> String {
     let out = wit_files(path.to_str().unwrap(), extra);
     std::fs::remove_dir_all(&dir).ok();
     out.unwrap_or_else(|e| panic!("generating the spec failed: {e}"))
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The single emitted `.wit` of a FIXTURE (a path, not a spec body). Panics on a generation failure.
+fn wit_of(input: &str, extra: &[&str]) -> String {
+    wit_files(input, extra)
+        .unwrap_or_else(|e| panic!("generating {input} with {extra:?} failed: {e}"))
         .into_values()
         .collect::<Vec<_>>()
         .join("\n")
@@ -514,6 +526,51 @@ fn a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes() {
     );
 }
 
+/// The strong-uniqueness detector consults the REAL no-deserialize verdict, which is why it runs at
+/// GENERATION time rather than at IR finalization beside the cycle detector. Projected against an
+/// empty no-deserialize set it would see the SUPERSET of members and reject this spec for a
+/// collision between a getter and a `from-cbor-bytes` static the tool never emits.
+///
+/// Both halves matter. The no-deserialize verdict is asserted, or the control is vacuous; and the
+/// same field on a DESERIALIZABLE type is still refused, or "consult the verdict" could be satisfied
+/// by deleting the check.
+#[test]
+fn a_no_deserialize_type_may_carry_a_from_cbor_bytes_field() {
+    // The same ambiguous-array shape `a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes`
+    // uses — a peek cannot tell the optional field from the one after it — plus the field whose name
+    // converges on the static.
+    let dir = scratch_dir("nodeserfield");
+    let path = dir.join("input.cddl");
+    std::fs::write(
+        &path,
+        "ambiguous = [? b: uint, c: uint, from_cbor_bytes: text]\n",
+    )
+    .unwrap();
+    let files = crate::api::generated_strings(&cli_for(path.to_str().unwrap(), &[]))
+        .expect("a no-`Deserialize` type carrying a `from_cbor_bytes` field must generate");
+    let wit = files["component/wit/world.wit"].clone();
+    let rust = files["rust/src/generated/serialization.rs"].clone();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        !rust.contains("impl Deserialize for Ambiguous"),
+        "the fixture no longer reaches the no-deserialize verdict, so this control is vacuous:\n{rust}"
+    );
+    assert!(
+        wit.contains("from-cbor-bytes: func() -> string;")
+            && !wit.contains("from-cbor-bytes: static func"),
+        "the getter and the never-emitted static are not the two names this control is about:\n{wit}"
+    );
+    // The positive half: the same field on a DESERIALIZABLE type genuinely collides, and the pinned
+    // message is unchanged.
+    let err = generate_error("plain = [n: text, from_cbor_bytes: text]\n")
+        .expect("a deserializable type carrying a `from_cbor_bytes` field generated");
+    assert!(
+        err.contains("WIT resource member collision under --component:")
+            && err.contains("all convert to the WIT identifier `from-cbor-bytes`"),
+        "the real collision is no longer reported — the detector has gone vacuous: {err}"
+    );
+}
+
 /// The `int` bridge's rust→WIT direction has to match the ARM SHAPE, which `--preserve-encodings`
 /// changes from a tuple to named fields. A `match` written for one posture does not compile under
 /// the other, and the first user to combine the flags would get the error in GENERATED code.
@@ -638,6 +695,58 @@ fn component_wit_is_header_stamped_and_still_resolves() {
 // -------------------------------------------------------------------------------------------------
 // The cross-scope cycle detector, end to end
 // -------------------------------------------------------------------------------------------------
+
+/// A named collection is RESOLVED THROUGH by the projection, so it owns no WIT type and can be
+/// neither end of a `use` edge. The cycle detector has to agree, in BOTH directions: the reference
+/// that runs through the collection points at the ELEMENT's scope, and the collection RULE's own
+/// element reference points at nothing.
+///
+/// The failing direction is the FALSE one. A walk that recorded the collection ident instead sees
+/// `b → a` and `a → c` beside the real `c → a`, which closes a cycle in a spec whose emitted WIT
+/// resolves perfectly — and refuses it naming scopes the package never links, which the user cannot
+/// act on.
+#[test]
+fn a_named_collection_owns_no_cross_scope_edge() {
+    let wit = wit_of("tests/component-collection-refs/inputs", &[]);
+    let b = wit
+        .split("interface b {")
+        .nth(1)
+        .and_then(|rest| rest.split("\ninterface ").next())
+        .expect("the `b` interface must be emitted");
+    assert!(
+        b.contains("use c.{leaf};") && !b.contains("use a."),
+        "the holder's `use` no longer names the ELEMENT's scope (or has grown one naming the \
+         collection's):\n{b}"
+    );
+    assert!(
+        !wit.contains("resource names"),
+        "the named collection surfaced as a WIT type:\n{wit}"
+    );
+}
+
+/// The other side of the same agreement: a cycle that closes THROUGH a named collection is still
+/// refused, and the message names only the scopes the emitted `use` graph actually links. Without
+/// this, "make the detector agree with the projection" could be satisfied by a detector that sees
+/// nothing at all.
+#[test]
+fn a_real_cycle_through_a_named_collection_is_still_rejected() {
+    let dir = scratch_dir("collcycle");
+    std::fs::write(dir.join("a.cddl"), "names = [* leaf]\n").unwrap();
+    std::fs::write(dir.join("b.cddl"), "rec = { n: names }\n").unwrap();
+    std::fs::write(dir.join("c.cddl"), "leaf = { back: rec }\n").unwrap();
+    std::fs::write(dir.join("lib.cddl"), "root = { r: rec }\n").unwrap();
+    let err = wit_files(dir.to_str().unwrap(), &[])
+        .expect_err("a cycle closed through a named collection generated")
+        .to_string();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        err.contains("WIT interface cycle under --component:")
+            && err.contains("the scopes `b`, `c` reference each other")
+            && !err.contains("`a`"),
+        "the cycle through the collection is missed, or the message names the collection's scope — \
+         which the emitted `use` graph never links: {err}"
+    );
+}
 
 /// A spec whose SCOPES reference each other generates fine on the rust face and is rejected under
 /// `--component`. The cycle here is interface-level and NOT type-level, which is the case a

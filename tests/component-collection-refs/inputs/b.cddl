@@ -1,0 +1,3 @@
+; Holds the `a` collection. Its emitted `use` names `c` (the element), not `a`.
+
+rec = { ns: names }
