@@ -429,6 +429,25 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "tests/component-extern/inputs",
         ("component", &["--component=true"]),
     ),
+    // The two flag-gated SEAMS on the component face, in the one posture that carries both:
+    // `to-canonical-cbor-bytes` (projected only where the composed runtime puts it on `Serialize`)
+    // and the JSON pair — per-resource `to-json`/`from-json` plus the `cbor-to-json` /
+    // `cbor-from-json` free functions on the `any-cbor` alias. Pinned as bytes because this row is
+    // also the only place the component manifest's conditional `serde_json` dependency is checked
+    // against emitted output rather than against the op list.
+    (
+        "component_json",
+        "tests/component-core/input.cddl",
+        (
+            "component",
+            &[
+                "--component=true",
+                "--preserve-encodings=true",
+                "--canonical-form=true",
+                "--json-serde-derives=true",
+            ],
+        ),
+    ),
 ];
 
 /// One tiny CDDL file per language construct → a localized snapshot per feature, across every

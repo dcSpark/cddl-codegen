@@ -704,6 +704,30 @@ impl Emitter<'_, '_> {
                     suffix = bridge_suffix(alias)
                 );
             }
+            // `any-cbor` is bytes on the wire, so the JSON door decodes FIRST and renders second —
+            // and both halves can fail, which is why the WIT declares a `result`. The rendering half
+            // fails for a reason the type system cannot express: `AnyCbor`'s serde impl reports
+            // "key must be a string" for a non-string-keyed map.
+            WitFuncOp::CborToJson => {
+                let arg = kebab_to_snake(&func.params[0].name);
+                let _ = writeln!(
+                    out,
+                    "        <{rt}::any_cbor::AnyCbor as {rt}::serialization::Deserialize>::from_cbor_bytes(&{arg})\n            \
+                     .map_err(err)\n            .and_then(|v| serde_json::to_string_pretty(&v).map_err(err))",
+                    rt = self.runtime()
+                );
+            }
+            WitFuncOp::CborFromJson => {
+                let arg = kebab_to_snake(&func.params[0].name);
+                let _ = writeln!(
+                    out,
+                    "        serde_json::from_str::<{rt}::any_cbor::AnyCbor>(&{arg})\n            \
+                     .map_err(err)\n            \
+                     .map(|v| <{rt}::any_cbor::AnyCbor as {rt}::serialization::{tr}>::to_cbor_bytes(&v))",
+                    rt = self.runtime(),
+                    tr = self.to_bytes_trait()
+                );
+            }
         }
         out.push_str("    }\n");
         out
@@ -967,12 +991,13 @@ impl Emitter<'_, '_> {
                 self.wit_rust_type(&p.ty, alias, true)
             ));
         }
-        // The members that MINT the owning resource — `from-cbor-bytes`, `from-raw-bytes` and a
-        // choice's `new-<variant>` — cannot name it from inside the member without carrying their
-        // own owner, so the emitter fills it in, exactly as the WIT renderer does.
+        // The members that MINT the owning resource — `from-cbor-bytes`, `from-raw-bytes`,
+        // `from-json` and a choice's `new-<variant>` — cannot name it from inside the member without
+        // carrying their own owner, so the emitter fills it in, exactly as the WIT renderer does.
         let ret = match member.op {
             WitMemberOp::FromCborBytes
             | WitMemberOp::FromRawBytes
+            | WitMemberOp::FromJson
             | WitMemberOp::NewVariant { .. } => {
                 if member.fallible {
                     format!(" -> Result<{own}, String>")
@@ -1088,6 +1113,31 @@ impl Emitter<'_, '_> {
                     rt = self.runtime(),
                     tr = self.to_bytes_trait()
                 ));
+            }
+            // The canonical re-encoding door. `Serialize` is named LITERALLY rather than through
+            // `to_bytes_trait()`: `to_canonical_cbor_bytes` is declared on that trait and on no
+            // other, and the row exists only in the posture whose runtime composes it — so the trait
+            // that owns the method is the honest spelling, and the projection's gate is what keeps
+            // the two in step.
+            WitMemberOp::ToCanonicalCborBytes => {
+                lines.push(format!(
+                    "<{rust} as {rt}::serialization::Serialize>::to_canonical_cbor_bytes(&self.0.borrow())",
+                    rt = self.runtime()
+                ));
+            }
+            // The JSON seam, over the serde impls the rust face DERIVES under the same flag. The
+            // `&*` is load-bearing: `serde_json`'s parameter is generic, so the auto-deref that lets
+            // the cbor seam pass a `Ref` to a `&Self` parameter does not apply.
+            WitMemberOp::ToJson => {
+                lines.push(
+                    "serde_json::to_string_pretty(&*self.0.borrow()).map_err(err)".to_owned(),
+                );
+            }
+            WitMemberOp::FromJson => {
+                let arg = kebab_to_snake(&member.params[0].name);
+                lines.push(format!("serde_json::from_str::<{rust}>(&{arg})"));
+                lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
+                lines.push("    .map_err(err)".to_owned());
             }
             WitMemberOp::FromCborBytes => {
                 let arg = kebab_to_snake(&member.params[0].name);

@@ -422,6 +422,17 @@ pub(crate) enum WitMemberOp {
     },
     ToCborBytes,
     FromCborBytes,
+    /// `to-canonical-cbor-bytes`, through `Serialize::to_canonical_cbor_bytes`.
+    ///
+    /// Projected ONLY under `--preserve-encodings --canonical-form`, which is the one posture where
+    /// the composed runtime carries that method at all (it is declared on the `Serialize` trait, and
+    /// `Serialize` is composed from `serialization_preserve_force_canonical.rs`). Every other posture
+    /// composes `ToCBORBytes`, which declares `to_cbor_bytes` and nothing else.
+    ToCanonicalCborBytes,
+    /// `to-json`, through `serde_json::to_string_pretty` over the rust type's serde impl.
+    ToJson,
+    /// `from-json` STATIC, through `serde_json::from_str`.
+    FromJson,
     /// A raw-bytes bridge's `to-raw-bytes`, through `RawBytesEncoding` — NOT the cbor seam.
     ToRawBytes,
     /// A raw-bytes bridge's `from-raw-bytes` STATIC, through the same trait.
@@ -502,6 +513,10 @@ pub(crate) struct WitFunc {
 pub(crate) enum WitFuncOp {
     /// `AnyCbor::from_cbor_bytes(v)?.kind()`.
     AnyCborKind,
+    /// `AnyCbor::from_cbor_bytes(v)?` rendered through its serde impl.
+    CborToJson,
+    /// The inverse: parse the JSON representation of a CBOR item and hand back its bytes.
+    CborFromJson,
 }
 
 /// A WIT type at a USE site. Ownership (`own` vs `borrow`) is a POSITION property applied at render
@@ -552,6 +567,12 @@ const ANY_CBOR_TYPE_NAME: &str = "any-cbor";
 const ANY_CBOR_KIND_TYPE_NAME: &str = "any-cbor-kind";
 /// The free function projecting `AnyCbor::kind()`.
 const ANY_CBOR_KIND_FUNC_NAME: &str = "cbor-kind";
+/// The free functions projecting `AnyCbor`'s serde impls, under `--json-serde-derives`.
+const ANY_CBOR_TO_JSON_FUNC_NAME: &str = "cbor-to-json";
+const ANY_CBOR_FROM_JSON_FUNC_NAME: &str = "cbor-from-json";
+/// The WIT member names of the JSON seam every class-backed type the tool DEFINES carries.
+const TO_JSON_MEMBER_NAME: &str = "to-json";
+const FROM_JSON_MEMBER_NAME: &str = "from-json";
 /// The interface name the ROOT scope (`lib`) projects to. `lib` is a cargo-layout word with no
 /// meaning at the WIT boundary, and `types` is what a hand-written package calls the interface
 /// holding a package's types — the spike's spelling. A spec whose own scope converts to `types`
@@ -648,6 +669,7 @@ pub(crate) fn project(
         let mut refs = BTreeSet::new();
         let mut ctx = TypeCtx {
             types,
+            cli,
             refs: &mut refs,
             uses_int: false,
             uses_any_cbor: false,
@@ -737,6 +759,10 @@ pub(crate) fn project(
             iface.types.push(WitTypeDef::AnyCborAlias);
             iface.types.push(WitTypeDef::AnyCborKind);
             iface.funcs.push(any_cbor_kind_func());
+            // The JSON door onto the same transparent alias. It belongs HERE and not on a resource
+            // because `any-cbor` IS the alias — there is no resource to hang a method on — and it
+            // exists per interface for the same reason the `cbor-kind` introspection door does.
+            iface.funcs.extend(any_cbor_json_funcs(cli));
         }
         // Cross-interface `use`: a type defined in ANOTHER exported scope must be imported by name.
         for referenced in &st.refs {
@@ -814,6 +840,46 @@ fn any_cbor_kind_func() -> WitFunc {
     }
 }
 
+/// The two JSON doors onto the `any-cbor` alias, or nothing off `--json-serde-derives`.
+///
+/// Both are FALLIBLE for reasons the type system cannot carry: `cbor-to-json` decodes arbitrary
+/// caller bytes first (the same decode-is-the-check reasoning `cbor-kind` states), and then renders
+/// through `AnyCbor`'s serde impl, which the runtime documents as able to fail at a non-string map
+/// key. `cbor-from-json` parses caller-supplied text.
+fn any_cbor_json_funcs(cli: &Cli) -> Vec<WitFunc> {
+    if !cli.json_serde_derives {
+        return Vec::new();
+    }
+    vec![
+        WitFunc {
+            name: ANY_CBOR_TO_JSON_FUNC_NAME.to_owned(),
+            params: vec![WitParam {
+                name: "v".to_owned(),
+                rust_name: "v".to_owned(),
+                ty: WitType::AnyCbor,
+                validates: true,
+                rust_type: None,
+            }],
+            result: Some(WitType::Str),
+            fallible: true,
+            op: WitFuncOp::CborToJson,
+        },
+        WitFunc {
+            name: ANY_CBOR_FROM_JSON_FUNC_NAME.to_owned(),
+            params: vec![WitParam {
+                name: "json".to_owned(),
+                rust_name: "json".to_owned(),
+                ty: WitType::Str,
+                validates: true,
+                rust_type: None,
+            }],
+            result: Some(WitType::AnyCbor),
+            fallible: true,
+            op: WitFuncOp::CborFromJson,
+        },
+    ]
+}
+
 /// The WIT name of a rust type: its ident, kebab-converted. Deliberately the RUST ident rather than
 /// the CDDL source rule name — the rust↔WIT parity gate compares against the rust surface, and
 /// `@name` renames the rust ident, which is what makes the rename the documented collision remedy.
@@ -847,6 +913,11 @@ fn world_name(lib_name: &str) -> String {
 /// and this module never panics).
 struct TypeCtx<'a, 'b> {
     types: &'a IntermediateTypes<'b>,
+    /// The flag posture, because two SEAMS are flag-gated: `to-canonical-cbor-bytes` exists only
+    /// where the runtime composes it, and the JSON pair only under `--json-serde-derives`. Carried
+    /// on the walk rather than threaded through every projection signature, for the same reason
+    /// `refs` is.
+    cli: &'a Cli,
     refs: &'a mut BTreeSet<RustIdent>,
     uses_int: bool,
     uses_any_cbor: bool,
@@ -906,6 +977,7 @@ fn project_struct(
             name,
             ident,
             deserializable,
+            ctx.cli,
         ))]),
         RustStructType::RawBytesType => Ok(vec![WitTypeDef::Resource(project_raw_bytes_bridge(
             name, ident,
@@ -920,12 +992,20 @@ fn project_struct(
 /// one) — the two traits the seam bridges. Emitting a bridge rather than excluding is what keeps a
 /// CONTAINING record projectable: exclusion is transitive, so one extern would take every type that
 /// reaches it out of the WIT.
-fn project_extern_bridge(name: &str, ident: &RustIdent, deserializable: bool) -> WitResource {
+///
+/// The cbor seam and NOTHING else — in particular no JSON seam even under `--json-serde-derives`.
+/// See [`json_members`]: the extern contract imposes the cbor traits and never serde.
+fn project_extern_bridge(
+    name: &str,
+    ident: &RustIdent,
+    deserializable: bool,
+    cli: &Cli,
+) -> WitResource {
     WitResource {
         name: name.to_owned(),
         ident: ident.clone(),
         constructor: None,
-        members: bytes_members(deserializable),
+        members: bytes_members(deserializable, cli),
     }
 }
 
@@ -1096,7 +1176,8 @@ fn project_record(
             },
         });
     }
-    members.extend(bytes_members(deserializable));
+    members.extend(bytes_members(deserializable, ctx.cli));
+    members.extend(json_members(ctx.cli));
     Ok(WitResource {
         name: name.to_owned(),
         ident: ident.clone(),
@@ -1138,7 +1219,8 @@ fn project_wrapper(
             op: WitMemberOp::WrapperGet { getter },
         });
     }
-    members.extend(bytes_members(deserializable));
+    members.extend(bytes_members(deserializable, ctx.cli));
+    members.extend(json_members(ctx.cli));
     Ok(WitResource {
         name: name.to_owned(),
         ident: ident.clone(),
@@ -1254,7 +1336,8 @@ fn project_choice(
         fallible: false,
         op: WitMemberOp::VariantKind,
     });
-    members.extend(bytes_members(deserializable));
+    members.extend(bytes_members(deserializable, ctx.cli));
+    members.extend(json_members(ctx.cli));
     Ok(vec![
         WitTypeDef::Resource(WitResource {
             name: name.to_owned(),
@@ -1391,7 +1474,7 @@ fn variant_ctor_can_fail(
 /// to give a `Deserialize` impl (an array struct whose optional field is CBOR-ambiguous with what
 /// follows it), and a WIT declaring `from-cbor-bytes` for such a type forces glue that names a trait
 /// impl which does not exist — a compile error in generated code.
-fn bytes_members(deserializable: bool) -> Vec<WitMember> {
+fn bytes_members(deserializable: bool, cli: &Cli) -> Vec<WitMember> {
     let mut members = vec![WitMember {
         name: "to-cbor-bytes".to_owned(),
         is_static: false,
@@ -1400,6 +1483,22 @@ fn bytes_members(deserializable: bool) -> Vec<WitMember> {
         fallible: false,
         op: WitMemberOp::ToCborBytes,
     }];
+    // The canonical re-encoding door, in the ONE posture whose composed runtime declares it. The
+    // gate is the same pair the guest's `to_bytes_trait()` forks on, and it has to be: under
+    // `--preserve-encodings --canonical-form` the blanket `ToCBORBytes` impl is not composed at all
+    // and both methods live on `Serialize`, while every other posture composes a `ToCBORBytes` that
+    // declares `to_cbor_bytes` alone. A row emitted outside that posture would name a trait method
+    // the runtime does not have.
+    if cli.preserve_encodings && cli.canonical_form {
+        members.push(WitMember {
+            name: "to-canonical-cbor-bytes".to_owned(),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(WitType::List(Box::new(WitType::U8))),
+            fallible: false,
+            op: WitMemberOp::ToCanonicalCborBytes,
+        });
+    }
     if deserializable {
         members.push(WitMember {
             name: "from-cbor-bytes".to_owned(),
@@ -1419,6 +1518,55 @@ fn bytes_members(deserializable: bool) -> Vec<WitMember> {
         });
     }
     members
+}
+
+/// The JSON seam, under `--json-serde-derives` — the sibling of [`bytes_members`] and deliberately
+/// NOT part of it, because the two seams are owed by different sets of types.
+///
+/// `bytes_members` is called by the extern bridge as well, and legitimately: the extern contract the
+/// tool already imposes on a user's type IS `Serialize` (+ `Deserialize`), which is exactly what the
+/// cbor seam bridges, and the emitted `extern_interface_check.rs` asserts it. NOTHING imposes serde
+/// on an extern — the self-check asserts the cbor traits and `RawBytesEncoding`, never
+/// `serde::Serialize` — so a `to-json` on a bridging resource would name a trait impl that need not
+/// exist. That is the compile-error-in-generated-code class the `no_deserialize` fork and the
+/// raw-bytes seam split both exist to prevent, reached a third time. The seam therefore goes only to
+/// the types the tool DEFINES (records, `@newtype` wrappers, choices), whose serde impls it derives
+/// itself under the same flag.
+///
+/// Both halves are FALLIBLE. `from-json` obviously so; `to-json` because the wasm face's own
+/// `to_json` is `Result<String, JsError>` and serialization genuinely can fail — the runtime's
+/// `AnyCbor` serde fragment documents a "key must be a string" failure for a non-string-keyed table,
+/// which reaches any type that holds one.
+fn json_members(cli: &Cli) -> Vec<WitMember> {
+    if !cli.json_serde_derives {
+        return Vec::new();
+    }
+    vec![
+        WitMember {
+            name: TO_JSON_MEMBER_NAME.to_owned(),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(WitType::Str),
+            fallible: true,
+            op: WitMemberOp::ToJson,
+        },
+        WitMember {
+            name: FROM_JSON_MEMBER_NAME.to_owned(),
+            is_static: true,
+            params: vec![WitParam {
+                name: "json".to_owned(),
+                rust_name: "json".to_owned(),
+                ty: WitType::Str,
+                validates: false,
+                rust_type: None,
+            }],
+            // The `ok` type is the OWNING resource, filled in by the renderer and the emitter
+            // exactly as `from-cbor-bytes`'s is.
+            result: None,
+            fallible: true,
+            op: WitMemberOp::FromJson,
+        },
+    ]
 }
 
 /// Map one `RustType` occurrence to its WIT spelling.
@@ -1775,12 +1923,16 @@ fn render_params(params: &[WitParam]) -> String {
 }
 
 /// A member's return spelling. The members that mint the OWNING resource — `from-cbor-bytes`,
-/// `from-raw-bytes` and a choice's `new-<variant>` — cannot name it from inside the member without
-/// carrying their own owner, so the renderer fills it in from the resource it is rendering.
+/// `from-raw-bytes`, `from-json` and a choice's `new-<variant>` — cannot name it from inside the
+/// member without carrying their own owner, so the renderer fills it in from the resource it is
+/// rendering.
 fn render_member_result(member: &WitMember, owner: &str) -> String {
     let ok = match (&member.op, &member.result) {
         (
-            WitMemberOp::FromCborBytes | WitMemberOp::FromRawBytes | WitMemberOp::NewVariant { .. },
+            WitMemberOp::FromCborBytes
+            | WitMemberOp::FromRawBytes
+            | WitMemberOp::FromJson
+            | WitMemberOp::NewVariant { .. },
             _,
         ) => Some(wit_escape(owner)),
         (_, Some(ty)) => Some(render_type(ty, false)),
@@ -1868,8 +2020,8 @@ pub(crate) fn wit_files(
 ///
 /// WIT compares names after stripping the `[method]`/`[static]`/`[constructor]` prefixes, and an
 /// interface is one flat namespace, so three levels can collide: interface names against the world
-/// name at PACKAGE level, type names within one INTERFACE, and member names (including a member
-/// equal to the resource's own name) within one RESOURCE. All three fall out of one walk of the
+/// name at PACKAGE level, type names AND free-function names within one INTERFACE, and member names
+/// (including a member equal to the resource's own name) within one RESOURCE. All three fall out of one walk of the
 /// projection, which is why they are one function with three message shapes rather than three
 /// sibling detectors — the AGENTS.md parallel-sibling ruling is about the wasm WRAPPER-name family,
 /// whose members have genuinely different inputs.
@@ -1919,7 +2071,12 @@ pub(crate) fn wit_name_collisions(
         ));
     }
 
-    // 2 — interface level. One flat type namespace per interface.
+    // 2 — interface level. One flat namespace per interface, holding the TYPES **and** the free
+    // FUNCTIONS: `wit-parser` refuses a package where an interface declares both under one name
+    // ("name `x` is defined more than once"), at RESOLVE. So the synthesized `any-cbor` doors belong
+    // in this map beside the types — otherwise a rule converging on one of their names reaches the
+    // user as a parse failure against a file they did not write, which is exactly the sighting this
+    // detector exists to replace.
     for iface in package.interfaces.values() {
         let mut type_names: BTreeMap<&str, Vec<String>> = BTreeMap::new();
         for def in &iface.types {
@@ -1931,6 +2088,12 @@ pub(crate) fn wit_name_collisions(
                 WitTypeDef::AnyCborAlias => "the `any-cbor` alias".to_owned(),
                 WitTypeDef::AnyCborKind => "the `any-cbor-kind` enum".to_owned(),
             });
+        }
+        for func in &iface.funcs {
+            type_names
+                .entry(func.name.as_str())
+                .or_default()
+                .push(format!("the free function `{}`", func.name));
         }
         for (name, owners) in &type_names {
             if owners.len() < 2 {

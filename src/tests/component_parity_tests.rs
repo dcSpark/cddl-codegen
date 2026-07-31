@@ -71,6 +71,16 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         &["--preserve-encodings=true"],
     ),
     (
+        "component-core-canonical",
+        "tests/component-core/input.cddl",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    (
+        "component-core-json",
+        "tests/component-core/input.cddl",
+        &["--json-serde-derives=true"],
+    ),
+    (
         "component-choices",
         "tests/component-choices/input.cddl",
         &[],
@@ -80,11 +90,41 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         "tests/component-choices/input.cddl",
         &["--preserve-encodings=true"],
     ),
+    (
+        "component-choices-canonical",
+        "tests/component-choices/input.cddl",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    (
+        "component-choices-json",
+        "tests/component-choices/input.cddl",
+        &["--json-serde-derives=true"],
+    ),
     ("component-bounds", "tests/component-bounds/input.cddl", &[]),
+    (
+        "component-bounds-preserve",
+        "tests/component-bounds/input.cddl",
+        &["--preserve-encodings=true"],
+    ),
+    (
+        "component-bounds-canonical",
+        "tests/component-bounds/input.cddl",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
     // The bridging classes. A user-owned extern has no generated rust `pub struct`, so it owes the
     // differential nothing at all — which is itself worth sweeping, since a bridging resource that
     // started minting rust types would show up here.
     ("component-extern", "tests/component-extern/inputs", &[]),
+    (
+        "component-extern-canonical",
+        "tests/component-extern/inputs",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    (
+        "component-extern-json",
+        "tests/component-extern/inputs",
+        &["--json-serde-derives=true"],
+    ),
     (
         "component-multifile",
         "tests/component-multifile/inputs",
@@ -142,6 +182,33 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
         "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
          member namespace; a caller constructs the arm directly",
     ),
+    // The same class in the two flag postures item G adds. Neither seam changes the rust surface of
+    // `Int` — `to_canonical_cbor_bytes` is a TRAIT method and the serde derives add no inherent fn —
+    // so the findings are the pre-existing ones and no new class appeared.
+    (
+        "component-core-canonical",
+        "Int::new_uint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-core-canonical",
+        "Int::new_nint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-core-json",
+        "Int::new_uint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-core-json",
+        "Int::new_nint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
     // The `Int` parse-error enum the rust crate mints beside `Int` (for its `FromStr`/`TryFrom`
     // impls). It is not an IR type at all, so the projection never sees it; the WIT face reports
     // every failure as the `string` of the rust error's `Display`, so there is nothing for it to be.
@@ -153,6 +220,18 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "component-core-preserve",
+        "IntError",
+        "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
+         type, and the WIT face carries every failure as `result<_, string>`",
+    ),
+    (
+        "component-core-canonical",
+        "IntError",
+        "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
+         type, and the WIT face carries every failure as `result<_, string>`",
+    ),
+    (
+        "component-core-json",
         "IntError",
         "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
          type, and the WIT face carries every failure as `result<_, string>`",
