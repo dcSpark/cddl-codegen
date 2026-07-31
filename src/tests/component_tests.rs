@@ -2159,6 +2159,14 @@ fn component_corpus_compiles() {
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
 
+    // EVERY cell GENERATES IMMEDIATELY BEFORE IT CHECKS, and that ordering is load-bearing rather
+    // than incidental. All 89 emitted component crates are `cddl-lib-component v0.1.0`, and cargo
+    // does not tell two of them apart across the shared target dir: a batch that generated every
+    // fixture first and checked afterwards was measured serving one fixture's `Finished` — warnings
+    // replayed and all — for the NEXT fixture's check, turning a real failure into a silent pass.
+    // Regenerating inside the loop keeps every cell's sources newer than the fingerprint the
+    // previous cell wrote, so each one is dirty by construction. Hoisting generation out of this
+    // loop (or reusing a tree a previous cell built) makes the sweep vacuous without failing.
     for path in &entries {
         let stem = path.file_stem().unwrap().to_str().unwrap().to_owned();
         // A fixture that cannot GENERATE under this profile is the snapshot axis' business.
