@@ -144,14 +144,6 @@ const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
          shape does swap in the PairMap twin), so this is the directive being unhonored for the \
          table shape, not the comment being unseen",
     ),
-    (
-        "@custom_serialize+deserialize",
-        "rest-row-key-domain-alias",
-        "the pair on the key-domain alias of an open struct-map rest row is honored HALFWAY: \
-         `@custom_serialize` reaches the row's write arm (and the canonical key merge) while \
-         `@custom_deserialize` is never called — the rest arm binds the key the row's own dispatch \
-         already read, so honoring the reader needs design work, not a call-site fix",
-    ),
 ];
 
 /// The docs-claimed grid. Anchors were verified empirically against emitted source while authoring;
@@ -724,11 +716,11 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
-    // 23h. FINDING (pinned in KNOWN_SILENT_DROP): the pair on the KEY-DOMAIN alias of an open
-    //      struct-map rest row is honored HALFWAY — `my_ser(` appears (the rest row's write arm), and
-    //      that presence is what makes the pin non-vacuous, but `my_deser(` never does: the rest arm
-    //      binds the key the row's own dispatch already read. A transforming codec in this position
-    //      writes transformed keys and reads raw ones.
+    // 23h. The pair on the KEY-DOMAIN alias of an open struct-map rest row, honored in BOTH
+    //      directions. A custom pair on the domain routes the row to the typed seek path
+    //      (`RestRow::map_key_uses_peeked_path` excludes it), so the key is read by
+    //      `generate_deserialize` — which is where custom pairs are honored — instead of being
+    //      reconstructed from a peek the reader never sees.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "rest-row-key-domain-alias",

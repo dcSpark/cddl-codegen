@@ -2735,6 +2735,9 @@ impl<'a> IntermediateTypes<'a> {
         // `self` immutably. `visit_types` guards recursion with a visited-ident set, so a
         // self-referential key type can't loop.
         let mut float_key_rejections = BTreeSet::new();
+        // Collected beside `float_key_rejections` for the same borrow-checker reason (the loop below
+        // borrows `self` immutably while `record_rejection` needs it mutably).
+        let mut typed_rest_json_rejections = BTreeSet::new();
         fn key_contains_float(ty: &ConceptualRustType, types: &IntermediateTypes<'_>) -> bool {
             let mut found = false;
             ty.visit_types(types, &mut |t| {
@@ -2750,6 +2753,14 @@ impl<'a> IntermediateTypes<'a> {
         fn float_key_msg(rule: &RustIdent) -> String {
             format!(
                 "rule `{rule}`: table key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
+            )
+        }
+        // The rest-row twin of `float_key_msg`: an open struct-map's captured entries live in the same
+        // `BTreeMap`/`OrderedHashMap` a table's do, so a float key domain is the same E0277 — named
+        // for the position so the remedy points at the rest row rather than at a table rule.
+        fn float_rest_key_msg(rule: &RustIdent) -> String {
+            format!(
+                "rule `{rule}`: open struct-map rest-row key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
             )
         }
         // The set-side twin of `float_key_msg`: a set's uniqueness door and always-on comparison
@@ -2817,6 +2828,50 @@ impl<'a> IntermediateTypes<'a> {
                     float_key_rejections.insert(float_set_elem_msg(&rule_ident));
                 }
             }
+            // An open struct-map's CAPTURED rest row (`{ 1: uint, * K => V }`) keys the very same
+            // container a table rule does, but the IR stores its `K` FLAT (`RestKind::MapEntries`),
+            // never as a `Map(k, v)` node — so neither `check_used_as_key` above nor the `Table`
+            // branch below ever sees it, and without this branch a typed `K` reaches
+            // `BTreeMap<K, V>`/`OrderedHashMap<K, V>` with no `Eq`/`Ord`/`Hash` derives (E0277 in the
+            // generated crate, and — for a dep-owned `K` — no `borrowed_key_types.rs` row for the
+            // dependency to satisfy either, since that file is built from this same map).
+            //
+            // Gated on the TYPED path: a bare `uint`/`text`/`any` domain keys nothing that could be
+            // marked (`mark_key_demand` marks `Rust(ident)` nodes only), so gating keeps every
+            // existing spec's derives byte-identical rather than relying on that coincidence.
+            if let RustStructType::Record(record) = rust_struct.variant()
+                && let Some(rest) = record.captured_rest()
+                && !rest.is_array_tail()
+                && !rest.map_key_uses_peeked_path(self)
+            {
+                // Same relaxation as the `Table` branch: a `@duplicates preserve` row's keys live in
+                // a `PairMap`, compared by a linear `PartialEq` scan rather than hashed/ordered, so
+                // the `ord` (Eq-containing) flavor suffices where the loose container needs `bare`.
+                let key_flavor =
+                    if rest.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve) {
+                        ord
+                    } else {
+                        bare
+                    };
+                rest.domain().visit_types(self, &mut |ty| {
+                    mark_key_demand(ty, &mut key_demand, key_flavor)
+                });
+                // Walked directly (not as a `Map` node), so the float check is this branch's own —
+                // and, running after generic resolution, it also catches a float behind a resolved
+                // generic instance (`* gen<float64> => v`).
+                if key_contains_float(&rest.domain().conceptual_type, self) {
+                    float_key_rejections.insert(float_rest_key_msg(&rule_ident));
+                }
+                // TEMPORARY (removed when the typed-K JSON face lands): the flattened-rest JSON
+                // surface images a rest key as a STRING, a convention defined today only for the
+                // `uint`/`text`/`any` domains — `emit_rest_flatten_json`'s key closure has no reading
+                // for a general `K`. Reject loudly rather than emit a crate that cannot compile.
+                if cli.json_serde_derives || cli.json_schema_export {
+                    typed_rest_json_rejections.insert(format!(
+                        "rule `{rule_ident}`: a typed key domain on an open struct-map rest row (`* K => V` where `K` is not bare `uint`/`text`/`any`) does not yet support the JSON flags — the flattened-rest JSON surface images rest keys as strings, and that image is only defined for the `uint`/`text`/`any` domains. Generate this spec without `--json-serde-derives`/`--json-schema-export`, or use a `uint`/`text`/`any` key domain."
+                    ));
+                }
+            }
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
                 // A `@duplicates preserve` table's key is compared with the pair-map's linear
                 // `contains`/`find` scan (`K: PartialEq`), NOT hashed or ordered like a `BTreeMap`/
@@ -2848,6 +2903,9 @@ impl<'a> IntermediateTypes<'a> {
             self.union_key_demand(ident, demand);
         }
         for msg in float_key_rejections {
+            self.record_rejection(msg);
+        }
+        for msg in typed_rest_json_rejections {
             self.record_rejection(msg);
         }
         // NonEmptyVec wasm-wrapper name collisions: an inline `[+ elem]` mints a `NonEmpty<Elem>List`

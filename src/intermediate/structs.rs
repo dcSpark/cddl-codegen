@@ -907,6 +907,24 @@ pub struct RestRow {
     pub field_name: String,
 }
 
+/// Whether any alias in `ty`'s alias chain carries a `@custom_serialize`/`@custom_deserialize`
+/// directive. Only the ALIAS chain is walked: a rest-row domain reaches the peeked-key fast path only
+/// when it resolves to a bare primitive/`any`, so an owning `Rust(ident)` struct (whose custom pair
+/// lives on the struct config) is already on the typed path by shape.
+fn custom_codec_on_alias_chain(ty: &ConceptualRustType, types: &IntermediateTypes) -> bool {
+    let mut cur = ty;
+    while let ConceptualRustType::Alias(alias_ident, inner) = cur {
+        if let Some(info) = types.type_aliases().get(alias_ident)
+            && let Some(rmd) = info.rule_metadata.as_ref()
+            && (rmd.custom_serialize.is_some() || rmd.custom_deserialize.is_some())
+        {
+            return true;
+        }
+        cur = inner;
+    }
+    false
+}
+
 impl RestRow {
     /// The key type (`K`) of a map rest row. Only reached on a `Map`-rep record's rest row.
     pub fn domain(&self) -> &RustType {
@@ -959,6 +977,41 @@ impl RestRow {
     /// through HERE (the rust member type, the wasm wrapper mint, `scope_references`' Record rest
     /// arm), so the container spelling cannot drift between them — a rest row's container is
     /// indistinguishable from a map/array FIELD's container to each of them.
+    /// Whether a map rest row's key domain takes the FAST (peeked-key) deserialize path — the record
+    /// loop's own `cbor_type()` dispatch has already read the key as a `u64`/`String`/`AnyCbor`, so the
+    /// capture reconstructs it from those parts instead of running `K::deserialize`.
+    ///
+    /// That reconstruction is only FAITHFUL when the domain's whole wire image is the bare uint/text
+    /// the dispatch read (or is `any`, which images every wire shape by construction). Three things
+    /// each break the equivalence, so each routes the row to the typed seek path instead:
+    ///
+    /// * a non-empty `encodings` chain — `* #6.24(uint) => v` writes a tag the peeked read never
+    ///   consumes, `* bytes .cbor uint => v` writes a byte string the peeked read never sees;
+    /// * a `@custom_serialize`/`@custom_deserialize` pair anywhere on the alias chain — the writer is
+    ///   honored inside `generate_serialize` while the peeked path never calls the READER, so a
+    ///   transforming codec would write transformed keys and read raw ones;
+    /// * anything whose conceptual type is not bare `uint`/`text`/`any` — there is nothing to
+    ///   reconstruct from.
+    ///
+    /// The typed path costs one hoisted `raw.position()` anchor per loop body and a rewind in the
+    /// declared-key catch-all, and is symmetric by construction (the same `K::deserialize` /
+    /// `K::serialize` pair as every other position). Keeping the fast path for exactly the domains it
+    /// is faithful for is what makes today's accepted rows byte-identical.
+    pub fn map_key_uses_peeked_path(&self, types: &IntermediateTypes) -> bool {
+        let domain = self.domain();
+        if !domain.encodings.is_empty() {
+            return false;
+        }
+        if custom_codec_on_alias_chain(&domain.conceptual_type, types) {
+            return false;
+        }
+        matches!(
+            domain.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Any
+                | ConceptualRustType::Primitive(Primitive::U64 | Primitive::Str)
+        )
+    }
+
     pub fn container_type(&self) -> RustType {
         match &self.kind {
             RestKind::ArrayTail { element } => {

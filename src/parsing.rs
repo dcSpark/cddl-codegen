@@ -4296,19 +4296,30 @@ fn recognize_rest_row(
             return (None, Some(candidate));
         }
     };
-    // Only `uint` (u64), `text`, and `any` key domains are supported. Other concrete key domains
-    // (sized ints, bstr, nint, struct keys, …) reject gracefully,
-    // naming the supported spellings. (The uint capture reconstructs the key from the u64 the
-    // record loop already read, so only the full `uint`/u64 domain is honored here.)
-    let domain_ok = matches!(
+    // A general key domain is supported: bare `uint`/`text`/`any` keep the fast peeked-key dispatch,
+    // everything else takes the typed seek path (`RestRow::map_key_uses_peeked_path` routes them, and
+    // is the ONE predicate parsing/IR/generation share). Two shapes stay rejected, for reasons the
+    // key type itself carries rather than the row's plumbing:
+    //
+    //   * a NULL-ADMITTING domain (`k = text / null` → `Optional<..>`), rejected here — a `null` key
+    //     arrives as CBOR major type 7, the same dispatch arm that carries the indefinite-map BREAK,
+    //     so the row cannot tell "the map ended" from "the next key is null" without deciding one of
+    //     them wrong.
+    //   * a FLOAT-containing domain, rejected in `IntermediateTypes::finalize` beside the table/set
+    //     float instruments (floats have no total order, so they can key nothing) — the one place
+    //     that also sees a float hidden behind a resolved generic instance.
+    //
+    // Fixed-value domains (`* 5 => v`, or an alias to one) never reach here: the zero-permitting
+    // occurrence guard and the bare-fixed-value rule guard reject them first.
+    if matches!(
         domain.conceptual_type.resolve_alias_shallow(),
-        ConceptualRustType::Any | ConceptualRustType::Primitive(Primitive::U64 | Primitive::Str)
-    );
-    if !domain_ok {
+        ConceptualRustType::Optional(_)
+    ) {
         types.record_rejection(format!(
-            "rule `{src}`: an open struct-map rest row currently supports only `uint`, `text`, or \
-             `any` key domains (`* uint => v`, `* text => v`, `* any => v`). Other key types are \
-             not yet supported on a rest row."
+            "rule `{src}`: an open struct-map rest row cannot take a null-admitting key domain (`* \
+             (t / null) => v`): a `null` key and the break that ends an indefinite-length map are \
+             both CBOR special values, so the row's key dispatch cannot tell them apart. Drop the \
+             `null` arm from the key type (a missing entry already means absent)."
         ));
         return (None, Some(candidate));
     }
