@@ -3121,6 +3121,55 @@ fixture `component_tests` compiles or validates is differentialled here too. Two
 floor on the number of rust-surface obligations compared, and a stray-key guard over both generated
 trees so a new emission surface fails loudly instead of escaping the differential.
 
+### component behavior (`component_host_tests::component_host_behavior`, gate `component_host`)
+
+The only gate that **runs** the component face. Its two siblings judge emitted bytes; a `.wit` that
+resolves, encodes and validates over glue that compiles is still silent about every claim the
+boundary actually makes at runtime — so this gate builds a real `wasm32-wasip2` component, loads it
+into a `wasmtime` host and drives it through one `#[test]` per assertion class:
+
+- **construction and accessor read-back**, every field type in the fixture;
+- **byte-equality with the rust crate's own serialization**, both directions — the oracle is a path
+  dep on the generated `rust` crate, so "the boundary agrees with the library it wraps" is checkable
+  where "the boundary produced some bytes" is not;
+- **fallible doors return `Err` and never trap**, and the instance is still usable afterwards. That
+  last clause is the real assertion: a trap poisons the whole component instance, so in a composed
+  topology one bad call kills a shared dependency for every consumer. The trap TEXT is deliberately
+  never pinned;
+- **`option<option<T>>` has three observable, distinct states** — the wasm face's flatten/`has_*`
+  workaround is not needed here;
+- **returned collections and handles are snapshots**, in the return direction and the parameter
+  direction both;
+- **the same handle as receiver and argument** (`x.set-children([x])`), the class with no wasm-face
+  precedent and the reason the never-two-`RefCell`-guards emission invariant exists. Its structural
+  twin is `component_tests::component_glue_never_holds_two_refcell_guards`, which reads the glue;
+  this is the half that runs it;
+- **the `any-cbor` edges**: canonical re-encode under the non-preserve posture (`9f0102ff` in,
+  `820102` out — byte-exact against the rust crate, not against what the caller passed), and the
+  one-item rule, where trailing data is rejected rather than truncated to the first item.
+
+`wasmtime-wasi` in the linker is load-bearing rather than precautionary, and
+`wasi_is_required_in_the_linker` is the negative control that says so: a wasip2 reactor imports
+`wasi:*` interfaces even for a pure codec, so an empty linker fails instantiation before an
+assertion can run.
+
+The host crate is a **nested scratch crate the gate builds** (`tests/component-host/host/**`), never
+a dev-dep of `cddl-codegen` — wasmtime in the bin crate's dev-graph would tax every `local`-tier
+compile. It is COPIED into the generated output root before the gate-cache key is taken, because
+every input a cached cell reads from scratch must live inside the hashed root (see "The gate cache"
+above; `no_std_check.ts` is the shipped exemplar). Its `bindgen!` resolves the WIT by a relative
+path and takes the built `.wasm` from an env var, so the hashed bytes are run-independent, and
+`component_host_tests::the_host_crate_carries_the_files_the_gate_copies` asserts both properties
+in-process. The cached closure checks more than a cargo exit code, so that verdict logic is
+versioned into the key as an argv marker.
+
+Measured on the delivering machine: **81 s cold** (a fresh scratch root, so wasmtime builds), **3 s
+warm** (gate-cache hit), **9 s on a cache miss with the scratch root warm**. The scratch root is
+checkout-hash keyed, serialized with `acquire_scratch_lock` and deliberately NOT deleted between
+runs — that last number is why. Per-cell output trees are freed; the shared `target/` (≈3.5 GiB) is
+what survives. A machine below the stated scratch or memory floor makes the gate print a loud SKIP
+naming the measured number, never a silent pass.
+
 ## multifile placement matrix (`tests/matrix_multifile/` + `integration_tests::multifile_matrix_{compiles,roundtrips}`)
 
 A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module

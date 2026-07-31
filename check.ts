@@ -812,6 +812,21 @@ export const REGISTRY: Gate[] = [
   // parity regression and a validity regression never arrive under one name.
   { id: "component_parity", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_parity"],
     desc: "component face: rust pub surface -> WIT surface differential (ledgered)" },
+  // The only gate that RUNS the face. Its two siblings above judge emitted bytes; this one loads a
+  // real wasm32-wasip2 component into wasmtime and drives it, which is the only way to reach the
+  // classes no static reading can: a fallible door returning `Err` instead of trapping (a trap
+  // poisons the instance for every later caller), a getter handing back a snapshot rather than an
+  // alias, the three distinct states of `option<option<T>>`, byte-equality against the rust crate's
+  // own serialization, and the same-handle-as-receiver-and-argument case that has no wasm-face
+  // precedent at all. Named separately for the same reason as its siblings: a behavioral regression
+  // and a validity regression must never arrive under one name.
+  //
+  // Nested cargo over a hand-written host crate copied INSIDE the hashed output root, memoized by
+  // the gate cache. Measured on the delivering machine: 81 s cold (a fresh scratch root, so
+  // wasmtime builds), 3 s warm (cache hit), 9 s on a cache MISS with the scratch root warm — which
+  // is why that root is kept between runs rather than deleted.
+  { id: "component_host", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_host"],
+    desc: "component face: behavioral gate — a real wasip2 component driven through a wasmtime host" },
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },
