@@ -3222,6 +3222,70 @@ root is checkout-hash keyed, serialized with `acquire_scratch_lock` and delibera
 per-cell output trees are freed, the shared `target/` (3.3 GiB) survives. It shares `component_host`'s
 scratch and memory floors and its loud-SKIP behaviour, never a silent pass.
 
+### the JS host (`component_jco_tests::component_jco_js_host`, gate `component_jco`)
+
+**The face as its real audience meets it.** Every gate above judges the component from Rust; the
+motivating consumer is a JS dApp, which reaches it through a *transpiler* (`jco`) rather than a
+runtime — and the surface jco synthesizes is not the wasmtime one. The gate builds real
+`wasm32-wasip2` components, transpiles them, and drives the result with node's built-in test runner.
+
+Fixtures are **reused, never duplicated**: the specs are `tests/component-host/inputs` and
+`tests/component-compose/{dep,consumer}`, the same ones the two wasmtime gates drive. So a
+disagreement between this gate and them is a finding about the *host*, not about the emitter. Only
+the JS drivers in `tests/component-jco/js/**` are new.
+
+Three legs:
+
+- **surface** (one component, transpiled alone) — every consumer-visible row of the JS face, asserted
+  at run time rather than read off the emitted `.d.ts`, because the two disagree: a WIT `enum` arrives
+  as a *string label* and rejects the numeric discriminant the wasm-bindgen face takes. Also the
+  `{tag, val}` `int` bridge, the three distinct states of `option<option<T>>`, `any` as a
+  `Uint8Array` with trailing data refused, a fallible door *throwing* a `ComponentError` whose
+  `.payload` is the WIT string, the instance surviving that failure, the despecialized NonEmpty bound
+  re-imposed at the consuming setter, snapshot-not-alias getters, the same-handle re-entrancy case,
+  and `[Symbol.dispose]` as an **own property** of each instance (never on the prototype — a consumer
+  must feature-detect on the instance) with the post-dispose `TypeError` observable;
+- **crosscrate** (two components, transpiled *separately* and wired by jco's `--map`) — the full
+  acceptance flow, and the shape the docs prescribe. Instantiate-once, which `component_compose` has
+  to pin by hand because a composer cannot promise it, falls out of ES module semantics here;
+- **composed-is-broken** — a **known-broken pin**. The `wac`-composed dual-export world
+  `component_compose` drives correctly through wasmtime is broken under jco 1.26.1: jco allocates a
+  separate handle table per component *instance* for the same resource type, so a dependency handle
+  throws on the way in and a dependency-typed getter silently returns a *different object* on the way
+  out. Pinned because the second symptom is silent. Its failure messages read as the good news they
+  would be. This leg **loud-skips alone** when the ambient `wac` is absent or below 0.9 — it is the
+  gate's only ambient-binary dependency, and the other two legs never wait on it.
+
+The npm dependencies are `@bytecodealliance/jco` and `@bytecodealliance/preview2-shim`, pinned
+**exact** in a committed `package-lock.json` and installed with `npm ci` (never `npm install`, which
+would resolve a newer jco and answer a question about a version nobody committed). The shim is
+installed but **not mapped**: jco rewrites the `wasi:*` imports to it by default, and a hand-written
+`wasi:*` map breaks the output. There is no test-framework dependency — `node --test` and
+`node:assert`.
+
+Scratch layout is load-bearing. `node_modules/` sits at the scratch **root**, outside the hashed
+tree (a ~200 MB install that has nothing to do with any assertion); node finds it by walking up from
+the transpiled modules. The fixture's `package.json`/`package-lock.json` therefore land in *two*
+places — at the root, where `npm ci` consumes them, and inside the hashed `out/js/`, so a version
+bump moves the gate-cache key. That second copy is the input-closure rule (see "The gate cache"): a
+lockfile bump that did not move the key would serve the stale PASS forever. The ambient `wac` version
+is in the key too, because it decides *which* legs a cell covers.
+`component_jco_tests::the_jco_fixture_carries_the_files_the_gate_copies` asserts the copy list, the
+two exact version pins, that no driver imports by an absolute path, and that the interface
+identifiers the drivers spell agree with the `--lib-name` values the gate generates with.
+
+Measured on the delivering machine: **17 s cold** (a fresh scratch root, so `npm ci` and the three
+guest builds run), **4 s warm** (gate-cache hit — which still pays the six-manifest
+`cargo generate-lockfile` preflight), **3 s on a forced run with the scratch root warm**. The
+cheapest gate in the component group: no wasmtime, no composer crate, no native host crate.
+
+It sits at `local` on both counts a placement has to answer — cost (above) and **provisioning**. node,
+npm and a cold run's npm-registry access are more fragile than a rustup target, so the outcome is
+tier-dependent: a loud SKIP at `local`, a hard FAIL at `full` via `CDDL_JCO_REQUIRED=1`, which the
+`fn`-shaped registry row sets when the tier is `full`. Same mechanism and same reason as
+`no_std_check`'s absent-target outcome: a silent skip in the tier that *ships* the feature would void
+the guarantee that tier exists to give. It reuses `component_host`'s scratch and memory floors.
+
 ### component compilation at corpus breadth (`component_tests::component_corpus_compiles`, gate `component_corpus_compiles`, `full`)
 
 Every `tests/corpus/*.cddl` fixture's emitted component crate, type-checked for `wasm32-wasip2`.
