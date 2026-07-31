@@ -1,0 +1,22 @@
+; REST-ROW key-domain consumer over the workspace dep `wr_dep`. Companion to
+; `consumer_inputs_flavored`: the demand rows here are derived from an open struct-map's REST ROW
+; (`* K => V`) rather than from a table rule or a `@used_as_key` tag, which is the channel a typed
+; rest key needs and the one the flat IR shape hid.
+;
+; `loose` keys a DEFAULT-flavored rest row on `idx_plain` -> a `bare` row (the container is a
+; `BTreeMap`, so the dep must derive the full Eq/Ord bundle).
+; `preserve` keys a `@duplicates preserve` rest row on `idx_ord` -> an `ord` row: the pair-map
+; compares keys with a linear scan, so the row asks for the Eq-containing flavor and not `Hash`.
+; `k: idx_key` is a PLAIN field of the Ord-refusing dep type: its `@used_as_key hash` tag is the
+; sole demand source, so the two rest rows beside it must not widen it to `Ord`.
+loose = {
+    1: uint,
+    * idx_plain => uint
+}
+
+preserve = {
+    2: uint,
+    * idx_ord => uint ; @duplicates preserve
+}
+
+holder = [k: idx_key, l: loose, p: preserve]

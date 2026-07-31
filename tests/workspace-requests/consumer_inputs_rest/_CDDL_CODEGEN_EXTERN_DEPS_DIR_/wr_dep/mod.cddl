@@ -1,0 +1,8 @@
+; Extern-deps decls for the REST-ROW key-domain consumer. `idx_key` carries `@used_as_key hash` and
+; is used at a PLAIN field in the consumer, so the tag is its sole demand source — it must stay
+; Ord-FREE while the rest rows beside it demand `bare` and `ord` of other dep types. `idx_plain` and
+; `idx_ord` are untagged; their demands come entirely from the open struct-map rest rows that key on
+; them, which is the channel this fixture exists to prove.
+idx_key = _CDDL_CODEGEN_EXTERN_TYPE_ ; @used_as_key hash
+idx_plain = _CDDL_CODEGEN_EXTERN_TYPE_
+idx_ord = _CDDL_CODEGEN_EXTERN_TYPE_
