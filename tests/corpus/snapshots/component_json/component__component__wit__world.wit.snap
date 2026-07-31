@@ -53,7 +53,7 @@ interface types {
     from-json: static func(json: string) -> result<node, string>;
   }
   resource %record {
-    constructor(id: u64, name: string, digest: borrow<hash>, delta: int, limit: u64, tags: list<string>, props: list<tuple<string, u64>>, totals: list<tuple<string, u64>>, kind: color, root: borrow<node>, meta: any-cbor) -> result<%record, string>;
+    constructor(id: u64, name: string, digest: borrow<hash>, delta: int, limit: u64, tags: list<string>, props: list<tuple<string, u64>>, totals: list<tuple<string, u64>>, kind: color, root: borrow<node>, meta: any-cbor, metas: list<any-cbor>) -> result<%record, string>;
     id: func() -> u64;
     name: func() -> string;
     digest: func() -> hash;
@@ -65,6 +65,7 @@ interface types {
     kind: func() -> color;
     root: func() -> node;
     meta: func() -> any-cbor;
+    metas: func() -> list<any-cbor>;
     note: func() -> option<string>;
     set-note: func(note: string);
     to-cbor-bytes: func() -> list<u8>;

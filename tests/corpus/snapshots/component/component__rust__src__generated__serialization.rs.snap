@@ -130,7 +130,7 @@ impl cbor_event::se::Serialize for Record {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_map(cbor_event::Len::Len(
-            11 + match &self.note {
+            12 + match &self.note {
                 Some(_) => 1,
                 None => 0,
             },
@@ -162,6 +162,11 @@ impl cbor_event::se::Serialize for Record {
         self.delta.serialize(serializer)?;
         serializer.write_text("limit")?;
         serializer.write_unsigned_integer(self.limit)?;
+        serializer.write_text("metas")?;
+        serializer.write_array(cbor_event::Len::Len(self.metas.len() as u64))?;
+        for element in self.metas.iter() {
+            element.serialize(serializer)?;
+        }
         serializer.write_text("props")?;
         serializer.write_map(cbor_event::Len::Len(self.props.len() as u64))?;
         for (key, value) in self.props.iter() {
@@ -185,7 +190,7 @@ impl Deserialize for Record {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map()?;
             let mut read_len = CBORReadLen::from(len);
-            read_len.read_elems(11)?;
+            read_len.read_elems(12)?;
             let mut id = None;
             let mut kind = None;
             let mut meta = None;
@@ -195,6 +200,7 @@ impl Deserialize for Record {
             let mut tags = None;
             let mut delta = None;
             let mut limit = None;
+            let mut metas = None;
             let mut props = None;
             let mut digest = None;
             let mut totals = None;
@@ -307,6 +313,22 @@ impl Deserialize for Record {
                             }
                             limit = Some(Ok(raw.unsigned_integer().map_err(Into::<DeserializeError>::into).and_then(|x| if x > 5 { Err(DeserializeFailure::RangeCheck{ found: x as i128, min: None, max: Some(5)}.into()) } else { Ok(x) })?).map_err(|e: DeserializeError| e.annotate("limit"))?);
                         },
+                        "metas" =>  {
+                            if metas.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str("metas".into())).into());
+                            }
+                            metas = Some((|| -> Result<_, DeserializeError> {
+                                let mut metas_arr = Vec::new();
+                                let len = raw.array()?;
+                                while match len { cbor_event::Len::Len(n) => (metas_arr.len() as u64) < n, cbor_event::Len::Indefinite => true, } {
+                                    if matches!(len, cbor_event::Len::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                                        break;
+                                    }
+                                    metas_arr.push(crate::generated::any_cbor::AnyCbor::deserialize(raw)?);
+                                }
+                                Ok(metas_arr)
+                            })().map_err(|e| e.annotate("metas"))?);
+                        },
                         "props" =>  {
                             if props.is_some() {
                                 return Err(DeserializeFailure::DuplicateKey(Key::Str("props".into())).into());
@@ -411,6 +433,10 @@ impl Deserialize for Record {
                 Some(x) => x,
                 None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("meta"))).into()),
             };
+            let metas = match metas {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("metas"))).into()),
+            };
             read_len.finish()?;
             Ok(Self {
                 id,
@@ -424,6 +450,7 @@ impl Deserialize for Record {
                 kind,
                 root,
                 meta,
+                metas,
                 note,
             })
         })().map_err(|e| e.annotate("Record"))

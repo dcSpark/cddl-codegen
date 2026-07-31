@@ -110,6 +110,47 @@ impl From<cddl_lib::any_cbor::AnyCborKind> for AnyCborKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct AnyList(pub(crate) Vec<cddl_lib::any_cbor::AnyCbor>);
+
+#[wasm_bindgen]
+impl AnyList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> AnyCbor {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &AnyCbor) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::any_cbor::AnyCbor>> for AnyList {
+    fn from(native: Vec<cddl_lib::any_cbor::AnyCbor>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<AnyList> for Vec<cddl_lib::any_cbor::AnyCbor> {
+    fn from(wasm: AnyList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::any_cbor::AnyCbor>> for AnyList {
+    fn as_ref(&self) -> &Vec<cddl_lib::any_cbor::AnyCbor> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Attrs(pub(crate) cddl_lib::Attrs);
 
 #[wasm_bindgen]
@@ -579,6 +620,10 @@ impl Record {
         self.0.meta.clone().into()
     }
 
+    pub fn metas(&self) -> AnyList {
+        self.0.metas.clone().into()
+    }
+
     pub fn set_note(&mut self, note: String) {
         self.0.note = Some(note)
     }
@@ -599,6 +644,7 @@ impl Record {
         kind: Color,
         root: &Node,
         meta: &AnyCbor,
+        metas: &AnyList,
     ) -> Result<Record, JsError> {
         cddl_lib::Record::new(
             id,
@@ -612,6 +658,7 @@ impl Record {
             kind,
             root.clone().into(),
             meta.clone().into(),
+            metas.clone().into(),
         )
         .map(Into::into)
         .map_err(Into::into)
