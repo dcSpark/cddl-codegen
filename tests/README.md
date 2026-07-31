@@ -3069,6 +3069,52 @@ rust exposed `Int::new_uint`, `Int::new_nint`, and `IntError` for `int` map keys
 only the signed `Int::new(i64)` constructor and mapped parse failures to `JsError`; wasm now emits
 the two raw-CBOR-argument constructors and a source-level `pub type IntError = JsError` counterpart.
 
+### rust↔WIT API-surface parity (`component_parity_tests::component_api_parity`)
+
+The component face's sibling of the gate above, asking the same one-directional question of the
+other boundary. It matters for the same structural reason and one sharper one: the component gates
+in `component_tests` all judge what was emitted *against itself* — the four-stage validity gate
+resolves/encodes/validates the `.wit`, the wasip2 build smoke compiles whatever glue implements
+whatever that `.wit` declared — so a member missing from BOTH halves yields a package that resolves,
+validates and builds. Nothing else can see it.
+
+The rust half is `syn` over **every** emitted per-scope `rust/src/generated/**/mod.rs` (the wasm
+sibling parses one `mod.rs` and excludes directory inputs; the component face is inherently
+multi-interface — one WIT interface per input file — so multifile is the point rather than an
+exclusion). The WIT half is `wit-parser` over the emitted package, the same pinned resolver the
+validity gate uses, so what is compared is the surface the toolchain sees. The rust→WIT name map is
+`utils::convert_to_kebab_case`, a pure function of the rust name, plus the one non-kebab mapping
+(rust `new` ⇒ the resource's `constructor`); the projection's `WitPackage` does carry the pairing,
+but reading it would make this an intent check instead of an output check. Three rules:
+
+1. Every rust `pub struct`/`enum` is either a WIT type of the kebab name, or carries a
+   `// unexported: <Ident> — <reason>` record in the emitted `.wit`. Neither is the silent-drop class.
+2. Every rust `pub` field on a type whose counterpart is a **resource** has a WIT getter of the kebab
+   name — with the same structural encoding-capture exemption the wasm sibling has
+   (`pub encodings: Option<XEncoding>` under `--preserve-encodings` is round-trip metadata).
+3. Every rust inherent `pub fn` on such a type has a WIT member of the kebab name. Signatures are
+   unchecked by design: the two ABIs differ by construction (borrows in, owned handles out, every
+   failure as `result<_, string>`).
+
+A `pub type` alias imposes nothing — a CDDL alias and a named collection are resolved THROUGH at
+their use sites and never surfaced, which is the documented type-mapping row. A counterpart that is a
+WIT **value** type (`enum`, the `int` variant, an alias) has no member namespace, so rules 2–3 have
+nothing to compare — but a rust type with inherent fns *and* a value-type counterpart is reported
+rather than carved out, which is what keeps the `Int` class visible.
+
+Findings reconcile against `COMPONENT_PARITY_EXEMPT` keyed `(label, item, reason)` with the same
+two-way staleness guard: an unexempted finding fails with the remedy; an entry matching no live
+finding fails as "resurfaced". Its live entries are the `Int` value-type class (`Int::new_uint` /
+`Int::new_nint` have nowhere to land in a `variant`, so a caller constructs the arm directly) and
+`IntError`, the rust-only error enum minted beside `Int` — not an IR type at all, and the WIT face
+carries every failure as a `string`. The sweep is the component fixture set plus
+`tests/component-cycle/inputs`, whose deliberate refusal is pinned in `EXPECTED_GENERATION_FAIL` (a
+listed label that starts generating fails as "the refusal is gone").
+`component_api_parity_axes_and_pins_are_live` holds the whole-axis assertions, including that every
+fixture `component_tests` compiles or validates is differentialled here too. Two vacuity guards: a
+floor on the number of rust-surface obligations compared, and a stray-key guard over both generated
+trees so a new emission surface fails loudly instead of escaping the differential.
+
 ## multifile placement matrix (`tests/matrix_multifile/` + `integration_tests::multifile_matrix_{compiles,roundtrips}`)
 
 A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module

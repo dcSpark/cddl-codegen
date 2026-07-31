@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// reference closure on a spec nobody wrote for this face. `tests/component-multifile/inputs` covers
 /// the same multi-interface shape with NO externs, which is what lets the build smoke compile it —
 /// `tests/multifile`'s own rust crate needs a hand-written extern re-export before it builds at all.
-const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
+pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
     ("tests/component-core/input.cddl", &[]),
     (
         "tests/component-core/input.cddl",
