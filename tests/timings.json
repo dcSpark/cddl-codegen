@@ -81,10 +81,30 @@
       "gate": "component_host"
     },
     {
-      "gate": "component_parity"
+      "gate": "component_parity",
+      "warm_ms": 2000,
+      "n": 3,
+      "measured": "2026-07-31",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-31",
+          "warm_ms": 2000
+        }
+      ]
     },
     {
-      "gate": "component_wit"
+      "gate": "component_wit",
+      "warm_ms": 4000,
+      "n": 3,
+      "measured": "2026-07-31",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-31",
+          "warm_ms": 4000
+        }
+      ]
     },
     {
       "gate": "corpus_decode_replay",
