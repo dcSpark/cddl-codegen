@@ -728,6 +728,20 @@ function runNoStdCheck(): Outcome {
   return runNoStdCheckGate(tier);
 }
 
+// ---- component JS-host gate: transpile with jco and drive the result from node --------------------
+// A `fn` gate for exactly the `runNoStdCheck` reason above: its provisioning outcome is TIER-DEPENDENT.
+// node, npm and a first run that needs the npm REGISTRY are more fragile than a rustup target, so a
+// machine legitimately lacking them must not fail `local` — but a silent skip in the tier that SHIPS
+// the feature would void the guarantee `full` exists to give. `CDDL_JCO_REQUIRED=1` is what the Rust
+// test reads to turn its loud skip into a panic; passing it through the env (rather than adding an
+// `env` field to `Gate`) keeps the registry's shape — and its meta-checks — unchanged.
+function runJcoCheck(): Outcome {
+  const tier = process.argv.slice(2).find(a => !a.startsWith("--")) ?? "local";
+  const env = tier === "full" ? { CDDL_JCO_REQUIRED: "1" } : undefined;
+  const exit = sh(["cargo", "test", "--bin", "cddl-codegen", "component_jco"], ROOT, env);
+  return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cargo test component_jco exit ${exit}` };
+}
+
 // ---- matrix typecheck gate: tsc --noEmit via the pinned local devDependency ----------------------
 // The cddl-matrix scripts run under Bun (no build step), but nothing checks their strict types unless
 // `tsc` runs. This gate uses the LOCAL typescript pinned in cddl-matrix/package.json (not a global /
@@ -861,6 +875,30 @@ export const REGISTRY: Gate[] = [
   // rather than `full`.
   { id: "component_compose", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_compose"],
     desc: "component face: cross-crate acceptance — two generated components composed and driven through wasmtime" },
+  // The face as its REAL audience meets it. Every gate above judges the component from Rust; the
+  // motivating consumer is a JS dApp, which reaches it through a TRANSPILER (`jco`) rather than a
+  // runtime — and the surface jco synthesizes is not the wasmtime one. A WIT `enum` arrives as a
+  // string label and REJECTS the numeric discriminant the wasm-bindgen face takes; a fallible door
+  // throws instead of returning; disposal hangs off an own property, not a prototype. None of that is
+  // observable above this line, and all of it is a claim `component_differences.mdx` makes to a
+  // consumer. Three legs: the single-component surface, the cross-crate wiring (two separately
+  // transpiled modules joined by `--map` — the shape the docs prescribe), and a KNOWN-BROKEN pin on
+  // `wac`-composed artifacts under jco 1.26.1, whose worse symptom is a silently WRONG object rather
+  // than a throw. That third leg loud-skips ALONE when the ambient `wac` is absent or below 0.9.
+  //
+  // Reused fixtures throughout (`component-host/inputs`, `component-compose/{dep,consumer}`), so a
+  // disagreement with the two wasmtime gates is a finding about the HOST, not the emitter.
+  //
+  // `local` on both counts the placement has to answer. COST: the cheapest gate in this group — no
+  // wasmtime, no composer crate, no native host crate; three wasip2 guest builds and a sub-second
+  // transpile. Measured on the delivering machine: 17 s cold (fresh scratch root, so `npm ci` and the
+  // guest builds run), 4 s warm (cache hit — which pays the six-manifest `cargo generate-lockfile`
+  // preflight), 3 s on a forced run with the scratch root warm. PROVISIONING: node, npm and a cold
+  // run's npm registry access are more fragile than a rustup target, which is why the gate is a `fn`
+  // — it loud-SKIPS at `local` and hard-FAILS at `full` (`CDDL_JCO_REQUIRED=1`), rather than sitting
+  // at `full` where the JS face would go unchecked in the tier run dozens of times a day.
+  { id: "component_jco", tier: "local", kind: "fn", run: runJcoCheck,
+    desc: "component face: JS host — jco-transpiled components driven from node (surface + cross-crate + the wac-composed known-broken pin)" },
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },

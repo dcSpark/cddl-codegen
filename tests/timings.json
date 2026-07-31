@@ -84,6 +84,9 @@
       "gate": "component_host"
     },
     {
+      "gate": "component_jco"
+    },
+    {
       "gate": "component_import"
     },
     {
