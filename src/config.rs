@@ -413,8 +413,9 @@ pub struct Settings {
     /// package. A path the tool READS, so it resolves against the config file's directory exactly as
     /// `extern-import` does.
     ///
-    /// Hand-written only for now — the `deps`-edge derivation is not built, so a config that wants
-    /// import mode spells this sub-table itself.
+    /// Derived from a `deps` edge whose two crates both carry the component face
+    /// ([`Config::apply_graph_edges`]); a hand-written entry wins, and is how a dependency outside
+    /// this config, or one whose WIT is vendored, gets import mode.
     #[serde(default)]
     pub component_extern_wit: BTreeMap<String, String>,
     #[serde(default)]
