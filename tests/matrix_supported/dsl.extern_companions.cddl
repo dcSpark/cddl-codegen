@@ -1,0 +1,2 @@
+tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList
+holder = [items: [* tm]]

@@ -4558,6 +4558,12 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl.extern_companions"
+axis = "feature"
+example = "\ntm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList\nholder = [items: [* tm]]"
+pinned_reason = "references user-supplied code; crate cannot compile standalone (declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate)"
+
+[[row]]
 id = "dsl.ignore"
 axis = "feature"
 example = "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}"
