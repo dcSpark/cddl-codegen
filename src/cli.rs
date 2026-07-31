@@ -1117,7 +1117,6 @@ impl Cli {
     /// garbage can, and gets a message naming the flag.
     // `pub(crate)`, unlike its neighbours, because `WitPackageId` is a `pub(crate)` type in a
     // `pub(crate)` module: a `pub` signature naming it would be a private-interface leak.
-    #[allow(dead_code)] // the WIT projection is its caller
     pub(crate) fn wit_package(&self) -> crate::generation::wit::WitPackageId {
         match &self.wit_package {
             Some(raw) => crate::generation::wit::WitPackageId::parse(raw)
