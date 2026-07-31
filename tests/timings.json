@@ -75,6 +75,12 @@
       ]
     },
     {
+      "gate": "component_parity"
+    },
+    {
+      "gate": "component_wit"
+    },
+    {
       "gate": "corpus_decode_replay",
       "warm_ms": 936000,
       "n": 20,
