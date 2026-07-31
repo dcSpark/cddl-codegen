@@ -585,6 +585,88 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       their spec and the compile error names the shadowed binding, so the report reaches us
       pre-diagnosed.
 
+13. **The wasm face's fixed re-export vocabulary is asserted by nothing, and one member of it is
+    absent in the posture that owes it.** `to_canonical_cbor_bytes` is a default method on the
+    generated `Serialize` trait (declared in `static/serialization_preserve_force_canonical.rs`), and
+    the wasm face's job for that whole family is to re-export trait methods as inherent fns because
+    `wasm_bindgen` cannot export traits. Under `--wasm --preserve-encodings --canonical-form`
+    `create_base_wasm_struct` builds the `codegen::Function` for it and never pushes it onto the
+    impl, so the rust crate has the method and the wasm boundary does not: measured at master
+    `781e6b8a` on a two-rule spec, the emitted `wasm/` tree carries zero occurrences of
+    `to_canonical_cbor_bytes` against four of `to_cbor_bytes`. `--component` is not involved in
+    either the bug or its reproduction.
+    - **Why the parity gate cannot see it, and why that is the interesting half.** `wasm_api_parity`
+      exists to report "a rust member with no wasm counterpart", but its rust-side walk reads
+      INHERENT impls only (`syn::Item::Impl(im) if im.trait_.is_none()`) and documents the exclusion
+      of trait impls as a deliberate structural exemption. A trait method therefore contributes no
+      rust-side row, so nothing can be reported missing. The exemption is right for `From`/`AsRef`
+      and wrong for exactly this family, whose members exist ONLY as trait methods on the rust side
+      and ONLY as inherent fns on the wasm side.
+    - **The missing system is a posture-conditioned vocabulary assertion**, not a one-line fix. Six
+      members ride flag-conditional emitter branches — `to_cbor_bytes`, `from_cbor_bytes`,
+      `to_canonical_cbor_bytes`, `to_json`, `to_json_value`, `from_json` — and every one of them is
+      invisible to the parity gate by the same structural exemption, so any of the six can go missing
+      the same way. The assertion has to run in BOTH directions (a member emitted in a posture whose
+      runtime does not declare it is a compile error in the generated crate, not a harmless extra),
+      and on the component face that exact shape is already gated by
+      `component_wit_carries_the_canonical_seam_only_where_the_runtime_composes_it`. The wasm face
+      wants its sibling.
+    - **The fix half is not one line either.** The unpushed builder spells its body
+      `Serialize::to_canonical_cbor_bytes(&self.0)` where its sibling spells the fully-qualified
+      `<common-import>::serialization::Serialize::to_cbor_bytes`, so pushing the function as written
+      may not compile under `--common-import-override`. Land the assertion first and let it name what
+      the emitter owes.
+    - **Not probed**: whether the same omission reaches `--wasm-cbor-json-api-macro` (the macro branch
+      is a different emission path), or any posture other than
+      `--preserve-encodings --canonical-form`.
+    - **Reopening signal, for the generalization this entry deliberately does NOT propose** — a
+      mechanical differential over every rust trait method the wasm face promises to mirror, rather
+      than the hand-listed six: a consumer reporting a SECOND wasm member absent that the rust crate
+      has. That reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose
+      rust counterpart they can point at), and the count of silently-missing members is the dimension
+      along which a hand-listed vocabulary stops being maintainable. This entry records one such
+      member, so the signal is not already met by its own body.
+
+14. **A self-referential named collection aborts the tool, and the panic catalog structurally cannot
+    observe an abort.** `foos = [* foos]` plus a rule holding it ends generation with
+    `thread 'main' has overflowed its stack` / `fatal runtime error: stack overflow, aborting`
+    (SIGABRT, exit 134). Reproduced at master `781e6b8a` under `--wasm=false`, no `--component`. The
+    recursion is DETECTED before the crash — the tool prints its
+    `Recursive type: 'foos' / 'foos'` diagnostic and then overflows — so the generator already holds
+    the fact it needs and lacks only the decision to stop.
+    - **The owning family is the input panic-robustness catalog** over `tests/robustness/*.cddl`,
+      whose whole subject is that a malformed or edge-case spec must produce a clean error rather
+      than a crash, and whose per-input outcome is tracked by `input_robustness_catalog`.
+      Its neighbours bracket the gap without covering it: `self_recursive.cddl` is a
+      self-referential RECORD (`foo = [foo]`), `collection_rule_cycle_entry.cddl` is a rule cycle
+      entered AT a collection rule, and `tests/corpus/recursive.cddl` is recursion mediated by an
+      INLINE `[* tree]` inside a record. The uncovered spelling is a NAMED collection rule whose
+      element is the rule itself.
+    - **The family cannot host the fixture as it stands, which is the missing system.**
+      `input_robustness_catalog` drives `api::generated_strings` in-process inside `catch_unwind`,
+      and a stack overflow is an abort rather than an unwind — the fixture would take the test binary
+      down instead of recording a row. What is missing is an out-of-process outcome lane for the
+      catalog: run the generator as a subprocess for the shapes that can abort, and classify a fourth
+      outcome (`ABORTED (signal)`) beside `ok` / `error (graceful)` / `PANIC`, so a non-unwinding
+      crash becomes a snapshot-able outcome instead of a gate that dies. The catalog's existing
+      flip-is-a-fix convention then does the rest: the row moves to `error (graceful)` the day the
+      refusal lands.
+    - **The generator-side decision belongs to the fix, not here.** A named collection whose element
+      resolves to itself has no terminating rust type, and the diagnostic's own suggested remedy
+      cannot apply — the collection IS the indirection — so a hard refusal naming the rule, in the
+      parallel-sibling detector family with its own pinned message, is the likely shipping behavior.
+    - **Not probed**: the map flavor (`foos = {* text => foos}`), the `[+ foos]` occurrence, whether
+      the same shape reached through an alias or across scopes aborts identically, and whether any
+      posture flag changes the outcome.
+    - **Reopening signal, for the breadth this entry deliberately does NOT propose** — running the
+      whole 55-input catalog out of process, a spawn per input on the `local` tier, rather than only
+      the shapes a listed abort-prone set names: a second aborting input found by any route OTHER
+      than that list, i.e. a user or a fuzz run reporting exit 134 with no diagnostic from a spec the
+      list does not contain. The exit code is the observable and it belongs to whoever ran the tool,
+      and the count of abort shapes a hand-list misses is the dimension along which the
+      subset-versus-everything choice actually costs. This entry records exactly one such shape,
+      found by hand, so the signal is not already met by its own body.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
