@@ -226,11 +226,27 @@ impl GenerationScope {
                     // renderer; requester = this consumer's normalized --lib-name.
                     let rule_name = convert_to_snake_case(structural_name);
                     let requester = cli.lib_name_code();
+                    // A flavored shape (`@duplicates preserve` table / `@duplicates reject` set)
+                    // carries its policy marker BARE in the shape column, which the sidecar
+                    // round-trips by parse. A pasted RULE line is CDDL, where a bare marker after
+                    // the shape does not parse — and dropping it silently would mint the
+                    // WRONG-FLAVOR wrapper under a name that encodes the flavor. So the marker moves
+                    // into comment position, where it is the rule's `@duplicates` directive, and the
+                    // requester attribution follows it in `@doc` (the DSL's own slot for prose after
+                    // a directive). An unflavored shape keeps the plain-prose comment unchanged.
+                    let (bare_shape, policy_marker) =
+                        crate::generation::requests::split_shape_policy_marker(shape);
+                    let rule_line = match policy_marker {
+                        Some(marker) => format!(
+                            "{rule_name} = {bare_shape} ; {marker} @doc requested by {requester}"
+                        ),
+                        None => format!("{rule_name} = {bare_shape} ; requested by {requester}"),
+                    };
                     crate::warn!(
                         "warning: collection wrapper {structural_name} has only extern elements of \
                          dependency {dep:?} but is absent from its --extern-wrapper-index; minting \
                          it locally (a dep that later adds it would duplicate-symbol at link time)\n\
-                         hint: add to {dep}'s spec: {rule_name} = {shape} ; requested by {requester}"
+                         hint: add to {dep}'s spec: {rule_line}"
                     );
                 }
                 return false;
@@ -687,9 +703,9 @@ impl GenerationScope {
             render_wrapper_shape(&key_type),
             render_wrapper_shape(&value_type),
             if preserve_pair_map {
-                " @duplicates preserve"
+                format!(" {}", crate::generation::requests::PRESERVE_MARKER)
             } else {
-                ""
+                String::new()
             }
         );
         if self.try_defer_wrapper(
@@ -1452,9 +1468,9 @@ pub(super) fn codegen_table_type(
         render_wrapper_shape(&key_type),
         render_wrapper_shape(&value_type),
         if preserve_pair_map {
-            " @duplicates preserve"
+            format!(" {}", crate::generation::requests::PRESERVE_MARKER)
         } else {
-            ""
+            String::new()
         }
     );
     if !exists_in_rust
