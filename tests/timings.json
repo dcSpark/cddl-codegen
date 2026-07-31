@@ -305,9 +305,9 @@
     },
     {
       "gate": "multifile_matrix_roundtrips",
-      "warm_ms": 557000,
+      "warm_ms": 386000,
       "n": 20,
-      "measured": "2026-07-30",
+      "measured": "2026-07-31",
       "machine": "86216c55",
       "history": [
         {
@@ -325,6 +325,10 @@
         {
           "date": "2026-07-30",
           "warm_ms": 557000
+        },
+        {
+          "date": "2026-07-31",
+          "warm_ms": 386000
         }
       ]
     },
@@ -762,9 +766,9 @@
     },
     {
       "gate": "wasm_matrix_roundtrips",
-      "warm_ms": 657000,
+      "warm_ms": 496000,
       "n": 20,
-      "measured": "2026-07-30",
+      "measured": "2026-07-31",
       "machine": "86216c55",
       "history": [
         {
@@ -782,6 +786,10 @@
         {
           "date": "2026-07-30",
           "warm_ms": 657000
+        },
+        {
+          "date": "2026-07-31",
+          "warm_ms": 496000
         }
       ]
     }
