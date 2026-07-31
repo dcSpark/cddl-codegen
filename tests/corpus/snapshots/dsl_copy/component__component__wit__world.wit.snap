@@ -1,0 +1,45 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource choice {
+    new-hash: static func(hash: borrow<hash>) -> choice;
+    as-hash: func() -> option<hash>;
+    new-uint: static func(uint: u64) -> choice;
+    as-uint: func() -> option<u64>;
+    kind: func() -> choice-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<choice, string>;
+  }
+  enum choice-kind {
+    hash,
+    uint,
+  }
+  resource ext {
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<ext, string>;
+  }
+  resource hash {
+    to-raw-bytes: func() -> list<u8>;
+    from-raw-bytes: static func(bytes: list<u8>) -> result<hash, string>;
+  }
+  resource %record {
+    constructor(key0: borrow<hash>, key2: list<tuple<borrow<hash>, u64>>);
+    key0: func() -> hash;
+    key1: func() -> option<ext>;
+    set-key1: func(key1: borrow<ext>);
+    key2: func() -> list<tuple<hash, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<%record, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

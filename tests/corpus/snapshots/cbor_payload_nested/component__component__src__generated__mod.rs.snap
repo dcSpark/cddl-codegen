@@ -1,0 +1,83 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type CborPayloadNested = WitCborPayloadNested;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitCborPayloadNested(pub RefCell<cddl_lib::CborPayloadNested>);
+
+impl wit_types::GuestCborPayloadNested for WitCborPayloadNested {
+    fn new(
+        elem_payloads: Vec<u64>,
+        value_payloads: Vec<(u64, u64)>,
+        after_payload: u64,
+        tail: String,
+    ) -> Self {
+        let elem_payloads = elem_payloads.into_iter().collect();
+        let value_payloads = value_payloads.into_iter().collect();
+        let inner =
+            cddl_lib::CborPayloadNested::new(elem_payloads, value_payloads, after_payload, tail);
+        WitCborPayloadNested(RefCell::new(inner))
+    }
+
+    fn elem_payloads(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.elem_payloads.iter().map(|x| *x).collect()
+    }
+
+    fn value_payloads(&self) -> Vec<(u64, u64)> {
+        let me = self.0.borrow();
+        me.value_payloads
+            .iter()
+            .map(|(x0, x1)| (*x0, *x1))
+            .collect()
+    }
+
+    fn after_payload(&self) -> u64 {
+        let me = self.0.borrow();
+        me.after_payload
+    }
+
+    fn tail(&self) -> String {
+        let me = self.0.borrow();
+        me.tail.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborPayloadNested as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborPayloadNested, String> {
+        <cddl_lib::CborPayloadNested as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::CborPayloadNested::new(WitCborPayloadNested(RefCell::new(v))))
+        .map_err(err)
+    }
+}

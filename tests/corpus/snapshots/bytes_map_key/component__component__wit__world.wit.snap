@@ -1,0 +1,22 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource bytes-key-holder {
+    constructor(named: list<tuple<list<u8>, u64>>, inline: list<tuple<list<u8>, u64>>);
+    named: func() -> list<tuple<list<u8>, u64>>;
+    inline: func() -> list<tuple<list<u8>, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-key-holder, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

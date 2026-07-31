@@ -1,0 +1,164 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type OptFixedArray = WitOptFixedArray;
+    type OptFixedArrayNull = WitOptFixedArrayNull;
+    type OptFixedMap = WitOptFixedMap;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitOptFixedArray(pub RefCell<cddl_lib::OptFixedArray>);
+
+impl wit_types::GuestOptFixedArray for WitOptFixedArray {
+    fn new(x: u64, label: String) -> Self {
+        let inner = cddl_lib::OptFixedArray::new(x, label);
+        WitOptFixedArray(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn flag(&self) -> bool {
+        self.0.borrow().flag
+    }
+
+    fn set_flag(&self, present: bool) {
+        self.0.borrow_mut().flag = present;
+    }
+
+    fn label(&self) -> String {
+        let me = self.0.borrow();
+        me.label.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OptFixedArray as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptFixedArray, String> {
+        <cddl_lib::OptFixedArray as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OptFixedArray::new(WitOptFixedArray(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOptFixedArrayNull(pub RefCell<cddl_lib::OptFixedArrayNull>);
+
+impl wit_types::GuestOptFixedArrayNull for WitOptFixedArrayNull {
+    fn new(x: u64) -> Self {
+        let inner = cddl_lib::OptFixedArrayNull::new(x);
+        WitOptFixedArrayNull(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn nothing(&self) -> bool {
+        self.0.borrow().nothing
+    }
+
+    fn set_nothing(&self, present: bool) {
+        self.0.borrow_mut().nothing = present;
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OptFixedArrayNull as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptFixedArrayNull, String> {
+        <cddl_lib::OptFixedArrayNull as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::OptFixedArrayNull::new(WitOptFixedArrayNull(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitOptFixedMap(pub RefCell<cddl_lib::OptFixedMap>);
+
+impl wit_types::GuestOptFixedMap for WitOptFixedMap {
+    fn new(x: u64) -> Self {
+        let inner = cddl_lib::OptFixedMap::new(x);
+        WitOptFixedMap(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn code(&self) -> bool {
+        self.0.borrow().code
+    }
+
+    fn set_code(&self, present: bool) {
+        self.0.borrow_mut().code = present;
+    }
+
+    fn tag(&self) -> bool {
+        self.0.borrow().tag
+    }
+
+    fn set_tag(&self, present: bool) {
+        self.0.borrow_mut().tag = present;
+    }
+
+    fn neg(&self) -> bool {
+        self.0.borrow().neg
+    }
+
+    fn set_neg(&self, present: bool) {
+        self.0.borrow_mut().neg = present;
+    }
+
+    fn off(&self) -> bool {
+        self.0.borrow().off
+    }
+
+    fn set_off(&self, present: bool) {
+        self.0.borrow_mut().off = present;
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OptFixedMap as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptFixedMap, String> {
+        <cddl_lib::OptFixedMap as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OptFixedMap::new(WitOptFixedMap(RefCell::new(v))))
+            .map_err(err)
+    }
+}

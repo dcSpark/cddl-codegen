@@ -1,0 +1,31 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource type-choice {
+    new-uint: static func(uint: u64) -> type-choice;
+    as-uint: func() -> option<u64>;
+    new-text: static func(text: string) -> type-choice;
+    as-text: func() -> option<string>;
+    new-bytes: static func(bytes: list<u8>) -> type-choice;
+    as-bytes: func() -> option<list<u8>>;
+    kind: func() -> type-choice-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<type-choice, string>;
+  }
+  enum type-choice-kind {
+    uint,
+    text,
+    bytes,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

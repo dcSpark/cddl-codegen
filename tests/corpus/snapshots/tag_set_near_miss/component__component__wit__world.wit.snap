@@ -1,0 +1,39 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(x: borrow<near-miss>);
+    x: func() -> near-miss;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource near-miss {
+    new-arr-u64: static func(arr-u64: borrow<set-non-empty-u64>) -> near-miss;
+    as-arr-u64: func() -> option<set-non-empty-u64>;
+    new-arr-u642: static func(arr-u642: list<u64>) -> near-miss;
+    as-arr-u642: func() -> option<list<u64>>;
+    kind: func() -> near-miss-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<near-miss, string>;
+  }
+  enum near-miss-kind {
+    arr-u64,
+    arr-u642,
+  }
+  resource set-non-empty-u64 {
+    constructor(inner: list<u64>) -> result<set-non-empty-u64, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<set-non-empty-u64, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

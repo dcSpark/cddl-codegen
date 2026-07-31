@@ -1,0 +1,167 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type DefaultNeset = WitDefaultNeset;
+    type DefaultSet = WitDefaultSet;
+    type Holder = WitHolder;
+    type OptOut = WitOptOut;
+    type SingleArm = WitSingleArm;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitDefaultNeset(pub RefCell<cddl_lib::DefaultNeset>);
+
+impl wit_types::GuestDefaultNeset for WitDefaultNeset {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::DefaultNeset::new(inner.try_into().map_err(err)?);
+        Ok(WitDefaultNeset(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::DefaultNeset as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::DefaultNeset, String> {
+        <cddl_lib::DefaultNeset as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::DefaultNeset::new(WitDefaultNeset(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitDefaultSet(pub RefCell<cddl_lib::DefaultSet>);
+
+impl wit_types::GuestDefaultSet for WitDefaultSet {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::DefaultSet::new(inner.try_into().map_err(err)?);
+        Ok(WitDefaultSet(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::DefaultSet as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::DefaultSet, String> {
+        <cddl_lib::DefaultSet as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::DefaultSet::new(WitDefaultSet(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(
+        s: wit_types::DefaultSetBorrow<'_>,
+        ns: wit_types::DefaultNesetBorrow<'_>,
+        sa: wit_types::SingleArmBorrow<'_>,
+        o: wit_types::OptOutBorrow<'_>,
+    ) -> Self {
+        let s = s.get::<WitDefaultSet>().0.borrow().clone();
+        let ns = ns.get::<WitDefaultNeset>().0.borrow().clone();
+        let sa = sa.get::<WitSingleArm>().0.borrow().clone();
+        let o = o.get::<WitOptOut>().0.borrow().clone();
+        let inner = cddl_lib::Holder::new(s, ns, sa, o);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn s(&self) -> wit_types::DefaultSet {
+        let me = self.0.borrow();
+        wit_types::DefaultSet::new(WitDefaultSet(RefCell::new(me.s.clone())))
+    }
+
+    fn ns(&self) -> wit_types::DefaultNeset {
+        let me = self.0.borrow();
+        wit_types::DefaultNeset::new(WitDefaultNeset(RefCell::new(me.ns.clone())))
+    }
+
+    fn sa(&self) -> wit_types::SingleArm {
+        let me = self.0.borrow();
+        wit_types::SingleArm::new(WitSingleArm(RefCell::new(me.sa.clone())))
+    }
+
+    fn o(&self) -> wit_types::OptOut {
+        let me = self.0.borrow();
+        wit_types::OptOut::new(WitOptOut(RefCell::new(me.o.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOptOut(pub RefCell<cddl_lib::OptOut>);
+
+impl wit_types::GuestOptOut for WitOptOut {
+    fn new(inner: Vec<u64>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::OptOut::new(inner);
+        WitOptOut(RefCell::new(inner))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OptOut as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptOut, String> {
+        <cddl_lib::OptOut as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OptOut::new(WitOptOut(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSingleArm(pub RefCell<cddl_lib::SingleArm>);
+
+impl wit_types::GuestSingleArm for WitSingleArm {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::SingleArm::new(inner.try_into().map_err(err)?);
+        Ok(WitSingleArm(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::SingleArm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::SingleArm, String> {
+        <cddl_lib::SingleArm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::SingleArm::new(WitSingleArm(RefCell::new(v))))
+            .map_err(err)
+    }
+}

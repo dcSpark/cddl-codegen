@@ -1,0 +1,26 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource holder {
+    constructor(g: borrow<oset-u64>);
+    g: func() -> oset-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource oset-u64 {
+    constructor(inner: list<u64>) -> result<oset-u64, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<oset-u64, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

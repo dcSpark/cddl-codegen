@@ -1,0 +1,41 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource bool-or-text {
+    new-bool: static func(%bool: bool) -> bool-or-text;
+    as-bool: func() -> option<bool>;
+    new-text: static func(text: string) -> bool-or-text;
+    as-text: func() -> option<string>;
+    kind: func() -> bool-or-text-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bool-or-text, string>;
+  }
+  enum bool-or-text-kind {
+    %bool,
+    text,
+  }
+  resource uint-or-bool {
+    new-uint: static func(uint: u64) -> uint-or-bool;
+    as-uint: func() -> option<u64>;
+    new-bool: static func(%bool: bool) -> uint-or-bool;
+    as-bool: func() -> option<bool>;
+    kind: func() -> uint-or-bool-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<uint-or-bool, string>;
+  }
+  enum uint-or-bool-kind {
+    uint,
+    %bool,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

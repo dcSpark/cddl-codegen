@@ -1,0 +1,71 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type OccurrenceHolder = WitOccurrenceHolder;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitOccurrenceHolder(pub RefCell<cddl_lib::OccurrenceHolder>);
+
+impl wit_types::GuestOccurrenceHolder for WitOccurrenceHolder {
+    fn new(o: Vec<u64>, b: Vec<u64>, inline_bounded: Vec<String>) -> Result<Self, String> {
+        let o: Vec<_> = o.into_iter().collect();
+        let b = b.into_iter().collect();
+        let inline_bounded = inline_bounded.into_iter().collect();
+        let inner = cddl_lib::OccurrenceHolder::new(o.try_into().map_err(err)?, b, inline_bounded)
+            .map_err(err)?;
+        Ok(WitOccurrenceHolder(RefCell::new(inner)))
+    }
+
+    fn o(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.o.iter().map(|x| *x).collect()
+    }
+
+    fn b(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.b.iter().map(|x| *x).collect()
+    }
+
+    fn inline_bounded(&self) -> Vec<String> {
+        let me = self.0.borrow();
+        me.inline_bounded.iter().map(|x| x.clone()).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OccurrenceHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OccurrenceHolder, String> {
+        <cddl_lib::OccurrenceHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::OccurrenceHolder::new(WitOccurrenceHolder(RefCell::new(v))))
+        .map_err(err)
+    }
+}

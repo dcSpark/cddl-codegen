@@ -1,0 +1,62 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type BkeyHolder = WitBkeyHolder;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitBkeyHolder(pub RefCell<cddl_lib::BkeyHolder>);
+
+impl wit_types::GuestBkeyHolder for WitBkeyHolder {
+    fn new(named: Vec<(bool, u64)>, inline: Vec<(bool, u64)>) -> Self {
+        let named = named.into_iter().collect();
+        let inline = inline.into_iter().collect();
+        let inner = cddl_lib::BkeyHolder::new(named, inline);
+        WitBkeyHolder(RefCell::new(inner))
+    }
+
+    fn named(&self) -> Vec<(bool, u64)> {
+        let me = self.0.borrow();
+        me.named.iter().map(|(x0, x1)| (*x0, *x1)).collect()
+    }
+
+    fn inline(&self) -> Vec<(bool, u64)> {
+        let me = self.0.borrow();
+        me.inline.iter().map(|(x0, x1)| (*x0, *x1)).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BkeyHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BkeyHolder, String> {
+        <cddl_lib::BkeyHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::BkeyHolder::new(WitBkeyHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}

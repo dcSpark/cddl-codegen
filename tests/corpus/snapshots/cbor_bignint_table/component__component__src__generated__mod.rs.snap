@@ -1,0 +1,94 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Holder = WitHolder;
+    type PreludeBignint = WitPreludeBignint;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(payload: Vec<(wit_types::PreludeBignintBorrow<'_>, u64)>) -> Self {
+        let payload = payload
+            .into_iter()
+            .map(|(x0, x1)| (x0.get::<WitPreludeBignint>().0.borrow().clone(), x1))
+            .collect();
+        let inner = cddl_lib::Holder::new(payload);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn payload(&self) -> Vec<(wit_types::PreludeBignint, u64)> {
+        let me = self.0.borrow();
+        me.payload
+            .iter()
+            .map(|(x0, x1)| {
+                (
+                    wit_types::PreludeBignint::new(WitPreludeBignint(RefCell::new(x0.clone()))),
+                    *x1,
+                )
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeBignint(pub RefCell<cddl_lib::PreludeBignint>);
+
+impl wit_types::GuestPreludeBignint for WitPreludeBignint {
+    fn new(inner: Vec<u8>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::PreludeBignint::new(inner);
+        WitPreludeBignint(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeBignint as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeBignint, String> {
+        <cddl_lib::PreludeBignint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeBignint::new(WitPreludeBignint(RefCell::new(v))))
+            .map_err(err)
+    }
+}

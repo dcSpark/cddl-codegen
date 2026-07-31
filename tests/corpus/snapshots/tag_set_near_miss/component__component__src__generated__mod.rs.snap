@@ -1,0 +1,132 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Holder = WitHolder;
+    type NearMiss = WitNearMiss;
+    type SetNonEmptyU64 = WitSetNonEmptyU64;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(x: wit_types::NearMissBorrow<'_>) -> Self {
+        let x = x.get::<WitNearMiss>().0.borrow().clone();
+        let inner = cddl_lib::Holder::new(x);
+        WitHolder(RefCell::new(inner))
+    }
+
+    fn x(&self) -> wit_types::NearMiss {
+        let me = self.0.borrow();
+        wit_types::NearMiss::new(WitNearMiss(RefCell::new(me.x.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNearMiss(pub RefCell<cddl_lib::NearMiss>);
+
+impl wit_types::GuestNearMiss for WitNearMiss {
+    fn new_arr_u64(arr_u64: wit_types::SetNonEmptyU64Borrow<'_>) -> wit_types::NearMiss {
+        let arr_u64 = arr_u64.get::<WitSetNonEmptyU64>().0.borrow().clone();
+        let inner = cddl_lib::NearMiss::new_arr_u64(arr_u64);
+        wit_types::NearMiss::new(WitNearMiss(RefCell::new(inner)))
+    }
+
+    fn as_arr_u64(&self) -> Option<wit_types::SetNonEmptyU64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NearMiss::ArrU64(arr_u64) => Some(wit_types::SetNonEmptyU64::new(
+                WitSetNonEmptyU64(RefCell::new(arr_u64.clone())),
+            )),
+            _ => None,
+        }
+    }
+
+    fn new_arr_u642(arr_u642: Vec<u64>) -> wit_types::NearMiss {
+        let arr_u642 = arr_u642.into_iter().collect();
+        let inner = cddl_lib::NearMiss::new_arr_u642(arr_u642);
+        wit_types::NearMiss::new(WitNearMiss(RefCell::new(inner)))
+    }
+
+    fn as_arr_u642(&self) -> Option<Vec<u64>> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NearMiss::ArrU642(arr_u642) => Some(arr_u642.iter().map(|x| *x).collect()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::NearMissKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NearMiss::ArrU64(_) => wit_types::NearMissKind::ArrU64,
+            cddl_lib::NearMiss::ArrU642(_) => wit_types::NearMissKind::ArrU642,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NearMiss as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NearMiss, String> {
+        <cddl_lib::NearMiss as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::NearMiss::new(WitNearMiss(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSetNonEmptyU64(pub RefCell<cddl_lib::SetNonEmptyU64>);
+
+impl wit_types::GuestSetNonEmptyU64 for WitSetNonEmptyU64 {
+    fn new(inner: Vec<u64>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().collect();
+        let inner = cddl_lib::SetNonEmptyU64::new(inner.try_into().map_err(err)?);
+        Ok(WitSetNonEmptyU64(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::SetNonEmptyU64 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::SetNonEmptyU64, String> {
+        <cddl_lib::SetNonEmptyU64 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::SetNonEmptyU64::new(WitSetNonEmptyU64(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -1,0 +1,147 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ExtSetPlain = WitExtSetPlain;
+    type ExtSetPubKey = WitExtSetPubKey;
+    type Plain = WitPlain;
+    type PubKey = WitPubKey;
+    type UsingFlavored = WitUsingFlavored;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitExtSetPlain(pub RefCell<cddl_lib::ExtSetPlain>);
+
+impl wit_types::GuestExtSetPlain for WitExtSetPlain {
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ExtSetPlain as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ExtSetPlain, String> {
+        <cddl_lib::ExtSetPlain as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ExtSetPlain::new(WitExtSetPlain(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitExtSetPubKey(pub RefCell<cddl_lib::ExtSetPubKey>);
+
+impl wit_types::GuestExtSetPubKey for WitExtSetPubKey {
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ExtSetPubKey as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ExtSetPubKey, String> {
+        <cddl_lib::ExtSetPubKey as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ExtSetPubKey::new(WitExtSetPubKey(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPlain(pub RefCell<cddl_lib::Plain>);
+
+impl wit_types::GuestPlain for WitPlain {
+    fn new(a: u64, b: String) -> Self {
+        let inner = cddl_lib::Plain::new(a, b);
+        WitPlain(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn b(&self) -> String {
+        let me = self.0.borrow();
+        me.b.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Plain as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Plain, String> {
+        <cddl_lib::Plain as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Plain::new(WitPlain(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPubKey(pub RefCell<cddl_lib::PubKey>);
+
+impl wit_types::GuestPubKey for WitPubKey {
+    fn to_raw_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PubKey as cddl_lib::serialization::RawBytesEncoding>::to_raw_bytes(
+            &self.0.borrow(),
+        )
+        .to_vec()
+    }
+
+    fn from_raw_bytes(bytes: Vec<u8>) -> Result<wit_types::PubKey, String> {
+        <cddl_lib::PubKey as cddl_lib::serialization::RawBytesEncoding>::from_raw_bytes(&bytes)
+            .map(|v| wit_types::PubKey::new(WitPubKey(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitUsingFlavored(pub RefCell<cddl_lib::UsingFlavored>);
+
+impl wit_types::GuestUsingFlavored for WitUsingFlavored {
+    fn new(
+        keys: wit_types::ExtSetPubKeyBorrow<'_>,
+        plains: wit_types::ExtSetPlainBorrow<'_>,
+    ) -> Self {
+        let keys = keys.get::<WitExtSetPubKey>().0.borrow().clone();
+        let plains = plains.get::<WitExtSetPlain>().0.borrow().clone();
+        let inner = cddl_lib::UsingFlavored::new(keys, plains);
+        WitUsingFlavored(RefCell::new(inner))
+    }
+
+    fn keys(&self) -> wit_types::ExtSetPubKey {
+        let me = self.0.borrow();
+        wit_types::ExtSetPubKey::new(WitExtSetPubKey(RefCell::new(me.keys.clone())))
+    }
+
+    fn plains(&self) -> wit_types::ExtSetPlain {
+        let me = self.0.borrow();
+        wit_types::ExtSetPlain::new(WitExtSetPlain(RefCell::new(me.plains.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::UsingFlavored as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::UsingFlavored, String> {
+        <cddl_lib::UsingFlavored as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::UsingFlavored::new(WitUsingFlavored(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -1,0 +1,48 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource arr-u64-or-arr-u64 {
+    new-arr-u64: static func(arr-u64: borrow<set-u64>) -> arr-u64-or-arr-u64;
+    as-arr-u64: func() -> option<set-u64>;
+    new-arr-u642: static func(arr-u642: list<u64>) -> arr-u64-or-arr-u64;
+    as-arr-u642: func() -> option<list<u64>>;
+    kind: func() -> arr-u64-or-arr-u64-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<arr-u64-or-arr-u64, string>;
+  }
+  enum arr-u64-or-arr-u64-kind {
+    arr-u64,
+    arr-u642,
+  }
+  resource inline-holder {
+    constructor(a: borrow<set-u64>, c: list<borrow<set-u64>>, x: borrow<arr-u64-or-arr-u64>);
+    a: func() -> set-u64;
+    b: func() -> option<set-text>;
+    set-b: func(b: borrow<set-text>);
+    c: func() -> list<set-u64>;
+    x: func() -> arr-u64-or-arr-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<inline-holder, string>;
+  }
+  resource set-text {
+    constructor(inner: list<string>) -> result<set-text, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<set-text, string>;
+  }
+  resource set-u64 {
+    constructor(inner: list<u64>) -> result<set-u64, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<set-u64, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

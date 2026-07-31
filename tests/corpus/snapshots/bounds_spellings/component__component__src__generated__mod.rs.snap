@@ -1,0 +1,193 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type BoundsMembers = WitBoundsMembers;
+    type WExactSize = WitWExactSize;
+    type WIntRange = WitWIntRange;
+    type WNintRange = WitWNintRange;
+    type WZeroLen = WitWZeroLen;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitBoundsMembers(pub RefCell<cddl_lib::BoundsMembers>);
+
+impl wit_types::GuestBoundsMembers for WitBoundsMembers {
+    fn new(
+        m_exact_size: Vec<u8>,
+        m_zero_len: Vec<u8>,
+        m_int_range: u64,
+        m_nint_range: u64,
+    ) -> Result<Self, String> {
+        let m_exact_size = m_exact_size.into_iter().collect();
+        let m_zero_len = m_zero_len.into_iter().collect();
+        let inner =
+            cddl_lib::BoundsMembers::new(m_exact_size, m_zero_len, m_int_range, m_nint_range)
+                .map_err(err)?;
+        Ok(WitBoundsMembers(RefCell::new(inner)))
+    }
+
+    fn m_exact_size(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        me.m_exact_size.iter().map(|x| *x).collect()
+    }
+
+    fn m_zero_len(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        me.m_zero_len.iter().map(|x| *x).collect()
+    }
+
+    fn m_int_range(&self) -> u64 {
+        let me = self.0.borrow();
+        me.m_int_range
+    }
+
+    fn m_nint_range(&self) -> u64 {
+        let me = self.0.borrow();
+        me.m_nint_range
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BoundsMembers as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BoundsMembers, String> {
+        <cddl_lib::BoundsMembers as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::BoundsMembers::new(WitBoundsMembers(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitWExactSize(pub RefCell<cddl_lib::WExactSize>);
+
+impl wit_types::GuestWExactSize for WitWExactSize {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::WExactSize::new(inner).map_err(err)?;
+        Ok(WitWExactSize(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WExactSize as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WExactSize, String> {
+        <cddl_lib::WExactSize as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::WExactSize::new(WitWExactSize(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitWIntRange(pub RefCell<cddl_lib::WIntRange>);
+
+impl wit_types::GuestWIntRange for WitWIntRange {
+    fn new(inner: u64) -> Result<Self, String> {
+        let inner = cddl_lib::WIntRange::new(inner).map_err(err)?;
+        Ok(WitWIntRange(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> u64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WIntRange as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WIntRange, String> {
+        <cddl_lib::WIntRange as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::WIntRange::new(WitWIntRange(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitWNintRange(pub RefCell<cddl_lib::WNintRange>);
+
+impl wit_types::GuestWNintRange for WitWNintRange {
+    fn new(inner: u64) -> Result<Self, String> {
+        let inner = cddl_lib::WNintRange::new(inner).map_err(err)?;
+        Ok(WitWNintRange(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> u64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WNintRange as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WNintRange, String> {
+        <cddl_lib::WNintRange as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::WNintRange::new(WitWNintRange(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitWZeroLen(pub RefCell<cddl_lib::WZeroLen>);
+
+impl wit_types::GuestWZeroLen for WitWZeroLen {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::WZeroLen::new(inner).map_err(err)?;
+        Ok(WitWZeroLen(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WZeroLen as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WZeroLen, String> {
+        <cddl_lib::WZeroLen as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::WZeroLen::new(WitWZeroLen(RefCell::new(v))))
+            .map_err(err)
+    }
+}

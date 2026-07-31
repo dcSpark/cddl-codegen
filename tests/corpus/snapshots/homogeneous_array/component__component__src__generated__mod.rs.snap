@@ -1,0 +1,84 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type BoolHolder = WitBoolHolder;
+    type FloatHolder = WitFloatHolder;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitBoolHolder(pub RefCell<cddl_lib::BoolHolder>);
+
+impl wit_types::GuestBoolHolder for WitBoolHolder {
+    fn new(b: Vec<bool>) -> Self {
+        let b = b.into_iter().collect();
+        let inner = cddl_lib::BoolHolder::new(b);
+        WitBoolHolder(RefCell::new(inner))
+    }
+
+    fn b(&self) -> Vec<bool> {
+        let me = self.0.borrow();
+        me.b.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BoolHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BoolHolder, String> {
+        <cddl_lib::BoolHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::BoolHolder::new(WitBoolHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitFloatHolder(pub RefCell<cddl_lib::FloatHolder>);
+
+impl wit_types::GuestFloatHolder for WitFloatHolder {
+    fn new(f: Vec<f64>) -> Self {
+        let f = f.into_iter().collect();
+        let inner = cddl_lib::FloatHolder::new(f);
+        WitFloatHolder(RefCell::new(inner))
+    }
+
+    fn f(&self) -> Vec<f64> {
+        let me = self.0.borrow();
+        me.f.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::FloatHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::FloatHolder, String> {
+        <cddl_lib::FloatHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::FloatHolder::new(WitFloatHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}

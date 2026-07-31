@@ -1,0 +1,286 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Garm = WitGarm;
+    type Holder = WitHolder;
+    type TaggedCtlNe = WitTaggedCtlNe;
+    type TaggedRangeExcl = WitTaggedRangeExcl;
+    type TaggedRangeIncl = WitTaggedRangeIncl;
+    type TaggedRangeNint = WitTaggedRangeNint;
+    type TaggedRangeUint = WitTaggedRangeUint;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitGarm(pub RefCell<cddl_lib::Garm>);
+
+impl wit_types::GuestGarm for WitGarm {
+    fn new_ga(ga: i64) -> Result<wit_types::Garm, String> {
+        let inner = cddl_lib::Garm::new_ga(ga).map_err(err)?;
+        Ok(wit_types::Garm::new(WitGarm(RefCell::new(inner))))
+    }
+
+    fn as_ga(&self) -> Option<i64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Garm::Ga(ga) => Some(*ga),
+            _ => None,
+        }
+    }
+
+    fn new_gb(gb: String) -> wit_types::Garm {
+        let inner = cddl_lib::Garm::new_gb(gb);
+        wit_types::Garm::new(WitGarm(RefCell::new(inner)))
+    }
+
+    fn as_gb(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Garm::Gb(gb) => Some(gb.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::GarmKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Garm::Ga(_) => wit_types::GarmKind::Ga,
+            cddl_lib::Garm::Gb(_) => wit_types::GarmKind::Gb,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Garm as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Garm, String> {
+        <cddl_lib::Garm as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Garm::new(WitGarm(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
+
+impl wit_types::GuestHolder for WitHolder {
+    fn new(
+        a: wit_types::TaggedCtlNeBorrow<'_>,
+        b: wit_types::TaggedRangeInclBorrow<'_>,
+        c: wit_types::TaggedRangeExclBorrow<'_>,
+        d: wit_types::TaggedRangeNintBorrow<'_>,
+        e: wit_types::TaggedRangeUintBorrow<'_>,
+        f: wit_types::GarmBorrow<'_>,
+        g: i64,
+    ) -> Result<Self, String> {
+        let a = a.get::<WitTaggedCtlNe>().0.borrow().clone();
+        let b = b.get::<WitTaggedRangeIncl>().0.borrow().clone();
+        let c = c.get::<WitTaggedRangeExcl>().0.borrow().clone();
+        let d = d.get::<WitTaggedRangeNint>().0.borrow().clone();
+        let e = e.get::<WitTaggedRangeUint>().0.borrow().clone();
+        let f = f.get::<WitGarm>().0.borrow().clone();
+        let inner = cddl_lib::Holder::new(a, b, c, d, e, f, g).map_err(err)?;
+        Ok(WitHolder(RefCell::new(inner)))
+    }
+
+    fn a(&self) -> wit_types::TaggedCtlNe {
+        let me = self.0.borrow();
+        wit_types::TaggedCtlNe::new(WitTaggedCtlNe(RefCell::new(me.a.clone())))
+    }
+
+    fn b(&self) -> wit_types::TaggedRangeIncl {
+        let me = self.0.borrow();
+        wit_types::TaggedRangeIncl::new(WitTaggedRangeIncl(RefCell::new(me.b.clone())))
+    }
+
+    fn c(&self) -> wit_types::TaggedRangeExcl {
+        let me = self.0.borrow();
+        wit_types::TaggedRangeExcl::new(WitTaggedRangeExcl(RefCell::new(me.c.clone())))
+    }
+
+    fn d(&self) -> wit_types::TaggedRangeNint {
+        let me = self.0.borrow();
+        wit_types::TaggedRangeNint::new(WitTaggedRangeNint(RefCell::new(me.d.clone())))
+    }
+
+    fn e(&self) -> wit_types::TaggedRangeUint {
+        let me = self.0.borrow();
+        wit_types::TaggedRangeUint::new(WitTaggedRangeUint(RefCell::new(me.e.clone())))
+    }
+
+    fn f(&self) -> wit_types::Garm {
+        let me = self.0.borrow();
+        wit_types::Garm::new(WitGarm(RefCell::new(me.f.clone())))
+    }
+
+    fn g(&self) -> i64 {
+        let me = self.0.borrow();
+        me.g
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Holder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
+        <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedCtlNe(pub RefCell<cddl_lib::TaggedCtlNe>);
+
+impl wit_types::GuestTaggedCtlNe for WitTaggedCtlNe {
+    fn new(inner: i64) -> Result<Self, String> {
+        let inner = cddl_lib::TaggedCtlNe::new(inner).map_err(err)?;
+        Ok(WitTaggedCtlNe(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> i64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedCtlNe as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedCtlNe, String> {
+        <cddl_lib::TaggedCtlNe as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedCtlNe::new(WitTaggedCtlNe(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedRangeExcl(pub RefCell<cddl_lib::TaggedRangeExcl>);
+
+impl wit_types::GuestTaggedRangeExcl for WitTaggedRangeExcl {
+    fn new(inner: i64) -> Result<Self, String> {
+        let inner = cddl_lib::TaggedRangeExcl::new(inner).map_err(err)?;
+        Ok(WitTaggedRangeExcl(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> i64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedRangeExcl as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedRangeExcl, String> {
+        <cddl_lib::TaggedRangeExcl as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedRangeExcl::new(WitTaggedRangeExcl(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedRangeIncl(pub RefCell<cddl_lib::TaggedRangeIncl>);
+
+impl wit_types::GuestTaggedRangeIncl for WitTaggedRangeIncl {
+    fn new(inner: i64) -> Result<Self, String> {
+        let inner = cddl_lib::TaggedRangeIncl::new(inner).map_err(err)?;
+        Ok(WitTaggedRangeIncl(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> i64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedRangeIncl as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedRangeIncl, String> {
+        <cddl_lib::TaggedRangeIncl as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedRangeIncl::new(WitTaggedRangeIncl(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedRangeNint(pub RefCell<cddl_lib::TaggedRangeNint>);
+
+impl wit_types::GuestTaggedRangeNint for WitTaggedRangeNint {
+    fn new(inner: i64) -> Result<Self, String> {
+        let inner = cddl_lib::TaggedRangeNint::new(inner).map_err(err)?;
+        Ok(WitTaggedRangeNint(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> i64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedRangeNint as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedRangeNint, String> {
+        <cddl_lib::TaggedRangeNint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedRangeNint::new(WitTaggedRangeNint(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedRangeUint(pub RefCell<cddl_lib::TaggedRangeUint>);
+
+impl wit_types::GuestTaggedRangeUint for WitTaggedRangeUint {
+    fn new(inner: u64) -> Result<Self, String> {
+        let inner = cddl_lib::TaggedRangeUint::new(inner).map_err(err)?;
+        Ok(WitTaggedRangeUint(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> u64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedRangeUint as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedRangeUint, String> {
+        <cddl_lib::TaggedRangeUint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedRangeUint::new(WitTaggedRangeUint(RefCell::new(v))))
+            .map_err(err)
+    }
+}

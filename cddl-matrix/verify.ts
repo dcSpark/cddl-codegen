@@ -154,6 +154,18 @@ function extractEmissionProfiles(): EmissionProfile[] {
 }
 const EMISSION_PROFILES = extractEmissionProfiles();
 
+// The emission profiles a run actually PROBES. The extraction above stays the live drift gate on
+// `ALL_PROFILES` — a profile added to the Rust axis must still survive the regex and the floor — so
+// the filter is applied HERE, at the probe/report sites, and never inside the extraction.
+//
+// `component` (`--component=true`) is excluded. This axis's probe is a RUST-CRATE round-trip
+// (generate -> cargo test the generated rust crate), and the component face cannot change that
+// verdict: it mints a separate wasip2 crate and leaves every rust and wasm byte identical (asserted
+// per corpus fixture on the Rust snapshot axis). Probing it would add roughly a third to this repo's
+// most expensive gate for a verdict already recorded under another profile, and would mint
+// `emission.component.*` annotation keys every downstream matrix consumer then has to carry.
+const PROBED_EMISSION_PROFILES = EMISSION_PROFILES.filter(p => p.name !== "component");
+
 // --smoke=N (dev tooling): probe only the first N features, skip the containment/control-op loops and
 // all harness-health guards, TOML-parse-validate the composed annotation content, PRINT it, and write
 // NOTHING (neither annotations nor verify_report.json). Lets new probe code run end-to-end quickly
@@ -1000,8 +1012,8 @@ function embedDetail(detail: string, embedded?: boolean): string {
   return detail.replace("compiles (no minted round-trip surface)", "compiles; round-trips when embedded (synthetic record holder)");
 }
 
-// EMISSION-PROFILE probe: re-run the row's example through EACH non-default
-// emission profile, reusing the exact same rust-only pipeline (generate -> cargo test -> classify ->
+// EMISSION-PROFILE probe: re-run the row's example through each PROBED non-default
+// emission profile (see PROBED_EMISSION_PROFILES), reusing the exact same rust-only pipeline (generate -> cargo test -> classify ->
 // embed-fallback-if-unminted) with the profile's flags appended. Runs ONLY when the row's default
 // verdict is supported (caller-enforced), so any non-supported entry here is a genuine profile
 // divergence. COMPILE_GATE_EXEMPT rows keep exemption semantics per profile (verdict from the
@@ -1010,7 +1022,7 @@ function embedDetail(detail: string, embedded?: boolean): string {
 function probeEmissions(id: string, example: string): Record<string, EmissionOutcome> {
   const out: Record<string, EmissionOutcome> = {};
   const exempt = Object.hasOwn(COMPILE_GATE_EXEMPT, id);
-  for (const prof of EMISSION_PROFILES) {
+  for (const prof of PROBED_EMISSION_PROFILES) {
     writeFileSync(probeFile, example + "\n");
     const cg = probeCodegenRust(`${id} (emission=${prof.name})`, prof.flags, prof);
     if (exempt && cg.gen === 0) {
@@ -1958,7 +1970,7 @@ if (!GATE_CACHE_ENABLED) {
   if (MINT_DECODE) runMintDecodeForeign();
   if (MINT_DECODE_CORPUS) runMintDecodeCorpus();
   ensureWasmWarm();
-  for (const prof of EMISSION_PROFILES) ensureEmissionWarm(prof);
+  for (const prof of PROBED_EMISSION_PROFILES) ensureEmissionWarm(prof);
 } else {
   // Lazy warm-ups defer the nested-cargo self-tests to the first cache miss (a hit never touches
   // the env those self-tests guard), but the GENERATOR half must still self-test upfront: a
@@ -2119,7 +2131,7 @@ if (!SMOKE) {
     ...containment_corroboration.map(c => c.emission),
     ...controlop_support.map(o => o.emission),
   ].filter((e): e is Record<string, EmissionOutcome> => e !== undefined);
-  for (const prof of EMISSION_PROFILES) {
+  for (const prof of PROBED_EMISSION_PROFILES) {
     const probed = allEmission.filter(e => prof.name in e);
     if (probed.length && !probed.some(e => e[prof.name].status === "supported")) {
       console.error(`HARNESS FAILURE: no row probed 'supported' under emission profile '${prof.name}' — implausible verdict shape; refusing to write verdicts.`);
@@ -2171,8 +2183,10 @@ const annoLines: string[] = [
   "#",
   "# EMISSION-PROFILE AXIS (dotted `emission.<name>.*` keys): the `status`/`evidence` above is the",
   "#   DEFAULT-flags verdict. A row whose default verdict is `supported` is ALSO probed under each",
-  "#   non-default EMISSION profile (the CLI flag sets from src/tests/mod.rs's ALL_PROFILES:",
-  "#   `preserve` = --preserve-encodings=true, `json` = --json-serde-derives + --json-schema-export),",
+  "#   PROBED non-default EMISSION profile (the CLI flag sets from src/tests/mod.rs's ALL_PROFILES:",
+  "#   `preserve` = --preserve-encodings=true, `json` = --json-serde-derives + --json-schema-export;",
+  "#   the `component` row is NOT probed here — it mints a separate wasip2 crate and leaves every rust",
+  "#   byte identical, so this rust-crate round-trip cannot tell it apart from the default verdict),",
   "#   recorded as `emission.<name>.status` / `emission.<name>.evidence`. These probes are RUST-ONLY",
   "#   (same generate -> cargo test -> embed-fallback pipeline with the profile flags appended; NO",
   "#   ruby/rust re-run — spec validity is a property of the CDDL text, not codegen flags — and NO wasm).",
@@ -2301,7 +2315,7 @@ for (const pr of probe_results) collectDivergences(pr.id, pr.emission);
 for (const c of containment_corroboration) collectDivergences(c.id, c.emission);
 for (const co of controlop_support) collectDivergences(co.id, co.emission);
 const emissionCounts: Record<string, { supported: number; unsupported: number }> = {};
-for (const prof of EMISSION_PROFILES) {
+for (const prof of PROBED_EMISSION_PROFILES) {
   const all = [
     ...probe_results.map(r => r.emission),
     ...containment_corroboration.map(r => r.emission),
@@ -2358,7 +2372,7 @@ const report = {
   containment_contradictions: containment_contradictions.map(c => c.id),
   containment_parser_limitations: [...containment_parser_limitations].sort(),
   containment_missing_example,
-  emission_profiles: EMISSION_PROFILES.map(p => p.name),
+  emission_profiles: PROBED_EMISSION_PROFILES.map(p => p.name),
   emission_divergences,
   // Conditional so an opted-out run's verify_report.json is byte-identical to a pre-feature run (the
   // per-probe accepts_foreign/foreign_vectors are already omitted when undefined; this omits the roll-up).
@@ -2419,7 +2433,7 @@ console.log(`ABNF productions    : ${s.abnf_productions}  prelude names: ${s.pre
 console.log(`support (codegen)   : supported=${s.supported} unsupported=${s.unsupported} out_of_profile=${s.out_of_profile} uncertain=${s.uncertain}`);
 console.log(`embed-fallback      : ${s.embedded_upgraded} feature probe(s) + ${s.embedded_upgraded_controlops} control-op(s) upgraded compile-only -> round-trips-when-embedded`);
 console.log(`control-op support  : supported=${s.controlop_supported} unsupported=${s.controlop_unsupported} (of ${s.control_ops}; missing example=${s.controlop_missing_example})`);
-console.log(`emission axis       : ${EMISSION_PROFILES.map(p => `${p.name}(supported=${emissionCounts[p.name].supported} unsupported=${emissionCounts[p.name].unsupported})`).join("  ")}  divergent=${s.emission_divergent}`);
+console.log(`emission axis       : ${PROBED_EMISSION_PROFILES.map(p => `${p.name}(supported=${emissionCounts[p.name].supported} unsupported=${emissionCounts[p.name].unsupported})`).join("  ")}  divergent=${s.emission_divergent}`);
 console.log(`reconcile (BIDIRECTIONAL grammar lint):`);
 console.log(`  forward  (source->feature): ${s.alt_accounted}/${s.alt_alternatives} alternatives accounted across ${s.alt_productions} productions (uncovered=${s.alt_uncovered})`);
 console.log(`  backward (feature->source): fabricated=${s.fabricated} (feature.production resolving to no ABNF/prelude/control-op source)`);

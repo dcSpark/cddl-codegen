@@ -1,0 +1,48 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource bounds-members {
+    constructor(m-exact-size: list<u8>, m-zero-len: list<u8>, m-int-range: u64, m-nint-range: u64) -> result<bounds-members, string>;
+    m-exact-size: func() -> list<u8>;
+    m-zero-len: func() -> list<u8>;
+    m-int-range: func() -> u64;
+    m-nint-range: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bounds-members, string>;
+  }
+  resource w-exact-size {
+    constructor(inner: list<u8>) -> result<w-exact-size, string>;
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<w-exact-size, string>;
+  }
+  resource w-int-range {
+    constructor(inner: u64) -> result<w-int-range, string>;
+    get: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<w-int-range, string>;
+  }
+  resource w-nint-range {
+    constructor(inner: u64) -> result<w-nint-range, string>;
+    get: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<w-nint-range, string>;
+  }
+  resource w-zero-len {
+    constructor(inner: list<u8>) -> result<w-zero-len, string>;
+    get: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<w-zero-len, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

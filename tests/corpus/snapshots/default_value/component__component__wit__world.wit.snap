@@ -1,0 +1,25 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource defaulted {
+    constructor(a: u64);
+    a: func() -> u64;
+    b: func() -> option<u64>;
+    set-b: func(b: u64);
+    c: func() -> option<string>;
+    set-c: func(c: string);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<defaulted, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

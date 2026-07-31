@@ -1,0 +1,100 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ArrowValueKeys = WitArrowValueKeys;
+    type ValueKeys = WitValueKeys;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitArrowValueKeys(pub RefCell<cddl_lib::ArrowValueKeys>);
+
+impl wit_types::GuestArrowValueKeys for WitArrowValueKeys {
+    fn new() -> Self {
+        let inner = cddl_lib::ArrowValueKeys::new();
+        WitArrowValueKeys(RefCell::new(inner))
+    }
+
+    fn first(&self) -> Option<String> {
+        let me = self.0.borrow();
+        me.first.as_ref().map(|x| x.clone())
+    }
+
+    fn set_first(&self, first: String) {
+        self.0.borrow_mut().first = Some(first);
+    }
+
+    fn second(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        me.second.as_ref().map(|x| *x)
+    }
+
+    fn set_second(&self, second: u64) {
+        self.0.borrow_mut().second = Some(second);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ArrowValueKeys as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ArrowValueKeys, String> {
+        <cddl_lib::ArrowValueKeys as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ArrowValueKeys::new(WitArrowValueKeys(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitValueKeys(pub RefCell<cddl_lib::ValueKeys>);
+
+impl wit_types::GuestValueKeys for WitValueKeys {
+    fn new(key1: String, key2: u64) -> Self {
+        let inner = cddl_lib::ValueKeys::new(key1, key2);
+        WitValueKeys(RefCell::new(inner))
+    }
+
+    fn key1(&self) -> String {
+        let me = self.0.borrow();
+        me.key_1.clone()
+    }
+
+    fn key2(&self) -> u64 {
+        let me = self.0.borrow();
+        me.key_2
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ValueKeys as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ValueKeys, String> {
+        <cddl_lib::ValueKeys as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ValueKeys::new(WitValueKeys(RefCell::new(v))))
+            .map_err(err)
+    }
+}

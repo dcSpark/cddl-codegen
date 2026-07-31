@@ -1811,7 +1811,16 @@ feature_corpus_compiles_shards! {
 /// cells, and libtest reports every failing shard in a run — so a run still surfaces every problem,
 /// grouped by shard rather than in one list.
 fn feature_corpus_compiles_shard(shard: usize) {
-    let profiles = super::ALL_PROFILES;
+    // The component profile is filtered out BY NAME: the component crate is a **wasip2** target and
+    // this gate compiles for the HOST (`crate_subs` below is rust/wasm, and no `--target` appears
+    // anywhere in the gate), so it structurally cannot compile-gate `component/`. That face's
+    // compile coverage is `component_tests::component_crate_builds_for_wasm32_wasip2`; its
+    // corpus-breadth verdict is `component_tests::component_wit_validates_the_corpus`.
+    let profiles: Vec<super::Profile> = super::ALL_PROFILES
+        .iter()
+        .filter(|(profile, _)| *profile != super::COMPONENT_PROFILE)
+        .copied()
+        .collect();
     let all_entries = feature_corpus_entries();
     // Round-robin over the SORTED list, so which fixture lands in which shard is deterministic and
     // reproducible from the corpus alone — a failure names its cell, and rerunning that shard
@@ -1844,7 +1853,7 @@ fn feature_corpus_compiles_shard(shard: usize) {
         if COMPILE_SKIP.contains(&stem) {
             continue;
         }
-        for (profile, extra) in profiles {
+        for (profile, extra) in &profiles {
             let label = format!("{stem}/{profile}");
             let out = root.join(format!("{stem}__{profile}"));
             let emit_tests = *profile == "default";
@@ -3328,10 +3337,21 @@ fn wasm_matrix_roundtrips() {
              stale pin, remove or fix it"
         );
     }
+    // The component profile is filtered out BY NAME: this gate's subject is the wasm ABI's
+    // round-trip behaviour, and `--component` adds no wasm surface at all (it mints a separate
+    // wasip2 crate and changes no rust or wasm byte). Pins are reconciled against the SWEPT
+    // profiles, not against `ALL_PROFILES`, so a pin naming the filtered row fails as stale rather
+    // than sitting vacuous.
+    let profiles: Vec<super::Profile> = super::ALL_PROFILES
+        .iter()
+        .filter(|(profile, _)| *profile != super::COMPONENT_PROFILE)
+        .copied()
+        .collect();
     for (profile, stem, _) in WASM_MATRIX_PROFILE_SKIP {
         assert!(
-            super::ALL_PROFILES.iter().any(|(name, _)| name == profile),
-            "WASM_MATRIX_PROFILE_SKIP names unknown profile `{profile}` — stale pin, remove or fix it"
+            profiles.iter().any(|(name, _)| name == profile),
+            "WASM_MATRIX_PROFILE_SKIP names profile `{profile}`, which this gate does not sweep — \
+             stale pin, remove or fix it"
         );
         assert!(
             cell_stems.contains(stem),
@@ -3358,7 +3378,7 @@ fn wasm_matrix_roundtrips() {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         // Skipped in EVERY profile (extern).
         let skipped_all = WASM_MATRIX_SKIP.contains(&stem);
-        for (profile, extra) in super::ALL_PROFILES {
+        for (profile, extra) in &profiles {
             let label = format!("{stem}/{profile}");
             // Skipped in EVERY profile, or in THIS specific profile.
             let skipped = skipped_all
@@ -3536,11 +3556,21 @@ fn multifile_matrix_roundtrips() {
              tests/matrix_multifile — stale pin, remove or fix it"
         );
     }
+    // The component profile is filtered out BY NAME, for the same reason as its `wasm_matrix`
+    // sibling: this gate's subject is the wasm ABI's round-trip behaviour and `--component` adds no
+    // wasm surface. Pins reconcile against the SWEPT profiles so a pin naming the filtered row
+    // fails as stale rather than sitting vacuous. The `>= 136 of 144` vacuity floor below is
+    // calibrated on the three swept profiles and is deliberately left alone.
+    let profiles: Vec<super::Profile> = super::ALL_PROFILES
+        .iter()
+        .filter(|(profile, _)| *profile != super::COMPONENT_PROFILE)
+        .copied()
+        .collect();
     for (profile, stem, _reason) in MULTIFILE_ROUNDTRIP_PROFILE_SKIP {
         assert!(
-            super::ALL_PROFILES.iter().any(|(name, _)| name == profile),
-            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names unknown profile `{profile}` — stale pin, \
-             remove or fix it"
+            profiles.iter().any(|(name, _)| name == profile),
+            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names profile `{profile}`, which this gate does not \
+             sweep — stale pin, remove or fix it"
         );
         assert!(
             cell_stems.contains(stem),
@@ -3571,7 +3601,7 @@ fn multifile_matrix_roundtrips() {
         let stem = input.file_name().unwrap().to_str().unwrap();
         // Skipped in EVERY profile.
         let skipped_all = MULTIFILE_ROUNDTRIP_SKIP.iter().any(|(s, _)| *s == stem);
-        for (profile, extra) in super::ALL_PROFILES {
+        for (profile, extra) in &profiles {
             let label = format!("{stem}/{profile}");
             // Skipped in EVERY profile, or in THIS specific profile.
             let skipped = skipped_all
@@ -15104,12 +15134,21 @@ fn all_supported_constructs_generate_all_profiles() {
         "no supported fixtures in {dir:?} (run `bun run project_robustness.ts`)"
     );
 
-    let profiles = super::ALL_PROFILES;
+    // The component profile is filtered out BY NAME: this gate's expected-fail verdicts are DERIVED
+    // from `emission.<profile>.*` keys that only a `cddl-matrix/verify.ts` run mints, and
+    // `verify.ts` deliberately does not probe the component profile (a rust-crate round-trip
+    // `--component` cannot change). Sweeping it here would be chicken-and-egg: every component
+    // divergence would read as a non-expected failure with no way to record the expectation.
+    let profiles: Vec<super::Profile> = super::ALL_PROFILES
+        .iter()
+        .filter(|(profile, _)| *profile != super::COMPONENT_PROFILE)
+        .copied()
+        .collect();
     let mut failures = Vec::new(); // non-expected generation failures — real regressions
     let mut resurfaced = Vec::new(); // EXPECTED_FAIL cells that now generate — remove them
     for path in &inputs {
         let id = path.file_stem().unwrap().to_str().unwrap();
-        for (profile, extra) in profiles {
+        for (profile, extra) in &profiles {
             let expected = expected_fail.get(&(profile.to_string(), id.to_string()));
             // A construct "fails under this profile" if generation errors/panics under EITHER wasm
             // mode (the float `unimplemented!` class aborts in core generation regardless of wasm;
@@ -15228,10 +15267,14 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
 
     // Non-default profiles only (default is already emit-tests + cargo test in CI). Derived from
-    // ALL_PROFILES so a new profile can't silently escape this round-trip gate.
+    // ALL_PROFILES so a new profile can't silently escape this round-trip gate — except the
+    // component profile, filtered out BY NAME: this gate `cargo test`s the generated rust and wasm
+    // crates, which `--component` provably leaves byte-identical, and `module_floor` returns 0 for
+    // it, so a component column would re-run the `default` verdict at full cost under a vacuity
+    // guard that could never fire.
     let profiles: Vec<&super::Profile> = super::ALL_PROFILES
         .iter()
-        .filter(|(p, _)| *p != "default")
+        .filter(|(p, _)| *p != "default" && *p != super::COMPONENT_PROFILE)
         .collect();
 
     let corpus_stems: std::collections::BTreeSet<&str> = entries

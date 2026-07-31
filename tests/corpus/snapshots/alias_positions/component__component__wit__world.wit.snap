@@ -1,0 +1,64 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource credential {
+    constructor(idx: u64, hash: list<u8>);
+    idx: func() -> u64;
+    hash: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<credential, string>;
+  }
+  resource holder {
+    constructor(pid: list<u8>, dc: int, sc: borrow<credential>, m: list<tuple<u64, string>>);
+    pid: func() -> list<u8>;
+    dc: func() -> int;
+    sc: func() -> credential;
+    m: func() -> list<tuple<u64, string>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  variant int {
+    uint(u64),
+    // a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4
+    nint(u64),
+  }
+  resource keyed {
+    constructor(key1: list<tuple<u64, string>>);
+    key1: func() -> list<tuple<u64, string>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<keyed, string>;
+  }
+  resource nested {
+    constructor(arr: list<list<u8>>, opt: option<list<u8>>, deep: list<tuple<u64, list<tuple<list<u8>, string>>>>);
+    arr: func() -> list<list<u8>>;
+    opt: func() -> option<list<u8>>;
+    deep: func() -> list<tuple<u64, list<tuple<list<u8>, string>>>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nested, string>;
+  }
+  resource open-holder {
+    constructor(key1: u64);
+    key1: func() -> u64;
+    rest: func() -> list<tuple<u64, list<tuple<list<u8>, string>>>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<open-holder, string>;
+  }
+  resource open-tail {
+    constructor(index0: u64);
+    index0: func() -> u64;
+    rest: func() -> list<list<tuple<list<u8>, string>>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<open-tail, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}
