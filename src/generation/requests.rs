@@ -282,6 +282,10 @@ impl GenerationScope {
         self.requested_ordered_set = to_emit
             .iter()
             .any(|(_, rt, _, _)| rt.contains_ordered_set());
+        // The map-side twin: a requested `@duplicates preserve` table wraps `PairMap`/`NonEmptyPairMap`,
+        // a runtime the dep's OWN spec may never mention — without this the hosted class references a
+        // type the dep's crate neither declares nor copies in (E0433 at the dep's build).
+        self.requested_pair_map = to_emit.iter().any(|(_, rt, _, _)| rt.contains_pair_map());
         let non_empty_import = self
             .requested_non_empty_vec
             .then(|| format!("{}::non_empty", cli.common_import_wasm()));
@@ -291,6 +295,9 @@ impl GenerationScope {
         let ordered_set_import = self
             .requested_ordered_set
             .then(|| format!("{}::ordered_set", cli.common_import_wasm()));
+        let pair_map_import = self
+            .requested_pair_map
+            .then(|| format!("{}::pair_map", cli.common_import_wasm()));
 
         // Ensure the module exists even when nothing is emitted (all requests satisfied by own spec /
         // addressed elsewhere) — stable presence, stable diffs (plan decision 1). When non-empty, the
@@ -317,6 +324,12 @@ impl GenerationScope {
         if let Some(path) = ordered_set_import {
             scope_content.push_import(path.clone(), "OrderedSet", None);
             scope_content.push_import(path, "NonEmptyOrderedSet", None);
+        }
+        // The preserve twin wraps `core::PairMap` / `NonEmptyPairMap`, gated the same way (the
+        // per-scope loop keys off the dep's OWN `uses_pair_map()`, which a request-only host fails).
+        if let Some(path) = pair_map_import {
+            scope_content.push_import(path.clone(), "PairMap", None);
+            scope_content.push_import(path, "NonEmptyPairMap", None);
         }
     }
 }
@@ -361,9 +374,9 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
             // a distinct canonical shape from the same loose/non-empty list). Kept byte-identical to
             // the marker `generate_reject_ordered_set_type` records for the dep's own reject wrappers.
             let reject = if rt.duplicates_reject() {
-                " @duplicates reject"
+                format!(" {REJECT_MARKER}")
             } else {
-                ""
+                String::new()
             };
             format!("[{occ} {}]{reject}", render_wrapper_shape(inner))
         }
@@ -373,9 +386,9 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
             // backing container (`PairMap`) is part of its structural identity, so the shape column
             // carries the policy and the reconstruction rebuilds the same flavored wrapper.
             let preserve = if rt.is_preserve_pair_map() {
-                " @duplicates preserve"
+                format!(" {PRESERVE_MARKER}")
             } else {
-                ""
+                String::new()
             };
             format!(
                 "{{{occ} {} => {}}}{preserve}",
@@ -398,6 +411,27 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
         // placeholder rather than panicking so the advisory hint text stays best-effort.
         ConceptualRustType::Fixed(_) => "_".to_owned(),
     }
+}
+
+/// The trailing shape-column policy markers a flavored collection carries — the array-side
+/// uniqueness twin and the map-side pair-map twin. They ride the shape column BARE (no `;`) because
+/// the sidecar round-trips them by PARSE (`parse_requested_shape` consumes exactly these strings),
+/// and the rendered column is not CDDL to begin with.
+pub(crate) const REJECT_MARKER: &str = "@duplicates reject";
+pub(crate) const PRESERVE_MARKER: &str = "@duplicates preserve";
+
+/// Split a rendered shape column into its bare CDDL shape and its trailing policy marker, if any.
+/// The only consumer is the paste-able rule-line hint: a rule line pasted into a spec must carry the
+/// directive in COMMENT position (`foo = {* uint => bar} ; @duplicates preserve`) — the bare marker
+/// the sidecar column uses is not valid CDDL after the shape, so pasting it verbatim would fail the
+/// dep's parse for exactly the flavored shapes whose structural name encodes the flavor.
+pub(crate) fn split_shape_policy_marker(shape: &str) -> (&str, Option<&str>) {
+    for marker in [PRESERVE_MARKER, REJECT_MARKER] {
+        if let Some(bare) = shape.strip_suffix(marker) {
+            return (bare.trim_end(), Some(marker));
+        }
+    }
+    (shape, None)
 }
 
 /// Validate `--workspace-dep` values (plan decision 6) and return the set. Each named dep must be a
@@ -487,10 +521,8 @@ fn parse_requested_shape(
     // rebuilds the SAME uniqueness twin the consumer borrowed. Consume it before the trailing-content
     // guard and stamp the policy onto the reconstructed `RustType` (only an array-shaped collection
     // ever carries it; the emit dispatch + structural naming key off `is_reject_ordered_set`).
-    const REJECT_MARKER: &str = "@duplicates reject";
-    // The map-side twin: a `@duplicates preserve` table's structural wasm name encodes the pair-map
-    // container (`PairMapKToV`), so the flavor must round-trip through the shape column too.
-    const PRESERVE_MARKER: &str = "@duplicates preserve";
+    // (`REJECT_MARKER` / `PRESERVE_MARKER`, module-level: the renderer, this parser and the
+    // hint's comment-position rewrite all key off the one pair of spellings.)
     let rest: String = chars[pos..].iter().collect();
     if rest == REJECT_MARKER {
         if !matches!(rt.conceptual_type, ConceptualRustType::Array(_)) {

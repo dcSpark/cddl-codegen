@@ -11250,6 +11250,136 @@ fn extern_wrapper_index_defers_to_dep() {
     );
 }
 
+/// The not-in-index warning's rule line is documented as the exact PASTE-ABLE manual override, and a
+/// FLAVORED shape is where that contract earns its keep: a `@duplicates preserve` table's structural
+/// wasm name encodes its container (`PairMapKToV`), so a rule declared in the dep WITHOUT the
+/// directive mints the wrong-flavor wrapper under the wrong name and every consumer keeps re-minting.
+/// The shape COLUMN carries the policy as a bare trailing marker (the request sidecar round-trips it
+/// by parse), which is not CDDL after a rule's shape — so the hint moves it into comment position,
+/// where it is the rule's own `@duplicates` directive, with the requester attribution in `@doc` (the
+/// DSL's slot for prose after a directive).
+///
+/// Reachability of the flavored hint is the premise this gate also pins: an all-extern-of-one-dep
+/// `@duplicates preserve` REST ROW is a defer candidate, because the rest-row table mint runs through
+/// `try_defer_wrapper` exactly like a declared table's does. (The array-side `@duplicates reject`
+/// twin has no such path — its ordered-set mint consults no defer seam — so no reject hint exists to
+/// pin.)
+///
+/// End to end, not by eyeball: the rule line is taken from stderr VERBATIM, pasted into a dep spec,
+/// and the dep's own collection index must gain the FLAVORED name backed by `PairMap`. The
+/// marker-less paste is the RED half — same shape, loose name — so the gate provably distinguishes
+/// carrying the directive from dropping it. Scratch-only (`temp_dir()`), no fixture dir and no wasm32
+/// link: the property is the text of the line and what the dep makes of it.
+#[test]
+fn preserve_map_defer_hint_is_paste_able() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_preserve_hint_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let write = |rel: &str, body: &str| {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, body).unwrap();
+    };
+    // ===== The consumer: a preserve rest row typed entirely by one dependency's extern types =====
+    write(
+        "consumer/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/index_dep_crate/mod.cddl",
+        "idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    );
+    write(
+        "consumer/lib.cddl",
+        "open_holder = { 1: uint, * uint => idx_foo ; @duplicates preserve\n}\n",
+    );
+    let generate = codegen_cmd()
+        .arg(format!("--input={}", root.join("consumer").display()))
+        .arg(format!(
+            "--output={}",
+            root.join("consumer-export").display()
+        ))
+        .arg("--wasm=true")
+        .arg("--common-import-override=index_dep_crate")
+        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+        .arg("--extern-wrapper-index=index_dep_crate=tests/index-dep-crate-wasm/src/collections.rs")
+        .output()
+        .unwrap();
+    let gen_stderr = String::from_utf8_lossy(&generate.stderr);
+    assert!(
+        generate.status.success(),
+        "consumer generation failed:\n{gen_stderr}"
+    );
+    // The preserve rest row's wrapper (PairMapU64ToIdxFoo) is all-extern-of-one-dep and absent from
+    // that dep's index, so it mints locally with the paste-able hint — the flavored line, verbatim.
+    const HINT_PREFIX: &str = "hint: add to index_dep_crate's spec: ";
+    assert!(
+        gen_stderr.contains(&format!(
+            "{HINT_PREFIX}pair_map_u64_to_idx_foo = {{* uint => idx_foo}} ; @duplicates preserve \
+             @doc requested by cddl_lib"
+        )),
+        "expected the flavored paste-able rule-line hint for PairMapU64ToIdxFoo, got stderr:\n{gen_stderr}"
+    );
+    let rule_line = gen_stderr
+        .lines()
+        .find_map(|l| l.trim().strip_prefix(HINT_PREFIX))
+        .expect("the warning must carry a hint line")
+        .to_owned();
+
+    // ===== The dep: paste that line into its spec; the flavored wrapper must appear in its index ===
+    let paste_and_generate = |dir: &str, line: &str| -> (String, String) {
+        write(
+            &format!("{dir}/lib.cddl"),
+            &format!("idx_foo = [a: uint]\n{line}\n"),
+        );
+        let out = codegen_cmd()
+            .arg(format!("--input={}", root.join(dir).display()))
+            .arg(format!(
+                "--output={}",
+                root.join(format!("{dir}-export")).display()
+            ))
+            .arg("--wasm=true")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "the pasted rule line {line:?} must be valid CDDL the dep generates from:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let read = |rel: &str| {
+            std::fs::read_to_string(root.join(format!("{dir}-export/wasm/src/generated/{rel}")))
+                .unwrap()
+        };
+        (read("collections.rs"), read("mod.rs"))
+    };
+    let (index, dep_wasm) = paste_and_generate("dep", &rule_line);
+    assert!(
+        index.contains("pub use crate::generated::PairMapU64ToIdxFoo;"),
+        "pasting the hint must land the FLAVORED wrapper in the dep's collection index (that is what \
+         every consumer's index-deferral then picks up), got:\n{index}"
+    );
+    assert!(
+        dep_wasm.contains("Self(PairMap::new())"),
+        "the pasted rule's class must be backed by the pair-map container, not the keyed table, \
+         got:\n{dep_wasm}"
+    );
+    // RED: pasting the SAME line with the comment dropped keeps the flavored NAME (it is the rule
+    // ident) but silently backs it with the keyed table — the wrong-flavor mint that a bare marker
+    // outside comment position would have produced, since the dep's parse would have rejected the
+    // line and the operator's fix would have been to delete the marker.
+    let (_, loose_wasm) = paste_and_generate(
+        "dep-loose",
+        rule_line
+            .split_once(" ; ")
+            .expect("the hint line carries a comment")
+            .0,
+    );
+    assert!(
+        !loose_wasm.contains("Self(PairMap::new())"),
+        "dropping the directive must NOT produce the pair-map container — the directive is what \
+         carries the flavor across the paste, got:\n{loose_wasm}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// W1 of the workspace wrapper-placement feature: `--workspace-dep` makes a consumer DEFER
 /// UNCONDITIONALLY every all-one-dep collection wrapper to the dep's wasm crate (no
 /// `--extern-wrapper-index` consulted) and emit a `borrowed_collections.rs` sidecar recording what it
@@ -11757,6 +11887,88 @@ fn workspace_requests_hosts_reject_ordered_set_twins() {
         collections.contains("pub use crate::generated::requested_collections::IdxFooOrderedSet;")
             && collections.contains(
                 "pub use crate::generated::requested_collections::NonEmptyIdxFooOrderedSet;"
+            ),
+        "the wasm collections index must re-export both hosted twins:\n{collections}"
+    );
+}
+
+/// The `--wrapper-requests` DEP-hosting path for the `@duplicates preserve` pair-map twins — the
+/// map-side counterpart of `workspace_requests_hosts_reject_ordered_set_twins`. A preserve table's
+/// structural wasm name ENCODES its container (`PairMapKToV`), so the consumer's
+/// `borrowed_collections.rs` carries the flavor as a shape-column marker and the dep must rebuild the
+/// pair-map twin: rebuilding the loose keyed table under the same name would hand the consumer a
+/// class whose entries silently deduplicate. Drives the dep in-process against the committed
+/// hand-authored preserve sidecar (the `reject_borrowed_collections.rs` idiom): the dep owns
+/// `idx_foo` but its own spec produces no preserve table, so both twins land in
+/// `requested_collections.rs` AND the request alone must provision the `pair_map` runtime the dep
+/// would otherwise never pull in — a hosted class over a runtime type the crate neither declares nor
+/// copies in does not compile.
+#[test]
+fn workspace_requests_hosts_preserve_pair_map_twins() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!("cddl_wr_preserve_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("lib.cddl"), "idx_foo = [x: uint]\n").unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.join("lib.cddl").to_str().unwrap(),
+        "--output",
+        "wr_preserve_unused",
+        "--lib-name",
+        "wr-dep",
+        "--wasm=true",
+        "--preserve-encodings=true",
+        "--wrapper-requests=presc=tests/workspace-requests/sidecars/preserve_borrowed_collections.rs",
+    ]);
+    let files = crate::api::generated_strings(&cli)
+        .unwrap_or_else(|e| panic!("dep generation must host the preserve twins: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let requested = files
+        .get("wasm/src/generated/requested_collections.rs")
+        .expect("the dep must emit requested_collections.rs hosting the preserve twins");
+    // Both twins wrap the duplicate-permitting vec-of-pairs cores — a loose-table rebuild (the skew)
+    // would wrap the keyed table here instead, under the SAME name the consumer imports.
+    assert!(
+        requested
+            .contains("pub struct PairMapU64ToIdxFoo(pub(crate) PairMap<u64, wr_dep::IdxFoo>)"),
+        "the {{*}} preserve request must host a PairMap twin:\n{requested}"
+    );
+    assert!(
+        requested.contains(
+            "pub struct NonEmptyPairMapU64ToIdxFoo(pub(crate) NonEmptyPairMap<u64, wr_dep::IdxFoo>)"
+        ),
+        "the {{+}} preserve request must host a NonEmptyPairMap twin:\n{requested}"
+    );
+    assert!(
+        !requested.contains("OrderedHashMap<u64, wr_dep::IdxFoo>"),
+        "no hosted twin may fall back to the keyed table — that is the flavor skew:\n{requested}"
+    );
+    // The `pair_map` runtime import the dep pulls in ONLY because of the request.
+    assert!(
+        requested.contains("::pair_map::{NonEmptyPairMap, PairMap}"),
+        "the requested scope must import the PairMap runtime core types:\n{requested}"
+    );
+    // ...and the same request alone provisions the runtime MODULE, though the dep's own spec has no
+    // preserve table (the provisioning gate ORs own-use with requested-use).
+    let rust_mod = files
+        .get("rust/src/generated/mod.rs")
+        .expect("rust generated mod.rs");
+    assert!(
+        rust_mod.contains("pub mod pair_map;"),
+        "a requested pair map must provision the pair_map runtime module:\n{rust_mod}"
+    );
+    // The wasm collections index re-exports both hosted twins, so a borrowing consumer resolves them.
+    let collections = files
+        .get("wasm/src/generated/collections.rs")
+        .expect("wasm collections.rs");
+    assert!(
+        collections
+            .contains("pub use crate::generated::requested_collections::PairMapU64ToIdxFoo;")
+            && collections.contains(
+                "pub use crate::generated::requested_collections::NonEmptyPairMapU64ToIdxFoo;"
             ),
         "the wasm collections index must re-export both hosted twins:\n{collections}"
     );
@@ -12330,6 +12542,21 @@ fn workspace_requests_hard_errors() {
             && ee.contains("nal")
             && ee.contains("credential"),
         "a residual mismatch must name the leaf ident and its substitution target, got: {ee}"
+    );
+
+    // (f) A policy marker on the wrong shape KIND. The pair-map twin exists only for tables, so
+    // `@duplicates preserve` on an array shape is a hand-edit the dep must refuse by name rather
+    // than reconstruct as something else (its array counterpart, `@duplicates reject` on a table, is
+    // refused by the sibling arm of the same parse).
+    let sf = write_sidecar(
+        "ef.rs",
+        "    (\"wr_dep\", \"IdxFooList\", \"[* idx_foo] @duplicates preserve\"),\n",
+    );
+    let ef = run("dep_inputs", "export_ef", &sf);
+    assert!(
+        ef.contains("`@duplicates preserve` on the non-map shape")
+            && ef.contains("only applies to"),
+        "the preserve marker on an array shape must be refused naming the shape, got: {ef}"
     );
 }
 
