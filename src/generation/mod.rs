@@ -70,6 +70,7 @@ pub use export::rustfmt_generated_string;
 #[allow(unused_imports)]
 pub(crate) use export::{
     CODEGEN_HEADER, concat_files, is_header_stamped_path, is_preservable_generated_path,
+    rustfmt_source_with,
 };
 
 mod bounds;

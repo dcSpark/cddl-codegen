@@ -1873,6 +1873,89 @@ fn rustfmt_rejects_unparseable_source() {
     );
 }
 
+/// Write an executable `/bin/sh` stub at a unique path and return it. The stub stands in for the
+/// rustfmt binary in the tests below, injected through `rustfmt_source_with` rather than through
+/// `RUSTFMT`/`PATH`: both are process-global, `cargo test` runs tests as threads of ONE process, and
+/// every other test that formats would pick the stub up — a hazard no mutex among these tests can
+/// remove, because the other callers do not take it.
+#[cfg(unix)]
+fn rustfmt_stub(tag: &str, body: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_rustfmt_stub_{tag}_{}",
+        std::process::id()
+    ));
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+/// Non-UTF-8 formatter output is an ERROR, never `Ok` carrying the unformatted input.
+///
+/// The swallow this replaces was the one hole in the "any exit other than 0/3 is fatal" contract:
+/// a rustfmt that crashed mid-write shipped the UNFORMATTED source at exit 0, silently breaking the
+/// canonical-layout invariant that two standing gates cite as their entire assertion mechanism. It
+/// is never a benign outcome — the input is a Rust `&str`, so a formatter that merely reformatted it
+/// emits UTF-8 by construction.
+///
+/// The control leg is load-bearing: an identical stub that echoes its stdin must still return `Ok`
+/// with that content, so the failing leg cannot be passing merely because a stub binary was used.
+#[cfg(unix)]
+#[test]
+fn rustfmt_non_utf8_output_is_an_error() {
+    let source = "fn main() {}\n";
+
+    // Control: a well-behaved stub round-trips to Ok.
+    let ok_stub = rustfmt_stub("ok", "cat");
+    let formatted = crate::generation::rustfmt_source_with(&ok_stub, source)
+        .expect("a stub that echoes valid UTF-8 at exit 0 must format Ok");
+    assert_eq!(formatted.as_ref(), source);
+    std::fs::remove_file(&ok_stub).ok();
+
+    // The leg under test: valid exit status, invalid bytes.
+    let bad_stub = rustfmt_stub("badutf8", "cat > /dev/null\nprintf '\\377\\376'");
+    let err = crate::generation::rustfmt_source_with(&bad_stub, source)
+        .expect_err("non-UTF-8 formatter output must be an Err, never Ok carrying the input");
+    std::fs::remove_file(&bad_stub).ok();
+    assert_eq!(
+        err.kind(),
+        std::io::ErrorKind::InvalidData,
+        "non-UTF-8 output must be InvalidData, got {err:?}"
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("non-UTF-8") && msg.contains("Refusing to write unformatted output"),
+        "the error must name the condition and say what it refused to do, got: {msg}"
+    );
+}
+
+/// A formatter binary that cannot be spawned is a clean `Err`, not an unwrap backtrace.
+///
+/// `rustfmt_generated_string` used to `.unwrap()` the path lookup, so "no rustfmt on this machine"
+/// — a user-facing environment problem, on a call whose whole path is already `io::Result` —
+/// surfaced as a panic with no diagnosis. The spawn-failure leg exercises the same `Result` shape
+/// the converted lookup now propagates.
+///
+/// NOT covered here: `rustfmt_path()`'s OWN `Err` (no `RUSTFMT` and `which` fails). Driving it needs
+/// a process-global `PATH` with no rustfmt on it, which would race the concurrent tests that spawn
+/// `cargo` in the same process.
+#[cfg(unix)]
+#[test]
+fn rustfmt_unspawnable_binary_is_an_error_not_a_panic() {
+    let missing = std::env::temp_dir().join(format!(
+        "cddl_codegen_rustfmt_absent_{}",
+        std::process::id()
+    ));
+    std::fs::remove_file(&missing).ok();
+    let err = crate::generation::rustfmt_source_with(&missing, "fn main() {}\n")
+        .expect_err("a formatter binary that does not exist must be an Err, not a panic");
+    assert_eq!(
+        err.kind(),
+        std::io::ErrorKind::NotFound,
+        "a missing formatter binary must surface as the spawn's own NotFound, got {err:?}"
+    );
+}
+
 /// The comment-preserve overlay's markers must survive the tool's OWN rustfmt pass. rustfmt folds a
 /// `// cddl-codegen:<tag>` comment trailing the closing `}` of a match's last arm onto that `}` as a
 /// trailing comment, so a `preserve → rustfmt_generated_string → preserve` loop would otherwise write
