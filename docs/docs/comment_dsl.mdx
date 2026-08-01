@@ -1010,7 +1010,7 @@ The minimum of 1 counts **typed** entries — a map of purely captured entries i
 
 A catch-all whose admissible majors the typed row already exhausts is refused too — it could never capture an entry.
 
-Its JSON face is [one flattened object holding both rows](output_format#open-tables-a-typed-row-plus-a-catch-all), read back typed-first — worth reading before choosing a `K_t`, because a key type admitting every member name leaves the catch-all unreachable through JSON.
+Its JSON face is [one flattened object holding both rows](output_format#open-tables-a-typed-row-plus-a-catch-all), read back typed-first — worth reading before choosing a `K_t`, because a key type admitting every member name leaves the catch-all unreachable through JSON. Where that is decidable the tool refuses rather than ships it: a `K_t` transparently resolving to `String` (bare `text`, or an alias of it) is a graceful rejection under `--json-serde-derives`/`--json-schema-export`, and a supported shape without them.
 
 Not supported (each a graceful rejection naming the remedy): more than two rows, or two rows mixed with fixed keys; an inline anonymous spelling (`f: { * k1 => v1, * k2 => v2 }` — give it its own named rule); `any` on the *typed* row (it would claim all eight majors, leaving the catch-all nothing — `any` belongs on the catch-all); a null-admitting key on either row; `@ignore` on either row; and `+` on the catch-all row (the min-1 counts typed entries).
 

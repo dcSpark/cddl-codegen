@@ -2907,7 +2907,17 @@ impl<'a> IntermediateTypes<'a> {
     ///
     /// Plus the complement check: a catch-all whose admissible majors are EXHAUSTED by the typed row
     /// can never see an entry, so it is rejected rather than emitted as dead code.
-    fn derive_open_table_dispatch_majors(&mut self) {
+    ///
+    /// Plus, under the JSON flags only, the BARE-TEXT typed key check. A `K_t` that transparently
+    /// resolves to `String` admits EVERY JSON object member name, so the typed-first partition binds
+    /// every member to the typed row: the catch-all is provably unreachable through JSON, and
+    /// `from_json` refuses what `to_json` wrote for any captured entry (the member rebinds typed and
+    /// `V_t` refuses the value, or worse, silently accepts it into the wrong row). That is the T1
+    /// fixed point failing on EVERY document with a captured entry, not on an edge case, so the shape
+    /// is refused rather than documented. TRANSPARENT resolution only: an opaque `K_t` (an extern or
+    /// a `@newtype` whose hand-written serde happens to read every string) is undecidable from here
+    /// and stays the documented hazard it already is.
+    fn derive_open_table_dispatch_majors(&mut self, cli: &Cli) {
         // Two passes, because `cbor_types()` on a `Rust(ident)` key reads `rust_structs` — so the
         // derivation cannot hold a mutable borrow of it. Pass 1 is a pure read of the whole IR
         // producing one verdict per open table; pass 2 applies the verdicts.
@@ -2925,6 +2935,26 @@ impl<'a> IntermediateTypes<'a> {
             }
             let typed_domain = record.typed_row().unwrap().domain();
             let catch_all_domain = record.rest.as_ref().unwrap().domain();
+            if (cli.json_serde_derives || cli.json_schema_export)
+                && matches!(
+                    typed_domain.conceptual_type.resolve_alias_shallow(),
+                    ConceptualRustType::Primitive(Primitive::Str)
+                )
+            {
+                rejections.push(format!(
+                    "rule `{rule_ident}`: an open table keyed on bare `text` is a CBOR-ONLY shape \
+                     and cannot be generated with a JSON face. In JSON both rows share one object \
+                     and a member name binds the TYPED row first, so a `String` key — which admits \
+                     every member name there is — leaves the catch-all row unreachable and makes \
+                     `from_json` refuse documents `to_json` itself wrote. Either generate this spec \
+                     without `--json-serde-derives`/`--json-schema-export`, or key the typed row on \
+                     a type whose admissible names are a proper subset (a raw-bytes marker or a \
+                     `@newtype` whose serde writes a fixed-width hex/bech32 image, or a numeric \
+                     key), or spell it as a plain table (`t = {{ * text => v }}`) if one row is all \
+                     you need."
+                ));
+                continue;
+            }
             let has_custom_codec = custom_codec_on_alias_chain(&typed_domain.conceptual_type, self);
             let declared = declared_wire_major_on_alias_chain(&typed_domain.conceptual_type, self);
             let major = if has_custom_codec {
@@ -3157,7 +3187,7 @@ impl<'a> IntermediateTypes<'a> {
         // `rust_struct(ident).unwrap()` and would panic on a not-yet-registered forward reference,
         // and only a post-generic-resolution pass sees a key hidden behind a resolved generic
         // instance. Parse decides SHAPE, finalize decides STATICNESS.
-        self.derive_open_table_dispatch_majors();
+        self.derive_open_table_dispatch_majors(cli);
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
