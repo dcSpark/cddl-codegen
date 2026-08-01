@@ -3199,6 +3199,92 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.memberkey.type1.open_table"
+axis = "containment"
+example = "t = { * bstr => uint, * uint => uint }"
+spec = "t = { * bstr => uint, * uint => uint }"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "a4507265696e746572707265746174696f6e19087b4d7061696e7374616b696e676c7919028f4970617373696f6e27731904cb190a831909a9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a549656d696e656e746c79190f2b47616972776179731908584847616c6c757027731909db190ef6190c531906761905b5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a64570616e73791902cf48756e70696e6e6564190ecd1910621909f918fe190f4319013f190b56191254190bd6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a646536865656e611901644a576865656c696e6727731907cd1902361901371906f11908fa190f1119072d190d8e190f86"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a746696e746f6e6519108c484c65616b657927731908cf487069636b6572656c190cdc190b6f1909b3190666190563190ae519048b191017190c6f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a747636f64646c65641906a149626967616d69737473190dd7486c61746865722773190479191135190c2b1907861905fc19103d18ba1901931902e8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.type1.open_table_plus"
+axis = "containment"
+example = "t = { + bstr => uint, * uint => uint }"
+spec = "t = { + bstr => uint, * uint => uint }"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "a34a626f6f6b6d6f62696c651901b4190d8d1911f0190c42190a08"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a449666c6f746174696f6e190734446c6f726e1903d31905e3190d6a190fef191004"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a44a646973636f7572736564190b9219076918e8191074190f601902941907df"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a5464d6179616e73190c514a7072617466616c6c27731906bb19102a190561190cf619099b190f75190f89"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a54774726f77656c731908314c42756c6c77696e6b6c652773190ad94867696d6d69636b7319056019082d19056919061d1907be"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a749666c7574746572277319037046446977616c69190c70497370656369616c7479190a3d190ed1190f33190e5a190c3d1908f1190331190bbe19092d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a74a5376656e67616c69277319112c4b776865656c6261736527731906f8495175656e74696e27731903174863726f736965727319036e190b0d19031e1901f019086b190ce219125f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a84477696e6f190b904a64696c657474616e74691901f9446f776c7319085c476d7574746572731907e519061e190814190f9c19063b190921190760190b84184d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.occurrence-target.memberkey.type1.plus_table"
 axis = "containment"
 example = "m = { + tstr => uint }"
