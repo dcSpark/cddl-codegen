@@ -9,7 +9,7 @@ use crate::intermediate::{
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
     ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow, RestSemantics,
     RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
-    reserved_pin_rejection,
+    head_constrained_float_rejection, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -675,6 +675,28 @@ fn rule_position_metadata(type_choices: &[TypeChoice]) -> RuleMetadata {
     )
 }
 
+/// A range / `.size` control operator whose HEAD is a named type with no rust primitive behind it.
+/// The range machinery lowers a constraint onto the primitive that backs the constrained type, so a
+/// head `ident_to_primitive` does not map has nothing to lower onto — it used to abort at a bare
+/// `.unwrap()`. Recorded gracefully instead, for ANY such ident, so the next reserved-but-unmapped
+/// name class (the head-constrained float names were the first) cannot re-earn the panic.
+fn unmapped_control_head_rejection(type_name: &RustIdent, cddl_ident: &CDDLIdent) -> String {
+    format!(
+        "rule `{type_name}`: a range or `.size` control operator on `{cddl_ident}` is unsupported — \
+         the constraint is lowered onto the rust primitive backing the constrained type, and \
+         `{cddl_ident}` has no such primitive. Apply the constraint to a concrete numeric, text or \
+         byte-string type (`uint`, `int`, `float64`, `tstr`, `bstr`), or remove it."
+    )
+}
+
+/// The generic-definition body shapes the generator CAN monomorphize, named in every rejection that
+/// refuses one it cannot, so each message carries the remedy and not only the diagnosis. Generic
+/// support works by substituting the instance's arguments into a registered `RustStruct`, so a body
+/// that registers an alias (or nothing) has nowhere for a parameter to live.
+const SUPPORTED_GENERIC_DEF_BODIES: &str = "A generic definition's body must be a shape that \
+    registers a struct to substitute into: an array (`foo<T> = [* T]`), a map or record \
+    (`foo<T> = {a: T}`), or the transparent tag-set idiom (`foo<T> = #6.258([* T]) / [* T]`).";
+
 /// `@raw_bytes_flavor` on a rule that is not an extern marker. Shared verbatim by every
 /// type-rule seam that can reach the misplacement so the pinned wording cannot drift between them.
 fn raw_bytes_flavor_not_extern_rejection(type_name: &RustIdent) -> String {
@@ -719,9 +741,17 @@ fn parse_type_choices(
     };
     if let Some(inner_type2) = optional_inner_type {
         if generic_params.is_some() {
-            // the current generic support relies on having a RustStruct to swap out the types with
-            // but that won't happen with T / null types since we generate an alias instead
-            todo!("support foo<T> = T / null");
+            // Generic support relies on having a RustStruct to swap the argument types into, and a
+            // `T / null` rule collapses to a transparent `Option<T>` ALIAS instead — so an instance
+            // has nothing to substitute into. Refused at parse time rather than aborted.
+            types.record_rejection(format!(
+                "generic rule `{name}`: a `T / null` body collapses to a transparent `Option<T>` \
+                 alias, which registers no struct for `{name}<…>` instances to substitute their \
+                 arguments into. Spell the `/ null` at each use site instead (`x = [f: uint / \
+                 null]`), or give the rule a body that registers a struct. \
+                 {SUPPORTED_GENERIC_DEF_BODIES}"
+            ));
+            return;
         }
         let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type2, cli);
         // A collapse over a FIXED inner (`t = true / null`, `5 / null`, `"v1" / null`, `null /
@@ -1065,6 +1095,24 @@ fn parse_type_choices(
         }
         if rule_metadata.ignore {
             reject_ignore_not_applicable(types, name);
+        }
+        // A choice-bodied generic DEF that neither collapse recognized — not the `T / null` Option
+        // collapse above, not the transparent tag-set idiom just above — would register a union
+        // ENUM as the generic def's body. Monomorphizing that is unimplemented: an instance carries
+        // the unresolved parameter into generation and aborts there with no diagnosis (`xs<a0> =
+        // #6.258([+ a0]) / [* a0]`, instanced and used, died at an `Option::unwrap` in the
+        // encoding/serialize walk at exit 101). Refuse here, where the shape is still in hand and
+        // the message can name the one choice-bodied idiom that IS supported.
+        if generic_params.is_some() {
+            types.record_rejection(format!(
+                "generic rule `{name}`: a type-choice body is supported only for the transparent \
+                 tag-set idiom (`{name}<T> = #6.258([* T]) / [* T]` — two arms differing ONLY in \
+                 the tag), which these arms do not form. Any other choice-bodied generic \
+                 definition mints a union enum the generic machinery cannot substitute into. Give \
+                 each arm its own named rule and choose between them at the use site, or make the \
+                 arms match the idiom. {SUPPORTED_GENERIC_DEF_BODIES}"
+            ));
+            return;
         }
         let rust_struct =
             RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
@@ -1970,6 +2018,28 @@ fn parse_type(
                 }
                 handle_extern_companions(types, type_name, &rule_metadata);
             } else if ident.ident == RAW_BYTES_MARKER {
+                // A GENERIC raw-bytes base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) is refused,
+                // where the extern marker above merely RECORDS its generic-ness: an extern names an
+                // arbitrary hand-written type, which can legitimately be parameterized, but a
+                // raw-bytes type IS its own bytes and has no element for a parameter to name. The
+                // registration below drops the params (a `RawBytesType` struct has none), so the
+                // base then emits rows spelling a BARE `Foo` — the extern-interface self-check's
+                // `_assert_raw_bytes::<crate::generated::Foo>()` and, under
+                // `--json-schema-export`, the json-gen `reg.add::<cddl_lib::Foo>()` — each E0107
+                // against the parameterized `Foo<T>` the marker promised, at exit 0 with empty
+                // stderr. Return-early (no registration), following the control-op-on-`any`
+                // rejection below.
+                if generic_params.is_some() {
+                    types.record_rejection(format!(
+                        "generic rule `{type_name}`: a {RAW_BYTES_MARKER} rule cannot take generic \
+                         parameters — a raw-bytes type is exactly its own bytes and carries no \
+                         element type for a parameter to name, so `{type_name}<…>` would emit \
+                         self-check and schema rows naming a bare `{type_name}` that cannot compile \
+                         against the parameterized type the marker declares. Declare it \
+                         non-generic (`{type_name} = {RAW_BYTES_MARKER}`)."
+                    ));
+                    return;
+                }
                 types.register_rust_struct(
                     parent_visitor,
                     RustStruct::new_raw_bytes(type_name.clone()),
@@ -1982,6 +2052,24 @@ fn parse_type(
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve
                 // and there's no Type2::BooleanValue
                 let cddl_ident = CDDLIdent::new(ident.to_string());
+                // The head-constrained float prelude names never reach `new_type` on THIS path: a
+                // control operator routes the ident through `ident_to_primitive` instead, so a
+                // constraint was a side door around the refusal recorded at that fallback —
+                // `x = float16 .size 4` generated an `f32`-backed codec at exit 0 (the exact
+                // wrong-head-width class the refusal exists to stop), while `float16-32 .size 4`
+                // aborted at a bare unwrap. Checked BEFORE the operator is parsed so the type is
+                // refused once, rather than alongside a second complaint about the constraint on a
+                // type that is not supported anyway. Same message, prefixed with the rule name the
+                // way every other constraint rejection on this path is.
+                if type1.operator.is_some()
+                    && let Some(msg) = head_constrained_float_rejection(&cddl_ident.to_string())
+                {
+                    types.record_rejection(format!(
+                        "{}{msg}",
+                        float_reject_rule_prefix(Some(type_name))
+                    ));
+                    return;
+                }
                 let control = type1.operator.as_ref().map(|op| {
                     parse_control_operator(
                         types,
@@ -2014,11 +2102,15 @@ fn parse_type(
                         match control {
                             ControlOperator::Range(min_max) => {
                                 // when declared top-level we make a new type as the default behavior like before
-                                let mut ranged_type = range_to_primitive(
-                                    min_max.0,
-                                    min_max.1,
-                                    ident_to_primitive(&cddl_ident).unwrap(),
-                                );
+                                let Some(primitive) = ident_to_primitive(&cddl_ident) else {
+                                    types.record_rejection(unmapped_control_head_rejection(
+                                        type_name,
+                                        &cddl_ident,
+                                    ));
+                                    return;
+                                };
+                                let mut ranged_type =
+                                    range_to_primitive(min_max.0, min_max.1, primitive);
                                 if ranged_type.config.bounds.is_some()
                                     || rule_metadata.newtype.is_some()
                                 {
@@ -2069,10 +2161,19 @@ fn parse_type(
                             ControlOperator::RangeFloat(window) => {
                                 // `float64 .le 10.5` (float typename head): wrap into a float
                                 // bounds-enforcing newtype (or tag/alias) — same three-way split.
-                                let ranged_type = float_range_to_primitive(
-                                    window,
-                                    ident_to_primitive(&cddl_ident).unwrap(),
-                                );
+                                // The same unmapped-head guard as the integer arm above: a float
+                                // WINDOW is only built for a head `ident_to_primitive` maps, so
+                                // this is the sibling backstop rather than a reachable shape
+                                // today — it exists so the next unmapped name class rejects
+                                // instead of re-earning the panic.
+                                let Some(primitive) = ident_to_primitive(&cddl_ident) else {
+                                    types.record_rejection(unmapped_control_head_rejection(
+                                        type_name,
+                                        &cddl_ident,
+                                    ));
+                                    return;
+                                };
+                                let ranged_type = float_range_to_primitive(window, primitive);
                                 register_float_range(
                                     types,
                                     parent_visitor,
@@ -2169,11 +2270,21 @@ fn parse_type(
                         };
                         match &generic_params {
                             Some(_params) => {
-                                // this should be the only situation where you need this as otherwise the params would be unbound
-                                todo!(
-                                    "generics on defined types e.g. foo<T, U> = [T, U], bar<V> = foo<V, uint>"
-                                );
-                                // TODO: maybe you could do this by resolving it here then storing the resolved one as GenericDef
+                                // A generic def whose body is another NAMED type
+                                // (`bar<V> = foo<V, uint>`) forwards its parameters into a second
+                                // definition; nothing registers a struct here for `bar<…>` to
+                                // substitute into, so the parameters would be unbound. Refused at
+                                // parse time rather than aborted. (Resolving the target here and
+                                // storing the resolved struct as this rule's own `GenericDef` is
+                                // the shape that would support it.)
+                                types.record_rejection(format!(
+                                    "generic rule `{type_name}`: a body that is another named type \
+                                     (`{type_name}<…> = <other>`) is not supported — it forwards \
+                                     the parameters into a second definition and registers no \
+                                     struct of its own, so they would be unbound. Spell the \
+                                     structure out in this rule's own body. \
+                                     {SUPPORTED_GENERIC_DEF_BODIES}"
+                                ));
                             }
                             None => {
                                 match generic_args {
@@ -5091,8 +5202,21 @@ pub fn parse_group(
             cli,
         );
     } else {
+        // A generic definition whose body carries GROUP choices (`g<T> = [ (a: T) // (b: uint) ]`)
+        // mints an enum of one struct per arm, and the generic machinery substitutes into exactly
+        // ONE registered struct — there is nowhere to thread the parameters. Refused at parse time
+        // rather than aborted; unlike the type-choice sibling this has no supported idiom, so the
+        // remedy is the use-site selection.
         if generic_params.is_some() {
-            todo!("{}: generic group choices not supported", name);
+            types.record_rejection(format!(
+                "generic rule `{name}`: group choices (`//`) in a generic definition are not \
+                 supported — each arm becomes its own struct behind an enum, and a generic \
+                 definition substitutes its arguments into exactly one registered struct. Give each \
+                 arm its own named group and choose between them at the use site \
+                 (`{name}_a = (…)`, `{name}_b = (…)`, `x = [ {name}_a // {name}_b ]`). \
+                 {SUPPORTED_GENERIC_DEF_BODIES}"
+            ));
+            return;
         }
         assert!(parent_rule_metadata.newtype.is_none());
         // Generate Enum object that is not exposed to wasm, since wasm can't expose

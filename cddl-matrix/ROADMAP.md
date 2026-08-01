@@ -640,7 +640,11 @@ ledgered here (that's what the probe/gate error messages point at).
   `x = float16`, `[v: float16, x: uint]` and `{ k: float16, j: uint }` alike exit 1 naming the type
   and its head set, under the default and `--preserve-encodings` profiles (pinned by
   `head_constrained_float_prelude_names_reject_gracefully_in_every_position` and the
-  `tests/matrix_reject/prelude.float16.cddl` row and its two siblings). The refusal is what the
+  `tests/matrix_reject/prelude.float16.cddl` row and its two siblings). "Every position" includes a
+  CONSTRAINED rule body (`x = float16 .size 4`), which reaches the name through
+  `ident_to_primitive` rather than through the name-resolution seam and so carries its own copy of
+  the refusal (`control_operator_path_refuses_head_constrained_floats_and_unmapped_heads`); both
+  copies read from one `intermediate::head_constrained_float_rejection`. The refusal is what the
   measured encode behaviour supports, and it is not the deferred work; the REGISTRATIONS are. In the
   default profile every native float is written as an 8-byte `#7.27` head
   (`x = [v: float32, w: float64]` at 1.5 encodes `82fb3ff8000000000000fb3ff8000000000000` — the two

@@ -815,6 +815,103 @@ fn head_constrained_float_prelude_names_reject_gracefully_in_every_position() {
     }
 }
 
+/// The CONTROL-OPERATOR path is the one route that reaches a prelude type name without going
+/// through `IntermediateTypes::new_type` — a rule-position `x = <name> .size 4` resolves the ident
+/// through `ident_to_primitive` directly — so the head-constrained float refusal has to be repeated
+/// there or the constraint is a side door around it. It was: `x = float16 .size 4` generated an
+/// `f32`-backed codec at exit 0, silently emitting the wrong-head-width bytes the refusal exists to
+/// stop, and `float16-32 .size 4` / `float32-64 .size 4` aborted at a bare `ident_to_primitive`
+/// unwrap because the choice names have no primitive at all.
+///
+/// Two halves, asserted together because the second is what stops the first from recurring under a
+/// different name: the three names refuse with the SAME message the `new_type` seam records (only
+/// prefixed with the rule, as every constraint rejection on this path is), and ANY other
+/// reserved-but-unmapped head refuses gracefully instead of aborting.
+///
+/// The control vectors are load-bearing: `float32`/`float64`/`uint`/`tstr` with the same operator
+/// must keep generating, or the guard could pass by refusing every constrained rule.
+#[test]
+fn control_operator_path_refuses_head_constrained_floats_and_unmapped_heads() {
+    // (name, head set) — the same three the `new_type` sweep covers.
+    let names = [
+        ("float16", "#7.25"),
+        ("float16-32", "#7.25 / #7.26"),
+        ("float32-64", "#7.26 / #7.27"),
+    ];
+    // One vector per control-operator flavor a typename head can carry at a rule position: the
+    // `.size` window, a value comparison (the float-window route), and `.default`.
+    let ops = [".size 4", ".le 3.0", ".default 1.0"];
+    for (name, heads) in names {
+        for op in ops {
+            let spec = format!("x = {name} {op}\n");
+            for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+                let msg = expect_graceful_rejection(
+                    &format!("ctlfloat_{name}_{}", op.len()),
+                    &spec,
+                    extra,
+                );
+                assert!(
+                    msg.contains(&format!(
+                        "the CDDL prelude type `{name}` ({heads}) is unsupported"
+                    )),
+                    "the control-op path must record the SAME head-constrained float refusal the \
+                     `new_type` seam does ({name} {op}, {extra:?}), got: {msg}"
+                );
+                assert!(
+                    msg.contains("`float = float16-32 / float64`") && msg.contains("is pending"),
+                    "the shared refusal keeps its remedy and its pending disposition ({name} {op}, \
+                     {extra:?}), got: {msg}"
+                );
+            }
+        }
+    }
+
+    // The general half: a reserved prelude name with no rust primitive behind it is a graceful
+    // rejection naming the ident, not an abort. `tdate` (#6.0(tstr)) is such a name today; the
+    // assertion is about the CLASS, so the next unmapped name cannot re-earn the panic.
+    let msg = expect_graceful_rejection("ctl_unmapped_head", "x = tdate .size 4\n", &[]);
+    assert!(
+        msg.contains("a range or `.size` control operator on `tdate` is unsupported"),
+        "an unmapped control head must reject gracefully naming the ident, got: {msg}"
+    );
+    assert!(
+        msg.contains("has no such primitive"),
+        "the rejection must say WHY the head cannot carry the constraint, got: {msg}"
+    );
+
+    // Control: the constrained shapes that DO work must keep working, under both profiles.
+    for spec in [
+        "x = float32 .size 4\n",
+        "x = float64 .le 10.5\n",
+        "x = uint .size 4\n",
+        "x = tstr .size 4\n",
+    ] {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_ctl_ok_{}_{}.cddl",
+                spec.len(),
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "ctl_ok_unused",
+            ];
+            argv.extend_from_slice(extra);
+            let cli = Cli::parse_from(argv);
+            let result = crate::api::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
+            assert!(
+                result.is_ok(),
+                "the guard must not swallow supported constrained rules ({spec:?}, {extra:?})"
+            );
+        }
+    }
+}
+
 /// The four `any`-content prelude tags — `cbor-any` (#6.55799), `eb64url` (#6.21), `eb64legacy`
 /// (#6.22), `eb16` (#6.23) — are refused GRACEFULLY in every position, never aborted. Each tags an
 /// arbitrary CBOR item with advice ABOUT that item, so the payload is `any` and the tag constrains
@@ -5942,6 +6039,97 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
     );
 }
 
+/// A generic DEFINITION works by substituting the instance's arguments into ONE registered
+/// `RustStruct`, so a body that registers no struct — or an enum of them — has nowhere to put the
+/// parameters. Four such bodies used to abort on valid CDDL rather than say so: a `T / null`
+/// collapse (`todo!`), a body naming another type (`todo!`), a body carrying GROUP choices
+/// (`todo!`), and a non-idiom TYPE choice, which is the worst of the four because it parsed
+/// cleanly and only died downstream in the serialize walk (`Option::unwrap`, exit 101, no
+/// diagnosis). All four are now parse-time graceful rejections naming the offending rule and the
+/// bodies that ARE supported.
+///
+/// The last vector is the load-bearing control: the ONE choice-bodied generic that works — the
+/// transparent tag-set idiom — must keep generating, or the rejection could pass by refusing every
+/// choice-bodied generic def. The non-idiom vector is asserted with and WITHOUT an instance,
+/// because only the instanced form ever reached the downstream abort and a rejection keyed on
+/// instantiation would leave the bare definition silently dead.
+#[test]
+fn unsupported_generic_def_bodies_reject_gracefully() {
+    let vectors = [
+        (
+            "tnull",
+            "foo<T> = T / null\ny = [v: foo<uint>]\n",
+            "a `T / null` body collapses to a transparent `Option<T>` alias",
+        ),
+        (
+            "typename",
+            "foo<T, U> = [T, U]\nbar<V> = foo<V, uint>\ny = [v: bar<uint>]\n",
+            "a body that is another named type",
+        ),
+        (
+            "group_choice",
+            "g<T> = [ ( a: T ) // ( b: uint ) ]\ny = [v: g<uint>]\n",
+            "group choices (`//`) in a generic definition are not supported",
+        ),
+        (
+            "type_choice_instanced",
+            "xs<a0> = #6.258([+ a0]) / [* a0]\ny = [v: xs<uint>]\n",
+            "a type-choice body is supported only for the transparent tag-set idiom",
+        ),
+        (
+            "type_choice_uninstanced",
+            "xs<a0> = #6.258([+ a0]) / [* a0]\ny = [v: uint]\n",
+            "a type-choice body is supported only for the transparent tag-set idiom",
+        ),
+    ];
+    for (tag, spec, fragment) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(&format!("generic_body_{tag}"), spec, extra);
+            assert!(
+                msg.contains(fragment),
+                "the rejection must diagnose THIS body shape ({tag}, {extra:?}), got: {msg}"
+            );
+            // Every one of them carries the same remedy list, so a user reading any of the four
+            // learns the same three supported shapes.
+            assert!(
+                msg.contains("A generic definition's body must be a shape that registers a struct"),
+                "the rejection must name the supported generic-def bodies ({tag}, {extra:?}), \
+                 got: {msg}"
+            );
+        }
+    }
+
+    // Control: the transparent tag-set idiom is the one supported choice-bodied generic def and
+    // must keep generating (instanced and used), under both profiles.
+    for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_generic_idiom_ok_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "xs<a0> = #6.258([* a0]) / [* a0]\ny = [v: xs<uint>]\n",
+        )
+        .unwrap();
+        let mut argv = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "generic_idiom_unused",
+        ];
+        argv.extend_from_slice(extra);
+        let cli = Cli::parse_from(argv);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        assert!(
+            result.is_ok(),
+            "the tag-set idiom generic def must keep generating ({extra:?}) — it is the shape the \
+             rejection advertises as supported"
+        );
+    }
+}
+
 /// A rule-position directive on a `T / null` rule used to be SILENTLY DROPPED in every spelling:
 /// the Option-collapse branch built its `RuleMetadata` from the inner arm's `Type1` comment slot,
 /// which the pinned cddl fork never populates for a type-choice arm, so even the `@duplicates` /
@@ -6057,4 +6245,87 @@ fn option_collapse_reads_rule_position_directives() {
         "a directive on the non-rule-position arm must reject naming the misplacement, got: \
          {misplaced}"
     );
+}
+
+/// `_CDDL_CODEGEN_RAW_BYTES_TYPE_` names a type that IS its own bytes, so it has no element type
+/// for a generic parameter to name. A generic base registered anyway (the `RawBytesType` struct has
+/// no params to keep) emitted rows spelling a BARE `Foo` — the extern-interface self-check's
+/// `_assert_raw_bytes::<crate::generated::Foo>()` and, under `--json-schema-export`, the json-gen
+/// `reg.add::<cddl_lib::Foo>()` — each E0107 against the parameterized `Foo<T>` the marker
+/// promises, shipped at exit 0 with empty stderr. It is now a parse-time rejection.
+///
+/// The sibling `_CDDL_CODEGEN_EXTERN_TYPE_` base is deliberately NOT rejected — an extern names an
+/// arbitrary hand-written type, which may legitimately be parameterized, and its generic-ness is
+/// RECORDED so the same two emitters skip it (`extern_interface_check_skips_generic_base_without_
+/// instances`). That asymmetry is asserted here so a later sweep cannot "unify" the two.
+#[test]
+fn generic_raw_bytes_base_rejects_gracefully() {
+    for (tag, extra) in [
+        ("plain", &["--wasm", "false"][..]),
+        (
+            "schema",
+            &["--wasm", "false", "--json-schema-export", "true"][..],
+        ),
+    ] {
+        // With and WITHOUT an instance: the broken rows are emitted for the bare base, so a
+        // rejection keyed on instantiation would leave the exit-0 uncompilable case live.
+        for (shape, spec) in [
+            (
+                "no_instance",
+                "foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [x: uint]\n",
+            ),
+            (
+                "instanced",
+                "foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [x: foo<uint>]\n",
+            ),
+        ] {
+            let msg =
+                expect_graceful_rejection(&format!("rawbytes_generic_{tag}_{shape}"), spec, extra);
+            assert!(
+                msg.contains("cannot take generic parameters")
+                    && msg.contains("_CDDL_CODEGEN_RAW_BYTES_TYPE_"),
+                "the rejection must name the marker and the generic-parameter refusal \
+                 ({tag}/{shape}), got: {msg}"
+            );
+            assert!(
+                msg.contains("carries no element type for a parameter to name"),
+                "the rejection must say WHY a raw-bytes base cannot be generic ({tag}/{shape}), \
+                 got: {msg}"
+            );
+        }
+    }
+
+    // Controls: the NON-generic raw-bytes rule still generates, and the generic EXTERN base — the
+    // sibling that records rather than refuses — still generates too.
+    for (tag, spec) in [
+        (
+            "nongeneric_raw_bytes",
+            "foo = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [x: foo]\n",
+        ),
+        (
+            "generic_extern_base",
+            "foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: uint]\n",
+        ),
+    ] {
+        let path =
+            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "rawbytes_control_unused",
+            "--wasm",
+            "false",
+            "--json-schema-export",
+            "true",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        assert!(
+            result.is_ok(),
+            "the {tag} control must keep generating — only a GENERIC raw-bytes base is refused"
+        );
+    }
 }
