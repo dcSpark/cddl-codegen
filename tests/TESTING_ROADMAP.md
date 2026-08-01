@@ -789,10 +789,23 @@ evidence about a gate in another TIER" (the mechanical half is a maintainer call
   now derives the projection from the SAME `is_reject_ordered_set`/`is_preserve_pair_map`
   predicates that drive representation — the coupling that makes the drift structural rather
   than remembered — plus the `dep-preserve`/`consumer-preserve` two-crate fixture with its
-  negative-control skew leg. Standing rule meanwhile: a delivery that makes a directive change a
-  rule's REPRESENTATION must land the extern-interface projection AND its two-crate fixture in
-  the same change (reviewers: diff `extern_interface.rs`'s annotation helpers against the new
-  predicate). The trigger for a mechanical layer — an extern-projection sweep that enumerates
+  negative-control skew leg. Standing rule meanwhile: a delivery that makes a directive change
+  ANYTHING a dep EMITS — representation, materialized names, or annotation semantics — must land
+  the extern-interface projection AND its two-crate fixture in the same change (reviewers: diff
+  `extern_interface.rs`'s annotation helpers against the new predicate).
+  The wider vocabulary is measured, not cautious: the forward direction's near-miss (delivery 4)
+  was `@no_alias` honored on collection rules — a MATERIALIZATION change, no representation
+  touched — where the projection had to move in the honoring commit (`f9f69a8d`, with its
+  two-crate vector) or every consumer would have imported a `pub type` the dep no longer emits.
+  It did not ship, because the delivery's review mandated the projection check ad hoc — but the
+  old vocabulary ("changes a rule's REPRESENTATION") would not have demanded it, which is exactly
+  how the class survives a diligent implementer. Mechanical layer for the forward direction, to
+  build if a second emission-changing surface ships without its projection: a marker registry in
+  the writer-vocabulary style — enumerate the per-ident records and config predicates in
+  `IntermediateTypes` that alter the dep's emitted rust surface, and hold each against a total
+  verdict (consulted by `extern_interface.rs`, or classified inapplicable with its reason), the
+  way `EXTERN_INTERFACE_WRITER_VOCABULARY` is total over the emitter's `@…` literals.
+  The trigger for a mechanical layer — an extern-projection sweep that enumerates
   every representation-changing config predicate and auto-checks a dep/consumer pair per
   directive — is a SECOND representation-changing surface shipping without its projection.
   The class has a CONVERSE direction, proven by a second reading-found instance (2026-08-01,
@@ -2083,6 +2096,27 @@ evidence about a gate in another TIER" (the mechanical half is a maintainer call
   differently (correctly) after it. Build a LOCAL workaround only if a consumer spec cannot use the
   single-line form — a pre-parse source scan attributing a trailing comment to the group rule by line
   position would be a second, drift-prone comment parser, so it needs a real consumer to justify it.
+
+- **A directive honored at a rule's own position can be silently dropped at a REFERENCING context
+  of that rule — an axis the directive×rule-shape sweep is structurally blind to.** Proven
+  instance (found by remedy-probing during delivery 4's refusal work, not by any gate; ledgered in
+  `cddl-matrix/ROADMAP.md` § Findings): the custom codec pair on a scalar alias — the pair's
+  flagship honored shape — does not reach the codec of a tag-head rule that WRAPS the alias
+  (`foo = #6.42(inner)` emits neither half through `foo`). The sweep cannot see the class because
+  its cells place the toggled directive on the rule under test; no cell annotates a rule the
+  tested rule references. Layer to build, reusing the sweep's scratch-dir/byte-compare machinery:
+  a referencing-context sweep whose cells are (directive, base shape it is HONORED on, wrapping
+  context), the context axis enumerated from the member-position boundary list the `@name` door
+  already records (tag-head payload, `.cbor` payload, generic argument, map key/value, array
+  element), with the verdict rule that a base-honored directive must take effect through the
+  wrapping context or refuse loudly — never inert-silent. Design note that must survive into the
+  build: the verdict is PER-CONTEXT, not the shape sweep's best-of-embeddings rule — context is
+  the cell's variable, so an effect in one context must not absorb a drop in another. Cost is the
+  same order as the shape product (honored cells × contexts, generation-only). Reopening signal
+  for building it (measurable by a party who already has the problem, on the dimension the cost
+  grows along — the number of wrapped annotated spellings in real specs): a SECOND directive
+  found inert under a wrapping spelling — the ledgered instance is the first — or a consumer
+  reporting byte-identical output for an annotated rule that another of their rules wraps.
   Reopening signal for taking the upstream bump now: a consumer reports a directive silently dropped
   in a multi-line group spelling their generator cannot reformat, or the fork is bumped for another
   reason anyway (at which point the additive constraint above is the whole design).
