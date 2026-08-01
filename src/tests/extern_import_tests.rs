@@ -1890,6 +1890,63 @@ fn extern_import_raw_bytes_trait_flag_survives_narrowing() {
     }
 }
 
+/// A dependency that flavors a GENERIC extern (`ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ;
+/// @raw_bytes_flavor`) must project that rule WITHOUT the tag, and a consumer importing it must
+/// generate. The projection renders every rule body as a bare marker, dropping the generic
+/// parameters, so the flavored base lands in the export as the param-less `ext_set = …` — the exact
+/// spelling `parse_type`'s non-generic-extern rejection refuses. Re-exporting the tag would
+/// therefore hard-fail every consumer of such a dep, and no committed fixture is one, so nothing but
+/// this vector stands between that rejection and a silently-shipped cross-crate break.
+///
+/// Both halves are asserted rather than red-first-then-green: with the rejection but without the
+/// projection fix the consumer half fails, but the projection half is what pins WHY, and a vector
+/// that only proved "consumer generates" would go quietly vacuous the day the tag stops being
+/// minted at all. Dropping the tag costs nothing measurable — a consumer cannot instantiate a
+/// param-less base, so the tag was inert there (probed: consumer output byte-identical with and
+/// without it). Projecting the PARAMS instead, so a consumer could instantiate a dep's generic
+/// extern, is the deferred alternative recorded in tests/TESTING_ROADMAP.md.
+#[test]
+fn extern_import_flavored_generic_base_projects_without_the_tag() {
+    let export = mint_export(
+        "pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n\
+         ext_set<t0> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor\n\
+         holder = [keys: ext_set<pub_key>]\n",
+        "dep",
+        "flavorproj",
+    );
+
+    let root = &export["extern-interface/dep/mod.cddl"];
+    // Positive control: the flavored base IS exported (so the absence below is the TAG being
+    // dropped, not the whole rule being excluded), and in its param-less form.
+    assert!(
+        root.contains("ext_set = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "the generic extern base must still be exported, param-less: {root}"
+    );
+    for (path, content) in &export {
+        assert!(
+            !content.contains("@raw_bytes_flavor"),
+            "the projection must not spell a directive the consumer's parse would reject, at \
+             {path}: {content}"
+        );
+    }
+
+    // And a consumer that references the base generates.
+    let consumer_root = scratch("flavorproj_consumer");
+    write(&consumer_root, "lib.cddl", "uses = [k: ext_set]\n");
+    let (export_dir, import_arg) = stage_export(&export, "dep", "flavorproj_export");
+    let out = generate(
+        &consumer_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    );
+    let _ = std::fs::remove_dir_all(&consumer_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    assert!(
+        out.is_ok(),
+        "a consumer importing a flavored generic extern must generate, got: {:?}",
+        out.err()
+    );
+}
+
 /// The importer's rule partition must be TOTAL over a minted export: prefix plus every rule's slice
 /// is the file, byte for byte. Run over the fixture dependencies whose exports carry the awkward
 /// shapes — a plain-group row that is not the last rule in its file, opaque rows, transparent

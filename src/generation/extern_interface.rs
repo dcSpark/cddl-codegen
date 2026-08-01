@@ -808,8 +808,16 @@ fn project_extern_interface(
         let (projected, kind): (RuleProjection, ExternCheckKind) = match rust_struct.variant() {
             // Genuinely class-backed types: opaque. `@newtype`/custom-(de)serialize/custom-json do
             // NOT travel — they shape the dep's internals; the consumer sees only "class exists,
-            // named X". A generic-extern base carrying `@raw_bytes_flavor` re-exports the tag verbatim
-            // (the flavor lives in `types.raw_bytes_flavor()`, keyed by the base ident). An opaque
+            // named X". `@raw_bytes_flavor` does NOT travel either, for a structural reason rather
+            // than a scoping one: the projection renders every rule body as a BARE marker, dropping
+            // the generic parameters, so a flavored generic base (`ext_set<T> = …`) projects as the
+            // param-less `ext_set = …`. The tag names a per-INSTANCE flavor, so on that form it can
+            // never be honored — it is exactly the spelling `parse_type`'s non-generic-extern
+            // rejection now refuses, and projecting it would hard-fail every consumer of such a dep.
+            // Dropping it costs nothing measurable: a consumer cannot instantiate a param-less base,
+            // so the tag was already inert there (consumer output is byte-identical with and without
+            // it — pinned by `extern_import_flavored_generic_base_projects_without_the_tag`).
+            // An opaque
             // marker body is self-contained, so it references nothing (never closure-excluded). The
             // self-check asserts `Serialize`(+`Deserialize`) on the concrete type — except an exported
             // generic-extern base, whose bare ident names no concrete type (`None`).
@@ -819,11 +827,10 @@ fn project_extern_interface(
             | RustStructType::Wrapper { .. }
             | RustStructType::Extern => {
                 let mut annotations = Vec::new();
-                if types.raw_bytes_flavor().contains(ident) {
-                    annotations.push("@raw_bytes_flavor".to_string());
-                }
                 // `@copy` travels verbatim so a `--extern-import` consumer inherits the Copy-ness and
-                // drops the same boundary clones (mirrors `@raw_bytes_flavor`).
+                // drops the same boundary clones. Unlike `@raw_bytes_flavor` above it is a property
+                // of the BASE type, not of a generic instance, so the param-less projected form
+                // carries it faithfully.
                 if types.is_copy_extern(ident) {
                     annotations.push("@copy".to_string());
                 }

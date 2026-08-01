@@ -2779,7 +2779,16 @@ DROPPED on every rule shape or spelling whose parse path does not carry it to a 
   (reopening signal: a real dep's export carries that `; unexported:` record and a consumer needs
   the rule); (3) transparent spellings for the renderer's known lossy-IR case — a two-sided
   `float32` window has no faithful CDDL form (a literal float range re-parses as `float64`), so
-  such rules exclude-with-record (reopening signal: same, for a float32-windowed alias).
+  such rules exclude-with-record (reopening signal: same, for a float32-windowed alias);
+  (4) generic PARAMETERS on an exported extern base — the renderer spells every rule body as a bare
+  marker, so `ext_set<t0> = _CDDL_CODEGEN_EXTERN_TYPE_` projects param-less and a consumer can
+  reference the base but never instantiate it. That is why `@raw_bytes_flavor` does not ride the
+  seam: it flavors a generic INSTANCE, so on the param-less form it is unhonorable, and re-parsing
+  it is exactly the spelling the non-generic-extern rejection refuses (pinned by
+  `extern_import_flavored_generic_base_projects_without_the_tag`). Carrying the params would restore
+  both halves at once. Reopening signal: a consumer that needs to instantiate a dependency's generic
+  extern over `--extern-import` — its own spec cannot spell the instantiation, so the block is
+  visible to the party that has it, not inferred by us.
 - **CDDL module directives (draft-ietf-cbor-cddl-modules) with the draft's real inlining
   semantics, and `as`-namespacing.** Both forms are currently recognized and refused loudly
   (`module_directive_import_aborts` / `module_directive_include_aborts`;

@@ -1012,7 +1012,11 @@ When an instance's argument resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` (e.g. 
 
 This exists because a raw-bytes type implements `RawBytesEncoding` (the caller frames its CBOR bytes) rather than the CBOR `Serialize`/`Deserialize` traits, and a single wrapper type cannot serve both element contracts at once — `impl<T: Serialize> Serialize for Foo<T>` and `impl<T: RawBytesEncoding> Serialize for Foo<T>` are conflicting blanket impls. The `<ExternName>RawBytes` flavor is a second, separately-bounded user-owned wrapper for exactly the raw-bytes instances.
 
-The tag is **opt-in and never automatic**: a consumer whose single wrapper is bound solely on `RawBytesEncoding` already compiles today under the plain name, so flavoring the plain name whenever the two markers compose would silently break that working output. The tag takes no name argument — the wrapper is user-owned, so any preferred name is one `pub type <ExternName>RawBytes<T> = Whatever<T>;` alias away. Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` definition is a hard error.
+The tag is **opt-in and never automatic**: a consumer whose single wrapper is bound solely on `RawBytesEncoding` already compiles today under the plain name, so flavoring the plain name whenever the two markers compose would silently break that working output. The tag takes no name argument — the wrapper is user-owned, so any preferred name is one `pub type <ExternName>RawBytes<T> = Whatever<T>;` alias away.
+
+**Generic is required.** Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` definition is a hard error, and so is using it on an extern that declares **no generic parameters** (`foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor`): the tag flavors generic *instances*, so a base with no parameters has no instances to flavor and the tag could only sit there inert. Declare the parameters or drop the tag.
+
+**Seam projection.** Unlike [`@copy`](#copy), this tag does **not** travel the extern-interface export. The export renders every rule body as a bare marker and drops generic parameters, so a flavored base projects as the param-less `ext_set = _CDDL_CODEGEN_EXTERN_TYPE_` — a form the tag cannot be honored on, and the exact spelling the hard error above refuses. A `--extern-import` consumer therefore sees the base without the tag, which costs it nothing: it cannot instantiate a param-less base either way. Flavoring across a crate boundary means declaring the extern in the consumer's own spec.
 
 ## @copy
 
@@ -1028,7 +1032,7 @@ Only the **rust** face changes. The type's **wasm** face is a distinct `#[wasm_b
 
 **Honesty assertion.** The declaring crate emits a compile-time `Copy` assertion for each `@copy` type (a `_assert_copy::<T>()` bound-carrier in `generated/extern_interface_check.rs`), so a **false** `@copy` — a type that does not actually derive `Copy` — fails **that** crate's own build with a named error, never a distant consumer's.
 
-**Seam projection.** Like `@raw_bytes_flavor`, `@copy` travels the extern-interface export (`extern-interface/<dep>/**`), so a `--extern-import` consumer that imports the type inherits its Copy-ness and drops the same boundary clones.
+**Seam projection.** `@copy` travels the extern-interface export (`extern-interface/<dep>/**`), so a `--extern-import` consumer that imports the type inherits its Copy-ness and drops the same boundary clones. It can, because it describes the **base** type — the export's param-less rendering carries it faithfully. (`@raw_bytes_flavor` describes a generic *instance* instead, which is why it does **not** travel; see its section above.)
 
 Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition (or at a field position) is a hard error.
 
