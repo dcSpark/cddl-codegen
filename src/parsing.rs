@@ -3548,6 +3548,69 @@ fn group_entry_rule_metadata(entry: &GroupEntry, optional_comma: &OptionalComma)
     metadata_from_comments(&combined_comments.unwrap_or_default())
 }
 
+/// The `@name` that names a MEMBER-position anonymous inline array, read from the one comment slot
+/// that spelling puts it in: the enclosing group entry's trailing comments (plus the trailing-comma
+/// slot), exactly the pair `group_entry_rule_metadata` reads for the field rename.
+///
+/// `get_comment_after(type2)` deliberately cannot reach that slot — its documented rule is that a
+/// type does not inherit the comment of a parent it merely happens to end, and a general
+/// `Type -> GroupEntry` ascent would leak every field-level directive into every type2 read. So the
+/// naming site asks for the slot by itself, under the narrowest scope that keeps the name
+/// unambiguous: the anonymous array must be the member's WHOLE type. The ascent is therefore
+/// required to be exactly `Type2 -> Type1 -> TypeChoice -> Type -> ValueMemberKeyEntry ->
+/// GroupEntry`, over an operator-free `Type1` and a single-choice `Type`. Every other spelling — a
+/// `.cbor` payload (whose `Type2`'s parent is the `Operator`), a choice arm, an array nested inside
+/// another anonymous array — keeps the anonymous-group rejection rather than guessing which
+/// construct the name was meant for.
+///
+/// Only `.name` is consumed. The same comment is ALSO the field-rename slot, so one `@name` here
+/// names both the field and the struct that field holds; every other directive on it keeps the
+/// field-level meaning it already had.
+fn anon_array_member_name<'a>(
+    parent_visitor: &'a ParentVisitor<'a, 'a>,
+    type2: &'a Type2<'a>,
+) -> Option<String> {
+    let type1 = match CDDLType::from(type2).parent(parent_visitor)? {
+        CDDLType::Type1(type1) => *type1,
+        _ => return None,
+    };
+    // A control/range operator means the array is the operator's target (`bytes .cbor [..]`), not
+    // the member's own type, and the comment after it is the operator chain's, not the array's.
+    if type1.operator.is_some() {
+        return None;
+    }
+    let type_choice = match CDDLType::from(type1).parent(parent_visitor)? {
+        CDDLType::TypeChoice(type_choice) => *type_choice,
+        _ => return None,
+    };
+    let entry_type = match CDDLType::from(type_choice).parent(parent_visitor)? {
+        CDDLType::Type(entry_type) => *entry_type,
+        _ => return None,
+    };
+    // A choice arm's name would be ambiguous between the arm and the member, and the arm spelling
+    // already has its own reachable slot (`TypeChoice::comments_after_type`).
+    if entry_type.type_choices.len() != 1 {
+        return None;
+    }
+    let value_member_key = match CDDLType::from(entry_type).parent(parent_visitor)? {
+        CDDLType::ValueMemberKeyEntry(value_member_key) => *value_member_key,
+        _ => return None,
+    };
+    let entry = match CDDLType::from(value_member_key).parent(parent_visitor)? {
+        CDDLType::GroupEntry(entry) => *entry,
+        _ => return None,
+    };
+    let group_choice = match CDDLType::from(entry).parent(parent_visitor)? {
+        CDDLType::GroupChoice(group_choice) => *group_choice,
+        _ => return None,
+    };
+    let (_, optional_comma) = group_choice
+        .group_entries
+        .iter()
+        .find(|(candidate, _)| std::ptr::eq(candidate, entry))?;
+    group_entry_rule_metadata(entry, optional_comma).name
+}
+
 fn rust_type_from_type1(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -3744,14 +3807,20 @@ fn rust_type_from_type2(
                         }
                         GroupParsingType::HomogenousMap(_, _, _) => unreachable!(),
                         GroupParsingType::Heterogenous => {
-                            let rule_metadata = RuleMetadata::from(
+                            let mut rule_metadata = RuleMetadata::from(
                                 get_comment_after(parent_visitor, &CDDLType::from(type2), None)
                                     .as_ref(),
                             );
+                            // At MEMBER position the naming comment lands one level further out than
+                            // `get_comment_after(type2)` reaches, so ask for that slot explicitly.
+                            if rule_metadata.name.is_none() {
+                                rule_metadata.name = anon_array_member_name(parent_visitor, type2);
+                            }
                             // A heterogeneous inline array in a type position becomes a struct, and a
                             // struct needs a name. The `@name` comment on the type2 is the naming
                             // door — but it only reaches here from positions whose comment slot
-                            // `get_comment_after(type2)` can ascend to, so at the others there is no
+                            // `get_comment_after(type2)` (plus the member-position slot above) can
+                            // reach, so at the others there is no
                             // name to be had. That is a rejection, not an abort: record it with the
                             // remedy the message has always advertised and continue with an inert
                             // placeholder, so `finalize` reports it alongside anything else the walk
