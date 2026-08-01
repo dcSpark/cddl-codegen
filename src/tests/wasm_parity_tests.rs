@@ -494,6 +494,25 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          same shape as the `custom-serialize-canonical-e2e` row above",
     ),
     (
+        "alias-of-marker-e2e",
+        "alias-of-marker custom-pair e2e fixture (a type-level pair on an alias of a \
+         `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule): its integration gate generates \
+         --preserve-encodings --canonical-form --wasm=false and injects BOTH a hand-written \
+         raw-bytes extern definition and hand-written RUST custom codecs into the generated rust \
+         scope, so there is no generated wasm surface to differential — the same shape as the two \
+         custom-serialization rows above, doubled by the raw-bytes extern's own hand definition \
+         (the `extern-generic-raw-bytes` row's reason)",
+    ),
+    (
+        "custom-pair-shared-codec",
+        "rust-only compile-fail fixture (ONE custom codec pair reached from a record field AND a \
+         table key, whose encoding argument the two positions pass by reference and by value): its \
+         integration gate generates --preserve-encodings --wasm=false, injects a hand-written codec \
+         with the record-field signature, and asserts the generated crate does NOT compile — so \
+         there is no wasm surface to differential and the crate is intended not to build (the \
+         `used-as-key-flavor` row's reason)",
+    ),
+    (
         "open-struct-map-json-e2e",
         "loose-CBOR open struct-map FLATTENED-JSON e2e fixture: its integration gate generates \
          --json-serde-derives --json-schema-export --wasm=false (it exercises the JSON boundary); \

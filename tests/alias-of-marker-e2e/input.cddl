@@ -1,0 +1,37 @@
+; The ALIAS-OF-MARKER custom pair, end to end: a type-level `@custom_serialize`/`@custom_deserialize`
+; on an alias whose BODY references a marker rule. This is the "this rule IS that type, written
+; differently on the wire" spelling — the CDDL body states the semantic identity (`policy_id_v1` is a
+; `policy_id`) and the pair states how that identity is written here. No new mechanism: a type-level
+; pair is honored wherever the alias resolves, and this alias resolves to the marker's type, so the
+; emitted `pub type PolicyIdV1 = PolicyId;` carries the custom wire at every position it reaches.
+;
+; Shape: the CIP-25 v1 shape — a 28-byte `policy_id` written as hex TEXT rather than as bytes (in the
+; reversed-byte rendering, so that the canonical ordering below has something to catch — see the
+; codecs). The hand-written `PolicyId` (tests/external_rust_raw_bytes_policy_id) is the marker's type;
+; the codecs (tests/custom_serialization_alias_of_marker) are the wire.
+;
+; Generated under `--preserve-encodings --canonical-form` (canonical implies preserve), which is what
+; makes the fixture's subject observable: the pair's encoding-variable signature is INFERRED from the
+; replaced type, and a raw-bytes marker demands exactly one `StringEncoding` — so the custom wire's
+; text header is recorded, byte-exactly, in a sidecar slot that exists because the marker demanded it.
+; (The self-carrying flavor — an alias of a plain `_CDDL_CODEGEN_EXTERN_TYPE_` — demands nothing and
+; must declare its wire with `@custom_encodings` instead; that flavor's vectors are
+; tests/custom-encodings-e2e.)
+;
+; TWO codecs, not one: a record field's stored encoding is passed by REFERENCE and a table entry's is
+; looked up out of the sidecar and passed by VALUE, so one alias reached from both positions needs two
+; functions (docs/docs/comment_dsl.mdx, "Table key and value positions"). Sharing one is a loud
+; generated-crate compile error, pinned by tests/custom-pair-shared-codec.
+
+policy_id = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+; the record-field flavor (by-reference encoding argument)
+policy_id_v1 = policy_id ; @custom_serialize write_policy_id_hex @custom_deserialize read_policy_id_hex
+; the table-entry flavor (by-value encoding argument), used in BOTH table positions
+policy_id_v1_entry = policy_id ; @custom_serialize write_policy_id_hex_entry @custom_deserialize read_policy_id_hex_entry
+
+holder = [
+  p: policy_id_v1,
+  t: { * policy_id_v1_entry => uint },
+  v: { * uint => policy_id_v1_entry },
+]

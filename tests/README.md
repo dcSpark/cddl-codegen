@@ -1514,11 +1514,34 @@ spliced into generated trees: `tests/custom_serialization` (core), `tests/custom
   minimization, and that a fresh value still goes through the custom writers. The refusal that makes
   the declaration load-bearing — a pair over a zero-demand type under `--preserve-encodings` with no
   declaration — is a `dsl_position_tests` cell beside its without-the-flag control.
+- **Alias of a MARKER rule e2e** — `tests/alias-of-marker-e2e`
+  (`integration_tests::alias_of_marker_e2e`, compiled, rust-only, preserve + canonical; hand-fn
+  fragment `tests/custom_serialization_alias_of_marker`, extern definition
+  `tests/external_rust_raw_bytes_policy_id`): the pair on an alias whose BODY references a
+  `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule — the "this rule IS that type, written differently on the
+  wire" spelling, which escapes the on-the-marker rejection by being the general type-level
+  override applied to a type the crate does not define. The static half asserts the composition (the
+  alias resolves to the marker's type; the marker's inferred one-`StringEncoding` demand is what
+  gives the custom TEXT header a sidecar slot, keyed by the DECODED key); the vectors execute a
+  byte-exact non-minimal-header round trip at all three positions the alias reaches (record field,
+  table key, table value), canonical ordering keyed on the CUSTOM-WRITTEN bytes (the wire's two keys
+  sort oppositely by their decoded bytes, so a sort keyed on the wrong thing fails the vector), a
+  sidecar mutation replayed under the decoded key, and the custom reader's refinement rejections
+  (non-hex text, wrong major).
+- **One codec across two positions → loud compile failure** — `tests/custom-pair-shared-codec`
+  (`integration_tests::custom_pair_shared_codec_across_positions_fails_to_compile`, rust-only): the
+  deliberately-uncompilable twin of the fixture above. One pair reached from a record field AND a
+  table key, with a single hand-written codec carrying the record-field signature: generation
+  succeeds (the tool cannot see the hand signature) and the generated crate fails `cargo build` with
+  an E0308 naming `&StringEncoding` against `StringEncoding`. What it pins is that the documented
+  two-functions rule fails LOUDLY rather than as a silently different wire.
 - **Placement axis** — `dsl_position_tests` cells: the rejected placements (extern/raw-bytes
   rules, row-entry slots, `@no_alias`, `@newtype`, enum rules in every spelling, record-rule
   single-half, table rule in every spelling incl. a generic def's instance) as `Expect::Reject`
   beside the honored controls, and the record-rule BOTH-set spelling as an accepted-behavior
-  control cell. Message texts are
+  control cell; the alias-of-marker spelling's honored cells (raw-bytes flavor at type level and at
+  a table key domain, under `--preserve-encodings`) sit beside the marker-rule rejections that are
+  their placement controls. Message texts are
   pinned by the `custom_codec`/`single_half_custom_codec` robustness tests.
 - **Oracle exclusion** — the emit-tests encoding-fidelity oracle excludes custom-carrying types
   rep-independently (their wire format isn't the generated serializer's — see the emit-tests

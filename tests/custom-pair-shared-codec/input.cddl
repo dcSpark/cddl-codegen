@@ -1,0 +1,27 @@
+; A DELIBERATELY UNCOMPILABLE spec: one `@custom_serialize`/`@custom_deserialize` pair reached from a
+; record FIELD and from a TABLE KEY, sharing a single codec function name.
+;
+; Under `--preserve-encodings` the two positions hand a codec its encoding variable differently — a
+; record field passes the encoding it stores by REFERENCE, a table entry's is looked up out of the
+; table's sidecar and passed by VALUE — so one function cannot satisfy both call sites. The rule is
+; documented (docs/docs/comment_dsl.mdx, "Table key and value positions": "The two positions therefore
+; need separate functions if you want to share one codec"), and what this fixture pins is that
+; breaking it fails LOUDLY: the generated crate does not compile, with an E0308 naming
+; `&StringEncoding` against `StringEncoding` at the call site that disagrees with the hand-written
+; signature.
+;
+; The alias body is a primitive here rather than a marker rule, so nothing about the failure is
+; specific to the alias-of-marker spelling — it is a property of the two positions, and keeping the
+; spec minimal keeps the compile error unambiguous. The obeying twin (two codecs, one per position,
+; over an alias of a raw-bytes marker) is `tests/alias-of-marker-e2e`.
+;
+; The gate: `custom_pair_shared_codec_across_positions_fails_to_compile`, which injects the codec with
+; the RECORD-FIELD signature (so the table call site is the one that disagrees) and asserts the build
+; fails that way.
+
+shared = bytes ; @custom_serialize write_shared @custom_deserialize read_shared
+
+holder = [
+  f: shared,
+  t: { * shared => uint },
+]
