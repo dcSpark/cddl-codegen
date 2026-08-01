@@ -1,0 +1,50 @@
+// Hand-written `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definitions for
+// `tests/open-table-cip25-acceptance`: the two identity types CIP-25 keys its payload levels on.
+//
+// Both are used as MAP KEYS (an open table's typed row) and as sidecar keys, so both must supply
+// `Ord`/`Eq`/`Hash` — the same supply `tests/external_rust_raw_bytes_policy_id` makes for the same
+// reason. They differ from that file's `PolicyId` in being variable-length: an asset name is 0..32
+// bytes, and the fixture's v1 arm writes it as UTF-8 text, so a fixed-size array would refuse
+// perfectly good on-chain names.
+use crate::error::{DeserializeError, DeserializeFailure};
+use crate::serialization::RawBytesEncoding;
+
+/// A CIP-25 policy id: exactly 28 bytes on the v2 wire, lowercase hex text on the v1 wire.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct PolicyId(Vec<u8>);
+
+impl RawBytesEncoding for PolicyId {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        if bytes.len() != 28 {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                format!("policy id must be 28 bytes, found {}", bytes.len()),
+            ))
+            .into());
+        }
+        Ok(PolicyId(bytes.to_vec()))
+    }
+}
+
+/// A CIP-25 asset name: up to 32 bytes on the v2 wire, its UTF-8 rendering on the v1 wire.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct AssetName(Vec<u8>);
+
+impl RawBytesEncoding for AssetName {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        if bytes.len() > 32 {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                format!("asset name must be at most 32 bytes, found {}", bytes.len()),
+            ))
+            .into());
+        }
+        Ok(AssetName(bytes.to_vec()))
+    }
+}

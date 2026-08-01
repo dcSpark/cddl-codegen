@@ -6607,6 +6607,35 @@ fn custom_encodings_e2e() {
 /// tests/custom-encodings-e2e; the two-functions rule this fixture obeys is pinned from the failing
 /// side by `custom_pair_shared_codec_across_positions_fails_to_compile`.
 #[test]
+fn open_table_cip25_acceptance() {
+    use std::str::FromStr;
+    // The open-table series' ACCEPTANCE fixture: CIP-25 spelled with generated open tables at all
+    // four payload levels, measured against a real on-chain payload and against the semantics CML's
+    // hand-written `CIP25LabelMetadata` ships today. Generated under --preserve-encodings
+    // --canonical-form (byte-exact junk replay is the contract being accepted), --wasm=false — the
+    // fixture injects hand-written raw-bytes definitions and hand-written v1 codecs, so there is no
+    // generated wasm surface to differential (the `alias-of-marker-e2e` row's reason, doubled).
+    // See tests/open-table-cip25-acceptance/tests.rs.
+    let tests_dir = std::path::PathBuf::from_str("tests").unwrap();
+    run_test(
+        "open-table-cip25-acceptance",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[
+            tests_dir.join("external_rust_raw_bytes_cip25"),
+            tests_dir.join("custom_serialization_cip25_v1"),
+        ],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn alias_of_marker_e2e() {
     use std::str::FromStr;
     let tests_dir = std::path::PathBuf::from_str("tests").unwrap();

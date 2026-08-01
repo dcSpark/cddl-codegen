@@ -521,6 +521,17 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          (the `extern-generic-raw-bytes` row's reason)",
     ),
     (
+        "open-table-cip25-acceptance",
+        "the open-table series' ACCEPTANCE fixture (CIP-25 spelled with generated open tables at all \
+         four payload levels, measured against a real on-chain golden): its integration gate \
+         generates --preserve-encodings --canonical-form --wasm=false and injects BOTH hand-written \
+         raw-bytes extern definitions and hand-written RUST custom codecs into the generated rust \
+         scope, so there is no generated wasm surface to differential — the `alias-of-marker-e2e` \
+         row's reason, with two marker types instead of one. The open table's own wasm surface is \
+         covered by the `open-struct-map` snapshot fixture's parity rows and by the wasm-ABI \
+         matrices' `otbl__*` cells",
+    ),
+    (
         "custom-pair-shared-codec",
         "rust-only compile-fail fixture (ONE custom codec pair reached from a record field AND a \
          table key, whose encoding argument the two positions pass by reference and by value): its \

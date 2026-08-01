@@ -1428,6 +1428,57 @@ rejected under `--preserve-encodings`). User docs: `docs/docs/comment_dsl.mdx` �
   `cargo test` runs them green (the mint goes through `new()`, so a minted value carries no unknown
   entries and byte-identity is trivial).
 
+### Open tables (a typed row plus a catch-all) — test map
+
+A named rule of exactly two `* k => v` rows (`t = { * K_t => V_t, * K_r => V_r }`) routed by WIRE
+MAJOR TYPE (user docs: `docs/docs/output_format.mdx` § "Open tables", `docs/docs/comment_dsl.mdx`
+§ "Open tables" and § `@custom_wire_major`). It lowers to a Record with zero fixed fields and two
+`RestRow` members, so most of its emission is the open-struct-map rest row's, verified above; the
+layers below cover what is NEW — the major dispatch, the tagged two-sequence order encoding, the
+`@custom_wire_major` declaration, the flattened wasm surface, and the composition all of that has to
+survive:
+
+- **Front end + guards** — `robustness_tests::open_table_front_end`: recognition of the two-row
+  shape, every SHAPE rejection the parse walk owns (>2 rows, fixed keys mixed in, inline anonymous,
+  group-choice arm, plain group, `any`-keyed typed row, null-admitting key, `@ignore`, colliding row
+  names, the occurrence classifier's whole grid) and every STATICNESS rejection `finalize` owns (a
+  multi-major typed key, a custom-codec key with no `@custom_wire_major`, a declaration nothing
+  consumes, an exhausted-complement catch-all, the bare-`text` typed key under the JSON flags), each
+  with its polarity fixture.
+- **CBOR e2e** — `tests/open-table-e2e` (`integration_tests::open_table_e2e`, compiled,
+  preserve + canonical): the major dispatch partitioning an interleaved map, byte-exact replay across
+  the tagged order encoding, the canonical merge sorting both regions into one order, per-row
+  encoding sidecars at non-minimal widths, the typed-row duplicate naming its own position, the
+  typed-major-but-refused hard error beside its positive control, `@duplicates preserve` on both
+  rows, `@name` on each row independently, and the NonEmpty (`{+ …}`) twin's two doors.
+- **JSON e2e** — `tests/open-table-json-e2e` (`integration_tests::open_table_json_e2e`, compiled,
+  `--json-serde-derives --json-schema-export`): one flattened object over both regions, the two key
+  images, the typed-first read partition and the T2 rebinding carve-out, the cross-region write
+  collision, the explicit duplicate-member detection, the three-attempt read failure, and the
+  NonEmpty twin's post-visitor min-1 door plus the schema's deliberate silence about it.
+- **Acceptance** — `tests/open-table-cip25-acceptance`
+  (`integration_tests::open_table_cip25_acceptance`, compiled, preserve + canonical; extern
+  definitions `tests/external_rust_raw_bytes_cip25`, hand codecs
+  `tests/custom_serialization_cip25_v1`): the series' proof obligation. CIP-25 spelled as the
+  consumer's end-state spec spells it — open tables at all four payload levels, alias-of-marker
+  codecs keying two of them, `@custom_wire_major` steering their dispatch, a v1/v2 type choice
+  discriminated by nothing but the v1 typed row's refusal — measured against a real ON-CHAIN mainnet
+  golden (copied with provenance from the consumer's own pin vectors) that must round-trip byte for
+  byte through all four generated levels. Plus the version discrimination executed in both
+  directions, a float-keyed entry failing both arms, and the typed-major-but-invalid class at every
+  level beside its positive control (that class is where the generated semantics deliberately
+  diverge from the consumer's hand reader, so the fixture states the divergence rather than
+  asserting around it).
+- **wasm** — `robustness_tests::open_table_wasm_class_flattens_the_typed_row` /
+  `_carries_every_row_flavor` / `_keys_list_is_named_off_the_typed_key_alias` /
+  `_wasm_wrapper_ident_collisions_reject_gracefully` /
+  `_catch_all_named_for_a_flattened_accessor_rejects_gracefully`, plus the `otbl__*` cells in
+  `project_wasm_matrix` and the `otblrec__*` dirs in `project_multifile_matrix` (both FAST tier).
+- **Component/WIT** — `robustness_tests::open_table_component_face_projects_both_rows`.
+- **Cross-crate** — `extern_import_tests::extern_import_open_table_borrows_its_typed_key_like_a_table`
+  and `config_tests::a_config_workspace_settles_an_open_table_in_one_pass`.
+- **emit-tests** — `robustness_tests::open_table_emit_tests_mint_both_rows`.
+
 ### Open arrays (rest tails) — test map (loose-CBOR Phase D)
 
 The trailing-`* t`-after-fixed-members capture feature (the array analog of the open struct-map rest
