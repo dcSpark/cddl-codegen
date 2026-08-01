@@ -1,0 +1,102 @@
+// Hand-written `@custom_serialize`/`@custom_deserialize` targets for
+// `tests/open-table-cip25-acceptance`: the four leaf codecs CIP-25's v1 wire needs, and the only
+// hand code that touches bytes in the fixture. Everything above them — the four payload levels,
+// their capture rows, the version discrimination, the order replay — is generated.
+//
+// Both pairs sit on an ALIAS OF A MARKER (`policy_id_v1 = policy_id`), so they take the marker's own
+// type. Both are reached ONLY from an open table's TYPED ROW, which is a per-entry (table-like)
+// position: the `StringEncoding` is looked up out of the row's sidecar and arrives BY VALUE, so one
+// function per direction suffices (a record-field position would want a second taking `&`).
+//
+// Each pair's alias also carries `@custom_wire_major text`: the codec owns the wire, so the type it
+// replaced (`bytes`, via the raw-bytes marker) answers about a wire nobody writes. Without the
+// declaration the typed row's dispatch would claim major 2 while the codec writes major 3, and every
+// v1 key would fall through to the catch-all.
+
+/// The v1 policy-id rendering: the 28 bytes as lowercase hex text (56 digits).
+fn policy_id_to_hex_text(policy_id: &PolicyId) -> String {
+    let mut text = String::with_capacity(56);
+    for byte in policy_id.to_raw_bytes() {
+        text.push_str(&format!("{byte:02x}"));
+    }
+    text
+}
+
+/// The inverse, refusing anything the v1 wire does not spell. A text key that is NOT 56 hex digits is
+/// a HARD error rather than a fall-through to the catch-all: the typed row claims major 3 by
+/// dispatch, and dispatch is by major, never by success. That is the semantic the acceptance vectors
+/// pin at every level.
+fn policy_id_from_hex_text(
+    text: &str,
+) -> Result<PolicyId, crate::generated::error::DeserializeError> {
+    let ascii = text.as_bytes();
+    if ascii.len() != 56 || !ascii.iter().all(u8::is_ascii_hexdigit) {
+        return Err(crate::generated::error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError(format!(
+                "policy_id_from_hex_text(): expected 56 hex digits, found {text:?}"
+            )),
+        )
+        .into());
+    }
+    let bytes: Vec<u8> = (0..56)
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+        .collect();
+    PolicyId::from_raw_bytes(&bytes)
+}
+
+pub fn write_policy_id_hex<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    policy_id: &PolicyId,
+    str_enc: StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    let text = policy_id_to_hex_text(policy_id);
+    serializer.write_text_sz(
+        &text,
+        str_enc.to_str_len_sz(text.len() as u64, force_canonical),
+    )
+}
+
+pub fn read_policy_id_hex(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(PolicyId, StringEncoding), crate::generated::error::DeserializeError> {
+    let (text, len_sz) = raw.text_sz()?;
+    Ok((policy_id_from_hex_text(&text)?, len_sz.into()))
+}
+
+/// The v1 asset-name rendering: the bytes as UTF-8 text. An asset name whose bytes are not valid
+/// UTF-8 has no v1 spelling at all, which is a property of the wire and not of this codec — writing
+/// is therefore lossy-refusing rather than lossy-mangling: it is only ever handed names that came
+/// off a v1 wire (i.e. that were text to begin with) or that a caller built.
+fn asset_name_to_utf8_text(
+    asset_name: &AssetName,
+) -> Result<String, crate::generated::error::DeserializeError> {
+    String::from_utf8(asset_name.to_raw_bytes().to_vec()).map_err(|e| {
+        crate::generated::error::DeserializeFailure::CBOR(cbor_event::Error::CustomError(format!(
+            "asset_name_to_utf8_text(): name is not valid UTF-8: {e}"
+        )))
+        .into()
+    })
+}
+
+pub fn write_asset_name_utf8<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    asset_name: &AssetName,
+    str_enc: StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    let text = asset_name_to_utf8_text(asset_name)
+        .map_err(|e| cbor_event::Error::CustomError(e.to_string()))?;
+    serializer.write_text_sz(
+        &text,
+        str_enc.to_str_len_sz(text.len() as u64, force_canonical),
+    )
+}
+
+pub fn read_asset_name_utf8(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(AssetName, StringEncoding), crate::generated::error::DeserializeError> {
+    let (text, len_sz) = raw.text_sz()?;
+    Ok((AssetName::from_raw_bytes(text.as_bytes())?, len_sz.into()))
+}

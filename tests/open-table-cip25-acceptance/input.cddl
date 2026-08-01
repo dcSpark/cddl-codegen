@@ -1,0 +1,111 @@
+; The open-table series' ACCEPTANCE fixture: CIP-25, spelled as the consumer's end-state spec spells
+; it, with generated open tables at all FOUR payload levels. What it accepts is not any single
+; emitter but the composition — an alias-of-marker custom codec keying a typed row, the
+; `@custom_wire_major` declaration steering that row's dispatch, four levels of
+; typed-row-plus-catch-all nesting, the delivered open struct-map rest row at the v2 wrapper and the
+; details levels, and a v1/v2 type choice discriminated purely by whether the v1 arm's typed row
+; accepts the payload's keys. In the consumer, all of that is ~700 lines of hand-written
+; preserve-fidelity serialization behind an extern marker.
+;
+; Two deliberate deviations from the consumer's own spec, both narrowing rather than widening:
+;
+;   * the two identity types are LOCAL raw-bytes markers (tests/external_rust_raw_bytes_cip25)
+;     instead of a dependency's exported types — this fixture must build standing alone, and the
+;     cross-crate seam is a separate fixture's subject;
+;   * the metadatum-shaped capture type is spelled here (`md`) instead of being an extern. The
+;     consumer's `transaction_metadatum` STAYS extern in its end state, so this local stand-in is
+;     narrower than the real one: `md`'s map arm is INLINE, because naming it as its own rule (a
+;     union used as a table key) is a pre-existing generation limitation, and an inline map arm
+;     inside a type choice does not carry a `@duplicates preserve` policy. The consumer's own noisy
+;     pin vectors are therefore out of reach here — they carry duplicate keys inside a captured
+;     metadatum map — and the acceptance oracle is the real ON-CHAIN golden instead, which is the
+;     stronger vector anyway: bytes nobody on either side of this feature authored.
+;
+; Generated --preserve-encodings --canonical-form --wasm=false. Vectors in tests.rs.
+
+policy_id = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+asset_name = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+; The v1 wire spells the same two identities as TEXT: a policy id as 56 lowercase hex digits, an
+; asset name as its UTF-8 rendering. The alias-of-marker pair is the override ("this rule IS that
+; type, written differently on the wire"), and `@custom_wire_major text` is what the typed row's
+; dispatch needs: the codec owns the wire, so `cbor_types()` would answer `bytes` about a wire
+; nobody writes, and every v1 key would fall through to the catch-all.
+
+policy_id_v1 = policy_id ; @custom_serialize write_policy_id_hex @custom_deserialize read_policy_id_hex @custom_wire_major text
+asset_name_v1 = asset_name ; @custom_serialize write_asset_name_utf8 @custom_deserialize read_asset_name_utf8 @custom_wire_major text
+
+; The metadatum-shaped capture grammar every level's catch-all row is keyed and valued on. Capture
+; here is TYPED, not a blind catch-all: a key or value this grammar refuses (a float, a tag, a simple
+; value, a string over 64 bytes) is a parse error at every capture site, which is exactly the ledger
+; refinement the consumer's own spec states.
+md = { * md => md } ; @name map
+   / [* md] ; @name list
+   / int
+   / bytes .size (0..64)
+   / text .size (0..64)
+
+string64 = text .size (0..64) ; @newtype get
+chunkable = string64 ; @name single
+          / [* string64] ; @name chunked
+
+files_details = {
+  name: string64,
+  mediaType: string64,
+  src: chunkable,
+  * md => md ; @duplicates preserve
+}
+
+metadata_details = {
+  name: string64,
+  image: chunkable,
+  ? mediaType: string64,
+  ? description: chunkable,
+  ? files: [* files_details],
+  * md => md ; @duplicates preserve
+}
+
+; The four levels the feature exists for. Each is one typed table row plus one trailing typed
+; catch-all: the typed row claims exactly its key's major (text for v1's two codec'd keys, bytes for
+; v2's two raw-bytes keys) and the catch-all sees the complement, so an entry of the wrong major is
+; CAPTURED while an entry of the right major that the row's type refuses is a HARD error. That second
+; half is where the generated semantics deliberately diverge from the consumer's hand reader, and
+; tests.rs states the divergence at every level beside its positive control.
+v1_assets = {
+  * asset_name_v1 => metadata_details,
+  * md => md ; @duplicates preserve
+}
+
+v1 = {
+  * policy_id_v1 => v1_assets,
+  * md => md ; @duplicates preserve
+}
+
+v2_assets = {
+  * asset_name => metadata_details,
+  * md => md ; @duplicates preserve
+}
+
+v2_data = {
+  * policy_id => v2_assets,
+  * md => md ; @duplicates preserve
+}
+
+v2 = {
+  data: v2_data,
+  version: 2,
+  * md => md ; @duplicates preserve
+}
+
+; The version discrimination, with no version peek anywhere in it: the choice tries v1 first, whose
+; typed row claims major 3, so a v2 payload's `data`/`version` TEXT keys bind that row and the hex
+; codec refuses them — a hard error, which fails the arm and rewinds. That the failure propagates
+; out of an open table rather than being swallowed as capture is what makes the shape compose with a
+; backtracking type choice at all.
+label_metadata = v1 ; @name v1
+               / v2 ; @name v2
+
+cip25 = {
+  721: label_metadata,
+  * uint => md ; @duplicates preserve
+}
