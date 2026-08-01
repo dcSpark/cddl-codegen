@@ -773,13 +773,11 @@ gate their remedy would extend, and it writes nothing — it drives `api::genera
 over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is built on, not its name.
 
 **Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
-section's recur-first premise stays honest.** Four at present, each cited by its own exact title (the
+section's recur-first premise stays honest.** Three at present, each cited by its own exact title (the
 full record stays in place below): "Regenerating over prior output with a rule DELETION is exercised
 as a gate for only two files"; "A `no gate demands this` premise probed against ONE gate is not
 evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
-`check.ts` itself); "`--extern-wrapper-index` deferral-boundaries"; and "A rule-position directive is
-SILENTLY DROPPED on every rule shape or spelling whose parse path does not carry it to a marking
-site".
+`check.ts` itself); and "`--extern-wrapper-index` deferral-boundaries".
 
 - **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
   extern-interface projection — the cross-crate skew class, invisible to every single-crate
@@ -2058,107 +2056,56 @@ site".
   pin time; the alternative that keeps the ledger honest same-commit is to land the row ACTIVE with a
   hand-derived accept vector so its skip entry is immediately valid.
 
-- **A rule-position directive is SILENTLY DROPPED on every rule shape or spelling whose parse path
-  does not carry it to a marking site — TWO proven seams, and no gate sweeps the
-  directive×rule-shape reachability product. The sweep's trigger has FIRED; it is a work item, not a
-  recur-first deferral.** The seams are enumerated as sub-bullets below with their own
-  seam-specific remedies; what they share is the verdict a sweep would render on all of them —
-  {accepted and inert} — and the fact that each was found by a human hand-probing a shape no fixture
-  contained, never by a run. `cddl-matrix/no_silent_directive.ts` cannot see the class for a
-  JSON-surface directive: it generates rust-only, where the suppressed artifact does not exist, so
-  every cell is byte-identical and allowlisted regardless of whether the marking site fires. Owned
-  meanwhile by the twin-pair convention in `snapshot_tests::json_gen_extern_schema_rows` (each
-  annotated rule paired with an unannotated same-shape control, under the flags where the effect is
-  visible) plus the accepted/rejected shape table in
-  `robustness_tests::no_json_schema_export_misuse_rejects_gracefully` — both of which pin the shapes
-  someone already thought of, which is the property the sweep exists to stop relying on.
-  The layer to build: enumerate the rule shapes once — type rule (single-choice, multi-choice,
-  tagged, parenthesized), plain group, generic definition, generic instance, extern, raw-bytes — and
-  drive every rule-position directive across the product, asserting each cell is one of {effect
-  visible, loudly rejected}, never {accepted and inert}. The shape list is the expensive part and it
-  is already written down: the sweep table in the `@no_json_schema_export` delivery's review thread.
-  A seam whose fix is upstream (the parser-discard seam below) is not an exception to the sweep — it
-  becomes an allowlisted inert cell carrying the upstream pointer, which is the honest inventory the
-  design's third point describes.
-  Four design points, each the answer to a way the obvious build would inherit the blindness it
-  exists to remove:
-  - **Each directive needs a WITNESS PROFILE — the minimal flag set under which its surface
-    exists — and the sweep must generate under it, not under one fixed profile.** This is the whole
-    reason `no_silent_directive` could not have caught the motivating bug: it hardcodes
-    `--wasm=false` and nothing else, so a directive whose only surface is the json-gen crate is
-    invisible to it no matter which cells its corpus holds. A per-directive profile is one small
-    datum (`@no_json_schema_export` -> `--json-schema-export`; `@rust_name` -> the default; the
-    `@duplicates` flavors -> the default) and it is what makes the verdict meaningful.
-  - **Derive the directive axis from `KNOWN_RULE_METADATA_TAGS`, not from a hand list.** That
-    constant is already the authoritative vocabulary and already carries a lockstep tripwire with
-    `corpus_detect.ts`'s `MIRRORED_DIRECTIVES`. Deriving from it makes a NEW directive appear in the
-    product automatically and demand classification — the forcing function a hand-picked corpus
-    cannot provide, and the actual root cause of this class surviving two instances. The shape axis
-    stays hand-enumerated; shapes change far more slowly than directives.
-  - **Invalid (directive, shape) pairs need no validity matrix — they self-classify.**
-    `@raw_bytes_flavor` on a record is already a loud rejection, which is a PASSING verdict under
-    the three-way rule. So the product can be swept whole, and the only hand-curated artifact is the
-    allowlist of legitimately inert cells, which doubles as the honest inventory exactly as
-    `no_silent_directive`'s does today.
-  - **Cost is generation-only.** Roughly (directives × shapes) × 2 one-rule generations, no nested
-    cargo — the axis sizes put that near 300 generator invocations, so it belongs in `local`/`full`
-    and should reuse `no_silent_directive`'s scratch-dir and byte-compare scaffolding rather than
-    growing a second copy of it. The cleanest shape is to generalize that gate in place: it already
-    owns the {byte-identical, acknowledged, allowlisted} verdict logic, and it is the file whose
-    blindness this item is about.
+- **A rule-position directive can still be SILENTLY DROPPED in the group-rule spellings the PARSER
+  discards, which no sweep can reach.** The directive×rule-shape reachability product itself is
+  swept (`cddl-matrix/no_silent_directive.ts`, `local` tier — see `tests/README.md` § "The
+  directive×rule-shape sweep"), so a shape whose parse path carries no marking site now fails a
+  gate instead of waiting for a human to hand-probe it. What the sweep cannot see is a directive the
+  AST never recorded: the CDDL parser leaves EVERY comment slot `None` for a group rule whose closing
+  paren is on its own line (`grp = (\n a: uint\n) ; @x`), and for a last group entry whose own
+  trailing slot is already occupied by a field-position `@name` — the two positions share that slot
+  and only one comment survives. No extraction in `parsing.rs` can recover what the parser never
+  recorded, so a sweep cell for those spellings could only ever be an allowlisted inert entry
+  carrying this pointer. Owned meanwhile by `group_rule_pin_metadata`'s doc comment and the
+  `@no_json_schema_export` docs section, both of which name the single-line spelling as the supported
+  one.
+  The fix is upstream — and upstream here is the **dcSpark fork** of `cddl` pinned by git rev in
+  `Cargo.toml` (version 0.10.6 at that rev), not the crates.io crate, so the patch lands in a repo we
+  control. It would have the parser bind the comment to `Rule::Group`'s `comments_after_rule`, which
+  today has exactly two construction sites (`pest_bridge.rs`) and both hardcode `None` — which is why
+  reading that field from `parsing.rs` is dead code rather than a workaround. Design constraint the
+  fix must respect, so it is not rediscovered: for the SUPPORTED single-line spelling the comment
+  already binds to the last group entry's trailing slot, so populating `comments_after_rule` must be
+  ADDITIVE — only for the spellings nothing else captures — or `group_rule_pin_metadata`
+  double-counts, a field-position `@name` on the last entry stops renaming its field, and the
+  never-spliced-group refusal starts naming directives the author wrote at a field. Adopting the bump
+  also needs a vector per affected directive, since a spec relying on today's silence starts behaving
+  differently (correctly) after it. Build a LOCAL workaround only if a consumer spec cannot use the
+  single-line form — a pre-parse source scan attributing a trailing comment to the group rule by line
+  position would be a second, drift-prone comment parser, so it needs a real consumer to justify it.
+  Reopening signal for taking the upstream bump now: a consumer reports a directive silently dropped
+  in a multi-line group spelling their generator cannot reformat, or the fork is bumped for another
+  reason anyway (at which point the additive constraint above is the whole design).
 
-  The seams, each with the remedy that is specific to it (named by mechanism, never numbered — a
-  seam that gets fixed must not silently retarget a citation of the one after it):
-  - ***A parse arm with no marking site at all.*** `parse_rule`'s `Rule::Group` arm reaches
-    neither `parse_type` nor `parse_type_choices`, so `@rust_name` was silently dropped on plain
-    groups until a marking site was added there, and `@no_json_schema_export` shipped inheriting
-    exactly the same hole (a SPLICED plain group does register a rust struct and therefore does get a
-    schema-registration row, so the directive was live and dead at once). Remedy: a marking site per
-    arm, which is what the `@rust_name` fix did — the residual is that nothing forces the NEXT
-    directive to acquire one, which is the sweep's job.
-  - ***The comment never reaches the AST, so no marking site can exist.*** The CDDL parser
-    leaves every AST comment slot `None` (verified by dumping the AST) for a group rule whose closing
-    paren is on its own line (`grp = (\n a: uint\n) ; @x`), and when the last group entry's own
-    trailing slot is already occupied by a field-position `@name` — the two positions share that
-    slot, and only one comment survives. Affects `@rust_name` and `@no_json_schema_export`
-    identically; no extraction in `parsing.rs` can recover what the parser never recorded. Owned
-    meanwhile by `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs
-    section, both of which name the single-line spelling as the supported one. The fix is upstream —
-    and upstream here is the **dcSpark fork** of `cddl` pinned by git rev in `Cargo.toml` (version
-    0.10.6 at that rev), not the crates.io crate, so the patch lands in a repo we control. It would
-    have the parser bind the comment to `Rule::Group`'s `comments_after_rule`, which today has
-    exactly two construction sites (`pest_bridge.rs`) and both hardcode `None` — which is why reading
-    that field from `parsing.rs` is dead code rather than a workaround. Design constraint the fix
-    must respect, so it is not rediscovered: for the SUPPORTED single-line spelling the comment
-    already binds to the last group entry's trailing slot, so populating `comments_after_rule` must
-    be ADDITIVE — only for the spellings nothing else captures — or `group_rule_pin_metadata`
-    double-counts and a field-position `@name` on the last entry stops renaming its field. Adopting
-    the bump also needs a vector per affected directive, since a spec relying on today's silence
-    starts behaving differently (correctly) after it. Build a LOCAL workaround only if a consumer
-    spec cannot use the single-line form — a pre-parse source scan attributing a trailing comment to
-    the group rule by line position would be a second, drift-prone comment parser, so it needs a real
-    consumer to justify it.
-
-- **The arm-position axis of the directive-drop family is covered by two cells, not by enumeration.**
-  A rule-level directive on a non-last arm of a multi-choice type rule is now rejected at parse
-  (`parsing::parse_type_choices`, keyed on `comment_ast::RuleMetadata::non_variant_directives`), and
-  the rejection is pinned by `dsl_position_tests`' `type-choice-non-last-arm` cell with
-  `type-choice-non-last-arm-allowed` pinning the `@name`/`@doc` exclusion, plus
-  `no_silent_directive`'s `type_choice_non_last_arm_used_as_key` cell and its last-arm placement
-  control. The `T / null` Option collapse — a branch with no variants, where an arm therefore carries
-  nothing of its own — has the same pair (`option_collapse_non_last_arm_no_alias` and its rule-slot
-  control), plus `robustness_tests::option_collapse_reads_rule_position_directives` for the directive
-  vocabulary at the rule slot. What is NOT enumerated is the directive axis at that position: one directive stands in
-  for thirteen, and the exclusion set is asserted through the classifier's exhaustive destructuring
-  (a new `RuleMetadata` field fails to compile until classified) rather than through a cell per
-  directive. Note this axis is orthogonal to the reachability sweep of "A rule-position directive is
-  SILENTLY DROPPED on every rule shape or spelling whose parse path does not carry it to a marking
-  site": that sweep treats "multi-choice type rule" as ONE shape and would place the directive at
-  rule position, where it works — so it can never see this. Fold the arm axis in when that sweep is built; until then the
-  classifier's compile-time forcing function is the load-bearing part, and losing it (e.g. replacing
-  the destructuring with a hand list) is the regression to watch for.
-  Reopening signal for building the enumeration early: a directive whose rejection at this position
-  turns out to be wrong for its own reasons, or a third arm-position drop found by hand.
+- **The arm-position axis's classifier is a compile-time forcing function, and losing it is the
+  regression to watch for.** The axis itself is now enumerated: `no_silent_directive` sweeps a
+  directive on a NON-LAST arm as two shapes of its own — `multi_choice_non_last_arm` and
+  `option_collapse_non_last_arm` — so every directive in `KNOWN_RULE_METADATA_TAGS` is measured
+  there instead of one standing in for thirteen. The rejections stay pinned where they were:
+  `dsl_position_tests`' `type-choice-non-last-arm` cell with `type-choice-non-last-arm-allowed`
+  pinning the `@name`/`@doc` exclusion, `no_silent_directive`'s
+  `type_choice_non_last_arm_used_as_key` and `option_collapse_non_last_arm_no_alias` hand cells with
+  their rule-slot placement controls, and
+  `robustness_tests::option_collapse_reads_rule_position_directives` for the vocabulary at the rule
+  slot. What no sweep can assert is the EXCLUSION set — which directives a variant position
+  legitimately consumes — because that is a statement about future fields, not about present ones:
+  `comment_ast::RuleMetadata::non_variant_directives`'s exhaustive destructuring makes a new
+  `RuleMetadata` field fail to compile until its author classifies it as rule-level or variant-legal,
+  and its sibling `all_directives` (the never-spliced-group refusal's list) inherits that same
+  forcing function by building on it. Replacing either destructuring with a hand list silently
+  removes the property.
+  Reopening signal for adding a runtime assertion of the exclusion set: a `RuleMetadata` field lands
+  bound to `_` in that destructuring without a variant-position cell proving it is variant-legal.
 
 - **The schema document's name injectivity is enforced ROW-side, so the residue is everything the row
   set cannot see.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we emit,
