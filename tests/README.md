@@ -53,7 +53,7 @@ not interchangeable: a nominal reference to a collection typedef needed an `enco
 fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 14 `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 15 `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check, plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -2921,6 +2921,22 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > `emitted_signatures_carry_no_reader_writer_generics`).
 > A non-pinned bundle that fails to compile is a NEW hazard finding to add to the pin list (with a
 > reason) and report — not to paper over by editing the generator.
+>
+> The same module carries the **generated-local** vocabulary sweep, a distinct hazard class: names the
+> *emitter itself* binds inside a generated fn body, which a field of the same name shadows into a
+> crate that does not compile. Its registry is `parsing::GENERATED_LOCAL_RESERVED` (refused at parse
+> time, each entry carrying the shape × profile × error class it was measured to break) plus
+> `GENERATED_LOCAL_PROBED_SAFE` (swept, broke nothing, deliberately accepted), and
+> `generated_local_registry_covers_emitter_locals` holds the pair LOCKSTEP with a scan of the six
+> emitter sources so a NEW emitter local fails the suite until it is swept and verdicted. Membership
+> is uniform across PROFILES and scoped by SHAPE (`ReservedScope`): no flag may rescue a refused
+> field, but a name is reserved only where the emitter binds the local — which is what keeps the
+> `tag: 0` group-choice discriminant generating. Both halves of every scope are asserted:
+> `generated_local_hazard_robustness_catalog` snapshots refused-inside / still-generating-outside per
+> field position, and `generated_local_out_of_scope_crates_compile` (`#[ignore]`, check.ts full tier)
+> *compiles* every out-of-scope cell per profile — the only way a scope that is too NARROW can fail
+> loudly, since a generation-only sweep reads it as a clean `ok`. Its `hazards()` sibling is left
+> untouched by design: that list feeds the recombination fuzzer's deterministic composition set.
 
 > Second sibling, same argument on a **DOCS-CONTRACT** axis: `src/tests/dsl_position_tests.rs`
 > hard-asserts the comment-DSL directive × attachment-position grid against
