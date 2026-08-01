@@ -6342,6 +6342,100 @@ fn unsupported_generic_def_bodies_reject_gracefully() {
     }
 }
 
+/// The fifth unsupported generic-def body, and the only one whose abort was reached BEFORE the IR
+/// existed: a PLAIN GROUP body (`set<a> = (* a)`). A plain group registers no struct of its own —
+/// its contents are spliced into each rule that references it — so an instance's arguments have
+/// nowhere to substitute, exactly like the four bodies above. What made it the remainder of that
+/// conversion is the seam: `dep_graph::find_references` asserts on it, and every caller of that
+/// runs before any `record_rejection` channel exists, so the only outcome available there was
+/// `exit 101`. The refusal therefore lives in the `api::with_types` pre-scan; the one reach that
+/// PRECEDES even that (`extern_narrow::scan_consumer`, which runs during input assembly on every
+/// generation, imports or not) skips the rule by consulting the same predicate.
+///
+/// Both spellings are vectors because the AST gives us both as a `Rule::Group` — the parenthesized
+/// body AND the bare-paren group-choice form (`g<T> = ((a: T) // (b: uint))`, which is NOT the
+/// bracketed `g<T> = [ (a: T) // (b: uint) ]` the group-choice rejection above covers). One check
+/// at the pre-scan covers both; a fix keyed on the first spelling alone would leave the second
+/// aborting.
+///
+/// The controls are load-bearing in two directions: the generic ARRAY / MAP / record / tag-set
+/// bodies must keep generating (a refusal keyed on `generic_params.is_some()` alone would refuse
+/// every generic def), and a NON-generic plain group must keep generating (a refusal keyed on the
+/// group RULE alone would refuse the ordinary spliced-group spelling this repo's own fixtures use).
+#[test]
+fn generic_plain_group_def_rejects_gracefully() {
+    let vectors = [
+        ("paren_body", "set<a> = (* a)\nfoo = [set<uint>]\n", "set"),
+        (
+            "group_choice_body",
+            "g<T> = ((a: T) // (b: uint))\nfoo = [g<uint>]\n",
+            "g",
+        ),
+    ];
+    for (tag, spec, rule) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(&format!("generic_plain_group_{tag}"), spec, extra);
+            assert!(
+                msg.contains(&format!("generic rule `{rule}`")),
+                "the rejection must name the offending rule ({tag}, {extra:?}), got: {msg}"
+            );
+            assert!(
+                msg.contains("a plain-group body")
+                    && msg.contains("registers no struct of its own"),
+                "the rejection must diagnose the plain-group body ({tag}, {extra:?}), got: {msg}"
+            );
+            // Same remedy list as its four siblings — one vocabulary for every generic-def refusal.
+            assert!(
+                msg.contains("A generic definition's body must be a shape that registers a struct"),
+                "the rejection must name the supported generic-def bodies ({tag}, {extra:?}), \
+                 got: {msg}"
+            );
+        }
+    }
+
+    // Controls: everything adjacent to the refused shape must still generate, under both profiles.
+    let controls = [
+        ("generic_array", "g<T> = [* T]\ny = [v: g<uint>]\n"),
+        ("generic_map", "g<T> = {a: T}\ny = [v: g<uint>]\n"),
+        (
+            "generic_record",
+            "g<T> = [a: T, b: uint]\ny = [v: g<uint>]\n",
+        ),
+        (
+            "generic_tag_set",
+            "xs<a0> = #6.258([* a0]) / [* a0]\ny = [v: xs<uint>]\n",
+        ),
+        ("plain_group_nongeneric", "grp = (* uint)\nfoo = [grp]\n"),
+    ];
+    for (tag, spec) in controls {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_gpg_ctl_{tag}_{}.cddl",
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "gpg_ctl_unused",
+            ];
+            argv.extend_from_slice(extra);
+            let cli = Cli::parse_from(argv);
+            let result = crate::api::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
+            assert!(
+                result.is_ok(),
+                "control `{tag}` ({extra:?}) must keep generating — the plain-group refusal must \
+                 not widen to generic defs that DO register a struct, nor to non-generic plain \
+                 groups: {:?}",
+                result.err().map(|e| e.to_string())
+            );
+        }
+    }
+}
+
 /// A rule-position directive on a `T / null` rule used to be SILENTLY DROPPED in every spelling:
 /// the Option-collapse branch built its `RuleMetadata` from the inner arm's `Type1` comment slot,
 /// which the pinned cddl fork never populates for a type-choice arm, so even the `@duplicates` /

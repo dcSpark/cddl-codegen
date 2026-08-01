@@ -179,7 +179,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `genericparm.group` | ➖ | Generic group definition | a generic GROUP definition (`set<a> = (* a)`) is rejected — generics are supported on type rules, not on plain groups.  [`Generics not supported on plain groups`] |
+| `genericparm.group` | ➖ | Generic group definition | a generic GROUP definition (`set<a> = (* a)`, and the bare-paren group-choice spelling `g<T> = ((a: T) // (b: uint))`) is refused gracefully at parse time — a plain group registers no struct of its own for an instance's arguments to substitute into. Generics are supported on type rules (array, map/record, the tag-set idiom). Pinned by `generic_plain_group_def_rejects_gracefully`.  [`Generics not supported on plain groups`] |
 | `genericparm.type` | ✅ | Generic type definition | `generics.cddl` |
 
 ### `size` (1)

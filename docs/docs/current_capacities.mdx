@@ -272,7 +272,7 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 |-----------|--------------|----------|
 | Incremental group-choice extension (//=) | `tcpopts = (1: int); tcpopts //= (2: tstr)` | rejected gracefully at parse |
 | Incremental type-choice extension (/=) | `a = int; a /= tstr` | rejected gracefully at parse |
-| Generic group definition | `set<a> = (* a)` | panics generation |
+| Generic group definition | `set<a> = (* a)` | rejected gracefully at parse |
 | cbor-any | `x = cbor-any` | rejected gracefully at parse |
 | eb16 | `x = eb16` | rejected gracefully at parse |
 | eb64legacy | `x = eb64legacy` | rejected gracefully at parse |

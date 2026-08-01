@@ -863,6 +863,16 @@ pub fn with_types<R>(
         if let Some(msg) = parsing::rule_position_name_rejection(cddl_rule) {
             types.record_rejection(msg);
         }
+        // A generic definition whose body is a plain group (`set<a> = (* a)`, and the bare-paren
+        // group-choice spelling that the AST also gives us as a group rule). Refused HERE because
+        // every site that would otherwise reach it is an `assert_eq!` abort with no rejection
+        // channel — `dep_graph::find_references` (rule ordering, which runs pre-IR) and `parsing`'s
+        // own `Rule::Group` arm. Both stay as re-earning guards. The one reach that precedes this
+        // loop, `extern_narrow::scan_consumer` (input assembly, before the checked parse), skips
+        // the rule by consulting the same predicate.
+        if let Some(msg) = parsing::generic_plain_group_def_rejection(cddl_rule) {
+            types.record_rejection(msg);
+        }
         // Incremental choice extension (`a /= tstr`, `g //= (...)`): `parse_rule` re-registers the
         // identifier on each statement, so the LAST definition wins and every earlier arm is
         // silently dropped. Reject the EXTENSION (identifier already seen) loudly; the initial
