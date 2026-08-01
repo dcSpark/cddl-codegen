@@ -993,8 +993,9 @@ fn any_content_prelude_tags_reject_gracefully_in_every_position() {
 /// The final vector is a CONTROL, not a rejection: at the choice-member position the `@name`
 /// comment does reach the naming site, so the struct is minted and generation succeeds. Without it
 /// this test could pass while the rejection had swallowed the naming door whole — the pin would
-/// hold for the wrong reason. (The positions where `@name` is DROPPED are pinned separately, by the
-/// comment-DSL position sweep's `KNOWN_SILENT_DROP` list.)
+/// hold for the wrong reason. (Which positions the door does and does not reach is enumerated by
+/// the comment-DSL position sweep's `@name` cells, including the member-position one these vectors
+/// deliberately do not spell.)
 #[test]
 fn anonymous_nested_array_rejects_gracefully() {
     let vectors = [

@@ -2688,14 +2688,14 @@ DROPPED on every rule shape or spelling whose parse path does not carry it to a 
     that makes them ask) — the request itself is the signal, and it names the type shape to
     design against.
 
-- **Decide whether a TABLE rule's own comment slot can carry the custom pair at all.** Today
-  `t = { * k => v }` with the pair on the RULE is dropped in both directions (pinned:
-  `table-rule` `KNOWN_SILENT_DROP` in `dsl_position_tests`; documented in the comment-DSL silent
-  list). A table rule lowers to a transparent map alias with no single codec slot to override —
-  honoring the pair would mean wrapping the WHOLE map's wire form, which is a different contract
-  from the per-key/per-value overrides that already work. Rejection was not shipped because the
-  rule-position slot is live for other directives (`@duplicates`) and the design question is
-  genuine.
+- **Let a TABLE rule's own comment slot carry the custom pair.** The pair on
+  `t = { * k => v }` is refused today (the `table-rule` cells in `dsl_position_tests`; the
+  comment-DSL rejected-positions list), because a table lowers to a transparent map alias with no
+  single codec slot to override: honoring it means wrapping the WHOLE map's wire form, a different
+  contract from the per-key/per-value overrides that already work. Mechanically it means threading
+  `rule_metadata` through `AliasInfo` — read by doc-lookup, the extern-interface projection and
+  alias suppression, so each needs its own re-audit — which is why the refusal shipped first and
+  names the three spellings that do work (key rule, value rule, `_CDDL_CODEGEN_EXTERN_TYPE_`).
   - **Reopening signal:** a consumer asks for a whole-map custom wire form that per-key/per-value
     pairs cannot express (e.g. a map spelled as something other than a CBOR map on the wire) —
     until then the per-position pairs cover the known shapes.
@@ -3367,6 +3367,18 @@ DROPPED on every rule shape or spelling whose parse path does not carry it to a 
   (the audit gate alone ≈16 min: `bun run audit_gate_cache_closure.ts` in `cddl-matrix/`;
   `corpus_detect.ts` and the fuzz `cargo check` are seconds), and claim the tier green only by
   COMPLETE gate enumeration — never from the partial log.
+
+- **`snapshot_tests::rustfmt_non_utf8_output_is_an_error` can fail with ETXTBSY on the stub it
+  just wrote.** One sighting, 2026-08-01 (burndown delivery 3, phase A): the test failed with
+  `ExecutableFileBusy` on its CONTROL leg — the `rustfmt_stub("ok", …)` helper writes a throwaway
+  stub and `rustfmt_source_with` execs it in the same breath. It passed on an isolated re-run and on two subsequent
+  full-suite runs, and no other test in the file has ever shown it, so environmental contention
+  (a scanner or the filesystem still holding the just-written file open) is the standing suspicion
+  rather than a race the test owns. Recorded because a one-off ETXTBSY reads as a real
+  rustfmt-plumbing defect to whoever meets it next, and it is not one. Likely fix shape if it
+  recurs, in order of cheapness: close the file handle explicitly before the exec, then retry once
+  on `ErrorKind::ExecutableFileBusy`. Watch, not work item — a second sighting is the trigger, and
+  the sighting is cheap to attribute because the error kind names itself.
 
 ## Declined (decided, with the reopening signal)
 
