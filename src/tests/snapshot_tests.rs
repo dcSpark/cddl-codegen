@@ -1548,6 +1548,314 @@ fn rust_tree_wasm_bindgen_only_feature_gated() {
     );
 }
 
+// ---- the emitter-overload bare-token lint -------------------------------------------------------
+
+/// The two OVERLOADABLE emitter parameters and the default name each one falls back to. An emitter
+/// that reaches a leaf while one of these is overloaded must spell the name through the accessor
+/// (`{deserializer_name}` / `{serializer_use}`), never inline the default — a leaf that inlines it
+/// reads the OUTER cursor/buffer under a `bytes .cbor` payload and silently mis-frames everything
+/// after it.
+const OVERLOADED_DEFAULTS: &[(&str, &str)] = &[
+    // (axis label, the default token a leaf must never spell inline)
+    ("deserializer", "raw"),
+    ("serializer", "serializer"),
+];
+
+/// Sites where a scoped emitter spells a default name inline and is RIGHT to. Keyed
+/// `(file, enclosing fn, exact literal, justification)` — a per-entry justification, never a
+/// file-wide exclusion, so a new leaf in an already-listed file still fails.
+const OVERLOAD_LINT_ALLOW: &[(&str, &str, &str, &str)] = &[
+    (
+        "deserialize.rs",
+        "deserializer_name",
+        "raw",
+        "the accessor's OWN default — this literal is what every other site reads through",
+    ),
+    (
+        "serialize.rs",
+        "generate_serialize",
+        "serializer",
+        "the serializer accessor's own default (the `unwrap_or((\"serializer\", ..))` fallback that \
+         `serializer_use`/`serializer_pass` are derived from); it has no accessor fn to hide behind \
+         because the derivation is inline at the top of `generate_serialize`",
+    ),
+];
+
+/// One `fn` in an emitter source: its name, the char range its header+body spans, and its parameter
+/// list (masked, so a `(` inside an emitted literal cannot close it early).
+struct EmitterFn {
+    name: String,
+    start: usize,
+    end: usize,
+    params_no_ws: String,
+    is_method: bool,
+}
+
+/// Split masked Rust source into `fn` regions (nested fns and closures included — regions nest, and
+/// a literal is attributed to EVERY fn enclosing it).
+fn emitter_fns(masked: &[char]) -> Vec<EmitterFn> {
+    fn matching(masked: &[char], open: usize, o: char, c: char) -> usize {
+        let mut depth = 0;
+        for (k, ch) in masked.iter().enumerate().skip(open) {
+            if *ch == o {
+                depth += 1;
+            } else if *ch == c {
+                depth -= 1;
+                if depth == 0 {
+                    return k;
+                }
+            }
+        }
+        masked.len() - 1
+    }
+    let mut out = Vec::new();
+    for i in 0..masked.len() {
+        if !(masked[i] == 'f'
+            && masked.get(i + 1) == Some(&'n')
+            && (i == 0 || !super::identifier_hazard_tests::is_ident_char(masked[i - 1]))
+            && masked.get(i + 2) == Some(&' '))
+        {
+            continue;
+        }
+        let name = match super::identifier_hazard_tests::ident_at(masked, i + 3) {
+            Some(n) => n,
+            None => continue,
+        };
+        // parameter list
+        let mut j = i + 3 + name.chars().count();
+        while j < masked.len() && masked[j] != '(' && masked[j] != ';' {
+            j += 1;
+        }
+        if j >= masked.len() || masked[j] == ';' {
+            continue;
+        }
+        let params_end = matching(masked, j, '(', ')');
+        let params_no_ws: String = masked[j..=params_end]
+            .iter()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        // body (a trait-decl `fn f();` has none)
+        let mut k = params_end + 1;
+        while k < masked.len() && masked[k] != '{' && masked[k] != ';' {
+            k += 1;
+        }
+        if k >= masked.len() || masked[k] == ';' {
+            continue;
+        }
+        out.push(EmitterFn {
+            name,
+            start: i,
+            end: matching(masked, k, '{', '}'),
+            params_no_ws: params_no_ws.clone(),
+            is_method: params_no_ws.starts_with("(&self") || params_no_ws.starts_with("(&mutself"),
+        });
+    }
+    out
+}
+
+/// The `impl` blocks whose header names a serialization CONFIG type, so a `&self` method inside one
+/// is overload-scoped too (that is where the accessors themselves live).
+fn config_impl_ranges(masked: &[char]) -> Vec<(String, usize, usize)> {
+    let mut out = Vec::new();
+    for i in 0..masked.len() {
+        if super::identifier_hazard_tests::ident_at(masked, i).as_deref() != Some("impl")
+            || (i > 0 && super::identifier_hazard_tests::is_ident_char(masked[i - 1]))
+        {
+            continue;
+        }
+        let open = match (i..masked.len()).find(|&j| masked[j] == '{') {
+            Some(o) => o,
+            None => continue,
+        };
+        let header: String = masked[i..open].iter().collect();
+        let mut depth = 0;
+        let mut end = masked.len() - 1;
+        for (k, ch) in masked.iter().enumerate().skip(open) {
+            if *ch == '{' {
+                depth += 1;
+            } else if *ch == '}' {
+                depth -= 1;
+                if depth == 0 {
+                    end = k;
+                    break;
+                }
+            }
+        }
+        out.push((header, i, end));
+    }
+    out
+}
+
+/// `true` if `lit` contains `token` as a whole identifier (so `raw_bytes`, `inner_de` and
+/// `serializer_use` never match).
+fn contains_bare_token(lit: &str, token: &str) -> bool {
+    let chars: Vec<char> = lit.chars().collect();
+    let tok: Vec<char> = token.chars().collect();
+    chars.windows(tok.len()).enumerate().any(|(at, w)| {
+        w == tok.as_slice()
+            && (at == 0 || !super::identifier_hazard_tests::is_ident_char(chars[at - 1]))
+            && chars
+                .get(at + tok.len())
+                .is_none_or(|c| !super::identifier_hazard_tests::is_ident_char(*c))
+    })
+}
+
+/// Every emitted literal that is in scope of an overloadable name, with the axes it is scoped for.
+/// Shared by the lint and its own anti-vacuity guard.
+fn overload_scoped_literals() -> Vec<(&'static str, String, usize, String, bool, bool)> {
+    let mut out = Vec::new();
+    for file in super::identifier_hazard_tests::EMITTER_SOURCES {
+        let path = format!("{}/src/generation/{file}", env!("CARGO_MANIFEST_DIR"));
+        let src = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read emitter source {path}: {e}"));
+        let scanned = super::identifier_hazard_tests::scan_rust(&src);
+        let masked: Vec<char> = scanned.masked.chars().collect();
+        let fns = emitter_fns(&masked);
+        let impls = config_impl_ranges(&masked);
+        // char index -> 1-based line
+        let mut line_of = Vec::with_capacity(masked.len() + 1);
+        let mut line = 1;
+        for ch in src.chars() {
+            line_of.push(line);
+            if ch == '\n' {
+                line += 1;
+            }
+        }
+        line_of.push(line);
+        for (idx, lit) in scanned.literals {
+            let enclosing: Vec<&EmitterFn> = fns
+                .iter()
+                .filter(|f| f.start <= idx && idx <= f.end)
+                .collect();
+            if enclosing.is_empty() {
+                continue;
+            }
+            let in_config_impl = |ty: &str| {
+                impls
+                    .iter()
+                    .any(|(h, s, e)| h.contains(ty) && *s <= idx && idx <= *e)
+            };
+            let scoped = |cfg_ty: &str, param: &str| {
+                enclosing.iter().any(|f| {
+                    f.params_no_ws.contains(cfg_ty)
+                        || f.params_no_ws.contains(param)
+                        || (f.is_method && in_config_impl(cfg_ty))
+                })
+            };
+            let de = scoped("DeserializeConfig", "deserializer_name:");
+            let se = scoped("SerializeConfig", "serializer_use:")
+                || enclosing
+                    .iter()
+                    .any(|f| f.params_no_ws.contains("serializer_pass:"));
+            if de || se {
+                let innermost = enclosing
+                    .iter()
+                    .max_by_key(|f| f.start)
+                    .expect("non-empty")
+                    .name
+                    .clone();
+                out.push((*file, innermost, line_of[idx], lit, de, se));
+            }
+        }
+    }
+    out
+}
+
+/// LOCKSTEP source lint (FAST tier — this module IS `snapshot_tests`, which is the only cargo-test
+/// invocation `check.ts fast` makes: `cargo test --bin cddl-codegen snapshot_tests`).
+///
+/// `generate_deserialize` threads a deserializer name (`raw` by default, the payload's own cursor
+/// under a `bytes .cbor`) and `generate_serialize` threads a serializer name (`serializer` by
+/// default, an inner `Serializer::new_vec()` buffer under the same payload, or `buf` for a canonical
+/// map key). Both are OVERLOADABLE parameters carried by hand down a recursive emitter, and nothing
+/// structurally forces a leaf to read them: a leaf that writes the DEFAULT name inline compiles,
+/// snapshots green, and mis-frames the buffer only in the compositions that actually overload —
+/// which is why four such deserialize leaves were found by composition luck and code-reading rather
+/// than by any gate. This is that gate.
+///
+/// SCOPE (stated so the gap is visible rather than implied): a fn is overload-scoped when it
+/// RECEIVES the name — a `DeserializeConfig`/`SerializeConfig` parameter, a `deserializer_name:` /
+/// `serializer_use:` / `serializer_pass:` parameter, or a `&self` method of the config types. Root
+/// emitters (`codegen_struct`, `generate_enum`, `generate_wrapper_struct`, …) are deliberately out
+/// of scope: they EMIT the `fn deserialize(raw: &mut Deserializer)` / `fn serialize(serializer: &mut
+/// Serializer)` signature that binds the name, so spelling it is what they are for. The residual a
+/// future leaf could slip through: a new helper that receives the name under some THIRD parameter
+/// spelling. `emitter_overload_lint_sees_its_anchors` pins the scoped set against that.
+#[test]
+fn emitter_overload_no_bare_default_tokens() {
+    let mut failures = Vec::new();
+    for (file, func, line, lit, de, se) in overload_scoped_literals() {
+        for (axis, token) in OVERLOADED_DEFAULTS {
+            let on = match *token {
+                "raw" => de,
+                _ => se,
+            };
+            if !on || !contains_bare_token(&lit, token) {
+                continue;
+            }
+            if OVERLOAD_LINT_ALLOW
+                .iter()
+                .any(|(f, fun, l, _)| *f == file && *fun == func && *l == lit)
+            {
+                continue;
+            }
+            failures.push(format!(
+                "  {file}:{line} (fn {func}) emits the default {axis} name `{token}` inline:\n    \
+                 {lit:?}"
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "emitter leaf/leaves spell an OVERLOADABLE default name inline instead of through the \
+         config accessor (`{{deserializer_name}}` / `{{serializer_use}}`):\n{}\n\nUnder a `bytes \
+         .cbor` payload (or a canonical map key) these read the OUTER cursor/buffer and silently \
+         mis-frame every member after them. Thread the accessor; if the site is genuinely correct \
+         as written, add it to `OVERLOAD_LINT_ALLOW` with a justification.",
+        failures.join("\n")
+    );
+}
+
+/// Anti-vacuity guard for [`emitter_overload_no_bare_default_tokens`]: the scan must still SEE the
+/// helpers that carry an overloadable name, and must still be reading a substantial body of emitted
+/// literals. A scoping rule that silently stopped matching would make the lint pass for the wrong
+/// reason — the same failure mode the lint exists to prevent, one level up.
+#[test]
+fn emitter_overload_lint_sees_its_anchors() {
+    let scoped = overload_scoped_literals();
+    // (file, fn) pairs that MUST be in scope: the two recursive emitters plus every helper that
+    // takes the name today. `make_enum_variant_return_if_deserialized` is the c-style-enum sweep
+    // whose helper used to drop the overload by building a fresh config.
+    for (file, func) in [
+        ("deserialize.rs", "generate_deserialize"),
+        ("deserialize.rs", "make_deser_loop_break_check"),
+        ("enums.rs", "make_enum_variant_return_if_deserialized"),
+        ("serialize.rs", "generate_serialize"),
+        ("serialize.rs", "start_len"),
+        ("serialize.rs", "end_len"),
+    ] {
+        assert!(
+            scoped.iter().any(|(f, fun, ..)| *f == file && fun == func),
+            "the overload lint no longer sees `{file}::{func}` as overload-scoped — either the \
+             helper stopped taking the name (retire the anchor) or the scoping rule went vacuous"
+        );
+    }
+    assert!(
+        scoped.len() > 200,
+        "the overload lint scans only {} literals — it has gone vacuous",
+        scoped.len()
+    );
+    for (file, func, lit, _) in OVERLOAD_LINT_ALLOW {
+        assert!(
+            scoped
+                .iter()
+                .any(|(f, fun, _, l, ..)| f == file && fun == func && l == lit),
+            "stale `OVERLOAD_LINT_ALLOW` entry: {file} (fn {func}) no longer emits {lit:?} — an \
+             allowlist entry that matches nothing hides the next real leaf at that site"
+        );
+    }
+}
+
 /// `rustfmt_generated_string` must FAIL LOUD on unparseable output rather than swallowing it and
 /// returning the raw source at exit 0 — the swallow is exactly how the JSON-schema turbofish bug
 /// (`T<..>::method` in expression position) shipped green. Valid Rust still round-trips to `Ok`.
