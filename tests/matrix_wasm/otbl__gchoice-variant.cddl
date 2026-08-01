@@ -1,0 +1,3 @@
+; cell: otbl x gchoice-variant
+ot = { * bstr => uint, * text => uint }
+holder = [ f0: ot // f1: nint ]

@@ -1,0 +1,3 @@
+; cell: otbl x newtype-inner
+ot = { * bstr => uint, * text => uint }
+holder = ot ; @newtype

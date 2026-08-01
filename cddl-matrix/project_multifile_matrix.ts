@@ -142,6 +142,16 @@ const SHAPES: Record<string, Shape> = {
   // needed (like `collrec`); the single-file anon control is green (root scope has no cross-module
   // import to dangle).
   tblrec: { defs: ["foo = [a0: uint]", "tbl = { * foo => text }"], ty: "tbl", anonForm: "{ * foo => text }" },
+  // OPEN TABLE keyed by a NON-exposable (record) typed key — the open-table sibling of `tblrec`, and
+  // the placement class its flattening creates. The minted struct's wasm class carries the typed
+  // row's `keys()` ITSELF (flattened, not on a container class), so the keys-list wrapper is named
+  // bare in the STRUCT's module while the wrapper is minted at ROOT — and, unlike a table's, that
+  // wrapper is not an IR Array struct, so no struct-walk arm reaches its body either. `tblrec` cannot
+  // probe this: its `keys()` lives on the table's own class, whose emission scope the container arm
+  // already tracks. Typed key `foo` (a record, major 4) beside a `text` catch-all (major 3), so the
+  // complement is non-empty. No `anonForm`: an open table is a NAMED-RULE concession — an inline
+  // anonymous one is refused at recognition — so there is no inline spelling to place.
+  otblrec: { defs: ["foo = [a0: uint]", "otbl = { * foo => text, * text => text }"], ty: "otbl" },
   tag: { defs: ["tg = #6.10(uint)"], ty: "tg", anonForm: "#6.10(uint)" },
   bwrap: { defs: ["bw = bytes .size (0..32)"], ty: "bw", anonForm: "bytes .size (0..32)" },
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
@@ -316,7 +326,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 144; // 42 shapes × {aliased, named, unref} = 126 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 144
+const EXPECTED_CELLS = 147; // 43 shapes × {aliased, named, unref} = 129 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 147
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

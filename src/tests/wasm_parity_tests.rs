@@ -30,6 +30,15 @@
 //!   metadata, not user-facing API. Rule 3 recognises this structurally (a `pub` field whose type is
 //!   `Option<X>`/`X` with `X` a struct defined in the emitted `cbor_encodings.rs`) and imposes no
 //!   wasm getter obligation, so the class needs no per-type ledger entries.
+//! - *An open table's TYPED row is flattened, not hung off a getter.* `t = { * K_t => V_t, * K_r =>
+//!   V_r }` mints a struct whose wasm class carries the typed row's map surface DIRECTLY
+//!   (`insert`/`get`/`len`/`keys`) — the set nominal's call, because a wasm class has no `Deref` —
+//!   so the typed row's `pub` rust field has no same-named getter and never will. Rule 3 recognises
+//!   it by the field's provenance marker (`generation::OPEN_TABLE_TYPED_ROW_DOC`), not by shape: a
+//!   shape test would also swallow the CATCH-ALL row, which does owe its `rest()` getter. Being a
+//!   design decision rather than a shape accident, it belongs in the rules and not in `PARITY_EXEMPT`
+//!   — a ledger entry per fixture × profile would grow with the fixture set and say the same thing
+//!   each time.
 //! - *Return types unchecked (rule 4).* Boundary conversions differ by construction
 //!   (`Result<Self, DeserializeError>` vs `Result<T, JsError>`, by-ref args, `.into()`), so a
 //!   same-name/same-arity wasm fn satisfies the obligation; only ABSENCE is a finding.
@@ -605,6 +614,13 @@ struct RustSurface {
     /// (`docs/docs/wasm_differences.mdx`), and provenance — not a source-shape heuristic — is what
     /// tells them apart from a real rule alias (see the const's doc in `generation/mod.rs`).
     synthesized_instance_aliases: BTreeSet<String>,
+    /// `(type, field)` pairs whose rustdoc carries `OPEN_TABLE_TYPED_ROW_DOC` — an open table's
+    /// TYPED row. Rule 3 skips these: the wasm class FLATTENS this row's map surface onto itself
+    /// (`insert`/`get`/`len`/`keys`) instead of emitting a whole-map getter, so the missing getter is
+    /// the design rather than an omission. Structural like the encoding-capture carve-out beside it,
+    /// and provenance-driven like the synthesized-alias one above — a shape heuristic ("a `pub` map
+    /// field on a fieldless struct") would also cover the CATCH-ALL row, which DOES owe its getter.
+    flattened_typed_rows: BTreeSet<(String, String)>,
 }
 
 /// The wasm crate's public API surface, parsed from `wasm/src/generated/mod.rs`.
@@ -711,14 +727,19 @@ fn parse_rust_surface(src: &str) -> RustSurface {
                 let name = st.ident.to_string();
                 s.types.insert(name.clone());
                 if let syn::Fields::Named(named) = &st.fields {
-                    let entry = s.fields.entry(name).or_default();
+                    let mut flattened = Vec::new();
+                    let entry = s.fields.entry(name.clone()).or_default();
                     for f in &named.named {
                         if is_pub(&f.vis)
                             && let Some(id) = &f.ident
                         {
                             entry.insert(id.to_string(), type_inner_ident(&f.ty));
+                            if doc_contains(&f.attrs, crate::generation::OPEN_TABLE_TYPED_ROW_DOC) {
+                                flattened.push((name.clone(), id.to_string()));
+                            }
                         }
                     }
+                    s.flattened_typed_rows.extend(flattened);
                 }
             }
             syn::Item::Enum(en) if is_pub(&en.vis) => {
@@ -877,12 +898,17 @@ fn diff_surfaces(
 
         // Rule 3: every rust pub field `f` on `T` has a wasm inherent getter `f` on `T`, EXCEPT
         // encoding-capture fields (`pub encodings: Option<XEncoding>` under preserve), which are
-        // rust-only round-trip metadata defined in `cbor_encodings.rs` — no wasm boundary member.
+        // rust-only round-trip metadata defined in `cbor_encodings.rs` — no wasm boundary member —
+        // and an open table's TYPED row, whose map surface the wasm class FLATTENS onto itself
+        // (recognised by the field's provenance marker, `OPEN_TABLE_TYPED_ROW_DOC`).
         if let Some(fields) = rust.fields.get(t) {
             for (f, inner) in fields {
                 if let Some(inner_ident) = inner
                     && encoding_structs.contains(inner_ident)
                 {
+                    continue;
+                }
+                if rust.flattened_typed_rows.contains(&(t.clone(), f.clone())) {
                     continue;
                 }
                 if !wasm_names.contains(f.as_str()) {

@@ -2717,10 +2717,9 @@ pub(super) fn codegen_struct(
             "Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). \
              Serialized after the declared members; defaults empty."
         } else if record.is_typed_row(rest) {
-            "The open table's TYPED entries (CDDL `* k1 => v1`, the first row): every map entry whose \
-             key is of this row's declared CBOR major type. Defaults empty. `@duplicates preserve` \
-             makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table \
-             container, which rejects a duplicate key."
+            // The one `pub` rust field with no wasm getter by design — the string is a provenance
+            // marker the parity differential reads, so it lives beside the marker it belongs with.
+            super::OPEN_TABLE_TYPED_ROW_DOC
         } else if record.is_open_table() {
             "The open table's CAPTURED entries (CDDL `* k2 => v2`, the trailing catch-all row): every \
              map entry the typed row did not claim. Defaults empty. `@duplicates preserve` makes this \

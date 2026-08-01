@@ -74,6 +74,17 @@ const SHAPES: Record<string, Shape> = {
   // from `necoll`/`necollrec` (map key/value accessors, `insert` vs `add`), mirroring how `collmap`
   // is distinct from `coll`.
   nemap: { defs: ["mp = { + uint => text }"], ty: "mp" },
+  // OPEN TABLE (`{ * K_t => V_t, * K_r => V_r }`) — one typed row plus one trailing typed catch-all,
+  // dispatched by wire major. A distinct wasm-ABI shape from every map above and the reason it must be
+  // enumerated: it is the only shape whose class carries a map surface FLATTENED onto itself
+  // (`insert`/`get`/`len`/`keys` delegating to the typed row's container field, the set-nominal call)
+  // beside a read-only container getter for the OTHER row (`rest()`). Its typed row therefore mints no
+  // `MapKToV` class at all while its catch-all does, so the ABI is neither `collmap`'s (a wrapper that
+  // IS the map) nor `struct`'s (getters only) — a role cell here is the only place that combination
+  // crosses the boundary. All 8 roles probed green (generate + `cargo check` of the wasm crate);
+  // the typed key is `bstr` (major 2) and the catch-all `text` (major 3), so the complement is
+  // non-empty, which the staticness check requires.
+  otbl: { defs: ["ot = { * bstr => uint, * text => uint }"], ty: "ot" },
   // transparent `pub type` -> Vec (the wrapper-vs-transparent distinction; shares IR shape with `coll`)
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   // transparent alias to a *map* typedef — the map/table typedef-resolution path (known-red: E0425)
@@ -299,7 +310,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 258; // 32 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 266; // 33 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

@@ -1,0 +1,3 @@
+; cell: otbl x struct-field-opt
+ot = { * bstr => uint, * text => uint }
+holder = [pre: uint, ? field0: ot]

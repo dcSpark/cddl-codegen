@@ -30,6 +30,16 @@ use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_c
 /// read by the `#[cfg(test)]` parity gate directly (no LOCKSTEP duplicate of the string).
 pub(crate) const SYNTHESIZED_INSTANCE_ALIAS_DOC: &str = "Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).";
 
+/// The rustdoc an OPEN TABLE's TYPED row field carries, and — like the marker above — a provenance
+/// channel as well as prose. This field is the one `pub` rust field the generator deliberately gives
+/// NO wasm getter: the wasm class flattens its map surface onto itself (`insert`/`get`/`len`/`keys`)
+/// rather than hanging a whole-map getter off it, on the set nominal's reasoning. `wasm_api_parity`
+/// reads THIS exact string off the field's rustdoc so that asymmetry is recognised STRUCTURALLY, the
+/// way the preserve encoding-capture fields are, instead of accruing one ledger entry per fixture ×
+/// profile — the ledger is for asymmetries that are accidents of a shape, not for a design decision
+/// that holds for every open table there will ever be.
+pub(crate) const OPEN_TABLE_TYPED_ROW_DOC: &str = "The open table's TYPED entries (CDDL `* k1 => v1`, the first row): every map entry whose key is of this row's declared CBOR major type. Its map surface is FLATTENED onto the wasm class (`insert`/`get`/`len`/`keys`), so there is no whole-map getter. Defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container, which rejects a duplicate key.";
+
 // `pub(crate)` on the same terms as `layout`/`extern_interface`/`no_std_check` below: a pinned
 // message const in here (`DEPTH_LIMIT_REQUIRES_STD`) is read by a test outside `generation/`.
 pub(crate) mod export;
