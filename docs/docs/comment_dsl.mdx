@@ -349,7 +349,8 @@ document — a Conway-strict set next to a historical preserve-mode set. Because
 
 The directive is **rule-level scoped**: on a type-choice rule (the tag-set idiom's two arms) it
 applies to the whole collapsed rule, and it must be written as a trailing comment **after the last
-arm** — a comment placed after an earlier arm is not read.
+arm** — a rule-level directive placed after an earlier arm is a loud misplacement rejection naming
+the directive and the last-arm remedy, never silently ignored.
 
 It applies **only to set/array collection rules and table rules**. On any other placement — a
 text/int alias, a struct/group/record rule, a union rule, an extern marker, or a field/member

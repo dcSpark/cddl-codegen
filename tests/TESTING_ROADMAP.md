@@ -704,6 +704,36 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       subset-versus-everything choice actually costs. This entry records exactly one such shape,
       found by hand, so the signal is not already met by its own body.
 
+15. **A refusal recorded at one name-resolution seam does not bind the others — sweep the
+    refused-name × resolution-context product.** Proven by the head-constrained float delivery
+    needing TWO seams in one cycle: the refusal shipped at `new_type`'s unresolved-reserved
+    fallback, and `x = float16 .size 4` still generated an `f32`-backed codec at exit 0 because a
+    control operator resolves the ident through `ident_to_primitive` and never calls `new_type`
+    (its choice-name siblings aborted at a bare unwrap on the same path). The side door was found
+    by a hand probe after the first seam shipped, not by any run — the per-name position sweeps
+    (`undefined_prelude_rejects_gracefully_in_every_position` and its two siblings) fix the
+    POSITION axis (rule body / element / map value) but hold the RESOLUTION MECHANISM constant,
+    so a second resolution path is invisible to them by construction. The layer to build,
+    generalizing those sweeps rather than duplicating them:
+    - **Derive the refused-name axis from the refusal inventory itself** — the names the
+      `new_type` interception arms enumerate (`undefined`, the four `any`-content tags, the three
+      head-constrained float names today), kept lockstep with a test so a new refusal arm demands
+      sweep membership the way `KNOWN_RULE_METADATA_TAGS` demands directive classification.
+    - **Enumerate the context axis from the resolution seams, as a registry not a keyword grep**:
+      the callers of `new_type` and of `ident_to_primitive` are the two mechanisms today (listed,
+      not guessed — the float delivery's two-seam architecture is the worked example), and the
+      syntactic contexts that reach them: rule body, member, array element, map key, map value,
+      choice arm, control-operator head (`.size` / range / `.lt` family), generic argument, tag
+      payload, `.cbor` target.
+    - **Verdict per cell ∈ {graceful refusal naming the type, loud rejection} — never exit-0
+      generation, never a panic.** The existing per-name message pins stay as the wording tests;
+      the sweep owns only the closure property, so cells are cheap (generation-only, names ×
+      contexts ≈ dozens of one-rule invocations, `local` tier, `expect_graceful_rejection`
+      scaffolding).
+    This is a work item, not a deferral: its trigger fired the day the second seam was found, and
+    the axis it closes grows every time the burndown converts another panic class into a refusal
+    — seven names joined the inventory in one delivery.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
@@ -727,6 +757,21 @@ since delivered too — a float's head width is an encoding variable, pinned by
 a premise too: two entries named `all_supported_constructs_generate_all_profiles` as the disk-writing
 gate their remedy would extend, and it writes nothing — it drives `api::generated_strings` in-process
 over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is built on, not its name.
+
+- **`lint_doc_citations` diagnoses a dangling citation as a raw ENOENT crash when the cited file
+  is deleted-but-tracked, and its citation grammar rejects globs.** Observed once (delivery-1
+  phase 1, the prelude fixture moves `tests/matrix_panic/` → `tests/matrix_reject/`): a doc
+  citing the old path crashed the gate with an unhandled ENOENT instead of the lint's own
+  dangling-citation report, and a glob spelling (`prelude.eb*.cddl`) was rejected outright,
+  forcing "one fixture plus its two siblings" prose. Detection is intact — the crash still exits
+  non-zero, so nothing ships with a dangling citation — the defect is diagnosis quality: the
+  finder pays a stack trace instead of being told which doc cites which missing path. Owned
+  meanwhile by that non-zero exit plus this note. Trigger: a second contributor losing time to
+  the raw crash (the party with the problem is whoever moves a cited file; the cost grows with
+  the count of cited-fixture moves, which the burndown's catalog-flipping deliveries are now
+  producing routinely). Remedy sketch when it fires: catch the read failure and render it as the
+  standard dangling-citation failure line; decide globs on merit at the same touch (either
+  support them or keep the rejection with a message naming the sibling-prose convention).
 
 **Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
 section's recur-first premise stays honest.** Five at present, each cited by its own exact title (the
