@@ -650,6 +650,51 @@ fn single_arm_array_effective_metadata(
     }
 }
 
+/// The RULE-POSITION metadata of a multi-arm type rule: the LAST arm's trailing comment, merged
+/// across the `TypeChoice` and `Type1` levels because the cddl parser may bind a rule's trailing
+/// comment to either. (In the pinned fork it lands on the `TypeChoice` slot in every spelling
+/// dumped from the AST; the `Type1` half is kept for robustness against a parser change and is what
+/// makes this identical to the merge every other rule-position site performs.)
+///
+/// Both branches of `parse_type_choices` read through here — the `T / null` Option collapse and the
+/// enum-registering remainder — so the two cannot drift over which slot IS the rule position. They
+/// drifted once: the collapse branch read the INNER arm's `Type1` slot, which is never populated,
+/// and every rule-position directive on a `T / null` rule was silently dropped as a result.
+fn rule_position_metadata(type_choices: &[TypeChoice]) -> RuleMetadata {
+    merge_metadata(
+        &RuleMetadata::from(
+            type_choices
+                .last()
+                .and_then(|tc| tc.comments_after_type.as_ref()),
+        ),
+        &RuleMetadata::from(
+            type_choices
+                .last()
+                .and_then(|tc| tc.type1.comments_after_type.as_ref()),
+        ),
+    )
+}
+
+/// `@raw_bytes_flavor` on a rule that is not an extern marker. Shared verbatim by every
+/// type-rule seam that can reach the misplacement so the pinned wording cannot drift between them.
+fn raw_bytes_flavor_not_extern_rejection(type_name: &RustIdent) -> String {
+    format!(
+        "@raw_bytes_flavor on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} \
+         rule — it selects the `<ExternName>RawBytes` wrapper flavor for generic instances \
+         whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
+    )
+}
+
+/// `@copy` on a rule that is neither an extern nor a raw-bytes marker. Shared for the same reason
+/// as `raw_bytes_flavor_not_extern_rejection`.
+fn copy_not_extern_rejection(type_name: &RustIdent) -> String {
+    format!(
+        "@copy on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} or \
+         {RAW_BYTES_MARKER} rule — it declares that the externally-defined rust type derives \
+         `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
+    )
+}
+
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -711,7 +756,15 @@ fn parse_type_choices(
             }
             None => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))),
         };
-        let rule_metadata = RuleMetadata::from(inner_type2.comments_after_type.as_ref());
+        // The RULE-POSITION metadata slots, read exactly as the non-collapse branch below reads
+        // them: the LAST arm's trailing comment, merged across the `TypeChoice` and `Type1` levels
+        // because the cddl parser may bind a rule's trailing comment to either. Reading the INNER
+        // arm's `Type1` slot instead — as this branch used to — dropped EVERY rule-position
+        // directive on a `T / null` rule silently: the pinned fork never populates
+        // `Type1::comments_after_type` for a type-choice arm in any spelling (dumped from the AST
+        // for all four placements), so that slot is dead and the `@duplicates` / `@ignore`
+        // rejections written right below could not fire, nor could `@no_json_schema_export` mark.
+        let rule_metadata = rule_position_metadata(type_choices);
         // A `T / null` rule collapses to an `Option<T>` alias — a non-collection, so `@duplicates`
         // can never apply here (and `@ignore` never applies at a rule position).
         if rule_metadata.duplicates.is_some() {
@@ -723,30 +776,86 @@ fn parse_type_choices(
         // Recorded (not rejected) here: the `T / null` collapse registers a transparent
         // `Option<T>` ALIAS and no rust struct, so finalize's registered-nothing check is what turns
         // this placement into a loud rejection — one site for every struct-less rule shape.
-        // Defensive: this metadata slot is the INNER type1's own comment, which a rule-TRAILING
-        // comment does not reach (`@duplicates`/`@ignore` above read the same slot and are silently
-        // dropped for the same spelling), so in practice the mark fires only if a future AST change
-        // routes the rule comment here.
         if rule_metadata.no_json_schema_export {
             types.mark_no_json_schema_export(name.clone());
+        }
+        // Sibling parity: the same three "valid only on an extern / raw-bytes marker rule"
+        // rejections the multi-arm branch records, for the same reason — a `T / null` rule can never
+        // be either marker, so each of these is a misplacement, and the silent flavor re-mints the
+        // classes the directives exist to suppress.
+        if rule_metadata.raw_bytes_flavor {
+            types.record_rejection(raw_bytes_flavor_not_extern_rejection(name));
+        }
+        if rule_metadata.copy {
+            types.record_rejection(copy_not_extern_rejection(name));
+        }
+        if rule_metadata.extern_companions.is_some() {
+            types.record_rejection(extern_companions_not_extern_rejection(name));
+        }
+        handle_rust_name_pin(types, name, &rule_metadata);
+        // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's own type. The
+        // collapse target is `Option<T>`, which is not a class the wasm boundary can key a map or a
+        // list on (it is exposed as a nullable of T's own wasm spelling, so the wrapper would either
+        // duplicate T's or name no class at all). Reject rather than mark: marking would put the
+        // rule into the demand/elem sets and let the wrapper minters silently produce nothing.
+        if rule_metadata.key_demand.is_some() {
+            types.record_rejection(format!(
+                "@used_as_key on `{name}`: a `T / null` rule collapses to a transparent `Option<T>` \
+                 alias, which mints no wasm class of its own, so there is nothing for a map-key \
+                 wrapper to key on. Put the directive on the rule for the inner type `T` instead."
+            ));
+        }
+        if rule_metadata.used_as_elem {
+            types.record_rejection(format!(
+                "@used_as_elem on `{name}`: a `T / null` rule collapses to a transparent \
+                 `Option<T>` alias, which mints no wasm class of its own, so there is no element \
+                 type for a loose-list wrapper to hold. Put the directive on the rule for the inner \
+                 type `T` instead."
+            ));
+        }
+        // `@newtype` mints a wrapper STRUCT around the rule's body; this branch registers a
+        // transparent alias and no struct, so the directive has nothing to wrap and would silently
+        // do nothing (on every other alias-producing rule body it does mint the wrapper, which is
+        // what makes the drop a surprise rather than a documented shape).
+        if rule_metadata.newtype.is_some() {
+            types.record_rejection(format!(
+                "@newtype on `{name}`: a `T / null` rule collapses to a transparent `Option<T>` \
+                 alias, and no wrapper struct is generated for it, so the directive would silently \
+                 do nothing. Wrap the inner type instead (`{name}_inner = <T> ; @newtype` and \
+                 `{name} = {name}_inner / null`), or drop the directive."
+            ));
+        }
+        // A directive on the NON-rule-position arm (`opt = uint ; @x` / `null`) is built and thrown
+        // away — the rule slot is the LAST arm's trailing comment (read above). The sibling branch
+        // rejects the same misplacement for the same reason; the difference is that a collapse has
+        // no VARIANTS, so `@name` and `@doc` have nothing to name or document here either and are
+        // caught too (`@name` additionally rejects at the parse-walk seam,
+        // `rule_position_name_rejection`, which covers both arms of this shape).
+        for choice in &type_choices[..type_choices.len() - 1] {
+            let arm_metadata = merge_metadata(
+                &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
+                &RuleMetadata::from(choice.comments_after_type.as_ref()),
+            );
+            let mut misplaced = arm_metadata.non_variant_directives();
+            if arm_metadata.comment.is_some() {
+                misplaced.push("@doc");
+            }
+            if !misplaced.is_empty() {
+                types.record_rejection(format!(
+                    "{} on a non-last arm of the `T / null` rule `{name}`: the rule collapses to a \
+                     transparent `Option<T>` alias, so its arms are not variants and carry no \
+                     directives of their own — a rule-level directive attaches through the LAST \
+                     arm's trailing comment. Move it there (`{name} = … / … ; @…`).",
+                    misplaced.join(" / ")
+                ));
+            }
         }
         types.register_type_alias(
             name.clone(),
             AliasInfo::new_from_metadata(final_type, rule_metadata),
         );
     } else {
-        let rule_metadata = merge_metadata(
-            &RuleMetadata::from(
-                type_choices
-                    .last()
-                    .and_then(|tc| tc.comments_after_type.as_ref()),
-            ),
-            &RuleMetadata::from(
-                type_choices
-                    .last()
-                    .and_then(|tc| tc.type1.comments_after_type.as_ref()),
-            ),
-        );
+        let rule_metadata = rule_position_metadata(type_choices);
         if let Some(demand) = rule_metadata.key_demand {
             types.mark_key_demand(name.clone(), demand);
         }
@@ -762,20 +871,12 @@ fn parse_type_choices(
         // A multi-choice type rule can never be an extern marker, so `@raw_bytes_flavor` cannot
         // apply here — reject loudly rather than silently ignore it.
         if rule_metadata.raw_bytes_flavor {
-            types.record_rejection(format!(
-                "@raw_bytes_flavor on `{name}`: this tag is only valid on a {EXTERN_MARKER} \
-                 rule — it selects the `<ExternName>RawBytes` wrapper flavor for generic instances \
-                 whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
-            ));
+            types.record_rejection(raw_bytes_flavor_not_extern_rejection(name));
         }
         // A multi-choice type rule can never be an extern / raw-bytes marker, so `@copy` cannot apply
         // here — reject loudly rather than silently ignore it.
         if rule_metadata.copy {
-            types.record_rejection(format!(
-                "@copy on `{name}`: this tag is only valid on a {EXTERN_MARKER} or \
-                 {RAW_BYTES_MARKER} rule — it declares that the externally-defined rust type derives \
-                 `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
-            ));
+            types.record_rejection(copy_not_extern_rejection(name));
         }
         // A multi-choice type rule can never be an extern marker, so `@extern_companions` cannot
         // apply here — reject loudly rather than silently ignore it (the silent flavor re-mints the

@@ -1983,9 +1983,9 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   hand-derived accept vector so its skip entry is immediately valid.
 
 - **A rule-position directive is SILENTLY DROPPED on every rule shape or spelling whose parse path
-  does not carry it to a marking site — THREE proven seams, and no gate sweeps the
+  does not carry it to a marking site — TWO proven seams, and no gate sweeps the
   directive×rule-shape reachability product. The sweep's trigger has FIRED; it is a work item, not a
-  recur-first deferral.** The three seams are enumerated as sub-bullets below with their own
+  recur-first deferral.** The seams are enumerated as sub-bullets below with their own
   seam-specific remedies; what they share is the verdict a sweep would render on all of them —
   {accepted and inert} — and the fact that each was found by a human hand-probing a shape no fixture
   contained, never by a run. `cddl-matrix/no_silent_directive.ts` cannot see the class for a
@@ -2031,27 +2031,16 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
     owns the {byte-identical, acknowledged, allowlisted} verdict logic, and it is the file whose
     blindness this item is about.
 
-  The three seams, each with the remedy that is specific to it:
-  - ***Seam 1 — a parse arm with no marking site at all.*** `parse_rule`'s `Rule::Group` arm reaches
+  The seams, each with the remedy that is specific to it (named by mechanism, never numbered — a
+  seam that gets fixed must not silently retarget a citation of the one after it):
+  - ***A parse arm with no marking site at all.*** `parse_rule`'s `Rule::Group` arm reaches
     neither `parse_type` nor `parse_type_choices`, so `@rust_name` was silently dropped on plain
     groups until a marking site was added there, and `@no_json_schema_export` shipped inheriting
     exactly the same hole (a SPLICED plain group does register a rust struct and therefore does get a
     schema-registration row, so the directive was live and dead at once). Remedy: a marking site per
     arm, which is what the `@rust_name` fix did — the residual is that nothing forces the NEXT
     directive to acquire one, which is the sweep's job.
-  - ***Seam 2 — a marking site that reads the WRONG metadata slot: the `T / null` -> `Option<T>`
-    collapse.*** `parse_type_choices`' optional-inner branch builds its `RuleMetadata` from the INNER
-    type1's own `comments_after_type`, while its sibling branch (and `parse_type`) merge the
-    rule-position slots a trailing `; @x` actually lands in. So `opt = null / uint ; @duplicates
-    reject` generates exit-0 with the directive dropped — confirmed empirically as the CURRENT
-    behaviour for `@duplicates`, and the same for `@ignore` and `@no_json_schema_export`, all three
-    of which have a rejection at that site that therefore never fires. Owned meanwhile by nothing:
-    the drop is invisible. This seam IS fixable here — the comment is present in the AST, just read
-    from the wrong slot — by merging the same rule-position slots the non-optional branch merges
-    before the branch splits, which turns each of the three directives into the loud rejection its
-    site already spells. Do it behind a vector per directive, since a spec relying on today's silence
-    would start failing (correctly) at generation.
-  - ***Seam 3 — the comment never reaches the AST, so no marking site can exist.*** The CDDL parser
+  - ***The comment never reaches the AST, so no marking site can exist.*** The CDDL parser
     leaves every AST comment slot `None` (verified by dumping the AST) for a group rule whose closing
     paren is on its own line (`grp = (\n a: uint\n) ; @x`), and when the last group entry's own
     trailing slot is already occupied by a field-position `@name` — the two positions share that
@@ -2080,7 +2069,10 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   the rejection is pinned by `dsl_position_tests`' `type-choice-non-last-arm` cell with
   `type-choice-non-last-arm-allowed` pinning the `@name`/`@doc` exclusion, plus
   `no_silent_directive`'s `type_choice_non_last_arm_used_as_key` cell and its last-arm placement
-  control. What is NOT enumerated is the directive axis at that position: one directive stands in
+  control. The `T / null` Option collapse — a branch with no variants, where an arm therefore carries
+  nothing of its own — has the same pair (`option_collapse_non_last_arm_no_alias` and its rule-slot
+  control), plus `robustness_tests::option_collapse_reads_rule_position_directives` for the directive
+  vocabulary at the rule slot. What is NOT enumerated is the directive axis at that position: one directive stands in
   for thirteen, and the exclusion set is asserted through the classifier's exhaustive destructuring
   (a new `RuleMetadata` field fails to compile until classified) rather than through a cell per
   directive. Note this axis is orthogonal to the reachability sweep of "A rule-position directive is
