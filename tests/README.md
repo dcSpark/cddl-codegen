@@ -2219,9 +2219,9 @@ section below, since the derivation is where the flag is actually used.
 
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
 cross-crate collision between two `add_schemas` calls whose `schema_id`s match, a name schemars
-percent-encodes, and the conditions under which the emitted closure check silently skips — is
-enumerated in `tests/TESTING_ROADMAP.md`, along with the extra-root-on-the-losing-side cell that is
-recorded rather than minted.
+percent-encodes, and a collision between two types that BOTH lack rows — is enumerated in
+`tests/TESTING_ROADMAP.md`, along with the conditions under which the emitted closure check
+silently skips, and the extra-root-on-the-losing-side cell that is recorded rather than minted.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 
