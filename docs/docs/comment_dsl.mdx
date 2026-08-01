@@ -278,9 +278,9 @@ Notes:
   mint.
 - It only mints the loose `[* x]` list wrapper. `[+ x]` (NonEmpty) and map wrappers are out of scope
   (a map wrapper cannot be named by a tag on a single element rule).
-- It is **rule-scoped**: the tag names the type whose wrapper to mint, so it belongs on a rule. At a
-  field/member position (`holder = [f: bw, ; @used_as_elem]`) it is a hard error — put it on the rule
-  that defines the element type instead (`bw = [...] ; @used_as_elem`).
+- It is **rule-scoped**: the tag names the type whose wrapper to mint, so it belongs on a rule. On a
+  field/member's trailing comment (`f: bw, ; @used_as_elem`, inside a `holder = [ … ]`) it is a hard
+  error — put it on the rule that defines the element type instead (`bw = [...] ; @used_as_elem`).
 
 ## @duplicates
 
