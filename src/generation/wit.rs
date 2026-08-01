@@ -1679,6 +1679,29 @@ fn project_record(
             ctor_fallible |= validates;
         }
     }
+    // The NonEmpty open table's construction door (`t = { + K_t => V_t, * K_r => V_r }`): the rust
+    // `new` takes the first typed entry, so the WIT constructor projects exactly those two params.
+    // WIT has no min-1 expression for a resource, so the bound lives ONLY in the rust door the
+    // constructor calls — the same place the wasm face leaves it.
+    if let Some(typed) = record
+        .typed_row()
+        .filter(|_| record.is_non_empty_open_table())
+    {
+        for (name, rust_name, ty) in [
+            ("first-key", "first_key", typed.domain()),
+            ("first-value", "first_value", typed.range()),
+        ] {
+            let validates = wit_param_validates(ty, ctx.types);
+            params.push(WitParam {
+                name: name.to_owned(),
+                rust_name: rust_name.to_owned(),
+                ty: map_rust_type(ty, ctx)?,
+                validates,
+                rust_type: Some(ty.clone()),
+            });
+            ctor_fallible |= validates;
+        }
+    }
     // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
     // `@ignore` row stores nothing, so it has no accessor at all.
     // BOTH dynamic rows: an open table's TYPED row is a second captured container with its own

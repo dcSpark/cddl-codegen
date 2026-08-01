@@ -172,4 +172,45 @@ mod open_table {
         assert_eq!(v.captured.len(), 1);
         assert_eq!(v.to_cbor_bytes(), wire);
     }
+
+    #[test]
+    fn non_empty_counts_typed_entries_only() {
+        // The min-1 is a statement about the TYPED row: an object of purely captured entries is not
+        // a non-empty table, so it refuses with the very error `NonEmptyMap`'s `TryFrom` door raises.
+        for empty in ["a0", "a1 01 6161", "a2 01 6161 617a 02"] {
+            let err = NonEmpty::from_cbor_bytes(&bytes(empty)).unwrap_err();
+            assert!(
+                format!("{err:?}").contains("RangeCheck"),
+                "a table with no TYPED entry must fail the min-1 bound, got {err:?}"
+            );
+        }
+        // one typed entry is enough, captured entries beside it or not
+        let wire = bytes("a2 44aabbccdd 01 01 6161");
+        let v = NonEmpty::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.entries.len(), 1);
+        assert_eq!(v.rest.len(), 1);
+        assert_eq!(v.to_cbor_bytes(), wire, "byte-exact under the bound");
+    }
+
+    #[test]
+    fn non_empty_door_takes_the_first_typed_entry() {
+        // `new` is the only door, and it cannot build a bound-violating value: the constructed table
+        // already holds the entry it was given, and its canonical bytes are that one entry's.
+        let v = NonEmpty::new(Pid::new(vec![0xaa, 0xbb, 0xcc, 0xdd]).unwrap(), 1);
+        assert_eq!(v.entries.len(), 1);
+        assert!(v.rest.is_empty());
+        assert_eq!(
+            v.to_canonical_cbor_bytes(),
+            bytes("a1 44aabbccdd 01"),
+            "the seeded entry is the whole map"
+        );
+        // and what it writes re-reads through the same bound
+        assert_eq!(
+            NonEmpty::from_cbor_bytes(&v.to_canonical_cbor_bytes())
+                .unwrap()
+                .entries
+                .len(),
+            1
+        );
+    }
 }

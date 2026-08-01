@@ -181,4 +181,42 @@ mod open_table_json {
         let back: Anyval = serde_json::from_str(&json).unwrap();
         assert_eq!(serde_json::to_string(&back).unwrap(), json);
     }
+    #[test]
+    fn non_empty_min_one_counts_typed_bindings() {
+        // The bound is a statement about the TYPED region, and the JSON face reads it AFTER the whole
+        // object: an object of purely captured members is refused, even though it is a perfectly
+        // well-formed open table object.
+        for empty in [r#"{}"#, r#"{"zz":1}"#, r#"{"1":2,"zz":3}"#] {
+            let e = serde_json::from_str::<NeLabels>(empty)
+                .expect_err("no member bound the typed row")
+                .to_string();
+            assert!(
+                e.contains("at least one TYPED entry"),
+                "the min-1 refusal must say what it counts, got: {e}"
+            );
+        }
+        // one typed member is enough, and the object is a fixed point through the staged assembly
+        let json = r#"{"aabbccdd":7,"zz":1}"#;
+        let v: NeLabels = serde_json::from_str(json).unwrap();
+        assert_eq!(v.entries.len(), 1);
+        assert_eq!(v.rest.len(), 1);
+        assert_eq!(serde_json::to_string(&v).unwrap(), json);
+    }
+
+    #[test]
+    fn non_empty_schema_publishes_the_unbounded_object() {
+        // JSON Schema has no "at least one property matching this key shape" — `minProperties` would
+        // be wrong (it counts BOTH regions). So the published schema is the unbounded open table's,
+        // and the bound lives only in the hand-written `Deserialize`. Pinned so the asymmetry reads
+        // as decided rather than forgotten.
+        let schema = serde_json::to_value(schemars::schema_for!(NeLabels)).unwrap();
+        assert!(
+            schema.get("minProperties").is_none(),
+            "the min-1 bound has no schema expression, got: {schema}"
+        );
+        assert!(
+            schema.get("additionalProperties").is_some(),
+            "the open region is still published, got: {schema}"
+        );
+    }
 }

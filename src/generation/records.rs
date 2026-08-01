@@ -1321,6 +1321,45 @@ fn emit_open_table_json(
     let (captured_map, captured_value_de, captured_value_unwrap) = value_view(captured);
     let (captured_image, captured_read) =
         open_table_captured_key_arms(types, captured, &key_r, &base, &flatten, cli);
+    // The NonEmpty flavor cannot open the visitor with `{name}::new()` — its door takes the first
+    // typed entry — so the visitor STAGES both regions in read order and assembles at the end,
+    // refusing there if the typed region stayed empty. That refusal is the JSON twin of the CBOR
+    // face's post-loop `is_empty()` check, and it counts TYPED entries for the same reason. Staging
+    // preserves each region's own read order exactly as the direct inserts did (the two regions were
+    // never interleaved WITHIN a container), so nothing but the empty case changes.
+    let (visitor_open, typed_insert, captured_insert, visitor_close) = if record
+        .is_non_empty_open_table()
+    {
+        (
+            "let mut typed_staged = alloc::vec::Vec::new();\n\
+                 \x20              let mut captured_staged = alloc::vec::Vec::new();"
+                .to_owned(),
+            format!("typed_staged.push((k, {typed_value_unwrap}));"),
+            format!("captured_staged.push((k, {captured_value_unwrap}));"),
+            format!(
+                "let mut typed_staged = typed_staged.into_iter();\n\
+                     \x20              let (first_key, first_value) = match typed_staged.next() {{\n\
+                     \x20                  Some(entry) => entry,\n\
+                     \x20                  None => return Err(serde::de::Error::custom({flatten}::open_table_min_one_typed())),\n\
+                     \x20              }};\n\
+                     \x20              let mut out = {name}::new(first_key, first_value);\n\
+                     \x20              for (k, v) in typed_staged {{\n\
+                     \x20                  out.{typed_field}.insert(k, v);\n\
+                     \x20              }}\n\
+                     \x20              for (k, v) in captured_staged {{\n\
+                     \x20                  out.{captured_field}.insert(k, v);\n\
+                     \x20              }}\n\
+                     \x20              Ok(out)"
+            ),
+        )
+    } else {
+        (
+            format!("let mut out = {name}::new();"),
+            format!("out.{typed_field}.insert(k, {typed_value_unwrap});"),
+            format!("out.{captured_field}.insert(k, {captured_value_unwrap});"),
+            "Ok(out)".to_owned(),
+        )
+    };
 
     let mut out = String::new();
     if cli.json_serde_derives {
@@ -1348,7 +1387,7 @@ fn emit_open_table_json(
              \x20           }}\n\
              \x20\n\
              \x20           fn visit_map<A: serde::de::MapAccess<'de>>(self, mut access: A) -> Result<{name}, A::Error> {{\n\
-             \x20               let mut out = {name}::new();\n\
+             \x20               {visitor_open}\n\
              \x20               // ONE set over BOTH regions: the partition is a function of the member\n\
              \x20               // NAME, so a repeated name is a repeated member whichever row claims it —\n\
              \x20               // and serde_json's object parser is last-wins, which would silently drop an\n\
@@ -1365,12 +1404,12 @@ fn emit_open_table_json(
              \x20                   match {flatten}::open_table_typed_key_read::<{key_t}>(&ks) {{\n\
              \x20                       Ok(k) => {{\n\
              \x20                           let v = access.next_value::<{typed_value_de}>()?;\n\
-             \x20                           out.{typed_field}.insert(k, {typed_value_unwrap});\n\
+             \x20                           {typed_insert}\n\
              \x20                       }}\n\
              \x20                       Err(typed_err) => match {captured_read} {{\n\
              \x20                           Ok(k) => {{\n\
              \x20                               let v = access.next_value::<{captured_value_de}>()?;\n\
-             \x20                               out.{captured_field}.insert(k, {captured_value_unwrap});\n\
+             \x20                               {captured_insert}\n\
              \x20                           }}\n\
              \x20                           Err(captured_err) => {{\n\
              \x20                               let e = {flatten}::OpenTableKeyReadError {{\n\
@@ -1384,7 +1423,7 @@ fn emit_open_table_json(
              \x20                       }},\n\
              \x20                   }}\n\
              \x20               }}\n\
-             \x20               Ok(out)\n\
+             \x20               {visitor_close}\n\
              \x20           }}\n\
              \x20       }}\n\
              \x20       deserializer.deserialize_map(OpenTableVisitor)\n\
@@ -2471,6 +2510,31 @@ pub(super) fn codegen_struct(
         // legs rather than four (see the note in `non_empty_map_wrapper_name_collisions`). The
         // CATCH-ALL row keeps its container and its read-only `rest()` getter, below.
         if let Some(typed) = record.typed_row().filter(|r| !r.is_array_tail()) {
+            // The NonEmpty flavor's construction door, mirroring the rust `new(first_key,
+            // first_value)` it calls: the ONE case where an open table's wasm `new` takes arguments.
+            if record.is_non_empty_open_table() {
+                wasm_new
+                    .arg("first_key", typed.domain().for_wasm_param(types))
+                    .arg("first_value", typed.range().for_wasm_param(types));
+                wasm_new_args.push(ToWasmBoundaryOperations::format(
+                    typed
+                        .domain()
+                        .from_wasm_boundary_clone(types, "first_key", false)
+                        .into_iter(),
+                ));
+                wasm_new_args.push(ToWasmBoundaryOperations::format(
+                    typed
+                        .range()
+                        .from_wasm_boundary_clone(types, "first_value", false)
+                        .into_iter(),
+                ));
+                wasm_new_comments.push(
+                    "* `first_key` - the key of the first typed entry (CDDL `+ k1 => v1`: an open \
+                     table spelled with `+` holds at least one typed entry)"
+                        .to_owned(),
+                );
+                wasm_new_comments.push("* `first_value` - its value".to_owned());
+            }
             wrapper
                 .s_impl
                 .new_fn("len")
@@ -2762,11 +2826,40 @@ pub(super) fn codegen_struct(
             }
         }
         native_struct.push_field(rest_field);
-        native_new_block.line(format!(
-            "{}: {}::new(),",
-            rest.field_name,
-            rest_container_ctor(rest, cli)
-        ));
+        // The NonEmpty open table's typed row is the ONE captured row `new()` does not default empty:
+        // its min-1 bound must hold for every constructed value, so the door takes the first entry —
+        // `NonEmptyMap::new(first_key, first_value)` verbatim (`static/non_empty_map.rs`), the same
+        // door the wasm `{+ k => v}` wrapper offers. Infallible by construction, so `new` keeps its
+        // return type and no caller has a `Result` to unwrap.
+        if record.is_non_empty_open_table() && record.is_typed_row(rest) {
+            let (key_arg, value_arg) = ("first_key", "first_value");
+            native_new.arg(key_arg, rest.domain().for_rust_move(types, cli));
+            native_new.arg(value_arg, rest.range().for_rust_move(types, cli));
+            new_arg_count += 2;
+            native_new_comments.push(format!(
+                "* `{key_arg}` - the key of the first typed entry (CDDL `+ k1 => v1`: an open table \
+                 spelled with `+` holds at least one typed entry)"
+            ));
+            native_new_comments.push(format!("* `{value_arg}` - its value"));
+            // The staging local is a FIXED name, deliberately not the row's field name: the row's
+            // name is `@name`-settable, and a row named `first_key` would have the block's own
+            // binding shadow the parameter it is being handed.
+            let mut seed = Block::new(format!("{}:", rest.field_name));
+            seed.line(format!(
+                "let mut seed = {}::new();",
+                rest_container_ctor(rest, cli)
+            ));
+            seed.line(format!("seed.insert({key_arg}, {value_arg});"));
+            seed.line("seed");
+            seed.after(",");
+            native_new_block.push_block(seed);
+        } else {
+            native_new_block.line(format!(
+                "{}: {}::new(),",
+                rest.field_name,
+                rest_container_ctor(rest, cli)
+            ));
+        }
     }
     // The open table's hand-written JSON face, in place of the derives suppressed above.
     if hand_written_open_table_json {
@@ -3822,6 +3915,19 @@ pub(super) fn codegen_struct(
                 deser_loop.push_block(type_match);
                 deser_loop.line("read += 1;");
                 deser_code.content.push_block(deser_loop);
+                // The NonEmpty open table's min-1 bound (`{ + K_t => V_t, * K_r => V_r }`), enforced
+                // where the mandatory-field checks below are: after the loop, on the capture LOCAL,
+                // before it moves into the struct. It counts TYPED entries only — a map of purely
+                // captured entries is not a non-empty table — and raises the very error
+                // `NonEmptyMap`'s `TryFrom` door raises, so the wire door and every API door report
+                // the bound identically.
+                if let Some(typed) = record.typed_row().filter(|t| t.non_empty) {
+                    let mut min_one = Block::new(format!("if {}.is_empty()", typed.field_name));
+                    min_one.line(
+                        "return Err(DeserializeFailure::RangeCheck { found: 0, min: Some(1), max: None }.into());",
+                    );
+                    deser_code.content.push_block(min_one);
+                }
                 let mut ctor_block = Block::new("Ok(Self");
                 // make sure the field is present, and unwrap the Option<T>
                 for field in &record.fields {
