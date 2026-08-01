@@ -6329,3 +6329,144 @@ fn generic_raw_bytes_base_rejects_gracefully() {
         );
     }
 }
+
+/// A `.cbor` payload applied to a target that is ALREADY a `.cbor` payload — `bytes .cbor (bytes
+/// .cbor uint)` and the alias-flattened `inner = bytes .cbor uint` + `bytes .cbor inner` — used to
+/// generate at exit 0 and emit a crate that cannot build. Both spellings are the SAME encoding
+/// chain by the time the operator applies (a `.cbor` target is alias-resolved when the control
+/// operator is parsed), and the serialize walk names the payload buffer after the OWNING variable,
+/// so every depth in one chain mints `<var>_inner_se` and the outer write borrows what the inner
+/// `finalize()` moved (E0382, once per extra depth). Now a parse-time graceful rejection at both
+/// seams that can apply the operation: the rule-BODY registration (which has a rule name to prefix)
+/// and `rust_type_from_type1` (every member / element / choice-arm position, which does not).
+///
+/// The controls are the load-bearing half, because the refusal keys on the SAME-CHAIN composition
+/// only and a sloppier key would take the whole `.cbor` feature down with it. Nesting through a
+/// STRUCT boundary (`; @newtype`) and nesting inside a payload's COLLECTION
+/// (`tests/corpus/cbor_payload_nested.cddl`'s shape) both give the inner payload its own serialize
+/// fn and its own buffer, emit the same nested wire shape, and must keep generating; so must a
+/// single payload, a payload over a tag, and a payload over a struct.
+#[test]
+fn nested_cbor_payload_rejects_gracefully() {
+    // Rule-BODY spellings carry the rule-name prefix; every other position does not.
+    let vectors = [
+        ("inline_body", "b = bytes .cbor (bytes .cbor uint)\n", true),
+        (
+            "alias_body",
+            "inner = bytes .cbor uint\nb = bytes .cbor inner\n",
+            true,
+        ),
+        (
+            "inline_member",
+            "foo = [b: bytes .cbor (bytes .cbor uint)]\n",
+            false,
+        ),
+        (
+            "alias_member",
+            "inner = bytes .cbor uint\nfoo = [b: bytes .cbor inner]\n",
+            false,
+        ),
+        (
+            "alias_chain_member",
+            "i1 = bytes .cbor uint\ni2 = i1\nfoo = [b: bytes .cbor i2]\n",
+            false,
+        ),
+        (
+            "triple_member",
+            "foo = [b: bytes .cbor (bytes .cbor (bytes .cbor uint))]\n",
+            false,
+        ),
+        (
+            "choice_arm",
+            "inner = bytes .cbor uint\na = bytes .cbor inner / tstr\n",
+            false,
+        ),
+        (
+            "array_element",
+            "inner = bytes .cbor uint\na = [* bytes .cbor inner]\n",
+            false,
+        ),
+    ];
+    // Profile-INDEPENDENT: `finalize` short-circuits on a recorded rejection before any emission,
+    // so no flag can rescue the shape.
+    for (tag, spec, rule_prefixed) in vectors {
+        for extra in [
+            &["--wasm", "false"][..],
+            &["--wasm", "true"][..],
+            &["--wasm", "false", "--preserve-encodings", "true"][..],
+        ] {
+            let msg = expect_graceful_rejection(&format!("nested_cbor_{tag}"), spec, extra);
+            assert!(
+                msg.contains(
+                    "a `.cbor` payload whose own target is already a `.cbor` payload is unsupported"
+                ),
+                "the rejection must name the composition ({tag}, {extra:?}), got: {msg}"
+            );
+            assert!(
+                msg.contains("are the same encoding chain here") && msg.contains("alias-flattened"),
+                "the rejection must say the inline and alias-flattened spellings are one chain \
+                 ({tag}, {extra:?}), got: {msg}"
+            );
+            assert!(
+                msg.contains("`inner = bytes .cbor T ; @newtype`")
+                    && msg.contains("bytes .cbor [* bytes .cbor T]"),
+                "the rejection must point at the two supported ways to nest a payload ({tag}, \
+                 {extra:?}), got: {msg}"
+            );
+            assert_eq!(
+                msg.starts_with("rule `B`: "),
+                rule_prefixed,
+                "only the rule-BODY seam knows a rule name to prefix ({tag}, {extra:?}), got: {msg}"
+            );
+        }
+    }
+
+    // Controls: every currently-working `.cbor` shape must keep generating. `nested_collection`
+    // mirrors tests/corpus/cbor_payload_nested.cddl and `newtype_boundary` is the remedy the
+    // rejection advertises, so both are asserted rather than assumed.
+    for (tag, spec) in [
+        ("single", "x = bytes .cbor uint\n"),
+        (
+            "nested_collection",
+            "p = [e: bytes .cbor [* bytes .cbor uint], v: bytes .cbor {* uint => bytes .cbor uint}]\n",
+        ),
+        (
+            "newtype_boundary",
+            "inner = bytes .cbor uint ; @newtype\nb = [f: bytes .cbor inner]\n",
+        ),
+        (
+            "struct_target",
+            "inner = [a: uint]\nb = [f: bytes .cbor inner]\n",
+        ),
+        ("over_tag", "b = bytes .cbor (#6.10(uint))\n"),
+        ("over_choice", "b = bytes .cbor (int / tstr)\n"),
+    ] {
+        for extra in [
+            &["--wasm", "false"][..],
+            &["--wasm", "false", "--preserve-encodings", "true"][..],
+        ] {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_nested_cbor_ok_{tag}_{}.cddl",
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "nested_cbor_control_unused",
+            ];
+            argv.extend_from_slice(extra);
+            let cli = Cli::parse_from(argv);
+            let result = crate::api::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
+            assert!(
+                result.is_ok(),
+                "the {tag} control must keep generating ({extra:?}) — only a payload nested in the \
+                 SAME chain is refused, got: {:?}",
+                result.err().map(|e| e.to_string())
+            );
+        }
+    }
+}

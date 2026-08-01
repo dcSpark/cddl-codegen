@@ -4650,6 +4650,41 @@ pub fn head_constrained_float_rejection(ident: &str) -> Option<String> {
     ))
 }
 
+/// The refusal for a `.cbor` payload applied to a type whose own encoding chain ALREADY carries a
+/// `CBORBytes` operation — `bytes .cbor (bytes .cbor uint)` and the alias-flattened spelling
+/// (`inner = bytes .cbor uint` + `bytes .cbor inner`), which are the SAME `RustType` by the time the
+/// operator is applied because a `.cbor` target is alias-resolved when the control operator is
+/// parsed (`parse_control_operator`'s `ControlOperator::CBOR` arm).
+///
+/// Both spellings generated at exit 0 and emitted a crate that cannot build: the serialize walk
+/// names the payload buffer `<var>_inner_se` from the OWNING variable, so every depth in one chain
+/// mints the same binding, and the outer write borrows a buffer the inner `finalize()` already
+/// moved (E0382, once per extra depth). The buffer name would have to be depth-threaded for the
+/// shape to generate, which is the parked feature; refusing keys on exactly the broken set.
+///
+/// Nesting a payload through a STRUCT boundary is unaffected and stays supported, because the inner
+/// type then owns its own serialize fn and its own buffer: `inner = bytes .cbor uint ; @newtype`
+/// referenced as `bytes .cbor inner` emits the same two-level wire shape and builds. So does a
+/// payload nested inside a payload's COLLECTION (`bytes .cbor [* bytes .cbor uint]`) — the element
+/// is its own `RustType` with its own chain (`tests/corpus/cbor_payload_nested.cddl`).
+///
+/// A FUNCTION rather than an inline message because two parse seams apply `.cbor` and must speak
+/// with one voice: the rule-BODY registration (`x = bytes .cbor T`) and `rust_type_from_type1`
+/// (every member / element / choice-arm position). The message is role-NEUTRAL — this seam knows
+/// the composition, never the position it was written in; callers that HAVE a rule name prefix it.
+pub fn nested_cbor_payload_rejection() -> String {
+    "a `.cbor` payload whose own target is already a `.cbor` payload is unsupported — the \
+     generated serializer names one payload buffer per owning value, so both depths would share \
+     it. The inline spelling (`bytes .cbor (bytes .cbor T)`) and the alias-flattened one \
+     (`inner = bytes .cbor T` referenced as `bytes .cbor inner`) are the same encoding chain here, \
+     because a `.cbor` target is alias-resolved. Give the inner payload its own type to nest \
+     through — `inner = bytes .cbor T ; @newtype`, referenced as `bytes .cbor inner`, emits the \
+     same nested wire shape — or nest it inside a collection (`bytes .cbor [* bytes .cbor T]`), \
+     which is also supported. Depth-threading the payload buffer so the flat spelling generates is \
+     not implemented."
+        .to_string()
+}
+
 /// A graceful-rejection message if `source_name` (a user-chosen rule / plain-group name, as spelled
 /// in the CDDL) cannot be used as a Rust type name, else `None`. This mirrors the two `assert!`
 /// guards in `RustIdent::new` exactly — a camel-cased form that collides with a reserved Rust
