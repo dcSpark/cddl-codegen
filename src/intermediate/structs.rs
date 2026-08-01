@@ -629,6 +629,14 @@ impl RustStruct {
         }
     }
 
+    /// Attach a rule-level `@custom_json` this struct's own config could not carry — the generic
+    /// INSTANCE whose config belongs to the generic definition, and the plain GROUP rule whose
+    /// metadata is read off a comment slot cddl leaves empty. Set-only, never cleared: the flag is a
+    /// statement by the rule that owns the struct either way, so the two sources cannot disagree.
+    pub fn set_custom_json(&mut self) {
+        self.config.custom_json = true;
+    }
+
     pub fn variant(&self) -> &RustStructType {
         &self.variant
     }

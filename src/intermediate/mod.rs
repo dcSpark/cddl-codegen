@@ -251,6 +251,22 @@ pub struct IntermediateTypes<'a> {
     // parse seam as `no_alias_rules`, and applied where each construct is built. Determinism:
     // `BTreeMap`. See `RuleMetadata::comment`.
     rule_docs: BTreeMap<RustIdent, String>,
+    // Idents whose rule carries `@custom_json`, keyed by rule ident. The directive's ordinary carrier
+    // is `RustStructConfig::custom_json`, built from the rule's own metadata — and two struct-minting
+    // kinds reach it with metadata that is not theirs: a generic INSTANCE binding
+    // (`foo = base<uint>`) mints a struct whose config is the generic DEFINITION's, and a plain GROUP
+    // rule's struct is built from `PlainGroupInfo`'s metadata, read off `comments_after_group` (empty
+    // for the single-line spelling cddl actually binds to the last entry's trailing slot). Both
+    // suppressed nothing while accepting the directive. Recorded at the same parse seams as
+    // `no_alias_rules`/`rule_docs`, and applied in `register_rust_struct`. Determinism: `BTreeSet`.
+    // See `RuleMetadata::custom_json`.
+    custom_json_rules: BTreeSet<RustIdent>,
+    // Every rule-position directive written on a plain GROUP rule, keyed by rule ident. A group is
+    // only a type once some rule SPLICES it (`holder = [foo]`), and splicedness is a whole-spec
+    // property — unknown at the parse seam that reads the directives, known by `finalize`, which
+    // refuses the ones that landed on a group nothing splices. Determinism: `BTreeMap`, and the
+    // per-ident directive list is already sorted by `RuleMetadata::all_directives`.
+    plain_group_rule_directives: BTreeMap<RustIdent, Vec<&'static str>>,
     // Base generic extern idents tagged `@raw_bytes_flavor`: an instance of one whose argument
     // resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases the `<Base>RawBytes` wrapper flavor
     // instead of the plain `<Base>`. Opt-in only — see `RuleMetadata::raw_bytes_flavor`.
@@ -329,6 +345,8 @@ impl<'a> IntermediateTypes<'a> {
             no_json_schema_export: BTreeSet::new(),
             no_alias_rules: BTreeSet::new(),
             rule_docs: BTreeMap::new(),
+            custom_json_rules: BTreeSet::new(),
+            plain_group_rule_directives: BTreeMap::new(),
             raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
             rust_name_pins: BTreeMap::new(),
@@ -2237,6 +2255,14 @@ impl<'a> IntermediateTypes<'a> {
         if let Some(doc) = self.rule_docs.get(&rust_struct.ident).cloned() {
             rust_struct.set_doc_if_absent(&doc);
         }
+        // `@custom_json` reaches its config the same two ways it can miss it — a generic INSTANCE's
+        // config is the generic DEFINITION's, and a plain GROUP rule's is built from metadata read
+        // off a slot cddl leaves empty — so the per-ident record is applied at this same seam. Only
+        // ever sets the flag: a config that already carries it got it from the rule that owns the
+        // struct, and the record is that rule's own statement, so the two can only agree.
+        if self.custom_json_rules.contains(&rust_struct.ident) {
+            rust_struct.set_custom_json();
+        }
         match &rust_struct.variant {
             RustStructType::Table {
                 domain,
@@ -2822,6 +2848,29 @@ impl<'a> IntermediateTypes<'a> {
                     // keeps ONE class + this passthrough alias). An anonymous instance's ident already
                     // IS the canonical, so it needs no alias.
                     if instance_ident != canonical_ident {
+                        // `@custom_json` on the BINDING has nothing to act on: the binding emits
+                        // `pub type NamedSet = SetKeyHash;` and every derive it would suppress
+                        // belongs to the nominal, whose config comes from the generic DEFINITION.
+                        // The transparent-alias family's usual `@newtype` remedy does not apply —
+                        // a set nominal already IS a wrapper and `@newtype` on the binding is an
+                        // accepted no-op — so this shape carries its own message, naming the
+                        // definition as the rule that owns the derives (probed: `@custom_json` on
+                        // the generic set def drops the nominal's `Serialize`/`JsonSchema` impls).
+                        if self.custom_json_rules.contains(&instance_ident) {
+                            let source = self
+                                .source_rule_name(&instance_ident)
+                                .unwrap_or(instance_ident.as_ref())
+                                .to_owned();
+                            self.record_rejection(format!(
+                                "@custom_json on `{source}`: this rule binds a generic set nominal, \
+                                 so it emits a transparent `pub type {instance_ident} = \
+                                 {canonical_ident};` and mints no type of its own — the \
+                                 serde/schemars derives it would suppress are on `{canonical_ident}`, \
+                                 whose config comes from the generic DEFINITION. Put `@custom_json` \
+                                 on the definition instead (`<def><T> = #6.258([* T]) / [* T] ; \
+                                 @custom_json`), and hand-write the impls for the nominal."
+                            ));
+                        }
                         self.register_type_alias(
                             instance_ident,
                             AliasInfo::new_manual(
@@ -3102,6 +3151,57 @@ impl<'a> IntermediateTypes<'a> {
         for msg in float_key_rejections {
             self.record_rejection(msg);
         }
+        // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's OWN type, and a
+        // generic DEFINITION has none — only its instantiations name concrete types. `@used_as_key`
+        // was dropped silently (the demand-propagation walk skips a root with no `rust_structs`
+        // entry), and `@used_as_elem` was worse: the exposable-element check below resolves the
+        // marked ident's element type, whose `directly_wasm_exposable` walk asserts that a
+        // non-struct ident is a generic INSTANCE — so a marked generic DEF aborted the run at exit
+        // 101 with an `assertion failed` and no diagnosis. Both refuse here, in the house style,
+        // naming the instantiating rule as the placement that works.
+        //
+        // Placed before the `cli.wasm` block (which owns the abort site) and flag-independently,
+        // like every sibling placement rejection: whether a directive may sit somewhere is a
+        // property of the spec, not of the build profile. Keyed on `generic_defs` rather than on
+        // "absent from `rust_structs`" so it covers every generic-def body spelling at once — the
+        // record body the parse walk marks from, and the tag-set idiom the choice path marks from —
+        // and refuses nothing else. Determinism: `BTreeSet`/`BTreeMap` iteration.
+        // Named by their CDDL SOURCE spelling: a generic definition mints no rust type, and the
+        // remedy is CDDL the author writes back into the spec.
+        let generic_def_source = |ident: &RustIdent| {
+            self.source_rule_name(ident)
+                .unwrap_or(ident.as_ref())
+                .to_owned()
+        };
+        let generic_def_elem = self
+            .used_as_elem
+            .iter()
+            .filter(|ident| self.generic_defs.contains_key(*ident))
+            .map(generic_def_source)
+            .collect::<Vec<_>>();
+        let generic_def_key = self
+            .key_demand_roots
+            .keys()
+            .filter(|ident| self.generic_defs.contains_key(*ident))
+            .map(generic_def_source)
+            .collect::<Vec<_>>();
+        for ident in generic_def_key {
+            self.record_rejection(format!(
+                "@used_as_key on `{ident}`: a generic DEFINITION names no concrete type — only its \
+                 instantiations do — so there is no type for the map-key comparison derives to be \
+                 demanded on, and the demand is dropped. Put the directive on the instantiating \
+                 rule instead (`inst = {ident}<uint> ; @used_as_key`), which is where the concrete \
+                 type is minted."
+            ));
+        }
+        for ident in generic_def_elem {
+            self.record_rejection(format!(
+                "@used_as_elem on `{ident}`: a generic DEFINITION names no concrete type — only its \
+                 instantiations do — so there is no element type for a loose-list wrapper to hold. \
+                 Put the directive on the instantiating rule instead (`inst = {ident}<uint> ; \
+                 @used_as_elem`), which is where the concrete type is minted."
+            ));
+        }
         // NonEmptyVec wasm-wrapper name collisions: an inline `[+ elem]` mints a `NonEmpty<Elem>List`
         // wasm class; if a user rule already OWNS that identifier, silently sharing it would emit a
         // wrapper of the wrong shape (loose `Vec` vs restricted `NonEmptyVec`). Reject clearly rather
@@ -3148,6 +3248,13 @@ impl<'a> IntermediateTypes<'a> {
             // sidestep the borrow checker, like the float-key rejections above.
             let mut exposable_elem_rejections = BTreeSet::new();
             for ident in &self.used_as_elem {
+                // A generic DEFINITION is refused earlier in this fn (it names no concrete type),
+                // and the resolution below cannot survive one: its exposability walk asserts that a
+                // non-struct ident is a generic INSTANCE, which a definition is not. Skipping keeps
+                // that assert an unreachable re-earning guard instead of the abort it used to be.
+                if self.generic_defs.contains_key(ident) {
+                    continue;
+                }
                 let element_type = self.used_as_elem_element_type(ident);
                 if ConceptualRustType::Array(Box::new(element_type.conceptual_type.clone().into()))
                     .directly_wasm_exposable_ct(self)
@@ -3217,6 +3324,63 @@ impl<'a> IntermediateTypes<'a> {
                  plain group no rule splices. Remove it from this rule, or move it to the rule that \
                  actually produces the type."
             ));
+        }
+        // A plain GROUP rule becomes a rust type only by being SPLICED into a rule that materializes
+        // it (`holder = [foo]`); a group nothing splices emits no struct and no fields, so every
+        // rule-position directive written on it is inert — under the rule reading AND under the
+        // field reading of the slot cddl binds it to. One uniform refusal covers the whole
+        // vocabulary rather than thirteen per-directive sites, because the reason is the same for
+        // all of them and does not depend on which directive it is.
+        //
+        // Deferred to here for the reason `@no_json_schema_export` above is: splicedness is a
+        // whole-spec property, decided by rules the parse seam that reads the directives has not
+        // reached yet. Two directives are excluded from the list — `@name`, which gets its own
+        // long-standing message just below (one misplacement, one wording), and
+        // `@no_json_schema_export`, whose refusal right above already names this exact shape.
+        // `@rust_name` is excluded because a NON-exported (extern-deps) scope honors it there;
+        // in an exported scope the parse walk has already refused it and finalize never runs.
+        // Determinism: `BTreeMap` iteration, and each directive list is sorted at its source.
+        // Named by its CDDL SOURCE spelling throughout, not its `RustIdent`: an unspliced group
+        // materializes no rust type, so there is no rust name to report, and every remedy below is
+        // CDDL the author writes back into the spec.
+        let unspliced_annotated_groups = self
+            .plain_group_rule_directives
+            .iter()
+            .filter(|(ident, _)| !self.rust_structs.contains_key(*ident))
+            .map(|(ident, directives)| {
+                (
+                    self.source_rule_name(ident)
+                        .unwrap_or(ident.as_ref())
+                        .to_owned(),
+                    directives.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (ident, directives) in unspliced_annotated_groups {
+            if directives.contains(&"@name") {
+                self.record_rejection(crate::parsing::rule_position_name_message(&ident));
+            }
+            let remaining = directives
+                .iter()
+                .copied()
+                .filter(|directive| {
+                    !matches!(
+                        *directive,
+                        "@name" | "@no_json_schema_export" | "@rust_name"
+                    )
+                })
+                .collect::<Vec<_>>();
+            if !remaining.is_empty() {
+                self.record_rejection(format!(
+                    "{} on `{ident}`: the plain group `{ident}` is never spliced into any rule, so \
+                     it materializes no rust type and no fields — a rule-position directive on it \
+                     has nothing to act on and would be silently dropped. Splice the group into a \
+                     rule that materializes it (`holder = [{ident}]` for an array shape, \
+                     `holder = {{{ident}}}` for a map shape), which is where a rule-position \
+                     directive on a group is read, or remove the directive.",
+                    remaining.join(" / ")
+                ));
+            }
         }
         // The `@custom_serialize`/`@custom_deserialize` pair is a TYPE-level override: it replaces
         // the codec of the rust type a rule resolves to. The parse-walk rejections cover the
@@ -3308,6 +3472,48 @@ impl<'a> IntermediateTypes<'a> {
                              KEY or VALUE type (`k = bytes ; {directive} …`, then `{ident} = \
                              {{ * k => v }}`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
                              hand-write the type in full."
+                        ));
+                    }
+                }
+            }
+            // A TAGGED wrapper — a tag-head rule (`x = #6.42(uint)`), and the tag-258 set idiom,
+            // which nominalizes into one — is structurally the `@newtype` wrapper the parse walk
+            // already refuses this pair on, minus the directive: `wrappers.rs` emits its `Serialize`
+            // unconditionally with no custom handling, while `generate_deserialize`'s
+            // `Root(Rust(ident))` arm rewrites every embed site to the named reader. So the halves
+            // land asymmetrically — writing the pair here produced a type that READS the custom
+            // format and WRITES the generated one, which no round-trip test can see. Rejected on tag
+            // presence rather than on the `Wrapper` variant at large, because that is exactly the two
+            // shapes measured; an untagged wrapper (a `.le`/range-bounded primitive) is unswept and
+            // deliberately left alone. `@newtype` wrappers never reach here — their parse-walk
+            // rejection short-circuits `finalize` — so one misplacement still reports once.
+            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
+                && (rust_struct.tag().is_some()
+                    || wrapped
+                        .encodings
+                        .iter()
+                        .any(|op| matches!(op, CBOREncodingOperation::Tagged(_))))
+            {
+                let shape = if config.set_nominal {
+                    "the tag-258 set idiom, which nominalizes into a set wrapper,"
+                } else {
+                    "a tag-head rule (`#6.n(…)`)"
+                };
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: {shape} mints a wrapper struct whose \
+                             `Serialize` impl is generated unconditionally, while the deserialize \
+                             CALL SITES do route through the custom reader — so the pair would make \
+                             the wrapper read one wire format and write another. Declare `{ident}` \
+                             as a {EXTERN_MARKER} rule and hand-write the type in full, or give the \
+                             rule a body that resolves to a transparent alias and write the wire \
+                             framing in your own codec (`{ident} = <inner> ; @custom_serialize \
+                             <fn> @custom_deserialize <fn>`)."
                         ));
                     }
                 }
@@ -4575,6 +4781,26 @@ impl<'a> IntermediateTypes<'a> {
     /// cannot carry it.
     pub fn rule_doc(&self, name: &RustIdent) -> Option<&str> {
         self.rule_docs.get(name).map(String::as_str)
+    }
+
+    /// Record that `name`'s rule carries `@custom_json`. Called from the same parse seams as
+    /// `mark_no_alias_rule`/`mark_rule_doc`, unconditionally — which construct (if any) ends up
+    /// carrying it is decided later (see the `custom_json_rules` field comment).
+    pub fn mark_custom_json_rule(&mut self, name: RustIdent) {
+        self.custom_json_rules.insert(name);
+    }
+
+    /// Record the rule-position directives written on the plain GROUP rule `name`, for the
+    /// never-spliced refusal in `finalize` (see the `plain_group_rule_directives` field comment). A
+    /// group with none is not recorded, so the refusal walk only ever visits annotated groups.
+    pub fn mark_plain_group_rule_directives(
+        &mut self,
+        name: RustIdent,
+        directives: Vec<&'static str>,
+    ) {
+        if !directives.is_empty() {
+            self.plain_group_rule_directives.insert(name, directives);
+        }
     }
 
     /// The base generic extern idents for which a flavored (`<Base>RawBytes`) instance was actually

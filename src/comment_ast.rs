@@ -383,6 +383,24 @@ impl RuleMetadata {
         }
         found
     }
+
+    /// Every directive set on this metadata, `non_variant_directives` plus the two it excludes.
+    ///
+    /// Exists for one caller: the never-spliced plain-group refusal in `IntermediateTypes::finalize`.
+    /// That site reports what an author wrote into a slot where NOTHING is honored — a group no rule
+    /// splices emits neither a struct nor a field — so unlike the variant case there is no directive
+    /// the position legitimately consumes, and the list must be total.
+    pub fn all_directives(&self) -> Vec<&'static str> {
+        let mut found = self.non_variant_directives();
+        if self.name.is_some() {
+            found.push("@name");
+        }
+        if self.comment.is_some() {
+            found.push("@doc");
+        }
+        found.sort_unstable();
+        found
+    }
 }
 
 fn tag_name(input: &str) -> IResult<&str, ParseResult> {
