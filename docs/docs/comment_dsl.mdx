@@ -78,10 +78,17 @@ an array position never puts the name on the wire). The refusal reads the **reso
 
 Note: `@name` does not rename a top-level rule or group — the rule identifier itself is the
 emitted type name, so `foo = uint ; @name bar` is rejected with a clean error. To change the
-emitted type name, rename the `foo` identifier. On a plain group rule the trailing comment
-belongs to the last group entry, not the rule: `grp = (a: uint) ; @name other` renames the
-*field* `a` to `other` (exactly like `grp = (a: uint ; @name other)`) — it neither renames the
-group nor errors.
+emitted type name, rename the `foo` identifier. The same rejection covers the two rule shapes that
+*look* like they have something to name and do not: a `T / null` rule (which collapses to an
+`Option<T>` alias, so its arms are not variants) and the tag-258 set idiom
+(`foo = #6.258([* uint]) / [* uint]`, which collapses to a set wrapper for the same reason).
+
+On a plain group rule the trailing comment belongs to the last group entry, not the rule:
+`grp = (a: uint) ; @name other` renames the *field* `a` to `other` (exactly like
+`grp = (a: uint ; @name other)`) — it neither renames the group nor errors, **provided some rule
+splices the group**. A group nothing splices emits neither a struct nor a field, so nothing there
+can be renamed and the rule-position rejection applies (see
+[Plain groups nothing splices](#plain-groups-nothing-splices)).
 
 Note: `@name` also names an **anonymous inline array used as a member's type**, which is the remedy
 the "Anonymous groups not allowed" error advertises:
@@ -244,6 +251,15 @@ falls back to the full bundle, so a spec relying on a narrow flavor to avoid `Or
 the original failure under an old tool. Pin your tool version in-repo. (Requires cddl-codegen with
 `@used_as_key` flavor support.)
 
+**Rule kinds.** The tag demands derives on the struct a rule mints, so it belongs on a rule that
+mints one — including a plain group **spliced** into a rule that materializes it
+(`foo = (a: uint, b: uint) ; @used_as_key` with `holder = [foo]`), which honors it on the record
+struct the splice produces. On a generic **definition** (`foo<T> = [x: T] ; @used_as_key`) it is
+rejected: a definition names no concrete type, so there is nothing to derive on — put it on the
+instantiating rule (`inst = foo<uint> ; @used_as_key`). On a transparent alias
+(`foo = uint`, `foo = (uint)`, a named binding to a set nominal) it is accepted and adds nothing:
+the alias has no struct of its own, and each of those targets already supplies the key traits.
+
 ## @used_as_elem
 
 ```cddl
@@ -281,6 +297,9 @@ Notes:
 - It is **rule-scoped**: the tag names the type whose wrapper to mint, so it belongs on a rule. On a
   field/member's trailing comment (`f: bw, ; @used_as_elem`, inside a `holder = [ … ]`) it is a hard
   error — put it on the rule that defines the element type instead (`bw = [...] ; @used_as_elem`).
+- On a generic **definition** (`foo<T> = [x: T] ; @used_as_elem`) it is rejected: a definition names
+  no concrete type, so there is no element type for a wrapper to hold. Put it on the instantiating
+  rule (`inst = foo<uint> ; @used_as_elem`), which is where the concrete type is minted.
 
 ## @duplicates
 
@@ -553,10 +572,23 @@ suppressed on, and it is not a nominal type, so the orphan rule forbids the hand
 @custom_json`, `al = [* uint] ; @newtype @custom_json` — and the rule mints a real wrapper struct
 that carries both.
 
-On a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule the directive is accepted
-and does nothing: the named type is hand-written in full, so this crate emits no JSON derives for it
-either way. It is a redundant no-op rather than a dropped intent, which is why it is documented here
-rather than refused.
+On a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule (including a generic extern
+base) the directive is refused. The named type is hand-written in full, so this crate emits no JSON
+derives to suppress and the impls the directive promises belong beside that type, not here. Give the
+rule a real CDDL body and put `@custom_json` there, or drop it and write the impls next to the
+externally-defined type.
+
+A **named binding to a generic set nominal** (`foo = gset<uint>`, where
+`gset<T> = #6.258([* T]) / [* T]`) is refused too, and for a different reason: the binding emits a
+transparent `pub type Foo = GsetU64;` and mints no type of its own, while the derives it would
+suppress belong to `GsetU64`, whose config comes from the generic **definition**. The `@newtype`
+remedy does not apply here — a set nominal already is a wrapper. Put `@custom_json` on the definition
+instead (`gset<T> = #6.258([* T]) / [* T] ; @custom_json`).
+
+Two rule kinds mint a struct from metadata that is not their own, and **do** honor the directive: a
+generic **instance** binding (`foo = base<uint>`, whose struct config comes from the definition) and a
+plain group **spliced** into a rule that materializes it (`foo = (a: uint, b: uint) ; @custom_json`
+with `holder = [foo]`). Both suppress the derives on the struct the rule mints.
 
 ### Writing the `Serialize` impl the directive promises
 
@@ -907,6 +939,8 @@ The pair parses in the positions below but cannot be honored there, so each one 
 * **On a table row, an open-map rest row, or an open-array rest tail entry** — a trailing comment on the `* k => v` / `* t` row itself. That slot carries `@name`, `@duplicates` and `@ignore`, all of which are row-scoped; the pair names a type the row does not declare. Put it on the row's key, value, or element rule instead.
 * **Together with `@no_alias`.** `@no_alias` removes the alias node the override is keyed on, so the pair would go with it and both directions would fall back to the default wire format.
 * **Together with `@newtype`.** A `@newtype` wrapper writes through its own generated `Serialize` impl while the deserialize call sites do route through the custom reader, so the pair would make the wrapper read one wire format and write another. Use the plain alias spelling, or declare the type `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write it in full.
+* **On a rule that mints a TAGGED wrapper without the directive** — a tag-head rule (`foo = #6.42(uint)`) and the tag-258 set idiom (`foo = #6.258([* uint]) / [* uint]`, which nominalizes into a set wrapper). Structurally the `@newtype` case above, minus the directive: the same generated-`Serialize`/custom-reader asymmetry, so either half is refused. Declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the type, or give it a body that resolves to a transparent alias and write the wire framing (the tag included) in your own codec.
+* **On a rule that binds a generic instantiation** — `foo = base<uint>`, and the named-binding-to-a-set-nominal form of the same shape. The type is built during generic resolution from the **definition's** config, so a pair written on the binding never reaches generation and both directions keep the definition's generated codec. Moving it to the definition does not work either (a generic definition names no concrete type and is refused for that reason): give the rule a CDDL body of its own, or declare it `_CDDL_CODEGEN_EXTERN_TYPE_`.
 * **On an enum rule** — a type choice (`a / b`), a group choice (`{ … } // { … }`), or a fixed-value C-style enum (`0 / 1`) — in *every* spelling, one half or both. The enum's serialize side is generated unconditionally while the deserialize call sites do route through the custom reader: the same read-one-format/write-another asymmetry as `@newtype`. Put the pair on the rule of the variant type that needs the custom format.
 * **A single half on a named record rule.** `@custom_serialize` alone emits no `Serialize` impl and never calls the named function, so the generated crate does not compile; `@custom_deserialize` alone keeps the type's own generated `Deserialize` impl while rewriting every embed site, so `Foo::from_cbor_bytes` and a field of type `Foo` decode the same bytes differently — a divergence that also travels to consumers, since such a rule projects opaquely across the [extern-interface](integration-other.mdx) seam. Move the pair to the field, or to the type rule of the member that needs it.
 * **On a table rule** — `t = { * k => v } ; @custom_serialize …`, the pair on the rule rather than on the row (which is the separate rejection above). A table lowers to a transparent map alias that owns no codec for the directive to override, so — unlike a record rule, where both halves together suppress the generated impls for you to hand-own — there is nothing for either half to displace and *any* presence is refused, one half or both. Put it on the key or value rule (see [Table key and value positions](#table-key-and-value-positions)) instead, or declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the whole type. On a generic table def the refusal names the *instantiated* type (`ptbl<uint, bytes>` → `PtblU64Bytes`), since that is where the struct materializes.
@@ -1004,6 +1038,31 @@ Due to the comment dsl parsing this doc comment cannot contain the character `@`
 Known limitation: on a type choice of fixed values only (a dataless enum, e.g. `foo = 0 / 1`),
 per-variant `@doc` is currently not emitted; it works on data-carrying variants (e.g. `uint / tstr`).
 
+
+## Plain groups nothing splices
+
+A plain group rule (`foo = (a: uint, b: uint)`) becomes a Rust type only when some rule **splices**
+it — `holder = [foo]`, `holder = {foo}`. A group no rule splices emits neither a struct nor a field,
+so *every* rule-position directive written on it is inert, and writing one is a graceful generation
+error naming each directive it found:
+
+```cddl
+foo = (a: uint, b: uint) ; @custom_json
+holder = [z: uint]
+```
+> `@custom_json on 'foo': the plain group 'foo' is never spliced into any rule, so it materializes no
+> rust type and no fields …`
+
+Splice the group into a rule that materializes it, or remove the directive. Once spliced, the same
+slot is where a rule-position directive on a group *is* read: `@custom_json` and `@used_as_key` land
+on the record struct the splice mints, `@doc` documents it, `@name` renames the last field, and a
+directive that is invalid on a record (`@copy`, `@extern_companions`, …) gets its own specific
+rejection naming its own remedy.
+
+Two directives keep their own messages instead of joining this one, so a single misplacement is
+reported once: `@name` (its long-standing "does not rename a top-level rule or group" rejection) and
+`@no_json_schema_export` (whose own rejection already names this shape). `@rust_name` is left alone —
+it is honored on a rule in a `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope, spliced or not.
 
 ## _CDDL_CODEGEN_EXTERN_TYPE_
 
@@ -1191,10 +1250,15 @@ extern is a hard error naming both flags, so the two never compete for one decis
 
 ### Rejected positions
 
-Using it anywhere other than a locally-scoped `_CDDL_CODEGEN_EXTERN_TYPE_` rule is a hard error: on a
+Using it anywhere other than a locally-scoped **non-generic** `_CDDL_CODEGEN_EXTERN_TYPE_` rule is a
+hard error: on a
 rule this crate generates (a record, a type/group choice, a collection), on a
 `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule (that type has no generator-minted wasm companions), at a
-field/member position, on a non-last arm of a multi-choice type rule, and on a dep-scoped extern. A
+field/member position, on a non-last arm of a multi-choice type rule, and on a dep-scoped extern.
+A **generic** extern base (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) is rejected too: every companion
+class is named from the ident at the *use* site, so an instance `i = foo<uint>` used as `[* i]` mints
+`IList` and never `FooList` — a deferral declared on the base is looked up under a name nothing asks
+for. Declare the concrete shape as its own non-generic extern rule and put the deferral there. A
 malformed argument (missing, no `=`, a non-path prefix, an empty or non-identifier class name) is a
 loud parse-time failure rather than a silent drop — a silently dropped declaration re-mints the very
 classes it exists to suppress, and the only symptom would be a duplicate symbol in a *different*
