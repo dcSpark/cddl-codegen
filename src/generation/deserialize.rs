@@ -19,6 +19,12 @@ pub(super) struct DeserializeConfig<'a> {
     read_len_overload: Option<String>,
     /// Override regular deserialization lgoic with a call to this function
     custom_deserialize: Option<String>,
+    /// The `@custom_encodings` declaration written beside the pair in `custom_deserialize`, when it
+    /// has one: the codec-visible encoding variables of ITS wire, which then decide the shape of the
+    /// tuple the custom reader returns instead of the replaced type's inferred demand. Lifted at
+    /// exactly the two places the pair itself is lifted (`for_field`, and the `Alias` arm), so it can
+    /// never travel without its pair. `None` = no declaration; inference, unchanged.
+    custom_encodings: Option<Vec<EncodingKind>>,
     /// The member's type AS DECLARED, when the declaration is an `AliasIdent::Rust` — the spelling
     /// the member-level deserialize CALL TARGETS use instead of the alias's structural target
     /// (`StakeCredential::deserialize` where the field is `sc: StakeCredential`, not
@@ -49,6 +55,7 @@ impl<'a> DeserializeConfig<'a> {
             deserializer_name_overload: None,
             read_len_overload: None,
             custom_deserialize: None,
+            custom_encodings: None,
             declared_spelling: None,
             tag_depth: 0,
         }
@@ -64,6 +71,8 @@ impl<'a> DeserializeConfig<'a> {
             .optional_field(optional);
         if let Some(custom_deserialize) = &field.rule_metadata.custom_deserialize {
             config = config.custom_deserialize(custom_deserialize.clone());
+            // The field's own `@custom_encodings`, and only its own — see the serialize twin.
+            config.custom_encodings = field.rule_metadata.custom_encodings.clone();
         }
         config
     }
@@ -109,6 +118,13 @@ impl<'a> DeserializeConfig<'a> {
 
     pub(super) fn custom_deserialize(mut self, func: String) -> Self {
         self.custom_deserialize = Some(func);
+        self
+    }
+
+    /// Lift a pair's `@custom_encodings` declaration. Always chained onto the same
+    /// `custom_deserialize` lift so the two cannot separate.
+    pub(super) fn custom_encodings(mut self, kinds: Option<Vec<EncodingKind>>) -> Self {
+        self.custom_encodings = kinds;
         self
     }
 
@@ -709,8 +725,20 @@ impl GenerationScope {
         // field-level @custom_deserialize overrides everything
         if let Some(custom_deserialize) = &config.custom_deserialize {
             let deser_err_map = if !config.final_exprs.is_empty() {
-                let enc_fields =
-                    encoding_fields_impl(types, config.var_name, serializing_rust_type, cli, 0);
+                // The pair's OWN declaration wins over the replaced type's inferred demand (serialize
+                // twin at `generate_serialize`'s custom branch); undeclared falls back to inference,
+                // blind to declarations below since THIS codec owns the wire from here down.
+                let enc_fields = match &config.custom_encodings {
+                    Some(kinds) => declared_encoding_fields(config.var_name, kinds),
+                    None => encoding_fields_impl(
+                        types,
+                        config.var_name,
+                        serializing_rust_type,
+                        cli,
+                        0,
+                        AliasDeclarations::Blind,
+                    ),
+                };
                 let (closure_args, tuple_fields) = if enc_fields.is_empty() {
                     (config.var_name.to_owned(), "".to_owned())
                 } else {
@@ -1742,13 +1770,7 @@ impl GenerationScope {
                         }
                     }
                     let ty_enc_fields = if cli.preserve_encodings {
-                        encoding_fields(
-                            types,
-                            config.var_name,
-                            &ty.clone().resolve_aliases(),
-                            false,
-                            cli,
-                        )
+                        encoding_fields(types, config.var_name, ty, false, cli)
                     } else {
                         vec![]
                     };
@@ -1840,13 +1862,7 @@ impl GenerationScope {
                         .line(&format!("let mut {arr_var_name} = Vec::new();"));
                     let elem_var_name = format!("{}_elem", config.var_name);
                     let elem_encs = if cli.preserve_encodings {
-                        encoding_fields(
-                            types,
-                            &elem_var_name,
-                            &ty.clone().resolve_aliases(),
-                            false,
-                            cli,
-                        )
+                        encoding_fields(types, &elem_var_name, ty, false, cli)
                     } else {
                         vec![]
                     };
@@ -2066,24 +2082,12 @@ impl GenerationScope {
                         let key_var_name = format!("{}_key", config.var_name);
                         let value_var_name = format!("{}_value", config.var_name);
                         let key_encs = if cli.preserve_encodings {
-                            encoding_fields(
-                                types,
-                                &key_var_name,
-                                &key_type.clone().resolve_aliases(),
-                                false,
-                                cli,
-                            )
+                            encoding_fields(types, &key_var_name, key_type, false, cli)
                         } else {
                             vec![]
                         };
                         let value_encs = if cli.preserve_encodings {
-                            encoding_fields(
-                                types,
-                                &value_var_name,
-                                &value_type.clone().resolve_aliases(),
-                                false,
-                                cli,
-                            )
+                            encoding_fields(types, &value_var_name, value_type, false, cli)
                         } else {
                             vec![]
                         };
@@ -2381,7 +2385,16 @@ impl GenerationScope {
                         .as_ref()
                         .and_then(|rmd| rmd.custom_deserialize.clone())
                     {
-                        config.custom_deserialize(custom_deserialize)
+                        // The rule's `@custom_encodings` rides with the pair it is written beside —
+                        // see the serialize twin for the two-channel split.
+                        config
+                            .custom_deserialize(custom_deserialize)
+                            .custom_encodings(
+                                alias_info
+                                    .rule_metadata
+                                    .as_ref()
+                                    .and_then(|rmd| rmd.custom_encodings.clone()),
+                            )
                     } else {
                         config
                     };

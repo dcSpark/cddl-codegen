@@ -16,6 +16,12 @@ pub(super) struct SerializeConfig<'a> {
     serializer_name_overload: Option<(&'a str, bool)>,
     /// Override regular serialization lgoic with a call to this function
     custom_serialize: Option<String>,
+    /// The `@custom_encodings` declaration written beside the pair in `custom_serialize`, when it has
+    /// one: the codec-visible encoding variables of ITS wire, which then decide the trailing argument
+    /// list instead of the replaced type's inferred demand. Lifted at exactly the two places the pair
+    /// itself is lifted (`for_field`, and the `Alias` arm), so it can never travel without its pair.
+    /// `None` = no declaration; inference, unchanged.
+    custom_encodings: Option<Vec<EncodingKind>>,
     /// number of tag levels already crossed on this member name (0 at the field root). Drives the
     /// `tag`/`tag2`/… encoding-var infix so stacked tags read their own level's var. See
     /// `tag_encoding_infix`.
@@ -43,6 +49,7 @@ impl<'a> SerializeConfig<'a> {
             encoding_var_in_option_struct: None,
             serializer_name_overload: None,
             custom_serialize: None,
+            custom_encodings: None,
             tag_depth: 0,
         }
     }
@@ -55,6 +62,10 @@ impl<'a> SerializeConfig<'a> {
         let mut config = Self::new(expr, &field.name);
         if let Some(custom_serialize) = &field.rule_metadata.custom_serialize {
             config = config.custom_serialize(custom_serialize.clone());
+            // The field's own `@custom_encodings`, and only its own: a declaration describes the wire
+            // of the codec written beside it, so a field-level pair never inherits the declaration of
+            // an alias it shadows (that one describes a different codec's wire).
+            config.custom_encodings = field.rule_metadata.custom_encodings.clone();
         }
         config
     }
@@ -105,6 +116,13 @@ impl<'a> SerializeConfig<'a> {
 
     pub(super) fn custom_serialize(mut self, func: String) -> Self {
         self.custom_serialize = Some(func);
+        self
+    }
+
+    /// Lift a pair's `@custom_encodings` declaration. Always chained onto the same `custom_serialize`
+    /// lift so the two cannot separate.
+    pub(super) fn custom_encodings(mut self, kinds: Option<Vec<EncodingKind>>) -> Self {
+        self.custom_encodings = kinds;
         self
     }
 
@@ -642,8 +660,23 @@ impl GenerationScope {
         // field-level @custom_serialize overrides everything
         if let Some(custom_serialize) = &config.custom_serialize {
             let pass_encoding_args = if cli.preserve_encodings {
+                // The pair's OWN declaration wins over the replaced type's inferred demand — that is
+                // the whole point of `@custom_encodings` (a self-carrying replaced type infers
+                // nothing, so the custom framing had nowhere to go). Undeclared: today's inference,
+                // blind to declarations below since THIS codec now owns the wire from here down.
+                let codec_encodings = match &config.custom_encodings {
+                    Some(kinds) => declared_encoding_fields(&config.var_name, kinds),
+                    None => encoding_fields_impl(
+                        types,
+                        &config.var_name,
+                        serializing_rust_type,
+                        cli,
+                        0,
+                        AliasDeclarations::Blind,
+                    ),
+                };
                 Cow::Owned(
-                    encoding_fields_impl(types, &config.var_name, serializing_rust_type, cli, 0)
+                    codec_encodings
                         .into_iter()
                         .map(|enc| {
                             format!(
@@ -1157,13 +1190,7 @@ impl GenerationScope {
                     );
                     let elem_var_name = format!("{}_elem", config.var_name);
                     let elem_encs = if cli.preserve_encodings {
-                        encoding_fields(
-                            types,
-                            &elem_var_name,
-                            &ty.clone().resolve_aliases(),
-                            false,
-                            cli,
-                        )
+                        encoding_fields(types, &elem_var_name, ty, false, cli)
                     } else {
                         vec![]
                     };
@@ -1225,14 +1252,14 @@ impl GenerationScope {
                         let key_enc_fields = encoding_fields(
                             types,
                             &format!("{}_key", config.var_name),
-                            &key.clone().resolve_aliases(),
+                            key,
                             false,
                             cli,
                         );
                         let value_enc_fields = encoding_fields(
                             types,
                             &format!("{}_value", config.var_name),
-                            &value.clone().resolve_aliases(),
+                            value,
                             false,
                             cli,
                         );
@@ -1470,15 +1497,22 @@ impl GenerationScope {
                     body.push_block(opt_block);
                 }
                 SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
-                    let config_for_alias = if let Some(custom_serialize) = types
+                    let alias_metadata = types
                         .type_aliases()
                         .get(ident)
                         .unwrap()
                         .rule_metadata
-                        .as_ref()
-                        .and_then(|rmd| rmd.custom_serialize.clone())
+                        .as_ref();
+                    let config_for_alias = if let Some(custom_serialize) =
+                        alias_metadata.and_then(|rmd| rmd.custom_serialize.clone())
                     {
-                        config.custom_serialize(custom_serialize)
+                        // The rule's `@custom_encodings` rides with the pair it is written beside —
+                        // the second of the two carrier channels the emission sites see a
+                        // declaration through (the other being the derivation from the type, which
+                        // `encoding_fields_impl`'s own `Alias` arm owns).
+                        config.custom_serialize(custom_serialize).custom_encodings(
+                            alias_metadata.and_then(|rmd| rmd.custom_encodings.clone()),
+                        )
                     } else {
                         config
                     };

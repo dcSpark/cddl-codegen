@@ -1356,6 +1356,11 @@ fn scope_path(scope: &crate::intermediate::ModuleScope) -> Vec<String> {
 /// A `RuleMetadata` carrying only the custom-(de)serialize annotations `RustStructConfig` retains —
 /// enough for the transparent renderer's projection exclusion check on the class-backed transparent
 /// rows (named collections, c-style enums).
+///
+/// Deliberately NOT extended with `@custom_encodings`: the declaration is only ever written beside a
+/// complete pair (`parsing::reject_custom_encodings_without_pair` enforces that), so the two fields
+/// below already refuse every rule that carries one. Copying it here would suggest the projection can
+/// express the declaration across the seam, which it cannot — the pair it describes is refused there.
 fn rule_metadata_from_config(config: &RustStructConfig) -> RuleMetadata {
     RuleMetadata {
         custom_serialize: config.custom_serialize.clone(),

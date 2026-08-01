@@ -315,6 +315,14 @@ pub struct RustStructConfig {
     pub custom_json: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
+    /// `@custom_encodings` written on the RULE. Carried for exactly one reader:
+    /// `IntermediateTypes::finalize`'s refusal of a declaration on a rule that mints a STRUCT. A
+    /// struct owns its encoding metadata inside itself (its `encodings` member), so no codec-visible
+    /// tuple crosses the boundary for a declaration to describe — honoring it is impossible and
+    /// dropping it silently is the class this DSL rejects. The declaration is honored only on a
+    /// transparent ALIAS rule (where it rides `AliasInfo::rule_metadata`) or on a FIELD (where it
+    /// rides `RustField::rule_metadata`).
+    pub custom_encodings: Option<Vec<crate::comment_ast::EncodingKind>>,
     pub doc: Option<String>,
     pub newtype_getter: Option<Option<String>>,
     /// `@duplicates` policy for a collection rule (`[* a]` / `[+ a]` / the tag-258 set idiom / a
@@ -337,6 +345,7 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
                 custom_json: rule_metadata.custom_json,
                 custom_serialize: rule_metadata.custom_serialize.clone(),
                 custom_deserialize: rule_metadata.custom_deserialize.clone(),
+                custom_encodings: rule_metadata.custom_encodings.clone(),
                 doc: rule_metadata.comment.clone(),
                 newtype_getter: rule_metadata.newtype.clone(),
                 duplicates: rule_metadata.duplicates,
