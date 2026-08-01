@@ -141,27 +141,35 @@
     },
     {
       "gate": "component_parity",
-      "warm_ms": 2000,
-      "n": 3,
-      "measured": "2026-07-31",
+      "warm_ms": 7000,
+      "n": 10,
+      "measured": "2026-08-01",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-31",
           "warm_ms": 2000
+        },
+        {
+          "date": "2026-08-01",
+          "warm_ms": 7000
         }
       ]
     },
     {
       "gate": "component_wit",
-      "warm_ms": 4000,
-      "n": 3,
-      "measured": "2026-07-31",
+      "warm_ms": 23000,
+      "n": 10,
+      "measured": "2026-08-01",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-31",
           "warm_ms": 4000
+        },
+        {
+          "date": "2026-08-01",
+          "warm_ms": 23000
         }
       ]
     },

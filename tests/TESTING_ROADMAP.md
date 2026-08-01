@@ -797,6 +797,25 @@ DROPPED on every rule shape or spelling whose parse path does not carry it to a 
   predicate). The trigger for a mechanical layer — an extern-projection sweep that enumerates
   every representation-changing config predicate and auto-checks a dep/consumer pair per
   directive — is a SECOND representation-changing surface shipping without its projection.
+  The class has a CONVERSE direction, proven by a second reading-found instance (2026-08-01,
+  delivery 3): the projection EMITTING a directive onto a form the consumer's parse REFUSES.
+  `@raw_bytes_flavor` was projected verbatim onto the param-less rendering of a generic extern
+  base — a spelling that flavors nothing — and the moment the non-generic-extern refusal landed
+  beside it, every consumer of a flavored dep would have hard-failed; no committed fixture was
+  such a consumer, so both tiers stayed green while the break shipped in the working tree
+  (caught in-delivery by reasoning about the seam, fixed by dropping the tag from the
+  projection, pinned by `extern_import_flavored_generic_base_projects_without_the_tag`). What
+  makes the converse direction structural rather than remembered is that a REFUSAL delivery has
+  no reason to look at the projection: the writer already exists and no representation changed.
+  The mechanical layer that covers BOTH directions is a writer-vocabulary acceptance registry:
+  enumerate the annotation strings `extern_interface.rs`'s assembly can ever emit (they are few
+  and centrally assembled — `@copy`, `@duplicates reject`, `@duplicates preserve`, `@no_alias`,
+  `@rust_name`) and assert each one is exercised by at
+  least one consumer-side acceptance vector in `extern_import_tests` (a LOCKSTEP-style
+  source-derived check: a new writer without a consumer vector fails the registry; a new refusal
+  that breaks an existing writer fails that writer's vector). Trigger status: the entry's own
+  "second instance" trigger is now met for the family — build the registry check as a rider on
+  the next delivery that touches `extern_interface.rs` or adds a directive refusal.
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** First of a family of
   three, each recorded separately below because each needs a different detector, and all three
