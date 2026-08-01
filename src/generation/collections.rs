@@ -862,7 +862,15 @@ impl GenerationScope {
         // insert / get / has / keys are minted by the shared `push_table_accessors` — the single
         // source of the nullable-value flattening convention, called by both this restricted twin and
         // the loose `codegen_table_type`. See that helper for the rationale comments.
-        push_table_accessors(self, &mut wrapper, types, &key_type, &value_type, cli);
+        push_table_accessors(
+            self,
+            &mut wrapper,
+            types,
+            &key_type,
+            &value_type,
+            "self.0",
+            cli,
+        );
         // try_from: the single checked door from the loose table wrapper to the restricted wrapper.
         // It BORROWS (and clones) so the source loose `MapKToV` remains valid on the JS side, and the
         // throw happens here — right at the conversion, not inside a parent constructor.
@@ -1047,15 +1055,25 @@ fn push_list_accessors(
 /// `keys` — onto `wrapper`'s impl, together with the value-nullable machinery all four depend on. The
 /// loose map wrapper (`codegen_table_type`) and its restricted `NonEmptyMap` twin
 /// (`generate_non_empty_map_type`) deliberately expose the SAME method surface, each accessor
-/// delegating to `self.0` identically, so both mint these through here — the nullable-value
+/// delegating to the same receiver identically, so both mint these through here — the nullable-value
 /// flattening convention lives once. `new` differs between the twins and `len` is trivial, so both
 /// stay at each call site (emitted before this); the `try_from` / conversion tails stay too.
-fn push_table_accessors(
+///
+/// `receiver` is the expression the accessors delegate to, evaluated against the emitting class's
+/// `self`. The two map-wrapper twins pass `self.0` (the wrapper IS the map). An OPEN TABLE's minted
+/// struct passes `self.0.<typed row field>`: its typed row's map surface is FLATTENED onto the
+/// struct's own class rather than hung off a whole-map getter, the same call the set nominal makes
+/// (`docs/docs/wasm_differences.mdx` § "Sets"), because a wasm class has no `Deref` and a JS read of
+/// `t.get(k)` beats `t.entries().get(k)`. Flattening is also what keeps the typed row from minting a
+/// `MapKToV` class of its own — see the collision-detector family's note on why no fifth sibling
+/// detector is owed.
+pub(super) fn push_table_accessors(
     gen_scope: &mut GenerationScope,
     wrapper: &mut WasmWrapper,
     types: &IntermediateTypes,
     key_type: &RustType,
     value_type: &RustType,
+    receiver: &str,
     cli: &Cli,
 ) {
     // A nullable value (`* uint => (T / null)` -> `Option<T>`) would make get/insert return
@@ -1099,7 +1117,7 @@ fn push_table_accessors(
         insert_func.doc("Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
     }
     insert_func.line(format!(
-        "self.0.insert({}, {}){}",
+        "{receiver}.insert({}, {}){}",
         ToWasmBoundaryOperations::format(
             key_type
                 .from_wasm_boundary_clone(types, "key", false)
@@ -1170,14 +1188,14 @@ fn push_table_accessors(
     };
     if key_type.directly_wasm_exposable(types) {
         getter.line(format!(
-            "self.0.get({}){}{}",
+            "{receiver}.get({}){}{}",
             key_type.from_wasm_boundary_ref(types, "key"),
             copied_or(get_ret_modifier),
             value_flatten
         ));
     } else {
         getter.line(format!(
-            "self.0.get({}.as_ref()){}{}",
+            "{receiver}.get({}.as_ref()){}{}",
             key_type.from_wasm_boundary_ref(types, "key"),
             copied_or(get_ret_modifier),
             value_flatten
@@ -1204,12 +1222,12 @@ fn push_table_accessors(
             .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
         if key_type.directly_wasm_exposable(types) {
             has_func.line(format!(
-                "self.0.get({}).is_some()",
+                "{receiver}.get({}).is_some()",
                 key_type.from_wasm_boundary_ref(types, "key")
             ));
         } else {
             has_func.line(format!(
-                "self.0.get({}.as_ref()).is_some()",
+                "{receiver}.get({}.as_ref()).is_some()",
                 key_type.from_wasm_boundary_ref(types, "key")
             ));
         }
@@ -1241,15 +1259,15 @@ fn push_table_accessors(
             cli,
         );
     if keys_type.directly_wasm_exposable_ct(types) {
-        keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
+        keys.line(format!("{receiver}{key_clone}.collect::<Vec<_>>()"));
     } else if keys_deferred {
         // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its tuple
         // field is private cross-crate, so build it through `From<Vec<_>>` (`.into()`) instead of
         // tuple-struct syntax.
-        keys.line(format!("self.0{key_clone}.collect::<Vec<_>>().into()"));
+        keys.line(format!("{receiver}{key_clone}.collect::<Vec<_>>().into()"));
     } else {
         keys.line(format!(
-            "{}(self.0{key_clone}.collect::<Vec<_>>())",
+            "{}({receiver}{key_clone}.collect::<Vec<_>>())",
             keys_type.for_wasm_return_ct(types)
         ));
     }
@@ -1435,20 +1453,37 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
                     }
                 }
             }
-            if !ConceptualRustType::Array(Box::new(*k.clone())).directly_wasm_exposable_ct(types) {
-                let keys_ident = k.name_as_wasm_array(types);
-                if wasm_wrappers_generated.insert(keys_ident.clone()) {
-                    gen_scope.generate_array_type(
-                        types,
-                        *k.clone(),
-                        &RustIdent::new(CDDLIdent::new(keys_ident)),
-                        false,
-                        cli,
-                    );
-                }
-            }
+            mint_wasm_keys_list(gen_scope, types, k, wasm_wrappers_generated, cli);
         }
         _ => (),
+    }
+}
+
+/// Mint the `<K>List` class a map's `keys()` accessor returns, when `K` is not directly exposable (a
+/// wasm-native key returns a bare `Vec` and needs no class). Split out of the `Map` arm above so an
+/// OPEN TABLE's typed row can claim JUST this half: its map surface is flattened onto the minted
+/// struct's own class, so it mints no `MapKToV` container of its own, but its flattened `keys()` still
+/// needs the key list. The deferral decision itself is NOT made here — it is made inside
+/// `push_table_accessors` before `keys()` is emitted, and re-made (idempotently) by
+/// `generate_array_type`, which is what lets the two run in either order.
+pub(super) fn mint_wasm_keys_list(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    key: &RustType,
+    wasm_wrappers_generated: &mut BTreeSet<String>,
+    cli: &Cli,
+) {
+    if !ConceptualRustType::Array(Box::new(key.clone())).directly_wasm_exposable_ct(types) {
+        let keys_ident = key.name_as_wasm_array(types);
+        if wasm_wrappers_generated.insert(keys_ident.clone()) {
+            gen_scope.generate_array_type(
+                types,
+                key.clone(),
+                &RustIdent::new(CDDLIdent::new(keys_ident)),
+                false,
+                cli,
+            );
+        }
     }
 }
 
@@ -1616,7 +1651,15 @@ pub(super) fn codegen_table_type(
     // insert / get / has / keys (and the nullable-value flattening convention they share) are minted
     // by `push_table_accessors`, also called by the restricted `NonEmptyMap` twin
     // (`generate_non_empty_map_type`).
-    push_table_accessors(gen_scope, &mut wrapper, types, &key_type, &value_type, cli);
+    push_table_accessors(
+        gen_scope,
+        &mut wrapper,
+        types,
+        &key_type,
+        &value_type,
+        "self.0",
+        cli,
+    );
     wrapper.add_conversion_methods(&inner_type, cli);
     wrapper.push(gen_scope, types);
 }

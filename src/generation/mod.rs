@@ -111,7 +111,8 @@ use wrappers::{generate_any_cbor_wasm, generate_int, generate_wrapper_struct};
 
 mod collections;
 use collections::{
-    codegen_table_type, dep_owns_element, mint_sole_owner_table, mint_wasm_wrapper_for_visited_type,
+    codegen_table_type, dep_owns_element, mint_sole_owner_table, mint_wasm_keys_list,
+    mint_wasm_wrapper_for_visited_type, push_table_accessors,
 };
 
 mod requests;
@@ -689,13 +690,15 @@ impl GenerationScope {
                             // rows of the same key/value and different policies mint two distinct
                             // classes. An `@ignore` row has no field/getter, so no wasm map wrapper is
                             // minted for it (its wasm class is a closed struct's).
-                            // BOTH dynamic rows: an open table's TYPED row has its own container
-                            // class and its own getter, so a mint that reads only the catch-all
-                            // leaves the typed getter's return type undeclared (E0425 in the wasm
-                            // crate).
+                            // An open table's TYPED row is deliberately NOT in this loop: its map
+                            // surface is FLATTENED onto the minted struct's own wasm class
+                            // (`insert`/`get`/`len`/`keys`, the set-nominal call), so it has no
+                            // whole-map getter and mints no container class at all — only the
+                            // `<K_t>List` its flattened `keys()` returns, claimed just below. The
+                            // CATCH-ALL row keeps its `rest()` getter and therefore its container.
                             for rest in record
                                 .captured_dynamic_rows()
-                                .filter(|r| !r.is_array_tail())
+                                .filter(|r| !r.is_array_tail() && !record.is_typed_row(r))
                                 .collect::<Vec<_>>()
                             {
                                 let rest_map = rest.container_type();
@@ -710,6 +713,20 @@ impl GenerationScope {
                                 );
                                 self.ensure_non_empty_wrappers(types, rest.domain(), cli);
                                 self.ensure_non_empty_wrappers(types, rest.range(), cli);
+                            }
+                            // The open table's TYPED row: the keys-list half of the mint above, and
+                            // nothing else. Without it the flattened `keys()` returns an undeclared
+                            // class (E0425 in the wasm crate) for every non-exposable `K_t`.
+                            if let Some(typed) = record.typed_row().filter(|r| !r.is_array_tail()) {
+                                mint_wasm_keys_list(
+                                    self,
+                                    types,
+                                    typed.domain(),
+                                    &mut wasm_wrappers_generated,
+                                    cli,
+                                );
+                                self.ensure_non_empty_wrappers(types, typed.domain(), cli);
+                                self.ensure_non_empty_wrappers(types, typed.range(), cli);
                             }
                             // Open ARRAY `* t` tail (CAPTURE only): its container is an
                             // `Array(element)` the conceptual visitor above never sees as a composite

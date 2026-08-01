@@ -3395,6 +3395,31 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.preserve_pair_map_non_empty_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            // The OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`) is the fifth container kind, and
+            // it is the one that gets NO sibling of its own — recorded here so the standing ruling
+            // reads as satisfied rather than skipped. Two independent reasons, both structural:
+            //   * its minted struct is named by the RULE IDENT, which is the author's own name by
+            //     construction. The four siblings above each guard a name the generator DERIVES
+            //     (`NonEmpty<Elem>List`, `MapKToV`, `<Elem>OrderedSet`, `PairMapKToV`) against a
+            //     rule that shadows it; an open table synthesizes no such name because the shape is
+            //     a NAMED-RULE concession (an inline anonymous open table is refused at
+            //     recognition, naming the named-rule form). If that concession is ever lifted, the
+            //     synthesized name arrives with it and so does the fifth sibling.
+            //   * its TYPED row mints no container class at all — the map surface is flattened onto
+            //     the struct's own class — so the `MapKToV`/`PairMapKToV` hazard is unrepresentable
+            //     for it, the same move that retired the family's wrapper-vs-wrapper detector.
+            // What the open table DOES claim is covered by legs on the detectors above: the
+            // `<K_t>List` its flattened `keys()` returns, and the catch-all row's own map class in
+            // whichever flavor the row carries.
+            //
+            // What flattening DOES create is a MEMBER-name hazard on one class rather than a class-
+            // name one, which is why it is checked here and not in that family: the accessors the
+            // typed row contributes and the getter the catch-all contributes land on the SAME wasm
+            // impl, so a `@name`d catch-all spelling one of the five reserved accessor names would
+            // emit two methods of one name (rustc E0592 in the wasm crate).
+            for msg in self.open_table_flattened_accessor_name_collisions() {
+                self.record_rejection(msg);
+            }
             // `@extern_companions` names classes this crate must NOT define, so a same-crate RULE of
             // one of those names is a contradiction the deferral cannot resolve: the `use
             // <prefix>::<Class>;` and the rule's own class would claim one identifier (rustc E0255).
@@ -3971,30 +3996,38 @@ impl<'a> IntermediateTypes<'a> {
                 // row's wasm class needs the loose `<K>List` for its `keys()`, and a `* T` tail's
                 // getter needs the loose `<T>List` itself. Only a CAPTURED row mints anything — an
                 // `@ignore` row has no field and no getter.
+                //
+                // BOTH dynamic rows, because an open table's TYPED row claims a `<K_t>List` too: its
+                // map surface is FLATTENED onto the minted struct's class, so the `keys()` that
+                // returns that list is the STRUCT's own method — a walk reading only the catch-all
+                // would let a user rule of that ident shadow it silently.
                 RustStructType::Record(record) => {
-                    let Some(rest) = record.captured_rest() else {
-                        continue;
-                    };
-                    if rest.is_array_tail() {
-                        if !rest.container_type().directly_wasm_exposable(self) {
+                    for rest in record.captured_dynamic_rows() {
+                        if rest.is_array_tail() {
+                            if !rest.container_type().directly_wasm_exposable(self) {
+                                plain_loose_needs.insert(
+                                    rest.element().name_as_wasm_array(self),
+                                    (
+                                        "an open array `* …` rest tail".to_owned(),
+                                        rest.element().clone(),
+                                    ),
+                                );
+                            }
+                        } else if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
+                            .directly_wasm_exposable_ct(self)
+                        {
                             plain_loose_needs.insert(
-                                rest.element().name_as_wasm_array(self),
+                                rest.domain().name_as_wasm_array(self),
                                 (
-                                    "an open array `* …` rest tail".to_owned(),
-                                    rest.element().clone(),
+                                    if record.is_typed_row(rest) {
+                                        "an open table's keys() wrapper".to_owned()
+                                    } else {
+                                        "an open struct-map rest row's keys() wrapper".to_owned()
+                                    },
+                                    rest.domain().clone(),
                                 ),
                             );
                         }
-                    } else if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
-                        .directly_wasm_exposable_ct(self)
-                    {
-                        plain_loose_needs.insert(
-                            rest.domain().name_as_wasm_array(self),
-                            (
-                                "an open struct-map rest row's keys() wrapper".to_owned(),
-                                rest.domain().clone(),
-                            ),
-                        );
                     }
                 }
                 _ => {}
@@ -4215,6 +4248,13 @@ impl<'a> IntermediateTypes<'a> {
                 // row's key/value flat. Read the name off `RestRow::container_type`, the one
                 // container spelling the emitter and the scope walk also use, so a row's claim
                 // cannot drift from the class it actually mints.
+                //
+                // `captured_rest()`, deliberately, and NOT `captured_dynamic_rows()`: for an open
+                // table that IS the catch-all row, the only one of its two rows that mints a map
+                // class. The TYPED row's map surface is FLATTENED onto the minted struct's own wasm
+                // class, so no `MapKToV`/`PairMapKToV` is minted for it and there is nothing for a
+                // user rule to shadow — the collision is unrepresentable rather than rejected, the
+                // same move that retired this family's one wrapper-vs-wrapper detector.
                 RustStructType::Record(record) => {
                     let Some(rest) = record.captured_rest().filter(|r| !r.is_array_tail()) else {
                         continue;
@@ -4329,6 +4369,11 @@ impl<'a> IntermediateTypes<'a> {
         // siblings with deliberately distinct texts, so a failing spec points at the right flavor.
         // A rule that IS a plain `{* k => v}` table of the same key/value is not a collision: it
         // solely owns the shape and the row's getter returns it through its `pub type` alias.
+        //
+        // For an OPEN TABLE this leg covers the CATCH-ALL row and only it — see the note on the
+        // `plain_loose_needs` Record arm above for why the typed row mints no class of its own. The
+        // message names the open table's catch-all rather than a struct-map rest row so the remedy
+        // reads against the shape the author actually wrote.
         for (ident, rs) in self.rust_structs.iter() {
             let RustStructType::Record(record) = rs.variant() else {
                 continue;
@@ -4350,11 +4395,16 @@ impl<'a> IntermediateTypes<'a> {
                     false,
                 )
             {
+                let row = if record.is_open_table() {
+                    format!("the open table catch-all row of '{ident}'")
+                } else {
+                    format!("the open struct-map rest row of '{ident}'")
+                };
                 msgs.insert(format!(
                     "name collision: rule '{structural}' collides with the '{structural}' wasm \
-                     wrapper generated for the open struct-map rest row of '{ident}' — rename the \
-                     rule to avoid shadowing the loose map wrapper (or make it a `{{* …}}` table of \
-                     the same key/value, which IS that wrapper)"
+                     wrapper generated for {row} — rename the rule to avoid shadowing the loose map \
+                     wrapper (or make it a `{{* …}}` table of the same key/value, which IS that \
+                     wrapper)"
                 ));
             }
         }
@@ -4531,6 +4581,11 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Record(record) => {
                     // CAPTURED rows only: an `@ignore` row has no field and no getter, so it mints
                     // no wrapper and can claim no ident (same gate as the mint itself).
+                    //
+                    // `captured_rest()` and not `captured_dynamic_rows()`, for the reason its
+                    // default-flavored twin in `non_empty_map_wrapper_name_collisions` records: an
+                    // open table's TYPED row is flattened onto the minted struct's own wasm class
+                    // and mints no PairMap container, so it has no ident to be shadowed.
                     let Some(rest) = record.captured_rest().filter(|r| {
                         !r.is_array_tail()
                             && r.duplicates()
@@ -4545,11 +4600,58 @@ impl<'a> IntermediateTypes<'a> {
                         structural,
                         rest.domain(),
                         rest.range(),
-                        format!("the `@duplicates preserve` rest row of '{ident}'"),
+                        if record.is_open_table() {
+                            format!("the `@duplicates preserve` catch-all row of '{ident}'")
+                        } else {
+                            format!("the `@duplicates preserve` rest row of '{ident}'")
+                        },
                         &mut msgs,
                     );
                 }
                 _ => {}
+            }
+        }
+        msgs.into_iter().collect()
+    }
+
+    /// The open table's own member-name check, and the only wasm-surface hazard its minted class
+    /// creates. Flattening the TYPED row's map surface onto the class puts `len`/`insert`/`get`/
+    /// `has`/`keys` on the same `#[wasm_bindgen]` impl the CATCH-ALL row's getter lands on, and that
+    /// getter is named by the row (`rest` by default, anything under `@name`). A row named for one
+    /// of the five would emit two methods of one name — E0592 in the generated wasm crate, at the
+    /// exact remove where the spec author cannot see it.
+    ///
+    /// All five are reserved unconditionally, `has` included even though it is emitted only for a
+    /// nullable typed value: making the reservation depend on the VALUE's nullability would mean a
+    /// row name that generates today stops generating when an unrelated `/ null` is added to the
+    /// typed row, which is a worse surprise than the flat rule.
+    fn open_table_flattened_accessor_name_collisions(&self) -> Vec<String> {
+        // BTreeSet: deterministic message order (repo determinism invariant)
+        let mut msgs = BTreeSet::new();
+        const FLATTENED_ACCESSORS: &[&str] = &["get", "has", "insert", "keys", "len"];
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            if !record.is_open_table() {
+                continue;
+            }
+            let Some(rest) = record.captured_rest() else {
+                continue;
+            };
+            if FLATTENED_ACCESSORS.contains(&rest.field_name.as_str()) {
+                let reserved = FLATTENED_ACCESSORS
+                    .iter()
+                    .map(|a| format!("`{a}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                msgs.insert(format!(
+                    "name collision: the open table '{ident}' names its catch-all row '{}', which \
+                     is one of the accessors ({reserved}) its wasm class flattens onto itself from \
+                     the TYPED row — rename the row with `@name` so the catch-all getter and the \
+                     flattened accessor do not claim one method",
+                    rest.field_name,
+                ));
             }
         }
         msgs.into_iter().collect()
