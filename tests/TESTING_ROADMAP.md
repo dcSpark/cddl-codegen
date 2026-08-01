@@ -598,29 +598,31 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       public API loses a name they wrote. That is one grep of their own generated source, and it does
       not require anyone to recognise it as a parse-layer issue.
 
-12. **A field named `raw` shadows the generated deserializer's `raw: &mut Deserializer` parameter,
-    so the generated crate does not compile — and no gate or fixture exercises any
-    generated-local-colliding field name.** Both reps: an array-rep field emits
-    `let raw = Ok(raw.bytes()?)…;` and every later field's read then calls a method on the shadowed
-    binding (E0599); a map-rep field emits `let mut raw = None;` before the read loop with the same
-    class of breakage. Found while authoring a fixture whose first draft named a bytes field `raw`
-    (the custom-serialize hardening delivery); probed on the default profile at `5a59e5ad`,
-    array- and map-rep. Loud, not silent — the failure is a plain compile error in the generated
-    crate — but undiagnosed: the tool reports nothing, and the error surfaces two build steps away
-    from the spec line that caused it.
-    - **The right shape is a reserved-identifier system, not a one-off rename**: the generated
-      bodies also bind `len`, `read`, `read_len`, `serializer`, `orig_deser_order`, `key`,
-      `value`, and the per-field temporaries — none swept. Either mangle colliding field locals
-      (the general fix) or reject the reserved set loudly at parse time with the field's name in
-      the message (the cheap fix); both need a fixture family that enumerates the generated-local
-      vocabulary rather than guessing it (grep the emitters for `let ` bindings, keep the list
-      LOCKSTEP with a test so a new emitter local joins the sweep).
-    - **Not probed**: `--preserve-encodings`/`--canonical-form` (more locals in scope, so at least
-      as broken), wasm-side wrapper locals, and whether any name collides only under one profile.
-    - **Reopening/priority signal:** a consumer spec with a `raw` 
-      (or other reserved-name) field failing to build its generated crate — the field name is in
-      their spec and the compile error names the shadowed binding, so the report reaches us
-      pre-diagnosed.
+12. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
+    comes from a bounded probe matrix, so a position that matrix never touched can still ship an
+    uncompilable crate.** A field whose emitted identifier is one of the fixed locals the generated
+    serialization bodies bind now rejects at parse time (`parsing::GENERATED_LOCAL_RESERVED`, seven
+    names each carrying the shape × profile × error class it was measured to break), with `; @name
+    <other>` as the remedy and the CBOR wire key untouched. The emitter-local vocabulary is held
+    LOCKSTEP by `identifier_hazard_tests::generated_local_registry_covers_emitter_locals` (a new
+    emitter local fails until verdicted into the reserved set or into
+    `GENERATED_LOCAL_PROBED_SAFE`), and `generated_local_out_of_scope_crates_compile` (`#[ignore]`,
+    full tier) compiles every out-of-scope cell per profile so a too-narrow scope cannot hide.
+    - **Residual: mangling is still the general fix.** The shipped behavior takes the name away from
+      the spec author instead of renaming the generator's own local, so a spec that genuinely wants
+      a field called `raw` must carry a `; @name` comment. **Reopening signal, measurable by a party
+      who already has the problem:** a consumer whose CDDL is machine-generated or vendored from
+      upstream — where a `; @name` comment cannot be added at all — is refused by this check. They
+      cannot apply the remedy, which is the only condition under which the cheap fix is not a fix.
+    - **Residual: the scope is only as wide as the probe.** Membership and per-name
+      `ReservedScope` were measured over five shapes (array-rep / map-rep / tagged record /
+      embedded plain group / group-choice arm) × three profiles × two field types, plus a
+      `--wasm=true` pass. NOT probed: a field whose type is a named rule or newtype, `.cbor`-payload
+      and bounded-type member positions, and the `--json-schema-export` / `--component` faces.
+      **Reopening signal:** a generated crate fails `cargo check` with a shadowed-binding error
+      (E0599/E0308/E0124) on a field whose name is in `GENERATED_LOCAL_PROBED_SAFE`, or on a
+      reserved name used in a shape outside its declared scope — the compile error names the
+      binding, so the report arrives pre-diagnosed and says exactly which row to widen.
 
 13. **The wasm face's fixed re-export vocabulary is asserted by nothing, and one member of it is
     absent in the posture that owes it.** `to_canonical_cbor_bytes` is a default method on the

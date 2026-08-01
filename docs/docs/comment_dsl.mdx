@@ -68,6 +68,14 @@ its position), and such a derived name simply takes a numeric suffix when it col
 uint // x: text ]` gives `Foo::X` and `Foo::X2`. A name you wrote always wins over a derived one,
 whichever arm comes first.
 
+Note: `@name` is also the remedy for a field name the generator refuses. A field whose emitted
+identifier is a Rust keyword (`{ if: uint }`) or a **reserved generated-local name** (`raw`, `len`,
+`read`, … — see [Reserved field names](current_capacities) for the set and where each applies)
+would emit a crate that does not compile, so it is rejected at parse time; `; @name <other>` renames
+the Rust field and leaves the CBOR wire key untouched (a bareword/text key stays the same text, and
+an array position never puts the name on the wire). The refusal reads the **resolved** name, so
+`; @name raw` is itself refused while `raw: uint ; @name payload` is accepted.
+
 Note: `@name` does not rename a top-level rule or group — the rule identifier itself is the
 emitted type name, so `foo = uint ; @name bar` is rejected with a clean error. To change the
 emitted type name, rename the `foo` identifier. On a plain group rule the trailing comment

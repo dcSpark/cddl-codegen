@@ -4130,6 +4130,238 @@ pub(crate) const RUST_KEYWORDS: &[&str] = &[
     "macro", "override", "priv", "typeof", "unsized", "virtual", "yield", "gen",
 ];
 
+/// Field names reserved because the generated `serialize`/`deserialize` bodies bind a FIXED local (or
+/// take a parameter) by the same name, and the field's own local then collides with it — the crate
+/// generates at exit 0 and does not compile, two build steps from the CDDL line that caused it.
+///
+/// **Evidence-based membership**: every entry breaks at least one shape × profile, measured by
+/// generating the shape and `cargo check`ing the emitted rust crate; the second element records what
+/// broke. Emitter locals that were swept and did NOT break anywhere stay OUT (refusing a name that
+/// works is a gratuitous break) — they are listed in `GENERATED_LOCAL_PROBED_SAFE` instead, so a
+/// newly-added emitter local joins the sweep rather than being guessed at.
+///
+/// Probe scope (2026-08-01, `b5b6283b`): five shapes — array-rep record, map-rep record, tagged
+/// record (`#6.42([…])`), embedded plain group, group-choice arm — × three profiles — default,
+/// `--preserve-encodings`, `--preserve-encodings --canonical-form` — × two field types (`bytes`,
+/// `uint`), plus a `--wasm=true` pass over the same matrix (which surfaced no name the rust-only
+/// pass had not). NOT probed: `--json-serde-derives`/`--json-schema-export`, `--component`, a field
+/// whose type is a named rule/newtype, `.cbor`-payload and bounded-type member positions.
+///
+/// **Uniform across PROFILES, scoped by SHAPE.** No FLAG may rescue a refused field — a name that
+/// breaks under `--preserve-encodings` is refused under the default profile too, because the spec
+/// author does not choose their consumer's flags (`tag` and `len_encoding` compile by default and
+/// break the moment `--preserve-encodings` is passed). But a name is only reserved where the emitter
+/// actually BINDS the colliding local: the loop counter `read` exists only in a map-record
+/// deserializer and the tag read only in a tagged type's, so refusing them in an array record would
+/// break working specs for a collision that shape cannot have. The `tag: 0` group-choice
+/// discriminant — this repo's own `tests/core` and `tests/preserve-encodings` fixtures, and an
+/// idiom across real specs — is exactly such a spec, and it keeps generating. Each entry's
+/// `ReservedScope` states where it applies; `generated_local_hazard_robustness_catalog` pins both
+/// halves (refused inside the scope, accepted outside it).
+///
+/// LOCKSTEP with `identifier_hazard_tests::generated_local_registry_covers_emitter_locals`, which
+/// re-derives the emitter-local vocabulary from the emitter sources and fails until a new local is
+/// verdicted into this list or into `GENERATED_LOCAL_PROBED_SAFE`.
+pub(crate) const GENERATED_LOCAL_RESERVED: &[(&str, ReservedScope, &str)] = &[
+    (
+        "len",
+        ReservedScope::Any,
+        "the array/map length read (`let len = raw.array_sz()?`): array-rep, map-rep and tagged \
+         records under every profile (E0308), plus the embedded-plain-group and group-choice-arm \
+         shapes under `--preserve-encodings` (the minted `len_encoding` companion also collides \
+         with the container's own — E0062/E0124/E0599)",
+    ),
+    (
+        "len_encoding",
+        ReservedScope::Any,
+        "the container's own length-encoding local and `<Type>Encoding::len_encoding` field: all \
+         five probed shapes under `--preserve-encodings` (E0308)",
+    ),
+    (
+        "orig_deser_order",
+        ReservedScope::MapRep,
+        "the map-record deserializer's `let mut orig_deser_order = Vec::new()`: map-rep records \
+         under `--preserve-encodings` (E0308/E0599); array records emit no such local",
+    ),
+    (
+        "raw",
+        ReservedScope::Any,
+        "the deserializer parameter itself (`fn deserialize(raw: &mut Deserializer)`): array-rep, \
+         map-rep and tagged records and embedded plain groups under every profile (E0599 — every \
+         later field's read calls a `Deserializer` method on the shadowed binding)",
+    ),
+    (
+        "read",
+        ReservedScope::MapRep,
+        "the map-record deserialize loop counter (`let mut read = 0`): map-rep records under every \
+         profile (E0308/E0599); array records emit no such local",
+    ),
+    (
+        "tag",
+        ReservedScope::Tagged,
+        "the tag read in a tagged type's deserializer (`let tag = raw.tag()?`): `#6.n(…)` records \
+         under `--preserve-encodings` (E0062/E0124/E0308/E0599); an untagged record emits no tag \
+         read, which is why the `tag: 0` group-choice discriminant is untouched",
+    ),
+    (
+        "text_key",
+        ReservedScope::MapRep,
+        "the map-record unknown-key path's `let text_key`: map-rep records under \
+         `--preserve-encodings` (E0308/E0599); array records emit no such local",
+    ),
+];
+
+/// Where a `GENERATED_LOCAL_RESERVED` entry applies — the shapes whose emitted body binds the
+/// colliding local. Never a PROFILE condition: see the registry's doc comment.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum ReservedScope {
+    /// Every record's serialization body binds it.
+    Any,
+    /// Only a map-representation record's body.
+    MapRep,
+    /// Only a record that is the body of a tagged type (`#6.n([…])` / `#6.n({…})`).
+    Tagged,
+}
+
+impl ReservedScope {
+    pub(crate) fn applies(self, rep: Representation, tagged: bool) -> bool {
+        match self {
+            Self::Any => true,
+            Self::MapRep => rep == Representation::Map,
+            Self::Tagged => tagged,
+        }
+    }
+}
+
+/// Emitter locals that WERE swept (same matrix as `GENERATED_LOCAL_RESERVED`) and broke nothing, so
+/// they are deliberately NOT reserved. This list exists for the LOCKSTEP test, not for the parser:
+/// it is the "probed non-colliding" verdict that lets the test tell a name we have judged apart from
+/// a name a new emitter just introduced.
+// Consumed only by the bin-only LOCKSTEP test (`src/tests/` is not in the library's module tree),
+// so every non-bin build sees it as dead.
+#[allow(dead_code)]
+pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
+    "_depth_guard",
+    "_e",
+    "_k",
+    "_rest_elem",
+    "_rest_key",
+    "_rest_value",
+    "buf",
+    "byte",
+    "bytes",
+    "deser_order",
+    "deser_variant",
+    "deserializer",
+    "e",
+    "elem",
+    "element",
+    "elements",
+    "encs",
+    "errs",
+    "f",
+    "field",
+    "field_index",
+    "first",
+    "first_key",
+    "first_value",
+    "force_canonical",
+    "generator",
+    "index",
+    "initial_position",
+    "inner",
+    "k",
+    "key",
+    "key_order",
+    "list",
+    "map",
+    "native",
+    "opt",
+    "pairs",
+    "present",
+    "read_len",
+    "rest_entries",
+    "rest_i",
+    "rest_key",
+    "rest_value",
+    "ret",
+    "s",
+    "serializer",
+    "special",
+    "string",
+    "tag_sz",
+    "ty",
+    "unknown_key",
+    "v",
+    "value",
+    "variant_deser",
+    "wrapper",
+    "x",
+];
+
+/// The `--preserve-encodings` encoding-companion locals a record mints PER FIELD. A second field
+/// whose own name is one of these spellings collides with the companion (or, for the `_key` case,
+/// two fields mint the SAME companion name), emitting a crate that does not compile.
+///
+/// Measured at `b5b6283b`, `--preserve-encodings` (and the `--canonical-form` flavor):
+/// - `<f>` + `<f>_encoding` — the field local shadows the value-encoding companion in the
+///   struct-init shorthand, E0308. Breaks in array-rep, map-rep, embedded-plain-group and
+///   group-choice-arm shapes, so it is checked in BOTH representations.
+/// - `<f>` + `<f>_key_encoding` — same shadowing against the KEY-encoding companion, E0308. Map rep
+///   only (array records mint no key encodings — probed clean in the array shape).
+/// - `<f>` + `<f>_key` — both fields mint `<f>_key_encoding` into the encoding struct: E0124
+///   (duplicate field) + E0062. Map rep only (probed clean in the array shape).
+///
+/// Checked uniformly across profiles for the same reason the single-name registry is: the default
+/// profile compiles only because it mints no companions at all.
+const ENCODING_COMPANION_SUFFIXES: &[(&str, bool, &str)] = &[
+    // (suffix, map-rep only, what collides)
+    (
+        "_encoding",
+        false,
+        "the value-encoding companion minted for `{base}` is spelled `{other}`, so the field's own \
+         local shadows it in the struct-init shorthand (E0308)",
+    ),
+    (
+        "_key_encoding",
+        true,
+        "the key-encoding companion minted for `{base}` is spelled `{other}`, so the field's own \
+         local shadows it in the struct-init shorthand (E0308)",
+    ),
+    (
+        "_key",
+        true,
+        "both fields mint the same encoding companion `{other}_encoding` (`{base}`'s KEY encoding \
+         and `{other}`'s VALUE encoding), so the encoding struct declares that field twice \
+         (E0124/E0062)",
+    ),
+];
+
+/// A graceful-rejection message if `field_name` (already RESOLVED — post-`@name`, post-snake_case)
+/// is a reserved generated-local name, else `None`. The message names the field, the rule and the
+/// reserved word, and points at the `; @name <other>` remedy, which renames the Rust field WITHOUT
+/// touching the CBOR wire key (probed: a bareword key `rawx` with `; @name payload` emits
+/// `serializer.write_text("rawx")` and a `payload` struct field). Array-rep keys never reach the
+/// wire at all, so `@name` is unconditionally safe there.
+fn generated_local_field_rejection(
+    field_name: &str,
+    source_name: &str,
+    rep: Representation,
+    tagged: bool,
+) -> Option<String> {
+    let (word, _, evidence) = GENERATED_LOCAL_RESERVED
+        .iter()
+        .find(|(word, scope, _)| *word == field_name && scope.applies(rep, tagged))?;
+    Some(format!(
+        "rule `{source_name}`: field `{field_name}` is a reserved name — the generated \
+         serialization code binds its own `{word}`: {evidence}. The field's local would shadow it \
+         and the emitted crate would not compile. Rename the field with a `; @name <other>` comment \
+         directive on that entry — the CBOR wire key is unchanged (a bareword/text key stays the \
+         same text; array positions never put the name on the wire)."
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn parse_record_from_group_choice(
     types: &mut IntermediateTypes,
     rep: Representation,
@@ -4140,6 +4372,10 @@ fn parse_record_from_group_choice(
     // that position is rejected in v1 (collapsing an open map into an enum variant is unspecified),
     // so recognition is suppressed and the guard fires instead.
     in_choice_arm: bool,
+    // Whether this record is the body of a TAGGED type (`#6.n([…])`). The tag read (`let tag =
+    // raw.tag()?`) is emitted into this record's own deserializer, so it is the shape condition for
+    // the `tag` entry of `GENERATED_LOCAL_RESERVED`.
+    tagged: bool,
     cli: &Cli,
 ) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
@@ -4160,7 +4396,7 @@ fn parse_record_from_group_choice(
         in_choice_arm,
         cli,
     );
-    let fields = flattened
+    let fields: Vec<RustField> = flattened
         .into_iter()
         .enumerate()
         .filter_map(|(index, (group_entry, optional_comma))| {
@@ -4279,6 +4515,24 @@ fn parse_record_from_group_choice(
                      directive on that entry — the CBOR wire key is unchanged (it stays the bareword \
                      text)."
                 ));
+                return None;
+            }
+            // A field whose EMITTED identifier is one of the fixed locals the generated
+            // serialization bodies bind (`raw`, `len`, `read`, …) shadows that local: the crate
+            // generates at exit 0 and fails `cargo check` two build steps from this CDDL line.
+            // Checked on the RESOLVED name for the same reason the keyword guard above is — `Raw:`
+            // snake_cases to `raw` and `; @name raw` renames INTO the hazard, while
+            // `raw: bytes ; @name raw2` renames OUT of it and must pass.
+            if let Some(msg) = generated_local_field_rejection(
+                &field_name,
+                &types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string()),
+                rep,
+                tagged,
+            ) {
+                types.record_rejection(msg);
                 return None;
             }
             let rule_metadata = group_entry_rule_metadata(group_entry, optional_comma);
@@ -4467,7 +4721,55 @@ fn parse_record_from_group_choice(
             ))
         })
         .collect();
+    reject_encoding_companion_collisions(types, rep, name, &fields);
     RustRecord { rep, fields, rest }
+}
+
+/// The PAIRWISE half of the generated-local collision class: a record whose fields are individually
+/// fine but whose NAMES stand in an `<f>` / `<f>_encoding` relation collide once
+/// `--preserve-encodings` mints the per-field encoding companions (see
+/// `ENCODING_COMPANION_SUFFIXES` for the three measured spellings and their error classes). Checked
+/// on the RESOLVED names, after the whole field list is built, and uniformly across profiles — the
+/// default profile compiles only because it mints no companions at all, so accepting the pair there
+/// would hand back a spec that one flag breaks.
+fn reject_encoding_companion_collisions(
+    types: &mut IntermediateTypes,
+    rep: Representation,
+    name: &RustIdent,
+    fields: &[RustField],
+) {
+    let mut collisions = Vec::new();
+    for base in fields.iter() {
+        for (suffix, map_only, why) in ENCODING_COMPANION_SUFFIXES {
+            if *map_only && rep != Representation::Map {
+                continue;
+            }
+            let companion = format!("{}{suffix}", base.name);
+            if fields.iter().any(|f| f.name == companion) {
+                collisions.push((
+                    base.name.clone(),
+                    companion,
+                    why.replace("{base}", &base.name),
+                ));
+            }
+        }
+    }
+    if collisions.is_empty() {
+        return;
+    }
+    let source_name = types
+        .source_rule_name(name)
+        .map(str::to_owned)
+        .unwrap_or_else(|| name.to_string());
+    for (base, other, why) in collisions {
+        let why = why.replace("{other}", &other);
+        types.record_rejection(format!(
+            "rule `{source_name}`: fields `{base}` and `{other}` collide under \
+             `--preserve-encodings` — {why} — so the emitted crate does not compile. Rename one of \
+             them with a `; @name <other>` comment directive on that entry — the CBOR wire key is \
+             unchanged."
+        ));
+    }
 }
 
 /// Recognize a trailing open-map rest row (`* K => V`) in a map-rep record, or reject an
@@ -5194,6 +5496,7 @@ fn parse_group_choice(
                 name,
                 group_choice,
                 in_choice_arm,
+                tag.is_some(),
                 cli,
             );
             // We need to store this in IntermediateTypes so we can refer from one struct to another.
