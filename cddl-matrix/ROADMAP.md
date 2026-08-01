@@ -292,6 +292,16 @@ ledgered here (that's what the probe/gate error messages point at).
     is unrestricted at every bound shape) and the pickup plan live in
     `draft/two-type-constraint-enforcement.md` § "Support for more complex occurrences" and the
     bounded-occurrence residual in `tests/TESTING_ROADMAP.md`.
+  - **An open table's min-1 typed row** (`t = { + K_t => V_t, * K_r => V_r }`): the one min-1 shape
+    that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
+    of a struct whose OTHER member is an unbounded sibling. It is enforced at a seeded door
+    (`new(first_key, first_value)`, so a constructed value satisfies it) plus one check after each
+    reader's loop, raising the very `RangeCheck` `NonEmptyMap`'s `TryFrom` raises — but clearing the
+    field afterwards is representable. Making it unrepresentable means giving that member the
+    `NonEmptyMap`/`NonEmptyPairMap` type, which ripples through the JSON, wasm, WIT and
+    extern-interface faces of a shape that currently reuses the rest row's container spelling
+    verbatim. Reopening signal: a consumer reporting a value that reached the wire — or a
+    cross-crate boundary — with an empty typed row, i.e. the bypass observed rather than argued.
   - **Atomic hand-over** (value windows: `uint .le N`, `.size` ranges on bytes/text): private-field
     newtypes whose `TryFrom` door replaces today's ctor/deserialize checks (the
     `value_bounds_check_line` emission sites).

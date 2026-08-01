@@ -194,6 +194,27 @@ A *container* of `any` as an arm (`x = [* any] / tstr`) is likewise an ordinary 
 (`Type2::Any`, a bare `#` matching any item at the *grammar* level) stays unsupported and is a separate
 [Limitations](#unsupported-constructs) row.
 
+## Open tables (a typed row plus a catch-all)
+
+A named rule of exactly two `* k => v` rows — `t = { * K_t => V_t, * K_r => V_r }` — is supported
+under every flag combination: one typed table row plus one trailing typed catch-all, routed by CBOR
+**wire major type** peeked before any deserializer runs. The emitted face, the JSON face and the
+dispatch contract are in [Output format](output_format#open-tables-a-typed-row-plus-a-catch-all); the
+CDDL-side rules (what makes `K_t`'s major statically knowable, the `@custom_wire_major` declaration a
+custom-codec key needs, and every graceful rejection) are in
+[the comment DSL](comment_dsl#open-tables). The `{+ …}` spelling adds a min-1 bound counting **typed**
+entries.
+
+**The one limitation worth stating here is a JSON one, and it is conditional on `K_t`.** Both rows
+share one JSON object and a member name binds the typed row first, so the JSON round trip is a fixed
+point only when the two rows' admissible member names are **disjoint** (or when a captured value also
+reads as `V_t`). A `K_t` admitting every member name therefore leaves the catch-all unreachable
+through JSON, and `from_json` refuses documents `to_json` wrote. Where that is decidable — a `K_t`
+transparently resolving to `String` — the tool refuses to generate a JSON face at all. Where it is not
+— an opaque `K_t`, i.e. an extern or a `@newtype` whose hand-written serde reads every string — it
+stands as a hazard the spec author owns: such a key type makes the rule a **CBOR-only** shape. The
+CBOR face has no such conditionality; there the two rows partition by major and always round-trip.
+
 ## Recursive types
 
 Recursive types are supported when the *emitted Rust* for the cycle satisfies two conditions: the cycle passes through at least one **nominal type** (a generated `struct` or `enum` — not a `pub type` alias), and it crosses **heap indirection** (a collection: a `[* …]` array becomes a `Vec`, a table becomes a map type). `tree = [value: uint, children: [* tree]]` satisfies both — a `Tree` struct whose recursive occurrence sits inside `Vec<Tree>` — and generates and round-trips normally. Which rule of a cycle the generator reaches first does not change the result: `h = [mdmap]` and `h = [md]`, over the same `md = mdmap / int` and `mdmap = { * text => md }`, produce equivalent code.
