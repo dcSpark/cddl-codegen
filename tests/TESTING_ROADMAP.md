@@ -245,16 +245,25 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      bytes by the measurements above. They are graceful refusals naming the type and its head set
      (`head_constrained_float_prelude_names_reject_gracefully_in_every_position`, and the
      `tests/matrix_reject/prelude.float16.cddl` row and its two siblings) rather than the
-     `insert_alias` registrations the panic they replaced invited. The registrations become correct
-     — and are the flip condition for those refusals — exactly when a member writes the head its
-     type declares. `float32` and `float64` stay registered as the pre-existing exposure this
+     `insert_alias` registrations the panic they replaced invited. The refusal is recorded at TWO
+     seams, and a flip has to move both: `IntermediateTypes::new_type`'s unresolved-reserved
+     fallback, which every ordinary position funnels through, and the rule-position CONTROL-OPERATOR
+     path in `parsing.rs`, which resolves an ident through `ident_to_primitive` and never calls
+     `new_type` (`x = float16 .size 4` generated an `f32`-backed codec at exit 0 until it did —
+     pinned by `control_operator_path_refuses_head_constrained_floats_and_unmapped_heads`, which
+     also holds the general reserved-but-unmapped-head rejection that replaced the bare
+     `ident_to_primitive` unwrap beside it). Both seams share one message through
+     `intermediate::head_constrained_float_rejection`, so a flip is one function and two call sites.
+     The registrations become correct — and are the flip condition for those refusals — exactly when
+     a member writes the head its type declares. `float32` and `float64` stay registered as the pre-existing exposure this
      entry already describes, not as a judgment that they are in-set.
    - **Surfaces the fix touches:** `ident_to_primitive` in `src/parsing.rs`, the
      `Primitive::F32 | Primitive::F64` arms in `src/generation/deserialize.rs` (the preserve
      `float_sz()` read and the plain `f32::deserialize` one alike), their write-side counterparts in
      `src/generation/serialize.rs` plus the `write_float` helper in `static/` (the encode half
-     above), the three refusal arms in `IntermediateTypes::new_type` and the `aliases()` table they
-     would move to, the float bullet in
+     above), `intermediate::head_constrained_float_rejection` and its two call sites (the
+     `new_type` arm and the control-operator guard) and the `aliases()` table they would move to,
+     the float bullet in
      `docs/docs/current_capacities.mdx` (its lossy-narrowing sentence and NaN caveat both go), the
      "values are all f32-exact" scope notes on the `sgl` member in the golden preserve and canonical
      KATs, and — under (b) — the new `prelude.float32` catalog vectors plus a matrix re-probe whose
@@ -1604,19 +1613,20 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   execution — no gate RUNS `export_schemas()` from a json-gen crate built from a spec carrying
   extern deps (such a crate now compiles precisely because the dep rows are skipped; the unprobed
   layer is the runtime over the surviving in-crate rows in that configuration).
-- **Generic RAW-BYTES base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) emits the same uncompilable
-  self-check / schema row an extern generic base did before its parse-time fix.** The
-  `generic_extern_bases` record populated at parse time (which flips both the extern-interface
-  `ExternCheckKind::None` decision and the json-gen schema-row skip) covers ONLY the EXTERN marker;
-  the `RAW_BYTES_MARKER` parse branch drops its generic params the same way but is not recorded, so a
-  generic raw-bytes base still emits `_assert_raw_bytes::<crate::generated::Foo>()` and a
-  schema-registration row naming the bare `cddl_lib::Foo` (E0107 if the user's hand type is
-  `Foo<T>`). Repro: `foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_` + any second rule, generate with
-  `--json-schema-export=true --wasm=false`. Whether a generic raw-bytes type is meaningful at all
-  (raw bytes carry no element type) is the open question — the honest fix is likely to REJECT the
-  construct at parse time rather than record-and-skip it; deferred until a real spec needs it. When
-  built, extend the parse-time record (or the rejection) to the raw-bytes marker and pin both call
-  sites, mirroring `extern_interface_check_skips_generic_base_without_instances`.
+- **A generic RAW-BYTES base is refused, where a generic EXTERN base is recorded-and-skipped — the
+  asymmetry is the decision, and only one direction of it is swept.** A raw-bytes type is exactly
+  its own bytes and carries no element type a parameter could name, so
+  `foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_` is a parse-time graceful rejection
+  (`robustness_tests::generic_raw_bytes_base_rejects_gracefully`, plus the fast-tier
+  `snapshot_tests::extern_interface_check_refuses_generic_raw_bytes_base` beside the two skip
+  tests); an extern base names an arbitrary hand-written type that MAY legitimately be
+  parameterized, so its generic-ness is recorded and the extern-interface self-check and the
+  json-gen schema-row emitter skip it. What is NOT swept is the rest of the marker×directive
+  product at a generic base — `@copy`, `@raw_bytes_flavor` and `@extern_companions` each have their
+  own reachability at these two branches, and each is pinned only where someone thought to look.
+  Reopening signal: a second marker-branch directive found accepted-and-inert on a generic base
+  (the count of hand-pinned marker directives is the magnitude that grows here, not the number of
+  consumers).
 - **Twin in-repo implementations of one semantic decision drifting apart (emission spellings,
   detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix
   pattern; only the directive-SET flavor has a firing detector so far.** The in-repo sibling of
@@ -2833,14 +2843,14 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   fixtures, the `opt_set` golden wire vectors, and the in-process recognition/parity tests — lives
   in `tests/README.md` § "Transparent tag-set idiom". Four boundary shapes stay unsupported, each
   with its reopening signal (a real consumer spec hitting it):
-  - *Non-idiom choice-BODIED generic defs still crash generation.* A collection-bodied generic def
-    whose two arms do NOT satisfy the collapse condition (e.g. mismatched bounds
-    `xs<a0> = #6.258([+ a0]) / [* a0]`, instanced + used) panics during generation
-    (`Option::unwrap()` on `None` at the `Rust(rust_ident)` arm of `encoding_fields` in
-    `generation/mod.rs`) rather than rejecting gracefully. Pre-existing and out of REQUEST-08's
-    scope: the collapse fires at parse time BEFORE the generic machinery, so the RECOGNIZED idiom
-    never reaches this; only a non-collapsing choice-bodied generic def does. Remedy when it bites:
-    parse-time graceful rejection of a choice-bodied generic def that is not the idiom.
+  - *Non-idiom choice-BODIED generic defs are refused, not supported.* The idiom is the ONLY
+    choice-bodied generic def the generator can monomorphize — the collapse fires at parse time,
+    before the generic machinery, and produces one struct to substitute into. Arms that do not
+    satisfy the collapse condition (e.g. mismatched bounds `xs<a0> = #6.258([+ a0]) / [* a0]`) would
+    mint a union enum the machinery has no way to thread parameters through, so the definition is
+    rejected at parse naming the idiom (`robustness_tests::unsupported_generic_def_bodies_reject_
+    gracefully`). Remedy when the refusal bites: teach the generic machinery to substitute into an
+    enum's arms, which is the same work a generic GROUP-choice def needs.
   - *Alias-of-instance chains don't compile.* `bar = xs_int` where `xs_int = xs<uint>` is itself a
     generic collection instance emits `pub type Bar = XsInt;` plus use-site `self.x.serialize()` /
     `Bar::deserialize()` — methods a transparent `Vec` alias lacks (verified: generates, does not

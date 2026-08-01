@@ -1002,18 +1002,21 @@ fn recombination_generation_sweep() {
     );
 
     // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline, re-measured
-    // 2026-07-28 by running this test with --nocapture and reading its own printed tally
-    // (1544 swept / 892 ok / 106 panic / 546 graceful); floors sit under it so real shrinkage
+    // 2026-08-01 by running this test with --nocapture and reading its own printed tally
+    // (1544 swept / 892 ok / 18 panic / 634 graceful); floors sit under it so real shrinkage
     // fails loud while ingredient additions don't churn them.
     //
     // The panic column is where this baseline moves, and it moves in ONE direction: every
     // abort-to-rejection conversion migrates a block of compositions panic -> graceful without
     // touching a floor, because the floors bound `ok` and the swept total, and neither changes.
-    // The reading before this one was 178 panic / 474 graceful; refusing the `undefined` prelude
-    // constant at the name-resolution seam and converting the member-side type2 catch-all whole
-    // moved 72 more compositions across. So a stale reading here understates how much of the
-    // sweep is already diagnosed — which is the opposite of alarming, and exactly why nothing
-    // fails when it rots. Re-measure when a conversion lands; do not infer it from the floors.
+    // The reading before this one was 106 panic / 546 graceful; two conversions moved the 88:
+    // the prelude-name refusals at the name-resolution seam (`cbor-any` / `eb64url` / `eb64legacy`
+    // / `eb16`, then the head-constrained float names) and the parse-seam conversions beside them
+    // (the four unsupported generic-definition bodies, the control-operator path's own copy of the
+    // float refusal, and its unmapped-head sibling). The split between the two was not measured.
+    // A stale reading here understates how much of the sweep is already diagnosed — which is the
+    // opposite of alarming, and exactly why nothing fails when it rots. Re-measure when a
+    // conversion lands; do not infer it from the floors.
     //
     // Earlier panic -> ok movements, kept because each names the fixture that owns the shape:
     // generic INSTANTIATION in bare member position, when the `TypeGroupname` group-entry arm was

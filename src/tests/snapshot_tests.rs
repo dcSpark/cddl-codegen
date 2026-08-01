@@ -2002,6 +2002,44 @@ fn extern_interface_check_skips_generic_base_without_instances() {
     );
 }
 
+/// The RAW-BYTES sibling of the two tests above, and the reason they read as a decision rather than
+/// an accident: an extern base may legitimately be parameterized (an arbitrary hand-written type),
+/// so its generic-ness is RECORDED and the two emitters skip it; a raw-bytes type IS its own bytes
+/// and has no element for a parameter to name, so a generic base is refused outright at parse time.
+/// Before the refusal it registered a param-less `RawBytesType` and then emitted rows spelling a
+/// bare `Foo` — `_assert_raw_bytes::<crate::generated::Foo>()` here, and under
+/// `--json-schema-export` the json-gen `reg.add::<cddl_lib::Foo>()` — each E0107 against the
+/// parameterized type the marker promises, at exit 0 with empty stderr.
+///
+/// This lives beside the skip tests (fast tier, CI-visible) so the two dispositions are read
+/// together; the message wording and the with/without-instance sweep are pinned by
+/// `generic_raw_bytes_base_rejects_gracefully` in the robustness suite.
+#[test]
+fn extern_interface_check_refuses_generic_raw_bytes_base() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_generic_raw_bytes_base_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [x: uint]\n",
+    )
+    .unwrap();
+    let cli = cli_for(&path, &["--wasm", "false", "--json-schema-export", "true"]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+
+    let msg = result
+        .expect_err(
+            "a generic raw-bytes base must be a graceful Err, not an exit-0 uncompilable crate",
+        )
+        .to_string();
+    assert!(
+        msg.contains("cannot take generic parameters"),
+        "the rejection must name the generic-parameter refusal, got: {msg}"
+    );
+}
+
 // --- Emitted no-std-check shim crate (D3) --------------------------------------------------------
 
 /// The fixture family's one spec. Every test below points at it, including the ones whose assertion
