@@ -2222,6 +2222,14 @@ rule = "vtable"
 pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
 
 [[row]]
+id = "dsl_custom.custom_declared"
+axis = "corpus"
+example = "custom_declared = bytes ; @custom_serialize my_ser2 @custom_deserialize my_deser2 @custom_encodings sz,str"
+fixture = "dsl_custom"
+rule = "custom_declared"
+pinned_reason = "references user-supplied serialize/deserialize code; crate cannot compile standalone (@custom_serialize/@custom_deserialize with a @custom_encodings wire declaration; executed end-to-end in tests/custom-encodings-e2e)"
+
+[[row]]
 id = "dsl_custom.custom_newtype"
 axis = "corpus"
 example = "custom_newtype = uint ; @newtype @custom_json"
@@ -2284,7 +2292,7 @@ expect = "accept"
 [[row]]
 id = "dsl_custom.customized"
 axis = "corpus"
-example = "customized = [\n    field: text ; @custom_serialize my_ser @custom_deserialize my_deser\n]"
+example = "custom_declared = bytes ; @custom_serialize my_ser2 @custom_deserialize my_deser2 @custom_encodings sz,str\ncustomized = [\n    field: text, ; @custom_serialize my_ser @custom_deserialize my_deser\n    declared: custom_declared,\n]"
 fixture = "dsl_custom"
 rule = "customized"
 pinned_reason = "references user-supplied serialize/deserialize code; crate cannot compile standalone (@custom_serialize/@custom_deserialize)"

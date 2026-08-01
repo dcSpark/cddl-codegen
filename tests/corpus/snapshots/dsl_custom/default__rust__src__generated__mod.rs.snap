@@ -13,9 +13,12 @@ expression: content
 
 extern crate alloc;
 use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod serialization;
+
+pub type CustomDeclared = Vec<u8>;
 
 #[derive(Clone, Debug, Copy)]
 pub struct CustomNewtype(pub(crate) u64);
@@ -39,11 +42,12 @@ impl From<u64> for CustomNewtype {
 #[derive(Clone, Debug)]
 pub struct Customized {
     pub field: String,
+    pub declared: CustomDeclared,
 }
 
 impl Customized {
-    pub fn new(field: String) -> Self {
-        Self { field }
+    pub fn new(field: String, declared: CustomDeclared) -> Self {
+        Self { field, declared }
     }
 }
 

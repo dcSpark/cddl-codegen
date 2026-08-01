@@ -758,6 +758,10 @@
       "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
     },
     {
+      "feature": "dsl.custom_encodings",
+      "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
+    },
+    {
       "feature": "dsl.custom_json",
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },

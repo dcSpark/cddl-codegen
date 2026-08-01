@@ -53,7 +53,7 @@ impl cbor_event::se::Serialize for Customized {
                 .as_ref()
                 .map(|encs| encs.len_encoding)
                 .unwrap_or_default()
-                .to_len_sz(1),
+                .to_len_sz(2),
         )?;
         my_ser(
             serializer,
@@ -62,6 +62,19 @@ impl cbor_event::se::Serialize for Customized {
                 .encodings
                 .as_ref()
                 .map(|encs| encs.field_encoding.clone())
+                .unwrap_or_default(),
+        )?;
+        my_ser2(
+            serializer,
+            &self.declared,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.declared_encoding)
+                .unwrap_or_default(),
+            &self
+                .encodings
+                .as_ref()
+                .map(|encs| encs.declared_encoding2.clone())
                 .unwrap_or_default(),
         )?;
         self.encodings
@@ -78,10 +91,12 @@ impl Deserialize for Customized {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
             let mut read_len = CBORReadLen::new(len);
-            read_len.read_elems(1)?;
+            read_len.read_elems(2)?;
             read_len.finish()?;
             let (field, field_encoding) =
                 my_deser(raw).map_err(|e: DeserializeError| e.annotate("field"))?;
+            let (declared, declared_encoding, declared_encoding2) =
+                my_deser2(raw).map_err(|e: DeserializeError| e.annotate("declared"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
                 cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -91,9 +106,12 @@ impl Deserialize for Customized {
             }
             Ok(Customized {
                 field,
+                declared,
                 encodings: Some(CustomizedEncoding {
                     len_encoding,
                     field_encoding,
+                    declared_encoding,
+                    declared_encoding2,
                 }),
             })
         })()

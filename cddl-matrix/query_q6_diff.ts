@@ -53,7 +53,7 @@ function loadMatrix(path: string): MatrixJson {
 // The known profile universe (F1). Spec order, not alphabetical — the diff reads "what P+1 added".
 const KNOWN_PROFILES = ["RFC8610", "RFC9682", "CDDL_CODEGEN"];
 const VENDOR_PROFILE = "CDDL_CODEGEN";
-const VENDOR_FEATURE_COUNT = 22; // the comment-DSL / sentinel surface — pinned (README.md § the model); 22 since the dsl.extern_companions registration (sibling-crate wasm companion-class reference)
+const VENDOR_FEATURE_COUNT = 23; // the comment-DSL / sentinel surface — pinned (README.md § the model); 23 since the dsl.custom_encodings registration (a custom codec declares its own wire's encoding variables)
 
 // ==================================================================================================
 // MODE 2 — snapshot diff (two positional args).

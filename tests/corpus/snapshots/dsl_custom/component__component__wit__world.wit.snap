@@ -15,8 +15,9 @@ interface types {
     from-cbor-bytes: static func(bytes: list<u8>) -> result<custom-newtype, string>;
   }
   resource customized {
-    constructor(field: string);
+    constructor(field: string, declared: list<u8>);
     field: func() -> string;
+    declared: func() -> list<u8>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<customized, string>;
   }

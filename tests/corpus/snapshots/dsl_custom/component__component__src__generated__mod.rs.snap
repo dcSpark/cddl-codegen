@@ -59,14 +59,20 @@ impl wit_types::GuestCustomNewtype for WitCustomNewtype {
 pub struct WitCustomized(pub RefCell<cddl_lib::Customized>);
 
 impl wit_types::GuestCustomized for WitCustomized {
-    fn new(field: String) -> Self {
-        let inner = cddl_lib::Customized::new(field);
+    fn new(field: String, declared: Vec<u8>) -> Self {
+        let declared = declared.into_iter().collect();
+        let inner = cddl_lib::Customized::new(field, declared);
         WitCustomized(RefCell::new(inner))
     }
 
     fn field(&self) -> String {
         let me = self.0.borrow();
         me.field.clone()
+    }
+
+    fn declared(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        me.declared.iter().map(|x| *x).collect()
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {

@@ -868,7 +868,7 @@ This allows the overriding of serialization and/or deserialization for when a sp
 
 The string after `@custom_serialize`/`@custom_deserialize` will be directly called as a function in place of regular serialization/deserialization code. As such it must either be specified using fully qualified paths e.g. `@custom_serialize crate::utils::custom_serialize_function`, or post-generation it will need to be imported into the serialization code by hand e.g. adding `import crate::utils::custom_serialize_function;`.
 
-With `--preserve-encodings=true` the encoding variables must be passed in in the order they are used in cddl-codegen with regular serialization. They are passed in as `Option<cbor_event::Sz>` for integers/tags, `LenEncoding` for lengths and `StringEncoding` for text/bytes. These are the same types as are stored in the `*Encoding` structs generated. The same must be returned for deserialization. When there are no encoding variables the deserialized value should be directly returned, and if not a tuple with the value and its encoding variables should be returned.
+With `--preserve-encodings=true` the encoding variables must be passed in in the order they are used in cddl-codegen with regular serialization. They are passed in as `Option<cbor_event::Sz>` for integers/tags, `LenEncoding` for lengths and `StringEncoding` for text/bytes. These are the same types as are stored in the `*Encoding` structs generated. The same must be returned for deserialization. When there are no encoding variables the deserialized value should be directly returned, and if not a tuple with the value and its encoding variables should be returned. When the custom wire's framing is not the replaced type's — most sharply when the replaced type carries its own encodings and so demands none — declare it instead: see [Declaring the wire's encoding variables](#declaring-the-wires-encoding-variables-custom_encodings) below.
 
 There are two ways to attach this comment DSL:
 
@@ -907,6 +907,53 @@ Note that as this is at the field-level it must handle the tag as well as the `u
 
 With `--canonical-form=true` every serialize function takes one further trailing argument, `force_canonical: bool`, which must be passed on to the encoding helpers it calls (`StringEncoding::to_str_len_sz(len, force_canonical)`, `fit_sz(len, sz, force_canonical)`, …) so that the canonical output re-minimizes the same way generated code does. The deserialize signature is unchanged.
 
+### Declaring the wire's encoding variables (@custom_encodings)
+
+The paragraph above derives the encoding variables a codec is handed from the **replaced type**. That only produces the right list when the custom wire's framing happens to match the replaced type's own, slot for slot — and when the replaced type is *self-carrying* (a `_CDDL_CODEGEN_EXTERN_TYPE_`, a named record, `bool`, `any`, a `null`-fixed) it demands none at all, so the custom wire's framing would be recorded nowhere and the round trip would silently normalize it.
+
+`@custom_encodings` lets the pair declare what its **own** wire needs, and the declaration then drives the signatures and the `*Encoding` slots everywhere, instead of inference:
+
+```cddl
+an = _CDDL_CODEGEN_EXTERN_TYPE_
+an_v1 = an ; @custom_serialize write_asset_utf8 @custom_deserialize read_asset_utf8 @custom_encodings str
+```
+
+The argument is a comma-separated list of kinds with **no whitespace**, or the keyword `none`:
+
+| kind | rust type | what it records |
+|---|---|---|
+| `sz` | `Option<cbor_event::Sz>` | how an integer — or a tag head — was sized |
+| `str` | `StringEncoding` | how a text/bytes header was written (definite width, or the indefinite chunk lengths) |
+| `len` | `LenEncoding` | how a container's length header was written |
+| `none` | — | the explicit empty list: this wire has no framing |
+
+The list is the **codec-visible tuple, positionally**: serialize receives the declared variables as trailing arguments in declared order (before `force_canonical`), and deserialize returns `(value, declared…)` in the same order. So the pair above is written:
+
+```rust
+pub fn write_asset_utf8<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    asset: &An,
+    name_encoding: &StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer>
+
+pub fn read_asset_utf8(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(An, StringEncoding), DeserializeError>
+```
+
+Rules to keep in mind:
+
+* **It requires both halves, in the same position.** A declaration beside one half (or none) is a graceful rejection: the other direction would be generated code deriving the replaced type's inferred demand, which the declared slots contradict slot for slot.
+* **It binds to the pair written beside it.** A field-level pair overrides a type-level one, and each pair's declaration travels with it — a field-level pair *without* its own declaration gets inference over the field's type, never the shadowed alias's declaration, because that one describes a different codec's wire.
+* **The declaration wins wherever it is present**, including over a non-empty inference: an alias of `bytes` whose codec writes `#6.42(text)` declares `sz,str` and gets exactly those two slots.
+* **Argument mode stays position-derived.** `sz` and `len` are `Copy` and passed by value; `str` is passed by reference at a record field and by value at a table entry, exactly as [the two positions rule](#table-key-and-value-positions) already states. The declaration fixes the count and the types, never the mode.
+* **Some slots are not yours to declare.** A member's `<field>_default_present` flag and a map-record member's `<field>_key_encoding` are generated-code-owned and are never part of the codec's tuple; the declaration describes only what crosses the call.
+* **Without `--preserve-encodings` it is inert** — no encoding variable exists to declare — so one spec can serve both flag sets.
+
+Stated limit: the aggregate kinds (the per-element `Vec<…>` / `BTreeMap<…>` sidecars a *container's* interior fidelity needs) and `TagPresenceEncoding` are not declarable, and the parser names the supported kinds when it rejects an unknown one. If your custom wire is a container whose per-entry encodings inference cannot supply, say so — that is the observation that would make us add them.
+
+Because the declaration makes the framing-carrying spelling available, the un-declarable state is now refused rather than silently normalized: **under `--preserve-encodings`, a pair over a type that demands no encoding variables and that carries no declaration is a graceful rejection.** Write `@custom_encodings <kinds>` for a wire with framing, `@custom_encodings none` for one without, or — if the replaced type has one wire and needs no override at all — drop the pair and let the type's own impls own it. Without `--preserve-encodings` the same spec generates exactly as before.
+
 ### Table key and value positions
 
 A type-level pair is honored wherever the alias resolves, which includes both halves of a table:
@@ -944,6 +991,12 @@ The pair parses in the positions below but cannot be honored there, so each one 
 * **On an enum rule** — a type choice (`a / b`), a group choice (`{ … } // { … }`), or a fixed-value C-style enum (`0 / 1`) — in *every* spelling, one half or both. The enum's serialize side is generated unconditionally while the deserialize call sites do route through the custom reader: the same read-one-format/write-another asymmetry as `@newtype`. Put the pair on the rule of the variant type that needs the custom format.
 * **A single half on a named record rule.** `@custom_serialize` alone emits no `Serialize` impl and never calls the named function, so the generated crate does not compile; `@custom_deserialize` alone keeps the type's own generated `Deserialize` impl while rewriting every embed site, so `Foo::from_cbor_bytes` and a field of type `Foo` decode the same bytes differently — a divergence that also travels to consumers, since such a rule projects opaquely across the [extern-interface](integration-other.mdx) seam. Move the pair to the field, or to the type rule of the member that needs it.
 * **On a table rule** — `t = { * k => v } ; @custom_serialize …`, the pair on the rule rather than on the row (which is the separate rejection above). A table lowers to a transparent map alias that owns no codec for the directive to override, so — unlike a record rule, where both halves together suppress the generated impls for you to hand-own — there is nothing for either half to displace and *any* presence is refused, one half or both. Put it on the key or value rule (see [Table key and value positions](#table-key-and-value-positions)) instead, or declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the whole type. On a generic table def the refusal names the *instantiated* type (`ptbl<uint, bytes>` → `PtblU64Bytes`), since that is where the struct materializes.
+
+The `@custom_encodings` declaration is refused in three further places, each because it would otherwise be read and then dropped:
+
+* **Without both halves of the pair, in the same position** — see the rule above. This covers every slot the declaration can be written in: a rule, a field, and the row-entry slots the pair itself is refused in.
+* **On a rule that mints a struct** — including the one rule-position pair that is accepted, both halves on a record rule. A struct carries its encoding metadata *inside itself* (its `encodings` member) and hands no encoding tuple across the call, so there is nothing for a declaration to describe. Put it beside a field's pair, or on a transparent alias rule's pair.
+* Everywhere the **pair** is already refused (the list above), where the pair's own rejection fires and names the spelling that works.
 
 Known limitation: a tag-head rule **wrapping** an annotated alias does not route through the pair —
 

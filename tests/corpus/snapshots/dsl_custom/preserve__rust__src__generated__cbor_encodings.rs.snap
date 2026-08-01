@@ -16,4 +16,6 @@ pub struct CustomNewtypeEncoding {
 pub struct CustomizedEncoding {
     pub len_encoding: LenEncoding,
     pub field_encoding: StringEncoding,
+    pub declared_encoding: Option<cbor_event::Sz>,
+    pub declared_encoding2: StringEncoding,
 }

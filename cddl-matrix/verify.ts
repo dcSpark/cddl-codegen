@@ -110,6 +110,8 @@ const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "ext.raw_bytes": "requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes",
   "dsl.custom_serialize": "references a user-provided serialize fn; integration-tested in tests/custom_serialization",
   "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
+  "dsl.custom_encodings":
+    "references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips)",
   "dsl.raw_bytes_flavor": "references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes",
   "dsl.copy": "references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e",
   "dsl.rust_name":
