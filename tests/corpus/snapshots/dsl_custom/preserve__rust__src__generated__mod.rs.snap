@@ -13,6 +13,7 @@ expression: content
 
 extern crate alloc;
 use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
@@ -21,6 +22,8 @@ mod extern_interface_check;
 pub mod serialization;
 
 use cbor_encodings::{CustomNewtypeEncoding, CustomizedEncoding};
+
+pub type CustomDeclared = Vec<u8>;
 
 #[derive(Clone, Debug)]
 pub struct CustomNewtype {
@@ -50,13 +53,15 @@ impl From<u64> for CustomNewtype {
 #[derive(Clone, Debug)]
 pub struct Customized {
     pub field: String,
+    pub declared: CustomDeclared,
     pub encodings: Option<CustomizedEncoding>,
 }
 
 impl Customized {
-    pub fn new(field: String) -> Self {
+    pub fn new(field: String, declared: CustomDeclared) -> Self {
         Self {
             field,
+            declared,
             encodings: None,
         }
     }

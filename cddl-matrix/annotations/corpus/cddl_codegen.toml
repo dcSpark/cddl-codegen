@@ -338,6 +338,10 @@ id = "dsl.custom_serialize"
 fixture = "dsl_custom.cddl"
 
 [[cover]]
+id = "dsl.custom_encodings"
+fixture = "dsl_custom.cddl"
+
+[[cover]]
 id = "dsl.custom_deserialize"
 fixture = "dsl_custom.cddl"
 

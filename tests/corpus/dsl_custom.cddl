@@ -1,4 +1,6 @@
 custom_newtype = uint ; @newtype @custom_json
+custom_declared = bytes ; @custom_serialize my_ser2 @custom_deserialize my_deser2 @custom_encodings sz,str
 customized = [
-    field: text ; @custom_serialize my_ser @custom_deserialize my_deser
+    field: text, ; @custom_serialize my_ser @custom_deserialize my_deser
+    declared: custom_declared,
 ]

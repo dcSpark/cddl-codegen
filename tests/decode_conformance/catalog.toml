@@ -4330,6 +4330,12 @@ example = "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\
 pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided deserialize fn; integration-tested in tests/custom_serialization)"
 
 [[row]]
+id = "dsl.custom_encodings"
+axis = "feature"
+example = "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings sz,str\nholder = [f: cb]"
+pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e)"
+
+[[row]]
 id = "dsl.custom_json"
 axis = "feature"
 example = "cj = uint ; @newtype @custom_json"

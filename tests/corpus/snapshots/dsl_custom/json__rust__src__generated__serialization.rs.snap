@@ -31,8 +31,9 @@ impl cbor_event::se::Serialize for Customized {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_array(cbor_event::Len::Len(2))?;
         my_ser(serializer, &self.field)?;
+        my_ser2(serializer, &self.declared)?;
         Ok(serializer)
     }
 }
@@ -42,9 +43,10 @@ impl Deserialize for Customized {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
-            read_len.read_elems(1)?;
+            read_len.read_elems(2)?;
             read_len.finish()?;
             let field = my_deser(raw).map_err(|e: DeserializeError| e.annotate("field"))?;
+            let declared = my_deser2(raw).map_err(|e: DeserializeError| e.annotate("declared"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -52,7 +54,7 @@ impl Deserialize for Customized {
                     _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
                 },
             }
-            Ok(Customized { field })
+            Ok(Customized { field, declared })
         })()
         .map_err(|e| e.annotate("Customized"))
     }

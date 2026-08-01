@@ -237,6 +237,18 @@ cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser
 holder = [f: cb]'''
 
 [[feature]]
+id = "dsl.custom_encodings"
+production = "comment_dsl"
+alt = "@custom_encodings"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_serialize / @custom_deserialize (Declaring the wire's encoding variables); src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@custom_encodings — the custom codec declares its own wire's encoding variables"
+desc = "Beside a complete @custom_serialize/@custom_deserialize pair, declares the codec-visible encoding variables of the wire THAT CODEC writes and reads, so the preserve-encodings signature and the *Encoding sidecar slots follow the declaration instead of the REPLACED type's inferred demand. A comma-separated list (no whitespace) over sz (Option<cbor_event::Sz>), str (StringEncoding) and len (LenEncoding), positional — serialize takes them as trailing arguments in declared order, deserialize returns (value, declared…) — or the keyword none, the explicit empty list for a wire with no framing. Without it, a pair over a SELF-CARRYING type (an extern, a record, bool, any) infers no variables at all and the custom wire's framing is recorded nowhere, so the round trip silently normalizes it; under --preserve-encodings that undeclared spelling is now a graceful rejection. Requires BOTH halves in the same position (rule or field) and binds to the pair beside it, so a field-level pair never inherits a shadowed alias's declaration. Inert without --preserve-encodings. Aggregate (per-element Vec/BTreeMap) and tag-presence encodings are deliberately not declarable."
+example = '''
+cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings sz,str
+holder = [f: cb]'''
+
+[[feature]]
 id = "dsl.extern_companions"
 production = "comment_dsl"
 alt = "@extern_companions"

@@ -109,6 +109,15 @@ emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization)"
 
 [[support]]
+id = "dsl.custom_encodings"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips)); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips))"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips))"
+
+[[support]]
 id = "dsl.custom_json"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
