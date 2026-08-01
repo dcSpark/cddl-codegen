@@ -2709,6 +2709,45 @@ fn exposable_generic_collection_instance_keyed_map_lowers_keys_list_structurally
     );
 }
 
+/// A recursive union used as a table's DOMAIN (`key_map = { * key_val => key_val }` with
+/// `key_val = key_map / …`) mints its keys-list wasm wrapper from a domain that names the very
+/// struct the table lowers to. The whole class once aborted in `register_rust_struct`'s keys-list
+/// synthesis, and the seam is WASM-side (`name_as_wasm_array_ct`), which the
+/// `recursive_collection_ref` integration fixture cannot reach — it runs `--wasm=false` under both
+/// its profiles. So the collection-rooted spelling that fixture carries is pinned here for the wasm
+/// pass: it generates, and the minted wrapper agrees with the accessor that references it.
+///
+/// The UNION-rooted spelling of the same three rules (`key_holder = [key_val]`) still aborts at that
+/// synthesis — pinned as a PANIC row by tests/robustness/recursive_union_keyed_table_nominal.cddl,
+/// so this test's scope is exactly the half that works.
+#[test]
+fn recursive_union_keyed_table_mints_its_keys_list_under_wasm() {
+    const CDDL: &str = "key_holder = [key_map]\n\
+                        key_val = key_map / int / bytes / text\n\
+                        key_map = { * key_val => key_val }\n";
+    let path =
+        std::env::temp_dir().join(format!("cddl_codegen_reckey_{}.cddl", std::process::id()));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "reckey_unused",
+        "--wasm=true",
+    ]))
+    .expect("a table keyed by a recursive union must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // The keys-list wrapper is minted over the union's rust type, and `keys()` names the same class
+    // — the mint/reference agreement that the deferred synthesis exists to keep.
+    assert!(
+        src.contains("pub struct KeyValList(pub(crate) Vec<cddl_lib::KeyVal>)")
+            && src.contains("pub fn keys(&self) -> KeyValList"),
+        "the keys-list wrapper and keys() accessor must both name `KeyValList`, got:\n{src}"
+    );
+}
+
 /// `@duplicates reject` on an ANONYMOUS generic-set instance (`[g: oset<uint>]`) NOMINALIZES per
 /// instantiation (Phase 2.3): `oset<uint>` mints one nominal `OsetU64` over the reject uniqueness
 /// twin on BOTH sides — rust core `OsetU64(pub(crate) OrderedSet<u64>)` and a wasm class

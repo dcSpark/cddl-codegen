@@ -32,6 +32,21 @@ nem_holder = [nem_map]
 nem_val = nem_map / int
 nem_map = { + text => nem_val }
 
+; Union-KEYED table — the map's DOMAIN, not just its range, is the recursive union (the Cardano
+; `transaction_metadata` shape). The keys-list wasm wrapper is minted from the domain, so this is the
+; spelling that has to answer for a domain naming a struct that is itself the collection.
+;
+; NOTE — only the COLLECTION-rooted spelling is here, because it is the only one that works. Rooting
+; the same three rules at the union instead (`key_holder = [key_val]`) orders the table's
+; registration BEFORE its named union domain exists, and the keys-list synthesis still aborts on
+; `is_enum`'s `generic_instances` assertion — under both `--wasm=true` and `--wasm=false`. That live
+; half is pinned by tests/robustness/recursive_union_keyed_table_nominal.cddl and tracked by the
+; "Recursive-map-KEY limitation" entry in tests/TESTING_ROADMAP.md; when it is fixed, add its
+; resolved-alias control here beside the `res_` block.
+key_holder = [key_map]
+key_val = key_map / int / bytes / text
+key_map = { * key_val => key_val }
+
 ; --- resolved-alias reference (cycle entered at the union rule) — the CONTROL ---
 ; Identical rules to the `nom_` block but rooted at the union, which orders `res_map` first. This
 ; spelling generated and compiled before any of the above was fixed; it is the byte-level target for

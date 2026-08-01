@@ -386,10 +386,23 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    pin inventory) and the user docs (`docs/docs/output_format.mdx`, `current_capacities.mdx`,
    `wasm_differences.mdx`, `comment_dsl.mdx`). What remains:
    - **Recursive-map-KEY limitation (pre-existing, orthogonal).** A table whose DOMAIN is a
-     not-yet-registered recursive UNION (`{ * transaction_metadata => transaction_metadata }`, the
-     exact Cardano shape) panics in `register_rust_struct`'s keys-list synthesis
+     not-yet-registered recursive UNION panics in `register_rust_struct`'s keys-list synthesis
      (`name_as_wasm_array_ct` → `is_enum` asserts on the un-registered union) — WITHOUT any
-     directive, so it is a general recursive-table-key gap, not a duplicates-policy one. The
+     directive, so it is a general recursive-table-key gap, not a duplicates-policy one. **The gap
+     is narrower than the shape**, and the boundary is measured (2026-08-01, at `0a0f969e`): what
+     survives is the ROOTING, not the union-keyed shape. Rooted at the COLLECTION
+     (`key_holder = [key_map]`, `key_val = key_map / int / bytes / text`,
+     `key_map = { * key_val => key_val }`) it generates at exit 0 AND the emitted rust and wasm
+     crates both `cargo check` clean, minting a `KeyValList` keys-list wrapper the `keys()` accessor
+     agrees with — that spelling is now the `key_` block of
+     `tests/recursive-collection-ref/input.cddl` (both profiles, plus a wire vector) with the wasm
+     half pinned by `recursive_union_keyed_table_mints_its_keys_list_under_wasm`. Single-rule
+     spellings that inline the table as a union arm (`tmd = { * tmd => tmd } / int / bytes / text`,
+     either arm order) likewise generate. What still aborts is the UNION-rooted ordering
+     (`u_holder = [u_val]`), which registers the table before its named domain exists — pinned as a
+     committed `PANIC` row by `tests/robustness/recursive_union_keyed_table_nominal.cddl`, and note
+     it reproduces under `--wasm=false` too: the synthesis runs on the parse walk, so this is not
+     the wasm-only exposure the entry originally recorded. The
      golden_hex headline keys the recursive metadatum map by `tstr` (recursion in the map VALUE) to
      sidestep it. The tempting one-line route — relax `is_enum`'s assert to a graceful `false` — is
      still WRONG, though its old blocker is gone: the assert
@@ -453,10 +466,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - (The per-role wasm-ABI/multifile grid rows for both flavors are delivered — the
      `rset`/`nerset`/`rseta`/`nerseta` and `pmap`/`nepmap`/`pmapa`/`nepmapa` `SHAPES` entries;
      inventory in `tests/README.md` § "Per-rule duplicates policy (`@duplicates`) — test map".
-     Corpus-mint note that outlives the delivery: `table_preserve.mdmap` is a `pinned_reason` row —
-     its standalone holder synthesis trips the pre-existing recursive-union-valued-table
-     `cbor_types` panic (the cddl-matrix findings entry) — while the fixture's
-     `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows minted with vectors.)
+     The recursive-union-VALUED table this fixture exercises (`md = mdmap / [* md] / …`,
+     `mdmap = { * text => md } ; @duplicates preserve`) carries no residual: re-probed 2026-08-01 at
+     `0a0f969e`, its standalone holder generates at exit 0 and the emitted rust and wasm crates both
+     `cargo check` clean under BOTH the default and `--preserve-encodings` profiles, and
+     `table_preserve.mdmap` sits in `tests/decode_conformance/corpus_catalog.toml` with accept
+     vectors and no `pinned_reason`. The recursion-in-the-DOMAIN sibling is the one with a live
+     half — see "Recursive-map-KEY limitation" above.)
 
 6. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
