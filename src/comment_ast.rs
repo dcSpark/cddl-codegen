@@ -100,16 +100,22 @@ pub struct RuleMetadata {
     /// stops emitting a defensive `.clone()` at every boundary that moves the value (map-key
     /// deserialize loops, wasm getters/accessors). The declaring crate emits a compile-time `Copy`
     /// assertion for the type (see `export.rs`), so a false `@copy` fails THAT crate's own build with
-    /// a named error — never a distant consumer's. Rides the extern-interface seam like
-    /// `@raw_bytes_flavor`, so `--extern-import` consumers inherit it. On any other placement it is a
-    /// graceful parse-time rejection (never silently ignored). See `IntermediateTypes::is_copy_extern`.
+    /// a named error — never a distant consumer's. It rides the extern-interface seam, so
+    /// `--extern-import` consumers inherit it: `@copy` describes the BASE type, which the projection's
+    /// param-less rendering preserves faithfully (unlike `@raw_bytes_flavor` below). On any other
+    /// placement it is a graceful parse-time rejection (never silently ignored). See
+    /// `IntermediateTypes::is_copy_extern`.
     pub copy: bool,
-    /// `@raw_bytes_flavor`: valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic rule. When a
-    /// generic instance of the tagged extern has any argument that resolves to a
-    /// `_CDDL_CODEGEN_RAW_BYTES_TYPE_`, the monomorphized alias references the convention-named
-    /// `<ExternName>RawBytes` flavor instead of the plain name. Opt-in (never automatic): a wrapper
-    /// bound solely on `RawBytesEncoding` compiles today under the plain name, so auto-flavoring
-    /// would silently break working output. See `IntermediateTypes::mark_raw_bytes_flavor`.
+    /// `@raw_bytes_flavor`: valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` GENERIC rule — a
+    /// non-generic extern is a graceful parse-time rejection, since a base with no parameters has no
+    /// instances to flavor. When a generic instance of the tagged extern has any argument that
+    /// resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_`, the monomorphized alias references the
+    /// convention-named `<ExternName>RawBytes` flavor instead of the plain name. Opt-in (never
+    /// automatic): a wrapper bound solely on `RawBytesEncoding` compiles today under the plain name,
+    /// so auto-flavoring would silently break working output. It does NOT ride the extern-interface
+    /// seam: the projection drops generic parameters, so the tag would land on the very spelling the
+    /// rejection above refuses (see `extern_interface.rs`'s annotation assembly). See
+    /// `IntermediateTypes::mark_raw_bytes_flavor`.
     pub raw_bytes_flavor: bool,
     /// `@ignore`: valid ONLY on a recognized open struct-map rest row (`* k => v` after fixed keys).
     /// Selects the tolerate-and-DROP flavor — unknown map entries are typed-deserialized and then

@@ -72,7 +72,7 @@ struct Cell {
 /// a position where the directive DOES work, isolating position as the variable — the anon-group
 /// pin's control is the `anon-group-choice-member` cell.
 ///
-/// Three live findings. Two predate the custom-serialize hardening (none fixed by the task that added
+/// Two live findings. One predates the custom-serialize hardening (not fixed by the task that added
 /// them — its scoped fix was the rule-position `@name` rejection); the last is that delivery's
 /// remainder, deliberately left silent because honoring or refusing it is a design decision, not a
 /// call-site fix. Its RULED placements are cells 23a–23n, which `Reject` rather than pin (23o is
@@ -82,11 +82,6 @@ struct Cell {
 ///     enclosing group entry's trailing_comments, which the naming site's `get_comment_after(type2)`
 ///     never reaches (it ascends only through Type1/TypeChoice). So `@name` is dropped and the
 ///     anonymous-group rejection fires anyway — the advertised remedy does not work in this position.
-///   - `@raw_bytes_flavor` @ `non-generic-extern-rule`: the docs say the tag is valid ONLY on an
-///     extern GENERIC, but the extern-only validity gate rejects only NON-extern rules, so on a
-///     non-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule the tag is silently ACCEPTED as a no-op (no
-///     generic instances exist to flavor). Control: the valid `extern-generic-rule` cell, same
-///     rule-trailing placement but generic — it emits the alias, so the pin isn't vacuous.
 ///   - `@custom_serialize+deserialize` @ `table-rule`: a table rule is a type-level rule, the docs'
 ///     supported position, yet the pair is dropped in both directions. Control: the `type-level` cell
 ///     (same rule-trailing placement on a primitive body — it emits both call sites) plus the live
@@ -99,13 +94,6 @@ const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
         "@name at a member-position anonymous inline group is unreachable by the naming site's \
          get_comment_after(type2) ascent (Type1/TypeChoice only), so the anonymous-group rejection \
          fires despite its message advertising @name as the remedy",
-    ),
-    (
-        "@raw_bytes_flavor",
-        "non-generic-extern-rule",
-        "@raw_bytes_flavor on a NON-generic _CDDL_CODEGEN_EXTERN_TYPE_ rule is silently accepted as a \
-         no-op: the docs say the tag is valid only on an extern GENERIC, but the validity gate rejects \
-         only non-extern rules, so there is no generic instance to flavor and no error fires",
     ),
     (
         "@custom_serialize+deserialize",
@@ -866,22 +854,23 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("only valid on"),
     },
-    // 29. NON-generic extern rule. FINDING (pinned in KNOWN_SILENT_DROP): the docs say the tag is
-    //     valid ONLY on an extern GENERIC, but on a non-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule it
-    //     is silently ACCEPTED as a no-op — there are no generic instances to flavor, and the
-    //     extern-only validity gate only rejects NON-extern rules, so a non-generic extern slips
-    //     through unerrored. Docs-claimed expectation (Reject) is NOT satisfied → the pin holds and
-    //     flips the day the gate learns to reject the non-generic case. The valid `extern-generic-rule`
-    //     cell (same `; @raw_bytes_flavor` rule-trailing placement, but generic) is the placement
-    //     control — it emits the flavor alias, so the pin cannot hold vacuously on a placement typo;
-    //     the only isolated variable is generic-vs-non-generic.
+    // 29. NON-generic extern rule → graceful Reject. The tag names a flavor of a GENERIC instance
+    //     (`uses_raw_bytes_flavor` keys on per-instance lookups a non-generic base never gets), so on
+    //     a rule that declares no generic parameters there is nothing to flavor and no coherent
+    //     honoring exists — the mark was provably inert. The extern-only validity gate (cells 25–28)
+    //     rejects NON-extern rules; this one is the second half, gating the extern arm itself on
+    //     generic-ness. Its anchor is the generic-ness clause, NOT the shared `only valid on` wording
+    //     of cells 25–28 — the two rejections are distinct seams and the substrings must not alias.
+    //     The valid `extern-generic-rule` cell (same `; @raw_bytes_flavor` rule-trailing placement,
+    //     but generic) is the placement control: it emits the flavor alias, so this cell's rejection
+    //     is attributable to generic-vs-non-generic and not to a placement typo.
     Cell {
         directive: "@raw_bytes_flavor",
         position: "non-generic-extern-rule",
         spec: "foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor\nholder = [f: foo]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("only valid on"),
+        expect: Expect::Reject("declares no generic parameters"),
     },
     // ---- @extern_companions ------------------------------------------------------------------
     // 34. VALID position (the only one): a LOCALLY-scoped `_CDDL_CODEGEN_EXTERN_TYPE_` rule. The

@@ -738,6 +738,25 @@ fn raw_bytes_flavor_not_extern_rejection(type_name: &RustIdent) -> String {
     )
 }
 
+/// `@raw_bytes_flavor` on an extern marker rule that declares no generic parameters. The companion
+/// half of `raw_bytes_flavor_not_extern_rejection`: that one gates the rule KIND (extern), this one
+/// gates the extern arm itself on generic-ness. The tag names a per-INSTANCE flavor
+/// (`uses_raw_bytes_flavor` is keyed by the generic instance being lowered), so a base that declares
+/// no parameters has no instances to flavor and the mark is inert — there is no coherent honoring to
+/// fall back on, hence a rejection rather than a warning. Wording is a load-bearing test key
+/// (`dsl_position_tests` cell `@raw_bytes_flavor` @ `non-generic-extern-rule` pins
+/// "declares no generic parameters"); the anchor deliberately does NOT reuse the `only valid on`
+/// phrasing above, so the two seams stay distinguishable in a test's expectation.
+fn raw_bytes_flavor_non_generic_extern_rejection(type_name: &RustIdent) -> String {
+    format!(
+        "@raw_bytes_flavor on `{type_name}`: this tag selects the `<ExternName>RawBytes` wrapper \
+         flavor for GENERIC instances of an extern whose argument is a {RAW_BYTES_MARKER} type, \
+         but `{type_name}` declares no generic parameters — there are no instances to flavor, so \
+         the tag would be silently inert. Declare the rule's generic parameters \
+         (`{type_name}<T> = {EXTERN_MARKER} ; @raw_bytes_flavor`) or remove the tag."
+    )
+}
+
 /// `@copy` on a rule that is neither an extern nor a raw-bytes marker. Shared for the same reason
 /// as `raw_bytes_flavor_not_extern_rejection`.
 fn copy_not_extern_rejection(type_name: &RustIdent) -> String {
@@ -2042,7 +2061,17 @@ fn parse_type(
                     types.mark_generic_extern_base(type_name.clone());
                 }
                 if rule_metadata.raw_bytes_flavor {
-                    types.mark_raw_bytes_flavor(type_name.clone());
+                    // Gated on generic-ness for the same reason `mark_generic_extern_base` above is:
+                    // the flavor is a property of a generic INSTANCE, not of the base. On a
+                    // non-generic extern there are no instances, so the mark can never be read back
+                    // — refuse instead of accepting an inert tag.
+                    if generic_params.is_some() {
+                        types.mark_raw_bytes_flavor(type_name.clone());
+                    } else {
+                        types.record_rejection(raw_bytes_flavor_non_generic_extern_rejection(
+                            type_name,
+                        ));
+                    }
                 }
                 if rule_metadata.copy {
                     types.mark_copy_extern(type_name.clone());
