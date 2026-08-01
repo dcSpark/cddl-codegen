@@ -4588,6 +4588,24 @@ fn parse_record_from_group_choice(
                      from this entry."
                 ));
             }
+            // `@used_as_elem` names the TYPE whose loose-list wasm wrapper to mint, so it is
+            // rule-scoped and never applies at a field/member position — reject loudly instead of
+            // silently dropping it. Honoring it here would need a sub-ruling per member shape (an
+            // optional field, an inline `[* x]`, a primitive): the tag is only unambiguous when the
+            // field's type is a bare named reference. The remedy is exact and already proven, so
+            // refuse and name it.
+            if rule_metadata.used_as_elem {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "@used_as_elem on field `{field_name}` of rule `{source_name}`: this directive \
+                     is rule-scoped — it mints the loose-list wasm wrapper for the TYPE it tags — \
+                     and does not apply to a field/member position. Put it on the rule that defines \
+                     the element type (`<type> = … ; @used_as_elem`)."
+                ));
+            }
             // `@copy` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
             // rule definition, never a field/member position — reject loudly instead of ignoring it.
             if rule_metadata.copy {

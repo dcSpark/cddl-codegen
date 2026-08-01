@@ -72,7 +72,7 @@ struct Cell {
 /// a position where the directive DOES work, isolating position as the variable — the anon-group
 /// pin's control is the `anon-group-choice-member` cell.
 ///
-/// Five live findings. Four predate the custom-serialize hardening (none fixed by the task that added
+/// Four live findings. Three predate the custom-serialize hardening (none fixed by the task that added
 /// them — its scoped fix was the rule-position `@name` rejection); the last is that delivery's
 /// remainder, deliberately left silent because honoring or refusing it is a design decision, not a
 /// call-site fix. Its RULED placements are cells 23a–23n, which `Reject` rather than pin (23o is
@@ -92,11 +92,6 @@ struct Cell {
 ///     non-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule the tag is silently ACCEPTED as a no-op (no
 ///     generic instances exist to flavor). Control: the valid `extern-generic-rule` cell, same
 ///     rule-trailing placement but generic — it emits the alias, so the pin isn't vacuous.
-///   - `@used_as_elem` @ `field`: a rule-level tag read from rule metadata; a field-trailing
-///     `; @used_as_elem` binds to the field's trailing_comments (like the `@name plain-group-trailing`
-///     seam), which the rule-level detector never reads, so no wrapper is minted even though the
-///     element would mint one at rule position. Control: the field-trailing comment slot is proven
-///     live by the `@name array-element-*` / `@doc array-field` cells.
 ///   - `@custom_serialize+deserialize` @ `table-rule`: a table rule is a type-level rule, the docs'
 ///     supported position, yet the pair is dropped in both directions. Control: the `type-level` cell
 ///     (same rule-trailing placement on a primitive body — it emits both call sites) plus the live
@@ -122,13 +117,6 @@ const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
         "@raw_bytes_flavor on a NON-generic _CDDL_CODEGEN_EXTERN_TYPE_ rule is silently accepted as a \
          no-op: the docs say the tag is valid only on an extern GENERIC, but the validity gate rejects \
          only non-extern rules, so there is no generic instance to flavor and no error fires",
-    ),
-    (
-        "@used_as_elem",
-        "field",
-        "@used_as_elem is a rule-level tag read from rule metadata; a field-trailing comment binds to \
-         the field's trailing_comments, which the rule-level detector never reads, so the loose-list \
-         wrapper is silently not minted (the field-position tag is dropped)",
     ),
     (
         "@custom_serialize+deserialize",
@@ -1044,26 +1032,27 @@ const GRID: &[Cell] = &[
             must_not: &["BootstrapWitnessList"],
         },
     },
-    // 33. FIELD position. FINDING (pinned in KNOWN_SILENT_DROP): `@used_as_elem` is a rule-level tag
-    //     read from rule metadata; a field-trailing `; @used_as_elem` binds to field `f`'s trailing
-    //     comment (like the `@name plain-group-trailing` field seam) which the rule-level detector
-    //     never reads, so it is silently DROPPED — no `BwList` wrapper is minted even though the
-    //     element (`bw`, a non-exposable struct) WOULD mint one at rule position. Docs-claimed effect
-    //     (a wrapper for the tagged element) is NOT satisfied → the pin holds. `wasm: true` so the
-    //     wrapper WOULD be observable if the tag were honored — ruling out "invisible because rust-
-    //     only". The field-trailing comment slot is proven live by the many `x: T, ; @directive` field
-    //     cells above (`@name array-element-*`, `@doc array-field`), so the drop is the rule-level
-    //     detector ignoring the field comment, not a placement typo.
+    // 33. FIELD position → graceful Reject. `@used_as_elem` is rule-scoped: it names the TYPE whose
+    //     loose-list wasm wrapper to mint. At a field a `; @used_as_elem` binds to field `f`'s
+    //     trailing comment, which the rule-level detector never reads — and the tag is only
+    //     unambiguous there when the field's type is a bare named reference, so every other member
+    //     shape (optional field, inline `[* x]`, primitive) would need its own sub-ruling. A refusal
+    //     with a one-line remedy beats a position whose semantics fray, and it matches the family
+    //     already rejecting at this exact seam (`@raw_bytes_flavor`, `@copy`, `@extern_companions`,
+    //     `@duplicates`, `@ignore` — rule-scoped directives reject at field position, field-scoped
+    //     `@name`/`@doc` are honored). The remedy is proven by cell 30 (rule position mints
+    //     `BootstrapWitnessList`) and by the same `bw` spec at rule position minting `BwList`.
+    //     `wasm: false` (the baseline, unlike cells 30–32): a parse-time rejection fires regardless
+    //     of the wasm build, so the cell stays uncoupled to it. The field-trailing comment slot is
+    //     proven live by the many `x: T, ; @directive` field cells above (`@name array-element-*`,
+    //     `@doc array-field`), so the rejection is attributable to the position, not a placement typo.
     Cell {
         directive: "@used_as_elem",
         position: "field",
         spec: "bw = [vkey: bytes, signature: bytes]\nholder = [\n  f: bw, ; @used_as_elem\n]\n",
         flags: &[],
-        wasm: true,
-        expect: Expect::Effect {
-            must: &["pub struct BwList("],
-            must_not: &[],
-        },
+        wasm: false,
+        expect: Expect::Reject("Put it on the rule that defines the element type"),
     },
 ];
 
