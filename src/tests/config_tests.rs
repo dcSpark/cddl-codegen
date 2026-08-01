@@ -7272,3 +7272,97 @@ fn run_level_messages_follow_the_defaults_key() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **An open table crosses a config workspace on a table's terms.** The shape adds two cross-crate
+/// channels — the typed row's key demand (`borrowed_key_types.rs`) and its FLATTENED `keys()`
+/// wrapper (`borrowed_collections.rs`) — and the second is the one flattening put at risk: the
+/// accessor moved onto the minted struct's own class, so a channel that had only ever seen a table's
+/// or a rest row's CONTAINER class could have lost it silently, leaving the consumer minting a
+/// duplicate `<K_t>List` beside the dependency's in one cdylib.
+///
+/// The convergence argument for the shape is that it adds no NEW channel — both rows' demands ride
+/// the two sidecars a table already writes — so one pass still suffices. That is asserted rather
+/// than argued: the cold run exits 0, its convergence pass re-runs the dependency, and run 2 is
+/// byte-identical with nothing left stale.
+#[test]
+fn a_config_workspace_settles_an_open_table_in_one_pass() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_open_table_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    // The dependency owns the typed key; the consumer's catch-all stays consumer-owned, which is
+    // what keeps the CATCH-ALL container out of the borrowed set and leaves the typed row's keys
+    // list as the one borrowed wrapper.
+    std::fs::write(
+        dir.join("specs/keys.cddl"),
+        "policy_id = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/labels.cddl"),
+        "md = uint / text\nlabels = { * policy_id => uint, * md => md }\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\nwasm = true\n\n\
+             [crates.keys]\ninput = \"specs/keys.cddl\"\noutput = \"gen/keys\"\n\
+             lib-name = \"keys-lib\"\n\n\
+             [crates.labels]\ninput = \"specs/labels.cddl\"\noutput = \"gen/labels\"\n\
+             lib-name = \"labels-lib\"\ndeps = [\"keys\"]\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+    let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
+
+    let cold = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[], None, None)
+        .expect("one cold config run over an open-table workspace must converge and exit 0");
+    assert_eq!(
+        cold.stale_crates(),
+        ["keys".to_owned()].into_iter().collect(),
+        "the fixture must exercise the reverse edge — the dependency is the crate whose consumed \
+         sidecars this run wrote"
+    );
+    let after_first = tree_bytes(&dir, &["gen"]);
+
+    // Both channels, on the consumer's own sidecars: the typed key's derive demand and the
+    // flattened keys() wrapper.
+    let keys_sidecar =
+        std::fs::read_to_string(dir.join("gen/labels/rust/src/generated/borrowed_key_types.rs"))
+            .unwrap();
+    assert!(
+        keys_sidecar.contains("(\"keys_lib\", \"policy_id\")"),
+        "the typed row's key demand must reach the dependency:\n{keys_sidecar}"
+    );
+    let coll_sidecar =
+        std::fs::read_to_string(dir.join("gen/labels/wasm/src/generated/borrowed_collections.rs"))
+            .unwrap();
+    assert!(
+        coll_sidecar.contains("(\"keys_lib\", \"PolicyIdList\", \"[* policy_id]\")"),
+        "the FLATTENED keys() wrapper must be borrowed rather than re-minted:\n{coll_sidecar}"
+    );
+
+    // Run 2: nothing stale, nothing to re-run, no byte moved.
+    let warm = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[], None, None).expect("the second run must generate");
+    assert!(
+        warm.stale_crates().is_empty(),
+        "an open table must not make the sidecars feed back into each other — one extra pass \
+         cannot bound that. Stale: {:?}",
+        warm.stale_crates()
+    );
+    let after_second = tree_bytes(&dir, &["gen"]);
+    if let Some(difference) =
+        first_tree_difference("first run", &after_first, "second run", &after_second)
+    {
+        panic!("a cold config run must settle an open-table workspace, but {difference}");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
