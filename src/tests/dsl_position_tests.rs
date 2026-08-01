@@ -17,7 +17,8 @@
 //! by re-authoring its expectation, and do not fix a newly-found drop opportunistically. Every fix
 //! that has landed here was TRIGGERED — the scoped rule-position `@name` rejection this module's
 //! Part 2 lands, the non-last-arm rule-level rejection beside it, and the `@custom_serialize` /
-//! `@custom_deserialize` placement rejections (cells 23a–23n), each of which was ruled before it was
+//! `@custom_deserialize` placement rejections (cells 23a–23n) and the `@custom_encodings`
+//! declaration's own (cells 23s–23v), each of which was ruled before it was
 //! written — and each ships with its own placement CONTROL cell isolating position as the variable.
 //! That is the bar the next one has to clear too.
 //!
@@ -880,6 +881,128 @@ const GRID: &[Cell] = &[
         expect: Expect::Effect {
             must: &["pub struct Myrec", "my_deser(raw)"],
             must_not: &["Serialize for Myrec", "Deserialize for Myrec"],
+        },
+    },
+    // ---- @custom_encodings -------------------------------------------------------------------
+    // The declaration of a custom codec's own wire. Every cell here runs under
+    // `--preserve-encodings=true`: encoding VARIABLES are what it declares, and none exist without
+    // that flag (under the block's non-preserve baseline the directive is inert by construction, so
+    // a baseline cell would measure nothing). The three honored controls below are what make the
+    // rejections attributable to the placement rather than to the flag.
+    // 23p. HONORED, type level: the declaration replaces the replaced type's inferred demand. The
+    //      anchors are the WHOLE point of the feature — a self-carrying extern infers NOTHING, so
+    //      without a declaration there is no `f_encoding` slot at all and the custom wire's header
+    //      goes unrecorded (the executed defect this directive dissolves).
+    Cell {
+        directive: "@custom_encodings",
+        position: "type-level",
+        spec: "an = _CDDL_CODEGEN_EXTERN_TYPE_\nan_v1 = an ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings str\nholder = [f: an_v1]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "pub f_encoding: StringEncoding",
+                // split so the anchors survive a rustfmt line wrap between LHS and call
+                "let (f, f_encoding) =",
+                "my_deser(raw)",
+            ],
+            must_not: &[],
+        },
+    },
+    // 23q. HONORED, field level, MULTI-variable: `sz,str` mints the positional pair
+    //      (`{f}_encoding`, `{f}_encoding2`) and passes both, in declared order.
+    Cell {
+        directive: "@custom_encodings",
+        position: "field-level",
+        spec: "an = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [\n  f: an, ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings sz,str\n]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "pub f_encoding: Option<cbor_event::Sz>",
+                "pub f_encoding2: StringEncoding",
+                // split so the anchors survive a rustfmt line wrap between LHS and call
+                "let (f, f_encoding, f_encoding2) =",
+                "my_deser(raw)",
+            ],
+            must_not: &[],
+        },
+    },
+    // 23r. HONORED at a TABLE KEY DOMAIN — the position no record field's config reaches (the table
+    //      loop, whose sidecar is keyed by the DECODED key). Pins that the declaration travels
+    //      through the same alias lift the pair does, at a position with by-VALUE argument mode.
+    Cell {
+        directive: "@custom_encodings",
+        position: "table-key-domain",
+        spec: "an = _CDDL_CODEGEN_EXTERN_TYPE_\nan_v1 = an ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings str\nholder = [t: { * an_v1 => uint }]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "pub t_key_encodings: BTreeMap<AnV1, StringEncoding>",
+                "let (t_key, t_key_encoding) =",
+                "my_deser(raw)",
+            ],
+            must_not: &[],
+        },
+    },
+    // 23s. REJECT: the declaration with NO pair — it describes the wire of a codec that is not
+    //      there, and would otherwise be read into the rule's metadata and dropped.
+    Cell {
+        directive: "@custom_encodings",
+        position: "without-pair",
+        spec: "cb = bytes ; @custom_encodings str\nholder = [f: cb]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("no `@custom_serialize`/`@custom_deserialize` is written there"),
+    },
+    // 23t. REJECT: the declaration with ONE half — the other direction is generated code deriving
+    //      the replaced type's own demand, which declared slots contradict slot for slot.
+    Cell {
+        directive: "@custom_encodings",
+        position: "single-half",
+        spec: "cb = bytes ; @custom_serialize my_ser @custom_encodings str\nholder = [f: cb]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("only `@custom_serialize` is written there"),
+    },
+    // 23u. REJECT: the declaration on a rule that mints a STRUCT. Both halves on a record rule is
+    //      the one accepted rule-position pair (23o), and the one place a declaration would be read
+    //      and then have nowhere to go — a struct carries its encodings inside itself.
+    Cell {
+        directive: "@custom_encodings",
+        position: "record-rule-both-set",
+        spec: "myrec = [a: uint] ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings sz\nholder = [f: myrec]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    // 23v. REJECT: the ABSENCE of the declaration where it is now required — a pair over a
+    //      zero-demand type under `--preserve-encodings`. Keyed on the pair rather than on
+    //      `@custom_encodings`, and swept here beside the honored controls because it is the
+    //      rejection that MAKES the declaration load-bearing: without it the custom wire's framing
+    //      is silently normalized. 23p is the same spec WITH the declaration, so this pair of cells
+    //      isolates the declaration as the variable.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "zero-demand-under-preserve",
+        spec: "an = _CDDL_CODEGEN_EXTERN_TYPE_\nan_v1 = an ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: an_v1]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("replaces the codec of a type that demands NO encoding variables"),
+    },
+    // 23w. The same spec WITHOUT `--preserve-encodings`: accepted, generating exactly as it always
+    //      has. The refusal above is a preserve-profile contract, not a new ban — "one spec, many
+    //      flag sets", the shape `@extern_companions` has without `--wasm`.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "zero-demand-without-preserve",
+        spec: "an = _CDDL_CODEGEN_EXTERN_TYPE_\nan_v1 = an ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: an_v1]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["my_ser(", "my_deser("],
+            must_not: &[],
         },
     },
     // ---- @raw_bytes_flavor -------------------------------------------------------------------
