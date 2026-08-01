@@ -1979,3 +1979,374 @@ fn extern_import_rule_partition_is_total_over_minted_exports() {
         }
     }
 }
+
+// ---- the extern-interface WRITER VOCABULARY: registry + acceptance vectors ----------------------
+//
+// The cross-crate skew class has two directions, and the second is what this section exists for.
+// Forward: the projection FAILS to emit a directive a representation depends on, and the consumer
+// rebuilds the wrong container. Converse: the projection EMITS a spelling this crate's own parse
+// then REFUSES — which a refusal delivery has no reason to look for, because the writer already
+// exists and no representation changed. Both directions reduce to one enumerable question: for
+// every `@…` this file's assembly can write, does a consumer regenerating from an export carrying
+// it still generate? The registry below answers it per spelling, and the source scan makes the
+// enumeration structural rather than remembered.
+
+/// Every `@…` annotation `src/generation/extern_interface.rs`'s rule-line assembly can WRITE into an
+/// `extern-interface/<dep>/**` export, paired with the acceptance vector in THIS module that proves
+/// this crate's own parse still accepts what its writer emits.
+///
+/// LOCKSTEP with the writer sites, both directions, via
+/// `extern_interface_writer_vocabulary_matches_the_writers`: a new `"@…"` writer literal with no row
+/// here fails, and a row whose spelling no writer emits fails the other way.
+const EXTERN_INTERFACE_WRITER_VOCABULARY: &[(&str, &str)] = &[
+    // Written by BOTH opaque arms (the class-backed/extern arm and the raw-bytes arm); the vector
+    // mints a dep carrying one of each, so a regression in either arm fails it.
+    (
+        "@copy",
+        "extern_import_accepts_the_projected_copy_annotation",
+    ),
+    (
+        "@duplicates preserve",
+        "extern_import_projects_duplicates_preserve_no_cross_crate_skew",
+    ),
+    (
+        "@duplicates reject",
+        "extern_import_projects_duplicates_reject_no_cross_crate_skew",
+    ),
+    (
+        "@no_alias",
+        "extern_import_accepts_the_projected_no_alias_annotation",
+    ),
+    // Appended to EVERY exported rule by `stage_rule`, so the byte-identity vector — which consumes
+    // a full minted export through both channels — exercises it on every shape at once.
+    (
+        "@rust_name",
+        "extern_import_matches_hand_stub_byte_for_byte",
+    ),
+];
+
+/// `@…` spellings that appear as string literals in `extern_interface.rs` but are NEVER written into
+/// an export — they name a directive in a DIAGNOSTIC, so they need no consumer-side vector. Listed
+/// (rather than skipped) so the scan's verdict is total: every spelling in the file is classified as
+/// writer or non-writer, and a new writer literal cannot hide in an unclassified remainder. Asserted
+/// present, so a stale exemption fails too.
+const EXTERN_INTERFACE_NON_WRITER_SPELLINGS: &[(&str, &str)] = &[
+    (
+        "@custom_serialize",
+        "the `CustomSerializeTransparent` exclusion's `annotation` field — names the directive whose \
+         presence makes a transparent rule unexportable; the rule is DROPPED, so nothing is written",
+    ),
+    (
+        "@custom_deserialize",
+        "the same exclusion's deserialize half — same reason",
+    ),
+    // Scanned as two words because the argument-word rule cannot tell a directive argument from the
+    // next word of a sentence; the spelling is registered as the scan sees it, which is also the
+    // clearest signal that this occurrence is PROSE rather than an emitted annotation.
+    (
+        "@newtype wrapper",
+        "the human-readable shape label in the unrenderable-rule exclusion message (\"a @newtype \
+         wrapper\") — a diagnostic naming the rule's shape, never an annotation",
+    ),
+];
+
+/// Every `@…` spelling that appears in a string literal of `extern_interface.rs`'s NON-test source,
+/// mapped to the source lines that hold it. A fixed argument word is part of the spelling
+/// (`"@duplicates reject"`), an interpolated one is not (`"@rust_name {ident}"` -> `@rust_name`).
+///
+/// The `#[cfg(test)]` module is cut off deliberately: a literal in that module is not a writer site,
+/// so including it would let a registry row be satisfied by a test rather than by the emitter.
+fn extern_interface_annotation_literals() -> BTreeMap<String, Vec<usize>> {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/generation/extern_interface.rs"
+    );
+    let src = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("cannot read the extern-interface writer source {path}: {e}"));
+    let scanned = crate::tests::identifier_hazard_tests::scan_rust(&src);
+    // Char index (the unit `literals` is keyed in) of the `#[cfg(test)]` module header.
+    let test_boundary = scanned
+        .masked
+        .find("#[cfg(test)]")
+        .map(|byte| scanned.masked[..byte].chars().count())
+        .unwrap_or(usize::MAX);
+
+    let mut found: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (at, lit) in &scanned.literals {
+        if *at >= test_boundary {
+            continue;
+        }
+        let line = src.chars().take(*at).filter(|c| *c == '\n').count() + 1;
+        for spelling in annotation_spellings_in(lit) {
+            found.entry(spelling).or_default().push(line);
+        }
+    }
+    found
+}
+
+/// Pull the `@…` spellings out of one string-literal body (see
+/// [`extern_interface_annotation_literals`] for the argument-word rule).
+fn annotation_spellings_in(lit: &str) -> Vec<String> {
+    fn word_end(chars: &[char], from: usize) -> usize {
+        let mut i = from;
+        while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+            i += 1;
+        }
+        i
+    }
+    let chars: Vec<char> = lit.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '@' {
+            i += 1;
+            continue;
+        }
+        let name_end = word_end(&chars, i + 1);
+        if name_end == i + 1 {
+            i += 1;
+            continue;
+        }
+        let mut spelling: String = chars[i..name_end].iter().collect();
+        if chars.get(name_end) == Some(&' ') {
+            let arg_end = word_end(&chars, name_end + 1);
+            if arg_end > name_end + 1 {
+                spelling.push(' ');
+                spelling.extend(&chars[name_end + 1..arg_end]);
+            }
+        }
+        out.push(spelling);
+        i = name_end;
+    }
+    out
+}
+
+/// LOCKSTEP (local tier and later — this module is NOT `snapshot_tests`, the one module fast runs):
+/// the writer vocabulary registry and `extern_interface.rs`'s actual `"@…"` literals must agree, and
+/// every registry row must name a real acceptance vector in this module.
+///
+/// The failure this exists to make impossible is the converse-direction skew: a directive REFUSAL
+/// landing in the parser while the projection keeps writing that spelling, which breaks every
+/// consumer of a dep that produces it and which no single-crate gate can see. A refusal delivery
+/// only has to read this list to know which spellings it must not break — and if it adds a writer
+/// instead, the missing row fails here rather than in someone else's build.
+#[test]
+fn extern_interface_writer_vocabulary_matches_the_writers() {
+    let found = extern_interface_annotation_literals();
+    // Scan sanity: a scanner that silently stopped matching would make every assertion below pass
+    // for the wrong reason.
+    assert!(
+        found.len() >= EXTERN_INTERFACE_WRITER_VOCABULARY.len(),
+        "the extern-interface annotation scan found only {} spelling(s) ({:?}) — it has gone \
+         vacuous (the literal shapes moved, or `scan_rust` stopped seeing them)",
+        found.len(),
+        found.keys().collect::<Vec<_>>()
+    );
+
+    let registry: BTreeMap<&str, &str> =
+        EXTERN_INTERFACE_WRITER_VOCABULARY.iter().copied().collect();
+    let non_writers: BTreeMap<&str, &str> = EXTERN_INTERFACE_NON_WRITER_SPELLINGS
+        .iter()
+        .copied()
+        .collect();
+
+    let unclassified: Vec<String> = found
+        .iter()
+        .filter(|(s, _)| {
+            !registry.contains_key(s.as_str()) && !non_writers.contains_key(s.as_str())
+        })
+        .map(|(s, lines)| format!("  `{s}` at extern_interface.rs line(s) {lines:?}"))
+        .collect();
+    assert!(
+        unclassified.is_empty(),
+        "extern_interface.rs holds `@…` string literal(s) with no verdict:\n{}\n\nIf the literal is \
+         WRITTEN into an export, add a row to `EXTERN_INTERFACE_WRITER_VOCABULARY` together with a \
+         consumer-side acceptance vector proving this crate's parse accepts it (that pairing is the \
+         whole point — a writer with no vector is how the converse-direction cross-crate skew \
+         ships). If it only names a directive in a diagnostic, add it to \
+         `EXTERN_INTERFACE_NON_WRITER_SPELLINGS` with the reason.",
+        unclassified.join("\n")
+    );
+
+    let unwritten: Vec<&str> = registry
+        .keys()
+        .copied()
+        .filter(|s| !found.contains_key(*s))
+        .collect();
+    assert!(
+        unwritten.is_empty(),
+        "registry row(s) whose spelling no `extern_interface.rs` writer emits — stale entries (or \
+         the projection stopped travelling the directive, which is an EXPORT-FIDELITY change to \
+         make deliberately): {unwritten:?}"
+    );
+    let stale_exempt: Vec<&str> = non_writers
+        .keys()
+        .copied()
+        .filter(|s| !found.contains_key(*s))
+        .collect();
+    assert!(
+        stale_exempt.is_empty(),
+        "non-writer exemption(s) for a spelling `extern_interface.rs` no longer mentions — prune \
+         them: {stale_exempt:?}"
+    );
+
+    // Each row's cited vector must be a real test in this module: a renamed vector fails loudly here
+    // instead of leaving the registry pointing at nothing.
+    let own_src = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/tests/extern_import_tests.rs"
+    ))
+    .expect("cannot read this module's own source");
+    let missing: Vec<&str> = EXTERN_INTERFACE_WRITER_VOCABULARY
+        .iter()
+        .filter(|(_, vector)| !own_src.contains(&format!("fn {vector}()")))
+        .map(|(spelling, _)| *spelling)
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "writer-vocabulary row(s) citing an acceptance vector this module does not define \
+         (renamed or deleted): {missing:?}"
+    );
+}
+
+/// Acceptance vector for the projected `@copy` — the annotation BOTH opaque arms of the projection
+/// write (the class-backed/extern arm and the raw-bytes arm), one dep carrying one of each.
+///
+/// Three legs: (1) the export carries `@copy` on both opaque rows — anti-vacuity, and the half that
+/// fails if either arm stops travelling it; (2) a consumer regenerating from that export GENERATES,
+/// which is the converse-direction guard (a parse refusal of the spelling the writer emits would
+/// hard-fail every consumer of such a dep, with no single-crate gate able to see it); (3) a NEGATIVE
+/// control proving the projected annotation is load-bearing rather than decorative — `@copy`'s
+/// consumer-visible effect is dropping the wasm boundary clones, so the leg runs `--wasm=true` and
+/// requires the stripped export to put the `.clone()` calls back.
+#[test]
+fn extern_import_accepts_the_projected_copy_annotation() {
+    let dep_spec = "cp = _CDDL_CODEGEN_EXTERN_TYPE_ ; @copy\n\
+                    rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\n";
+    let export = mint_export(dep_spec, "dep", "copyaccept");
+
+    // (1) both opaque arms travel the annotation.
+    let export_body = export
+        .values()
+        .find(|c| c.contains("cp = "))
+        .expect("the export must contain the opaque rows");
+    assert!(
+        export_body.contains("cp = _CDDL_CODEGEN_EXTERN_TYPE_ ; @copy"),
+        "the extern arm must project @copy; got:\n{export_body}"
+    );
+    assert!(
+        export_body.contains("rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy"),
+        "the raw-bytes arm must project @copy; got:\n{export_body}"
+    );
+
+    // (2) a consumer regenerating from the export generates — the acceptance half.
+    let consumer = "user = [x: cp, y: rb, ys: [* cp]]\n";
+    let flag_root = scratch("copyaccept_flag");
+    write(&flag_root, "lib.cddl", consumer);
+    let export_dir = write_export(&export, "dep", "copyaccept");
+    let import_arg = format!("dep={}", export_dir.to_str().unwrap());
+    let with_copy = generate_wasm(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("a consumer importing an export carrying @copy must generate");
+    let with_wasm = with_copy
+        .get("wasm/src/generated/mod.rs")
+        .expect("the consumer must emit a wasm mod.rs");
+    // Keyed on the `x: cp` getter specifically — the `ys: [* cp]` getter clones the LIST whether or
+    // not its element is `Copy`, so a whole-file `.clone()` search would never distinguish the two
+    // runs.
+    assert!(
+        with_wasm.contains("self.0.x.into()"),
+        "with @copy the wasm boundary must move the copy extern rather than clone it:\n{with_wasm}"
+    );
+
+    // (3) NEGATIVE control: strip the annotation from the export and the boundary clones come back.
+    let stripped: BTreeMap<String, String> = export
+        .iter()
+        .map(|(p, c)| (p.clone(), c.replace("@copy ", "")))
+        .collect();
+    let stripped_dir = write_export(&stripped, "dep", "copyaccept_stripped");
+    let stripped_arg = format!("dep={}", stripped_dir.to_str().unwrap());
+    let without_copy = generate_wasm(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &stripped_arg],
+    )
+    .expect("the stripped-export consumer must still generate");
+    let without_wasm = without_copy
+        .get("wasm/src/generated/mod.rs")
+        .expect("the stripped consumer must emit a wasm mod.rs");
+    assert!(
+        without_wasm.contains("self.0.x.clone().into()"),
+        "with @copy stripped the wasm boundary must clone — otherwise this vector's positive leg \
+         proves nothing:\n{without_wasm}"
+    );
+
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    let _ = std::fs::remove_dir_all(&stripped_dir);
+}
+
+/// Acceptance vector for the projected `@no_alias` — the annotation pass 2 (the transparent-alias
+/// pass) writes.
+///
+/// Three legs, mirroring the `@copy` vector: (1) the export carries it — anti-vacuity; (2) a
+/// consumer regenerating from that export GENERATES — the converse-direction guard; (3) a NEGATIVE
+/// control proving it is load-bearing: `@no_alias` says the dep materializes no `pub type Na`, so a
+/// truthful export makes the consumer INLINE the underlying type, while a stripped one makes it
+/// import a name the dep does not export — the exact skew a truthful projection prevents.
+#[test]
+fn extern_import_accepts_the_projected_no_alias_annotation() {
+    let export = mint_export("na = uint ; @no_alias\n", "dep", "noaliasaccept");
+    let export_body = export
+        .values()
+        .find(|c| c.contains("na = "))
+        .expect("the export must contain the alias row");
+    assert!(
+        export_body.contains("na = uint ; @no_alias"),
+        "the transparent-alias pass must project @no_alias; got:\n{export_body}"
+    );
+
+    let consumer = "user = [z: na]\n";
+    let flag_root = scratch("noaliasaccept_flag");
+    write(&flag_root, "lib.cddl", consumer);
+    let export_dir = write_export(&export, "dep", "noaliasaccept");
+    let import_arg = format!("dep={}", export_dir.to_str().unwrap());
+    let with_na = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("a consumer importing an export carrying @no_alias must generate");
+    let with_mod = with_na
+        .get("rust/src/generated/mod.rs")
+        .expect("the consumer must emit mod.rs");
+    assert!(
+        !with_mod.contains("dep::Na"),
+        "with @no_alias the consumer must inline the underlying type, not import a name the dep \
+         does not materialize:\n{with_mod}"
+    );
+
+    let stripped: BTreeMap<String, String> = export
+        .iter()
+        .map(|(p, c)| (p.clone(), c.replace("@no_alias ", "")))
+        .collect();
+    let stripped_dir = write_export(&stripped, "dep", "noaliasaccept_stripped");
+    let stripped_arg = format!("dep={}", stripped_dir.to_str().unwrap());
+    let without_na = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &stripped_arg],
+    )
+    .expect("the stripped-export consumer must still generate");
+    let without_mod = without_na
+        .get("rust/src/generated/mod.rs")
+        .expect("the stripped consumer must emit mod.rs");
+    assert!(
+        without_mod.contains("dep::Na"),
+        "with @no_alias stripped the consumer must import the dep's alias name — otherwise this \
+         vector's positive leg proves nothing:\n{without_mod}"
+    );
+
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    let _ = std::fs::remove_dir_all(&stripped_dir);
+}

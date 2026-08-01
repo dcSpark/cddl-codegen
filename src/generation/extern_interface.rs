@@ -1101,7 +1101,9 @@ fn project_extern_interface(
 
 /// A per-rule projection: `Ok((body, extra annotations, referenced rule idents))` or an `Err` the
 /// walk converts to an exclusion. The `@rust_name` pin is appended by `stage_rule`, so `extra
-/// annotations` holds only the row-specific ones (`@no_alias`, `@raw_bytes_flavor`).
+/// annotations` holds only the row-specific ones (`@copy`, `@no_alias`, `@duplicates …`). The
+/// complete written vocabulary is enumerated — and held against these writer sites in both
+/// directions — by `extern_import_tests::EXTERN_INTERFACE_WRITER_VOCABULARY`.
 type RuleProjection = Result<(String, Vec<String>, BTreeSet<RustIdent>), ExternInterfaceError>;
 
 /// Project a MATERIALIZED plain group (one referenced somewhere in the dep's own spec, so it has a
