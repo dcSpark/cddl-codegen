@@ -58,9 +58,11 @@ pub enum DuplicatesPolicy {
     Reject,
 }
 
-/// The `@extern_companions <path>=<Class>[,<Class>…]` declaration on a LOCALLY-marked extern rule:
-/// the sibling wasm crate (or module path) where the named STRUCTURAL companion classes of this
-/// extern type already exist, so the generator references them instead of minting duplicates.
+/// The `@extern_companions <path>=<Class>[,<Class>…]` declaration on a LOCALLY-declared marker rule
+/// (`_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` — both name a type this crate
+/// does not define, and both have their companions minted from their own ident): the sibling wasm
+/// crate (or module path) where the named STRUCTURAL companion classes of this
+/// type already exist, so the generator references them instead of minting duplicates.
 ///
 /// `path_prefix` is emitted verbatim as the `use <prefix>::<Class>;` head; `classes` are the exact
 /// generator-derived structural class names that defer (`TransactionMetadatumList`,
@@ -144,13 +146,14 @@ pub struct RuleMetadata {
     pub no_json_schema_export: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
-    /// `@extern_companions <path>=<Class>[,<Class>…]`: valid ONLY on a LOCALLY-scoped
-    /// `_CDDL_CODEGEN_EXTERN_TYPE_` rule. Declares that the named structural wasm companion classes
-    /// of this extern type already exist in a sibling wasm crate, so the generator emits
+    /// `@extern_companions <path>=<Class>[,<Class>…]`: valid ONLY on a LOCALLY-scoped, non-generic
+    /// `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule. Declares that the named
+    /// structural wasm companion classes
+    /// of that type already exist in a sibling wasm crate, so the generator emits
     /// `use <path>::<Class>;` and references them instead of minting its own `#[wasm_bindgen]`
     /// duplicates (which duplicate-symbol at link when both crates enter one cdylib). Only listed
     /// classes defer. Inert without `--wasm` (the classes it names are a wasm-boundary concern). On
-    /// any other placement — a non-extern rule, or a DEP-scoped extern, which
+    /// any other placement — a rule this crate GENERATES, or a DEP-scoped one, which
     /// `--extern-wrapper-index` / `--workspace-dep` already own — it is a graceful parse-time
     /// rejection, never silently ignored. See [`ExternCompanions`] and
     /// `IntermediateTypes::extern_companions`.

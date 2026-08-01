@@ -208,12 +208,15 @@ pub struct IntermediateTypes<'a> {
     // `Copy` assertion for each (see `export.rs`), and the tag rides the extern-interface seam like
     // `@raw_bytes_flavor` so `--extern-import` consumers inherit it. See `RuleMetadata::copy`.
     copy_externs: BTreeSet<RustIdent>,
-    // `@extern_companions` declarations, keyed by the LOCAL extern rule that carries one: the sibling
+    // `@extern_companions` declarations, keyed by the LOCAL marker rule that carries one (either
+    // user-supplied flavor — extern or raw-bytes): the sibling
     // wasm crate path plus the exact structural companion class names that already exist there. The
     // wasm wrapper-deferral decision (`try_defer_wrapper`) consults this to REFERENCE those classes
-    // instead of minting duplicate `#[wasm_bindgen]` ones. Deliberately NOT part of
-    // `RustStructConfig` for the same reason as `no_json_schema_export`: `RustStruct::new_extern`
-    // builds with `RustStructConfig::default()` and drops rule metadata, and an extern rule is this
+    // instead of minting duplicate `#[wasm_bindgen]` ones — keyed on IDENTS throughout, which is why
+    // the raw-bytes flavor needed nothing here. Deliberately NOT part of
+    // `RustStructConfig` for the same reason as `no_json_schema_export`: `RustStruct::new_extern` /
+    // `new_raw_bytes` build with `RustStructConfig::default()` and drop rule metadata, and a marker
+    // rule is this
     // directive's ONLY customer. Deliberately does NOT ride the extern-interface seam (unlike
     // `@copy`): the declaration is about where THIS crate's wasm face borrows from, which a consumer
     // of this crate answers for itself. Determinism: `BTreeMap`.
@@ -4727,7 +4730,7 @@ impl<'a> IntermediateTypes<'a> {
         self.extern_companions.insert(name, companions);
     }
 
-    /// The whole `@extern_companions` registry, keyed by declaring extern rule. Empty unless some
+    /// The whole `@extern_companions` registry, keyed by declaring marker rule. Empty unless some
     /// rule carries the directive, which is what keeps the deferral arm that reads it inert (and the
     /// output byte-identical) for every spec that does not.
     pub fn extern_companions(&self) -> &BTreeMap<RustIdent, crate::comment_ast::ExternCompanions> {
