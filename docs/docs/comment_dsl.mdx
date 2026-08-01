@@ -954,6 +954,35 @@ Stated limit: the aggregate kinds (the per-element `Vec<…>` / `BTreeMap<…>` 
 
 Because the declaration makes the framing-carrying spelling available, the un-declarable state is now refused rather than silently normalized: **under `--preserve-encodings`, a pair over a type that demands no encoding variables and that carries no declaration is a graceful rejection.** Write `@custom_encodings <kinds>` for a wire with framing, `@custom_encodings none` for one without, or — if the replaced type has one wire and needs no override at all — drop the pair and let the type's own impls own it. Without `--preserve-encodings` the same spec generates exactly as before.
 
+### Overriding the wire of a type this crate does not define
+
+A type-level pair is honored **wherever the alias resolves** — and an alias may resolve to a type this crate does not define. Writing the pair on an alias whose body references a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` or `_CDDL_CODEGEN_EXTERN_TYPE_` rule is therefore how you say *"this rule **is** that type, written differently on the wire"*:
+
+```cddl
+policy_id = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+; the CIP-25 v1 rendering: the same 28-byte policy id, written as hex text
+policy_id_v1 = policy_id ; @custom_serialize write_policy_hex @custom_deserialize read_policy_hex
+
+t = { * policy_id_v1 => uint }
+```
+
+emits `pub type PolicyIdV1 = PolicyId;` — no wrapper type is minted, so a value is the hand-written type itself, in memory and across every API — while the pair owns the wire at every position the alias reaches (a record field, both halves of a table, a rest row's key domain). The division of labor is the point: the CDDL **body** states what the thing *is* (the semantic identity, and the Rust type you get), and the pair states how it is *written here*. Two spellings of one wire are then two aliases of one rule.
+
+This is why the pair is [refused on the marker rule itself](#positions-that-are-rejected): that rule names a type whose own impls own its wire. The alias is the spelling that leaves that type alone.
+
+**Which signature the codec gets** follows the [encoding-variable rules above](#custom_serialize--custom_deserialize), applied to the type the alias resolves to:
+
+* a **raw-bytes** marker demands exactly one `StringEncoding` — the same slot a string-framed custom wire (hex text, bech32, base64) needs — so this flavor **infers** its signature and needs no declaration;
+* a plain **extern** is self-carrying and demands *nothing*, so under `--preserve-encodings` its alias must [declare its wire](#declaring-the-wires-encoding-variables-custom_encodings) with `@custom_encodings` (an undeclared pair there is a graceful rejection, not a silent normalization);
+* without `--preserve-encodings` no encoding variable exists at all and both flavors get the plain signatures.
+
+Two further consequences worth knowing before you reach for this:
+
+* The [two positions rule](#table-key-and-value-positions) applies unchanged: a record field passes its stored encoding by reference and a table entry's by value, so an alias reached from both needs **two** codec functions. Sharing one is a compile error in the generated crate (an `E0308` naming `&StringEncoding` against `StringEncoding`), not a silently different wire.
+* Such an alias does **not** travel across the [extern-interface](integration-other.mdx) seam: like any transparent alias carrying `@custom_serialize`, it is recorded as an `; unexported:` row, because a consumer given the plain alias would emit default wire logic. The marker rule itself exports normally.
+
+For executed vectors see `tests/alias-of-marker-e2e` (the raw-bytes flavor, both table positions plus a record field, byte-exact under `--preserve-encodings --canonical-form`) and `tests/custom-encodings-e2e` (the extern flavor, with its declaration).
+
 ### Table key and value positions
 
 A type-level pair is honored wherever the alias resolves, which includes both halves of a table:
@@ -982,7 +1011,7 @@ Under `--canonical-form=true` a table's keys are additionally serialized into a 
 
 The pair parses in the positions below but cannot be honored there, so each one is a graceful generation error naming the spelling that works. The common cause is that the pair is a **type-level** override: it replaces the codec of the rust type the rule resolves to. Each of these positions either deletes the node the override is keyed on, or mints a type whose generated impls the override does not displace.
 
-* **On a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule.** Either marker names a type this crate does not define, so that type owns its own (de)serialization impls. Give the rule a real CDDL body and put the pair there — that also keeps the wire type stated in the spec.
+* **On a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule.** Either marker names a type this crate does not define, so that type owns its own (de)serialization impls and there is nothing here for the pair to displace. Two spellings work instead, and which one you want depends on whether the Rust type is to change: give the rule a real CDDL body and put the pair there (that also keeps the wire type stated in the spec), or keep this rule as the marker and put the pair on an **alias** of it (`policy_id_v1 = policy_id ; @custom_serialize …`), which keeps the marker's Rust type and overrides only how it is written — see [Overriding the wire of a type this crate does not define](#overriding-the-wire-of-a-type-this-crate-does-not-define).
 * **On a table row, an open-map rest row, or an open-array rest tail entry** — a trailing comment on the `* k => v` / `* t` row itself. That slot carries `@name`, `@duplicates` and `@ignore`, all of which are row-scoped; the pair names a type the row does not declare. Put it on the row's key, value, or element rule instead.
 * **Together with `@no_alias`.** `@no_alias` removes the alias node the override is keyed on, so the pair would go with it and both directions would fall back to the default wire format.
 * **Together with `@newtype`.** A `@newtype` wrapper writes through its own generated `Serialize` impl while the deserialize call sites do route through the custom reader, so the pair would make the wrapper read one wire format and write another. Use the plain alias spelling, or declare the type `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write it in full.
