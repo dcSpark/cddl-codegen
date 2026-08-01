@@ -1500,6 +1500,20 @@ spliced into generated trees: `tests/custom_serialization` (core), `tests/custom
   sites (the table canonical key sort and the open-struct-map canonical merge); its vectors pin
   that the merge sorts by the bytes the write arm emits, the table-VALUE leg's `force_canonical`
   re-minimization, and a serializer refusal surfacing from both call sites.
+- **Declared wire framing (`@custom_encodings`) e2e** — `tests/custom-encodings-e2e`
+  (`integration_tests::custom_encodings_e2e`, compiled, rust-only, preserve + canonical; hand-fn
+  fragment `tests/custom_serialization_encodings`): the declaration that lets a codec state its OWN
+  wire's encoding variables instead of inheriting the replaced type's inferred demand. Every rule in
+  it is one where inference is wrong — a zero-demand `bool` whose codec writes a width-carrying uint
+  (the case that round-trips SILENTLY wrong without a declaration, since the codec is handed nothing
+  and both directions re-minimize together), the explicit `none` assertion on the same type, a
+  declaration overriding a NON-empty inference (`bytes` infers one `StringEncoding`; the wire is
+  `#6.42(bytes)`), the field-level spelling, and the by-value table-key twin. The crate COMPILING is
+  the three-way agreement gate (declaration vs emitted call vs emitted sidecar slot — a mismatch is
+  E0308); the vectors pin the non-minimal byte-exact round trip, the recorded slot values, canonical
+  minimization, and that a fresh value still goes through the custom writers. The refusal that makes
+  the declaration load-bearing — a pair over a zero-demand type under `--preserve-encodings` with no
+  declaration — is a `dsl_position_tests` cell beside its without-the-flag control.
 - **Placement axis** — `dsl_position_tests` cells: the rejected placements (extern/raw-bytes
   rules, row-entry slots, `@no_alias`, `@newtype`, enum rules in every spelling, record-rule
   single-half, table rule in every spelling incl. a generic def's instance) as `Expect::Reject`

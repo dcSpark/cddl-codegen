@@ -6535,6 +6535,37 @@ fn custom_serialize_canonical_e2e() {
 }
 
 #[test]
+fn custom_encodings_e2e() {
+    use std::str::FromStr;
+    // `@custom_encodings` — the custom codec DECLARING the encoding variables of its own wire — in
+    // every shape where inference from the replaced type gives the wrong answer: a zero-demand `bool`
+    // whose codec writes a width-carrying uint (the defect this directive dissolves, and one that
+    // round-trips SILENTLY wrong without it), the explicit `none` assertion on the same type, a
+    // declaration overriding a NON-empty inference (`bytes` inferring one `StringEncoding` where the
+    // wire is `#6.42(bytes)`), the field-level spelling, and the by-value table-key twin. Generated
+    // under --preserve-encodings --canonical-form, --wasm=false to isolate the rust surface. The
+    // crate COMPILING is itself the three-way agreement gate between each declaration, the emitted
+    // call and the emitted sidecar slot; the vectors then pin byte-exactness and canonical
+    // minimization. See tests/custom-encodings-e2e/tests.rs.
+    let custom_ser_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_serialization_encodings");
+    run_test(
+        "custom-encodings-e2e",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[custom_ser_path],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn open_struct_map_json_e2e() {
     // Loose-CBOR open struct-map FLATTENED-JSON round-trip vectors: rest
     // entries render at the same JSON object level as the declared fields (serde flatten), to_json is
