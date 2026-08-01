@@ -773,13 +773,13 @@ gate their remedy would extend, and it writes nothing — it drives `api::genera
 over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is built on, not its name.
 
 **Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
-section's recur-first premise stays honest.** Five at present, each cited by its own exact title (the
+section's recur-first premise stays honest.** Four at present, each cited by its own exact title (the
 full record stays in place below): "Regenerating over prior output with a rule DELETION is exercised
 as a gate for only two files"; "A `no gate demands this` premise probed against ONE gate is not
 evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
-`check.ts` itself); "`--extern-wrapper-index` deferral-boundaries"; "The recombination sweep's
-outcome counts are enforced only by vacuity floors"; and "A rule-position directive is SILENTLY
-DROPPED on every rule shape or spelling whose parse path does not carry it to a marking site".
+`check.ts` itself); "`--extern-wrapper-index` deferral-boundaries"; and "A rule-position directive is
+SILENTLY DROPPED on every rule shape or spelling whose parse path does not carry it to a marking
+site".
 
 - **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
   extern-interface projection — the cross-crate skew class, invisible to every single-crate
@@ -2306,28 +2306,6 @@ DROPPED on every rule shape or spelling whose parse path does not carry it to a 
   a filesystem-effect claim has no artifact inventory to enumerate. If a flag-level instance actually
   ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its
   documentation makes claims about.
-- **The recombination sweep's outcome counts are enforced only by vacuity floors, so a real class
-  migration lands unseen — TRIGGER ALREADY FIRED, build the detector.** `ok` / `graceful` / `panic`
-  are asserted only against floors sitting ~5% under the true numbers, and the exact baseline lives
-  in a source comment. Both halves failed together once: the comment stayed at `927 ok / 197
-  graceful / 420 panic` across a span in which the sweep reached `885 / 280 / 379` — a net 42-count
-  `ok` → `graceful` slide that no gate saw, found by re-measuring at the true parent commit during
-  an unrelated review. Bisected afterwards (`git bisect run` over the sweep, endpoints `dc6e4e98`
-  good / `db340908` bad), so the cause is attributed rather than inferred: `5ef7ed07` — "reject the
-  no-occurrence type-domain arrow map entry (`{ k => v }`) instead of widening to 0..N" — moved
-  **56** compositions `ok` → `graceful` in one step (927/197/420 → 871/253/420, `panic` untouched),
-  and later commits recovered 14 of them, so the 42 anyone measures at the endpoints is a NET of at
-  least two movements and matches no single change. The narrowing itself is correct and was
-  argued at length in its own commit message (RFC 8610: no occurrence indicator means exactly once);
-  what nothing recorded was the count it moved. That is the shape of the risk this entry exists
-  for — a per-class count is only readable as evidence at the commit that moved it, and an endpoint
-  subtraction across a range silently sums unrelated events. Detector half, to land first: commit
-  the sweep's exact per-class counts as a self-measuring datum and fail on ANY movement, the shape
-  `tests/timings.json` already uses for durations, so a class migration is a reviewed bless-diff
-  carrying its reason instead of a silent slide; keep the floors as the vacuity backstop, since
-  they answer a different question (did the composer rot?). The cost of NOT having it grows with
-  the count of hand-written measured quantities nothing re-measures — see `cddl-matrix/ROADMAP.md`
-  § Maintenance, which owns that axis across both docs.
 - **`KNOWN_PANIC_CLASSES` is guarded on its KEY and unguarded on its CITATION, and the citation is
   the half a human reads.** Each entry is `(panic-message substring, "…pinned by <fixture>")`. The
   sweep asserts the SUBSTRING is still observed (`observed_classes.contains(sub)`), so a fixed class

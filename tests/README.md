@@ -3645,6 +3645,18 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   panic class at that site — and layer-2 known-bad keys must carry a desc-axis label so a generic
   word cannot absorb unrelated compositions. Graceful rejections are the designed boundary, tallied
   but never findings. Vacuity floors (swept count, ok count) are derived from the executed artifact.
+
+  The sweep's outcome counts are also held EXACTLY, against the committed datum
+  `tests/recombination-counts.json` — `swept` / `ok` / `graceful` / `panic` plus a per-class panic
+  breakdown (each observed `KNOWN_PANIC_CLASSES` key → how many compositions landed in it). The two
+  mechanisms answer different questions and both stay: the floors ask *did the composer rot* and
+  tolerate ordinary movement; the datum asks *did a class migrate* and tolerates none, so an
+  abort-to-rejection conversion or an ingredient addition becomes a reviewed bless-diff carrying its
+  reason instead of a silent slide. Re-bless with `BLESS_RECOMB_COUNTS=1 cargo test --bin
+  cddl-codegen recombination_generation_sweep`, in the same commit as the change that moved the
+  numbers and with the reason in that commit's message; the failure message names the command and
+  prints what it measured. The datum is trustworthy because the sweep asserts its own enumeration is
+  deterministic — the same property that lets the floors be read off the executed artifact.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
   gate): batches the sweep's `ok` compositions (~40 rules/batch; per-composition `rc<num>_` rule
   prefixes make names collision-free by construction), generates each batch with
