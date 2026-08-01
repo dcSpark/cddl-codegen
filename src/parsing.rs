@@ -1917,6 +1917,12 @@ fn parse_type(
     if rule_metadata.no_alias {
         types.mark_no_alias_rule(type_name.clone());
     }
+    // `@doc` likewise: a generic instance's struct config comes from the generic DEFINITION, and a
+    // named binding to a set nominal registers its alias without metadata, so both emitted a
+    // documentable construct while discarding the rule's own doc.
+    if let Some(doc) = &rule_metadata.comment {
+        types.mark_rule_doc(type_name.clone(), doc.clone());
+    }
     // `@raw_bytes_flavor` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule (the extern-marker
     // branch below marks it). Anywhere else it would silently do nothing, so reject loudly here in
     // the house style of the other comment-DSL misuse rejections.

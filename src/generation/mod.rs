@@ -402,6 +402,11 @@ impl GenerationScope {
                                 .rust_struct(ident)
                                 .and_then(|rs| rs.config().doc.as_deref())
                         })
+                        // A named binding to a generic SET NOMINAL has neither: its alias is
+                        // registered through `AliasInfo::new_manual` (metadata `None`) and the only
+                        // `RustStruct` in play is the shared nominal, whose config belongs to the
+                        // generic definition. The IR's per-ident record is the binding rule's own.
+                        .or_else(|| types.rule_doc(ident))
                     {
                         doc_lines.push(comment.to_owned());
                     }
