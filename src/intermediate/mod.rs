@@ -229,6 +229,19 @@ pub struct IntermediateTypes<'a> {
     // the non-export-scope rule, so a consumer has nothing to inherit. Determinism: `BTreeSet`.
     // See `RuleMetadata::no_json_schema_export`.
     no_json_schema_export: BTreeSet<RustIdent>,
+    // Idents of rules tagged `@no_alias`. The directive's carrier is `AliasInfo::gen_rust_alias` /
+    // `gen_wasm_alias`, which `AliasInfo::new_from_metadata` derives — but three rule kinds register
+    // their own transparent alias through `AliasInfo::new_manual` instead, whose `rule_metadata` is
+    // hardcoded `None`: a TABLE rule and an ARRAY typedef (registered from the `finalize` kind-walk,
+    // where only the `RustStruct` is in scope) and a named binding to a generic SET NOMINAL
+    // (registered from the generic-resolution arm, where only the resolved instance is in scope). On
+    // all three the directive was silently dropped — the rule kept emitting the `pub type` it asks
+    // to suppress. Recording the intent per-ident at the ONE parse seam that reads a rule's metadata,
+    // and applying it in `register_type_alias`, makes every registration path honor it including
+    // future ones, rather than adding a fourth place to remember. Rides the extern-interface seam:
+    // a dep that suppresses its `pub type` must say so, or the consumer imports a name the dep no
+    // longer materializes. Determinism: `BTreeSet`. See `RuleMetadata::no_alias`.
+    no_alias_rules: BTreeSet<RustIdent>,
     // Base generic extern idents tagged `@raw_bytes_flavor`: an instance of one whose argument
     // resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases the `<Base>RawBytes` wrapper flavor
     // instead of the plain `<Base>`. Opt-in only — see `RuleMetadata::raw_bytes_flavor`.
@@ -305,6 +318,7 @@ impl<'a> IntermediateTypes<'a> {
             copy_externs: BTreeSet::new(),
             extern_companions: BTreeMap::new(),
             no_json_schema_export: BTreeSet::new(),
+            no_alias_rules: BTreeSet::new(),
             raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
             rust_name_pins: BTreeMap::new(),
@@ -2070,7 +2084,15 @@ impl<'a> IntermediateTypes<'a> {
         resolved
     }
 
-    pub fn register_type_alias(&mut self, alias: RustIdent, info: AliasInfo) {
+    pub fn register_type_alias(&mut self, alias: RustIdent, mut info: AliasInfo) {
+        // `@no_alias` is enforced HERE rather than at each constructor, so a registration path that
+        // builds its `AliasInfo` without the rule's metadata (`new_manual`: the table/array
+        // kind-walk, a named binding to a generic set nominal) honors the directive too. Idempotent
+        // for `new_from_metadata`, which already derived both flags from the same bit.
+        if self.no_alias_rules.contains(&alias) {
+            info.gen_rust_alias = false;
+            info.gen_wasm_alias = false;
+        }
         if let ConceptualRustType::Alias(_ident, _ty) = &info.base_type.conceptual_type {
             panic!(
                 "register_type_alias*({}, {:?}) wraps automatically in Alias, no need to provide it.",
@@ -4510,6 +4532,20 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn mark_no_json_schema_export(&mut self, name: RustIdent) {
         self.no_json_schema_export.insert(name);
+    }
+
+    /// Record that `name`'s rule carries `@no_alias`. Called from the parse seam that reads a rule's
+    /// metadata, unconditionally — whether the rule ends up registering an alias at all is decided
+    /// later, and by several different paths (see the `no_alias_rules` field comment).
+    pub fn mark_no_alias_rule(&mut self, name: RustIdent) {
+        self.no_alias_rules.insert(name);
+    }
+
+    /// Whether `name`'s rule asked for its transparent `pub type` to be suppressed. Read by
+    /// `register_type_alias` (which enforces it) and by the extern-interface projection (which must
+    /// tell a consumer, since the suppressed name is one the dep no longer materializes).
+    pub fn is_no_alias_rule(&self, name: &RustIdent) -> bool {
+        self.no_alias_rules.contains(name)
     }
 
     /// The base generic extern idents for which a flavored (`<Base>RawBytes`) instance was actually

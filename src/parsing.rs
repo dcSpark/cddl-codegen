@@ -1908,6 +1908,15 @@ fn parse_type(
     if rule_metadata.no_json_schema_export {
         types.mark_no_json_schema_export(type_name.clone());
     }
+    // `@no_alias` is recorded per-ident for the same reason, and at the same seam: the rule kinds
+    // that register their transparent alias from `finalize` (a table, an array typedef, a named
+    // binding to a generic set nominal) build it without this metadata, so a flag threaded only
+    // through `AliasInfo::new_from_metadata` was silently dropped on exactly the shapes that DO emit
+    // a `pub type`. Recorded unconditionally — a rule that registers a struct instead has no alias
+    // entry for the mark to reach, so it is inert there rather than wrong.
+    if rule_metadata.no_alias {
+        types.mark_no_alias_rule(type_name.clone());
+    }
     // `@raw_bytes_flavor` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule (the extern-marker
     // branch below marks it). Anywhere else it would silently do nothing, so reject loudly here in
     // the house style of the other comment-DSL misuse rejections.

@@ -6963,3 +6963,100 @@ fn tagged_anonymous_choice_rejects_gracefully_under_preserve() {
         );
     }
 }
+
+/// `@no_alias` must suppress the emitted `pub type` on EVERY rule kind that registers a transparent
+/// alias, not only the ones whose alias is built from the rule's metadata.
+///
+/// Three kinds register through `AliasInfo::new_manual`, whose `rule_metadata` is `None` by
+/// construction — a table rule and an array typedef (registered from the `finalize` kind-walk, where
+/// only the `RustStruct` is in scope) and a named binding to a generic set nominal (registered from
+/// the generic-resolution arm). On all three the directive was silently dropped: the rule kept
+/// emitting the `pub type` it asks to suppress, and a member site kept referring to it. The
+/// enforcement therefore lives in `register_type_alias`, keyed on the per-ident record the parse seam
+/// writes, so a future registration path honors it without a fourth place to remember.
+///
+/// Asserted on the emitted source in both directions per kind: the `pub type` is gone AND the member
+/// site inlines the structural type it used to name. The scalar alias is the control that already
+/// worked; a struct-registering rule is the control for inertness (no alias exists, so nothing
+/// changes and nothing breaks).
+#[test]
+fn no_alias_suppresses_the_pub_type_on_every_alias_registering_kind() {
+    let emit = |cddl: &str| {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_no_alias_kinds_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "no_alias_kinds_unused",
+            "--wasm",
+            "false",
+        ]);
+        let out = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        out.unwrap_or_else(|e| panic!("generation must succeed for:\n{cddl}\ngot: {e}"))
+            .get("rust/src/generated/mod.rs")
+            .expect("mod.rs")
+            .clone()
+    };
+    // (kind, body lines, the `pub type` line the rule emits WITHOUT the directive, the member
+    // spelling it must fall back to WITH it)
+    let kinds = [
+        (
+            "table rule",
+            "foo = { * uint => tstr }@\nholder = [f: foo]\n",
+            "pub type Foo = BTreeMap<u64, String>;",
+            "pub f: BTreeMap<u64, String>,",
+        ),
+        (
+            "array typedef",
+            "foo = [* uint]@\nholder = [f: foo]\n",
+            "pub type Foo = Vec<u64>;",
+            "pub f: Vec<u64>,",
+        ),
+        (
+            "named binding to a generic set nominal",
+            "gset<T> = #6.258([* T]) / [* T]\nfoo = gset<uint>@\nholder = [f: foo]\n",
+            "pub type Foo = GsetU64;",
+            "pub f: GsetU64,",
+        ),
+        // The control that already worked before the enforcement moved — kept so a regression that
+        // breaks the ORIGINAL carrier fails here too.
+        (
+            "scalar transparent alias",
+            "foo = uint@\nholder = [f: foo]\n",
+            "pub type Foo = u64;",
+            "pub f: u64,",
+        ),
+    ];
+    for (kind, template, pub_type, member) in kinds {
+        let without = emit(&template.replace('@', ""));
+        assert!(
+            without.contains(pub_type),
+            "{kind}: without the directive the rule must emit `{pub_type}` — otherwise this vector \
+             proves nothing:\n{without}"
+        );
+        let with = emit(&template.replace('@', " ; @no_alias"));
+        assert!(
+            !with.contains(pub_type),
+            "{kind}: @no_alias must suppress `{pub_type}`:\n{with}"
+        );
+        assert!(
+            with.contains(member),
+            "{kind}: with the alias suppressed the member site must inline `{member}`:\n{with}"
+        );
+    }
+    // Inertness control: a rule that registers a STRUCT has no alias for the mark to reach, so the
+    // directive changes nothing rather than breaking the emission.
+    let record = emit("foo = [x: uint]\nholder = [f: foo]\n");
+    let record_no_alias = emit("foo = [x: uint] ; @no_alias\nholder = [f: foo]\n");
+    assert_eq!(
+        record, record_no_alias,
+        "@no_alias on a struct-registering rule must be inert, not destructive"
+    );
+}

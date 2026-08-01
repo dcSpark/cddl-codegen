@@ -2350,3 +2350,81 @@ fn extern_import_accepts_the_projected_no_alias_annotation() {
     let _ = std::fs::remove_dir_all(&export_dir);
     let _ = std::fs::remove_dir_all(&stripped_dir);
 }
+
+/// The cross-crate half of `@no_alias`'s honor on collection rules: a dep that suppresses its
+/// `pub type` MUST say so in its export, or the consumer rebuilds the alias and imports a name the
+/// dependency no longer materializes.
+///
+/// This is the forward direction of the skew class the writer-vocabulary registry above guards, and
+/// it is why the projection reads the IR's per-ident `@no_alias` record rather than the alias's own
+/// `rule_metadata`: a collection rule registers through `AliasInfo::new_manual`, whose metadata is
+/// `None` by construction, so the metadata read would have projected a suppressed rule as though it
+/// emitted a `pub type`. Legs: the export carries the annotation on both collection kinds
+/// (anti-vacuity); the consumer inlines the structural type instead of importing; and the NEGATIVE
+/// control shows a stripped export putting the import back — the skew, made visible.
+#[test]
+fn extern_import_projects_no_alias_on_collection_rules() {
+    let export = mint_export(
+        "tbl = { * uint => tstr } ; @no_alias\narr = [* uint] ; @no_alias\nholder = [a: tbl, b: arr]\n",
+        "dep",
+        "noaliascoll",
+    );
+    let body = export
+        .values()
+        .find(|c| c.contains("tbl = "))
+        .expect("the export must contain the collection rows");
+    assert!(
+        body.contains("tbl = {* uint => tstr} ; @no_alias"),
+        "the table rule must project @no_alias; got:\n{body}"
+    );
+    assert!(
+        body.contains("arr = [* uint] ; @no_alias"),
+        "the array typedef must project @no_alias; got:\n{body}"
+    );
+
+    let consumer = "user = [p: tbl, q: arr]\n";
+    let flag_root = scratch("noaliascoll_flag");
+    write(&flag_root, "lib.cddl", consumer);
+    let export_dir = write_export(&export, "dep", "noaliascoll");
+    let import_arg = format!("dep={}", export_dir.to_str().unwrap());
+    let with_na = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("a consumer importing suppressed collection aliases must generate");
+    let with_mod = with_na
+        .get("rust/src/generated/mod.rs")
+        .expect("the consumer must emit mod.rs");
+    // Keyed on the MEMBER spelling rather than the import line: rust imports group
+    // (`use dep::{Arr, Tbl};`), so a `dep::Tbl` substring search answers a question about grouping
+    // rather than about the alias.
+    assert!(
+        with_mod.contains("pub p: BTreeMap<u64, String>") && with_mod.contains("pub q: Vec<u64>"),
+        "with @no_alias projected the consumer must inline the structural types, not name aliases \
+         the dep does not materialize:\n{with_mod}"
+    );
+
+    let stripped: BTreeMap<String, String> = export
+        .iter()
+        .map(|(p, c)| (p.clone(), c.replace("@no_alias ", "")))
+        .collect();
+    let stripped_dir = write_export(&stripped, "dep", "noaliascoll_stripped");
+    let stripped_arg = format!("dep={}", stripped_dir.to_str().unwrap());
+    let without_na = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &stripped_arg],
+    )
+    .expect("the stripped-export consumer must still generate");
+    let without_mod = without_na
+        .get("rust/src/generated/mod.rs")
+        .expect("the stripped consumer must emit mod.rs");
+    assert!(
+        without_mod.contains("pub p: Tbl") && without_mod.contains("pub q: Arr"),
+        "with @no_alias stripped the consumer must import the dep's alias names — otherwise this \
+         vector's positive leg proves nothing:\n{without_mod}"
+    );
+
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    let _ = std::fs::remove_dir_all(&stripped_dir);
+}
