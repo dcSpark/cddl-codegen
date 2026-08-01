@@ -3521,6 +3521,30 @@ impl<'a> IntermediateTypes<'a> {
                     }
                 }
             }
+            // BOTH halves on a record rule is the one accepted rule-position pair (it suppresses the
+            // generated impls for the author to hand-own the type), and it is the one place a
+            // `@custom_encodings` declaration would be read into a rule's metadata and then have
+            // nowhere to go: a struct carries its encoding metadata INSIDE itself, so no
+            // codec-visible tuple crosses the boundary. Every other struct-minting rule kind already
+            // rejects on the pair above, so this fires once and only for the shape that would
+            // otherwise drop the declaration silently. (A declaration with one half or none is the
+            // parse walk's `reject_custom_encodings_without_pair`, so it cannot double-report here.)
+            if config.custom_encodings.is_some()
+                && config.custom_serialize.is_some()
+                && config.custom_deserialize.is_some()
+                && matches!(rust_struct.variant(), RustStructType::Record(_))
+            {
+                custom_codec_rejections.insert(format!(
+                    "@custom_encodings on `{ident}`: this rule mints a STRUCT, whose encoding \
+                     metadata lives inside the struct itself (its `encodings` member) — the custom \
+                     pair on a record rule suppresses the generated impls for you to hand-own, and \
+                     hands no encoding tuple across the call, so there is nothing for a declaration \
+                     to describe. Put the declaration where the pair takes encoding arguments: \
+                     beside a FIELD's pair, or on a transparent alias rule's pair \
+                     (`<rule> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> \
+                     @custom_encodings <kinds>`)."
+                ));
+            }
             if matches!(rust_struct.variant(), RustStructType::Record(_)) {
                 if config.custom_serialize.is_some() && config.custom_deserialize.is_none() {
                     custom_codec_rejections.insert(format!(
@@ -3553,6 +3577,82 @@ impl<'a> IntermediateTypes<'a> {
         }
         for ident in custom_json_alias_rejections {
             self.record_custom_json_on_transparent_alias_rejection(&ident);
+        }
+        // A custom codec whose replaced type demands NO encoding variables, under
+        // `--preserve-encodings`, and with no `@custom_encodings` declaration to say what its own wire
+        // needs. The pair replaces the codec, so the CODEC owns the wire — but the signature and the
+        // sidecar slots are inferred from the REPLACED type, and a self-carrying leaf (an extern, a
+        // record, `bool`, `any`, a `null`-fixed) infers NOTHING. Every framing byte the custom wire
+        // writes is then unrecorded, and the round trip silently NORMALIZES it — invisible to a
+        // round-trip test (both directions agree), visible only as a re-encoded artifact whose bytes
+        // no longer hash the same. The declaration makes that state representable, so refusing the
+        // undeclared spelling makes the silent one unrepresentable.
+        //
+        // Asked of `generation::encoding_fields_decls` — the SAME function the emission sites use to
+        // build the argument list — rather than a twin predicate, so "empty demand" cannot come to
+        // mean two different things. `Blind` because a pair governs its whole subtree (a declaration
+        // beneath describes a codec this one's wire has swallowed). Gated on `--preserve-encodings`:
+        // without it no encoding variable exists anywhere and the directive family is inert (one
+        // spec, many flag sets). Skipped when rejections already exist — the demand walk reads
+        // registered structs, which a failed registration may have left absent.
+        if cli.preserve_encodings && !self.has_rejections() {
+            let mut zero_demand_rejections = BTreeSet::new();
+            for (ident, alias_info) in &self.type_aliases {
+                let Some(rmd) = alias_info.rule_metadata.as_ref() else {
+                    continue;
+                };
+                if rmd.custom_serialize.is_none()
+                    || rmd.custom_deserialize.is_none()
+                    || rmd.custom_encodings.is_some()
+                {
+                    continue;
+                }
+                // The codec-visible type is the alias's INNER type: the pair is lifted AT the alias
+                // node, so any encoding operation the rule itself owns (`x = bytes .cbor y`) has
+                // already been written by the enclosing generated code and is not the codec's to
+                // record. Same slice the emission site sees one recursion level down.
+                let mut codec_visible = alias_info.base_type.clone();
+                codec_visible.encodings.clear();
+                if crate::generation::custom_codec_demand_is_empty(self, &codec_visible, cli) {
+                    zero_demand_rejections.insert(custom_codec_zero_demand_rejection(
+                        &format!("rule `{ident}`"),
+                        matches!(
+                            codec_visible.conceptual_type.clone().resolve_aliases(),
+                            ConceptualRustType::Rust(_)
+                        ),
+                    ));
+                }
+            }
+            for (struct_ident, rust_struct) in &self.rust_structs {
+                let RustStructType::Record(record) = rust_struct.variant() else {
+                    continue;
+                };
+                for field in &record.fields {
+                    let rmd = &field.rule_metadata;
+                    if rmd.custom_serialize.is_none()
+                        || rmd.custom_deserialize.is_none()
+                        || rmd.custom_encodings.is_some()
+                    {
+                        continue;
+                    }
+                    // A FIELD-level pair fires at the top of the member's recursion, so its
+                    // codec-visible list is the member's WHOLE type — encoding operations included
+                    // (a `#6.9(uint)` field hands its tag width to the custom writer).
+                    if crate::generation::custom_codec_demand_is_empty(self, &field.rust_type, cli)
+                    {
+                        zero_demand_rejections.insert(custom_codec_zero_demand_rejection(
+                            &format!("field `{}` of `{struct_ident}`", field.name),
+                            matches!(
+                                field.rust_type.clone().resolve_aliases().conceptual_type,
+                                ConceptualRustType::Rust(_)
+                            ),
+                        ));
+                    }
+                }
+            }
+            for msg in zero_demand_rejections {
+                self.record_rejection(msg);
+            }
         }
         // A CBOR tag riding an ANONYMOUS choice RULE — `t = #6.10(int / tstr)`, and the group-choice
         // and all-fixed spellings of the same thing — has nowhere to put its encoding metadata under
@@ -5178,6 +5278,33 @@ pub fn dotted_ident_rejection(source_name: &str) -> Option<String> {
         ));
     }
     None
+}
+
+/// The `--preserve-encodings` refusal for a custom (de)serializer pair whose replaced type demands no
+/// encoding variables and which declares none of its own. `position` names where the pair is written
+/// (a rule, or a field of a struct); `replaced_is_named_type` selects the extra remedy that only
+/// applies when the replaced type is one this crate does not codegen — its own impls already own the
+/// wire, so the pair has nothing to add.
+///
+/// Message text is pinned by `dsl_position_tests` and by the fixture suite; keep the three remedies
+/// (declare the wire, declare `none`, drop the pair) present in any rewording.
+fn custom_codec_zero_demand_rejection(position: &str, replaced_is_named_type: bool) -> String {
+    let extern_remedy = if replaced_is_named_type {
+        " If the replaced type has ONE wire — a hand-written extern, say — it does not need the pair \
+         at all: its own `Serialize`/`Deserialize` impls own the wire, encodings included, and \
+         dropping the pair records them."
+    } else {
+        ""
+    };
+    format!(
+        "@custom_serialize/@custom_deserialize on {position}: under `--preserve-encodings` this \
+         pair replaces the codec of a type that demands NO encoding variables, so the custom wire's \
+         framing (int/tag widths, string headers, container lengths) is recorded nowhere and the \
+         round trip silently normalizes it — both directions agree, so no round-trip test can see \
+         it. Declare what the custom wire needs beside the pair (`@custom_encodings <kinds>`, a \
+         comma-separated list of `sz` / `str` / `len`), or state that it needs nothing \
+         (`@custom_encodings none`) if the wire genuinely has no framing.{extern_remedy}"
+    )
 }
 
 mod idents;

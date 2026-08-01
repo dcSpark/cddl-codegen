@@ -422,6 +422,46 @@ fn custom_codec_directives(metadata: &RuleMetadata) -> Vec<&'static str> {
     found
 }
 
+/// Reject a `@custom_encodings` declaration that is not accompanied by BOTH halves of the pair it
+/// describes, at the same position. Returns whether anything was rejected.
+///
+/// The declaration states the codec-visible encoding variables of the wire a
+/// `@custom_serialize`/`@custom_deserialize` pair writes and reads, so it is meaningful only where
+/// that pair is. With ONE half the other direction is generated code deriving the REPLACED type's
+/// encoding demand, which declared slots would contradict by construction (one side would pass
+/// what the other never binds — E0061/E0308 in the generated crate, if it were honored at all).
+/// With NO half there is no codec to describe and the declaration would be read into the position's
+/// metadata and dropped — the silent-drop class this DSL rejects everywhere.
+///
+/// `position` names the slot the way that slot's other rejections do.
+fn reject_custom_encodings_without_pair(
+    types: &mut IntermediateTypes,
+    position: &str,
+    metadata: &RuleMetadata,
+) -> bool {
+    if metadata.custom_encodings.is_none() {
+        return false;
+    }
+    let present = custom_codec_directives(metadata);
+    if present.len() == 2 {
+        return false;
+    }
+    let found = if present.is_empty() {
+        "no `@custom_serialize`/`@custom_deserialize` is written there".to_owned()
+    } else {
+        format!("only `{}` is written there", present[0])
+    };
+    types.record_rejection(format!(
+        "@custom_encodings on {position}: the declaration describes the wire of the custom \
+         (de)serializer pair written BESIDE it, and {found}. Both halves are required: with one \
+         half the other direction is generated code deriving the replaced type's own encoding \
+         demand, which the declaration would contradict slot for slot. Write the pair here \
+         (`@custom_serialize <fn> @custom_deserialize <fn> @custom_encodings <kinds>`), or drop the \
+         declaration."
+    ));
+    true
+}
+
 /// Reject a custom (de)serializer pair sitting in a collection ROW-ENTRY comment slot — a table row,
 /// an open struct-map rest row, an open-array rest tail. The pair is a TYPE-level override keyed on
 /// the type whose codec it replaces, and a row entry declares no type of its own, so the directives
@@ -906,6 +946,9 @@ fn parse_type_choices(
             types.record_rejection(extern_companions_not_extern_rejection(name));
         }
         handle_rust_name_pin(types, name, &rule_metadata);
+        // A `@custom_encodings` declaration is a property OF the pair — with one half or none, it
+        // describes nothing (the rule-position sites all check this the same way).
+        reject_custom_encodings_without_pair(types, &format!("rule `{name}`"), &rule_metadata);
         // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's own type. The
         // collapse target is `Option<T>`, which is not a class the wasm boundary can key a map or a
         // list on (it is exposed as a nullable of T's own wasm spelling, so the wrapper would either
@@ -998,6 +1041,9 @@ fn parse_type_choices(
             types.record_rejection(extern_companions_not_extern_rejection(name));
         }
         handle_rust_name_pin(types, name, &rule_metadata);
+        // A `@custom_encodings` declaration is a property OF the pair — with one half or none, it
+        // describes nothing (the rule-position sites all check this the same way).
+        reject_custom_encodings_without_pair(types, &format!("rule `{name}`"), &rule_metadata);
         // A rule-level directive on a NON-LAST arm is built and thrown away: the rule slot is
         // `type_choices.last()` (read above), and `create_variants_from_type_choices` consumes only
         // `.name` and `.comment` from each choice. So on any other arm the directive generates
@@ -2060,6 +2106,10 @@ fn parse_type(
     // is a graceful rejection naming the spelling that DOES work. (Field position and the row-entry
     // slots are handled where their metadata is read; the ENUM and single-half-RECORD rule placements
     // are decided by the minted struct's KIND, so they reject in `IntermediateTypes::finalize`.)
+    // A `@custom_encodings` declaration is a property OF the pair: it declares the wire the pair's
+    // codec writes and reads, so without both halves at this same position there is no codec for it
+    // to describe (and it would be read into the rule's metadata and dropped).
+    reject_custom_encodings_without_pair(types, &format!("rule `{type_name}`"), &rule_metadata);
     let custom_directives = custom_codec_directives(&rule_metadata);
     for directive in &custom_directives {
         // An extern / raw-bytes rule names a type this crate does not define — `new_extern` and
@@ -4839,6 +4889,19 @@ fn parse_record_from_group_choice(
                      from this entry."
                 ));
             }
+            // A `@custom_encodings` declaration is a property OF the pair, and a field carries its
+            // own pair — so a declaration here with one half (or none) describes no codec.
+            if rule_metadata.custom_encodings.is_some() {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                reject_custom_encodings_without_pair(
+                    types,
+                    &format!("field `{field_name}` of rule `{source_name}`"),
+                    &rule_metadata,
+                );
+            }
             // `@used_as_elem` names the TYPE whose loose-list wasm wrapper to mint, so it is
             // rule-scoped and never applies at a field/member position — reject loudly instead of
             // silently dropping it. Honoring it here would need a sub-ruling per member shape (an
@@ -5280,6 +5343,14 @@ fn recognize_rest_row(
     ) {
         return (None, Some(candidate));
     }
+    // …and a `@custom_encodings` declaration with no pair to describe is dropped the same way.
+    if reject_custom_encodings_without_pair(
+        types,
+        &format!("the open struct-map rest row (`* k => v`) of rule `{src}`"),
+        &rest_metadata,
+    ) {
+        return (None, Some(candidate));
+    }
     // `@ignore` selects the tolerate-and-DROP flavor: unknown entries are typed-deserialized and
     // discarded (no field, serialize emits declared members only). It combines with nothing else on
     // the row, and it is incompatible with `--preserve-encodings`. Each combination is a graceful
@@ -5519,6 +5590,14 @@ fn recognize_array_rest_tail(
     ) {
         return (None, Some(candidate));
     }
+    // …and a `@custom_encodings` declaration with no pair to describe is dropped the same way.
+    if reject_custom_encodings_without_pair(
+        types,
+        &format!("the open-array rest tail (`* t`) of rule `{src}`"),
+        &tail_metadata,
+    ) {
+        return (None, Some(candidate));
+    }
     // `@duplicates` on an array tail is meaningless — there are no keys for a duplicates policy to
     // govern (distinct from the map row's `@ignore`+`@duplicates` combination message).
     if tail_metadata.duplicates.is_some() {
@@ -5719,6 +5798,13 @@ fn parse_group_choice(
                     "Name the table's key or value type as its own rule and put the pair there \
                      (`k = text ; @custom_serialize <fn> @custom_deserialize <fn>`, then \
                      `{ * k => v }`).",
+                    &row_metadata,
+                );
+                // …and a `@custom_encodings` declaration with no pair to describe is dropped the
+                // same way.
+                reject_custom_encodings_without_pair(
+                    types,
+                    &format!("the table row (`* k => v`) of rule `{src}`"),
                     &row_metadata,
                 );
             }

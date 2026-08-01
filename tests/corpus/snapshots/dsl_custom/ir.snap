@@ -15,6 +15,7 @@ expression: ir
             custom_json: true,
             custom_serialize: None,
             custom_deserialize: None,
+            custom_encodings: None,
             doc: None,
             newtype_getter: Some(
                 None,
@@ -52,6 +53,7 @@ expression: ir
             custom_json: false,
             custom_serialize: None,
             custom_deserialize: None,
+            custom_encodings: None,
             doc: None,
             newtype_getter: None,
             duplicates: None,
@@ -97,6 +99,7 @@ expression: ir
                             custom_deserialize: Some(
                                 "my_deser",
                             ),
+                            custom_encodings: None,
                             extern_companions: None,
                             comment: None,
                         },
@@ -118,6 +121,7 @@ expression: ir
             custom_json: false,
             custom_serialize: None,
             custom_deserialize: None,
+            custom_encodings: None,
             doc: None,
             newtype_getter: None,
             duplicates: None,

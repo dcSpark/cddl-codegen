@@ -1,5 +1,5 @@
 use crate::cli::Cli;
-use crate::comment_ast::DemandSet;
+use crate::comment_ast::{DemandSet, EncodingKind, RuleMetadata};
 use codegen::{Block, TypeAlias};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -2675,6 +2675,78 @@ fn key_encoding_field(name: &str, key: &FixedValue) -> EncodingField {
     }
 }
 
+/// THE mint for a `@custom_encodings` declaration: the codec-visible encoding variables the
+/// declaration names, in declared order, under `name`.
+///
+/// Positional naming — the first slot keeps the bare `{name}_encoding` spelling every inferred
+/// single-variable member already has (so a one-`str` declaration over an alias-of-bytes reproduces
+/// today's names and types exactly), and further slots append their 1-based index
+/// (`{name}_encoding2`, `{name}_encoding3`, …), keeping `_encoding` non-terminal only where a
+/// declaration made it ambiguous. Deterministic and derivable from the declaration alone, which is
+/// what lets the two carrier channels (the emission configs, and the sidecar/LHS derivation) agree
+/// without either consulting the other.
+///
+/// Types, defaults and `is_copy` are the SAME values `encoding_fields_impl` mints for the inferred
+/// flavors of these kinds (`mod.rs`'s `Primitive`/`Array`/`Map` arms) — a declaration fixes WHICH
+/// variables a codec sees and in what order, never how one of them is spelled or passed.
+fn declared_encoding_fields(name: &str, kinds: &[EncodingKind]) -> Vec<EncodingField> {
+    kinds
+        .iter()
+        .enumerate()
+        .map(|(i, kind)| {
+            let field_name = if i == 0 {
+                format!("{name}_encoding")
+            } else {
+                format!("{name}_encoding{}", i + 1)
+            };
+            match kind {
+                EncodingKind::Sz => EncodingField {
+                    field_name,
+                    type_name: "Option<cbor_event::Sz>".to_owned(),
+                    default_expr: "None",
+                    enc_conversion_before: "Some(",
+                    enc_conversion_after: ")",
+                    is_copy: true,
+                },
+                EncodingKind::Str => EncodingField {
+                    field_name,
+                    type_name: "StringEncoding".to_owned(),
+                    default_expr: "StringEncoding::default()",
+                    enc_conversion_before: "StringEncoding::from(",
+                    enc_conversion_after: ")",
+                    is_copy: false,
+                },
+                EncodingKind::Len => EncodingField {
+                    field_name,
+                    type_name: "LenEncoding".to_owned(),
+                    default_expr: "LenEncoding::default()",
+                    enc_conversion_before: "",
+                    enc_conversion_after: "",
+                    is_copy: true,
+                },
+            }
+        })
+        .collect()
+}
+
+/// Whether an `Alias` node reached during encoding-variable derivation may honor its own rule's
+/// `@custom_encodings` declaration.
+///
+/// A declaration describes the wire of the codec written BESIDE it, so it is honored at exactly the
+/// node where its own pair governs. Once some OUTER pair has taken over the position (a field-level
+/// pair shadowing the alias it is written over, or an outer alias's pair), everything under it is
+/// inside that codec's opaque wire and its declarations describe a codec nobody calls — so the
+/// derivation switches to `Blind` and reports what INFERENCE alone says, which is exactly what the
+/// governing codec is handed. `docs/docs/comment_dsl.mdx` states this as the precedence rule.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(crate) enum AliasDeclarations {
+    /// No pair governs above this point: an alias's own declaration is the answer.
+    Honor,
+    /// A pair already governs: ignore every declaration below (identical to the pre-directive
+    /// behaviour, and therefore byte-identical for any spec that declares nothing).
+    Blind,
+}
+
 fn encoding_fields(
     types: &IntermediateTypes,
     name: &str,
@@ -2682,18 +2754,107 @@ fn encoding_fields(
     include_default: bool,
     cli: &Cli,
 ) -> Vec<EncodingField> {
+    encoding_fields_decls(
+        types,
+        name,
+        ty,
+        include_default,
+        cli,
+        AliasDeclarations::Honor,
+    )
+}
+
+/// `encoding_fields` for a MEMBER position whose own comment may carry a custom pair — every record
+/// field site, which is where a field-level `@custom_serialize`/`@custom_deserialize` is read.
+///
+/// A field-level pair governs the member from the top of the recursion (it fires BEFORE any encoding
+/// operation is consumed, so it is handed the tag/`.cbor` variables too), which makes the three
+/// answers here exhaustive:
+///   * pair + declaration → the declared list IS the member's whole codec-visible list;
+///   * pair, no declaration → inference, blind to any declaration underneath (the pair shadows them);
+///   * no pair → ordinary inference, honoring a declaration the member's own TYPE rule carries.
+///
+/// `_default_present` is appended as `encoding_fields` appends it: it is generated-code-owned, never
+/// part of the codec's tuple, so it survives a declaration untouched.
+fn field_encoding_fields(
+    types: &IntermediateTypes,
+    name: &str,
+    ty: &RustType,
+    field_metadata: Option<&RuleMetadata>,
+    include_default: bool,
+    cli: &Cli,
+) -> Vec<EncodingField> {
+    assert!(cli.preserve_encodings);
+    let field_pair = field_metadata
+        .filter(|rmd| rmd.custom_serialize.is_some() && rmd.custom_deserialize.is_some());
+    match field_pair {
+        Some(rmd) => match rmd.custom_encodings.as_ref() {
+            Some(kinds) => {
+                let mut encs = declared_encoding_fields(name, kinds);
+                if include_default && ty.config.default.is_some() {
+                    encs.push(default_present_encoding_field(name));
+                }
+                encs
+            }
+            None => encoding_fields_decls(
+                types,
+                name,
+                ty,
+                include_default,
+                cli,
+                AliasDeclarations::Blind,
+            ),
+        },
+        None => encoding_fields(types, name, ty, include_default, cli),
+    }
+}
+
+/// The generated-code-owned `{name}_default_present` slot a `.default`-carrying member gets on top of
+/// its encoding variables. Never part of a codec's argument or return tuple (the codec is called
+/// only when the value is present), so it is minted the same way whether the list around it was
+/// inferred or declared.
+fn default_present_encoding_field(name: &str) -> EncodingField {
+    EncodingField {
+        field_name: format!("{name}_default_present"),
+        type_name: "bool".to_owned(),
+        default_expr: "false",
+        enc_conversion_before: "",
+        enc_conversion_after: "",
+        is_copy: true,
+    }
+}
+
+/// Whether a custom (de)serializer pair placed over `ty` would be handed NO encoding variables at
+/// all — the state `@custom_encodings` exists to make declarable, and which
+/// `IntermediateTypes::finalize` refuses under `--preserve-encodings` when nothing is declared.
+///
+/// This asks the SAME derivation the emission sites build their argument lists from, so "empty
+/// demand" cannot come to mean two different things; the alternative (a twin predicate over
+/// `encoding_fields_impl`'s empty arms) would be a second, unpaired derivation of the same fact.
+/// `Blind` because a pair governs its whole subtree — a declaration underneath describes a codec
+/// whose wire this one has swallowed.
+pub(crate) fn custom_codec_demand_is_empty(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    cli: &Cli,
+) -> bool {
+    encoding_fields_decls(types, "wire", ty, false, cli, AliasDeclarations::Blind).is_empty()
+}
+
+/// `encoding_fields` with an explicit declaration mode — see [`AliasDeclarations`].
+fn encoding_fields_decls(
+    types: &IntermediateTypes,
+    name: &str,
+    ty: &RustType,
+    include_default: bool,
+    cli: &Cli,
+    decls: AliasDeclarations,
+) -> Vec<EncodingField> {
     assert!(cli.preserve_encodings);
     // TODO: how do we handle defaults for nested things? e.g. inside of a ConceptualRustType::Map
-    let mut encs = encoding_fields_impl(types, name, ty.into(), cli, 0);
+    let mut encs = encoding_fields_impl(types, name, ty.into(), cli, 0, decls);
     if include_default && ty.config.default.is_some() {
-        encs.push(EncodingField {
-            field_name: format!("{name}_default_present"),
-            type_name: "bool".to_owned(),
-            default_expr: "false",
-            enc_conversion_before: "",
-            enc_conversion_after: "",
-            is_copy: true,
-        });
+        encs.push(default_present_encoding_field(name));
     }
     encs
 }
@@ -2716,12 +2877,18 @@ pub(super) fn tag_encoding_infix(tag_level: usize) -> String {
 /// root, incremented each time a `Tagged`/`OptionallyTagged` op recurses into its child under the
 /// same name). It drives `tag_encoding_infix` so stacked tags get distinct members. Name-changing
 /// recursions (array element, map key/value) start a fresh sub-member and reset it to 0.
+///
+/// `decls` decides whether an `Alias` node may answer with its rule's own `@custom_encodings`
+/// declaration instead of recursing — see [`AliasDeclarations`]. It threads UNCHANGED through every
+/// recursion (the shadow a governing codec casts covers its whole subtree, including across the
+/// array-element / map-key / map-value name boundaries that reset `tag_depth`).
 fn encoding_fields_impl(
     types: &IntermediateTypes,
     name: &str,
     ty: SerializingRustType,
     cli: &Cli,
     tag_depth: usize,
+    decls: AliasDeclarations,
 ) -> Vec<EncodingField> {
     assert!(cli.preserve_encodings);
     match ty {
@@ -2734,8 +2901,14 @@ fn encoding_fields_impl(
                 enc_conversion_after: "",
                 is_copy: true,
             };
-            let inner_encs =
-                encoding_fields_impl(types, &format!("{name}_elem"), (&**elem_ty).into(), cli, 0);
+            let inner_encs = encoding_fields_impl(
+                types,
+                &format!("{name}_elem"),
+                (&**elem_ty).into(),
+                cli,
+                0,
+                decls,
+            );
             if inner_encs.is_empty() {
                 vec![base]
             } else {
@@ -2763,9 +2936,15 @@ fn encoding_fields_impl(
                 is_copy: true,
             }];
             let key_encs =
-                encoding_fields_impl(types, &format!("{name}_key"), (&**k).into(), cli, 0);
-            let val_encs =
-                encoding_fields_impl(types, &format!("{name}_value"), (&**v).into(), cli, 0);
+                encoding_fields_impl(types, &format!("{name}_key"), (&**k).into(), cli, 0, decls);
+            let val_encs = encoding_fields_impl(
+                types,
+                &format!("{name}_value"),
+                (&**v).into(),
+                cli,
+                0,
+                decls,
+            );
 
             // `@duplicates preserve` (the pair-map twin): a `BTreeMap` keyed by key VALUE is
             // structurally incapable of holding two entries with the same key, so the encoding
@@ -2866,6 +3045,7 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::I64)).into(),
                 cli,
                 tag_depth,
+                decls,
             ),
             FixedValue::Uint(_) => encoding_fields_impl(
                 types,
@@ -2873,6 +3053,7 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::U64)).into(),
                 cli,
                 tag_depth,
+                decls,
             ),
             FixedValue::Float(_) => encoding_fields_impl(
                 types,
@@ -2880,6 +3061,7 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::F64)).into(),
                 cli,
                 tag_depth,
+                decls,
             ),
             FixedValue::Text(_) => encoding_fields_impl(
                 types,
@@ -2887,9 +3069,38 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::Str)).into(),
                 cli,
                 tag_depth,
+                decls,
             ),
         },
-        SerializingRustType::Root(ConceptualRustType::Alias(_, ty), cfg) => {
+        SerializingRustType::Root(ConceptualRustType::Alias(alias_ident, ty), cfg) => {
+            // A type-level custom codec OWNS the wire from this node down, so when its rule declares
+            // the wire's encoding variables (`@custom_encodings`) the declaration IS the answer here
+            // — replacing the whole inferred subtree, which is what makes a zero-demand replaced type
+            // (a self-carrying extern, `bool`, `any`) able to carry framing at all. Reached only in
+            // `Honor` mode and only for a COMPLETE pair: a lone half is refused elsewhere, and under
+            // a governing outer codec (`Blind`) the declaration describes a codec nobody calls.
+            // A pair WITHOUT a declaration still shadows its subtree — it governs the position, so
+            // what it is handed is what inference alone says.
+            let alias_pair = types
+                .type_aliases()
+                .get(alias_ident)
+                .and_then(|info| info.rule_metadata.as_ref())
+                .filter(|rmd| rmd.custom_serialize.is_some() && rmd.custom_deserialize.is_some());
+            if decls == AliasDeclarations::Honor
+                && let Some(rmd) = alias_pair
+            {
+                if let Some(kinds) = rmd.custom_encodings.as_ref() {
+                    return declared_encoding_fields(name, kinds);
+                }
+                return encoding_fields_impl(
+                    types,
+                    name,
+                    SerializingRustType::Root(ty, cfg),
+                    cli,
+                    tag_depth,
+                    AliasDeclarations::Blind,
+                );
+            }
             // Keep the OUTER RustTypeSerializeConfig (`cfg`): an Alias's inner is a bare
             // ConceptualRustType with no config of its own, so recursing with `(&**ty).into()`
             // would DEFAULT the config and drop the per-rule policy the alias carries — notably
@@ -2907,12 +3118,13 @@ fn encoding_fields_impl(
                 SerializingRustType::Root(ty, cfg),
                 cli,
                 tag_depth,
+                decls,
             )
         }
         SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
             // same-name recursion (a nullable can still carry a tagged inner), so thread the depth
             // rather than resetting it via the `encoding_fields` wrapper.
-            encoding_fields_impl(types, name, (&**ty).into(), cli, tag_depth)
+            encoding_fields_impl(types, name, (&**ty).into(), cli, tag_depth, decls)
         }
         SerializingRustType::Root(ConceptualRustType::Rust(rust_ident), _cfg) => {
             match &types.rust_struct(rust_ident).unwrap().variant() {
@@ -2920,7 +3132,7 @@ fn encoding_fields_impl(
                 RustStructType::CStyleEnum { variants } => {
                     // earlier we are guaranteed that all variants will have the same encoding types
                     // or else it wouldn't end up as a c-style enum in the first place in IntermediateTypes
-                    encoding_fields(types, name, variants[0].rust_type(), false, cli)
+                    encoding_fields_decls(types, name, variants[0].rust_type(), false, cli, decls)
                 }
                 // also push them out for RawBytesType as they're not stored there, as if we had `bytes` directly here
                 RustStructType::RawBytesType => encoding_fields_impl(
@@ -2929,6 +3141,7 @@ fn encoding_fields_impl(
                     (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
                     cli,
                     tag_depth,
+                    decls,
                 ),
                 // a named table/array rule is a bare rust typedef onto a collection — there is no
                 // struct for the encodings to live inside, so they must be pushed OUT to the
@@ -2948,6 +3161,7 @@ fn encoding_fields_impl(
                         SerializingRustType::Root(&structural, cfg),
                         cli,
                         tag_depth,
+                        decls,
                     )
                 }
                 RustStructType::Array { element_type, .. } => {
@@ -2959,6 +3173,7 @@ fn encoding_fields_impl(
                         SerializingRustType::Root(&structural, cfg),
                         cli,
                         tag_depth,
+                        decls,
                     )
                 }
                 // no encodings here. they're contained inside the struct
@@ -2980,9 +3195,10 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Fixed(FixedValue::Uint(*tag as u64))).into(),
                 cli,
                 tag_depth,
+                decls,
             );
             encs.append(&mut encoding_fields_impl(
-                types, name, *child, cli, tag_level,
+                types, name, *child, cli, tag_level, decls,
             ));
             encs
         }
@@ -3003,7 +3219,7 @@ fn encoding_fields_impl(
                 is_copy: true,
             }];
             encs.append(&mut encoding_fields_impl(
-                types, name, *child, cli, tag_level,
+                types, name, *child, cli, tag_level, decls,
             ));
             encs
         }
@@ -3014,9 +3230,10 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
                 cli,
                 tag_depth,
+                decls,
             );
             encs.append(&mut encoding_fields_impl(
-                types, name, *child, cli, tag_depth,
+                types, name, *child, cli, tag_depth, decls,
             ));
             encs
         }
@@ -3029,14 +3246,32 @@ fn encoding_var_names_str(
     rust_type: &RustType,
     cli: &Cli,
 ) -> String {
+    encoding_var_names_str_for_field(types, field_name, rust_type, None, cli)
+}
+
+/// `encoding_var_names_str` for a position that may carry a FIELD-level custom pair: the tuple LHS a
+/// custom deserializer's return is destructured into must name exactly the variables the codec
+/// returns, which its own declaration fixes (see [`field_encoding_fields`]).
+fn encoding_var_names_str_for_field(
+    types: &IntermediateTypes,
+    field_name: &str,
+    rust_type: &RustType,
+    field_metadata: Option<&RuleMetadata>,
+    cli: &Cli,
+) -> String {
     assert!(cli.preserve_encodings);
-    let resolved_rust_type = rust_type.clone().resolve_aliases();
-    let mut var_names = if resolved_rust_type.is_fixed_value() {
+    // `is_fixed_value` is a STRUCTURAL question (does this position bind a value at all), so it
+    // still asks the resolved type. The encoding list below deliberately does NOT resolve: a
+    // declaration rides on the alias node `resolve_aliases()` deletes, and the `Alias` arm is a pure
+    // pass-through for every undeclared type, so the two are identical wherever nothing declares.
+    let mut var_names = if rust_type.clone().resolve_aliases().is_fixed_value() {
         vec![]
     } else {
         vec![field_name.to_owned()]
     };
-    for enc in encoding_fields(types, field_name, &resolved_rust_type, false, cli).into_iter() {
+    for enc in
+        field_encoding_fields(types, field_name, rust_type, field_metadata, false, cli).into_iter()
+    {
         var_names.push(enc.field_name);
     }
 

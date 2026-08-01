@@ -74,6 +74,37 @@ pub struct ExternCompanions {
     pub classes: std::collections::BTreeSet<String>,
 }
 
+/// One codec-visible encoding VARIABLE a `@custom_encodings` declaration names, in the order the
+/// custom codec's signature takes them. The vocabulary is the subset of the generator's own encoding
+/// variable types that a hand-written codec can meaningfully own — see
+/// `docs/docs/comment_dsl.mdx` § "Declaring the wire's encoding variables" for the table and for the
+/// aggregate / `TagPresenceEncoding` kinds deliberately left undeclarable.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EncodingKind {
+    /// `sz` → `Option<cbor_event::Sz>`: how an int (or a tag) head was sized.
+    Sz,
+    /// `str` → `StringEncoding`: how a text/bytes header was written (definite width, or the
+    /// indefinite chunk lengths).
+    Str,
+    /// `len` → `LenEncoding`: how a container's length header was written.
+    Len,
+}
+
+impl EncodingKind {
+    /// The `@custom_encodings` token that spells this kind (the parser's vocabulary, surfaced for
+    /// the rejection messages so they can never drift from what is accepted).
+    pub fn token(self) -> &'static str {
+        match self {
+            Self::Sz => "sz",
+            Self::Str => "str",
+            Self::Len => "len",
+        }
+    }
+
+    /// Every kind, in the order the docs table lists them. The parser's accepted vocabulary.
+    pub const ALL: &'static [EncodingKind] = &[Self::Sz, Self::Str, Self::Len];
+}
+
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
@@ -146,6 +177,21 @@ pub struct RuleMetadata {
     pub no_json_schema_export: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
+    /// `@custom_encodings <kind>[,<kind>…]` / `@custom_encodings none`: the codec-visible encoding
+    /// variables of the wire a `@custom_serialize`/`@custom_deserialize` pair writes and reads.
+    /// `None` = no declaration (the replaced type's INFERRED demand drives the signature, as it
+    /// always has); `Some(kinds)` = the declaration drives it instead, positionally, everywhere
+    /// (the codec's trailing serialize args, its deserialize return tuple, and the encoding-struct
+    /// slots the generated code stores them in). `Some(vec![])` is the explicit `none` spelling —
+    /// "this codec's wire has no framing", an assertion rather than an omission.
+    ///
+    /// Valid ONLY beside BOTH halves of the pair, in the same position (a type-level alias rule's
+    /// comment, or a field's comment): with one half the other direction is generated code deriving
+    /// inference, which declared slots would contradict by construction. Everywhere else it is a
+    /// graceful rejection. Inert without `--preserve-encodings` (no encoding variables exist at
+    /// all — "one spec, many flag sets", like `@extern_companions` without `--wasm`). See
+    /// [`EncodingKind`] and `generation::declared_encoding_fields`.
+    pub custom_encodings: Option<Vec<EncodingKind>>,
     /// `@extern_companions <path>=<Class>[,<Class>…]`: valid ONLY on a LOCALLY-scoped, non-generic
     /// `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule. Declares that the named
     /// structural wasm companion classes
@@ -200,6 +246,11 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
             r2.custom_deserialize,
             "custom_deserialize"
         ),
+        custom_encodings: merge_metadata_fields!(
+            r1.custom_encodings,
+            r2.custom_encodings,
+            "custom_encodings"
+        ),
         extern_companions: merge_metadata_fields!(
             r1.extern_companions,
             r2.extern_companions,
@@ -226,6 +277,7 @@ enum ParseResult {
     NoJsonSchemaExport,
     CustomSerialize(String),
     CustomDeserialize(String),
+    CustomEncodings(Vec<EncodingKind>),
     ExternCompanionsTag(ExternCompanions),
     Comment(String),
 }
@@ -294,6 +346,9 @@ impl RuleMetadata {
                     custom_deserialize,
                     "custom_deserialize"
                 ),
+                ParseResult::CustomEncodings(kinds) => {
+                    merge_parse_fields!(base.custom_encodings, kinds, "custom_encodings")
+                }
                 ParseResult::ExternCompanionsTag(companions) => {
                     merge_parse_fields!(base.extern_companions, companions, "extern_companions")
                 }
@@ -339,6 +394,7 @@ impl RuleMetadata {
             no_json_schema_export,
             custom_serialize,
             custom_deserialize,
+            custom_encodings,
             extern_companions,
         } = self;
         let mut found = Vec::new();
@@ -380,6 +436,9 @@ impl RuleMetadata {
         }
         if custom_deserialize.is_some() {
             found.push("@custom_deserialize");
+        }
+        if custom_encodings.is_some() {
+            found.push("@custom_encodings");
         }
         if extern_companions.is_some() {
             found.push("@extern_companions");
@@ -590,6 +649,47 @@ fn tag_custom_deserialize(input: &str) -> IResult<&str, ParseResult> {
     ))
 }
 
+fn tag_custom_encodings(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@custom_encodings")(input)?;
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    // Exactly one REQUIRED argument from a strict vocabulary, whitespace-free (house style — the
+    // argument reader is `take_while1(!ws)`). A missing or malformed argument is a PANIC (matching
+    // `@duplicates`/`@extern_companions`): the comment parser otherwise swallows nom errors
+    // (`metadata_from_comments`), so a soft failure would silently drop the whole line's metadata —
+    // here that means dropping the pair AND its declaration, re-arming the very silent-normalization
+    // trap this directive exists to disarm. Loud at the cause.
+    let vocabulary = EncodingKind::ALL
+        .iter()
+        .map(|kind| format!("`{}`", kind.token()))
+        .collect::<Vec<_>>()
+        .join(" / ");
+    if input.is_empty() || input.starts_with('@') {
+        panic!(
+            "@custom_encodings: missing required argument; expected a comma-separated list of \
+             {vocabulary} with no whitespace (e.g. `@custom_encodings sz,str`), or the keyword \
+             `none` for a wire with no framing."
+        );
+    }
+    let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+    if arg == "none" {
+        return Ok((rest, ParseResult::CustomEncodings(Vec::new())));
+    }
+    let kinds = arg
+        .split(',')
+        .map(|token| match EncodingKind::ALL.iter().find(|k| k.token() == token) {
+            Some(kind) => *kind,
+            None => panic!(
+                "@custom_encodings: unknown kind {token:?} in {arg:?}; expected a comma-separated \
+                 list of {vocabulary} with no whitespace (e.g. `@custom_encodings sz,str`), or the \
+                 keyword `none` for a wire with no framing. A trailing comma, an empty entry, or a \
+                 space after a comma reaches here as an unknown kind. The aggregate (per-element \
+                 `Vec`/`BTreeMap`) and tag-presence encoding types are deliberately not declarable."
+            ),
+        })
+        .collect();
+    Ok((rest, ParseResult::CustomEncodings(kinds)))
+}
+
 /// Whether `path` is a `::`-separated chain of rust identifiers — the shape the `use <path>::<Class>;`
 /// head must have, since it is emitted verbatim into the generated wasm crate. Deliberately syntactic
 /// only (like `@newtype`'s getter bound): whether the crate exists is the CONSUMER'S COMPILE to
@@ -677,6 +777,10 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_no_json_schema_export,
         tag_custom_serialize,
         tag_custom_deserialize,
+        // No prefix relation with either half of the pair above, nor with `@custom_json`: all four
+        // share `@custom_` and diverge at the 8th char (`s`/`d`/`j`/`e`), so the `alt` order among
+        // them is free.
+        tag_custom_encodings,
         tag_extern_companions,
         tag_comment,
     ))
@@ -721,6 +825,7 @@ pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@no_json_schema_export",
     "@custom_serialize",
     "@custom_deserialize",
+    "@custom_encodings",
     "@extern_companions",
     "@doc",
 ];
@@ -765,6 +870,7 @@ fn parse_comment_name() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -793,6 +899,7 @@ fn parse_comment_newtype() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -825,6 +932,7 @@ fn parse_comment_newtype_getter_before() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -874,6 +982,7 @@ fn parse_comment_newtype_getter_after() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -902,6 +1011,7 @@ fn parse_comment_newtype_and_name() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -934,6 +1044,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -966,6 +1077,7 @@ fn parse_comment_used_as_key() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1096,6 +1208,7 @@ fn parse_comment_used_as_elem() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1129,6 +1242,7 @@ fn parse_comment_used_as_elem_and_key() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1161,6 +1275,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1190,6 +1305,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1218,6 +1334,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1431,6 +1548,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1459,6 +1577,7 @@ fn parse_comment_name_noalias() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1487,6 +1606,7 @@ fn parse_comment_newtype_and_custom_json() {
                 no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1521,6 +1641,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 no_json_schema_export: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
+                custom_encodings: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1556,6 +1677,7 @@ fn parse_comment_all_except_no_alias() {
                 no_json_schema_export: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
+                custom_encodings: None,
                 extern_companions: None,
                 comment: Some("this is a doc comment".to_string()),
             }

@@ -228,7 +228,15 @@ pub(super) fn generate_array_struct_deserialization(
         // fixed values fall through to the verify-only branch (same as non-preserve fixed values).
         let preserve_binding = cli
             .preserve_encodings
-            .then(|| encoding_var_names_str(types, &field.name, &field.rust_type, cli))
+            .then(|| {
+                encoding_var_names_str_for_field(
+                    types,
+                    &field.name,
+                    &field.rust_type,
+                    Some(&field.rule_metadata),
+                    cli,
+                )
+            })
             .filter(|s| !s.is_empty());
         let (before, after) = if let Some(var_names_str) = preserve_binding {
             if cli.annotate_fields {
@@ -366,10 +374,11 @@ pub(super) fn generate_array_struct_deserialization(
                 // presence tuple `(true, enc)` alongside the bool exactly like the non-fixed
                 // optional path threads `(Some(value), enc)`.
                 let enc_fields = if cli.preserve_encodings {
-                    encoding_fields(
+                    field_encoding_fields(
                         types,
                         &field.name,
-                        &field.rust_type.clone().resolve_aliases(),
+                        &field.rust_type,
+                        Some(&field.rule_metadata),
                         false,
                         cli,
                     )
@@ -493,10 +502,11 @@ pub(super) fn generate_array_struct_deserialization(
                 let mut type_check_else = Block::new("else");
                 if cli.annotate_fields {
                     let enc_fields = if cli.preserve_encodings {
-                        encoding_fields(
+                        field_encoding_fields(
                             types,
                             &field.name,
-                            &field.rust_type.clone().resolve_aliases(),
+                            &field.rust_type,
+                            Some(&field.rule_metadata),
                             false,
                             cli,
                         )
@@ -710,10 +720,11 @@ pub(super) fn generate_array_struct_deserialization(
             encoding_vars_output.push(("tag_encoding".to_owned(), "Some(tag_encoding)".to_owned()));
         }
         for field in record.fields.iter() {
-            for field_enc in encoding_fields(
+            for field_enc in field_encoding_fields(
                 types,
                 &field.name,
-                &field.rust_type.clone().resolve_aliases(),
+                &field.rust_type,
+                Some(&field.rule_metadata),
                 true,
                 cli,
             ) {
@@ -1313,16 +1324,10 @@ fn append_rest_capture(
             let key_enc_val = match key_enc_expr.clone() {
                 Some(raw) => key_encs[0].enc_conversion(&raw),
                 None => tuple_str(
-                    encoding_fields(
-                        types,
-                        "rest_key",
-                        &rest.domain().clone().resolve_aliases(),
-                        false,
-                        cli,
-                    )
-                    .into_iter()
-                    .map(|e| e.field_name)
-                    .collect(),
+                    encoding_fields(types, "rest_key", rest.domain(), false, cli)
+                        .into_iter()
+                        .map(|e| e.field_name)
+                        .collect(),
                 ),
             };
             block.line(if is_pair_map {
@@ -1520,7 +1525,13 @@ fn build_map_field_deser_arm(
         deser_block_code.content.push_block(dup_check);
 
         let temp_var_prefix = format!("tmp_{}", field.name);
-        let var_names_str = encoding_var_names_str(types, &temp_var_prefix, &field.rust_type, cli);
+        let var_names_str = encoding_var_names_str_for_field(
+            types,
+            &temp_var_prefix,
+            &field.rust_type,
+            Some(&field.rule_metadata),
+            cli,
+        );
         if cli.annotate_fields {
             let (before, after) = if var_names_str.is_empty() {
                 // empty binding == a fixed value with no encoding var (bool / null):
@@ -1589,10 +1600,11 @@ fn build_map_field_deser_arm(
                 .content
                 .line(&format!("{} = Some(tmp_{});", field.name, field.name));
         }
-        for enc_field in encoding_fields(
+        for enc_field in field_encoding_fields(
             types,
             &field.name,
-            &field.rust_type.clone().resolve_aliases(),
+            &field.rust_type,
+            Some(&field.rule_metadata),
             false,
             cli,
         ) {
@@ -2170,7 +2182,14 @@ pub(super) fn codegen_struct(
             // even fixed values still need to keep track of their encodings.
             // DECLARED type (see `EncodingField::type_name`): these `type_name`s become this encoding
             // struct's field types, which must spell the member as its data-struct field does.
-            for field_enc in encoding_fields(types, &field.name, &field.rust_type, true, cli) {
+            for field_enc in field_encoding_fields(
+                types,
+                &field.name,
+                &field.rust_type,
+                Some(&field.rule_metadata),
+                true,
+                cli,
+            ) {
                 push_encoding_struct_field(
                     &mut encoding_struct,
                     &mut encoding_aliases,
@@ -2368,10 +2387,11 @@ pub(super) fn codegen_struct(
                     }
                     // declare variables for deser loop
                     if cli.preserve_encodings {
-                        for field_enc in encoding_fields(
+                        for field_enc in field_encoding_fields(
                             types,
                             &field.name,
-                            &field.rust_type.clone().resolve_aliases(),
+                            &field.rust_type,
+                            Some(&field.rule_metadata),
                             true,
                             cli,
                         ) {
@@ -3273,10 +3293,11 @@ pub(super) fn codegen_struct(
                     for field in record.fields.iter() {
                         let key_enc = key_encoding_field(&field.name, field.key.as_ref().unwrap());
                         encoding_ctor.line(format!("{},", key_enc.field_name));
-                        for field_enc in encoding_fields(
+                        for field_enc in field_encoding_fields(
                             types,
                             &field.name,
-                            &field.rust_type.clone().resolve_aliases(),
+                            &field.rust_type,
+                            Some(&field.rule_metadata),
                             true,
                             cli,
                         ) {
