@@ -7124,3 +7124,261 @@ fn rule_doc_reaches_the_constructs_built_from_borrowed_metadata() {
         );
     }
 }
+
+/// Generate `cddl` with `extra` flags, returning `rust/src/generated/mod.rs` on success or the
+/// graceful rejection text on failure. Shared by the two rule-position-directive tests below, which
+/// need both outcomes from the same shapes.
+fn rule_directive_emit(cddl: &str, extra: &[&str]) -> Result<String, String> {
+    // A monotonic per-call suffix, not a content hash: `cargo test` runs these tests concurrently
+    // and two cells with the same spec LENGTH would otherwise share a path — one call deleting the
+    // file the other is mid-read (an ENOENT masquerading as a rejection).
+    static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_rule_directive_{}_{}.cddl",
+        std::process::id(),
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::write(&path, cddl).unwrap();
+    let mut args = vec![
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "rule_directive_unused",
+    ];
+    args.extend_from_slice(extra);
+    // `--wasm false` unless the cell asked for the wasm face itself (clap refuses a repeated flag).
+    if !extra.contains(&"--wasm") {
+        args.extend_from_slice(&["--wasm", "false"]);
+    }
+    let cli = Cli::parse_from(args);
+    let out = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    match out {
+        Ok(files) => Ok(files
+            .get("rust/src/generated/mod.rs")
+            .expect("mod.rs")
+            .clone()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// `@custom_json` and `@used_as_key` must reach the STRUCT a rule mints, including the two kinds
+/// whose struct is built from metadata that is not the rule's own.
+///
+/// A generic INSTANCE binding (`foo = base<uint>`) mints a struct whose `RustStructConfig` is the
+/// generic DEFINITION's, and a plain GROUP rule's struct is built from `PlainGroupInfo`'s metadata —
+/// read off `comments_after_group`, the slot cddl leaves empty for the single-line spelling it
+/// actually binds to the last entry's trailing comment. Both accepted the directives and suppressed
+/// / demanded nothing. Each cell asserts the WITHOUT-directive spec has the opposite property first,
+/// so a fixture that stopped exercising the shape fails rather than passing vacuously.
+#[test]
+fn custom_json_and_key_demand_reach_the_structs_built_from_borrowed_metadata() {
+    const JSON: &[&str] = &[
+        "--json-serde-derives",
+        "true",
+        "--json-schema-export",
+        "true",
+    ];
+    // (kind, spec template with `@` marking the directive slot, directive, emitted marker, flags)
+    let cells: [(&str, &str, &str, &str, &[&str]); 3] = [
+        (
+            "generic instance binding, @custom_json",
+            "base<T> = [x: T]\nfoo = base<uint>@\nholder = [f: foo]\n",
+            "@custom_json",
+            "serde::Serialize",
+            JSON,
+        ),
+        (
+            "spliced plain group, @custom_json",
+            "foo = (a: uint, b: uint)@\nholder = [foo]\n",
+            "@custom_json",
+            "serde::Serialize",
+            JSON,
+        ),
+        (
+            "spliced plain group, @used_as_key",
+            "foo = (a: uint, b: uint)@\nholder = [foo]\n",
+            "@used_as_key",
+            "PartialOrd",
+            &[],
+        ),
+    ];
+    for (kind, template, directive, marker, flags) in cells {
+        let without = rule_directive_emit(&template.replace('@', ""), flags)
+            .unwrap_or_else(|e| panic!("{kind}: the undirected spec must generate, got: {e}"));
+        let with = rule_directive_emit(&template.replace('@', &format!(" ; {directive}")), flags)
+            .unwrap_or_else(|e| panic!("{kind}: the directed spec must generate, got: {e}"));
+        // Counted rather than searched: the marker also appears on the HOLDER struct in every
+        // spec, so presence says nothing — what the directive changes is how many structs carry
+        // it. `@custom_json` SUPPRESSES the marker on its own struct, `@used_as_key` ADDS it.
+        let count = |src: &str| src.matches(marker).count();
+        if directive == "@custom_json" {
+            assert!(
+                count(&without) > count(&with),
+                "{kind}: {directive} must suppress `{marker}` on the rule's own struct \
+                 (baseline {}, directed {}):\n{with}",
+                count(&without),
+                count(&with)
+            );
+        } else {
+            assert!(
+                count(&with) > count(&without),
+                "{kind}: {directive} must add `{marker}` to the rule's own struct \
+                 (baseline {}, directed {}):\n{with}",
+                count(&without),
+                count(&with)
+            );
+        }
+    }
+}
+
+/// Every rule kind that CANNOT honor a rule-position directive must say so, not accept it and
+/// generate as if it were absent. Each cell pins the message's load-bearing phrase — the diagnosis a
+/// user reads — for a shape the directive×rule-shape sweep measured as a silent drop.
+///
+/// The remedies are probed, not asserted here: each was generated once and read (see the delivery's
+/// commit message). What this test owns is that the refusal FIRES on the shape, and with the wording
+/// its family already uses — `@name`'s message is shared verbatim with the three other seams that
+/// recognize the same misplacement.
+#[test]
+fn rule_kinds_that_cannot_honor_a_directive_refuse_it() {
+    let cells: [(&str, &str, &str, &[&str]); 12] = [
+        (
+            "@name on the collapsed two-arm 258 set idiom (no variants to name)",
+            "foo = #6.258([* uint]) / [* uint] ; @name renamed\nholder = [f: foo]\n",
+            "does not rename a top-level rule or group",
+            &[],
+        ),
+        (
+            "@name on a plain group nothing splices",
+            "foo = (a: uint, b: uint) ; @name renamed\nholder = [z: uint]\n",
+            "does not rename a top-level rule or group",
+            &[],
+        ),
+        (
+            "@used_as_elem on a generic definition (was an exit-101 assertion)",
+            "foo<T> = [x: T] ; @used_as_elem\ninst = foo<uint>\nholder = [f: inst]\n",
+            "@used_as_elem on `foo`: a generic DEFINITION names no concrete type",
+            &["--wasm", "true"],
+        ),
+        (
+            "@used_as_key on a generic definition",
+            "foo<T> = [x: T] ; @used_as_key\ninst = foo<uint>\nholder = [f: inst]\n",
+            "@used_as_key on `foo`: a generic DEFINITION names no concrete type",
+            &[],
+        ),
+        (
+            "@custom_serialize on a tag-head wrapper rule",
+            "foo = #6.42(uint) ; @custom_serialize my_ser\nholder = [f: foo]\n",
+            "@custom_serialize on `Foo`: a tag-head rule",
+            &[],
+        ),
+        (
+            "@custom_deserialize on the nominalized two-arm 258 set idiom",
+            "foo = #6.258([* uint]) / [* uint] ; @custom_deserialize my_deser\nholder = [f: foo]\n",
+            "@custom_deserialize on `Foo`: the tag-258 set idiom",
+            &[],
+        ),
+        (
+            "@custom_serialize on a generic instance binding",
+            "base<T> = [x: T]\nfoo = base<uint> ; @custom_serialize my_ser\nholder = [f: foo]\n",
+            "@custom_serialize on `Foo`: this rule binds a generic instantiation",
+            &[],
+        ),
+        (
+            "@custom_deserialize on a named binding to a generic set nominal",
+            "gset<T> = #6.258([* T]) / [* T]\nfoo = gset<uint> ; @custom_deserialize my_deser\nholder = [f: foo]\n",
+            "@custom_deserialize on `Foo`: this rule binds a generic instantiation",
+            &[],
+        ),
+        (
+            "@custom_json on an extern marker rule",
+            "foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @custom_json\nholder = [f: foo]\n",
+            "@custom_json on `Foo`: a _CDDL_CODEGEN_EXTERN_TYPE_ rule names a type this crate does not define",
+            &[],
+        ),
+        (
+            "@custom_json on a named binding to a generic set nominal",
+            "gset<T> = #6.258([* T]) / [* T]\nfoo = gset<uint> ; @custom_json\nholder = [f: foo]\n",
+            "@custom_json on `foo`: this rule binds a generic set nominal",
+            &[],
+        ),
+        (
+            "@extern_companions on a generic extern base",
+            "foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=FooList\ninst = foo<uint>\nholder = [f: inst, g: [* inst]]\n",
+            "@extern_companions on `Foo`: a generic extern BASE names no concrete type",
+            &["--wasm", "true"],
+        ),
+        (
+            "@ignore on the collapsed two-arm 258 set idiom",
+            "foo = #6.258([* uint]) / [* uint] ; @ignore\nholder = [f: foo]\n",
+            "@ignore on rule `foo`: this directive is only valid on an open struct-map rest row",
+            &[],
+        ),
+    ];
+    for (kind, spec, needle, flags) in cells {
+        match rule_directive_emit(spec, flags) {
+            Ok(_) => panic!("{kind}: must be refused, but generated"),
+            Err(e) => assert!(
+                e.contains(needle),
+                "{kind}: the rejection must name `{needle}`, got:\n{e}"
+            ),
+        }
+    }
+}
+
+/// The uniform never-spliced plain-group refusal covers the WHOLE rule-position vocabulary, not the
+/// one directive a hand test would sample. A group no rule splices emits neither a struct nor a
+/// field, so every directive written in its trailing slot is inert under both readings — and the
+/// message names each one it found, so the author sees what was dropped.
+///
+/// `@name` is excluded (it has its own long-standing message, pinned above), as are `@rust_name` and
+/// `@no_json_schema_export` (each already refused by its own seam, so one misplacement reports once).
+#[test]
+fn a_plain_group_no_rule_splices_refuses_every_rule_position_directive() {
+    // Every entry of `KNOWN_RULE_METADATA_TAGS` except the three the refusal deliberately leaves to
+    // their own seams, each with a canonical argument where one is required.
+    let directives = [
+        "@newtype",
+        "@no_alias",
+        "@used_as_key",
+        "@used_as_elem",
+        "@copy",
+        "@raw_bytes_flavor",
+        "@ignore",
+        "@duplicates reject",
+        "@custom_json",
+        "@custom_serialize my_ser",
+        "@custom_deserialize my_deser",
+        "@extern_companions dep_wasm=FooList",
+        "@doc some prose",
+    ];
+    for directive in directives {
+        let spec = format!("foo = (a: uint, b: uint) ; {directive}\nholder = [z: uint]\n");
+        let spelling = directive.split_whitespace().next().unwrap();
+        match rule_directive_emit(&spec, &[]) {
+            Ok(_) => panic!("`{directive}` on a never-spliced plain group must be refused"),
+            Err(e) => {
+                assert!(
+                    e.contains("the plain group `foo` is never spliced into any rule"),
+                    "`{directive}`: expected the never-spliced refusal, got:\n{e}"
+                );
+                assert!(
+                    e.contains(spelling),
+                    "`{directive}`: the refusal must name the directive it dropped, got:\n{e}"
+                );
+            }
+        }
+    }
+    // The placement control: the SAME group, SPLICED, is where a rule-position directive is read —
+    // so the refusal keys on splicedness and not merely on the shape being a group.
+    assert!(
+        rule_directive_emit(
+            "foo = (a: uint, b: uint) ; @doc some prose\nholder = [foo]\n",
+            &[]
+        )
+        .is_ok_and(|out| out.contains("/// some prose")),
+        "a SPLICED plain group must honor its rule-position @doc, not refuse it"
+    );
+}

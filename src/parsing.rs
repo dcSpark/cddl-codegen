@@ -145,8 +145,30 @@ pub fn parse_rule(
                         group_rule_pin_metadata(group, comments_after_group.as_ref());
                     handle_rust_name_pin(types, &rust_ident, &pin_metadata);
                     if pin_metadata.no_json_schema_export {
-                        types.mark_no_json_schema_export(rust_ident);
+                        types.mark_no_json_schema_export(rust_ident.clone());
                     }
+                    // A SPLICED group mints a real struct, so both of these have somewhere to land:
+                    // `@custom_json` suppresses its JSON derives and `@used_as_key` demands its
+                    // comparison derives. Neither could reach it before — the struct is built from
+                    // `PlainGroupInfo`'s metadata, read off the `comments_after_group` slot cddl
+                    // leaves empty — so both were accepted and dropped. Marked per-ident here, the
+                    // same carrier the type-rule seam uses for the kinds whose config is not their
+                    // own.
+                    if pin_metadata.custom_json {
+                        types.mark_custom_json_rule(rust_ident.clone());
+                    }
+                    if let Some(demand) = pin_metadata.key_demand {
+                        types.mark_key_demand(rust_ident.clone(), demand);
+                    }
+                    // Everything the author wrote, for the never-spliced refusal in `finalize`: a
+                    // group no rule splices materializes neither struct nor field, so every directive
+                    // in this slot is inert and the only honest outcome is to say so. Recorded rather
+                    // than rejected here because splicedness is a whole-spec property, unknown until
+                    // every rule has been walked.
+                    types.mark_plain_group_rule_directives(
+                        rust_ident,
+                        pin_metadata.all_directives(),
+                    );
                 }
                 x => panic!("Group rule with non-inline group? {:?}", x),
             }
@@ -217,16 +239,27 @@ pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<Strin
         },
     };
     if has_rule_position_name {
-        let name = cddl_rule.name();
-        Some(format!(
-            "rule `{name}`: `; @name` does not rename a top-level rule or group — the rule \
-             identifier `{name}` is itself the emitted Rust type name. `@name` only renames a \
-             struct field, a type-choice variant, or a group-choice arm; to change the emitted \
-             type name, rename the `{name}` identifier."
-        ))
+        Some(rule_position_name_message(&cddl_rule.name()))
     } else {
         None
     }
+}
+
+/// The one `@name`-at-rule-position message, shared by every seam that recognizes the misplacement
+/// so they cannot drift apart. Two seams recognize it from the AST alone (`rule_position_name_rejection`
+/// above, in the `api::with_types` pre-scan), and two only later, once a SHAPE that eats the variant
+/// is known: the transparent tag-set collapse (`parse_type_choices` — the collapsed rule registers a
+/// collection, not an enum, so no arm is a variant) and the never-spliced plain group
+/// (`IntermediateTypes::finalize` — splicedness is a whole-spec property). The text is pinned by
+/// four `dsl_position_tests` cells (`Expect::Reject("does not rename a top-level")`); do not reword
+/// it.
+pub fn rule_position_name_message(name: &str) -> String {
+    format!(
+        "rule `{name}`: `; @name` does not rename a top-level rule or group — the rule \
+         identifier `{name}` is itself the emitted Rust type name. `@name` only renames a \
+         struct field, a type-choice variant, or a group-choice arm; to change the emitted \
+         type name, rename the `{name}` identifier."
+    )
 }
 
 /// A graceful-rejection message if `cddl_rule` EXTENDS an already-defined identifier with an
@@ -1071,6 +1104,23 @@ fn parse_type_choices(
             // instantiation then mints ONE nominal wrapper per distinct `<def>_<args>` (`SetKeyHash`)
             // in `GenericInstance::resolve`. A named binding of an instance aliases the instantiation
             // nominal.
+            // The collapse registers a COLLECTION (a nominal set wrapper, or a transparent
+            // optionally-tagged alias) — never the enum a two-arm choice would otherwise mint — so
+            // the arms are not variants and the two directives a variant position consumes have
+            // nothing to attach to. `@name` gets the same message every other rule position gives
+            // it (`rule_position_name_rejection` cannot reach this shape: it recognizes the T/null
+            // collapse from the AST alone, while the tag-set collapse is only known once the arms
+            // are BUILT and compared). `@ignore` is the rule-position misplacement its own message
+            // already covers — recorded here because the collapse returns before the multi-arm
+            // branch's copy of that check.
+            if rule_metadata.name.is_some() {
+                types.record_rejection(rule_position_name_message(&source_rule_name_of(
+                    types, name,
+                )));
+            }
+            if rule_metadata.ignore {
+                reject_ignore_not_applicable(types, name);
+            }
             let is_set_nominal =
                 is_array && well_known_tag_default_duplicates(set_tag, true).is_some();
             let defaulted = rule_metadata.duplicates.is_none()
@@ -1817,12 +1867,22 @@ fn handle_rust_name_pin(
 /// the same slot `group_entry_to_field_name` reads for a field-position `@name`. So read from there,
 /// falling back to `comments_after_group` for robustness.
 ///
-/// Only directives with **no field-position meaning** may be lifted onto the rule, because that
-/// shared slot makes the two positions indistinguishable here. `@rust_name` (pins the rule's Rust
-/// type name) and `@no_json_schema_export` (suppresses the rule's schema-registration row) both
-/// qualify — neither has any effect at a field. A field-position `@name` sharing the slot
-/// legitimately renames that field and is left to the field-naming site, so it must NOT leak onto
-/// the rule; the same bar applies to any directive added here later.
+/// The whole slot is returned; the CALLER decides what to do with each directive, under two
+/// different bars. To be **honored** on the rule, a directive must have **no field-position
+/// meaning**, because that shared slot makes the two positions indistinguishable here: `@rust_name`
+/// (pins the rule's Rust type name), `@no_json_schema_export` (suppresses the rule's
+/// schema-registration row), `@custom_json` (suppresses the derives on the struct a SPLICED group
+/// mints) and `@used_as_key` (demands comparison derives on that same struct) all qualify — none has
+/// any effect at a field. A field-position `@name` sharing the slot legitimately renames that field
+/// and is left to the field-naming site, so it must NOT be honored on the rule; the same bar applies
+/// to any directive honored here later. To be **reported** — the never-spliced refusal in
+/// `IntermediateTypes::finalize` — no bar applies: a group nothing splices emits neither a struct
+/// nor a field, so every directive in this slot is inert under BOTH readings and naming it steals no
+/// meaning a field would otherwise have had.
+///
+/// `comments_after_group` is empirically always `None` (see above), so the merge degenerates to the
+/// trailing slot; it is written as a merge for the same reason `parse_type` merges its two slots —
+/// the cddl parser chooses where to bind, and a directive found in either counts.
 ///
 /// Two spellings put a group rule's trailing comment beyond ANY slot: a closing paren on its own
 /// line (`grp = (\n a: uint\n) ; @x`), and a last entry whose slot is already occupied by a
@@ -1836,9 +1896,6 @@ fn handle_rust_name_pin(
 /// crate. Tracked in `tests/TESTING_ROADMAP.md`.
 fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments>) -> RuleMetadata {
     let mut metadata = RuleMetadata::from(comments_after_group);
-    if metadata.rust_name.is_some() && metadata.no_json_schema_export {
-        return metadata;
-    }
     if let Some((entry, optional_comma)) = group
         .group_choices
         .last()
@@ -1858,15 +1915,7 @@ fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments
         };
         let combined = combine_comments(entry_trailing, &optional_comma.trailing_comments);
         let trailing = metadata_from_comments(&combined.unwrap_or_default());
-        // Per-field fill-in rather than a wholesale overwrite: `comments_after_group` and the
-        // last-entry slot are two spellings of the same rule position, and a directive found in
-        // either one counts. `@rust_name` takes the first spelling that carries it (it is a value,
-        // and merging two would be the "specified twice" panic); the boolean ORs, like every other
-        // flag in `merge_metadata`.
-        if metadata.rust_name.is_none() {
-            metadata.rust_name = trailing.rust_name;
-        }
-        metadata.no_json_schema_export |= trailing.no_json_schema_export;
+        metadata = merge_metadata(&metadata, &trailing);
     }
     metadata
 }
@@ -1923,6 +1972,13 @@ fn parse_type(
     if let Some(doc) = &rule_metadata.comment {
         types.mark_rule_doc(type_name.clone(), doc.clone());
     }
+    // `@custom_json` likewise: a generic INSTANCE binding mints a struct whose `RustStructConfig` is
+    // the generic DEFINITION's, so the binding rule's own flag had no route into the derives it asks
+    // to suppress. Recorded unconditionally — a rule that mints no struct has nothing to apply it to,
+    // and the transparent-alias family refuses it at `register_type_alias` / the finalize kind-walk.
+    if rule_metadata.custom_json {
+        types.mark_custom_json_rule(type_name.clone());
+    }
     // `@raw_bytes_flavor` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule (the extern-marker
     // branch below marks it). Anywhere else it would silently do nothing, so reject loudly here in
     // the house style of the other comment-DSL misuse rejections.
@@ -1934,6 +1990,37 @@ fn parse_type(
         &type1.type2,
         Type2::Typename { ident, .. } if ident.ident == RAW_BYTES_MARKER
     );
+    // A rule whose whole body is a generic INSTANTIATION (`foo = base<uint>`) — including a named
+    // binding to a generic set nominal. Its type is minted during finalize's generic resolution,
+    // from the DEFINITION's config, so a directive whose only carrier is that config is written on
+    // one rule and read from another.
+    let is_generic_instantiation = matches!(
+        &type1.type2,
+        Type2::Typename {
+            generic_args: Some(_),
+            ..
+        }
+    );
+    // `@custom_json` on an extern / raw-bytes marker names a type this crate does not define:
+    // `new_extern` / `new_raw_bytes` build with `RustStructConfig::default()`, and the named type
+    // owns its own JSON impls, so there is no derive list here to suppress and nothing for
+    // hand-written impls to be written against that this crate could reach. One class with `@copy`'s
+    // "valid only on X" family, but phrased as "invalid HERE" — the message names the marker the
+    // rule actually spells, like the custom-codec pair's extern rejection below.
+    if rule_metadata.custom_json
+        && let Some(marker) = is_extern_marker
+            .then_some(EXTERN_MARKER)
+            .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER))
+    {
+        types.record_rejection(format!(
+            "@custom_json on `{type_name}`: a {marker} rule names a type this crate does not \
+             define, so that type already owns its JSON impls — there are no generated \
+             serde/schemars derives here to suppress, and the impls you would hand-write belong \
+             with the type itself. Give the rule a real CDDL body and put `@custom_json` there \
+             (`{type_name} = <body> ; @newtype @custom_json`), or drop the directive and write the \
+             impls beside the externally-defined type."
+        ));
+    }
     if rule_metadata.raw_bytes_flavor && !is_extern_marker {
         types.record_rejection(format!(
             "@raw_bytes_flavor on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} \
@@ -1984,6 +2071,24 @@ fn parse_type(
                  put the pair there (`<rule> = text ; @custom_serialize <fn> @custom_deserialize \
                  <fn>`) — that states the wire type in the spec and routes the pair through the \
                  type-level alias override."
+            ));
+        }
+        // A generic INSTANTIATION binding mints its type during finalize's generic resolution, from
+        // the DEFINITION's `RustStructConfig` — so the pair written on the binding rule never
+        // reaches generation and both directions keep the definition's generated codec. Covers both
+        // shapes the binding takes: a struct-bodied instance (`foo = base<uint>`), and a named
+        // binding to a generic set NOMINAL (`foo = gset<uint>`), which additionally lowers to a
+        // transparent `pub type` through `AliasInfo::new_manual`. Not fixable by moving the pair to
+        // the definition — a generic DEF is refused for its own reason (it names no concrete type).
+        if is_generic_instantiation {
+            types.record_rejection(format!(
+                "{directive} on `{type_name}`: this rule binds a generic instantiation, and the \
+                 type it mints is built from the generic DEFINITION's config during generic \
+                 resolution — so the pair written here never reaches generation and both \
+                 directions keep the definition's generated codec. Give the rule a CDDL body of \
+                 its own and put the pair there (`{type_name} = <body> ; @custom_serialize <fn> \
+                 @custom_deserialize <fn>`), or declare `{type_name}` as a {EXTERN_MARKER} rule \
+                 and hand-write the type in full."
             ));
         }
         // `@no_alias` strips the alias node the override is keyed on, so the pair goes with it and
@@ -2091,7 +2196,26 @@ fn parse_type(
                 if rule_metadata.copy {
                     types.mark_copy_extern(type_name.clone());
                 }
-                handle_extern_companions(types, type_name, &rule_metadata);
+                // `@extern_companions` defers the wasm companion classes minted for a LOCAL extern's
+                // collection uses. Every such class is named from the ident at the USE site, and for
+                // a generic extern base that ident is the INSTANCE (`i = foo<uint>` used as
+                // `[* i]` mints `IList`, never `FooList`), so a deferral declared on the base is
+                // looked up under a name nothing ever asks for. Gated on generic-ness for the same
+                // reason `@raw_bytes_flavor` above is, in the opposite direction — the flavor is a
+                // property of instances, the deferral of the concrete type.
+                if generic_params.is_some() && rule_metadata.extern_companions.is_some() {
+                    types.record_rejection(format!(
+                        "@extern_companions on `{type_name}`: a generic extern BASE names no \
+                         concrete type, and every wasm companion class is named from the ident at \
+                         the USE site — an instance `i = {type_name}<uint>` used as `[* i]` mints \
+                         `IList`, never `{type_name}List` — so a deferral declared on the base is \
+                         never consulted. Declare the concrete shape as its own non-generic extern \
+                         rule and put the deferral there (`i = {EXTERN_MARKER} ; \
+                         @extern_companions <prefix>=IList`), or remove the directive."
+                    ));
+                } else {
+                    handle_extern_companions(types, type_name, &rule_metadata);
+                }
             } else if ident.ident == RAW_BYTES_MARKER {
                 // A GENERIC raw-bytes base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) is refused,
                 // where the extern marker above merely RECORDS its generic-ness: an extern names an
