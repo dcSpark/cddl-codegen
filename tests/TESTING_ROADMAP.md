@@ -807,15 +807,20 @@ site".
   projection, pinned by `extern_import_flavored_generic_base_projects_without_the_tag`). What
   makes the converse direction structural rather than remembered is that a REFUSAL delivery has
   no reason to look at the projection: the writer already exists and no representation changed.
-  The mechanical layer that covers BOTH directions is a writer-vocabulary acceptance registry:
-  enumerate the annotation strings `extern_interface.rs`'s assembly can ever emit (they are few
-  and centrally assembled — `@copy`, `@duplicates reject`, `@duplicates preserve`, `@no_alias`,
-  `@rust_name`) and assert each one is exercised by at
-  least one consumer-side acceptance vector in `extern_import_tests` (a LOCKSTEP-style
-  source-derived check: a new writer without a consumer vector fails the registry; a new refusal
-  that breaks an existing writer fails that writer's vector). Trigger status: the entry's own
-  "second instance" trigger is now met for the family — build the registry check as a rider on
-  the next delivery that touches `extern_interface.rs` or adds a directive refusal.
+  The mechanical layer covering BOTH directions is DELIVERED as
+  `extern_import_tests::EXTERN_INTERFACE_WRITER_VOCABULARY` plus
+  `extern_interface_writer_vocabulary_matches_the_writers`: the registry enumerates every
+  annotation `extern_interface.rs`'s assembly can emit, each paired with a consumer-side
+  acceptance vector, and a LOCKSTEP source scan of the writer sites holds the two in agreement in
+  both directions (a new `"@…"` writer literal with no row fails; a row no writer emits fails the
+  other way). The verdict is TOTAL — every `@…` literal in the file is classified writer or
+  diagnostic — so a new writer cannot hide in an unclassified remainder, which is the property a
+  spelling-by-spelling list would not have had. What remains unmechanized is the DEP-SIDE half:
+  the registry proves this crate's parse accepts what its writer emits, and says nothing about a
+  counterparty crate at a different version doing so. Reopening signal, measurable by whoever
+  pays it: a consumer failing to regenerate against a dependency's committed export whose
+  annotations this crate's own parse accepts — the version-skew shape the single-repo registry
+  cannot see.
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** First of a family of
   three, each recorded separately below because each needs a different detector, and all three
