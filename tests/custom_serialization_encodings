@@ -1,0 +1,138 @@
+// Hand-written `@custom_serialize`/`@custom_deserialize` targets for
+// `tests/custom-encodings-e2e`, whose whole subject is the `@custom_encodings` DECLARATION: every
+// codec below takes (or returns) exactly the encoding variables its rule declares, and NOT the ones
+// the replaced type would have inferred. Generated under `--preserve-encodings --canonical-form`, so
+// each serialize signature ends in `force_canonical: bool` and a table-position sidecar arrives by
+// value where a record-field one arrives by reference (see docs/docs/comment_dsl.mdx,
+// "Declaring the wire's encoding variables").
+//
+// If any declaration and its codec disagreed on count, order or type, this file would not compile —
+// which is what makes the fixture's build step the three-way agreement gate between the declaration,
+// the emitted call, and the emitted `*Encoding` slot.
+
+/// `flag = bool ; … @custom_encodings sz` — the ZERO-DEMAND witness.
+///
+/// `bool` has exactly one encoding, so it infers no encoding variable at all. This codec writes the
+/// flag as a CBOR unsigned integer, whose HEAD WIDTH is genuine wire framing: without the declared
+/// `sz` there is nowhere to record it, and a non-minimal `0x18 0x01` silently round-trips as `0x01`
+/// — both directions agreeing, so no round-trip test can see it.
+pub fn write_flag_uint<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    flag: &bool,
+    enc: Option<cbor_event::Sz>,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    let value = u64::from(*flag);
+    serializer.write_unsigned_integer_sz(value, fit_sz(value, enc, force_canonical))
+}
+
+pub fn read_flag_uint(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(bool, Option<cbor_event::Sz>), crate::generated::error::DeserializeError> {
+    let (value, sz) = raw.unsigned_integer_sz()?;
+    match value {
+        0 => Ok((false, Some(sz))),
+        1 => Ok((true, Some(sz))),
+        other => Err(crate::generated::error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError(format!(
+                "read_flag_uint(): expected 0 or 1, found {other}"
+            )),
+        )
+        .into()),
+    }
+}
+
+/// `special = bool ; … @custom_encodings none` — the explicit empty declaration.
+///
+/// A CBOR simple value is its own whole encoding: there is no width, no header, nothing to record.
+/// `none` ASSERTS that, which is what makes this rule generate under `--preserve-encodings` instead
+/// of being refused as an undeclared zero-demand pair. The signature takes no encoding argument and
+/// the reader returns the bare value.
+pub fn write_flag_special<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    flag: &bool,
+    _force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_special(if *flag {
+        cbor_event::Special::Bool(true)
+    } else {
+        cbor_event::Special::Bool(false)
+    })
+}
+
+pub fn read_flag_special(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<bool, crate::generated::error::DeserializeError> {
+    match raw.special()? {
+        cbor_event::Special::Bool(b) => Ok(b),
+        other => Err(crate::generated::error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError(format!(
+                "read_flag_special(): expected a bool simple value, found {other:?}"
+            )),
+        )
+        .into()),
+    }
+}
+
+/// `tname = bytes ; … @custom_encodings sz,str` — DECLARATION WINS OVER A NON-EMPTY INFERENCE.
+///
+/// `bytes` infers exactly one `StringEncoding`, but this codec's wire is `#6.42(bytes)` and the tag
+/// head has a width of its own. The declaration adds it, positionally first, so the two variables
+/// arrive in the order the wire writes them.
+pub fn write_tagged_name<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    name: &[u8],
+    tag_enc: Option<cbor_event::Sz>,
+    str_enc: &StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_tag_sz(42, fit_sz(42, tag_enc, force_canonical))?;
+    serializer.write_bytes_sz(
+        name,
+        str_enc.to_str_len_sz(name.len() as u64, force_canonical),
+    )
+}
+
+pub fn read_tagged_name(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(Vec<u8>, Option<cbor_event::Sz>, StringEncoding), crate::generated::error::DeserializeError>
+{
+    let (tag, tag_sz) = raw.tag_sz()?;
+    if tag != 42 {
+        return Err(crate::generated::error::DeserializeFailure::TagMismatch {
+            found: tag,
+            expected: 42,
+        }
+        .into());
+    }
+    let (bytes, str_enc) = raw.bytes_sz()?;
+    Ok((bytes, Some(tag_sz), str_enc.into()))
+}
+
+/// `keyname` — `tname`'s by-VALUE twin for the TABLE KEY position, whose per-entry sidecar is looked
+/// up out of the table's encoding map and passed by value (a record field passes its stored encoding
+/// by reference). The declaration fixes the count and the types; the MODE stays position-derived,
+/// which is why the two positions still need two functions.
+///
+/// Under `--canonical-form` this is also called into a local scratch `Serializer` by the key-sort
+/// pass, so it must be deterministic — and it is reached there through `&mut buf`.
+pub fn write_key_name<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    name: &[u8],
+    tag_enc: Option<cbor_event::Sz>,
+    str_enc: StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_tag_sz(42, fit_sz(42, tag_enc, force_canonical))?;
+    serializer.write_bytes_sz(
+        name,
+        str_enc.to_str_len_sz(name.len() as u64, force_canonical),
+    )
+}
+
+pub fn read_key_name(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(Vec<u8>, Option<cbor_event::Sz>, StringEncoding), crate::generated::error::DeserializeError>
+{
+    read_tagged_name(raw)
+}

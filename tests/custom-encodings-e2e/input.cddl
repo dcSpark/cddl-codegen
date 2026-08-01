@@ -1,0 +1,36 @@
+; `@custom_encodings` end-to-end vectors: a custom codec DECLARING the encoding variables of its own
+; wire. Generated under `--preserve-encodings --canonical-form` (canonical implies preserve), which is
+; also what puts the table key below through the scratch-buffer key-sort pass.
+;
+; The point of every rule here is that INFERENCE from the replaced type gives the wrong answer, so the
+; declaration is the only thing that can carry the wire's framing:
+;
+;   * `flag` replaces `bool`, which demands NO encoding variable at all (one encoding, nothing to
+;     record). Its codec writes the flag as a CBOR uint, whose HEAD WIDTH is real wire framing — so
+;     before the declaration a non-minimal `0x18 0x01` round-tripped as a normalized `0x01`, silently,
+;     with both directions agreeing. That is the defect this directive dissolves, in its purest form
+;     (no extern needed to reach it).
+;   * `special` is the `none` spelling on the same zero-demand type: simple values carry no framing at
+;     all, so the assertion is that the wire needs nothing — which is what makes it ACCEPTED under
+;     preserve rather than refused.
+;   * `tname` replaces `bytes`, which infers exactly one `StringEncoding` — a NON-empty inference the
+;     declaration still overrides, because the codec's wire is `#6.42(bytes)` and the tag head has a
+;     width of its own. Declaration-wins-over-inference, executed.
+;   * `keyname` is `tname`'s by-VALUE twin for the table key position (a table entry's sidecar is
+;     passed by value where a record field passes by reference, so one codec cannot serve both).
+;
+; `g` is the FIELD-level spelling of `flag`'s declaration, sharing its codec: both declared variables
+; are `sz`, which is `Copy` and therefore passed by value in either position.
+
+flag = bool ; @custom_serialize write_flag_uint @custom_deserialize read_flag_uint @custom_encodings sz
+special = bool ; @custom_serialize write_flag_special @custom_deserialize read_flag_special @custom_encodings none
+tname = bytes ; @custom_serialize write_tagged_name @custom_deserialize read_tagged_name @custom_encodings sz,str
+keyname = bytes ; @custom_serialize write_key_name @custom_deserialize read_key_name @custom_encodings sz,str
+
+holder = [
+  f: flag,
+  s: special,
+  n: tname,
+  g: bool, ; @custom_serialize write_flag_uint @custom_deserialize read_flag_uint @custom_encodings sz
+  t: { * keyname => uint },
+]

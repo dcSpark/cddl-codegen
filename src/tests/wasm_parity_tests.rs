@@ -485,6 +485,15 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          wasm-side emission",
     ),
     (
+        "custom-encodings-e2e",
+        "@custom_encodings (a custom codec declaring its own wire's encoding variables) e2e fixture: \
+         its integration gate generates --preserve-encodings --canonical-form --wasm=false (the \
+         declaration drives CBOR encoding variables, which have no wasm surface at all — a wasm \
+         wrapper delegates to the rust type's impl and never calls a custom codec). Its custom \
+         targets are hand-written RUST free functions appended into the generated rust scope, the \
+         same shape as the `custom-serialize-canonical-e2e` row above",
+    ),
+    (
         "open-struct-map-json-e2e",
         "loose-CBOR open struct-map FLATTENED-JSON e2e fixture: its integration gate generates \
          --json-serde-derives --json-schema-export --wasm=false (it exercises the JSON boundary); \
