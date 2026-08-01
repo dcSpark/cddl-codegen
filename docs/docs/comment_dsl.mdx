@@ -945,6 +945,15 @@ The pair parses in the positions below but cannot be honored there, so each one 
 * **A single half on a named record rule.** `@custom_serialize` alone emits no `Serialize` impl and never calls the named function, so the generated crate does not compile; `@custom_deserialize` alone keeps the type's own generated `Deserialize` impl while rewriting every embed site, so `Foo::from_cbor_bytes` and a field of type `Foo` decode the same bytes differently — a divergence that also travels to consumers, since such a rule projects opaquely across the [extern-interface](integration-other.mdx) seam. Move the pair to the field, or to the type rule of the member that needs it.
 * **On a table rule** — `t = { * k => v } ; @custom_serialize …`, the pair on the rule rather than on the row (which is the separate rejection above). A table lowers to a transparent map alias that owns no codec for the directive to override, so — unlike a record rule, where both halves together suppress the generated impls for you to hand-own — there is nothing for either half to displace and *any* presence is refused, one half or both. Put it on the key or value rule (see [Table key and value positions](#table-key-and-value-positions)) instead, or declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the whole type. On a generic table def the refusal names the *instantiated* type (`ptbl<uint, bytes>` → `PtblU64Bytes`), since that is where the struct materializes.
 
+Known limitation: a tag-head rule **wrapping** an annotated alias does not route through the pair —
+
+```cddl
+inner = uint ; @custom_serialize my_ser @custom_deserialize my_deser
+foo = #6.42(inner)
+```
+
+`foo`'s generated codec calls neither function on that path, which is why the tagged-wrapper rejection above does not advertise this spelling as a remedy. Until this is fixed, hand-own the wrapping rule (`_CDDL_CODEGEN_EXTERN_TYPE_`), or give the wrapping rule a transparent-alias body and put the tag framing inside the pair itself.
+
 ### Positions that are still silent
 
 The positions below are accepted and unhonored. Honoring or refusing each needs a design decision rather than a call-site fix, so treat the current silence as unspecified rather than as a guarantee.

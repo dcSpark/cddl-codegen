@@ -193,6 +193,23 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
+- **A tag-head rule wrapping an annotated alias bypasses the alias's custom codec pair — the
+  wrapped path silently keeps the generated wire form.** Probed during delivery 4's refusal work
+  (the tagged-wrapper rejection was going to advertise this spelling as its remedy; the probe is
+  why it advertises the extern route instead): `inner = uint ; @custom_serialize s
+  @custom_deserialize d` with `foo = #6.42(inner)` generates with NEITHER half reachable through
+  `foo` — probed with `foo` as the only referencer of `inner`; whether a direct use of `inner`
+  elsewhere in the same spec still routes through the pair (making one value serialize two ways in
+  one crate) is unmeasured and is the first thing a fix should pin. The class is wider than the
+  instance: a directive honored at a rule's own position can be dropped at a REFERENCING context
+  of that rule, and the directive×rule-shape sweep is structurally blind there (its cells annotate
+  the rule under test, never a rule the tested rule wraps) — the systematic layer is the
+  referencing-context sweep entry in `tests/TESTING_ROADMAP.md`. Fix shape: route the tag-head
+  wrapper's codec through the wrapped alias's pair (both directions — a one-half application is
+  the read-one-format/write-another asymmetry the delivery-4 refusals exist to prevent), or refuse
+  the combination loudly; the user-doc caveat in `comment_dsl.mdx` § `@custom_serialize` names the
+  interim remedies and comes out in the fixing commit.
+
 - **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
@@ -1007,7 +1024,8 @@ hand-written MEASURED quantities that nothing re-measures**. Any such number a d
 hand-correct is the signal to derive it from its source rather than re-audit it — a generated span
 where the quantity is structural (`MULTIFILE_MATRIX_SKIP`'s count and enumeration), a committed
 self-measuring datum where it is measured (the shape `tests/timings.json` already uses for
-durations; the sweep's own datum is specified in `tests/TESTING_ROADMAP.md`).
+durations; the recombination sweep's own datum is DELIVERED as `tests/recombination-counts.json`,
+held exactly by `recombination_generation_sweep` — see `tests/README.md`'s recombination section).
 
 One deliberate NON-firing on record, so the next delivery inherits the judgement instead of
 re-deriving it: the Q4 enforce-green enumeration (`README.md` § "Directional support evidence
