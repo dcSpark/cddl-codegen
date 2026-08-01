@@ -2607,7 +2607,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.open_table",
         "status": "supported"
       },
@@ -2627,7 +2627,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm compiles (no minted wasm surface); accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.open_table_plus",
         "status": "supported"
       },
