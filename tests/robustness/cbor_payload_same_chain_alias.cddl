@@ -1,0 +1,19 @@
+; The ALIAS-FLATTENED spelling of a same-chain nested `.cbor` payload — `inner = bytes .cbor uint`
+; referenced as `bytes .cbor inner` — in top-level rule-BODY position. Rejected gracefully, with
+; the rule name in the message (the body seam is the only one that has one).
+;
+; This is the SAME encoding chain as the inline sibling
+; (tests/robustness/cbor_payload_same_chain_inline.cddl), not a lookalike: a `.cbor` target is
+; alias-resolved when the control operator is parsed (`parse_control_operator`'s
+; `ControlOperator::CBOR` arm strips the `Alias` wrapper), so by the time the operation applies,
+; `inner` and the parenthesized inline form are the identical `RustType` carrying one `CBORBytes`.
+; A refusal keyed on the inline SPELLING would therefore miss this one entirely, which is why the
+; key is the chain rather than the syntax — and why a multi-link alias chain
+; (tests/robustness/cbor_ref_alias_chain.cddl's depth axis) is covered by the same key with no
+; extra case.
+;
+; Rule-BODY position is deliberate for the second reason as well: it lowers to a `pub type` alias
+; that mints no serializer, so this spelling generated a crate that BUILT while being exactly as
+; unsupported as the member one. The refusal is on the composition, so the two agree.
+inner = bytes .cbor uint
+b = bytes .cbor inner

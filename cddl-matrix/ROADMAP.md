@@ -516,31 +516,34 @@ ledgered here (that's what the probe/gate error messages point at).
     assertion for unambiguous choices and pins the documented contract for ambiguous ones —
     complemented by IR-level dedup of literally identical arms (`tstr / tstr` today mints
     `Text`/`Text2` variants — pure API noise, and the shape generic collapse produces).
-- **Make a SAME-CHAIN nested `bytes .cbor` payload either generate or refuse.** A `.cbor` payload
-  whose own member type carries a second `.cbor` control in the SAME op chain —
-  `bytes .cbor (bytes .cbor uint)`, and equally the named-alias spelling
-  `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the `.cbor` single-alias strip
-  flattens into the same shape — generates Rust that does not compile, on both sides. The
-  serializer emits two `<var>_inner_se = Serializer::new_vec()` bindings at the same name, so the
-  inner `finalize()` moves the binding the outer write then uses (`error[E0382]: borrow of moved
-  value: <var>_inner_se`); the deserializer's depth-agnostic names collide the same way (two
-  `<var>_bytes` frames, a same-block `inner_de` shadow the sequel statements would capture), and
-  under `--preserve-encodings` the encoding-sidecar minting recurses under one name and declares
-  the struct field twice (E0124/E0062). The cause is that the payload-framing NAMES are
-  depth-agnostic, where the tag path already threads a `tag_depth` for exactly this reason; a real
-  fix threads a `cbor_depth` the same way. The boundary is narrower than it used to be, in a way a
-  refusal must draw exactly: nesting through a NAME-CHANGING recursion is supported — a fresh fn
-  scope (the long-standing named-struct form, `cbor_in_cbor` in `tests/core/input.cddl`) and,
-  since the CBORBytes arm reads its byte string from the stream that reached it rather than a
-  hardcoded `raw`, a payload's own collection elements/values (`bytes .cbor [* bytes .cbor uint]`
-  and the map-value twin; pinned by `tests/corpus/cbor_payload_nested.cddl`,
-  `cbor_payload_nested_payloads` in `tests/core/tests.rs` against hand-derived RFC 8949 bytes, and
-  `cbor_nested_payloads` in `tests/preserve-encodings/input.cddl`). Only the same-chain
-  composition — direct or alias-flattened — remains broken. Because that outcome is a hard compile
-  break rather than a silent mis-decode, nothing can ship on top of it, so the cheap intermediate
-  is a graceful generation-time refusal naming the shape (keyed on two `CBORBytes` in one op
-  chain, which now exactly matches the broken set) — the tool must not emit a crate that cannot
-  build.
+- **Make a SAME-CHAIN nested `bytes .cbor` payload GENERATE.** A `.cbor` payload whose own target
+  carries a second `.cbor` control in the SAME op chain — `bytes .cbor (bytes .cbor uint)`, and
+  equally the named-alias spelling `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the
+  `.cbor` single-alias strip flattens into the identical chain — is **refused gracefully at parse
+  time**, keyed on two `CBORBytes` in one `RustType`'s chain (exactly the broken set), at both seams
+  that can apply the operation: the rule-BODY registration and `rust_type_from_type1`. Pinned by
+  `nested_cbor_payload_rejects_gracefully` plus the outcome rows
+  `tests/robustness/cbor_payload_same_chain_inline.cddl` and
+  `tests/robustness/cbor_payload_same_chain_alias.cddl`. The refusal is what the
+  no-uncompilable-crate invariant demands; SUPPORT is what remains.
+  Support needs the payload-framing NAMES to become depth-aware, the way the tag path already
+  threads a `tag_depth`: a `cbor_depth` threaded the same way. That is the whole fix, and it is
+  sized by what breaks without it — the serializer emits two `<var>_inner_se = Serializer::new_vec()`
+  bindings at one name, so the inner `finalize()` moves the binding the outer write then uses
+  (`error[E0382]`); the deserializer's depth-agnostic names collide the same way (two `<var>_bytes`
+  frames, a same-block `inner_de` shadow the sequel statements would capture); and under
+  `--preserve-encodings` the encoding-sidecar minting recurses under one name and declares the
+  struct field twice (E0124/E0062).
+  The boundary the refusal draws is narrow, and everything outside it stays supported: nesting
+  through a NAME-CHANGING recursion gets a fresh fn scope and therefore its own buffer — the
+  long-standing named-struct form (`cbor_in_cbor` in `tests/core/input.cddl`), the `; @newtype`
+  boundary the rejection message advertises (`inner = bytes .cbor uint ; @newtype`, referenced as
+  `bytes .cbor inner`, emits the same two-level wire shape and builds), and, since the CBORBytes arm
+  reads its byte string from the stream that reached it rather than a hardcoded `raw`, a payload's
+  own collection elements/values (`bytes .cbor [* bytes .cbor uint]` and the map-value twin; pinned
+  by `tests/corpus/cbor_payload_nested.cddl`, `cbor_payload_nested_payloads` in
+  `tests/core/tests.rs` against hand-derived RFC 8949 bytes, and `cbor_nested_payloads` in
+  `tests/preserve-encodings/input.cddl`).
   **Reopening signal:** a CDDL specification a consumer must implement but does not control (a
   published wire format, not one they can rewrite) contains one or more `bytes .cbor` members whose
   payload type itself carries a `.cbor` control, directly or through a named alias. That is a `grep`
@@ -553,9 +556,12 @@ ledgered here (that's what the probe/gate error messages point at).
   CDDL**: RFC 8610's grammar is `type1 = type2 [S (rangeop / ctlop) S type2]`, so a control
   operator's right-hand side is a `type2`, and `bytes .cbor uint` is a `type1`. The parse rejection
   is the `cddl` crate behaving correctly, not a front-end gap. Parenthesizing that builder
-  (`bytes .cbor ({h})`) makes the RHS a `type2` and the self-composition legal, which would route
-  the shape straight into the execution layer — worth doing deliberately, with the composition churn
-  that implies, rather than treating the shape as unreachable.
+  (`bytes .cbor ({h})`) makes the RHS a `type2` and the self-composition legal, which would put the
+  shape in front of the sweep's classifier — worth doing deliberately, with the composition churn
+  that implies, rather than treating the shape as unreachable. With the refusal in place the sweep
+  would classify it `error (graceful)` and route it nowhere, so what that buys is a standing count
+  of how often the composition arises across the sweep's own vocabulary, next to the consumer-side
+  count above.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). The abort is gone — every one of those shapes now rejects gracefully

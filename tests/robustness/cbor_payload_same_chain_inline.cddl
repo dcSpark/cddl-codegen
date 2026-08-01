@@ -1,0 +1,21 @@
+; A `.cbor` payload applied INLINE to a target that is itself a `.cbor` payload
+; (`bytes .cbor (bytes .cbor uint)`), in MEMBER position. Rejected gracefully.
+;
+; The serialize walk names a payload's staging buffer after the OWNING variable
+; (`<var>_inner_se`), so both depths of one encoding chain mint the same binding: the outer write
+; borrows what the inner `finalize()` moved. This generated at exit 0 with empty stderr and emitted
+; a crate failing E0382 once per extra depth — the exact exit-0-uncompilable class the honesty
+; invariants exist to make loud. Depth-threading that buffer name is what would make the shape
+; generate, and is not implemented; refusing keys on exactly the broken set.
+;
+; Member position is deliberate: the same composition in bare rule-BODY position lowers to a
+; `pub type` alias that mints no serializer, so it COMPILED while being just as unsupported — the
+; alias sibling (tests/robustness/cbor_payload_same_chain_alias.cddl) is that seam, and it is
+; refused for the composition rather than for its symptom.
+;
+; What stays supported is nesting a payload through something that owns its own serialize fn and
+; therefore its own buffer: a struct boundary (`; @newtype`, asserted by the control leg of
+; `robustness_tests::nested_cbor_payload_rejects_gracefully`) and a payload inside a payload's
+; COLLECTION (tests/corpus/cbor_payload_nested.cddl). The refusal keys on two `CBORBytes` in ONE
+; `RustType`'s chain so neither is touched.
+foo = [b: bytes .cbor (bytes .cbor uint)]

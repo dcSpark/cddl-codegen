@@ -9,7 +9,7 @@ use crate::intermediate::{
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
     ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow, RestSemantics,
     RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
-    head_constrained_float_rejection, reserved_pin_rejection,
+    head_constrained_float_rejection, nested_cbor_payload_rejection, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -2187,7 +2187,28 @@ fn parse_type(
                             }
                             ControlOperator::CBOR(ty) => match ident_to_primitive(&cddl_ident) {
                                 Some(Primitive::Bytes) => {
-                                    let cbor_bytes_type = ty.as_bytes().tag_if(outer_tag);
+                                    // A second `CBORBytes` in ONE chain emits a crate that cannot
+                                    // build — see `nested_cbor_payload_rejection`. Record it and
+                                    // drop the outer application rather than returning early: the
+                                    // rule still registers, as the single-payload type it would
+                                    // have been, so every later reference to it resolves the way
+                                    // it always did and no second complaint is raised about a
+                                    // shape already refused. `finalize` drains the rejection
+                                    // before any of it is emitted.
+                                    let nested =
+                                        ty.encodings.contains(&CBOREncodingOperation::CBORBytes);
+                                    if nested {
+                                        types.record_rejection(format!(
+                                            "{}{}",
+                                            float_reject_rule_prefix(Some(type_name)),
+                                            nested_cbor_payload_rejection()
+                                        ));
+                                    }
+                                    let cbor_bytes_type = if nested {
+                                        ty.tag_if(outer_tag)
+                                    } else {
+                                        ty.as_bytes().tag_if(outer_tag)
+                                    };
                                     // Same reasoning as the primitive tag rule below: a top-level
                                     // `x = #6.n(bytes .cbor T)` must wrap so its standalone
                                     // `to/from_cbor_bytes` writes/checks the tag (a transparent
@@ -3485,7 +3506,18 @@ fn rust_type_from_type1(
                 base_type.conceptual_type.resolve_alias_shallow(),
                 ConceptualRustType::Primitive(Primitive::Bytes)
             ));
-            ty.as_bytes()
+            // A second `CBORBytes` in ONE chain emits a crate that cannot build — see
+            // `nested_cbor_payload_rejection`. This seam has no rule name to prefix (it serves
+            // every member / element / choice-arm position), so the message stands alone. The
+            // already-single-payload `ty` is returned unwrapped as the inert placeholder: the walk
+            // continues over a type that is shaped like every other `.cbor` member, and `finalize`
+            // drains the rejection before it can be emitted.
+            if ty.encodings.contains(&CBOREncodingOperation::CBORBytes) {
+                types.record_rejection(nested_cbor_payload_rejection());
+                ty
+            } else {
+                ty.as_bytes()
+            }
         }
         Some(ControlOperator::Range((low, high))) => match &type1.type2 {
             Type2::Typename { ident, .. } => {
