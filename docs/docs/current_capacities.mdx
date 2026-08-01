@@ -18,7 +18,10 @@ sidebar_position: 3
   top-level alias (`x = int`, `x = bytes .cbor int`)
 * Floats - `float`/`float64` map to Rust `f64`, `float32` to `f32`. The CBOR head width
   (`0xf9`/`0xfa`/`0xfb`) is ordinary encoding data under `--preserve-encodings` and round-trips like
-  any other argument width, in every position. One caveat follows from the member type rather than
+  any other argument width, in every position. Without `--preserve-encodings`, every float member is
+  **written at the 8-byte `0xfb` head** regardless of the declared width — a `float32` member's
+  encoded bytes are identical to a `float64` member's — so the declared width governs the in-memory
+  Rust type and decode narrowing only, not the emitted head. One caveat follows from the member type rather than
   the encoding: because `float32` narrows to `f32`, a wire *double* that is not exactly representable
   in single precision loses precision on decode (`1.1` at an `0xfb` head comes back as the nearest
   `f32`, so its re-encode differs) — declare the member `float64` if the wire may carry full doubles.
