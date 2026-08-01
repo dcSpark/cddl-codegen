@@ -84,6 +84,29 @@ mod recursive_collection_ref {
     }
 
     #[test]
+    fn nominal_union_keyed_table_round_trips() {
+        // `[ { {1: 2}: 3 } ]` — the map's DOMAIN is the recursive union, so the OUTER key is itself
+        // a table. The keys-list wasm wrapper is minted from the domain, which is where this shape
+        // used to abort generation entirely; rust-side the payoff is that the union must dispatch
+        // its own table arm from the KEY position, not just the value position the `nom_` block
+        // covers. Byte comparison rather than a decode assertion: a domain lowered to the wrong
+        // collection still decodes and re-emits differently.
+        let bytes: &[u8] = &[0x81, 0xa1, 0xa1, 0x01, 0x02, 0x03];
+        let h = KeyHolder::from_cbor_bytes(bytes).unwrap();
+        assert_eq!(h.key_map.len(), 1, "outer table must decode one entry");
+        let (k, v) = h.key_map.iter().next().unwrap();
+        assert!(
+            matches!(k, KeyVal::KeyMap { .. }),
+            "the KEY must decode as the table arm, not fall through to bytes/text"
+        );
+        assert!(
+            matches!(v, KeyVal::Int { .. }),
+            "the value must still dispatch the int arm"
+        );
+        assert_eq!(h.to_cbor_bytes(), bytes);
+    }
+
+    #[test]
     fn nominal_reference_carries_occurrence_bounds() {
         // The `{+ }` twin: the bounds ride the struct the same way the duplicates policy does, and
         // select `NonEmptyMap` — whose single `TryFrom` door is what rejects the empty map.
