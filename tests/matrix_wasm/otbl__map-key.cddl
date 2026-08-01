@@ -1,0 +1,3 @@
+; cell: otbl x map-key
+ot = { * bstr => uint, * text => uint }
+holder = { * ot => uint }

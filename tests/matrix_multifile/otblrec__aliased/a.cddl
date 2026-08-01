@@ -1,0 +1,3 @@
+; cell: otblrec x aliased (shape defs, module a)
+foo = [a0: uint]
+otbl = { * foo => text, * text => text }

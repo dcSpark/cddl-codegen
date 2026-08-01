@@ -1576,7 +1576,72 @@ impl<'a> IntermediateTypes<'a> {
                     // coincidentally correct. Rust-side output is unchanged: with `wasm == false`
                     // both container arms fall through to marking the inners at the using scope,
                     // which is what this did.
+                    //
+                    // The one row that does NOT go through its container is an open table's TYPED
+                    // row under wasm: it has no container CLASS to import, because its map surface
+                    // is flattened onto this struct's own class. The `keys()` that names the
+                    // keys-list wrapper bare is therefore a method of THIS class, in THIS scope —
+                    // the named-Table arm's situation, so it takes that arm's registration verbatim
+                    // (root-minted `<K_t>List`, or the dep import when deferred). Routing it
+                    // through the container arm instead registered the list at the container's
+                    // would-be emission scope and left the struct's own `keys()` naming an
+                    // unimported class (E0425 in a non-root module).
                     for rest in record.dynamic_rows() {
+                        if wasm && record.is_typed_row(rest) && !rest.is_array_tail() {
+                            register_deferred_keys_list(
+                                &mut refs,
+                                self,
+                                deferred,
+                                current_scope,
+                                rest.domain(),
+                            );
+                            register_root_keys_list(
+                                &mut refs,
+                                self,
+                                wasm,
+                                deferred,
+                                current_scope,
+                                rest.domain(),
+                            );
+                            // The struct's field type and its flattened accessors name `K_t`/`V_t`
+                            // bare right here, so they are marked at THIS scope rather than at a
+                            // container's.
+                            for inner in [rest.domain(), rest.range()] {
+                                mark_refs(
+                                    &mut refs,
+                                    self,
+                                    wasm,
+                                    &table_shape_sole_owners,
+                                    deferred,
+                                    current_scope,
+                                    inner,
+                                );
+                            }
+                            // The keys-list class ITSELF names `K_t` bare in its own body
+                            // (`get`/`add`), and it is minted at root rather than registered as an
+                            // IR struct — so no struct-walk arm ever reaches it. A named table gets
+                            // this for free (its keys-list IS an IR Array struct, minted at parse);
+                            // mark the element at the list's scope here on the same condition
+                            // `register_root_keys_list` mints under.
+                            let keys_ident = RustIdent::new(CDDLIdent::new(
+                                rest.domain().name_as_wasm_array(self),
+                            ));
+                            if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
+                                .directly_wasm_exposable_ct(self)
+                                && !deferred.contains_key(&keys_ident)
+                            {
+                                mark_refs(
+                                    &mut refs,
+                                    self,
+                                    wasm,
+                                    &table_shape_sole_owners,
+                                    deferred,
+                                    &ROOT_SCOPE,
+                                    rest.domain(),
+                                );
+                            }
+                            continue;
+                        }
                         mark_refs(
                             &mut refs,
                             self,

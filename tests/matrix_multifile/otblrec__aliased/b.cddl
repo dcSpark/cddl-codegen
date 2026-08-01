@@ -1,0 +1,2 @@
+; cell: otblrec x aliased (reference from module b)
+bal = otbl
