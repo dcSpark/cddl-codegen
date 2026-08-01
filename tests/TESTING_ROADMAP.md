@@ -758,21 +758,6 @@ a premise too: two entries named `all_supported_constructs_generate_all_profiles
 gate their remedy would extend, and it writes nothing — it drives `api::generated_strings` in-process
 over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is built on, not its name.
 
-- **`lint_doc_citations` diagnoses a dangling citation as a raw ENOENT crash when the cited file
-  is deleted-but-tracked, and its citation grammar rejects globs.** Observed once (delivery-1
-  phase 1, the prelude fixture moves `tests/matrix_panic/` → `tests/matrix_reject/`): a doc
-  citing the old path crashed the gate with an unhandled ENOENT instead of the lint's own
-  dangling-citation report, and a glob spelling (`prelude.eb*.cddl`) was rejected outright,
-  forcing "one fixture plus its two siblings" prose. Detection is intact — the crash still exits
-  non-zero, so nothing ships with a dangling citation — the defect is diagnosis quality: the
-  finder pays a stack trace instead of being told which doc cites which missing path. Owned
-  meanwhile by that non-zero exit plus this note. Trigger: a second contributor losing time to
-  the raw crash (the party with the problem is whoever moves a cited file; the cost grows with
-  the count of cited-fixture moves, which the burndown's catalog-flipping deliveries are now
-  producing routinely). Remedy sketch when it fires: catch the read failure and render it as the
-  standard dangling-citation failure line; decide globs on merit at the same touch (either
-  support them or keep the rejection with a message naming the sibling-prose convention).
-
 **Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
 section's recur-first premise stays honest.** Five at present, each cited by its own exact title (the
 full record stays in place below): "Regenerating over prior output with a rule DELETION is exercised
@@ -3125,6 +3110,28 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   is read as a projection defect rather than an unstaged tree, or any use of this gate somewhere a
   dirty tree is normal (a pre-commit hook), where the crash would be the common case rather than the
   exception.
+  Second sighting 2026-08-01 (the prelude fixture moves, `matrix_panic` → `matrix_reject`):
+  correctly diagnosed at the cost of triage time, so the signal — the crash being READ AS a
+  projection defect — has still not fired; the sighting is recorded because the burndown's
+  catalog-flipping deliveries now produce cited-fixture moves routinely, which is the dimension
+  the triage cost grows along. Same sighting added one observation the original entry lacks:
+  the citation grammar also rejects GLOB spellings (`prelude.eb*.cddl`), which is why moved-
+  fixture prose cites one fixture "and its siblings" — decide globs on merit at the same touch
+  if the crash is ever promoted to a fix.
+
+- **A shared `CARGO_TARGET_DIR` across same-named scratch crates masks compile failures as
+  cached passes.** Proven 2026-08-01 (the same-chain `.cbor` refusal delivery): two scratch
+  probes generated crates with the same package name into different directories and
+  `cargo check`ed them under one shared target dir; the second check reused the first's
+  fingerprint and reported clean for a crate that does not compile — the probe's verdict was
+  the CACHE's, not the crate's. The gate-cache machinery is not implicated (it keys on
+  generated-crate content hashes); this is raw cargo fingerprint reuse, and it can flip a
+  red-first probe green. Working rule: compile probes of scratch crates use a per-crate target
+  dir (or distinct package names); a probe that must share a target dir for warm-cache speed
+  asserts something the cache cannot fake (`cargo clean -p <name>` first, or check the error
+  output of a build it forced). Watch, not work item: the next false-green scratch probe traced
+  to fingerprint reuse is the second instance; if one appears inside a REGISTERED gate rather
+  than an ad-hoc probe, that gate's cell keying is the defect and it graduates to a work item.
 
 - **The config run's convergence warning can name a crate that already converged.** `Convergence`
   snapshots each consumed sidecar's bytes at the START of the run and compares them after, so any
