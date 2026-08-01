@@ -773,10 +773,12 @@ gate their remedy would extend, and it writes nothing — it drives `api::genera
 over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is built on, not its name.
 
 **Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
-section's recur-first premise stays honest.** Three at present, each cited by its own exact title (the
-full record stays in place below): "Regenerating over prior output with a rule DELETION is exercised
-as a gate for only two files"; "A `no gate demands this` premise probed against ONE gate is not
-evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
+section's recur-first premise stays honest.** Cited count-free and by exact title, because a
+hand-maintained tally of this list is itself the rot class `cddl-matrix/ROADMAP.md` § Maintenance
+records — this one went stale twice in a single day of deliveries before the number came out. The
+full record of each stays in place below: "Regenerating over prior output with a rule DELETION is
+exercised as a gate for only two files"; "A "no gate demands this" premise probed against ONE gate
+is not evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
 `check.ts` itself); and "`--extern-wrapper-index` deferral-boundaries".
 
 - **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
