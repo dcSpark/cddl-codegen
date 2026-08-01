@@ -105,6 +105,55 @@ impl EncodingKind {
     pub const ALL: &'static [EncodingKind] = &[Self::Sz, Self::Str, Self::Len];
 }
 
+/// The CBOR major type a `@custom_wire_major` declaration names — the second member of the
+/// wire-facts declaration family (`@custom_encodings` is the first). Both exist for the same reason:
+/// a `@custom_serialize`/`@custom_deserialize` pair OWNS the wire, so the generator's inference over
+/// the type the codec replaces answers about a wire nobody writes. Where `@custom_encodings` declares
+/// the codec's framing VARIABLES, this declares the one fact a dispatching reader needs before any
+/// deserializer runs: which of the eight majors the codec's first data item is.
+///
+/// The vocabulary is surfaced from the enum (`ALL` / `token()`) so the rejection messages can never
+/// drift from what parses.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum WireMajor {
+    Uint,
+    Nint,
+    Bytes,
+    Text,
+    Array,
+    Map,
+    Tag,
+    Simple,
+}
+
+impl WireMajor {
+    /// The `@custom_wire_major` token that spells this major.
+    pub fn token(self) -> &'static str {
+        match self {
+            Self::Uint => "uint",
+            Self::Nint => "nint",
+            Self::Bytes => "bytes",
+            Self::Text => "text",
+            Self::Array => "array",
+            Self::Map => "map",
+            Self::Tag => "tag",
+            Self::Simple => "simple",
+        }
+    }
+
+    /// Every major, in CBOR major-type order (0..7). The parser's accepted vocabulary.
+    pub const ALL: &'static [WireMajor] = &[
+        Self::Uint,
+        Self::Nint,
+        Self::Bytes,
+        Self::Text,
+        Self::Array,
+        Self::Map,
+        Self::Tag,
+        Self::Simple,
+    ];
+}
+
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
@@ -192,6 +241,19 @@ pub struct RuleMetadata {
     /// all — "one spec, many flag sets", like `@extern_companions` without `--wasm`). See
     /// [`EncodingKind`] and `generation::declared_encoding_fields`.
     pub custom_encodings: Option<Vec<EncodingKind>>,
+    /// `@custom_wire_major <major>`: the CBOR major type the wire a `@custom_serialize`/
+    /// `@custom_deserialize` pair writes and reads STARTS with. The second member of the wire-facts
+    /// declaration family (see [`WireMajor`]).
+    ///
+    /// Valid ONLY beside BOTH halves of the pair, in the same position (the `@custom_encodings`
+    /// both-halves contract, and for the same reason: with one half the other direction is generated
+    /// code whose real major the declaration would contradict). REQUIRED when the rule keys an OPEN
+    /// TABLE's typed row — there the generator must know the claimed major before any deserializer
+    /// runs, and `cbor_types()` answers about the REPLACED type's wire, which the codec has taken
+    /// over. A rule carrying it that NO open-table typed row consumes is a graceful rejection
+    /// (no-silent-directive): consumed somewhere is enough, so one alias may key a table AND appear
+    /// at a field.
+    pub custom_wire_major: Option<WireMajor>,
     /// `@extern_companions <path>=<Class>[,<Class>…]`: valid ONLY on a LOCALLY-scoped, non-generic
     /// `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule. Declares that the named
     /// structural wasm companion classes
@@ -251,6 +313,11 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
             r2.custom_encodings,
             "custom_encodings"
         ),
+        custom_wire_major: merge_metadata_fields!(
+            r1.custom_wire_major,
+            r2.custom_wire_major,
+            "custom_wire_major"
+        ),
         extern_companions: merge_metadata_fields!(
             r1.extern_companions,
             r2.extern_companions,
@@ -278,6 +345,7 @@ enum ParseResult {
     CustomSerialize(String),
     CustomDeserialize(String),
     CustomEncodings(Vec<EncodingKind>),
+    CustomWireMajor(WireMajor),
     ExternCompanionsTag(ExternCompanions),
     Comment(String),
 }
@@ -349,6 +417,9 @@ impl RuleMetadata {
                 ParseResult::CustomEncodings(kinds) => {
                     merge_parse_fields!(base.custom_encodings, kinds, "custom_encodings")
                 }
+                ParseResult::CustomWireMajor(major) => {
+                    merge_parse_fields!(base.custom_wire_major, major, "custom_wire_major")
+                }
                 ParseResult::ExternCompanionsTag(companions) => {
                     merge_parse_fields!(base.extern_companions, companions, "extern_companions")
                 }
@@ -395,6 +466,7 @@ impl RuleMetadata {
             custom_serialize,
             custom_deserialize,
             custom_encodings,
+            custom_wire_major,
             extern_companions,
         } = self;
         let mut found = Vec::new();
@@ -439,6 +511,9 @@ impl RuleMetadata {
         }
         if custom_encodings.is_some() {
             found.push("@custom_encodings");
+        }
+        if custom_wire_major.is_some() {
+            found.push("@custom_wire_major");
         }
         if extern_companions.is_some() {
             found.push("@extern_companions");
@@ -649,6 +724,34 @@ fn tag_custom_deserialize(input: &str) -> IResult<&str, ParseResult> {
     ))
 }
 
+fn tag_custom_wire_major(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@custom_wire_major")(input)?;
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    // Exactly one REQUIRED argument from a strict vocabulary (the `@custom_encodings` contract, and
+    // panicking for the same reason: `metadata_from_comments` swallows nom errors, so a soft failure
+    // would silently drop the whole line's metadata — here that means dropping the pair AND its
+    // declared major, re-arming the silent-normalization trap this family exists to disarm).
+    let vocabulary = WireMajor::ALL
+        .iter()
+        .map(|major| format!("`{}`", major.token()))
+        .collect::<Vec<_>>()
+        .join(" / ");
+    if input.is_empty() || input.starts_with('@') {
+        panic!(
+            "@custom_wire_major: missing required argument; expected exactly one of {vocabulary} \
+             (e.g. `@custom_wire_major text`)."
+        );
+    }
+    let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+    match WireMajor::ALL.iter().find(|m| m.token() == arg) {
+        Some(major) => Ok((rest, ParseResult::CustomWireMajor(*major))),
+        None => panic!(
+            "@custom_wire_major: unknown major {arg:?}; expected exactly one of {vocabulary} (e.g. \
+             `@custom_wire_major text`). The eight tokens are the eight CBOR major types."
+        ),
+    }
+}
+
 fn tag_custom_encodings(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@custom_encodings")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
@@ -781,6 +884,9 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         // share `@custom_` and diverge at the 8th char (`s`/`d`/`j`/`e`), so the `alt` order among
         // them is free.
         tag_custom_encodings,
+        // `@custom_wire_major` shares the `@custom_` prefix with the four above and diverges at the
+        // 8th char (`w`), so its `alt` position among them is free.
+        tag_custom_wire_major,
         tag_extern_companions,
         tag_comment,
     ))
@@ -826,6 +932,7 @@ pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@custom_serialize",
     "@custom_deserialize",
     "@custom_encodings",
+    "@custom_wire_major",
     "@extern_companions",
     "@doc",
 ];
@@ -871,6 +978,7 @@ fn parse_comment_name() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -900,6 +1008,7 @@ fn parse_comment_newtype() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -933,6 +1042,7 @@ fn parse_comment_newtype_getter_before() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -983,6 +1093,7 @@ fn parse_comment_newtype_getter_after() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1012,6 +1123,7 @@ fn parse_comment_newtype_and_name() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1045,6 +1157,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1078,6 +1191,7 @@ fn parse_comment_used_as_key() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1209,6 +1323,7 @@ fn parse_comment_used_as_elem() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1243,6 +1358,7 @@ fn parse_comment_used_as_elem_and_key() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1276,6 +1392,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1306,6 +1423,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1335,6 +1453,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1549,6 +1668,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1578,6 +1698,7 @@ fn parse_comment_name_noalias() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1607,6 +1728,7 @@ fn parse_comment_newtype_and_custom_json() {
                 custom_serialize: None,
                 custom_deserialize: None,
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1642,6 +1764,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: None,
             }
@@ -1678,6 +1801,7 @@ fn parse_comment_all_except_no_alias() {
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
                 custom_encodings: None,
+                custom_wire_major: None,
                 extern_companions: None,
                 comment: Some("this is a doc comment".to_string()),
             }

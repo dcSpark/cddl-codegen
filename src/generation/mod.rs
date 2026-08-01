@@ -689,8 +689,14 @@ impl GenerationScope {
                             // rows of the same key/value and different policies mint two distinct
                             // classes. An `@ignore` row has no field/getter, so no wasm map wrapper is
                             // minted for it (its wasm class is a closed struct's).
-                            if let Some(rest) =
-                                record.captured_rest().filter(|r| !r.is_array_tail())
+                            // BOTH dynamic rows: an open table's TYPED row has its own container
+                            // class and its own getter, so a mint that reads only the catch-all
+                            // leaves the typed getter's return type undeclared (E0425 in the wasm
+                            // crate).
+                            for rest in record
+                                .captured_dynamic_rows()
+                                .filter(|r| !r.is_array_tail())
+                                .collect::<Vec<_>>()
                             {
                                 let rest_map = rest.container_type();
                                 mint_wasm_wrapper_for_visited_type(
@@ -711,7 +717,10 @@ impl GenerationScope {
                             // the tail field's getter returns it — via the SAME path a list field's
                             // wrapper takes. An `@ignore` tail has no field/getter, so nothing is minted
                             // (its wasm class is a closed struct's).
-                            if let Some(rest) = record.captured_rest().filter(|r| r.is_array_tail())
+                            for rest in record
+                                .captured_dynamic_rows()
+                                .filter(|r| r.is_array_tail())
+                                .collect::<Vec<_>>()
                             {
                                 let rest_list = rest.container_type();
                                 mint_wasm_wrapper_for_visited_type(

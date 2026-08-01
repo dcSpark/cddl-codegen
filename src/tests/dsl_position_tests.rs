@@ -1005,6 +1005,76 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // ---- @custom_wire_major -------------------------------------------------------------------
+    // The second member of the wire-facts declaration family: the CBOR major type a custom codec's
+    // wire starts with. Its one consumer is an OPEN TABLE's typed-row dispatch, which must know the
+    // major BEFORE any deserializer runs — `cbor_types()` there answers about the REPLACED type,
+    // whose wire the codec has taken over. Every cell runs under default flags: unlike
+    // `@custom_encodings` the declaration's surface does not depend on `--preserve-encodings`.
+    // 23x. HONORED: the declared major drives the typed row's dispatch arm — `text`, NOT the `bytes`
+    //      the replaced raw-bytes marker would have reported. The two anchors together are the whole
+    //      feature: without the declaration this rule is a graceful rejection, and with a naive
+    //      `cbor_types()` read it would dispatch on the wrong major and never match.
+    Cell {
+        directive: "@custom_wire_major",
+        position: "open-table-typed-row",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nt = { * rb_v1 => uint, * uint => uint }\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["cbor_event::Type::Text =>", "my_deser(raw)"],
+            must_not: &["cbor_event::Type::Bytes =>"],
+        },
+    },
+    // 23y. REJECT: the declaration with NO pair — it declares a fact about a wire no codec writes.
+    Cell {
+        directive: "@custom_wire_major",
+        position: "without-pair",
+        spec: "cb = bytes ; @custom_wire_major text\nholder = [f: cb]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("no `@custom_serialize`/`@custom_deserialize` is written there"),
+    },
+    // 23z. REJECT: the declaration with ONE half.
+    Cell {
+        directive: "@custom_wire_major",
+        position: "single-half",
+        spec: "cb = bytes ; @custom_serialize my_ser @custom_wire_major text\nholder = [f: cb]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only `@custom_serialize` is written there"),
+    },
+    // 23aa. REJECT: the declaration on a rule that mints a STRUCT — the declared major is read only
+    //       through the rule's transparent ALIAS entry, which a struct-minting rule has none of.
+    Cell {
+        directive: "@custom_wire_major",
+        position: "record-rule-both-set",
+        spec: "myrec = [a: uint] ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nholder = [f: myrec]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    // 23ab. REJECT (no-silent-directive): the complete pair AND the declaration, on an alias nothing
+    //       keys — consumed SOMEWHERE is the contract, and here nothing consumes it.
+    Cell {
+        directive: "@custom_wire_major",
+        position: "unconsumed-alias",
+        spec: "cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nholder = [f: cb]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    // 23ac. REJECT: the ABSENCE of the declaration where it is REQUIRED — a custom-codec key at an
+    //       open table's typed row. 23x is the same spec WITH it, so the pair isolates the
+    //       declaration as the variable.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "open-table-typed-row-undeclared-major",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize my_ser @custom_deserialize my_deser\nt = { * rb_v1 => uint, * uint => uint }\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("the codec owns that wire"),
+    },
     // ---- @custom_serialize/@custom_deserialize on an ALIAS OF A MARKER RULE ------------------
     // The "this rule IS that type, written differently on the wire" spelling: the pair sits on an
     // alias whose BODY references a marker rule, so it escapes the on-the-marker rejection (23a/23i)

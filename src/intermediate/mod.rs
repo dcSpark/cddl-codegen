@@ -494,7 +494,7 @@ impl<'a> IntermediateTypes<'a> {
                 matches!(
                     rs.variant(),
                     RustStructType::Record(record)
-                        if record.rest.as_ref().is_some_and(|r| {
+                        if record.dynamic_rows().any(|r| {
                             r.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
                         })
                 )
@@ -510,7 +510,7 @@ impl<'a> IntermediateTypes<'a> {
     /// none of the flatten machinery and does not count here.
     pub fn uses_open_struct_rest(&self) -> bool {
         self.rust_structs.values().any(
-            |rs| matches!(rs.variant(), RustStructType::Record(record) if record.captured_rest().is_some()),
+            |rs| matches!(rs.variant(), RustStructType::Record(record) if record.captured_dynamic_rows().next().is_some()),
         )
     }
 
@@ -621,7 +621,7 @@ impl<'a> IntermediateTypes<'a> {
                     // (loose CBOR) that are NOT a `RustField`, so walk them explicitly — else usage
                     // detectors (`uses_any_cbor`, the collection-twin detectors) miss an
                     // `any`/collection type that appears only in the rest inner type(s).
-                    if let Some(rest) = &record.rest {
+                    for rest in record.dynamic_rows() {
                         match &rest.kind {
                             RestKind::MapEntries { domain, range, .. } => {
                                 walk(domain, f);
@@ -1563,7 +1563,7 @@ impl<'a> IntermediateTypes<'a> {
                     // coincidentally correct. Rust-side output is unchanged: with `wasm == false`
                     // both container arms fall through to marking the inners at the using scope,
                     // which is what this did.
-                    if let Some(rest) = &record.rest {
+                    for rest in record.dynamic_rows() {
                         mark_refs(
                             &mut refs,
                             self,
@@ -2813,6 +2813,160 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     // call this after all types have been registered
+    /// Derive the dispatch major of every open table's TYPED row (`RustRecord::typed_row`), and
+    /// reject — gracefully, never silently — every shape whose major is not statically knowable.
+    ///
+    /// The two-stage staticness rule (the naive `cbor_types().len() == 1` test is WRONG on its own):
+    ///
+    /// 1. if the key's alias chain carries a `@custom_serialize`/`@custom_deserialize` pair, the
+    ///    codec OWNS the wire and `cbor_types()` answers about the REPLACED type — a codec over a
+    ///    raw-bytes marker reports `Bytes` while writing text. There the `@custom_wire_major`
+    ///    DECLARATION is required, and it is the answer;
+    /// 2. otherwise `cbor_types()` must yield exactly one major. Primitives, primitive-bodied
+    ///    aliases, raw-bytes markers, aliases of markers, `.size`-constrained bytes and tagged types
+    ///    qualify; plain externs (`Array`+`Map`), the reserved `Int` extern, multi-major unions,
+    ///    `any` and optionally-tagged types report more than one and reject naturally.
+    ///
+    /// Plus the complement check: a catch-all whose admissible majors are EXHAUSTED by the typed row
+    /// can never see an entry, so it is rejected rather than emitted as dead code.
+    fn derive_open_table_dispatch_majors(&mut self, cli: &Cli) {
+        // Two passes, because `cbor_types()` on a `Rust(ident)` key reads `rust_structs` — so the
+        // derivation cannot hold a mutable borrow of it. Pass 1 is a pure read of the whole IR
+        // producing one verdict per open table; pass 2 applies the verdicts.
+        let mut derived: BTreeMap<RustIdent, CBORType> = BTreeMap::new();
+        let mut rejections: Vec<String> = Vec::new();
+        // Which alias rules a typed row actually CONSUMED a `@custom_wire_major` from — the
+        // no-silent-directive ledger, checked after the walk.
+        let mut consumed: BTreeSet<AliasIdent> = BTreeSet::new();
+        for (rule_ident, rust_struct) in self.rust_structs.iter() {
+            let RustStructType::Record(record) = rust_struct.variant() else {
+                continue;
+            };
+            if !record.is_open_table() {
+                continue;
+            }
+            // TEMPORARY (removed with the open table's JSON face): the derive-based flatten surface
+            // cannot express an open table. Two `#[serde(flatten)]` members on one struct do not
+            // partition on READ (serde hands every unmatched member to both) and duplicate each
+            // other's member names on WRITE — so a derive here would emit a type that silently
+            // mis-reads and mis-writes. The JSON face is a hand-written `Serialize`/`Deserialize`
+            // pair with an explicit typed-first partition; until it lands, refuse the flags rather
+            // than ship the broken derive.
+            if cli.json_serde_derives || cli.json_schema_export {
+                rejections.push(format!(
+                    "rule `{rule_ident}`: an open table (`{{ * k1 => v1, * k2 => v2 }}`) is not \
+                     supported yet under --json-serde-derives / --json-schema-export. Its JSON face \
+                     is one flattened object with a typed-first read partition, which needs a \
+                     hand-written serde pair (a derive's two flattened members neither partition on \
+                     read nor keep distinct member names on write). Generate this spec without the \
+                     JSON flags for now."
+                ));
+                continue;
+            }
+            let typed_domain = record.typed_row().unwrap().domain();
+            let catch_all_domain = record.rest.as_ref().unwrap().domain();
+            let has_custom_codec = custom_codec_on_alias_chain(&typed_domain.conceptual_type, self);
+            let declared = declared_wire_major_on_alias_chain(&typed_domain.conceptual_type, self);
+            let major = if has_custom_codec {
+                match declared {
+                    Some(major) => {
+                        mark_wire_major_consumed(
+                            &typed_domain.conceptual_type,
+                            self,
+                            &mut consumed,
+                        );
+                        wire_major_to_cbor_type(major)
+                    }
+                    None => {
+                        rejections.push(format!(
+                            "rule `{rule_ident}`: the open table's typed-row key is written by a \
+                             `@custom_serialize`/`@custom_deserialize` pair, so the generator cannot \
+                             infer which CBOR major type the wire starts with — the codec owns that \
+                             wire, and the type it replaces answers about a wire nobody writes. \
+                             Declare it beside the pair with `@custom_wire_major <major>` (one of \
+                             `uint` / `nint` / `bytes` / `text` / `array` / `map` / `tag` / \
+                             `simple`)."
+                        ));
+                        continue;
+                    }
+                }
+            } else {
+                if declared.is_some() {
+                    mark_wire_major_consumed(&typed_domain.conceptual_type, self, &mut consumed);
+                }
+                let majors = typed_domain.cbor_types(self);
+                match majors.as_slice() {
+                    [only] => *only,
+                    _ => {
+                        rejections.push(format!(
+                            "rule `{rule_ident}`: the open table's typed row must be keyed on a type \
+                             whose CBOR major type is statically known — it claims exactly that one \
+                             major and the catch-all row sees the complement — but this key admits \
+                             {} majors ({}). Use a single-major key (a primitive, an alias of one, a \
+                             raw-bytes marker or an alias of one, a `.size`-constrained bytes, or a \
+                             tagged type); a key whose wire a `@custom_serialize` / \
+                             `@custom_deserialize` pair owns declares its major with \
+                             `@custom_wire_major <major>` instead.",
+                            majors.len(),
+                            majors
+                                .iter()
+                                .map(|m| format!("{m:?}"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                        continue;
+                    }
+                }
+            };
+            // The catch-all sees the COMPLEMENT of the typed row's major. If its key admits nothing
+            // else, it can never capture an entry — dead code standing in for a table.
+            let catch_all_majors = catch_all_domain.cbor_types(self);
+            if catch_all_majors.iter().all(|m| *m == major) {
+                rejections.push(format!(
+                    "rule `{rule_ident}`: the open table's catch-all row can never capture an entry \
+                     — every CBOR major type its key admits ({major:?}) is already claimed by the \
+                     typed row. Widen the catch-all's key type, or spell this as a plain table (`t = \
+                     {{ * k => v }}`) if one row is all you need."
+                ));
+                continue;
+            }
+            derived.insert(rule_ident.clone(), major);
+        }
+        for (rule_ident, major) in derived {
+            if let Some(RustStructType::Record(record)) = self
+                .rust_structs
+                .get_mut(&rule_ident)
+                .map(|rs| &mut rs.variant)
+                && let Some(typed) = record.typed_row.as_mut()
+            {
+                typed.dispatch_major = Some(major);
+            }
+        }
+        // no-silent-directive: a `@custom_wire_major` nobody consumed declares a fact about a wire
+        // no dispatch reads. Consumed SOMEWHERE is enough — one alias may key an open table's typed
+        // row and also appear at an ordinary field.
+        for (alias_ident, info) in self.type_aliases.iter() {
+            if info
+                .rule_metadata
+                .as_ref()
+                .and_then(|rmd| rmd.custom_wire_major)
+                .is_some()
+                && !consumed.contains(alias_ident)
+            {
+                rejections.push(format!(
+                    "`@custom_wire_major` on rule `{alias_ident}`: nothing consumes the declared \
+                     major. It is read only when the rule keys an OPEN TABLE's typed row (`t = {{ * \
+                     {alias_ident} => v, * k2 => v2 }}`), where the dispatch must know the major \
+                     before any deserializer runs. Remove the directive, or key an open table's \
+                     typed row with this rule."
+                ));
+            }
+        }
+        for msg in rejections {
+            self.record_rejection(msg);
+        }
+    }
+
     pub fn finalize(
         &mut self,
         parent_visitor: &ParentVisitor,
@@ -2937,6 +3091,13 @@ impl<'a> IntermediateTypes<'a> {
         // the generic resolution/re-resolution above so every registered product (incl. resolved
         // generic instances) is seen in final shape.
         self.nominalize_inline_sets(parent_visitor, cli)?;
+        // Phase 2.5: derive each OPEN TABLE's typed-row dispatch major, and police the
+        // `@custom_wire_major` declarations that feed it. Runs HERE — not in the parse walk — for the
+        // same two reasons the float-key instruments below do: `cbor_types()` does
+        // `rust_struct(ident).unwrap()` and would panic on a not-yet-registered forward reference,
+        // and only a post-generic-resolution pass sees a key hidden behind a resolved generic
+        // instance. Parse decides SHAPE, finalize decides STATICNESS.
+        self.derive_open_table_dispatch_majors(cli);
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
@@ -3097,10 +3258,16 @@ impl<'a> IntermediateTypes<'a> {
             // Gated on the TYPED path: a bare `uint`/`text`/`any` domain keys nothing that could be
             // marked (`mark_key_demand` marks `Rust(ident)` nodes only), so gating keeps every
             // existing spec's derives byte-identical rather than relying on that coincidence.
-            if let RustStructType::Record(record) = rust_struct.variant()
-                && let Some(rest) = record.captured_rest()
-                && !rest.is_array_tail()
-                && !rest.map_key_uses_peeked_path(self)
+            // BOTH dynamic rows: an open table's TYPED row keys the same container kind, so a walk
+            // that reads only the catch-all leaves `K_t` without its comparison derives (E0277 in the
+            // generated crate, and no `borrowed_key_types.rs` row for a dep-owned `K_t`).
+            for rest in match rust_struct.variant() {
+                RustStructType::Record(record) => Some(record),
+                _ => None,
+            }
+            .into_iter()
+            .flat_map(|record| record.captured_dynamic_rows())
+            .filter(|rest| !rest.is_array_tail() && !rest.map_key_uses_peeked_path(self))
             {
                 // Same relaxation as the `Table` branch: a `@duplicates preserve` row's keys live in
                 // a `PairMap`, compared by a linear `PartialEq` scan rather than hashed/ordered, so
@@ -3543,6 +3710,25 @@ impl<'a> IntermediateTypes<'a> {
                      beside a FIELD's pair, or on a transparent alias rule's pair \
                      (`<rule> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> \
                      @custom_encodings <kinds>`)."
+                ));
+            }
+            // The `@custom_wire_major` sibling of the check above, and for the same reason: the
+            // declared major is read only through the ALIAS channel (`AliasInfo::rule_metadata`),
+            // when the rule keys an open table's typed row. A struct-minting rule has no such
+            // channel, so the declaration would be read into the rule's metadata and dropped. (A
+            // declaration with one half of the pair or none is the parse walk's
+            // `reject_custom_encodings_without_pair`, so it cannot double-report here.)
+            if config.custom_wire_major.is_some()
+                && config.custom_serialize.is_some()
+                && config.custom_deserialize.is_some()
+            {
+                custom_codec_rejections.insert(format!(
+                    "@custom_wire_major on `{ident}`: this rule mints a STRUCT, and the declared \
+                     major is read only where a rule keys an OPEN TABLE's typed row — which reaches \
+                     the declaration through the rule's transparent ALIAS entry, a struct-minting \
+                     rule has none. Put the declaration on the alias rule whose codec writes the key \
+                     (`<key> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> \
+                     @custom_wire_major <major>`)."
                 ));
             }
             if matches!(rust_struct.variant(), RustStructType::Record(_)) {

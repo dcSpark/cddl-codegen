@@ -439,7 +439,19 @@ fn reject_custom_encodings_without_pair(
     position: &str,
     metadata: &RuleMetadata,
 ) -> bool {
-    if metadata.custom_encodings.is_none() {
+    let declarations: [(&str, bool, &str); 2] = [
+        (
+            "@custom_encodings",
+            metadata.custom_encodings.is_some(),
+            "@custom_serialize <fn> @custom_deserialize <fn> @custom_encodings <kinds>",
+        ),
+        (
+            "@custom_wire_major",
+            metadata.custom_wire_major.is_some(),
+            "@custom_serialize <fn> @custom_deserialize <fn> @custom_wire_major <major>",
+        ),
+    ];
+    if !declarations.iter().any(|(_, written, _)| *written) {
         return false;
     }
     let present = custom_codec_directives(metadata);
@@ -451,15 +463,21 @@ fn reject_custom_encodings_without_pair(
     } else {
         format!("only `{}` is written there", present[0])
     };
-    types.record_rejection(format!(
-        "@custom_encodings on {position}: the declaration describes the wire of the custom \
-         (de)serializer pair written BESIDE it, and {found}. Both halves are required: with one \
-         half the other direction is generated code deriving the replaced type's own encoding \
-         demand, which the declaration would contradict slot for slot. Write the pair here \
-         (`@custom_serialize <fn> @custom_deserialize <fn> @custom_encodings <kinds>`), or drop the \
-         declaration."
-    ));
-    true
+    let mut rejected = false;
+    for (directive, written, remedy) in declarations {
+        if !written {
+            continue;
+        }
+        types.record_rejection(format!(
+            "{directive} on {position}: the declaration describes the wire of the custom \
+             (de)serializer pair written BESIDE it, and {found}. Both halves are required: with one \
+             half the other direction is generated code deriving the replaced type\u{2019}s own \
+             inferred facts, which the declaration would contradict. Write the pair here \
+             (`{remedy}`), or drop the declaration."
+        ));
+        rejected = true;
+    }
+    rejected
 }
 
 /// Reject a custom (de)serializer pair sitting in a collection ROW-ENTRY comment slot — a table row,
@@ -4608,6 +4626,13 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "first_value",
     "force_canonical",
     "generator",
+    // The open table's `deser_order` fallback closure parameter (`(0..self.<row>.len()).map(|i| 2 *
+    // i)`) and the canonical merge's enumerate binding. Swept 2026-08-01 over the array-rep /
+    // map-rep / tagged-record / embedded-plain-group / group-choice-arm / open-struct-map /
+    // open-array / optional-field shapes × default / `--preserve-encodings` /
+    // `--preserve-encodings --canonical-form` × wasm off and on: every crate compiles. The closure
+    // body references no field, so a field named `i` (reached as `self.i`) cannot be shadowed by it.
+    "i",
     "index",
     "initial_position",
     "inner",
@@ -4733,9 +4758,13 @@ fn parse_record_from_group_choice(
     // Open struct-map recognition (loose CBOR): a trailing `* K => V` arrow row after ≥1 fixed
     // entry becomes the record's `rest` capture instead of a rejected mixed non-fixed key. A
     // single-entry `{ * K => V }` never reaches here — table detection in `parse_group_type`
-    // diverts it — so any non-fixed entry here is part of a multi-entry map. `rest_index` marks the
-    // recognized (or rest-CANDIDATE-then-rejected) row so the field loop skips it.
-    let (rest, rest_index) = recognize_rest_row(
+    // diverts it — so any non-fixed entry here is part of a multi-entry map. `rest_skip` marks the
+    // recognized (or CANDIDATE-then-rejected) rows so the field loop skips them.
+    let DynamicRows {
+        typed_row,
+        rest,
+        skip: rest_skip,
+    } = recognize_dynamic_rows(
         types,
         rep,
         parent_visitor,
@@ -4749,9 +4778,10 @@ fn parse_record_from_group_choice(
         .into_iter()
         .enumerate()
         .filter_map(|(index, (group_entry, optional_comma))| {
-            // The rest-row entry (recognized or rejected as a rest candidate) is handled by
-            // `recognize_rest_row`; never build a fixed field for it.
-            if Some(index) == rest_index {
+            // The dynamic-row entries (recognized, or rejected as a candidate) are handled by
+            // `recognize_dynamic_rows`; never build a fixed field for one. An open table skips
+            // BOTH of its rows, which is why this is an index SET rather than one index.
+            if rest_skip.contains(&index) {
                 return None;
             }
             // An unflattened `InlineGroup` reaching the record loop is a parenthesized group whose
@@ -4898,9 +4928,11 @@ fn parse_record_from_group_choice(
                      from this entry."
                 ));
             }
-            // A `@custom_encodings` declaration is a property OF the pair, and a field carries its
-            // own pair — so a declaration here with one half (or none) describes no codec.
-            if rule_metadata.custom_encodings.is_some() {
+            // A wire-facts declaration (`@custom_encodings` / `@custom_wire_major`) is a property OF
+            // the pair, and a field carries its own pair — so a declaration here with one half (or
+            // none) describes no codec.
+            if rule_metadata.custom_encodings.is_some() || rule_metadata.custom_wire_major.is_some()
+            {
                 let source_name = types
                     .source_rule_name(name)
                     .map(str::to_owned)
@@ -5102,7 +5134,12 @@ fn parse_record_from_group_choice(
         })
         .collect();
     reject_encoding_companion_collisions(types, rep, name, &fields);
-    RustRecord { rep, fields, rest }
+    RustRecord {
+        rep,
+        fields,
+        rest,
+        typed_row,
+    }
 }
 
 /// The PAIRWISE half of the generated-local collision class: a record whose fields are individually
@@ -5150,6 +5187,321 @@ fn reject_encoding_companion_collisions(
              unchanged."
         ));
     }
+}
+
+/// The DYNAMIC (non-fixed) rows a record recognized, plus the flattened indices its fixed-field
+/// loop must skip. One row for an open struct-map / open array, TWO for an open table, none for a
+/// closed struct. `skip` names every CANDIDATE row — recognized or gracefully rejected — so a
+/// rejected row never also becomes a bogus fixed field.
+struct DynamicRows {
+    typed_row: Option<Box<RestRow>>,
+    rest: Option<Box<RestRow>>,
+    skip: Vec<usize>,
+}
+
+/// Route a record's non-fixed rows to the OPEN TABLE recognizer (`t = { * K_t => V_t, * K_r => V_r }`
+/// — two dynamic rows and no fixed key) or to the single-trailing-rest-row recognizer (everything
+/// else). The two shapes are disjoint by construction, so this is a pure fork: an open table is not
+/// an open struct-map with an extra row, it is a rule of its own kind (ZERO fixed fields, a typed
+/// row claiming one wire major and a catch-all seeing the complement).
+#[allow(clippy::too_many_arguments)]
+fn recognize_dynamic_rows(
+    types: &mut IntermediateTypes,
+    rep: Representation,
+    parent_visitor: &ParentVisitor,
+    name: &RustIdent,
+    flattened: &[&(GroupEntry, OptionalComma)],
+    entry_count: usize,
+    in_choice_arm: bool,
+    cli: &Cli,
+) -> DynamicRows {
+    if rep == Representation::Map
+        && entry_count == 2
+        && flattened
+            .iter()
+            .all(|(ge, _)| matches!(group_entry_map_key_kind(ge), MapKeyKind::NonFixed))
+    {
+        return recognize_open_table(types, parent_visitor, name, flattened, in_choice_arm, cli);
+    }
+    let (rest, rest_index) = recognize_rest_row(
+        types,
+        rep,
+        parent_visitor,
+        name,
+        flattened,
+        entry_count,
+        in_choice_arm,
+        cli,
+    );
+    DynamicRows {
+        typed_row: None,
+        rest,
+        skip: rest_index.into_iter().collect(),
+    }
+}
+
+/// Recognize an OPEN TABLE — a NAMED rule spelled `t = { * K_t => V_t, * K_r => V_r }`: one typed
+/// table row plus one trailing typed catch-all rest row, and nothing else. The typed row claims
+/// exactly its key's single statically-known CBOR major; the catch-all sees only the complement.
+///
+/// Only the SHAPE is decided here. Whether `K_t`'s major is statically knowable at all — the
+/// two-stage staticness rule, and the `@custom_wire_major` declaration a custom-codec key needs — is
+/// decided in `IntermediateTypes::finalize`, because it needs `cbor_types()` (which panics on an
+/// unregistered ident) and must run after generic resolution. Parse decides SHAPE, finalize decides
+/// STATICNESS.
+///
+/// Both rows are `RestRow`s: the typed row is a dynamic sequence in exactly the sense the delivered
+/// capture engine already handles (its own `@duplicates`, its own container, its own encoding
+/// sidecars), so it reuses that machinery verbatim rather than minting a new struct kind.
+fn recognize_open_table(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    name: &RustIdent,
+    flattened: &[&(GroupEntry, OptionalComma)],
+    in_choice_arm: bool,
+    cli: &Cli,
+) -> DynamicRows {
+    let skip = vec![0usize, 1usize];
+    let rejected = || DynamicRows {
+        typed_row: None,
+        rest: None,
+        skip: vec![0usize, 1usize],
+    };
+    let src = source_rule_name_of(types, name);
+    // An INLINE anonymous open table (`f: { * k1 => v1, * k2 => v2 }`) is rejected: the shape mints a
+    // struct with two container members and a keys-list wrapper, all named off the rule ident, and a
+    // synthesized structural name for those would be a new name family with no user-visible source
+    // spelling. The named-rule concession is also what keeps the wasm collision story to legs on the
+    // existing detectors rather than a new sibling. Point at the named-rule form.
+    if !types.is_toplevel_rule(name) {
+        types.record_rejection(format!(
+            "rule `{src}`: an INLINE open table (`f: {{ * k1 => v1, * k2 => v2 }}`) is unsupported. \
+             Give the open table its own named rule (`t = {{ * k1 => v1, * k2 => v2 }}`) and \
+             reference it by name — the generated struct, its two containers and its keys list are \
+             all named off that rule."
+        ));
+        return rejected();
+    }
+    // A group-choice arm and a plain group are rejected for the same reasons the single rest row is
+    // (an arm collapses into an enum variant, dropping the open semantics; a materialized plain group
+    // exports transparently as a CLOSED group body across a crate boundary).
+    if in_choice_arm {
+        types.record_rejection(format!(
+            "rule `{src}`: an open table (`{{ * k1 => v1, * k2 => v2 }}`) inside a group-choice arm \
+             (`{{ … }} // {{ … }}`) is unsupported. Give the open table its own named rule and \
+             reference it from the arm."
+        ));
+        return rejected();
+    }
+    if types.is_plain_group(name) {
+        types.record_rejection(format!(
+            "rule `{src}`: an open table (`* k1 => v1, * k2 => v2`) inside a plain group (`{src} = \
+             ( … )`, embedded elsewhere) is unsupported. Give the open table its own named rule \
+             (`{src} = {{ * k1 => v1, * k2 => v2 }}`) and reference it by name."
+        ));
+        return rejected();
+    }
+    let Some(typed) = open_table_row(
+        types,
+        parent_visitor,
+        &src,
+        flattened[0],
+        OpenTableRowKind::Typed,
+        cli,
+    ) else {
+        return rejected();
+    };
+    let Some(catch_all) = open_table_row(
+        types,
+        parent_visitor,
+        &src,
+        flattened[1],
+        OpenTableRowKind::CatchAll,
+        cli,
+    ) else {
+        return rejected();
+    };
+    // The two rows become two `pub` fields on one struct, so their names must differ. Only reachable
+    // by `@name`-ing one row onto the other's name (the defaults are distinct).
+    if typed.field_name == catch_all.field_name {
+        types.record_rejection(format!(
+            "rule `{src}`: the open table's typed row and catch-all row would both emit a field \
+             named `{}` — the two rows are two separate containers on one struct, so their names \
+             must differ. Rename one with a `; @name <other>` directive on that row.",
+            typed.field_name
+        ));
+        return rejected();
+    }
+    DynamicRows {
+        typed_row: Some(Box::new(typed)),
+        rest: Some(Box::new(catch_all)),
+        skip,
+    }
+}
+
+/// Which of an open table's two rows is being built — they differ in the occurrence they accept
+/// (the typed row's `+` is the NonEmpty twin's spelling, which has its own interim rejection), in
+/// their default field name, and in every rejection message's wording.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum OpenTableRowKind {
+    Typed,
+    CatchAll,
+}
+
+impl OpenTableRowKind {
+    /// The slot's name in rejection messages.
+    fn slot(self) -> &'static str {
+        match self {
+            OpenTableRowKind::Typed => "open table typed row (`* k1 => v1`)",
+            OpenTableRowKind::CatchAll => "open table catch-all row (`* k2 => v2`)",
+        }
+    }
+
+    /// The captured field's default Rust name (`@name`-overridable). The catch-all keeps the open
+    /// struct-map's `rest` so the two capture surfaces read alike across the two shapes.
+    fn default_field_name(self) -> &'static str {
+        match self {
+            OpenTableRowKind::Typed => "entries",
+            OpenTableRowKind::CatchAll => "rest",
+        }
+    }
+}
+
+/// Build ONE row of an open table from its group entry, or record a graceful rejection and return
+/// `None`. Shape-level only (see `recognize_open_table`).
+fn open_table_row(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    src: &str,
+    entry: &(GroupEntry, OptionalComma),
+    kind: OpenTableRowKind,
+    cli: &Cli,
+) -> Option<RestRow> {
+    let (ge_entry, comma) = entry;
+    let slot = kind.slot();
+    let occur = match ge_entry {
+        GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+        _ => None,
+    };
+    if !matches!(occur, Some(Occur::ZeroOrMore { .. })) {
+        // `{+ …}` on the TYPED row is the NonEmpty twin, a spelled-out phase of this feature that is
+        // not built yet. Its rejection STATES the rule it will enforce (min-1 counts TYPED entries —
+        // a map of pure junk is not a non-empty table), so the loud-failure state of the unbuilt
+        // phase is unambiguous rather than reading like a permanent limitation.
+        if kind == OpenTableRowKind::Typed && matches!(occur, Some(Occur::OneOrMore { .. })) {
+            types.record_rejection(format!(
+                "rule `{src}`: the NonEmpty open table (`{{ + k1 => v1, * k2 => v2 }}`) is not \
+                 supported yet. Its rule is that the minimum of 1 counts TYPED entries only (a map \
+                 of purely captured entries is not a non-empty table), which needs its own \
+                 construction door and its own post-deserialize check. Use `*` on the typed row for \
+                 now."
+            ));
+            return None;
+        }
+        types.record_rejection(format!(
+            "rule `{src}`: the {slot} must use the `*` occurrence (unbounded: `* k => v`). `+`, \
+             `n*m`, and `?` are not supported on an open table's rows."
+        ));
+        return None;
+    }
+    let (domain, range) = match ge_entry {
+        GroupEntry::ValueMemberKey { ge, .. } => {
+            let domain = match &ge.member_key {
+                Some(MemberKey::Type1 { t1, .. }) => {
+                    rust_type_from_type1(types, parent_visitor, t1, cli)
+                }
+                _ => {
+                    types.record_rejection(format!(
+                        "rule `{src}`: unsupported {slot} key spelling (expected `* k => v`)."
+                    ));
+                    return None;
+                }
+            };
+            let range = rust_type(types, parent_visitor, &ge.entry_type, cli);
+            (domain, range)
+        }
+        _ => {
+            types.record_rejection(format!(
+                "rule `{src}`: unsupported {slot} spelling (expected `* k => v`)."
+            ));
+            return None;
+        }
+    };
+    // A null-admitting key domain collides with the break that ends an indefinite-length map (both
+    // are CBOR major 7) — the same reason the open struct-map rest row rejects it.
+    if matches!(
+        domain.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Optional(_)
+    ) {
+        types.record_rejection(format!(
+            "rule `{src}`: the {slot} cannot take a null-admitting key domain (`* (t / null) => \
+             v`): a `null` key and the break that ends an indefinite-length map are both CBOR \
+             special values, so the row's key dispatch cannot tell them apart. Drop the `null` arm \
+             from the key type."
+        ));
+        return None;
+    }
+    // A bare `any` TYPED key is a shape error, not a staticness one: it would claim all eight
+    // majors, leaving the catch-all nothing to see. (The catch-all is exactly the position `any`
+    // belongs in.)
+    if kind == OpenTableRowKind::Typed
+        && matches!(
+            domain.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Any
+        )
+    {
+        types.record_rejection(format!(
+            "rule `{src}`: the {slot} cannot be keyed on `any` — the typed row claims exactly one \
+             CBOR major type and `any` admits all eight, so the catch-all row would never see an \
+             entry. Key the typed row on a concrete type and let the catch-all take `any`."
+        ));
+        return None;
+    }
+    let metadata = group_entry_rule_metadata(ge_entry, comma);
+    if reject_custom_codec_on_row_entry(
+        types,
+        src,
+        slot,
+        "Name the row's key or value type as its own rule and put the pair there (`k = text ; \
+         @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).",
+        &metadata,
+    ) {
+        return None;
+    }
+    if reject_custom_encodings_without_pair(
+        types,
+        &format!("the {slot} of rule `{src}`"),
+        &metadata,
+    ) {
+        return None;
+    }
+    // `@ignore` (tolerate-and-drop) has no meaning on either row of an open table: the whole rule IS
+    // its two containers, so ignoring one leaves a struct that silently drops half the map — and
+    // ignoring the typed one leaves a rule with nothing typed about it.
+    if metadata.ignore {
+        types.record_rejection(format!(
+            "rule `{src}`: `@ignore` (tolerate-and-drop) is not supported on the {slot} — an open \
+             table's rows ARE the rule's content, so dropping one would silently discard half the \
+             map. Drop the `@ignore` to capture both rows (the default), or use an open struct-map \
+             (`{{ 1: a, * k => v ; @ignore }}`) if you want the drop."
+        ));
+        return None;
+    }
+    let field_name = metadata
+        .name
+        .clone()
+        .unwrap_or_else(|| kind.default_field_name().to_owned());
+    Some(RestRow {
+        kind: RestKind::MapEntries {
+            domain,
+            range,
+            duplicates: metadata.duplicates,
+        },
+        semantics: RestSemantics::Capture,
+        field_name,
+        // Derived in `finalize` for the typed row (see the field doc); the catch-all never has one.
+        dispatch_major: None,
+    })
 }
 
 /// Recognize a trailing open-map rest row (`* K => V`) in a map-rep record, or reject an
@@ -5229,9 +5581,11 @@ fn recognize_rest_row(
     // Multiple non-fixed rows: only a single trailing rest row is supported.
     if nonfixed_indices.len() > 1 {
         types.record_rejection(format!(
-            "rule `{src}`: an open struct-map supports a single trailing rest row (`* k => v`), but \
-             this map has {}. Keep one `* k => v` row (last), or move the extras into their own \
-             table rules.",
+            "rule `{src}`: a map supports at most a single trailing rest row (`* k => v`) after \
+             its fixed keys, or — with NO fixed keys — an open table's two rows (`{{ * k1 => v1, * \
+             k2 => v2 }}`: one typed row plus one trailing catch-all). This map has {} non-fixed \
+             rows. Keep one `* k => v` row (last), drop the fixed keys to spell an open table, or \
+             move the extras into their own table rules.",
             nonfixed_indices.len()
         ));
         return (None, Some(candidate));
@@ -5423,6 +5777,8 @@ fn recognize_rest_row(
         },
         semantics,
         field_name,
+        // Only an open table's TYPED row claims a single major; a catch-all sees the complement.
+        dispatch_major: None,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }
@@ -5656,6 +6012,8 @@ fn recognize_array_rest_tail(
         },
         semantics,
         field_name,
+        // An array tail has no keys, so no major-type dispatch and no claimed major.
+        dispatch_major: None,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }

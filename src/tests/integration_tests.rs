@@ -6506,6 +6506,29 @@ fn open_struct_map_preserve_e2e() {
 }
 
 #[test]
+fn open_table_e2e() {
+    // Open table (`t = { * K_t => V_t, * K_r => V_r }`) CBOR fidelity vectors: dispatch by wire
+    // major type, the TAGGED `orig_deser_order` slot encoding over two dynamic sequences, per-row
+    // encoding sidecars, the typed-row duplicate rejection, and the canonical key merge spanning
+    // both regions. Generated under --preserve-encodings --canonical-form (canonical implies
+    // preserve) so the one crate exercises byte-exact round-trip AND canonical ordering.
+    // --wasm=false to isolate the rust surface. See tests/open-table-e2e/tests.rs.
+    run_test(
+        "open-table-e2e",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn custom_serialize_canonical_e2e() {
     use std::str::FromStr;
     // `@custom_serialize`/`@custom_deserialize` reached through a canonical SCRATCH-BUFFER key pass,

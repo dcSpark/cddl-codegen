@@ -16,6 +16,7 @@ expression: ir
             custom_serialize: None,
             custom_deserialize: None,
             custom_encodings: None,
+            custom_wire_major: None,
             doc: Some(
                 "struct documentation here",
             ),
@@ -60,6 +61,7 @@ expression: ir
                             custom_serialize: None,
                             custom_deserialize: None,
                             custom_encodings: None,
+                            custom_wire_major: None,
                             extern_companions: None,
                             comment: Some(
                                 "this is a field-level comment",
@@ -99,6 +101,7 @@ expression: ir
                             custom_serialize: None,
                             custom_deserialize: None,
                             custom_encodings: None,
+                            custom_wire_major: None,
                             extern_companions: None,
                             comment: Some(
                                 "bar is a u64",
@@ -107,6 +110,7 @@ expression: ir
                     },
                 ],
                 rest: None,
+                typed_row: None,
             },
         ),
     },
@@ -123,6 +127,7 @@ expression: ir
             custom_serialize: None,
             custom_deserialize: None,
             custom_encodings: None,
+            custom_wire_major: None,
             doc: None,
             newtype_getter: None,
             duplicates: None,
