@@ -954,6 +954,8 @@ fn anonymous_nested_array_rejects_gracefully() {
 /// `finalize`), never a `panic!` and never a silent no-op. One vector per rejecting seam: a
 /// single-choice non-extern type rule, a multi-choice type rule, and a field/member position.
 /// This pins that each seam fires and that the message names the tag and the extern-only rule.
+/// The `T / null` row is the Option-collapse branch, which shares the multi-choice branch's
+/// message through one helper rather than a copy.
 #[test]
 fn raw_bytes_flavor_misuse_rejects_gracefully() {
     // (seam, cddl, seam-specific message fragment) — the fragment proves the vector reached ITS
@@ -967,6 +969,11 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
         (
             "multi-choice type rule",
             "foo = uint / text ; @raw_bytes_flavor\n",
+            "Remove it from this rule",
+        ),
+        (
+            "T / null Option-collapse rule",
+            "foo = uint / null ; @raw_bytes_flavor\n",
             "Remove it from this rule",
         ),
         (
@@ -1011,8 +1018,8 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
 /// `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule; every other placement is
 /// rejected BY DESIGN — a GRACEFUL `Err` (deferred through `record_rejection` → drained by
 /// `finalize`), never a `panic!` and never a silent no-op. One vector per rejecting seam
-/// (single-choice non-marker type rule, multi-choice type rule, field/member position), mirroring
-/// `raw_bytes_flavor_misuse_rejects_gracefully`.
+/// (single-choice non-marker type rule, multi-choice type rule, the `T / null` Option collapse,
+/// field/member position), mirroring `raw_bytes_flavor_misuse_rejects_gracefully`.
 #[test]
 fn copy_misuse_rejects_gracefully() {
     let vectors = [
@@ -1024,6 +1031,11 @@ fn copy_misuse_rejects_gracefully() {
         (
             "multi-choice type rule",
             "foo = uint / text ; @copy\n",
+            "Remove it from this rule",
+        ),
+        (
+            "T / null Option-collapse rule",
+            "foo = uint / null ; @copy\n",
             "Remove it from this rule",
         ),
         (
@@ -5927,5 +5939,122 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
         src.contains("let b = my_deser(raw)"),
         "a plain group's trailing pair is a field-level directive on its last member and must stay \
          honored, got:\n{src}"
+    );
+}
+
+/// A rule-position directive on a `T / null` rule used to be SILENTLY DROPPED in every spelling:
+/// the Option-collapse branch built its `RuleMetadata` from the inner arm's `Type1` comment slot,
+/// which the pinned cddl fork never populates for a type-choice arm, so even the `@duplicates` /
+/// `@ignore` rejections written at that branch could not fire. It now reads the same merged
+/// rule-position slots (the LAST arm's trailing comment) its sibling branch reads.
+///
+/// One vector per directive that the collapse can reach, asserted in BOTH rule-position spellings
+/// (`T / null ; @x` and `null / T ; @x` — the parser binds the trailing comment to the last arm's
+/// `TypeChoice` slot either way), because a fix keyed on arm ORDER would pass a single-spelling
+/// test. Every directive must land in one of three states — never a silent no-op:
+/// honored, or rejected as inapplicable to a transparent `Option<T>` alias.
+#[test]
+fn option_collapse_reads_rule_position_directives() {
+    // (directive, expected-rejection fragment) — each is INAPPLICABLE to the collapse's transparent
+    // `Option<T>` alias, and each says so in its own words rather than sharing one catch-all.
+    let rejected = [
+        (
+            "@duplicates reject",
+            "only applies to set/array collection rules",
+        ),
+        ("@ignore", "@ignore on rule"),
+        (
+            "@no_json_schema_export",
+            "this rule registers no rust struct, so there is no schema-registration row to suppress",
+        ),
+        ("@raw_bytes_flavor", "this tag is only valid on a"),
+        ("@copy", "this tag is only valid on a"),
+        ("@extern_companions sib=Cls", "@extern_companions on"),
+        ("@rust_name Pinned", "@rust_name on"),
+        ("@used_as_key", "@used_as_key on"),
+        ("@used_as_elem", "@used_as_elem on"),
+        ("@newtype", "@newtype on"),
+    ];
+    for (directive, fragment) in rejected {
+        for (tag, spec) in [
+            (
+                "null_last",
+                format!("opt = uint / null ; {directive}\nuse = [f: opt]\n"),
+            ),
+            (
+                "null_first",
+                format!("opt = null / uint ; {directive}\nuse = [f: opt]\n"),
+            ),
+        ] {
+            let msg = expect_graceful_rejection(
+                &format!("optcollapse_{tag}_{}", directive.len()),
+                &spec,
+                &[],
+            );
+            assert!(
+                msg.contains(fragment),
+                "`{directive}` on a `T / null` rule ({tag}) must reject loudly, never drop \
+                 silently, got: {msg}"
+            );
+        }
+    }
+
+    // `@no_alias` and `@doc` are the two that are HONORED rather than rejected: both ride the
+    // registered alias. Asserted by effect on the emitted source, so a regression to the dead slot
+    // fails here rather than passing as "no rejection".
+    let src = |spec: &str, tag: &str| -> String {
+        let path =
+            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "optcollapse_unused",
+            "--wasm",
+            "false",
+        ]);
+        let files = crate::api::generated_strings(&cli).expect("must generate");
+        std::fs::remove_file(&path).ok();
+        files
+            .get("rust/src/generated/mod.rs")
+            .expect("rust mod emitted")
+            .clone()
+    };
+    let plain = src("opt = uint / null\nuse = [f: opt]\n", "optcollapse_plain");
+    assert!(
+        plain.contains("pub type Opt = Option<u64>"),
+        "baseline: the collapse emits a transparent alias, got:\n{plain}"
+    );
+    let no_alias = src(
+        "opt = uint / null ; @no_alias\nuse = [f: opt]\n",
+        "optcollapse_no_alias",
+    );
+    assert!(
+        !no_alias.contains("pub type Opt"),
+        "`@no_alias` on a `T / null` rule must strip the alias line, got:\n{no_alias}"
+    );
+    let doc = src(
+        "opt = uint / null ; @doc collapsed optional\nuse = [f: opt]\n",
+        "optcollapse_doc",
+    );
+    assert!(
+        doc.contains("collapsed optional"),
+        "`@doc` on a `T / null` rule must reach the emitted source, got:\n{doc}"
+    );
+
+    // A directive on the NON-rule-position arm is a misplacement, not a silent drop: the collapse
+    // has no variants, so an arm carries nothing of its own.
+    let misplaced = expect_graceful_rejection(
+        "optcollapse_nonlast",
+        "opt = uint ; @no_alias\n    / null\nuse = [f: opt]\n",
+        &[],
+    );
+    assert!(
+        misplaced.contains("on a non-last arm of the `T / null` rule")
+            && misplaced.contains("its arms are not variants"),
+        "a directive on the non-rule-position arm must reject naming the misplacement, got: \
+         {misplaced}"
     );
 }

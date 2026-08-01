@@ -202,6 +202,31 @@ const CORPUS: Cell[] = [
     toggled: "@used_as_key",
     shape: "multi-choice type rule, directive on the LAST arm (the rule slot)",
   },
+  {
+    // The `T / null` Option collapse is its OWN branch of the multi-choice path — it registers a
+    // transparent `Option<T>` alias instead of an enum — and it read the wrong comment slot (the
+    // inner arm's `Type1` one, which the parser never populates), so EVERY rule-position directive
+    // on such a rule was byte-identical to omitting it: this gate's FAIL condition, for the whole
+    // directive vocabulary at once. `@no_alias` because it is the one whose effect is visible under
+    // this gate's rust-only generation (it strips the emitted `pub type` line).
+    id: "option_collapse_rule_slot_no_alias",
+    ruleBody: "",
+    armPlacement: { arms: ["uint", "null"], toggledArm: 1 },
+    base: [],
+    toggled: "@no_alias",
+    shape: "T / null Option-collapse rule, directive at the rule slot (the LAST arm)",
+  },
+  {
+    // Placement control for the cell above, and the collapse's own version of the non-last-arm
+    // cell: the collapse has no VARIANTS, so an arm carries nothing of its own and the directive is
+    // loudly rejected rather than honored. Isolates arm position as the variable.
+    id: "option_collapse_non_last_arm_no_alias",
+    ruleBody: "",
+    armPlacement: { arms: ["uint", "null"], toggledArm: 0 },
+    base: [],
+    toggled: "@no_alias",
+    shape: "T / null Option-collapse rule, directive on a NON-LAST arm",
+  },
 ];
 
 // Legitimate byte-identical accepted no-ops: `<cellId>` => one-line justification. A cell on this list
