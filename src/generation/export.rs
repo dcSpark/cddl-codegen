@@ -215,6 +215,10 @@ pub(crate) const DEPTH_LIMIT_REQUIRES_STD: &str = "--deserialize-depth-limit out
      thread_local-based): build with default features (std is default-on), or regenerate without \
      the flag";
 
+// One usage flag per gated runtime file, and the list only grows with the runtimes: a struct here
+// would name the same booleans one indirection away, and the `--export-static-crate` caller (which
+// passes every flag `true`) reads better as a row of `true`s than as a constructed value.
+#[allow(clippy::too_many_arguments)]
 fn composed_runtime_static_files(
     cli: &Cli,
     include_non_empty_vec: bool,
@@ -223,6 +227,7 @@ fn composed_runtime_static_files(
     include_pair_map: bool,
     include_any_cbor: bool,
     include_open_struct_rest_json: bool,
+    include_open_table_json: bool,
 ) -> std::io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
 
@@ -239,9 +244,24 @@ fn composed_runtime_static_files(
         } else {
             String::new()
         };
+        // The OPEN TABLE fragments, appended into the same module (never a module of their own: a
+        // new static file obliges every `--export-static-crate` consumer to hand-add a `pub mod`
+        // line, and this module is already present for every crate that has an open table — its two
+        // rows are captured rest rows). Spec-gated on top of the flag so a crate with only ordinary
+        // rest rows stays byte-identical.
+        if include_open_table_json && cli.json_serde_derives {
+            content.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("open_table_json.rs"),
+            )?);
+        }
         if cli.json_schema_export {
             content.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("open_struct_rest_json_schemars.rs"),
+            )?);
+        }
+        if include_open_table_json && cli.json_schema_export {
+            content.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("open_table_json_schemars.rs"),
             )?);
         }
         out.push((
@@ -1111,6 +1131,7 @@ impl GenerationScope {
                 types.uses_pair_map() || self.requested_pair_map,
                 types.uses_any_cbor(),
                 types.uses_open_struct_rest(),
+                types.uses_open_table(),
             )?;
             for (filename, content) in &runtime_files {
                 let rel_path = format!("rust/src/generated/{filename}");
@@ -1192,7 +1213,7 @@ impl GenerationScope {
             let export_dir = export_crate.join("src");
             std::fs::create_dir_all(&export_dir)?;
             let runtime_files =
-                composed_runtime_static_files(cli, true, true, true, true, true, true)?;
+                composed_runtime_static_files(cli, true, true, true, true, true, true, true)?;
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
                 let is_new = !path.exists();

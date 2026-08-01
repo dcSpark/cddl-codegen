@@ -553,6 +553,100 @@ JSON-side mirror of the CBOR looseness) and dropped, matching the CBOR contract.
 no `rest()` getter (nothing is stored); the class is a closed struct's, and the read-tolerance comes
 for free through the rust deserializer.
 
+## Open tables (a typed row plus a catch-all)
+
+A named rule of exactly two `* k => v` rows and nothing else — `t = { * K_t => V_t, * K_r => V_r }` —
+is an *open table*: one typed table row plus one trailing typed catch-all, routed by **wire major
+type**. The CDDL-side contract (what makes `K_t`'s major statically knowable, and the shapes that are
+graceful rejections) lives in [the comment DSL](comment_dsl#open-tables); what follows is the emitted
+face. It lowers to a struct with **two `pub` containers** — `entries` (the typed row) and `rest` (the
+catch-all), each `@name`-renameable, each with its own `@duplicates` policy, container spelling and
+encoding sidecars, and neither a `new()` argument. Everything the rest-row sections above say about a
+container's spelling, duplicate policy and preserve/canonical replay applies to each row unchanged;
+what is new is that **two rows share one map**, which is where the JSON face earns its own rules.
+
+**JSON (`--json-serde-derives`): one flattened object holding BOTH regions**, written by a
+**hand-written** `Serialize`/`Deserialize` pair rather than the derives. Two `#[serde(flatten)]`
+members cannot express this shape in either direction — on read serde hands every unmatched member to
+*both* flattened fields (nothing partitions them), and on write both fields forward into one map with
+no dedup (so two regions imaging one name emit it twice). The partition and the cross-region collision
+check are the whole point, so one emitted impl owns both regions.
+
+### Two regions, two key images
+
+The typed row images its keys through **`K_t`'s own serde string image** — the *closed-table*
+convention, i.e. what serde_json's map-key serializer makes of `K_t::serialize`. The catch-all keeps
+the [rest-row image](#typed-key-domains-in-json) over `K_r`'s own **CBOR bytes**. That the two differ
+is forced, not an inconsistency: a bytes-keyed typed row has *no* CBOR member-name image at all, so a
+CBOR image would make `to_json` fail on exactly the shape an open table exists for, while a key type
+whose serde writes a hex string images to a perfectly ordinary member name.
+
+Two consequences worth knowing:
+
+- **Two wire spellings of one rust type image identically.** A key alias whose
+  [`@custom_serialize` pair](comment_dsl#custom_serialize--custom_deserialize) writes hex
+  *text* and one that writes *bytes* are the same rust type, so their JSON member names are the same
+  bytes. A versioned wire keeps one JSON face for free — the CDDL `@custom_serialize` pair is
+  invisible to the JSON face in every position, table keys included.
+- **`K_t`'s `Serialize` must produce a JSON string** (or an integer/bool serde_json renders as one).
+  Nothing can check that at compile time: a bare `bytes` key (`Vec<u8>` → a JSON array) or a derive
+  over a byte array is a runtime `to_json` error naming the key. A hand-written hex/bech32/base64
+  `Serialize` — what a raw-bytes marker or extern key type is expected to carry — satisfies it.
+
+### Reading is typed-first
+
+Every member name is offered to the typed row first: it binds `entries` **iff `K_t`'s own reading
+admits it** (the map-key deserializer semantics that mirror the image above), otherwise the catch-all's
+own reading decides, and a name **no** reading admits is a hard error whose message names all three
+attempts. Two rules follow the CBOR face's refinement-not-tolerance posture rather than JSON habit:
+
+- once a name binds typed, its value is read as `V_t` and a **`V_t`-refusing value is a hard error** —
+  it does *not* fall through to the catch-all (typed-first is about keys, and the row it selects owns
+  the value too);
+- a **repeated member name is a hard error**, detected explicitly, because serde_json's object parser
+  is last-wins and would otherwise silently drop the entry the CBOR face rejects as a `DuplicateKey`.
+
+### The T-contract, inherited — and where it bends
+
+The [rest-row contract](#typed-key-domains-in-json) carries over with T1 **conditional**:
+
+| | |
+|---|---|
+| **T1** JSON fixed point | holds **when the two rows' admissible member names are disjoint** (or when a captured row's values also read as `V_t`). Otherwise a document `to_json` wrote can be refused by `from_json`: the name rebinds typed and `V_t` refuses the value |
+| **T2** value fixed point, **partial** | the rest row's carve-out, plus rebinding: a captured key whose image `K_t`'s reading admits comes back on the TYPED row. JSON stays a fixed point where the ranges agree; what moves is the entry's row, i.e. the CBOR major it is next written under. **CBOR stays authoritative** |
+| **T3** write is loudly fallible on data | the rest row's failures, plus two typed keys imaging identically, plus **a typed key and a captured key imaging identically** — one collision set spans both regions, because they share one object |
+| **T4** refinement on read | unchanged; the message names the typed reading and the catch-all's own readings |
+
+The degenerate case of T1 is worth stating outright: a `K_t` that admits **every** string — a bare
+`text` typed row — takes every member name on read, so the catch-all region is unreachable through
+JSON. Open tables are for a typed row whose admissible names are a proper subset (a fixed-width hex
+image, a decimal domain); a `text` typed row is a CBOR-only shape.
+
+### Schema
+
+**The minted struct joins the published schema surface** — a genuine addition, since a *closed* table
+is a transparent `pub type` alias and publishes nothing at all. It publishes **one open object over
+both ranges**:
+
+```json
+{ "type": "object", "additionalProperties": { "anyOf": [ <V_t>, <V_r> ] } }
+```
+
+collapsing to the single branch when the two ranges publish the same schema. It names **neither key
+type**, for the reason the rest row's open region names none: the member names are two key *images*,
+which no `K`-derived schema describes. That also extends the rest row's compile exemption to both of an
+open table's key domains — a key type with no `schemars::JsonSchema` impl (an extern carrying
+[`@no_json_schema_export`](comment_dsl)) still compiles, and contributes nothing to the document.
+`V_t`/`V_r` are **not** exempt: they are named. An open table has no declared properties, so the
+TypeScript projection is the published union verbatim — `[k: string]: VtJSON | VrJSON`.
+
+`@custom_json` on the rule suppresses all of this and hands both faces to your own impls, exactly as
+it does for any other generated type.
+
+Executed vectors: `tests/open-table-json-e2e` (both regions in one object, the cross-region collision,
+the duplicate-member detection, the rebinding carve-out, the three-attempt read failure) and
+`tests/open-table-e2e` (the CBOR face).
+
 ## Open arrays (rest tails)
 
 A CDDL array that mixes **fixed members with a trailing `* t` element** — `[uint, tstr, * uint]` — is

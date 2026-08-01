@@ -514,6 +514,19 @@ impl<'a> IntermediateTypes<'a> {
         )
     }
 
+    /// Whether ANY generated record is an OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`). Gates
+    /// the open-table fragments of the `open_struct_rest_json` runtime module — the hand-written
+    /// serde pair's helpers and the two-range schema — so a crate with only ordinary rest rows keeps
+    /// its output byte-identical. The module itself is already present for such a crate
+    /// (`uses_open_struct_rest` counts an open table's two rows), which is why these are fragments
+    /// of it rather than a module of their own: a new static module would oblige every
+    /// `--export-static-crate` consumer to hand-add a `pub mod` line for a shape they may not use.
+    pub fn uses_open_table(&self) -> bool {
+        self.rust_structs.values().any(
+            |rs| matches!(rs.variant(), RustStructType::Record(record) if record.is_open_table()),
+        )
+    }
+
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {
         &self.rust_structs
     }
@@ -2829,7 +2842,7 @@ impl<'a> IntermediateTypes<'a> {
     ///
     /// Plus the complement check: a catch-all whose admissible majors are EXHAUSTED by the typed row
     /// can never see an entry, so it is rejected rather than emitted as dead code.
-    fn derive_open_table_dispatch_majors(&mut self, cli: &Cli) {
+    fn derive_open_table_dispatch_majors(&mut self) {
         // Two passes, because `cbor_types()` on a `Rust(ident)` key reads `rust_structs` — so the
         // derivation cannot hold a mutable borrow of it. Pass 1 is a pure read of the whole IR
         // producing one verdict per open table; pass 2 applies the verdicts.
@@ -2843,24 +2856,6 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             };
             if !record.is_open_table() {
-                continue;
-            }
-            // TEMPORARY (removed with the open table's JSON face): the derive-based flatten surface
-            // cannot express an open table. Two `#[serde(flatten)]` members on one struct do not
-            // partition on READ (serde hands every unmatched member to both) and duplicate each
-            // other's member names on WRITE — so a derive here would emit a type that silently
-            // mis-reads and mis-writes. The JSON face is a hand-written `Serialize`/`Deserialize`
-            // pair with an explicit typed-first partition; until it lands, refuse the flags rather
-            // than ship the broken derive.
-            if cli.json_serde_derives || cli.json_schema_export {
-                rejections.push(format!(
-                    "rule `{rule_ident}`: an open table (`{{ * k1 => v1, * k2 => v2 }}`) is not \
-                     supported yet under --json-serde-derives / --json-schema-export. Its JSON face \
-                     is one flattened object with a typed-first read partition, which needs a \
-                     hand-written serde pair (a derive's two flattened members neither partition on \
-                     read nor keep distinct member names on write). Generate this spec without the \
-                     JSON flags for now."
-                ));
                 continue;
             }
             let typed_domain = record.typed_row().unwrap().domain();
@@ -3097,7 +3092,7 @@ impl<'a> IntermediateTypes<'a> {
         // `rust_struct(ident).unwrap()` and would panic on a not-yet-registered forward reference,
         // and only a post-generic-resolution pass sees a key hidden behind a resolved generic
         // instance. Parse decides SHAPE, finalize decides STATICNESS.
-        self.derive_open_table_dispatch_majors(cli);
+        self.derive_open_table_dispatch_majors();
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;

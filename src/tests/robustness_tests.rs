@@ -5728,16 +5728,49 @@ fn open_table_front_end() {
         "an inert declaration must reject loudly, got: {unconsumed}"
     );
 
-    // --- TEMPORARY: the JSON flags have no open-table face yet ---
+    // --- JSON: a HAND-WRITTEN serde pair, never the derives ---
+    // Two `#[serde(flatten)]` members cannot express this shape in either direction (serde hands
+    // every unmatched member to BOTH on read; both write into one map with no dedup), so the
+    // derives are suppressed and the impls emitted. What is asserted here is that SHAPE choice; the
+    // behavior it buys is executed in `tests/open-table-json-e2e`.
     let json = run_flags(
         &format!("{MD}t = {{ * bstr => uint, * md => md }}\n"),
         "json",
+        &["--json-serde-derives=true", "--json-schema-export=true"],
+    )
+    .expect("an open table must generate under the JSON flags");
+    let json_src = src(&json);
+    assert!(
+        json_src.contains("impl serde::Serialize for T")
+            && json_src.contains("impl<'de> serde::Deserialize<'de> for T")
+            && json_src.contains("impl schemars::JsonSchema for T"),
+        "the open table must carry hand-written JSON impls, got:\n{json_src}"
+    );
+    assert!(
+        !json_src.contains("#[serde(flatten)]"),
+        "no flatten attribute may survive on an open table's rows, got:\n{json_src}"
+    );
+    assert!(
+        !json_src.contains("derive(Clone, Debug, serde::Deserialize, serde::Serialize"),
+        "the serde derives must be suppressed on the minted struct, got:\n{json_src}"
+    );
+    // The schema names BOTH ranges and NEITHER key: that is what keeps a key type with no
+    // `schemars::JsonSchema` impl from becoming an E0277 inside a generated file.
+    assert!(
+        json_src.contains("open_table_schema(typed_range, captured_range)"),
+        "the open table's schema must be the two-range open object, got:\n{json_src}"
+    );
+    // `@custom_json` still wins: the user owns the impls and the tool emits none.
+    let custom = run_flags(
+        &format!("{MD}t = {{ * bstr => uint, * md => md }} ; @custom_json\n"),
+        "customjson",
         &["--json-serde-derives=true"],
     )
-    .expect_err("open tables must refuse the JSON flags until their JSON face lands");
+    .expect("an open table with @custom_json must generate");
     assert!(
-        json.contains("not supported yet under --json-serde-derives"),
-        "the temporary JSON rejection must name the flags, got: {json}"
+        !src(&custom).contains("impl serde::Serialize for T"),
+        "@custom_json must leave the JSON face to the user, got:\n{}",
+        src(&custom)
     );
 }
 

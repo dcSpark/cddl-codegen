@@ -1,0 +1,36 @@
+; Open table (`t = { * K_t => V_t, * K_r => V_r }`) FLATTENED-JSON end-to-end vectors.
+; An open table publishes ONE JSON object holding BOTH rows' entries. The two regions image their
+; keys through two DIFFERENT conventions, which is forced rather than accidental: the TYPED row uses
+; K_t's own serde string image (the closed-table convention — a bytes-keyed typed row would have no
+; CBOR member-name image at all, i.e. `to_json` would fail on exactly the shape this feature exists
+; for), and the catch-all keeps the delivered rest-row convention over K_r's own CBOR bytes.
+; Generated --json-serde-derives --json-schema-export --wasm=false (the wasm surface of the two rows
+; is covered elsewhere). See tests/open-table-json-e2e/tests.rs for the value-level vectors.
+
+; `@newtype bytes` images to canonical lowercase hex — CML's v2 policy-id key shape without an
+; extern, and the type whose hand-written string serde makes a bytes key a legal member name.
+policy_id = bytes ; @newtype
+; the metadatum-shaped catch-all: its TEXT arm admits every member name, and its BYTES arm has no
+; member-name image at all (the per-level `to_json` failure).
+md = int / bytes / text
+; a catch-all that REFUSES most names: the vector for the read failure naming all THREE attempts.
+uk = uint ; @newtype
+
+; The base shape: typed hex-imaged keys beside a metadatum catch-all.
+labels = { * policy_id => uint, * md => md }
+; Both ranges `uint`, so a rebinding member name reads back with its VALUE intact (the T2 carve-out
+; as a JSON fixed point) — and the two ranges publish one schema, which the union collapses.
+compat = { * policy_id => uint, * md => uint }
+; A catch-all admitting only canonical decimals: a name neither row admits fails with a message
+; naming the typed attempt AND the catch-all's own two readings.
+strict = { * policy_id => uint, * uk => text }
+; `@duplicates preserve` on the TYPED row: duplicate keys image identically by definition, so a
+; container actually holding them has no JSON image at all (CBOR-only fidelity).
+dupp = {
+  * policy_id => uint ; @duplicates preserve
+  ,
+  * md => md
+}
+; `any` on BOTH ranges: values render through the NATURAL walk (not `AnyCbor`'s tagged codec), and
+; the published open region is the permissive one.
+anyval = { * policy_id => any, * md => any }

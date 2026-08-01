@@ -527,6 +527,15 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          the `open-struct-map` snapshot fixture's parity rows cover the wasm rest surface",
     ),
     (
+        "open-table-json-e2e",
+        "open table (one typed table row plus one trailing typed catch-all rest row) FLATTENED-JSON \
+         e2e fixture: its integration gate generates --json-serde-derives --json-schema-export \
+         --wasm=false (it exercises the JSON boundary — the hand-written serde pair's typed-first \
+         partition and cross-region collision check — not the wasm boundary); the wasm surface of \
+         the two rows is two container-class getters, minted by the same path the `open-struct-map` \
+         snapshot fixture's parity rows cover",
+    ),
+    (
         "open-struct-map-ignore",
         "loose-CBOR open struct-map IGNORE flavor (`@ignore`) snapshot fixture: its snapshot profile \
          generates --wasm=false. The ignore flavor tolerate-and-drops unknown entries, so it emits a \
