@@ -820,15 +820,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   projection, pinned by `extern_import_flavored_generic_base_projects_without_the_tag`). What
   makes the converse direction structural rather than remembered is that a REFUSAL delivery has
   no reason to look at the projection: the writer already exists and no representation changed.
-  The mechanical layer covering BOTH directions is DELIVERED as
-  `extern_import_tests::EXTERN_INTERFACE_WRITER_VOCABULARY` plus
-  `extern_interface_writer_vocabulary_matches_the_writers`: the registry enumerates every
-  annotation `extern_interface.rs`'s assembly can emit, each paired with a consumer-side
-  acceptance vector, and a LOCKSTEP source scan of the writer sites holds the two in agreement in
-  both directions (a new `"@…"` writer literal with no row fails; a row no writer emits fails the
-  other way). The verdict is TOTAL — every `@…` literal in the file is classified writer or
-  diagnostic — so a new writer cannot hide in an unclassified remainder, which is the property a
-  spelling-by-spelling list would not have had. What remains unmechanized is the DEP-SIDE half:
+  The mechanical layer covering BOTH directions is DELIVERED — the writer-vocabulary registry, its
+  per-annotation consumer acceptance vectors, and the LOCKSTEP source scan that holds the two total
+  over the emitter's `@…` literals; current state in `tests/README.md` § "Extern-interface export &
+  `--extern-import` (the machine-generated stub channel)". What remains unmechanized is the DEP-SIDE
+  half:
   the registry proves this crate's parse accepts what its writer emits, and says nothing about a
   counterparty crate at a different version doing so. Reopening signal, measurable by whoever
   pays it: a consumer failing to regenerate against a dependency's committed export whose
@@ -1506,15 +1502,13 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   defs, so `super_glob_needed` conservatively kept the sidecar's dead `use super::*;`; the
   path-tail exclusion in `collect_idents_in_tokens` removed the false-positive class (unit + map-
   level twin tests pin both directions). The entry's earlier escalation trigger
-  (a 26-warning consumer report + chain/cip36 regen) fired and is delivered: `import_prune` now
-  prunes the `use super::*;` and `use <common>::error::*;` globs when a fully-enumerable universe
-  proves them unused, computes each file's protector set via the super-glob EDGE graph
-  (`reachable_via_super`) rather than every structural descendant (which is what closed the root
-  `mod.rs` over-breadth — a sub-scope `serialization.rs` no longer protects the root), adds the
-  source-glob disqualifier (a descendant that globs the module the ancestor imports X from, the
-  `--common-import-override` `serialization::*` shape), and name-scan-prunes an extended candidate
-  set (the wasm prelude names, the `--wasm-*-macro` leaf names, and the cross-scope type idents
-  `scope_references` over-imports). Still future-facing: the `cbor_event::se::Serialize` TRAIT
+  (a 26-warning consumer report + chain/cip36 regen) fired and is delivered — what the prune now
+  removes (the `super::*` and `<common>::error::*` globs against a fully-enumerable universe, the
+  wasm prelude names, the `--wasm-*-macro` leaf names, the cross-scope type idents
+  `scope_references` over-imports) is the shipped contract in `docs/docs/output_format.mdx`, and the
+  protector/disqualifier model it removes them by, with its pins, is current state in
+  `tests/README.md` § "Extern-interface export & `--extern-import` (the machine-generated stub
+  channel)". Still future-facing: the `cbor_event::se::Serialize` TRAIT
   import the non-canonical serialization prelude emits — a trait is exercised by a method call
   whose ident never appears, so name-scan cannot prove it unused; the detector's
   `UNUSED_IMPORT_TRAIT_RESIDUE` skips it. What a consumer sees is one rustc `unused import` warning
@@ -1920,17 +1914,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   fragments using reshaped-dep surfaces).
 - **A profile-driven compile gate covers the compositions its PROFILES' SPECS reach, and a runtime
   file emitted on an IR PREDICATE × a FLAG is reached only by their conjunction — the first
-  consumer-reported no_std break lived exactly in that hole.** The no_std drift gate shipped as ten
-  cells over five single-crate profiles plus the split layout, each profile chosen for a runtime
-  surface the snapshot corpus never emits; none of their CDDL contained `any`. `any_cbor.rs` is
+  consumer-reported no_std break lived exactly in that hole.** Every profile of the no_std drift gate
+  is chosen for a runtime surface the snapshot corpus never emits (`tests/README.md` § "The no_std
+  drift gate (`no_std_check`, local tier)"); none of their CDDL contained `any`. `any_cbor.rs` is
   emitted only when the finalized IR holds `any`, and the whole of `static/any_cbor_json.rs` — eight
   nested inline `natural_any_cbor_*` serde adapters — is appended to it only under
   `--json-serde-derives`. Both flags were already in the `json_schema` profile, so the miss reads
   as flag coverage while being composition coverage: no profile's SPEC put the file in any thumb
-  compile, and the consumer met the E0425 first. Owned meanwhile by that profile's extended CDDL
-  (an `any_members` rule carrying one member of every adapter shape — plain, optional, seq, optional
-  seq, table, optional table — so all eight adapters are in the compile), plus the working rule that
-  a new conditionally-assembled `static/` fragment states which profile's spec reaches it. Machinery
+  compile, and the consumer met the E0425 first. Owned meanwhile by that profile's extended CDDL —
+  the `any_members` rule described in that section, which puts all eight adapters in the compile —
+  plus the working rule that a new conditionally-assembled `static/` fragment states which profile's
+  spec reaches it. Machinery
   on a trigger, not now (one instance, and the enumeration it would need — every emission predicate
   in `generation/export.rs`'s fragment assembly, paired against every profile's generated file set —
   is a second model of the assembly that can drift from it): a coverage assertion that each
@@ -2063,13 +2057,13 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   each one is, because that decides what a stale-guard trip MEANS — a gap closing, or the
   `@ignore` contract regressing. The bare-alias probe shape is also still narrower than the
   replay's member-embedded specs, so a `supported` verdict over a preserve-broken shape remains
-  possible; that seam is now uninstanced rather than fixed.) Confirmed since: each replay gate's
-  `PRESERVE_SKIP` stale-guard asserts every listed id names an ACTIVE (vectored) row, so a
-  `PRESERVE_SKIP` entry for a still-PINNED row FAILS the gate outright — a designed-rejection skip
-  therefore CANNOT be pre-landed against a pinned row. The static annotation-side cross-check (which
-  reads catalog + annotation without touching the skip ledger) is thus the only shape that fires at
-  pin time; the alternative that keeps the ledger honest same-commit is to land the row ACTIVE with a
-  hand-derived accept vector so its skip entry is immediately valid.
+  possible; that seam is now uninstanced rather than fixed.) A designed-rejection skip cannot be
+  pre-landed against a pinned row at all — each replay gate's `PRESERVE_SKIP` stale-guard requires
+  every listed id to name an ACTIVE row (`tests/README.md` § "Decode-direction conformance
+  (`tests/decode_conformance/` — accept what the spec accepts)"), so the static annotation-side
+  cross-check, which reads catalog + annotation without touching the skip ledger, is the only shape
+  that can fire at pin time; the alternative that keeps the ledger honest same-commit is to land the
+  row ACTIVE with a hand-derived accept vector.
 
 - **A rule-position directive can still be SILENTLY DROPPED in the group-rule spellings the PARSER
   discards, which no sweep can reach.** The directive×rule-shape reachability product itself is
@@ -2144,19 +2138,14 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   bound to `_` in that destructuring without a variant-position cell proving it is variant-legal.
 
 - **The schema document's name injectivity is enforced ROW-side, so the residue is everything the row
-  set cannot see.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we emit,
-  so its content is a property of the RUN, not of the emitted source, and every cheap verdict
-  ("generates", "compiles", "the `.d.ts` type-checks") is satisfied by a document publishing one
-  type's shape under another type's name. The runtime `add_schema` helper's name ledger, its
-  kept-its-own-name check and its inline-branch conflict check close that for every collision with a
-  row on the losing side, in the consumer's own `cargo run` (message wording and wiring pinned by
-  `snapshot_tests::json_gen_extern_schema_rows`,
-  `integration_tests::json_schema_name_merge_fails` and `..._stolen_fails`). A `--json-schema-root`
-  extra root is emitted as an ordinary row through the same registrar, so it inherits all three checks
-  by construction; that inheritance is asserted by reading the emitter, not by a fixture with an
-  extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell —
-  mint one if a consumer reports a collision they introduced through the flag. What remains — four
-  holes, each needing its own mechanism:
+  set cannot see.** The document is written by a program we emit, so its content is a property of the
+  RUN rather than of the emitted source, and the row-side guard that closes every collision with a row
+  on the losing side — the runtime `add_schema` helper's name ledger, kept-its-own-name check and
+  inline-branch conflict check, firing in the consumer's own `cargo run` — is current state in
+  `tests/README.md` § "JSON-schema document — Rust-side coverage (`run_test`'s per-fixture assertions
+  + the emitted name guard)". Mint the one cell that section records as unminted — an extra
+  `--json-schema-root` root on the LOSING side of a collision — if a consumer reports a collision they
+  introduced through that flag. What remains — four holes, each needing its own mechanism:
   - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
     the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
@@ -2173,9 +2162,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     and therefore an ids-DIFFER cross-crate collision hands the consumer's row `<name>2` and trips
     the kept-its-own-name check on the side whose owner can change it. That last step is a
     measurement rather than an inference, pinned by
-    `config_tests::a_derived_thread_links_and_a_collision_blames_the_consumer`.
-    It threads one generated crate's document into another's, makes both publish one name, and
-    asserts the panic names the CONSUMER's type. Widening the ledger to span crates
+    `config_tests::a_derived_thread_links_and_a_collision_blames_the_consumer` (what that cell builds
+    and asserts: `tests/README.md` § "Config-file front end (`src/tests/config_tests.rs`)").
+    Widening the ledger to span crates
     still means either a published ledger type in the static runtime (a new cross-crate API surface)
     or making `add_schemas` take the ledger, which would break the composition-point signature a
     consumer was told to call — so the ids-match merge is where a cross-crate report would have to
@@ -2188,9 +2177,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     missed check. The closing mechanism is now half-built rather than hypothetical: the emitted
     closure check carries a `decode_schema_ref_name` (percent-decode, then the JSON-Pointer escapes),
     so the kept-its-own-name check could compare `decode(assigned)` against the name instead of
-    skipping. What it still needs before it can be trusted to panic is a vector per escape class
-    (`~`, `/`, a percent-escaped byte, a multi-byte UTF-8 name), since decoding a name the encoder
-    spelled differently than assumed would fail a build that is fine.
+    skipping. What it still needs before it can be trusted to panic is a vector per escape class,
+    since decoding a name the encoder spelled differently than assumed would fail a build that is
+    fine: `tests/json-extern`'s hand-written `schema_name()` covers three of them (`~`, `/`, a
+    percent-escaped byte — `tests/README.md` § "JSON-schema document — Rust-side coverage
+    (`run_test`'s per-fixture assertions + the emitted name guard)"), leaving a multi-byte UTF-8 name.
   - **A collision between two types that BOTH lack rows** — each reached only transitively from some
     row'd type — is seen by neither check: the ledger holds rows, and "kept its own name" is asked
     only of a registered type. With distinct `schema_id`s both are emitted and one takes `<name>2`
@@ -2212,7 +2203,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     worth shipping.
 
     **This hole is MEASURED, not hypothetical — by the consumer, in their corpus, not by us.** CML
-    reported that the `AssetBundle`/`AssetBundle2` pair we predicted would trip check 1 trips
+    reported that the `AssetBundle`/`AssetBundle2` pair we predicted would trip the name ledger trips
     nothing: neither is a row. They are `$defs` entries reached through fields (`Value.multiasset`,
     `TransactionBody.mint`) from a hand-written generic substituted in by a `replace` block, and
     because that generic `#[derive(JsonSchema)]`s, the ids DIFFER — so both bodies are emitted and
@@ -2240,12 +2231,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     charset — not run.) Reopening signal for building anything more: a public schemars accessor for
     the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch.
 
-  The document's reference CLOSURE is checked in two places now, and neither closes the holes above:
-  `integration_tests::run_test` asserts it over every `--json-schema-export` fixture of ours, and the
-  emitted `export_schemas()` asserts it over the CONSUMER's own document before writing it
-  (`integration_tests::json_schema_ref_dangling_fails` covers both classes — a bare
-  `Schema::new_ref("SomeType")` and an internal pointer at an undefined key). Two bounds worth
-  keeping in view. The emitted check resolves the definitions map through the generator's
+  The document's reference CLOSURE is checked in two places — our own per-fixture assertion and the
+  emitted `export_schemas()` walking the CONSUMER's document before it writes, both current state in
+  `tests/README.md` § "JSON-schema document — Rust-side coverage (`run_test`'s per-fixture assertions
+  + the emitted name guard)" — and neither closes the holes above. Two bounds worth keeping in view.
+  The emitted check resolves the definitions map through the generator's
   `definitions_path` setting and SKIPS if that resolves to nothing, so a schemars default whose
   reference namespace stops matching the emitted document shape turns the check off rather than
   reddening every consumer build. It is silent IN A CONSUMER'S run, but not undetectable here: the

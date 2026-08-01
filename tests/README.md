@@ -1090,7 +1090,9 @@ back via `--extern-import` in place of a hand-stub tree (user docs:
   `generation/extern_interface.rs`'s rule-line assembly can WRITE into an export, paired with the
   acceptance vector proving this crate's own parse still accepts what its writer emits. The scan is
   a TOTAL verdict over the emitter's `@…` literals — each is classified writer or diagnostic, so a
-  new writer literal with no row fails, and a row no writer emits fails the other way. It closes
+  new writer literal with no row fails, and a row no writer emits fails the other way; a
+  spelling-by-spelling list would not have that property, since a new writer could hide in the
+  unclassified remainder. It closes
   the cross-crate skew class in BOTH directions at once: a directive that should travel and does
   not (the forward direction), and a projection emitting a spelling the parser refuses (the
   converse, which a refusal delivery has no reason to look for, because the writer already exists
@@ -1140,7 +1142,18 @@ collection/encoding idents, the `super::*`/`error::*` globs (pruned against enum
 universes), cross-scope type imports, wasm macro/prelude imports, and every private import of a
 re-export-only extern-glue file — IS pruned at generation time (the contract lives in
 `docs/docs/output_format.mdx`; the warning-severity detector is `feature_corpus_compiles`'
-`unused_generated_import_lines` scan). It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
+`unused_generated_import_lines` scan). Two model choices are what make the glob half sound, and
+because the real output no longer holds the shapes that would exercise them end-to-end they are
+pinned by `import_prune`'s own map-level unit tests
+(`keeps_parent_import_consumed_by_child_via_super_glob` and siblings): a file's protector set is the
+super-glob EDGE graph (`reachable_via_super`), not every structural descendant — so a sub-scope
+`serialization.rs` no longer protects the root `mod.rs` — and a descendant that reaches the name
+through its OWN glob of the same module disqualifies rather than protects the ancestor's copy (the
+`--common-import-override` `serialization::*` shape). The used-ident scan counts only a `::`-path's
+LEADING segment, since a tail segment collides with the names a parent binds by `pub mod` and kept a
+dead `use super::*;` alive in the workspace-requests sidecars until the exclusion landed; both
+directions are pinned by `path_tail_segments_not_counted` and its map-level twin
+`sidecar_super_glob_pruned_when_sub_only_path_qualified`. It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
 `clippy::all` lint class is hard-red on both profiles and both generated crates.
 Tier: check.ts `local` as a plain non-ignored test, kept below the ~90s warm wall-clock threshold.
 A warm run measures ~2s, which looks vacuous but is not: regeneration is byte-identical, so cargo's
@@ -1815,7 +1828,11 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   `PRESERVE_SKIP` (stale-guarded) carries two entry classes: the tag-over-a-type-choice preserve
   gap, and the BY-DESIGN rejection class (`dsl.ignore` — `@ignore` under `--preserve-encodings` is a
   contract rejection, not a gap, so its stale-entry guard is a regression tripwire: that leg starting
-  to generate is the finding). Anything new there is a finding either way. It stays a hand list on
+  to generate is the finding). Anything new there is a finding either way. The same stale guard also
+  requires every listed id to name an ACTIVE (vectored) row, so a skip entry cannot be pre-landed
+  against a still-PINNED one — it fails the gate outright. A row whose preserve leg is a by-design
+  rejection therefore lands ACTIVE, with a hand-derived accept vector, so its skip entry is valid in
+  the same commit that adds the row rather than becoming due at activation. It stays a hand list on
   purpose, for two reasons that outlive any single entry. WHICH class an entry belongs to is what its
   stale guard means — a gap closing versus a contract regressing — and the matrix's
   `emission.preserve` verdict is one boolean that cannot carry that distinction: both residents are
@@ -2148,7 +2165,10 @@ real compile sees — hence a nested `cargo run` rather than a manifest assertio
 `--json-schema-root`'s input contract is pinned separately and without cargo by
 `json_schema_root_input_contract`: the flag requires `--json-schema-export`, a repeated value is a
 hard error, and the value parser accepts a rust type path (generics included) while rejecting
-anything that could inject tokens into the generated file.
+anything that could inject tokens into the generated file. An extra root is emitted as an ordinary
+registration row through the same `Registrar`, so it inherits all three of the guard's checks by
+construction — an inheritance asserted by reading the emitter rather than by a fixture putting an
+extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell.
 
 **`--json-schema-dep` (threading a dependency's registrar) is pinned across three layers.** Its
 emitted SHAPE is the fast-tier tail of `snapshot_tests::json_gen_extern_schema_rows` — the calls are
@@ -2200,8 +2220,8 @@ section below, since the derivation is where the flag is actually used.
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
 cross-crate collision between two `add_schemas` calls whose `schema_id`s match, a name schemars
 percent-encodes, and the conditions under which the emitted closure check silently skips — is
-enumerated in `tests/TESTING_ROADMAP.md`, along with the `--json-schema-dep` cross-crate-collision
-cell that is recorded rather than minted.
+enumerated in `tests/TESTING_ROADMAP.md`, along with the extra-root-on-the-losing-side cell that is
+recorded rather than minted.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 
