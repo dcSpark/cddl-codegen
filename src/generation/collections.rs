@@ -95,7 +95,9 @@ impl GenerationScope {
             return false;
         }
         // `@extern_companions` (no flag): the spec itself declares that this structural companion
-        // class ALREADY EXISTS in a sibling wasm crate, for an extern type marked LOCALLY (no dep
+        // class ALREADY EXISTS in a sibling wasm crate, for a user-defined type marked LOCALLY —
+        // either marker flavor, extern or raw-bytes, since this arm keys on the owning IDENT and
+        // never on the struct variant (no dep
         // edge, so neither dependency-keyed mechanism below can reach it). Reference it instead of
         // minting a second `#[wasm_bindgen]` class of the same name — two such classes in one cdylib
         // are a `rust-lld: duplicate symbol __wbg_<class>_free`.
@@ -1288,7 +1290,7 @@ fn transitive_named_leaf_idents(ty: &ConceptualRustType) -> Vec<RustIdent> {
 
 /// The ONE named type every constituent of a wrapper transitively resolves to, or `None` when there
 /// are zero named leaves (a primitives-only wrapper) or more than one distinct leaf. This is the
-/// `@extern_companions` arm's candidate test: a companion class is "of" an extern type exactly when
+/// `@extern_companions` arm's candidate test: a companion class is "of" a marked type exactly when
 /// that type is the wrapper's sole named constituent, so `[* tm]`, `{* tm => tm}` and
 /// `NonEmpty[+ tm]` all qualify while `{* tm => local_thing}` does not. Distinct from
 /// `transitive_owner_set`, which resolves leaves to their owning DEPENDENCY (a cross-crate question
