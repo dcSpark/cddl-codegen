@@ -240,7 +240,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (21)
+### `comment_dsl` (22)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
@@ -249,6 +249,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.custom_encodings` | ✅ | @custom_encodings — the custom codec declares its own wire's encoding variables | `dsl_custom.cddl` |
 | `dsl.custom_json` | ✅ | @custom_json — suppress generated JSON traits | `dsl_custom.cddl` |
 | `dsl.custom_serialize` | ✅ | @custom_serialize — override serialization | `dsl_custom.cddl` |
+| `dsl.custom_wire_major` | ➕ | @custom_wire_major — the custom codec declares which CBOR major type its wire starts with | supported; references a user-provided codec pair (and a raw-bytes marker type |
 | `dsl.doc` | ✅ | @doc — rust doc comment | `dsl_doc.cddl` |
 | `dsl.duplicates.preserve` | ✅ | @duplicates preserve — duplicate-preserving pair-map tables | `table_preserve.cddl` |
 | `dsl.duplicates.reject` | ✅ | @duplicates reject — duplicate-free set/array collections | `tag_set_reject.cddl` |
@@ -437,7 +438,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **119** — ✅ 67 covered · ➕ 25 supported-untested · ⚠️ 1 partial · ➖ 26 not supported
+- Features: **120** — ✅ 67 covered · ➕ 26 supported-untested · ⚠️ 1 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 89
 

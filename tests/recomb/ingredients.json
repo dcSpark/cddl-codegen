@@ -770,6 +770,10 @@
       "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
     },
     {
+      "feature": "dsl.custom_wire_major",
+      "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
+    },
+    {
       "feature": "dsl.doc",
       "reason": "expected exactly one root rule, found 2"
     },

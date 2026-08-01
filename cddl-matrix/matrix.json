@@ -134,6 +134,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen rejected at parse/lex (exit 1)",
+            "status": "unsupported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.custom_wire_major",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
@@ -4974,6 +4989,16 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_serialize / @custom_deserialize (Declaring the wire's encoding variables); src/comment_ast.rs",
       "title": "@custom_encodings — the custom codec declares its own wire's encoding variables"
+    },
+    {
+      "alt": "@custom_wire_major",
+      "desc": "The second member of the wire-facts declaration family beside @custom_encodings. Written beside a complete @custom_serialize/@custom_deserialize pair, declares which of the eight CBOR major types the wire THAT CODEC writes begins with, as exactly one of uint / nint / bytes / text / array / map / tag / simple (an unknown token is a loud parse failure naming the set). Its one consumer is an open table's typed row (t = { * K_t => V_t, * K_r => V_r }), whose entry dispatch peeks the wire major before any deserializer runs: there the generator's own cbor_types() answers about the type the codec REPLACED, so a codec writing hex TEXT over a raw-bytes marker would dispatch major 2 and never match its own keys. REQUIRED at that position (its absence is a graceful rejection naming the directive); a graceful rejection where nothing consumes it, where the pair is incomplete or absent, and on a rule that mints a struct (the declaration is read through the rule's transparent alias entry, which a struct-minting rule has none of). Consumed somewhere is enough, so one alias may key an open table AND appear at a field. Unlike @custom_encodings it is not gated on --preserve-encodings.",
+      "example": "\nrb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nt = { * rb_v1 => uint, * uint => uint }",
+      "id": "dsl.custom_wire_major",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §Declaring the wire's major type (@custom_wire_major); src/comment_ast.rs",
+      "title": "@custom_wire_major — the custom codec declares which CBOR major type its wire starts with"
     },
     {
       "alt": "@extern_companions",

@@ -4400,6 +4400,12 @@ example = "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\
 pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided serialize fn; integration-tested in tests/custom_serialization)"
 
 [[row]]
+id = "dsl.custom_wire_major"
+axis = "feature"
+example = "\nrb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nt = { * rb_v1 => uint, * uint => uint }"
+pinned_reason = "references user-supplied code; crate cannot compile standalone (a user-provided codec pair plus a raw-bytes marker type; the open-table dispatch the declared major feeds is executed end-to-end in tests/open-table-e2e)"
+
+[[row]]
 id = "dsl.doc"
 axis = "feature"
 example = "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc\ndocumented_alias = uint ; @doc an alias rule doc"
