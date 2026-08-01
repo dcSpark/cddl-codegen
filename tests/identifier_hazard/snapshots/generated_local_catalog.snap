@@ -1,0 +1,41 @@
+---
+source: src/tests/identifier_hazard_tests.rs
+expression: catalog
+---
+# generated-local reserved-field sweep: generation outcome per (field position × reserved
+# generated-local name), against the name's declared `ReservedScope`. Inside its scope a
+# name MUST be `error (graceful)` — the emitted crate would not compile (see
+# parsing::GENERATED_LOCAL_RESERVED for the shape × profile × error class), so shipping it
+# at exit 0 is the defect. OUTSIDE its scope it MUST be `ok`: the emitter binds no such
+# local there, and refusing anyway would break working specs (the `tag: 0` group-choice
+# discriminant). `PANIC` is never acceptable.
+# Source: src/tests/identifier_hazard_tests.rs.
+
+map-key          len                in-scope  error (graceful)
+map-key          len_encoding       in-scope  error (graceful)
+map-key          orig_deser_order   in-scope  error (graceful)
+map-key          raw                in-scope  error (graceful)
+map-key          read               in-scope  error (graceful)
+map-key          tag                out       ok
+map-key          text_key           in-scope  error (graceful)
+array-key        len                in-scope  error (graceful)
+array-key        len_encoding       in-scope  error (graceful)
+array-key        orig_deser_order   out       ok
+array-key        raw                in-scope  error (graceful)
+array-key        read               out       ok
+array-key        tag                out       ok
+array-key        text_key           out       ok
+name-directive   len                in-scope  error (graceful)
+name-directive   len_encoding       in-scope  error (graceful)
+name-directive   orig_deser_order   in-scope  error (graceful)
+name-directive   raw                in-scope  error (graceful)
+name-directive   read               in-scope  error (graceful)
+name-directive   tag                out       ok
+name-directive   text_key           in-scope  error (graceful)
+tagged-array-key len                in-scope  error (graceful)
+tagged-array-key len_encoding       in-scope  error (graceful)
+tagged-array-key orig_deser_order   out       ok
+tagged-array-key raw                in-scope  error (graceful)
+tagged-array-key read               out       ok
+tagged-array-key tag                in-scope  error (graceful)
+tagged-array-key text_key           out       ok

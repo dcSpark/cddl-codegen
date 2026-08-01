@@ -4266,6 +4266,218 @@ fn bareword_keyword_field_name_rejects_gracefully() {
         .expect("an ordinary bareword field must keep generating");
 }
 
+/// A field named by one of the fixed locals the generated serialization bodies bind
+/// (`parsing::GENERATED_LOCAL_RESERVED` — `raw`, `len`, `read`, …) used to generate at exit 0 and
+/// emit a crate that does not compile: the field's local shadows the emitter's, and the failure
+/// surfaced two build steps from the CDDL line that caused it. It is now a parse-time graceful
+/// rejection naming the rule, the field, the reserved word and the `@name` remedy.
+///
+/// Asserted UNIFORMLY across profiles, matching the registry's own rule: `tag` compiles under the
+/// default profile and breaks under `--preserve-encodings`, so a per-profile refusal would hand back
+/// a spec one flag away from an uncompilable crate.
+#[test]
+fn generated_local_field_name_rejects_gracefully() {
+    for (tag, spec, rule, field, word) in [
+        // `raw` — the deserializer parameter, both reps.
+        (
+            "genloc_raw_arr",
+            "a = [pre: uint, raw: bytes]\n",
+            "a",
+            "raw",
+            "raw",
+        ),
+        (
+            "genloc_raw_map",
+            "m = { 1: uint, raw: bytes }\n",
+            "m",
+            "raw",
+            "raw",
+        ),
+        // case-converted: `Raw` snake_cases to the reserved `raw`.
+        (
+            "genloc_Raw_arr",
+            "a = [pre: uint, Raw: bytes]\n",
+            "a",
+            "raw",
+            "raw",
+        ),
+        // `len` — the array/map length read.
+        (
+            "genloc_len_arr",
+            "a = [pre: uint, len: bytes]\n",
+            "a",
+            "len",
+            "len",
+        ),
+        (
+            "genloc_len_map",
+            "m = { 1: uint, len: bytes }\n",
+            "m",
+            "len",
+            "len",
+        ),
+    ] {
+        for extra in [
+            &[][..],
+            &["--preserve-encodings", "true"][..],
+            &["--preserve-encodings", "true", "--canonical-form", "true"][..],
+        ] {
+            let msg = expect_graceful_rejection(tag, spec, extra);
+            assert!(
+                msg.contains(&format!("rule `{rule}`"))
+                    && msg.contains(&format!("field `{field}`"))
+                    && msg.contains(&format!("`{word}`"))
+                    && msg.contains("reserved name")
+                    && msg.contains("@name"),
+                "rejection should name the rule, the field, the reserved word and the @name remedy \
+                 ({tag}, {extra:?}), got: {msg}"
+            );
+        }
+    }
+    // The remedy generates, and it is the RESOLVED name that is judged: `; @name payload` on a
+    // `raw` field renames the Rust field while the CBOR wire key stays the bareword text.
+    let files = {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_genloc_remedy_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, "m = { raw: bytes, ; @name payload\n}\n").unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "genloc_remedy_unused",
+        ]);
+        let out = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        out.expect("the @name remedy must generate a valid crate")
+    };
+    let ser = files
+        .iter()
+        .find(|(name, _)| name.contains("generated/serialization.rs"))
+        .map(|(_, src)| src.clone())
+        .unwrap_or_default();
+    assert!(
+        ser.contains("write_text(\"raw\")") && ser.contains("payload"),
+        "the @name remedy must rename the Rust field while keeping the `raw` wire key, got: {ser}"
+    );
+
+    // The ACCEPT side of the scope rule, and the reason it exists: `tag` is reserved only inside a
+    // `#6.n(…)` record (where the deserializer emits the tag read). The `tag: 0` group-choice
+    // discriminant — `tests/core` / `tests/preserve-encodings` use it, as do real specs — is an
+    // untagged array record and must keep generating under every profile. A uniform-across-reps
+    // refusal would have broken it, which is why the registry is scoped by shape.
+    for (tag, spec) in [
+        (
+            "tag_discriminant",
+            "a = [x: uint, tag: 0 // y: text, tag: 1]\n",
+        ),
+        ("tag_plain_array", "a = [pre: uint, tag: bytes]\n"),
+        ("tag_plain_map", "m = { 1: uint, tag: bytes }\n"),
+        // map-rep-only names in an array record: the emitter binds no such local there
+        ("read_array", "a = [pre: uint, read: bytes]\n"),
+        ("text_key_array", "a = [pre: uint, text_key: bytes]\n"),
+    ] {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let path = std::env::temp_dir()
+                .join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+            std::fs::write(&path, spec).unwrap();
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "genloc_scope_unused",
+            ];
+            argv.extend_from_slice(extra);
+            let cli = Cli::parse_from(argv);
+            let result = crate::api::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
+            assert!(
+                result.is_ok(),
+                "{tag} ({extra:?}): must still generate — the reserved-name scope is too wide:\n{spec}"
+            );
+        }
+    }
+}
+
+/// The PAIRWISE half of the same class: two fields that are individually fine but stand in an
+/// `<f>` / `<f>_encoding` relation collide once `--preserve-encodings` mints the per-field encoding
+/// companions. Refused uniformly (the default profile compiles only because it mints no companions),
+/// with the accept side pinned so the check cannot quietly over-fire.
+#[test]
+fn encoding_companion_field_collision_rejects_gracefully() {
+    for (tag, spec, a, b) in [
+        // the field local shadows the value-encoding companion — both reps
+        (
+            "enc_pair_arr",
+            "a = [foo: bytes, foo_encoding: uint]\n",
+            "foo",
+            "foo_encoding",
+        ),
+        (
+            "enc_pair_map",
+            "m = { 1: uint, foo: bytes, foo_encoding: uint }\n",
+            "foo",
+            "foo_encoding",
+        ),
+        // map rep only: two fields mint the same `<f>_key_encoding`
+        (
+            "key_pair_map",
+            "m = { foo: bytes, foo_key: uint }\n",
+            "foo",
+            "foo_key",
+        ),
+        // map rep only: the field local shadows the KEY-encoding companion
+        (
+            "keyenc_map",
+            "m = { foo: bytes, foo_key_encoding: uint }\n",
+            "foo",
+            "foo_key_encoding",
+        ),
+    ] {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(tag, spec, extra);
+            assert!(
+                msg.contains(&format!("`{a}`"))
+                    && msg.contains(&format!("`{b}`"))
+                    && msg.contains("--preserve-encodings")
+                    && msg.contains("@name"),
+                "rejection should name both fields, the flag that mints the companion and the \
+                 @name remedy ({tag}, {extra:?}), got: {msg}"
+            );
+        }
+    }
+    // Accept side — the shapes that mint no colliding companion must still generate.
+    for (tag, spec) in [
+        // a lone `<x>_encoding` with no `<x>` sibling
+        ("lone_encoding", "a = [foo_encoding: uint]\n"),
+        // `_key` / `_key_encoding` pairs are map-only (array records mint no key encodings)
+        ("array_key_pair", "a = [foo: bytes, foo_key: uint]\n"),
+        ("array_keyenc", "a = [foo: bytes, foo_key_encoding: uint]\n"),
+    ] {
+        let path =
+            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "enc_pair_unused",
+            "--preserve-encodings",
+            "true",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        assert!(
+            result.is_ok(),
+            "{tag}: must still generate — the pairwise check is over-firing:\n{spec}"
+        );
+    }
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");
