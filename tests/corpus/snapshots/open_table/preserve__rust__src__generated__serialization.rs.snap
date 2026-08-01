@@ -1,0 +1,526 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Md {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Md::U64 {
+                uint,
+                uint_encoding,
+            } => serializer.write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding)),
+            Md::Text {
+                text,
+                text_encoding,
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
+        }
+    }
+}
+
+impl Deserialize for Md {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let (uint, uint_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    Ok(Self::U64 {
+                        uint,
+                        uint_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Md"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenTable {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.entries.len() as u64 + self.rest.len() as u64),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len() as u64
+                    == self.entries.len() as u64 + self.rest.len() as u64
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| {
+                (0..self.entries.len())
+                    .map(|i| 2 * i)
+                    .chain((0..self.rest.len()).map(|i| 2 * i + 1))
+                    .collect::<Vec<usize>>()
+            });
+        let entries_entries: Vec<_> = self.entries.iter().collect();
+        let rest_entries: Vec<_> = self.rest.iter().collect();
+        for field_index in deser_order {
+            match field_index % 2 {
+                0 => {
+                    let rest_i = field_index / 2;
+                    if let Some(&(key, value)) = entries_entries.get(rest_i) {
+                        let entries_key_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.entries_key_encodings.get(key))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_bytes_sz(
+                            key,
+                            entries_key_encoding.to_str_len_sz(key.len() as u64),
+                        )?;
+                        let entries_value_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.entries_value_encodings.get(key))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_unsigned_integer_sz(
+                            *value,
+                            fit_sz(*value, entries_value_encoding),
+                        )?;
+                    }
+                }
+                _ => {
+                    let rest_i = field_index / 2;
+                    if let Some(&(key, value)) = rest_entries.get(rest_i) {
+                        key.serialize(serializer)?;
+                        value.serialize(serializer)?;
+                    }
+                }
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OpenTable {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            let mut orig_deser_order = Vec::new();
+            let mut entries: OrderedHashMap<Vec<u8>, u64> = OrderedHashMap::new();
+            let mut entries_key_encodings = BTreeMap::new();
+            let mut entries_value_encodings = BTreeMap::new();
+            let mut rest: OrderedHashMap<Md, Md> = OrderedHashMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::Bytes => {
+                        read_len.read_elems(1)?;
+                        let (rest_key, rest_key_encoding) = raw
+                            .bytes_sz()
+                            .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+                        let (rest_value, rest_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        entries_value_encodings.insert(rest_key.clone(), rest_value_encoding);
+                        entries_key_encodings.insert(rest_key.clone(), rest_key_encoding);
+                        orig_deser_order.push(2 * entries.len());
+                        if entries.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-table typed key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::LenSz::Len(_, _) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::LenSz::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        orig_deser_order.push(2 * rest.len() + 1);
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        orig_deser_order.push(2 * rest.len() + 1);
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            read_len.finish()?;
+            Ok(Self {
+                entries,
+                rest,
+                encodings: Some(OpenTableEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    entries_key_encodings,
+                    entries_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OpenTable"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenTableDup {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.entries.len() as u64 + self.rest.len() as u64),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len() as u64
+                    == self.entries.len() as u64 + self.rest.len() as u64
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| {
+                (0..self.entries.len())
+                    .map(|i| 2 * i)
+                    .chain((0..self.rest.len()).map(|i| 2 * i + 1))
+                    .collect::<Vec<usize>>()
+            });
+        let entries_entries: Vec<_> = self.entries.iter().collect();
+        let rest_entries: Vec<_> = self.rest.iter().collect();
+        for field_index in deser_order {
+            match field_index % 2 {
+                0 => {
+                    let rest_i = field_index / 2;
+                    if let Some(&(key, value)) = entries_entries.get(rest_i) {
+                        let entries_key_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.entries_key_encodings.get(rest_i))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_bytes_sz(
+                            key,
+                            entries_key_encoding.to_str_len_sz(key.len() as u64),
+                        )?;
+                        let entries_value_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.entries_value_encodings.get(rest_i))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_unsigned_integer_sz(
+                            *value,
+                            fit_sz(*value, entries_value_encoding),
+                        )?;
+                    }
+                }
+                _ => {
+                    let rest_i = field_index / 2;
+                    if let Some(&(key, value)) = rest_entries.get(rest_i) {
+                        key.serialize(serializer)?;
+                        value.serialize(serializer)?;
+                    }
+                }
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OpenTableDup {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            let mut orig_deser_order = Vec::new();
+            let mut entries: PairMap<Vec<u8>, u64> = PairMap::new();
+            let mut entries_key_encodings = Vec::new();
+            let mut entries_value_encodings = Vec::new();
+            let mut rest: PairMap<Md, Md> = PairMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::Bytes => {
+                        read_len.read_elems(1)?;
+                        let (rest_key, rest_key_encoding) = raw
+                            .bytes_sz()
+                            .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+                        let (rest_value, rest_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        entries_value_encodings.push(rest_value_encoding);
+                        entries_key_encodings.push(rest_key_encoding);
+                        orig_deser_order.push(2 * entries.len());
+                        entries.insert(rest_key.clone(), rest_value);
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::LenSz::Len(_, _) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::LenSz::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        orig_deser_order.push(2 * rest.len() + 1);
+                        rest.insert(rest_key.clone(), rest_value);
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        orig_deser_order.push(2 * rest.len() + 1);
+                        rest.insert(rest_key.clone(), rest_value);
+                    }
+                }
+                read += 1;
+            }
+            read_len.finish()?;
+            Ok(Self {
+                entries,
+                rest,
+                encodings: Some(OpenTableDupEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    entries_key_encodings,
+                    entries_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OpenTableDup"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenTableNonEmpty {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.entries.len() as u64 + self.rest.len() as u64),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len() as u64
+                    == self.entries.len() as u64 + self.rest.len() as u64
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| {
+                (0..self.entries.len())
+                    .map(|i| 2 * i)
+                    .chain((0..self.rest.len()).map(|i| 2 * i + 1))
+                    .collect::<Vec<usize>>()
+            });
+        let entries_entries: Vec<_> = self.entries.iter().collect();
+        let rest_entries: Vec<_> = self.rest.iter().collect();
+        for field_index in deser_order {
+            match field_index % 2 {
+                0 => {
+                    let rest_i = field_index / 2;
+                    if let Some(&(key, value)) = entries_entries.get(rest_i) {
+                        let entries_key_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.entries_key_encodings.get(key))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_bytes_sz(
+                            key,
+                            entries_key_encoding.to_str_len_sz(key.len() as u64),
+                        )?;
+                        let entries_value_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.entries_value_encodings.get(key))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_unsigned_integer_sz(
+                            *value,
+                            fit_sz(*value, entries_value_encoding),
+                        )?;
+                    }
+                }
+                _ => {
+                    let rest_i = field_index / 2;
+                    if let Some(&(key, value)) = rest_entries.get(rest_i) {
+                        key.serialize(serializer)?;
+                        value.serialize(serializer)?;
+                    }
+                }
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OpenTableNonEmpty {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            let mut orig_deser_order = Vec::new();
+            let mut entries: OrderedHashMap<Vec<u8>, u64> = OrderedHashMap::new();
+            let mut entries_key_encodings = BTreeMap::new();
+            let mut entries_value_encodings = BTreeMap::new();
+            let mut rest: OrderedHashMap<Md, Md> = OrderedHashMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::Bytes => {
+                        read_len.read_elems(1)?;
+                        let (rest_key, rest_key_encoding) = raw
+                            .bytes_sz()
+                            .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+                        let (rest_value, rest_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        entries_value_encodings.insert(rest_key.clone(), rest_value_encoding);
+                        entries_key_encodings.insert(rest_key.clone(), rest_key_encoding);
+                        orig_deser_order.push(2 * entries.len());
+                        if entries.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-table typed key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::LenSz::Len(_, _) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::LenSz::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        orig_deser_order.push(2 * rest.len() + 1);
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        orig_deser_order.push(2 * rest.len() + 1);
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            if entries.is_empty() {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: 0,
+                    min: Some(1),
+                    max: None,
+                }
+                .into());
+            }
+            read_len.finish()?;
+            Ok(Self {
+                entries,
+                rest,
+                encodings: Some(OpenTableNonEmptyEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    entries_key_encodings,
+                    entries_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OpenTableNonEmpty"))
+    }
+}

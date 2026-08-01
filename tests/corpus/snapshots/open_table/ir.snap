@@ -1,0 +1,419 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "Md",
+    ): RustStruct {
+        ident: RustIdent(
+            "Md",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: TypeChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "U64",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Text",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
+        "OpenTable",
+    ): RustStruct {
+        ident: RustIdent(
+            "OpenTable",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Map,
+                fields: [],
+                rest: Some(
+                    RestRow {
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "Md",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            range: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "Md",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            duplicates: None,
+                        },
+                        semantics: Capture,
+                        field_name: "rest",
+                        dispatch_major: None,
+                        non_empty: false,
+                    },
+                ),
+                typed_row: Some(
+                    RestRow {
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Primitive(
+                                    Bytes,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            range: RustType {
+                                conceptual_type: Primitive(
+                                    U64,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            duplicates: None,
+                        },
+                        semantics: Capture,
+                        field_name: "entries",
+                        dispatch_major: Some(
+                            Bytes,
+                        ),
+                        non_empty: false,
+                    },
+                ),
+            },
+        ),
+    },
+    RustIdent(
+        "OpenTableDup",
+    ): RustStruct {
+        ident: RustIdent(
+            "OpenTableDup",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Map,
+                fields: [],
+                rest: Some(
+                    RestRow {
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "Md",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            range: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "Md",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            duplicates: Some(
+                                Preserve,
+                            ),
+                        },
+                        semantics: Capture,
+                        field_name: "rest",
+                        dispatch_major: None,
+                        non_empty: false,
+                    },
+                ),
+                typed_row: Some(
+                    RestRow {
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Primitive(
+                                    Bytes,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            range: RustType {
+                                conceptual_type: Primitive(
+                                    U64,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            duplicates: Some(
+                                Preserve,
+                            ),
+                        },
+                        semantics: Capture,
+                        field_name: "entries",
+                        dispatch_major: Some(
+                            Bytes,
+                        ),
+                        non_empty: false,
+                    },
+                ),
+            },
+        ),
+    },
+    RustIdent(
+        "OpenTableNonEmpty",
+    ): RustStruct {
+        ident: RustIdent(
+            "OpenTableNonEmpty",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Map,
+                fields: [],
+                rest: Some(
+                    RestRow {
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "Md",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            range: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "Md",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            duplicates: None,
+                        },
+                        semantics: Capture,
+                        field_name: "rest",
+                        dispatch_major: None,
+                        non_empty: false,
+                    },
+                ),
+                typed_row: Some(
+                    RestRow {
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Primitive(
+                                    Bytes,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            range: RustType {
+                                conceptual_type: Primitive(
+                                    U64,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            duplicates: None,
+                        },
+                        semantics: Capture,
+                        field_name: "entries",
+                        dispatch_major: Some(
+                            Bytes,
+                        ),
+                        non_empty: true,
+                    },
+                ),
+            },
+        ),
+    },
+}

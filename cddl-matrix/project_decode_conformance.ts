@@ -672,6 +672,10 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "nullable_nested.maybe_coll": ["7"],   // `nums_arr / null` — the array arm is exempt (a named collection), null → 7
   "nullable_nested.maybe_denum": ["7"],  // `data_enum / null` — the enum arm is exempt (a named choice), null → 7
   "nullable_nested.maybe_uint": ["7", "int"],
+  // Open-table corpus fixture: its catch-all's key/value type `md = uint / text` is the one type
+  // choice among the fixture's rules (the three open-table rules are records) — uint → "int"
+  // (majors 0/1 merged), text → major 3. Pinned from the mint's actuals.
+  "open_table.md": ["3", "int"],
   "table_enum_key.ikey": ["int"],
   // `@duplicates preserve` corpus fixture (matrix-registration packet): the recursive metadatum
   // union `md = mdmap / [* md] / int / bytes / text`. The mdmap arm is exempt (a named table);

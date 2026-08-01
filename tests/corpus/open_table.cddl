@@ -1,0 +1,21 @@
+; Open table: a named rule of exactly TWO `* k => v` rows and nothing else, routed by CBOR wire
+; major type. The typed (first) row claims exactly its key's single statically-known major; the
+; catch-all (last) row sees only the complement.
+;
+; The three rules isolate the three things a snapshot of this shape has to show, and nothing else:
+; the base composition, the `@duplicates preserve` flavor on both rows (two PairMaps with positional
+; sidecars), and the NonEmpty (`{+ …}`) twin whose min-1 counts TYPED entries.
+md = uint / text
+
+; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)
+open_table = { * bstr => uint, * md => md }
+
+; both rows under `@duplicates preserve`
+open_table_dup = {
+  * bstr => uint ; @duplicates preserve
+  ,
+  * md => md ; @duplicates preserve
+}
+
+; the NonEmpty twin: `new(first_key, first_value)` plus one post-loop check
+open_table_non_empty = { + bstr => uint, * md => md }

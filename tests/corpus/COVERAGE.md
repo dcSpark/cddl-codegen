@@ -371,7 +371,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
 | `grpent.member` |  |  |  |  |  |  | ✅ | ◐ |  |  |
 | `memberkey.bareword` |  |  |  | · |  |  | ✅ | ➖ |  |  |
-| `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ◐ |  |  |
+| `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ? |  |  |
 | `memberkey.value` |  |  |  | ◐ |  |  | ◐ |  |  |  |
 | `occur.bounded` |  | · |  |  |  |  |  |  |  |  |
 | `occur.one_or_more` |  | · | · |  |  |  |  |  |  |  |
@@ -384,7 +384,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.bignint` |  | · |  | · |  |  |  |  |  |  |
 | `prelude.biguint` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.bool` |  | · |  | · |  | · |  | · |  |  |
-| `prelude.bstr` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.bstr` |  | · |  | · |  |  |  |  |  |  |
 | `prelude.bytes` | · | · | · | · |  | · |  | · |  |  |
 | `prelude.decfrac` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.encoded-cbor` |  | · |  |  |  |  |  |  |  |  |
@@ -420,9 +420,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
 | `value.text` |  | ✅ | ✅ | · |  |  |  | · |  |  |
 
-- Modelled `(role × feature)` cells: **65** (over 117 shape-granular containment rows).
+- Modelled `(role × feature)` cells: **65** (over 120 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **31**.
-- Exercised by the corpus, modelled by **nothing**: **149** (the `·` cells).
+- Exercised by the corpus, modelled by **nothing**: **150** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **34**.
 
 ## Notable findings
@@ -440,7 +440,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **120** — ✅ 67 covered · ➕ 26 supported-untested · ⚠️ 1 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 89
+- Corpus fixtures: 90
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk
