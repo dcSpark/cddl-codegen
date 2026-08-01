@@ -3144,8 +3144,8 @@ impl<'a> IntermediateTypes<'a> {
         // The `@custom_serialize`/`@custom_deserialize` pair is a TYPE-level override: it replaces
         // the codec of the rust type a rule resolves to. The parse-walk rejections cover the
         // placements that DELETE or BYPASS the node it keys on (`@no_alias`, `@newtype`, an extern /
-        // raw-bytes marker, a row-entry slot). The two below are the placements that MINT a struct
-        // whose generated impls the pair does not displace, so it half-applies:
+        // raw-bytes marker, a row-entry slot). The three below are the placements that MINT a struct
+        // whose generated impls the pair does not displace, so it half-applies or not at all:
         //
         //   - an ENUM rule (type choice, group choice, or the fixed-value C-style enum): its
         //     serialize side is generated unconditionally while `generate_deserialize`'s
@@ -3159,6 +3159,10 @@ impl<'a> IntermediateTypes<'a> {
         //     BOTH halves on a record rule is deliberately NOT rejected: it suppresses the generated
         //     impls for the author to hand-own, which is unspecified-and-at-risk rather than wrong
         //     (see `docs/docs/comment_dsl.mdx`).
+        //   - a TABLE rule (`t = { * k => v }`). Unlike the record rule, a table mints no impls for
+        //     either half to suppress: it lowers through `AliasInfo::new_manual`, whose
+        //     `rule_metadata` is hardcoded `None`, and BOTH emission sites key on that metadata —
+        //     so each half is equally unhonored and ANY presence rejects, not just a lone one.
         //
         // Deferred to here rather than the parse walk for the same reason `@no_json_schema_export`
         // above is: the struct KIND decides, and a generic instance only materializes its struct
@@ -3191,6 +3195,25 @@ impl<'a> IntermediateTypes<'a> {
                              wire format and write another. Put the pair on the rule of the variant \
                              type that needs the custom format, or declare `{ident}` as a \
                              {EXTERN_MARKER} rule and hand-write the type in full."
+                        ));
+                    }
+                }
+            }
+            if matches!(rust_struct.variant(), RustStructType::Table { .. }) {
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: a table rule (`{ident} = {{ * k => v }}`) \
+                             lowers to a transparent map alias that owns no codec for the directive \
+                             to override, so it is dropped rather than honored — in both directions, \
+                             whichever half is written. Put it on the rule that defines the table's \
+                             KEY or VALUE type (`k = bytes ; {directive} …`, then `{ident} = \
+                             {{ * k => v }}`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
+                             hand-write the type in full."
                         ));
                     }
                 }
