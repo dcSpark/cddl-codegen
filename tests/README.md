@@ -1998,6 +1998,45 @@ user-supplied macro; flag-gated, unexercised by these catalogs). The wasm reject
 `JsError`-panic class). And json laxness (serde derives don't re-enforce CDDL bounds — an
 enforcement-axis question for a future item, not this accept-direction leg).
 
+### The directive×rule-shape sweep (`cddl-matrix/no_silent_directive.ts`)
+
+A comment-DSL directive is only carried to a marking site by the parse path its rule's SHAPE takes,
+and those paths differ — so a written directive can produce output byte-identical to omitting it,
+with nothing acknowledging it. This gate is the systematic catch for that class, and it sweeps the
+whole product rather than a hand corpus, so a shape whose parse path nobody thought about is covered
+by construction. `local` tier (never `fast` — CI cost policy), ~25 s warm.
+
+Per (shape, directive) cell it generates the built binary twice into throwaway scratch dirs — once
+with the base directives, once with the toggled directive ADDED — and renders one of four verdicts:
+**effect visible** (bytes differ), **loudly rejected** (nonzero exit whose output names the
+directive), **acknowledged notice** (byte-identical, but the output names the directive), or
+**allowlisted inert**. Anything else FAILS. The byte surface is every generated file under the output
+dir, so the wasm and json-gen crates are compared too.
+
+Three axes, each with its own authority:
+
+- **Directive** — extracted at run time from `comment_ast.rs`'s `KNOWN_RULE_METADATA_TAGS`. A
+  directive there with no canonical-spelling row or no witness-profile row in the gate's own tables
+  FAILS it: a new directive must demand classification rather than silently skip the product.
+- **Shape** — hand-enumerated (shapes change far more slowly than directives). The mandatory parse
+  paths, the extras each of which proved interesting in a prior delivery, and the arm-position axis
+  folded in as two shapes of its own.
+- **Profile** — the cheapest flag set under which the directive's surface exists at all
+  (`@used_as_elem` is a documented no-op without `--wasm`; `@no_json_schema_export` suppresses a
+  json-gen row only). Generating a cell outside its witness profile measures nothing.
+
+Each cell is swept under two holder embeddings and takes its BEST verdict, because the requirements
+point in opposite directions: a container use (`g: [* foo]`) is what mints the class
+`@extern_companions` defers and the getter `@copy` elides, while the ABSENCE of one is what
+`@used_as_elem` exists to force. A FAIL therefore means "inert under every embedding", which is what
+a finding must mean to be actionable.
+
+The ALLOWLIST is the honest inert inventory — one justification per entry, and a stale entry naming
+no cell fails the gate. Adding one is a claim that the cell is a legitimate accepted no-op (an
+explicit spelling of a default, a directive whose target already satisfies it, a structurally
+excluded emission site), never a place to park a real drop. The 15 hand cells above the product each
+pin a specific shipped regression or placement control and are kept.
+
 ### Sibling-crate companion classes (`@extern_companions`) — test map
 
 The directive (user doc: `docs/docs/comment_dsl.mdx` § `@extern_companions`,
