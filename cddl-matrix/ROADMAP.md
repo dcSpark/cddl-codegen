@@ -8,12 +8,12 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->119 features (95 RFC8610 + 1 RFC9682 + 23 `CDDL_CODEGEN` vendor profile), 117 containment cells, and 270 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->120 features (95 RFC8610 + 1 RFC9682 + 24 `CDDL_CODEGEN` vendor profile), 117 containment cells, and 271 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->3 divergences, 1 `json`-side, 2 `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->61 `class="constraint"` enforcement reject vectors over 43 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — the widened-occurrence-marker table
