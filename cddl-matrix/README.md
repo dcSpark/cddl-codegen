@@ -412,10 +412,13 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   position is **rejected gracefully** (`parsing.rs`, "Anonymous groups not allowed" for the array
   bracket, "an inline map … unsupported unless it is a table" for the map one) — it must be
   **named**. A named RULE
-  works in every position; the `@name` naming route the array message advertises works only where the
-  comment can reach the naming site — verified for the choice-member position, while at member
-  positions (array-element, map-value) the directive never arrives and the rejection stands (a pinned
-  `KNOWN_SILENT_DROP` finding — see the comment-DSL entry in `ROADMAP.md` § findings). The one
+  works in every position; the `@name` naming route the array message advertises works wherever the
+  anonymous ARRAY is the whole type of the group entry the comment sits on — the choice-member
+  position and the member ones (array-element, map-value, occurrence-target), pinned by
+  `dsl_position_tests` cells. It stays out of reach where the array belongs to some other construct
+  the comment cannot be attributed to (a `bytes .cbor [ … ]` payload, a generic argument, a map
+  key), and the MAP bracket has no naming door at all — its message advertises only the named form.
+  The one
   exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the
   per-(feature, role) verdict genuinely differs, which is the whole point. An inline parenthesized

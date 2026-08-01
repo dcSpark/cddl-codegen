@@ -83,6 +83,20 @@ belongs to the last group entry, not the rule: `grp = (a: uint) ; @name other` r
 *field* `a` to `other` (exactly like `grp = (a: uint ; @name other)`) — it neither renames the
 group nor errors.
 
+Note: `@name` also names an **anonymous inline array used as a member's type**, which is the remedy
+the "Anonymous groups not allowed" error advertises:
+```cddl
+t = [0, [1, bytes] ; @name inner
+]
+```
+mints `struct Inner` and holds it in a field named `inner` — the trailing comment is the member's
+own slot, so the single directive names *both* the struct and the field, which is what makes the
+struct referenceable at all. The naming door is scoped to the case where the anonymous array is the
+member's **whole** type: behind a control operator (`bytes .cbor [1, bytes] ; @name inner`) the
+array belongs to the operator rather than the member, and the anonymous-group error stands. An
+inline **map** in the same position has no naming door at all — its own error points at the named
+form (`m = { a: int, b: uint }`, then reference `m`) and does not advertise `@name`.
+
 ## @rust_name
 
 `@rust_name <Ident>` pins the emitted Rust **type** name of a rule. This is the deliberate

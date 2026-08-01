@@ -67,44 +67,28 @@ struct Cell {
 /// AUTHORING RULE — pins have a vacuity hazard Effect cells don't: a pin asserts "expectation NOT
 /// satisfied", which a MISPLACED directive comment satisfies vacuously (the DSL's comma-placement
 /// rules are finicky), so the pin would hold for the wrong reason. Only pin a cell after
-/// hand-verifying the placement variants against the docs' comma rules (the anon-group pin was
-/// probed with and without the trailing comma), beside a control cell using the same placement in
-/// a position where the directive DOES work, isolating position as the variable — the anon-group
-/// pin's control is the `anon-group-choice-member` cell.
+/// hand-verifying the placement variants against the docs' comma rules (both the with- and
+/// without-trailing-comma spellings), beside a control cell using the same placement in
+/// a position where the directive DOES work, isolating position as the variable — the table-rule
+/// pin's control is the `type-level` cell.
 ///
-/// Two live findings. One predates the custom-serialize hardening (not fixed by the task that added
-/// them — its scoped fix was the rule-position `@name` rejection); the last is that delivery's
-/// remainder, deliberately left silent because honoring or refusing it is a design decision, not a
-/// call-site fix. Its RULED placements are cells 23a–23n, which `Reject` rather than pin (23o is
-/// the accepted-control beside them):
-///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" rejection advertises `@name`
-///     as the remedy, but at a MEMBER-position anonymous inline group the comment lands on the
-///     enclosing group entry's trailing_comments, which the naming site's `get_comment_after(type2)`
-///     never reaches (it ascends only through Type1/TypeChoice). So `@name` is dropped and the
-///     anonymous-group rejection fires anyway — the advertised remedy does not work in this position.
+/// One live finding — the custom-serialize hardening's remainder, deliberately left silent because
+/// honoring or refusing it is a design decision, not a call-site fix. Its RULED placements are cells
+/// 23a–23n, which `Reject` rather than pin (23o is the accepted-control beside them):
 ///   - `@custom_serialize+deserialize` @ `table-rule`: a table rule is a type-level rule, the docs'
 ///     supported position, yet the pair is dropped in both directions. Control: the `type-level` cell
 ///     (same rule-trailing placement on a primitive body — it emits both call sites) plus the live
 ///     rule slot itself, since a rule-trailing `@duplicates preserve` on this shape does swap in the
 ///     PairMap twin. Whether a transparent table alias CAN carry the pair is the open question.
-const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
-    (
-        "@name",
-        "anon-group-member",
-        "@name at a member-position anonymous inline group is unreachable by the naming site's \
-         get_comment_after(type2) ascent (Type1/TypeChoice only), so the anonymous-group rejection \
-         fires despite its message advertising @name as the remedy",
-    ),
-    (
-        "@custom_serialize+deserialize",
-        "table-rule",
-        "the custom (de)serializer pair on a TABLE rule (`t = { * k => v } ; @custom_serialize …`) is \
+const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[(
+    "@custom_serialize+deserialize",
+    "table-rule",
+    "the custom (de)serializer pair on a TABLE rule (`t = { * k => v } ; @custom_serialize …`) is \
          dropped in both directions, although the docs claim type-level rules are a supported \
          position. The rule slot itself is live (a rule-trailing `@duplicates preserve` on the same \
          shape does swap in the PairMap twin), so this is the directive being unhonored for the \
          table shape, not the comment being unseen",
-    ),
-];
+)];
 
 /// The docs-claimed grid. Anchors were verified empirically against emitted source while authoring;
 /// the `must` fragments are the load-bearing bits, not guaranteed-verbatim whole lines.
@@ -208,7 +192,10 @@ const GRID: &[Cell] = &[
         },
     },
     // 9. anonymous inline composite in a MEMBER position — the "Anonymous groups not allowed"
-    //    panic's advertised remedy. PINNED: dropped (fires the panic anyway). See KNOWN_SILENT_DROP.
+    //    rejection's advertised remedy, working. The comment lands on the enclosing group entry's
+    //    trailing slot, which is ALSO the field-rename slot, so the one directive names both the
+    //    struct and the field that holds it (`pub inner: Inner`) — both asserted here, since the
+    //    dual effect is the position's semantics, not an accident.
     Cell {
         directive: "@name",
         position: "anon-group-member",
@@ -216,9 +203,32 @@ const GRID: &[Cell] = &[
         flags: &[],
         wasm: false,
         expect: Expect::Effect {
-            must: &["struct Inner"],
+            must: &["struct Inner", "pub inner: Inner"],
             must_not: &[],
         },
+    },
+    // 9c. SCOPE CONTROL for cell 9: the member-position slot is read ONLY when the anonymous array
+    //     is the member's WHOLE type. Behind a `.cbor` payload the array is the control operator's
+    //     target, so there is no unambiguous construct for the name to land on and the rejection
+    //     stands — with its wording unchanged.
+    Cell {
+        directive: "@name",
+        position: "anon-group-member-cbor-payload",
+        spec: "t = [0, bytes .cbor [1, bytes] ; @name inner\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("Anonymous groups not allowed"),
+    },
+    // 9d. SHAPE CONTROL for cell 9: the MAP flavor has no naming door at all (its rejection does
+    //     not advertise `@name`), so the member-position slot must not reach it — an inline map
+    //     member keeps rejecting with its own message.
+    Cell {
+        directive: "@name",
+        position: "anon-map-member",
+        spec: "t = [0, {a: uint} ; @name inner\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("an inline map (`{ a: int, b: uint }`) used as a member"),
     },
     // 9b. PLACEMENT CONTROL for the anon-group-member pin (the KNOWN_SILENT_DROP authoring rule):
     //     the same directive + comment placement (after the inline composite) in the CHOICE-MEMBER
