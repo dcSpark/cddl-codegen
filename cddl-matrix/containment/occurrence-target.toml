@@ -141,6 +141,30 @@ note = "The count-permitting boundary of the open struct-map: a `+` (one-or-more
 example = "m = { 1: uint, + uint => any }"
 
 [[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_table"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "The open table: a map of exactly TWO `*`-occurrence type-domain arrow entries and no fixed key (`t = { * bstr => uint, * uint => uint }`). Home here beside `contain.occurrence-target.memberkey.type1.open_struct` because the varying axis is again the occurrence MARKER on an arrow row — what differs is the COMPOSITION, two marked rows rather than fixed keys plus one. cddl-codegen lowers it to a Record with zero fixed fields and two capture containers, routed by CBOR WIRE MAJOR TYPE peeked before any deserializer runs: the typed (first) row claims exactly its key\'s single statically-known major, the catch-all (last) row sees only the complement, and a key of the typed row\'s major that the row\'s own type refuses is a HARD parse error rather than a capture. `K_t`\'s major must be statically knowable — a primitive, an alias of one, a raw-bytes marker or an alias of one, a `.size`-constrained bytes, or a tagged type; a key whose wire a `@custom_serialize`/`@custom_deserialize` pair owns declares it with `@custom_wire_major` (dsl.custom_wire_major). Both rows carry their own `@duplicates` policy, container spelling and encoding sidecars; under --preserve-encodings the two dynamic sequences share ONE order vector through a tagged slot encoding, and --canonical-form merges both regions into one sort by encoded key bytes. NAMED rules only: an inline anonymous spelling, a group-choice arm, a plain group, >2 non-fixed rows, and two rows mixed with fixed keys are each a graceful rejection naming the supported form. Doc: output_format.mdx section \'Open tables (a typed row plus a catch-all)\', comment_dsl.mdx section \'Open tables\'. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
+example = "t = { * bstr => uint, * uint => uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_table_plus"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "The count-permitting boundary of the open table, and the one place in this family where a `+` on an arrow row is SUPPORTED after being rejected at its two siblings: a one-or-more occurrence on an open table\'s TYPED row (`t = { + bstr => uint, * uint => uint }`) is the NonEmpty twin, whose minimum of 1 counts TYPED entries only — a map of purely captured entries is not a non-empty table. cddl-codegen enforces it at two doors: `new(first_key, first_value)` (so no constructed value violates it) and one check after each reader\'s loop, raising the same RangeCheck `NonEmptyMap`\'s own door raises. `+` and `1*` are one spelling, `*` and `0*` another; every other marker is a real bounded cardinality and is refused rather than widened. Contrast `contain.occurrence-target.memberkey.type1.open_struct_plus` (a `+` REST row after fixed keys, rejected) and `contain.occurrence-target.memberkey.type1.plus_table` (a `+` on a lone table, a NonEmptyMap): three contexts, the same marker, three different verdicts — the (feature x context) distinction this matrix exists to record. Pinned by `open_table_front_end` (robustness_tests.rs) and executed in tests/open-table-e2e. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
+example = "t = { + bstr => uint, * uint => uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_table_catchall_plus"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "The other side of the open table\'s count-permitting boundary: a one-or-more occurrence on the CATCH-ALL row (`t = { * bstr => uint, + uint => uint }`). Spec-legal (RFC8610 §3.2 `+`, §3.5.2 admits a type1 key), but cddl-codegen REJECTS it gracefully — the open table\'s min-1 counts TYPED entries, so on the catch-all it would demand at least one entry the rule says nothing about — making this a reject fixture (tests/matrix_reject/), not a decode-catalog row. It is the cell that keeps `contain.occurrence-target.memberkey.type1.open_table_plus` from reading as \'`+` is fine on an open table\': the marker\'s verdict flips between the two ROWS of one rule. Pinned by `open_table_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
+example = "t = { * bstr => uint, + uint => uint }"
+
+[[contain]]
 id = "contain.occurrence-target.grpent.member.zero_array"
 role = "role.occurrence-target"
 feature = "grpent.member"

@@ -1,0 +1,284 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Md {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Md::U64(uint) => serializer.write_unsigned_integer(*uint),
+            Md::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for Md {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Md::U64(raw.unsigned_integer()?)),
+                cbor_event::Type::Text => Ok(Md::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Md"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenTable {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            self.entries.len() as u64 + self.rest.len() as u64,
+        ))?;
+        for (key, value) in self.entries.iter() {
+            serializer.write_bytes(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        for (key, value) in self.rest.iter() {
+            key.serialize(serializer)?;
+            value.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OpenTable {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            let mut entries = BTreeMap::new();
+            let mut rest = BTreeMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::Bytes => {
+                        read_len.read_elems(1)?;
+                        let rest_key = raw.bytes()?;
+                        let rest_value = raw.unsigned_integer()?;
+                        if entries.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-table typed key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            read_len.finish()?;
+            Ok(Self { entries, rest })
+        })()
+        .map_err(|e| e.annotate("OpenTable"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenTableDup {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            self.entries.len() as u64 + self.rest.len() as u64,
+        ))?;
+        for (key, value) in self.entries.iter() {
+            serializer.write_bytes(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        for (key, value) in self.rest.iter() {
+            key.serialize(serializer)?;
+            value.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OpenTableDup {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            let mut entries = PairMap::new();
+            let mut rest = PairMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::Bytes => {
+                        read_len.read_elems(1)?;
+                        let rest_key = raw.bytes()?;
+                        let rest_value = raw.unsigned_integer()?;
+                        entries.insert(rest_key.clone(), rest_value);
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        rest.insert(rest_key.clone(), rest_value);
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        rest.insert(rest_key.clone(), rest_value);
+                    }
+                }
+                read += 1;
+            }
+            read_len.finish()?;
+            Ok(Self { entries, rest })
+        })()
+        .map_err(|e| e.annotate("OpenTableDup"))
+    }
+}
+
+impl cbor_event::se::Serialize for OpenTableNonEmpty {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            self.entries.len() as u64 + self.rest.len() as u64,
+        ))?;
+        for (key, value) in self.entries.iter() {
+            serializer.write_bytes(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        for (key, value) in self.rest.iter() {
+            key.serialize(serializer)?;
+            value.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OpenTableNonEmpty {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            let mut entries = BTreeMap::new();
+            let mut rest = BTreeMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::Bytes => {
+                        read_len.read_elems(1)?;
+                        let rest_key = raw.bytes()?;
+                        let rest_value = raw.unsigned_integer()?;
+                        if entries.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-table typed key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    cbor_event::Type::Special => {
+                        if raw.special_break()? {
+                            match len {
+                                cbor_event::Len::Len(_) => {
+                                    return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                                }
+                                cbor_event::Len::Indefinite => break,
+                            }
+                        }
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                    _ => {
+                        read_len.read_elems(1)?;
+                        let rest_key = Md::deserialize(raw)?;
+                        let rest_value = Md::deserialize(raw)?;
+                        if rest.insert(rest_key.clone(), rest_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "<open-map rest key>",
+                            )))
+                            .into());
+                        }
+                    }
+                }
+                read += 1;
+            }
+            if entries.is_empty() {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: 0,
+                    min: Some(1),
+                    max: None,
+                }
+                .into());
+            }
+            read_len.finish()?;
+            Ok(Self { entries, rest })
+        })()
+        .map_err(|e| e.annotate("OpenTableNonEmpty"))
+    }
+}

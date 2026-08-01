@@ -1,0 +1,209 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Md = WitMd;
+    type OpenTable = WitOpenTable;
+    type OpenTableDup = WitOpenTableDup;
+    type OpenTableNonEmpty = WitOpenTableNonEmpty;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitMd(pub RefCell<cddl_lib::Md>);
+
+impl wit_types::GuestMd for WitMd {
+    fn new_uint(uint: u64) -> wit_types::Md {
+        let inner = cddl_lib::Md::new_uint(uint);
+        wit_types::Md::new(WitMd(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Md::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_text(text: String) -> wit_types::Md {
+        let inner = cddl_lib::Md::new_text(text);
+        wit_types::Md::new(WitMd(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Md::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::MdKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Md::U64(_) => wit_types::MdKind::Uint,
+            cddl_lib::Md::Text(_) => wit_types::MdKind::Text,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Md as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Md, String> {
+        <cddl_lib::Md as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Md::new(WitMd(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOpenTable(pub RefCell<cddl_lib::OpenTable>);
+
+impl wit_types::GuestOpenTable for WitOpenTable {
+    fn new() -> Self {
+        let inner = cddl_lib::OpenTable::new();
+        WitOpenTable(RefCell::new(inner))
+    }
+
+    fn entries(&self) -> Vec<(Vec<u8>, u64)> {
+        let me = self.0.borrow();
+        me.entries
+            .iter()
+            .map(|(x0, x1)| (x0.iter().map(|x| *x).collect(), *x1))
+            .collect()
+    }
+
+    fn rest(&self) -> Vec<(wit_types::Md, wit_types::Md)> {
+        let me = self.0.borrow();
+        me.rest
+            .iter()
+            .map(|(x0, x1)| {
+                (
+                    wit_types::Md::new(WitMd(RefCell::new(x0.clone()))),
+                    wit_types::Md::new(WitMd(RefCell::new(x1.clone()))),
+                )
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OpenTable as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OpenTable, String> {
+        <cddl_lib::OpenTable as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OpenTable::new(WitOpenTable(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOpenTableDup(pub RefCell<cddl_lib::OpenTableDup>);
+
+impl wit_types::GuestOpenTableDup for WitOpenTableDup {
+    fn new() -> Self {
+        let inner = cddl_lib::OpenTableDup::new();
+        WitOpenTableDup(RefCell::new(inner))
+    }
+
+    fn entries(&self) -> Vec<(Vec<u8>, u64)> {
+        let me = self.0.borrow();
+        me.entries
+            .iter()
+            .map(|(x0, x1)| (x0.iter().map(|x| *x).collect(), *x1))
+            .collect()
+    }
+
+    fn rest(&self) -> Vec<(wit_types::Md, wit_types::Md)> {
+        let me = self.0.borrow();
+        me.rest
+            .iter()
+            .map(|(x0, x1)| {
+                (
+                    wit_types::Md::new(WitMd(RefCell::new(x0.clone()))),
+                    wit_types::Md::new(WitMd(RefCell::new(x1.clone()))),
+                )
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OpenTableDup as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OpenTableDup, String> {
+        <cddl_lib::OpenTableDup as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OpenTableDup::new(WitOpenTableDup(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitOpenTableNonEmpty(pub RefCell<cddl_lib::OpenTableNonEmpty>);
+
+impl wit_types::GuestOpenTableNonEmpty for WitOpenTableNonEmpty {
+    fn new(first_key: Vec<u8>, first_value: u64) -> Self {
+        let first_key = first_key.into_iter().collect();
+        let inner = cddl_lib::OpenTableNonEmpty::new(first_key, first_value);
+        WitOpenTableNonEmpty(RefCell::new(inner))
+    }
+
+    fn entries(&self) -> Vec<(Vec<u8>, u64)> {
+        let me = self.0.borrow();
+        me.entries
+            .iter()
+            .map(|(x0, x1)| (x0.iter().map(|x| *x).collect(), *x1))
+            .collect()
+    }
+
+    fn rest(&self) -> Vec<(wit_types::Md, wit_types::Md)> {
+        let me = self.0.borrow();
+        me.rest
+            .iter()
+            .map(|(x0, x1)| {
+                (
+                    wit_types::Md::new(WitMd(RefCell::new(x0.clone()))),
+                    wit_types::Md::new(WitMd(RefCell::new(x1.clone()))),
+                )
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OpenTableNonEmpty as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OpenTableNonEmpty, String> {
+        <cddl_lib::OpenTableNonEmpty as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::OpenTableNonEmpty::new(WitOpenTableNonEmpty(RefCell::new(v))))
+        .map_err(err)
+    }
+}

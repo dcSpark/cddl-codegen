@@ -1,0 +1,35 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+
+#[derive(Clone, Debug, Default)]
+pub struct OpenTableDupEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub entries_key_encodings: Vec<StringEncoding>,
+    pub entries_value_encodings: Vec<Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OpenTableEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub entries_key_encodings: BTreeMap<Vec<u8>, StringEncoding>,
+    pub entries_value_encodings: BTreeMap<Vec<u8>, Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OpenTableNonEmptyEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub entries_key_encodings: BTreeMap<Vec<u8>, StringEncoding>,
+    pub entries_value_encodings: BTreeMap<Vec<u8>, Option<cbor_event::Sz>>,
+}

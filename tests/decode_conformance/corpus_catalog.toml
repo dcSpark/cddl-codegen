@@ -6192,6 +6192,196 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "open_table.md"
+axis = "corpus"
+example = "md = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)"
+fixture = "open_table"
+rule = "md"
+spec = "__probe_holder = [0, md]\nmd = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200190194"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190778"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820019091b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190a65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190db9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190f1c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001910b4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200696c696f6e6573736573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006a6265686f6c6465722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006d70726f6c696665726174696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "open_table.open_table"
+axis = "corpus"
+example = "md = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)\nopen_table = { * bstr => uint, * md => md }\n\n; both rows under `@duplicates preserve`"
+fixture = "open_table"
+rule = "open_table"
+spec = "__probe_holder = [0, open_table]\nmd = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)\nopen_table = { * bstr => uint, * md => md }\n\n; both rows under `@duplicates preserve`"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a247616d616c67616d1910146970737963686963277319094a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a44961626e656761746573190aef190e2d6877616974657227736857696c6d65722773696368656d69737472796a696e63756261746f7273687072657070792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a648666163656c69667419115c486d6179706f6c657319048548626c616e636865641907f31902c26d617061746865746963616c6c7969546f6c73746f79277319028a1903bd66546573736965"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a64c74656e6465726c6f696e27731902d146416e676c696119030b68747572726574277319064066736964652773666a6976652773190e98190be36c6361726a61636b696e6727731903ab"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a74a66617363696e617465731902b2496c6f617468736f6d65190a84476368616e676573190dc5190b956b616c6c656769616e636573656c65646765190e22191104657472616465676d696e6172657468706f73746c756465"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "open_table.open_table_dup"
+axis = "corpus"
+example = "md = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)\nopen_table_dup = {\n  * bstr => uint ; @duplicates preserve\n  ,\n  * md => md ; @duplicates preserve\n}\n\n; the NonEmpty twin: `new(first_key, first_value)` plus one post-loop check"
+fixture = "open_table"
+rule = "open_table_dup"
+spec = "__probe_holder = [0, open_table_dup]\nmd = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)\nopen_table_dup = {\n  * bstr => uint ; @duplicates preserve\n  ,\n  * md => md ; @duplicates preserve\n}\n\n; the NonEmpty twin: `new(first_key, first_value)` plus one post-loop check"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a2487363757272696564190c65190ab3190a60"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3486672616e6b696e6719021d44626f6c6119097e190cb66467726570"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a34c476c617377656769616e2773190c7e69646566656374696e676c6c616e647363617065722773190bb5191180"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a5466e756d626572190fcc4c6d69726163756c6f75736c79190ed147706f7473686f741908fc1910a5190a4d6a42696751756572792773191219"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a5496b65657073616b6573190f974e6879706f676c7963656d696127731910cd47727566666c6564190ca618d9190581190ebd687265776972696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a6477461726f7427731906e44d64656e6f756e63656d656e7473190e1a48666f72656c6f636b1908b546757262616e6519111b6a646566696c656d656e746768696e74696e67190f84190129"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a64a73687566666c65722773190c3048617a616c65612773190334190dac190ec46c76616363696e6174696f6e7368737469636b65727319123219024e6d417070616c61636869616e27731902af"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "open_table.open_table_non_empty"
+axis = "corpus"
+example = "md = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)\nopen_table_non_empty = { + bstr => uint, * md => md }"
+fixture = "open_table"
+rule = "open_table_non_empty"
+spec = "__probe_holder = [0, open_table_non_empty]\nmd = uint / text\n\n; base: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3)\nopen_table_non_empty = { + bstr => uint, * md => md }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a2496d616e646172696e73190cbb6961766f696461626c796762726561737473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a249736978746965746873190e5d65646f7a657369436861726d696e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a447616c696d6f6e791906594a54696e6b657262656c6c190bdd49646f76657461696c73190778190e3f19082a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a449616c6c65726779277319105167456c797369616e68736c65656b6573746876656e616c697479190ee9696c756e6368726f6f6d6b70726563697069746f7573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a5494c6569626e697a2773190ea0466d696d6f7361190e9e1912336a62617365626f6172647369537a696c6172642773686669656c6465727367706f6464696e671902a9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a54a65617274686c696e67731905d81891676f76657261746519124a66436c6f766973188466756e6c696b6519039a190e92"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a54c6d696c6974617269737469631912261901021907c967626f7373696e67190c496b6d69737370656c6c696e6767636173746f727319065b68696e64656e746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a64e6865617274737472696e67732773190bf2467479706527731901d34b6d656c6f6472616d6127731906240b6c6f70706f7274756e69737473190c6919041467726576696c65646b70726f6f66726561646572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "optional.optional_fields"
 axis = "corpus"
 example = "optional_fields = { a: uint, ? b: text }"

@@ -1,0 +1,49 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource md {
+    new-uint: static func(uint: u64) -> md;
+    as-uint: func() -> option<u64>;
+    new-text: static func(text: string) -> md;
+    as-text: func() -> option<string>;
+    kind: func() -> md-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<md, string>;
+  }
+  enum md-kind {
+    uint,
+    text,
+  }
+  resource open-table {
+    constructor();
+    entries: func() -> list<tuple<list<u8>, u64>>;
+    rest: func() -> list<tuple<md, md>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<open-table, string>;
+  }
+  resource open-table-dup {
+    constructor();
+    entries: func() -> list<tuple<list<u8>, u64>>;
+    rest: func() -> list<tuple<md, md>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<open-table-dup, string>;
+  }
+  resource open-table-non-empty {
+    constructor(first-key: list<u8>, first-value: u64);
+    entries: func() -> list<tuple<list<u8>, u64>>;
+    rest: func() -> list<tuple<md, md>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<open-table-non-empty, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}
