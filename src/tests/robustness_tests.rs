@@ -5820,6 +5820,275 @@ fn open_table_component_face_projects_both_rows() {
     );
 }
 
+/// Generate `cddl` with `--wasm=true` and return the emitted sources joined, for the open-table wasm
+/// pins below.
+#[cfg(test)]
+fn open_table_wasm_src(cddl: &str, tag: &str) -> String {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_open_table_wasm_{tag}_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, cddl).unwrap();
+    let cli = Cli::parse_from(vec![
+        "cddl-codegen".to_owned(),
+        "--input".to_owned(),
+        path.to_str().unwrap().to_owned(),
+        "--output".to_owned(),
+        "open_table_wasm_unused".to_owned(),
+        "--wasm=true".to_owned(),
+    ]);
+    let out = crate::api::generated_strings(&cli)
+        .unwrap_or_else(|e| panic!("an open table must generate under --wasm=true: {e}"));
+    std::fs::remove_file(&path).ok();
+    out.values().cloned().collect::<Vec<_>>().join("\n")
+}
+
+/// An open table's wasm class carries the TYPED row's map surface FLATTENED onto itself —
+/// `len`/`insert`/`get`/`keys` (plus `has` when the value is nullable) delegating to the typed
+/// container field — beside the read-only `rest()` getter for the catch-all. The flattening is the
+/// set nominal's call, for its reason: a wasm class has no `Deref`, so a container getter would make
+/// every JS read two layers deep (`t.entries().get(k)` rather than `t.get(k)`).
+///
+/// The consequence that matters beyond ergonomics is pinned here too: the typed row mints NO map
+/// container class at all, which is what leaves the collision-detector family without a fifth
+/// sibling for this kind. The catch-all keeps its container, in whichever flavor the row carries.
+#[test]
+fn open_table_wasm_class_flattens_the_typed_row() {
+    let src = open_table_wasm_src(
+        "pid = bytes .size 4\n\
+         md = uint / text\n\
+         labels = { * pid => uint, * md => md }\n",
+        "flatten",
+    );
+    for member in [
+        "pub fn len(&self) -> usize {",
+        "pub fn insert(&mut self, key: &Pid, value: u64) -> Option<u64> {",
+        "pub fn get(&self, key: &Pid) -> Option<u64> {",
+        "pub fn keys(&self) -> PidList {",
+        "pub fn rest(&self) -> MapMdToMd {",
+    ] {
+        assert!(
+            src.contains(member),
+            "the open table's wasm class must expose `{member}`, got:\n{src}"
+        );
+    }
+    assert!(
+        src.contains("self.0.entries.insert(") && src.contains("self.0.entries.keys()"),
+        "the flattened accessors must delegate to the TYPED container field, got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub fn entries(&self)"),
+        "the typed row has no whole-map getter — its surface is flattened, got:\n{src}"
+    );
+    assert!(
+        !src.contains("MapPidToU64"),
+        "the typed row must mint no map container class of its own (that is what makes its \
+         `MapKToV` collision leg unrepresentable), got:\n{src}"
+    );
+}
+
+/// The flavors and shapes the flattened surface has to keep working across: a `@duplicates preserve`
+/// catch-all returns the PairMap-backed twin from `rest()`; `@name` renames the catch-all's getter
+/// without touching the flattened members (which are named by the ACCESSOR, not the row); a nullable
+/// typed value grows the `has` accessor exactly as a table wrapper's does; and a wasm-native typed
+/// key returns a bare `Vec` from `keys()` rather than a minted class.
+#[test]
+fn open_table_wasm_class_carries_every_row_flavor() {
+    let preserve = open_table_wasm_src(
+        "pid = bytes .size 4\n\
+         md = uint / text\n\
+         dup = {\n  * pid => uint ; @duplicates preserve\n  ,\n  * md => md ; @duplicates preserve\n}\n",
+        "preserve",
+    );
+    assert!(
+        preserve.contains("pub fn rest(&self) -> PairMapMdToMd {"),
+        "a `@duplicates preserve` catch-all returns the PairMap-backed twin, got:\n{preserve}"
+    );
+    assert!(
+        preserve.contains("pub fn keys(&self) -> PidList {"),
+        "a preserve TYPED row keeps the flattened surface, got:\n{preserve}"
+    );
+
+    let named = open_table_wasm_src(
+        "pid = bytes .size 4\n\
+         md = uint / text\n\
+         named = {\n  * pid => uint ; @name typed\n  ,\n  * md => md ; @name captured\n}\n",
+        "named",
+    );
+    assert!(
+        named.contains("pub fn captured(&self) -> MapMdToMd {")
+            && named.contains("self.0.typed.insert("),
+        "`@name` renames the catch-all's getter and the typed row's backing field, never the \
+         flattened accessor names, got:\n{named}"
+    );
+
+    let nullable = open_table_wasm_src(
+        "pid = bytes .size 4\n\
+         md = uint / text\n\
+         nl = { * pid => (uint / null), * md => md }\n",
+        "nullable",
+    );
+    assert!(
+        nullable.contains("pub fn has(&self, key: &Pid) -> bool {"),
+        "a nullable typed value grows `has`, the same flatten convention a table wrapper uses, \
+         got:\n{nullable}"
+    );
+
+    let native = open_table_wasm_src(
+        "md = uint / text\nnk = { * text => uint, * md => md }\n",
+        "native",
+    );
+    assert!(
+        native.contains("pub fn keys(&self) -> Vec<String> {"),
+        "a wasm-native typed key returns a bare Vec, got:\n{native}"
+    );
+}
+
+/// The typed row's keys list is named off the key's USE-SITE ident, never its resolved one: two
+/// aliases of one underlying type key two open tables and mint two DISTINCT list classes. This is
+/// what keeps a locally-minted `<AliasV1>List` from collapsing onto a `<Base>List` that an
+/// `@extern_companions` filing has deferred to a dependency — normalizing `K_t` before naming its
+/// keys list would silently defer the local one too.
+#[test]
+fn open_table_keys_list_is_named_off_the_typed_key_alias() {
+    let src = open_table_wasm_src(
+        "pid = bytes .size 4\n\
+         pid_v1 = pid\n\
+         md = uint / text\n\
+         v2 = { * pid => uint, * md => md }\n\
+         v1 = { * pid_v1 => uint, * md => md }\n",
+        "alias",
+    );
+    assert!(
+        src.contains("pub fn keys(&self) -> PidList {")
+            && src.contains("pub fn keys(&self) -> PidV1List {"),
+        "each open table's keys() must name its OWN key ident's list, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub struct PidV1List(") && src.contains("pub struct PidList("),
+        "both list classes must be minted, got:\n{src}"
+    );
+}
+
+/// The three collision legs an open table owes the wasm wrapper-name detector family. It gets no
+/// sibling detector of its own — its class is named by the rule ident, which is the author's own
+/// name — but it DOES mint two structural classes, and each is a leg on an existing detector:
+/// the `<K_t>List` its flattened `keys()` returns, and the catch-all row's map class in whichever
+/// flavor the row carries.
+#[test]
+fn open_table_wasm_wrapper_ident_collisions_reject_gracefully() {
+    let run = |cddl: &str, tag: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_open_table_collide_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "open_table_collide_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        result
+            .expect_err("a rule claiming an open table's wasm wrapper ident must be a graceful Err")
+            .to_string()
+    };
+
+    // (a) the TYPED row's keys() list — the direct-claim leg. Only the flattened `keys()` mints
+    // this class, so a walk reading the catch-all alone would let the rule shadow it silently.
+    let msg = run(
+        "pid = bytes .size 4\n\
+         pid_list = [x: uint]\n\
+         md = uint / text\n\
+         labels = { * pid => uint, * md => md }\n\
+         user = [p: pid_list]\n",
+        "keys",
+    );
+    assert!(
+        msg.contains("PidList")
+            && msg.contains("an open table's keys() wrapper of the same element"),
+        "the direct-claim leg must name the open table's keys() wrapper, got: {msg}"
+    );
+
+    // (b) the CATCH-ALL row's default-flavored map class.
+    let msg = run(
+        "pid = bytes .size 4\n\
+         map_u64_to_text = [x: uint]\n\
+         labels = { * pid => uint, * uint => text }\n\
+         user = [p: map_u64_to_text]\n",
+        "catchall",
+    );
+    assert!(
+        msg.contains("MapU64ToText")
+            && msg.contains("the open table catch-all row of 'Labels'")
+            && msg.contains("loose map wrapper"),
+        "the catch-all leg must name the open table's catch-all row and the DEFAULT flavor, got: \
+         {msg}"
+    );
+
+    // (c) the CATCH-ALL row's `@duplicates preserve` map class — the flavored twin, in the
+    // pair-map detector's own voice.
+    let msg = run(
+        "pid = bytes .size 4\n\
+         pair_map_u64_to_text = [x: uint]\n\
+         labels = {\n  * pid => uint\n  ,\n  * uint => text ; @duplicates preserve\n}\n\
+         user = [p: pair_map_u64_to_text]\n",
+        "catchallpreserve",
+    );
+    assert!(
+        msg.contains("PairMapU64ToText")
+            && msg.contains("the `@duplicates preserve` catch-all row of 'Labels'")
+            && msg.contains("PairMap wrapper"),
+        "the preserve catch-all leg must name the flavored row and the PairMap twin, got: {msg}"
+    );
+}
+
+/// The MEMBER-name hazard flattening creates, and the only one it does: the typed row's accessors
+/// and the catch-all row's getter land on ONE wasm impl, so a `@name`d catch-all spelling a
+/// flattened accessor name would emit two methods of one name (E0592 in the generated crate). All
+/// five names are reserved unconditionally, and only when wasm bindings are generated — a rust-only
+/// crate has no such class and the row name is free.
+#[test]
+fn open_table_catch_all_named_for_a_flattened_accessor_rejects_gracefully() {
+    let run = |wasm: &str| -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_open_table_accessor_{}_{}.cddl",
+            wasm.len(),
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "pid = bytes .size 4\n\
+             md = uint / text\n\
+             clash = {\n  * pid => uint\n  ,\n  * md => md ; @name keys\n}\n",
+        )
+        .unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "open_table_accessor_unused",
+            wasm,
+        ]))
+        .map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    };
+    let msg = run("--wasm=true")
+        .expect_err("a catch-all named for a flattened accessor must be a graceful Err");
+    assert!(
+        msg.contains("the open table 'Clash' names its catch-all row 'keys'")
+            && msg.contains("`get`, `has`, `insert`, `keys`, `len`"),
+        "the message must name the row, the offending name and the full reserved set, got: {msg}"
+    );
+    run("--wasm=false")
+        .expect("without wasm bindings there is no class to collide on, so the name is free");
+}
+
 /// A rest row's per-entry VALUE encoding sidecar is populated from the LOCAL vars the value's
 /// deserialize bound (named off the fixed `rest_value` binding), never from the sidecar
 /// DECLARATION's names (named off the row's field name). The two coincide only for the default

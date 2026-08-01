@@ -2461,14 +2461,49 @@ pub(super) fn codegen_struct(
                 wrapper.s_impl.push_fn(setter);
             }
         }
+        // An OPEN TABLE's TYPED row: its map surface is FLATTENED onto THIS class instead of hung off
+        // a whole-map getter — `insert`/`get`/`len`/`keys` (plus `has` for a nullable value) delegate
+        // straight to the typed container field, through the very helper the two map-wrapper twins
+        // use. The rationale is the set nominal's, verbatim (`docs/docs/wasm_differences.mdx` §
+        // "Sets"): a wasm class has no `Deref`, so a two-layer `t.entries().get(k)` is the cost of a
+        // container getter, and a JS caller wants `t.get(k)`. It also means the typed row mints NO
+        // `MapKToV` class of its own, which is what leaves the collision-detector family at three new
+        // legs rather than four (see the note in `non_empty_map_wrapper_name_collisions`). The
+        // CATCH-ALL row keeps its container and its read-only `rest()` getter, below.
+        if let Some(typed) = record.typed_row().filter(|r| !r.is_array_tail()) {
+            wrapper
+                .s_impl
+                .new_fn("len")
+                .vis("pub")
+                .ret("usize")
+                .arg_ref_self()
+                .doc(
+                    "The number of TYPED entries (CDDL `* k1 => v1`, the first row). The catch-all \
+                     row's own count is `rest().len()`.",
+                )
+                .line(format!("self.0.{}.len()", typed.field_name));
+            push_table_accessors(
+                gen_scope,
+                &mut wrapper,
+                types,
+                typed.domain(),
+                typed.range(),
+                &format!("self.0.{}", typed.field_name),
+                cli,
+            );
+        }
         // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
         // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
         // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Deliberately no `new()`
         // arg and no setter — the rest defaults empty and rides the wrapper's own mutation surface
         // (matching the rust side, where `new()` excludes it). The wrapper class is minted in the wasm
         // pass (`mint_wasm_wrapper_for_visited_type` for the rest map/list). An `@ignore` row/tail
-        // stores nothing, so it has no getter (its wasm class is a closed struct's).
-        for rest in record.captured_dynamic_rows() {
+        // stores nothing, so it has no getter (its wasm class is a closed struct's). An open table's
+        // TYPED row is excluded — its surface is flattened above.
+        for rest in record
+            .captured_dynamic_rows()
+            .filter(|r| !record.is_typed_row(r))
+        {
             let rest_ty = rest_member_type(rest);
             let mut getter = codegen::Function::new(&rest.field_name);
             getter
