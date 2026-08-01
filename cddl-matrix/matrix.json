@@ -2653,7 +2653,7 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen panic (exit 101)",
+            "evidence": "probe (emission=preserve): cddl-codegen rejected at parse/lex (exit 1)",
             "status": "unsupported"
           }
         },

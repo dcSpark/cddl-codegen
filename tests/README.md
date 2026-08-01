@@ -3067,9 +3067,11 @@ parse), so a future emission surface can't silently escape the differential — 
 `key_demand_assertions.rs`'s widening to bare roots exactly this way before the file was
 classified. One (profile, input)
 pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve, tests/core) — `#6.11(uint / text)`, a CBOR
-tag over a type-choice, hits the tagged-enum `assert!(!cli.preserve_encodings)` in
-`generation/enums.rs` — with a resurfaced guard both directions (a listed pair that generates fails
-as "gap closed — remove the pin"; an unlisted abort fails normally).
+tag directly over an anonymous choice rule, which `IntermediateTypes::finalize` refuses gracefully
+under `--preserve-encodings` (the enum has nowhere to store the tag's encoding, since preserve's
+metadata is per-variant) — with a resurfaced guard both directions (a listed pair that generates
+fails as "gap closed — remove the pin"; an unlisted abort fails normally). The pin treats a graceful
+`Err` and a panic alike, so it kept holding when that class became a diagnosis.
 
 Findings reconcile against a `PARITY_EXEMPT` ledger keyed `(profile, input, item, reason)`, the same
 `WASM_MATRIX_SKIP` idiom: a finding matching an entry is expected (no failure); an entry matching no

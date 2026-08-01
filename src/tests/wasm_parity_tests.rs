@@ -104,8 +104,10 @@
 //! the plain `cargo test` / check.ts local tier.
 //!
 //! **Generation-fail pin (the `WASM_MATRIX_SKIP` idiom).** One `(profile, input)` pair aborts
-//! generation — a CBOR tag over a type-choice under `--preserve-encodings` (the `assert!` class in
-//! `generation/enums.rs`). It is pinned in `EXPECTED_GENERATION_FAIL` with a resurfaced guard both
+//! generation — a CBOR tag over an anonymous type-choice rule under `--preserve-encodings`, which
+//! `IntermediateTypes::finalize` refuses gracefully (the pin covers a graceful `Err` and a panic
+//! alike, so it survived that class becoming a diagnosis).
+//! It is pinned in `EXPECTED_GENERATION_FAIL` with a resurfaced guard both
 //! directions: a listed pair that now generates fails ("gap closed — remove the pin"); an unlisted
 //! abort fails as a normal generation failure.
 //!
@@ -161,11 +163,13 @@ const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
 const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
     "preserve",
     "tests/core",
-    "`tagged_type_choice = #6.11(uint / text)` — a CBOR tag over a type-choice hits the tagged-enum \
-     serialize path's explicit `assert!(!cli.preserve_encodings)` in generation/enums.rs (the \
-     per-variant encoding metadata has no home on the enum); the SAME class recombination_tests' \
-     PRESERVE_ONLY_PANIC_CLASSES ledgers. Note this pin used to name the float member on this input, \
-     which no longer aborts — floats carry their head width as an encoding variable",
+    "`tagged_type_choice = #6.11(uint / text)` — a CBOR tag directly over an anonymous choice RULE \
+     is unsupported under --preserve-encodings (the per-variant encoding metadata has no home on the \
+     enum) and is REFUSED gracefully in IntermediateTypes::finalize, so this pair still aborts \
+     generation, now with a diagnosis instead of an assert. Pinned by \
+     robustness_tests::tagged_anonymous_choice_rejects_gracefully_under_preserve. Note this pin used \
+     to name the float member on this input, which no longer aborts — floats carry their head width \
+     as an encoding variable",
 )];
 
 /// `tests/<dir>` fixture dirs swept by the corpus axis: (dir, per-dir committed profile rows).

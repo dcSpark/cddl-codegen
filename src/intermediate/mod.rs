@@ -3225,6 +3225,53 @@ impl<'a> IntermediateTypes<'a> {
         for msg in custom_codec_rejections {
             self.record_rejection(msg);
         }
+        // A CBOR tag riding an ANONYMOUS choice RULE — `t = #6.10(int / tstr)`, and the group-choice
+        // and all-fixed spellings of the same thing — has nowhere to put its encoding metadata under
+        // `--preserve-encodings`: the tag is a property of the enum, while the encoding sidecar is
+        // per-VARIANT, and no variant owns the tag. That was an explicit
+        // `assert!(!cli.preserve_encodings)` in the tagged-enum serialize path (an assert on a FLAG
+        // is a crash, not a boundary), so valid CDDL aborted at exit 101 with no diagnosis.
+        //
+        // Rejected HERE, and keyed on the same predicate the assert has, for the reason the
+        // custom-codec pair above is: the struct KIND decides, a generic instance only materializes
+        // its struct during the resolution earlier in this fn, and this is the last seam before
+        // generation. The predicate is exact rather than conservative — `generate_enum` is reached
+        // from exactly two places, the `TypeChoice` and `GroupChoice` arms of the rust-struct
+        // dispatch in `generation/mod.rs`, and each passes `rust_struct.tag()` straight through — so
+        // no shape that generates today is refused, and nothing that would reach the assert escapes.
+        //
+        // `new_type_choice` is what makes the ALL-FIXED spelling land here too: under
+        // `--preserve-encodings` a tagged fixed-value choice is denied the `CStyleEnum` lowering
+        // (`cant_store_tag`) and registers as a `TypeChoice`, so `#6.10(0 / 1 / 2)` reaches the same
+        // path as `#6.10(int / tstr)`. The assert stays in place as the guard that re-earns the
+        // retired panic-ledger entry if a future path reaches it another way.
+        if cli.preserve_encodings {
+            let mut tagged_enum_rejections = BTreeSet::new();
+            for (ident, rust_struct) in &self.rust_structs {
+                let Some(tag) = rust_struct.tag() else {
+                    continue;
+                };
+                let shape = match rust_struct.variant() {
+                    RustStructType::TypeChoice { .. } => "a type choice (`a / b`)",
+                    RustStructType::GroupChoice { .. } => "a group choice (`… // …`)",
+                    _ => continue,
+                };
+                tagged_enum_rejections.insert(format!(
+                    "rule `{ident}`: a CBOR tag (`#6.{tag}`) directly over {shape} is unsupported \
+                     under `--preserve-encodings`. The tag belongs to the rule, while the encoding \
+                     metadata preserve records is per-VARIANT, so the enum has nowhere to store how \
+                     the tag was written. Name the choice and tag the NAME instead — \
+                     `inner = a / b` with `{ident} = #6.{tag}(inner)` — which mints a tagged wrapper \
+                     over the enum and round-trips byte-exact; a tagged member of a named c-style \
+                     enum (`[f: #6.{tag}(inner)]`) works the same way. Tags over structs, arrays and \
+                     maps are unaffected. Per-variant tag encoding metadata is not implemented; \
+                     without `--preserve-encodings` this rule generates."
+                ));
+            }
+            for msg in tagged_enum_rejections {
+                self.record_rejection(msg);
+            }
+        }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
         // only run post-generic-resolution). Without this the entry-point check at the top of
         // finalize would silently swallow anything recorded here.

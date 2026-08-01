@@ -1483,13 +1483,18 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
     // written by the `write_float` runtime helper, so those compositions batch into the preserve
     // gate like any other primitive. Pinned by `preserve_encodings_supports_floats` and the
     // golden_hex_preserve / golden_hex_canonical float KATs.
-    (
-        "!cli.preserve_encodings @ src/generation/enums.rs @ fn cddl_codegen::generation::enums::generate_enum",
-        "a CBOR tag over a type-choice / enum / group-choice (`#6.11(int / tstr)`, `#6.11(<enum>)`) hits \
-         the tagged-enum serialize path's explicit `assert!(!cli.preserve_encodings)` — the per-variant \
-         encoding metadata has no home on the enum; cddl-matrix/ROADMAP.md § findings, \
-         `A CBOR tag over a type-choice enum is unimplemented under --preserve-encodings` entry",
-    ),
+    // (retired when the tagged anonymous choice gained a graceful refusal) a CBOR tag over a
+    // type-choice / group-choice rule (`#6.11(int / tstr)`, the group-choice spellings, and the
+    // all-fixed one that this profile denies the C-style lowering) no longer panics under
+    // --preserve-encodings: `IntermediateTypes::finalize` refuses it on the struct-KIND walk before
+    // generation runs, so the composition classifies Graceful rather than Panic. Support is still
+    // absent — the per-variant encoding metadata has no home on the enum — so these compositions
+    // remain out of the executed set; what changed is that the boundary is a diagnosis instead of
+    // an `assert!` on a flag. The assert stays in the tagged-enum serialize path as the guard that
+    // re-earns this entry. Pinned by
+    // `tagged_anonymous_choice_rejects_gracefully_under_preserve`; cddl-matrix/ROADMAP.md §
+    // findings, `A CBOR tag over a type-choice enum is unimplemented under --preserve-encodings`
+    // entry.
     // (retired when `any` gained runtime support) a CBOR tag wrapping `any` (`#6.11(any)`) under
     // --preserve-encodings no longer panics building the tag's encoding field: `any` lowers to the
     // self-carried `AnyCbor` runtime type (contributes ZERO owner encoding fields via
@@ -1514,9 +1519,11 @@ const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[];
 /// crate — the leg that would have caught the preserve-only E0308 on tag-wrapped fixed-value members
 /// (`[v: #6.1(null)]`) that passed every default-profile gate and was found only by review.
 ///
-/// Preserve panics for classes that are ok/graceful under default (floats as members; tag over a
-/// type-choice enum; tag wrapping `any`) — those are in `PRESERVE_ONLY_PANIC_CLASSES` and never
-/// reach execution; a NEW preserve panic fails loudly. (Optional non-float fixed-value members now
+/// Preserve panics for classes that are ok/graceful under default go in
+/// `PRESERVE_ONLY_PANIC_CLASSES` and never reach execution; a NEW preserve panic fails loudly. That
+/// ledger is currently EMPTY — every class it held (floats as members, a tag over a type-choice or
+/// group-choice rule, a tag wrapping `any`) either gained preserve support or gained a graceful
+/// refusal, and its retirement comment records which. (Optional non-float fixed-value members now
 /// generate and round-trip via a `bool` presence field under both profiles — the former
 /// encoding-less optional-fixed preserve assert is gone; the composition set still has no
 /// optional-FIXED member kind, so adding one is the extended-member-kind residual in
