@@ -22040,11 +22040,20 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
         "the index-absence warning must not fire for an @extern_companions deferral, got stderr:\n{gen_stderr}"
     );
     let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
-    // Both marker flavors, asserted the same way — the import is grouped into one `use` head, so
-    // match on the class rather than a whole line.
+    // Both marker flavors, asserted the same way — the two imports are grouped into one `use` head
+    // (`use index_dep_crate_wasm::{IdxFooList, IdxHashList};`), so scope the class check to the
+    // import statement's own span (head to `;`): the accessor signatures below also contain the
+    // class name, so a whole-file `contains(class)` would hold even with the import missing.
+    let sibling_import_spans: Vec<&str> = wasm_mod
+        .match_indices("use index_dep_crate_wasm::")
+        .map(|(start, _)| {
+            let rest = &wasm_mod[start..];
+            &rest[..=rest.find(';').expect("unterminated use statement")]
+        })
+        .collect();
     for class in ["IdxFooList", "IdxHashList"] {
         assert!(
-            wasm_mod.contains("use index_dep_crate_wasm::") && wasm_mod.contains(class),
+            sibling_import_spans.iter().any(|span| span.contains(class)),
             "the listed companion {class} must be imported from the declared sibling crate:\n{wasm_mod}"
         );
         assert!(
