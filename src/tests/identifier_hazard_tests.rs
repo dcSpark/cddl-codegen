@@ -747,7 +747,7 @@ fn emitter_local_scan_finds_the_known_anchors() {
     );
 }
 
-/// LOCKSTEP (fast tier — this module is NOT `snapshot_tests`, so it runs at `local` and later):
+/// LOCKSTEP (local tier and later — this module is NOT `snapshot_tests`, the one module fast runs):
 /// every fixed local the emitters bind into a generated fn body must carry a verdict — either
 /// `parsing::GENERATED_LOCAL_RESERVED` (probed to break ≥1 shape × profile, so a field by that name
 /// is refused at parse time) or `parsing::GENERATED_LOCAL_PROBED_SAFE` (probed to break nothing, so
