@@ -6565,6 +6565,168 @@ fn custom_encodings_e2e() {
     );
 }
 
+/// The ALIAS-OF-MARKER custom pair as contract: a type-level `@custom_serialize`/`@custom_deserialize`
+/// on an alias whose BODY references a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule. No new mechanism — a
+/// type-level pair is honored wherever the alias resolves, and this alias resolves to the marker's
+/// type — which is exactly what makes it the "this rule IS that type, written differently on the
+/// wire" spelling: the CDDL body states the semantic identity, the pair states the wire.
+///
+/// Generated under --preserve-encodings --canonical-form, --wasm=false to isolate the rust surface.
+/// The static assertions below pin the two claims that are properties of the COMPOSITION rather than
+/// of either half (the alias resolves to the marker's type; the inferred one-`StringEncoding`
+/// signature the raw-bytes flavor gets, with the table sidecar keyed by the DECODED key); the vectors
+/// in tests/alias-of-marker-e2e/tests.rs then execute byte-exact non-minimal-header round trips at all
+/// three positions the alias reaches, canonical ordering keyed on the CUSTOM-WRITTEN bytes, and the
+/// custom reader's refinement rejections.
+///
+/// The self-carrying flavor (an alias of a plain `_CDDL_CODEGEN_EXTERN_TYPE_`, which demands no
+/// encoding variables and so must DECLARE its wire) is the sibling fixture
+/// tests/custom-encodings-e2e; the two-functions rule this fixture obeys is pinned from the failing
+/// side by `custom_pair_shared_codec_across_positions_fails_to_compile`.
+#[test]
+fn alias_of_marker_e2e() {
+    use std::str::FromStr;
+    let tests_dir = std::path::PathBuf::from_str("tests").unwrap();
+    run_test(
+        "alias-of-marker-e2e",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[
+            tests_dir.join("external_rust_raw_bytes_policy_id"),
+            tests_dir.join("custom_serialization_alias_of_marker"),
+        ],
+        &[],
+        false,
+        &[],
+    );
+    let export = tests_dir.join("alias-of-marker-e2e/export/rust/src/generated");
+    let generated_mod = std::fs::read_to_string(export.join("mod.rs")).unwrap();
+    // The alias IS the marker's type: no wrapper is minted, so every custom codec's value argument is
+    // the hand-written extern itself.
+    for alias in [
+        "pub type PolicyIdV1 = PolicyId;",
+        "pub type PolicyIdV1Entry = PolicyId;",
+    ] {
+        assert!(
+            generated_mod.contains(alias),
+            "the alias must resolve to the marker's type ({alias}):\n{generated_mod}"
+        );
+    }
+    let encodings = std::fs::read_to_string(export.join("cbor_encodings.rs")).unwrap();
+    // The raw-bytes flavor's inferred demand is exactly one `StringEncoding` — which is what gives the
+    // custom TEXT header somewhere to be recorded — and both table sidecars are keyed by the DECODED
+    // key (the `PolicyId` the custom reader returned, not the text it consumed).
+    for slot in [
+        "pub p_encoding: StringEncoding",
+        "pub t_key_encodings: BTreeMap<PolicyIdV1Entry, StringEncoding>",
+        "pub v_value_encodings: BTreeMap<u64, StringEncoding>",
+    ] {
+        assert!(
+            encodings.contains(slot),
+            "expected the inferred encoding slot `{slot}`:\n{encodings}"
+        );
+    }
+}
+
+/// The two-functions rule, pinned from the FAILING side: one custom codec pair reached from a record
+/// field AND a table key cannot compile, because the two positions hand the codec its encoding
+/// variable differently (a field passes its stored encoding by reference; a table entry's is looked up
+/// out of the sidecar and passed by value). `docs/docs/comment_dsl.mdx` § "Table key and value
+/// positions" states the rule; what a consumer needs to know is that breaking it is LOUD — an E0308 at
+/// the disagreeing call site, not a silently different wire.
+///
+/// The failure is a property of the generated crate, not of generation (generation succeeds — the
+/// tool cannot know which signature the hand-written function has), so the gate is `cargo build` +
+/// the error's kind. The injected codec carries the RECORD-FIELD signature, which fixes WHICH call
+/// site disagrees and makes the expected error text deterministic. `tests/alias-of-marker-e2e` is the
+/// obeying twin (two codecs, one per position).
+#[test]
+fn custom_pair_shared_codec_across_positions_fails_to_compile() {
+    use std::io::Write;
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/custom-pair-shared-codec").unwrap();
+    let out_dir = base.join("export");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    let gen_out = codegen_cmd()
+        .arg("--input=tests/custom-pair-shared-codec/input.cddl")
+        .arg("--output=tests/custom-pair-shared-codec/export")
+        .arg("--wasm=false")
+        .arg("--preserve-encodings=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation must succeed (the signature disagreement is only visible to the generated \
+         crate's compiler):\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    // The two call sites, as emitted: the field passes `&…`, the table entry passes the looked-up
+    // value. Asserting both here is what attributes the compile failure below to the POSITION split
+    // rather than to a typo in the injected signature.
+    let serialization =
+        std::fs::read_to_string(out_dir.join("rust/src/generated/serialization.rs")).unwrap();
+    assert!(
+        serialization.contains("write_shared(serializer, key, t_key_encoding)"),
+        "the table-key call must pass the sidecar encoding BY VALUE:\n{serialization}"
+    );
+    assert!(
+        serialization.contains(".map(|encs| encs.f_encoding.clone())"),
+        "the record-field call must pass its stored encoding BY REFERENCE:\n{serialization}"
+    );
+
+    // One codec pair, written with the RECORD-FIELD signature — the spelling a consumer reaches for
+    // when they do not yet know the two positions differ.
+    let mut generated_mod = std::fs::OpenOptions::new()
+        .append(true)
+        .open(out_dir.join("rust/src/generated/mod.rs"))
+        .unwrap();
+    generated_mod
+        .write_all(
+            b"\nuse serialization::*;\n\n\
+            pub fn write_shared<'se>(\n\
+                serializer: &'se mut cbor_event::se::Serializer,\n\
+                bytes: &[u8],\n\
+                str_enc: &StringEncoding,\n\
+            ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {\n\
+                serializer.write_bytes_sz(bytes, str_enc.to_str_len_sz(bytes.len() as u64))\n\
+            }\n\n\
+            pub fn read_shared(\n\
+                raw: &mut cbor_event::de::Deserializer,\n\
+            ) -> Result<(Vec<u8>, StringEncoding), crate::generated::error::DeserializeError> {\n\
+                let (bytes, len_sz) = raw.bytes_sz()?;\n\
+                Ok((bytes, len_sz.into()))\n\
+            }\n",
+        )
+        .unwrap();
+    std::mem::drop(generated_mod);
+
+    let build = tool_cmd("cargo")
+        .arg("build")
+        .current_dir(out_dir.join("rust"))
+        .output()
+        .unwrap();
+    assert!(
+        !build.status.success(),
+        "the generated crate must fail to compile: one codec cannot serve both the by-reference \
+         record-field call and the by-value table-entry call"
+    );
+    let stderr = String::from_utf8_lossy(&build.stderr);
+    assert!(
+        stderr.contains("E0308") && stderr.contains("StringEncoding"),
+        "the failure must be the encoding argument's MODE (E0308, `&StringEncoding` against \
+         `StringEncoding`) — a different error means the fixture stopped testing the two-positions \
+         rule; stderr:\n{stderr}"
+    );
+}
+
 #[test]
 fn open_struct_map_json_e2e() {
     // Loose-CBOR open struct-map FLATTENED-JSON round-trip vectors: rest

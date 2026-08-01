@@ -1005,6 +1005,64 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // ---- @custom_serialize/@custom_deserialize on an ALIAS OF A MARKER RULE ------------------
+    // The "this rule IS that type, written differently on the wire" spelling: the pair sits on an
+    // alias whose BODY references a marker rule, so it escapes the on-the-marker rejection (23a/23i)
+    // and rides the general type-level mechanism — a pair is honored wherever the alias resolves, and
+    // this alias resolves to the marker's type. 23a/23i are therefore the placement controls: the
+    // SAME directives on the marker RULE reject, while the alias OF it is honored.
+    //
+    // These two cells are the RAW-BYTES flavor, whose encoding demand is one `StringEncoding` — so
+    // the pair infers exactly the signature a string-framed custom wire needs and no declaration is
+    // required. The SELF-CARRYING flavor (an alias of a plain `_CDDL_CODEGEN_EXTERN_TYPE_`, demanding
+    // nothing) is swept above and NOT duplicated here: 23p/23r are its honored twins at these same two
+    // positions WITH `@custom_encodings`, and 23v/23w are its refusal without one. Executed vectors:
+    // `tests/alias-of-marker-e2e` (this flavor), `tests/custom-encodings-e2e` (that one).
+    // Under `--preserve-encodings=true`, which is where the signature claim lives at all.
+    // 23x. HONORED, type level, RECORD FIELD: the field's stored `StringEncoding` is passed by
+    //      REFERENCE, and the slot exists because the raw-bytes marker demanded it.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "raw-bytes-alias-type-level",
+        spec: "pid = _CDDL_CODEGEN_RAW_BYTES_TYPE_\npid_v1 = pid ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: pid_v1]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                // the alias resolves to the marker's type — no wrapper is minted for the pair to
+                // sit on, which is what makes this the Rust-type override
+                "pub type PidV1 = Pid;",
+                "pub f_encoding: StringEncoding",
+                // split so the anchors survive a rustfmt line wrap between LHS and call
+                "let (f, f_encoding) =",
+                "my_deser(raw)",
+                // the by-REFERENCE argument mode this position gives the codec
+                ".map(|encs| encs.f_encoding.clone())",
+            ],
+            must_not: &[],
+        },
+    },
+    // 23y. HONORED at a TABLE KEY DOMAIN: the per-entry sidecar is keyed by the DECODED key (the
+    //      marker's type) and passed by VALUE — the mode split that makes one alias reached from both
+    //      positions need two functions (`tests/custom-pair-shared-codec` pins that violating it is a
+    //      loud generated-crate E0308).
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "raw-bytes-alias-table-key-domain",
+        spec: "pid = _CDDL_CODEGEN_RAW_BYTES_TYPE_\npid_v1 = pid ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [t: { * pid_v1 => uint }]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "pub type PidV1 = Pid;",
+                "pub t_key_encodings: BTreeMap<PidV1, StringEncoding>",
+                "my_ser(serializer, key, t_key_encoding)",
+                "let (t_key, t_key_encoding) =",
+                "my_deser(raw)",
+            ],
+            must_not: &[],
+        },
+    },
     // ---- @raw_bytes_flavor -------------------------------------------------------------------
     // 24. VALID position (the only one): a `_CDDL_CODEGEN_EXTERN_TYPE_` GENERIC. One spec carries
     //     BOTH a raw-bytes-argument instance (`ext_set<pub_key>` → the `ExtSetRawBytes<PubKey>`

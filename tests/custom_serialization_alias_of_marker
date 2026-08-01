@@ -1,0 +1,93 @@
+// Hand-written `@custom_serialize`/`@custom_deserialize` targets for `tests/alias-of-marker-e2e`,
+// whose subject is the ALIAS-OF-MARKER spelling: the pair sits on `policy_id_v1 = policy_id`, an
+// alias of a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule, so the codecs below take the MARKER'S TYPE
+// (`PolicyId`) — the rule is that type, written differently on the wire.
+//
+// The wire is hex TEXT (CIP-25 v1's policy-id rendering) over a type whose CBOR default would be a
+// byte string, and it is rendered in the REVERSED-byte convention (the display order Bitcoin-style
+// hash rendering uses). The reversal is not decoration: a straight hex rendering is order-PRESERVING,
+// so a canonical map ordered by the custom-written bytes and one ordered by the decoded bytes would
+// agree and `canonical_sorts_by_the_custom_written_bytes` could not tell them apart. Reversed, the two
+// orders disagree, and the assertion has something to catch.
+//
+// Generated under `--preserve-encodings --canonical-form`, so each serialize signature ends in
+// `force_canonical: bool`. The encoding-variable signature is INFERRED from the replaced type: a
+// raw-bytes marker demands exactly one `StringEncoding`, which is exactly what a text header needs, so
+// this flavor needs no `@custom_encodings` declaration (the self-carrying flavor does — see
+// tests/custom_serialization_encodings).
+//
+// TWO functions per direction, differing only in how the encoding arrives: a record field passes its
+// stored encoding by REFERENCE, a table entry's is looked up out of the sidecar and passed by VALUE
+// (docs/docs/comment_dsl.mdx, "Table key and value positions"). Sharing one across both positions is
+// a loud generated-crate E0308 — pinned by `tests/custom-pair-shared-codec`, not worked around here.
+
+/// The wire rendering: the policy id's bytes, REVERSED, as lowercase hex text.
+fn policy_id_to_hex_text(policy_id: &PolicyId) -> String {
+    let mut text = String::with_capacity(56);
+    for byte in policy_id.to_raw_bytes().iter().rev() {
+        text.push_str(&format!("{byte:02x}"));
+    }
+    text
+}
+
+/// The inverse, with both refinements the wire needs: the text must be 56 hex digits (the fixed width
+/// the marker's type demands), and anything else is a graceful deserialize error rather than a panic.
+fn policy_id_from_hex_text(
+    text: &str,
+) -> Result<PolicyId, crate::generated::error::DeserializeError> {
+    let ascii = text.as_bytes();
+    if ascii.len() != 56 || !ascii.iter().all(u8::is_ascii_hexdigit) {
+        return Err(crate::generated::error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError(format!(
+                "policy_id_from_hex_text(): expected 56 hex digits, found {text:?}"
+            )),
+        )
+        .into());
+    }
+    let mut bytes: Vec<u8> = (0..56)
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+        .collect();
+    bytes.reverse();
+    PolicyId::from_raw_bytes(&bytes)
+}
+
+/// `policy_id_v1` at a RECORD FIELD: the stored `StringEncoding` arrives by reference.
+pub fn write_policy_id_hex<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    policy_id: &PolicyId,
+    str_enc: &StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    let text = policy_id_to_hex_text(policy_id);
+    serializer.write_text_sz(
+        &text,
+        str_enc.to_str_len_sz(text.len() as u64, force_canonical),
+    )
+}
+
+pub fn read_policy_id_hex(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(PolicyId, StringEncoding), crate::generated::error::DeserializeError> {
+    let (text, len_sz) = raw.text_sz()?;
+    Ok((policy_id_from_hex_text(&text)?, len_sz.into()))
+}
+
+/// `policy_id_v1_entry` at a TABLE KEY or TABLE VALUE: the per-entry `StringEncoding` is looked up out
+/// of the table's sidecar (keyed by the DECODED key) and arrives by value. Under `--canonical-form`
+/// the key flavor is additionally called into a scratch `Serializer` by the key-sort pass — reached
+/// there through `&mut buf` — so it must be deterministic, which it is.
+pub fn write_policy_id_hex_entry<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    policy_id: &PolicyId,
+    str_enc: StringEncoding,
+    force_canonical: bool,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    write_policy_id_hex(serializer, policy_id, &str_enc, force_canonical)
+}
+
+pub fn read_policy_id_hex_entry(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(PolicyId, StringEncoding), crate::generated::error::DeserializeError> {
+    read_policy_id_hex(raw)
+}
