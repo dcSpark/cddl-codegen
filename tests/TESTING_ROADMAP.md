@@ -2444,6 +2444,19 @@ DROPPED on every rule shape or spelling whose parse path does not carry it to a 
   grows along: the COUNT of fresh-config constructions inside overload-scoped fns, measurable by
   whoever next adds one — today it is four, all at the named boundaries, so a fifth that is NOT one
   of them is the instance that makes the boundary list worth writing.
+  A second, smaller gap in the delivered lint is a WORK ITEM (S), not a deferral, because no
+  honest reopening signal exists for it: the scoping rule recognizes an overload-scoped fn by
+  the parameter spellings that exist today (a `DeserializeConfig`/`SerializeConfig` parameter,
+  `deserializer_name:` / `serializer_use:` / `serializer_pass:`, or a config-impl `&self`
+  method), so a future helper that receives the name under a FOURTH spelling is silently out of
+  scope — and the anchors test pins only that the known fns STAY scoped, which cannot see the
+  new one; the first observable would be the next mis-framed leaf, in a consumer. The closure
+  is a spelling guard in `emitter_overload_lint_sees_its_anchors`: scan the emitter sources' fn
+  parameter lists for a name-typed parameter (`&str` / `(&str, bool)`) whose identifier
+  contains `serializ`, and fail unless its spelling is one the scoping rule recognizes — the
+  root-binding `serializer: &mut Serializer` parameters are type-distinguished and exempt, and
+  a hit means either teach the scoping rule the new spelling or rename the parameter to an
+  existing one.
 
 - **A cargo FEATURE on a generated crate's dependency can change what emitted code MEANS, and no
   axis varies dependency features — compounded by every generated `Serialize` only ever being

@@ -70,7 +70,7 @@ whichever arm comes first.
 
 Note: `@name` is also the remedy for a field name the generator refuses. A field whose emitted
 identifier is a Rust keyword (`{ if: uint }`) or a **reserved generated-local name** (`raw`, `len`,
-`read`, … — see [Reserved field names](current_capacities) for the set and where each applies)
+`read`, … — see [Reserved field names](current_capacities#reserved-field-names) for the set and where each applies)
 would emit a crate that does not compile, so it is rejected at parse time; `; @name <other>` renames
 the Rust field and leaves the CBOR wire key untouched (a bareword/text key stays the same text, and
 an array position never puts the name on the wire). The refusal reads the **resolved** name, so

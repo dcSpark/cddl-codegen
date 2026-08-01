@@ -88,7 +88,17 @@
       ]
     },
     {
-      "gate": "component_corpus_compiles"
+      "gate": "component_corpus_compiles",
+      "warm_ms": 50000,
+      "n": 3,
+      "measured": "2026-08-01",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-01",
+          "warm_ms": 50000
+        }
+      ]
     },
     {
       "gate": "component_host",
@@ -660,9 +670,9 @@
     },
     {
       "gate": "recombination_preserve_crates_execute",
-      "warm_ms": 134000,
+      "warm_ms": 106000,
       "n": 20,
-      "measured": "2026-07-30",
+      "measured": "2026-08-01",
       "machine": "86216c55",
       "history": [
         {
@@ -680,6 +690,10 @@
         {
           "date": "2026-07-30",
           "warm_ms": 134000
+        },
+        {
+          "date": "2026-08-01",
+          "warm_ms": 106000
         }
       ]
     },
