@@ -34,3 +34,9 @@ dupp = {
 ; `any` on BOTH ranges: values render through the NATURAL walk (not `AnyCbor`'s tagged codec), and
 ; the published open region is the permissive one.
 anyval = { * policy_id => any, * md => any }
+
+; The NonEmpty twin (`{+ …}`) on the JSON face: the min-1 door is re-checked after the visitor has
+; read every member, and it counts TYPED bindings — an object of purely captured members refuses.
+; JSON Schema has no way to say "at least one property matching K_t", so the published schema is the
+; unbounded one; the bound lives in the hand-written `Deserialize` only.
+ne_labels = { + policy_id => uint, * md => uint }

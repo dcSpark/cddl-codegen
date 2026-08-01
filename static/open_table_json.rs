@@ -216,3 +216,16 @@ pub fn open_table_key_collision(name: &str) -> String {
 pub fn open_table_duplicate_member(name: &str) -> String {
     format!("the open table object carries the member name {name:?} twice")
 }
+
+/// The NonEmpty open table's min-1 refusal, in JSON words: an object that bound NO member to the
+/// typed row. The bound counts TYPED entries only, so an object full of captured members reaches
+/// this — which is the whole reason the wording says so rather than "empty object".
+///
+/// The CBOR face raises `DeserializeFailure::RangeCheck { found: 0, min: Some(1), max: None }` for
+/// the same condition (as does `NonEmptyMap`'s `TryFrom` door). serde's error type is opaque to us,
+/// so the JSON door cannot carry that value — it carries the same STATEMENT instead.
+pub fn open_table_min_one_typed() -> String {
+    "the open table needs at least one TYPED entry (CDDL `{ + k1 => v1, * k2 => v2 }`): no member \
+     name bound the typed row"
+        .to_owned()
+}

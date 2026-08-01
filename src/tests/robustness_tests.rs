@@ -5604,15 +5604,65 @@ fn open_table_front_end() {
         inline.contains("name it as its own rule") || inline.contains("its own named rule"),
         "the inline rejection must name the named-rule form, got: {inline}"
     );
-    // The `{+ …}` NonEmpty twin: its interim rejection STATES the min-1-counts-TYPED rule.
-    let plus = run(
-        &format!("{MD}t = {{ + bstr => uint, * md => md }}\n"),
-        "plus",
+    // The `{+ …}` NonEmpty twin: min-1 on the TYPED row is the delivered flavor. `+` and `1*` are
+    // the same spelling (the table path's rule verbatim), and both mint the two-argument door plus
+    // the post-loop bound check.
+    for (spec_occ, tag) in [("+", "plus"), ("1*", "onestar")] {
+        let ne = run(
+            &format!("{MD}t = {{ {spec_occ} bstr => uint, * md => md }}\n"),
+            tag,
+        )
+        .unwrap_or_else(|e| panic!("a NonEmpty open table (`{spec_occ}`) must generate, got: {e}"));
+        let ne_src = src(&ne);
+        assert!(
+            ne_src.contains("pub fn new(first_key: Vec<u8>, first_value: u64) -> Self"),
+            "the NonEmpty door must take the first typed entry, got:\n{ne_src}"
+        );
+        assert!(
+            ne_src.contains("if entries.is_empty()")
+                && ne_src.contains("min: Some(1)")
+                && ne_src.contains("max: None"),
+            "the min-1 bound must be enforced after the deserialize loop with `NonEmptyMap`'s own \
+             RangeCheck, got:\n{ne_src}"
+        );
+    }
+    // The two door parameters are FIXED emitter names beside a `@name`-settable row name, so the
+    // one identifier hazard they create is a row named for a parameter: the seeding block must not
+    // bind the field's name as its local, or it would shadow the parameter it is handed (E0308 in
+    // the generated crate, where the spec author cannot see it).
+    let named_for_param = run(
+        &format!(
+            "{MD}t = {{\n  + bstr => uint ; @name first_key\n  ,\n  * md => md ; @name first_value\n}}\n"
+        ),
+        "nameparam",
     )
-    .expect_err("the NonEmpty open table must reject until its phase lands");
+    .expect("a row named for a door parameter must still generate");
     assert!(
-        plus.contains("NonEmpty open table") && plus.contains("minimum of 1 counts TYPED entries"),
-        "the NonEmpty interim rejection must state the rule it will enforce, got: {plus}"
+        src(&named_for_param).contains("let mut seed = BTreeMap::new();"),
+        "the seeding local must be a fixed name, not the row's, got:\n{}",
+        src(&named_for_param)
+    );
+    // …and `0*` is the same UNBOUNDED row `*` is, so it mints the argument-less door.
+    let zero_star = run(
+        &format!("{MD}t = {{ 0* bstr => uint, * md => md }}\n"),
+        "zerostar",
+    )
+    .expect("`0*` on the typed row is the unbounded spelling and must generate");
+    assert!(
+        src(&zero_star).contains("pub fn new() -> Self"),
+        "`0*` must stay the unbounded flavor, got:\n{}",
+        src(&zero_star)
+    );
+    // The min-1 counts TYPED entries, so it has no reading on the catch-all row.
+    let plus_catch = run(
+        &format!("{MD}t = {{ * bstr => uint, + md => md }}\n"),
+        "pluscatch",
+    )
+    .expect_err("`+` on the catch-all row must reject");
+    assert!(
+        plus_catch.contains("supported only on an open table's TYPED row")
+            && plus_catch.contains("minimum of 1 counts TYPED entries"),
+        "the catch-all `+` rejection must state where the bound belongs, got: {plus_catch}"
     );
     // `?` on a row is neither shape.
     let opt = run(
@@ -5621,8 +5671,18 @@ fn open_table_front_end() {
     )
     .expect_err("a `?` row must reject");
     assert!(
-        opt.contains("`*` occurrence"),
-        "a bounded row must name the `*` requirement, got: {opt}"
+        opt.contains("`*` occurrence") && opt.contains("`+` (at least one TYPED entry)"),
+        "a bounded row must name the `*` requirement and the one `+` concession, got: {opt}"
+    );
+    // A genuinely bounded marker (`n*m`) is still a real cardinality this shape does not honor.
+    let bounded = run(
+        &format!("{MD}t = {{ 2*5 bstr => uint, * md => md }}\n"),
+        "bounded",
+    )
+    .expect_err("a `n*m` row must reject");
+    assert!(
+        bounded.contains("`*` occurrence"),
+        "a bounded row must name the `*` requirement, got: {bounded}"
     );
     // `any` on the TYPED row claims all eight majors, leaving the catch-all nothing.
     let any_typed = run(

@@ -5368,8 +5368,8 @@ fn recognize_open_table(
 }
 
 /// Which of an open table's two rows is being built — they differ in the occurrence they accept
-/// (the typed row's `+` is the NonEmpty twin's spelling, which has its own interim rejection), in
-/// their default field name, and in every rejection message's wording.
+/// (only the TYPED row takes `+`/`1*`, the NonEmpty twin's spelling, because the min-1 counts typed
+/// entries), in their default field name, and in every rejection message's wording.
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum OpenTableRowKind {
     Typed,
@@ -5411,24 +5411,37 @@ fn open_table_row(
         GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
         _ => None,
     };
-    if !matches!(occur, Some(Occur::ZeroOrMore { .. })) {
-        // `{+ …}` on the TYPED row is the NonEmpty twin, a spelled-out phase of this feature that is
-        // not built yet. Its rejection STATES the rule it will enforce (min-1 counts TYPED entries —
-        // a map of pure junk is not a non-empty table), so the loud-failure state of the unbuilt
-        // phase is unambiguous rather than reading like a permanent limitation.
-        if kind == OpenTableRowKind::Typed && matches!(occur, Some(Occur::OneOrMore { .. })) {
-            types.record_rejection(format!(
-                "rule `{src}`: the NonEmpty open table (`{{ + k1 => v1, * k2 => v2 }}`) is not \
-                 supported yet. Its rule is that the minimum of 1 counts TYPED entries only (a map \
-                 of purely captured entries is not a non-empty table), which needs its own \
-                 construction door and its own post-deserialize check. Use `*` on the typed row for \
-                 now."
-            ));
-            return None;
-        }
+    // The row's occurrence marker, read exactly as a TABLE's is (`parsing.rs`'s inline-map arm): `*`
+    // and `0*` are the same unbounded row, `+` and `1*` the same min-1 row. Every other marker names
+    // a real bounded cardinality this shape does not honor, and widening it to 0..N would silently
+    // over-accept.
+    let bound = match occur {
+        Some(Occur::ZeroOrMore { .. }) => Some(false),
+        Some(Occur::OneOrMore { .. }) => Some(true),
+        Some(Occur::Exact { lower, upper, .. }) if upper.is_none() => match lower {
+            None | Some(0) => Some(false),
+            Some(1) => Some(true),
+            _ => None,
+        },
+        _ => None,
+    };
+    let Some(non_empty) = bound else {
         types.record_rejection(format!(
-            "rule `{src}`: the {slot} must use the `*` occurrence (unbounded: `* k => v`). `+`, \
-             `n*m`, and `?` are not supported on an open table's rows."
+            "rule `{src}`: the {slot} must use the `*` occurrence (unbounded: `* k => v`) — or, on \
+             the typed row only, `+` (at least one TYPED entry). `n*m`, `*n`, `n*` with n≥2, and \
+             `?` are not supported on an open table's rows."
+        ));
+        return None;
+    };
+    // The min-1 bound counts TYPED entries only (a map of purely captured entries is not a non-empty
+    // table), so it is a statement about the typed row and has no reading on the catch-all: a
+    // `{ * k1 => v1, + k2 => v2 }` would demand at least one entry no arm of the rule is about.
+    if non_empty && kind == OpenTableRowKind::CatchAll {
+        types.record_rejection(format!(
+            "rule `{src}`: the `+` occurrence is supported only on an open table's TYPED row \
+             (`{{ + k1 => v1, * k2 => v2 }}`), where the minimum of 1 counts TYPED entries. On the \
+             catch-all row it would demand at least one entry the rule says nothing about. Use `*` \
+             on the catch-all row."
         ));
         return None;
     }
@@ -5529,6 +5542,7 @@ fn open_table_row(
         field_name,
         // Derived in `finalize` for the typed row (see the field doc); the catch-all never has one.
         dispatch_major: None,
+        non_empty,
     })
 }
 
@@ -5807,6 +5821,9 @@ fn recognize_rest_row(
         field_name,
         // Only an open table's TYPED row claims a single major; a catch-all sees the complement.
         dispatch_major: None,
+        // Only an open table's TYPED row carries the min-1 (`+`) bound; a single trailing rest row is
+        // recognized only under `*` (its own occurrence guard rejects everything else).
+        non_empty: false,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }
@@ -6042,6 +6059,9 @@ fn recognize_array_rest_tail(
         field_name,
         // An array tail has no keys, so no major-type dispatch and no claimed major.
         dispatch_major: None,
+        // `[a, b, + t]` is not a recognized tail shape (the tail guard takes `*` only), so an array
+        // tail never carries the min-1 bound.
+        non_empty: false,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }

@@ -966,6 +966,14 @@ pub struct RestRow {
     /// row and array tail: those see the COMPLEMENT of the typed row's major (or, with no typed row,
     /// everything), which is not a single major and is expressed by the loop's arm layout instead.
     pub dispatch_major: Option<CBORType>,
+    /// The row carries a MIN-1 occurrence (`+` / `1*`) rather than the unbounded `*`. `true` only on
+    /// an open table's TYPED row (`t = { + K_t => V_t, * K_r => V_r }`, the NonEmpty twin), where the
+    /// minimum counts TYPED entries only — a map of purely captured entries is not a non-empty table.
+    /// The bound is enforced at exactly two doors, mirroring `NonEmptyMap`'s single-door posture: the
+    /// CBOR deserialize's post-loop `is_empty()` check and the JSON visitor's, both raising the same
+    /// `RangeCheck { found: 0, min: Some(1), max: None }`; and the value is unbreakable-by-construction
+    /// from `new(first_key, first_value)`, the `NonEmptyMap::new` door verbatim.
+    pub non_empty: bool,
 }
 
 /// Whether any alias in `ty`'s alias chain carries a `@custom_serialize`/`@custom_deserialize`
@@ -1201,6 +1209,14 @@ impl RustRecord {
             .as_deref()
             .into_iter()
             .chain(self.rest.as_deref())
+    }
+
+    /// Whether this record is the NonEmpty open table (`t = { + K_t => V_t, * K_r => V_r }`): the
+    /// min-1 flavor, whose typed container must hold at least one entry. The predicate every
+    /// bound-carrying emission keys on (the `new(first_key, first_value)` door, the post-loop
+    /// deserialize check, the JSON visitor's assembly, the WIT constructor's two params).
+    pub fn is_non_empty_open_table(&self) -> bool {
+        self.is_open_table() && self.typed_row.as_deref().is_some_and(|t| t.non_empty)
     }
 
     /// Whether `row` is THIS record's open-table TYPED row. Pointer identity against `typed_row`,

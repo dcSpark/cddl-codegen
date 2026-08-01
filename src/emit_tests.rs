@@ -848,6 +848,42 @@ fn record_roundtrip(
             }
         }
     }
+    // The NonEmpty open table (`t = { + K_t => V_t, * K_r => V_r }`): its `new` takes the first typed
+    // entry, so the BASELINE already carries one — the min-1 bound is unbreakable by construction and
+    // needs no separate case. A `@custom_wire_major` key whose codec owns the wire is skipped for the
+    // whole record rather than for the row: unlike the unbounded flavor there is no
+    // empty-typed-region baseline left to round-trip, and a minted value could land on the wrong side
+    // of the dispatch (the mint artifact the row-level exclusion below describes).
+    if let Some(typed) = record
+        .typed_row()
+        .filter(|_| record.is_non_empty_open_table())
+    {
+        if type_uses_custom_ser(
+            types,
+            typed.domain(),
+            &mut std::collections::BTreeSet::new(),
+        ) {
+            crate::warn!(
+                "cddl-codegen --emit-tests: no round-trip for {name} (NonEmpty typed key is written by a custom codec)"
+            );
+            return None;
+        }
+        match (
+            valid_value(types, typed.domain()),
+            valid_value(types, typed.range()),
+        ) {
+            (Some(k), Some(v)) => {
+                valid_args.push(k);
+                valid_args.push(v);
+            }
+            _ => {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: no round-trip for {name} (NonEmpty typed row not cheaply mintable)"
+                );
+                return None;
+            }
+        }
+    }
     let base = render_rust(&MintValue::Record {
         ident: name.to_owned(),
         args: valid_args,
@@ -1725,13 +1761,22 @@ pub(crate) fn mint_struct(
                         && f.rust_type.config.default.is_none()
                 })
                 .collect();
-            let args: Option<Vec<MintValue>> = ctor_fields
+            let mut args: Vec<MintValue> = ctor_fields
                 .iter()
                 .map(|f| valid_value_at(types, &f.rust_type, depth + 1))
-                .collect();
+                .collect::<Option<_>>()?;
+            // The NonEmpty open table's door takes the first typed entry (see `record_roundtrip`);
+            // a nested mint of one owes those two arguments exactly as the top-level baseline does.
+            if let Some(typed) = record
+                .typed_row()
+                .filter(|_| record.is_non_empty_open_table())
+            {
+                args.push(valid_value_at(types, typed.domain(), depth + 1)?);
+                args.push(valid_value_at(types, typed.range(), depth + 1)?);
+            }
             Some(MintValue::Record {
                 ident: name,
-                args: args?,
+                args,
                 can_fail: record_ctor_can_fail(record),
             })
         }

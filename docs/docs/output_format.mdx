@@ -565,6 +565,31 @@ encoding sidecars, and neither a `new()` argument. Everything the rest-row secti
 container's spelling, duplicate policy and preserve/canonical replay applies to each row unchanged;
 what is new is that **two rows share one map**, which is where the JSON face earns its own rules.
 
+### The two regions share one order vector
+
+Under `--preserve-encodings` a struct records the wire order it read in `encodings.orig_deser_order`,
+and an open table's entries come from **two** dynamic sequences rather than one. The slots are
+therefore **tagged by source sequence rather than laid out in one flat index space**: the typed row's
+*i*-th entry is slot `2*i`, the catch-all's *j*-th is slot `2*j+1`. Reading a slot means reading its
+low bit for the row and its half for the position within that row. (A flat `N + i` scheme cannot work
+here: the second sequence's base would be a runtime length that is not yet final while the loop is
+still pushing.) The serialize replay matches on `field_index % 2`, and under `--canonical-form` the
+key merge builds one order across both containers by comparing encoded key bytes — so a canonical
+write interleaves the two regions freely.
+
+### The NonEmpty twin
+
+Spelling the typed row `+`/`1*` (`t = { + K_t => V_t, * K_r => V_r }`) adds a **min-1 bound counting
+typed entries**. It changes exactly one thing about the emitted face: `new` takes the first typed
+entry — `new(first_key, first_value)`, the `NonEmptyMap::new` door verbatim — instead of taking no
+arguments, and the wasm and WIT constructors project those two parameters likewise. Both containers
+are otherwise unchanged, and the catch-all still defaults empty. The bound is re-checked once after
+the CBOR deserialize loop (raising `DeserializeFailure::RangeCheck { found: 0, min: Some(1), max:
+None }`, the error `NonEmptyMap`'s `TryFrom` door raises) and once after the JSON visitor has read
+every member. **JSON Schema publishes no expression of it** — `minProperties` would be wrong, since it
+counts both regions — so a schema consumer sees the unbounded open object and the bound lives in the
+reader alone.
+
 **JSON (`--json-serde-derives`): one flattened object holding BOTH regions**, written by a
 **hand-written** `Serialize`/`Deserialize` pair rather than the derives. Two `#[serde(flatten)]`
 members cannot express this shape in either direction — on read serde hands every unmatched member to

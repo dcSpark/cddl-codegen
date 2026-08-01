@@ -32,3 +32,8 @@ named = {
   ,
   * md => md ; @name captured
 }
+
+; The NonEmpty twin (`{+ …}`): the min-1 counts TYPED entries only, so a map of purely CAPTURED
+; entries is not a non-empty table. The bound is unbreakable by construction (`new` takes the first
+; typed entry) and re-checked once after the deserialize loop.
+non_empty = { + pid => uint, * md => md }
