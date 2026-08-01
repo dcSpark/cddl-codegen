@@ -93,6 +93,28 @@ gets a `bool` presence getter and a `set-<field>(present: bool)`.
 A setter whose type carries a bound is fallible (`result<_, string>`); one whose type does not is
 infallible, so the signature tells you whether a value can be refused.
 
+## Rest rows and open tables project as extra getters
+
+A rule that captures entries it did not declare — an
+[open struct-map](output_format#open-struct-maps-rest-rows) (`{ 1: uint, * k => v }`), an
+[open array](output_format#open-arrays-rest-tails) (`[uint, * t]`), or an **open table**
+(`t = { * k1 => v1, * k2 => v2 }`) — projects each captured row as one **read-only getter** on the
+resource, named after the row (`rest` by default, or whatever
+[`@name`](comment_dsl#name) gives it). A map row is `list<tuple<k, v>>`, an array tail is `list<t>`,
+which is the collection spelling above with nothing new added.
+
+Each such getter is read-only in the strong sense: the row is **not** a constructor parameter and has
+**no setter**, so on this face a captured region can be read but not written. That is the same
+posture the wasm face takes on the field itself, minus the mutable wrapper the wasm face hands back —
+here the whole-map snapshot rule applies, so what you get is a copy. An
+[`@ignore`](comment_dsl#ignore) row stores nothing and therefore projects **no** getter at all.
+
+An open table projects **both** of its rows this way, the typed one and the trailing catch-all, each
+its own `list<tuple<…>>` getter. This is the one place the component face is *less* despecialized
+than the wasm face rather than more: the wasm class flattens the typed row's map surface onto itself
+and keeps only the catch-all behind a getter, while here both rows are symmetric getters, because
+this face has no per-key accessors to flatten.
+
 ## Passing a resource into itself stores a snapshot
 
 Because exported resource methods take `&self`, the guest holds each type in a `RefCell`. The

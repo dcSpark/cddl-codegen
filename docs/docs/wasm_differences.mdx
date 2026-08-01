@@ -267,6 +267,45 @@ An [`@ignore`](comment_dsl#ignore) rest row **or rest tail** stores nothing, so 
 entries / trailing elements decode and are dropped) comes for free through the rust deserializer, so
 the wasm boundary adds nothing new.
 
+## Open tables
+
+An [open table](output_format#open-tables-a-typed-row-plus-a-catch-all) — a named rule
+`t = { * K_t => V_t, * K_r => V_r }`, one typed row plus one trailing typed catch-all — mints a real `#[wasm_bindgen]` class under the **rule's own name**. That
+is a difference from a plain table worth stating up front: a table lowers to a transparent
+`pub type` on the rust side, while an open table is a struct, so its CDDL rule name reaches JS
+directly rather than through a structural `MapKToV` class.
+
+The class carries **two different surfaces, one per row**:
+
+- the **typed** row's map surface is **FLATTENED onto the class itself** — `len()`,
+  `insert(key, value)`, `get(key)`, `keys()`, and `has(key)` when `V_t` is nullable, each delegating
+  to the typed container. A JS read is `t.get(k)`, not a two-layer `t.entries().get(k)`. This is the
+  same call the [258-set nominal](#heterogeneous-arrays) makes and for the same reason: a wasm class has no `Deref`,
+  so a container getter would cost every read an extra hop. There is deliberately **no whole-map
+  getter** for this row.
+- the **catch-all** row keeps the ordinary
+  [rest-row](#open-struct-map-rest-rows) contract: a **read-only `rest()` getter** returning the
+  minted map wrapper for `K_r`/`V_r` (`MapMdToMd`, or `PairMapMdToMd` under `@duplicates preserve`),
+  no constructor argument and no setter. Its own entry count is `t.rest().len()`.
+
+`new()` is nullary — both rows default empty, exactly as a rest row does on a closed struct.
+
+`keys()` returns what a *table* on the same key type returns: a bare `Vec` when `K_t` is wasm-native,
+the minted `<K_t>List` class otherwise. The list is named after the key's **use-site** identifier, not
+its resolved one, so two aliases of one underlying type key two open tables under two distinct list
+classes — which is what lets one of them be borrowed from a dependency (via
+[`@extern_companions`](comment_dsl#extern_companions) or `--extern-wrapper-index`) while the other
+mints locally.
+
+Because the typed row's surface is flattened, that row mints **no map wrapper class at all**; only the
+catch-all's container appears in the crate's wrapper index. Two consequences:
+
+- a name collision between a rule and the typed row's would-be `MapK_tToV_t` class is not rejected —
+  it is unrepresentable;
+- the class's own method names are taken, so the catch-all row may not be `@name`d `get`, `has`,
+  `insert`, `keys` or `len`. Doing so is a graceful generation error naming the reserved set (it
+  applies only when wasm bindings are generated — a rust-only crate has no such class).
+
 ## Nullable / nested Options
 
 `wasm_bindgen` cannot expose a doubly-nested `Option<Option<T>>` (`Option<T>` does not implement `OptionIntoWasmAbi`), the same way it can't expose a nested `Vec`. This happens when a nullable value (`T / null` → `Option<T>`) sits in a position that adds its own presence-`Option`: a **map value** (`get`/`insert` return `Option<value>`) or an **optional struct field** (its getter returns `Option<field>`). In those spots the accessor flattens to a single `Option<T>`, so a read returns `None` for **both** an absent entry and a present-but-`null` one (the same convention the c-style enum `as_*()` getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.
