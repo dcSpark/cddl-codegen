@@ -116,6 +116,10 @@ pub fn parse_rule(
             }
         }
         cddl::ast::Rule::Group { rule, .. } => {
+            // RE-EARNING GUARD, not the refusal: `parsing::generic_plain_group_def_rejection`
+            // refuses this shape in the `api::with_types` pre-scan, ahead of every reach. Kept so a
+            // NEW path that gets past the pre-scan fails loudly here instead of silently proceeding
+            // (and because the matrix anchors this message text).
             assert_eq!(
                 rule.generic_params, None,
                 "{}: Generics not supported on plain groups",
@@ -696,6 +700,33 @@ fn unmapped_control_head_rejection(type_name: &RustIdent, cddl_ident: &CDDLIdent
 const SUPPORTED_GENERIC_DEF_BODIES: &str = "A generic definition's body must be a shape that \
     registers a struct to substitute into: an array (`foo<T> = [* T]`), a map or record \
     (`foo<T> = {a: T}`), or the transparent tag-set idiom (`foo<T> = #6.258([* T]) / [* T]`).";
+
+/// A generic definition whose body is a PLAIN GROUP — `set<a> = (* a)`, and the bare-paren
+/// group-choice spelling `g<T> = ((a: T) // (b: uint))`, which the `cddl` AST also gives us as a
+/// `Rule::Group`. A plain group registers no struct of its own (its contents are SPLICED into each
+/// rule that references it), so an instance's arguments have nowhere to substitute.
+///
+/// Refused from the `api::with_types` pre-scan rather than where it is reached, because every site
+/// that reaches it is an `assert_eq!` abort with no rejection channel: `dep_graph::find_references`
+/// (rule ordering, which runs before the IR exists) and this file's own `Rule::Group` arm. Both
+/// stay in place as re-earning guards — the pre-scan is what makes them unreachable, and an assert
+/// that fires again means a new path got past it.
+///
+/// One caller reaches `find_references` EARLIER than the pre-scan and so consults this predicate
+/// directly to skip the rule: `extern_narrow::scan_consumer`, which runs on every generation
+/// (imports or not) during input assembly, before the checked parse the pre-scan walks.
+pub(crate) fn generic_plain_group_def_rejection(cddl_rule: &cddl::ast::Rule) -> Option<String> {
+    match cddl_rule {
+        cddl::ast::Rule::Group { rule, .. } if rule.generic_params.is_some() => Some(format!(
+            "generic rule `{name}`: a plain-group body (`{name}<…> = (…)`) registers no struct of \
+             its own — a plain group's contents are spliced into each rule that references it — so \
+             `{name}<…>` instances have nowhere to substitute their arguments into. \
+             {SUPPORTED_GENERIC_DEF_BODIES}",
+            name = rule.name
+        )),
+        _ => None,
+    }
+}
 
 /// `@raw_bytes_flavor` on a rule that is not an extern marker. Shared verbatim by every
 /// type-rule seam that can reach the misplacement so the pinned wording cannot drift between them.

@@ -66,6 +66,10 @@ pub(crate) fn find_references<'a>(
             &rule.name
         }
         Rule::Group { rule, .. } => {
+            // RE-EARNING GUARD, not the refusal: `parsing::generic_plain_group_def_rejection`
+            // refuses this shape in the `api::with_types` pre-scan, ahead of every reach. Kept so a
+            // NEW path that gets past the pre-scan fails loudly here instead of silently proceeding
+            // (and because the matrix anchors this message text).
             assert_eq!(
                 rule.generic_params, None,
                 "{}: Generics not supported on plain groups",

@@ -432,7 +432,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "genericparm.group",
         "status": "unsupported"
       },

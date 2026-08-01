@@ -141,6 +141,15 @@ pub fn scan_consumer(content: &str) -> Option<ConsumerSurface> {
     let cddl = cddl::parser::cddl_from_str(content, false).ok()?;
     let mut surface = ConsumerSurface::default();
     for rule in cddl.rules.iter() {
+        // A generic plain-group def (`set<a> = (* a)`) is refused by the `api::with_types` pre-scan
+        // a few lines downstream, but this scan runs BEFORE it — and unconditionally, imports or
+        // not. `find_references` asserts on that shape (its re-earning guard), so skipping the rule
+        // here is what keeps the guard unreachable and lets the refusal be the outcome the user
+        // sees. Dropping the rule from the surface is inconsequential: the run is about to end in a
+        // rejection, and the surface only drives which dependency rules get imported.
+        if crate::parsing::generic_plain_group_def_rejection(rule).is_some() {
+            continue;
+        }
         let (ident, refs) = crate::dep_graph::find_references(rule);
         surface.defined.insert(ident.ident.to_owned());
         surface
