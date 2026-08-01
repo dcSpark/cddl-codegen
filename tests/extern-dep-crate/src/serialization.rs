@@ -390,3 +390,17 @@ impl Deserialize for Int {
         .map_err(|e| e.annotate("Int"))
     }
 }
+
+// The raw-bytes trait half of the shared runtime. A `--common-import-override` consumer emits no
+// copy of the static runtime, so every trait its generated code names has to resolve through this
+// crate — including this one, the moment such a consumer's spec carries a
+// `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule (`tests/extern-companions` does, for `idx_hash`). Mirrors
+// `static/raw_bytes_encoding.rs`'s required surface; the hex conveniences are omitted because this
+// stand-in has no `hex` dependency and no generated code here reaches them.
+pub trait RawBytesEncoding {
+    fn to_raw_bytes(&self) -> &[u8];
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, DeserializeError>
+    where
+        Self: Sized;
+}

@@ -410,7 +410,7 @@ const HAND_CORPUS: HandCell[] = [
     // pinned by `dsl_position_tests`' `local-extern-rule` cell,
     // `integration_tests::extern_companions_defers_to_sibling_wasm_crate`, and the `wasm`-profile
     // product cells. The cell still earns its place: it proves the directive is ACCEPTED (not
-    // rejected) on the one placement that honors it, under a flag set that cannot honor it.
+    // rejected) on one of the two placements that honor it, under a flag set that cannot honor it.
     id: "local_extern_companions_rust_only",
     ruleBody: "_CDDL_CODEGEN_EXTERN_TYPE_",
     base: [],
@@ -418,15 +418,30 @@ const HAND_CORPUS: HandCell[] = [
     shape: "local _CDDL_CODEGEN_EXTERN_TYPE_ rule, rust-only generation (the classes it defers are wasm-only)",
   },
   {
+    // The SECOND honoring placement, same reading under the same rust-only flag set: a raw-bytes
+    // type is user-defined exactly as an extern is, and the companion classes minted for the shapes
+    // it appears in carry its ident, so a sibling's class of that name collides identically. Kept
+    // beside its extern twin rather than folded into it because the pair is what makes the rule KIND
+    // the only variable — the specs differ in nothing but the marker. Its wasm-side effect is pinned
+    // by `dsl_position_tests`' `local-raw-bytes-rule` cell, by
+    // `extern_companions_tests::raw_bytes_marker_defers_its_listed_companion`, and by the
+    // `raw_bytes__extern_companions` product cell under the `wasm` witness profile.
+    id: "local_raw_bytes_extern_companions_rust_only",
+    ruleBody: "_CDDL_CODEGEN_RAW_BYTES_TYPE_",
+    base: [],
+    toggled: "@extern_companions dep_wasm=FooList",
+    shape: "local _CDDL_CODEGEN_RAW_BYTES_TYPE_ rule, rust-only generation (the classes it defers are wasm-only)",
+  },
+  {
     // The placement counterpart: on a rule this crate GENERATES, the directive is a LOUD rejection
     // (a generated rule owns its own companions), which is a PASS — honored-not-silenced. Isolates
-    // the rule KIND as the variable against the accepted cell above, whose spec differs only in its
-    // body being the extern marker.
+    // the rule KIND as the variable against the two accepted cells above, whose specs differ from it
+    // in nothing but the marker body.
     id: "generated_rule_extern_companions_rejected",
     ruleBody: "[x: uint]",
     base: [],
     toggled: "@extern_companions dep_wasm=FooList",
-    shape: "record rule at rule-position @extern_companions (valid only on an extern marker)",
+    shape: "record rule at rule-position @extern_companions (valid only on an extern / raw-bytes marker)",
   },
   {
     // The rule slot of a multi-choice type rule is the LAST arm's trailing comment. A rule-level
@@ -511,6 +526,10 @@ const ALLOWLIST: Record<string, string> = {
   // under any flag set without `--wasm`, by design: one spec, many flag sets).
   local_extern_companions_rust_only:
     "@extern_companions defers wasm companion classes only; rust-only generation mints none, so byte-identical no-op",
+  // Same reason on the raw-bytes marker — the second placement that honors the directive; the marker
+  // differs, the rust-only invisibility does not.
+  local_raw_bytes_extern_companions_rust_only:
+    "@extern_companions on a raw-bytes marker defers wasm companion classes only; rust-only generation mints none, so byte-identical no-op",
 
   // ---- @no_alias: the rule mints a TYPE, so there is no `pub type` of its own to suppress -------
   // The directive strips a rule's transparent alias line. Every shape below registers a struct or an

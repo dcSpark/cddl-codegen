@@ -1021,19 +1021,28 @@ const GRID: &[Cell] = &[
         spec: "foo = [a: uint] ; @extern_companions dep_wasm=FooList\nholder = [f: foo]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ rule"),
+        expect: Expect::Reject(
+            "only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ or _CDDL_CODEGEN_RAW_BYTES_TYPE_ rule",
+        ),
     },
-    // 36. REJECT: the raw-bytes marker — the extern marker's sibling, but a raw-bytes type has no
-    //     generator-minted wasm companion classes, so it is the plain not-an-extern-rule class.
+    // 36. VALID position (the second one): a LOCALLY-scoped `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule.
+    //     A raw-bytes type is user-defined exactly as an extern is, and the generator mints the
+    //     SAME structural companion family for it (named from the rule's ident), so a sibling
+    //     crate's hand-written `<Name>List` collides with a local mint identically — hence the same
+    //     contract. `wasm: true` for the same reason as cell 34: the classes it governs exist only
+    //     at the wasm boundary, so a `wasm: false` cell here would read as a silent drop.
     Cell {
         directive: "@extern_companions",
-        position: "raw-bytes-rule",
-        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @extern_companions dep_wasm=RbList\nholder = [f: rb]\n",
+        position: "local-raw-bytes-rule",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @extern_companions dep_wasm=RbList\nholder = [items: [* rb]]\n",
         flags: &[],
-        wasm: false,
-        expect: Expect::Reject("only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ rule"),
+        wasm: true,
+        expect: Expect::Effect {
+            must: &["use dep_wasm::RbList;", "pub fn items(&self) -> RbList"],
+            must_not: &["pub struct RbList"],
+        },
     },
-    // 37. REJECT: a multi-choice type rule can never be an extern marker (its LAST arm is the rule
+    // 37. REJECT: a multi-choice type rule can never be either marker (its LAST arm is the rule
     //     slot, so the directive IS seen here — this is the directive being invalid, not unseen).
     Cell {
         directive: "@extern_companions",
@@ -1041,7 +1050,9 @@ const GRID: &[Cell] = &[
         spec: "ch = uint ; @name a\n   / text ; @name b @extern_companions dep_wasm=ChList\nholder = [f: ch]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ rule"),
+        expect: Expect::Reject(
+            "only valid on a _CDDL_CODEGEN_EXTERN_TYPE_ or _CDDL_CODEGEN_RAW_BYTES_TYPE_ rule",
+        ),
     },
     // 38. REJECT: a field/member position. This is also the slot a plain-GROUP rule's TRAILING
     //     comment binds to (the `@name plain-group-trailing` seam), so it covers that spelling too.

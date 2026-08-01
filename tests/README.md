@@ -2061,30 +2061,39 @@ a finding must mean to be actionable.
 The ALLOWLIST is the honest inert inventory — one justification per entry, and a stale entry naming
 no cell fails the gate. Adding one is a claim that the cell is a legitimate accepted no-op (an
 explicit spelling of a default, a directive whose target already satisfies it, a structurally
-excluded emission site), never a place to park a real drop. The 15 hand cells above the product each
+excluded emission site), never a place to park a real drop. The 16 hand cells above the product each
 pin a specific shipped regression or placement control and are kept.
 
 ### Sibling-crate companion classes (`@extern_companions`) — test map
 
 The directive (user doc: `docs/docs/comment_dsl.mdx` § `@extern_companions`,
-`docs/docs/wasm_differences.mdx` § the not-always-minted note) makes a locally-marked extern rule
+`docs/docs/wasm_differences.mdx` § the not-always-minted note) makes a locally-declared marker rule —
+either user-supplied flavor, `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` —
 REFERENCE a listed structural companion class from a sibling wasm crate instead of minting a
 duplicate. Its defect class is a LINK-time duplicate `#[wasm_bindgen]` symbol, so its acceptance
 sits at the one layer no other fixture family reaches:
 
-- **Two-crate link gate** — `src/tests/extern_companions_tests.rs::
+- **Two-crate link gate** — `src/tests/integration_tests.rs::
   extern_companions_defers_to_sibling_wasm_crate` over `tests/extern-companions/`: the dep pair
-  ships a HAND-written `#[wasm_bindgen] IdxFooList` beside its generated tree (hand-written, so no
-  wrapper index could list it — the reported consumer case), and the gate builds consumer + dep
-  wasm crates into ONE wasm32 target — the duplicate-`__wbg_*_free` half with the directive
-  stripped, link-clean with it present, plus the native compile.
+  ships HAND-written `#[wasm_bindgen] IdxFooList` / `IdxHashList` classes beside its generated tree
+  (hand-written, so no wrapper index could list them — the reported consumer case), and the gate
+  builds consumer + dep wasm crates into ONE wasm32 target — the duplicate-`__wbg_*_free` half with
+  the directives stripped, link-clean with them present, plus the native compile. One spec carries
+  both markers over the same shapes (table key + list element), so the link verdict is attributable
+  to the marker KIND: the RED stderr must name `__wbg_idxfoolist_free` **and**
+  `__wbg_idxhashlist_free`.
 - **Directive grammar + positions** — `comment_ast` malformed-arg panics (family convention:
   missing arg/`=`, bad prefix, bad class ident, duplicate directive); 9 `dsl_position_tests` GRID
-  cells (honored on the extern marker; unlisted-companion still mints; rust-only inertness; six
-  position rejections); 2 `no_silent_directive` cells.
+  cells (honored on each marker; unlisted-companion still mints; rust-only inertness; five
+  position rejections); 3 `no_silent_directive` cells.
+- **Per-marker honoring + scope bar** — `src/tests/extern_companions_tests.rs` drives the generator
+  over synthetic scratch trees: the CML-shaped extern case, the raw-bytes twin
+  (`raw_bytes_marker_defers_its_listed_companion`), multi-class lists, the NonEmpty twin, the
+  mixed-constituent fall-through, and the dep-scoped rejection for BOTH markers (the scope check is
+  orthogonal to which marker the rule spells).
 - **Collision seam** — `robustness_tests`: a user rule claiming a LISTED class is the
   `extern_companion_rule_name_collisions` graceful rejection (the `use` + a local class would be
-  E0255), and the dep-scoped-extern / non-extern-rule placements reject naming the flags that own
+  E0255), and the dep-scoped / neither-marker placements reject naming the flags that own
   those cases.
 - **Matrix row** — `dsl.extern_companions` in `cddl-matrix/features/cddl_codegen.toml`, its
   `[[support]]` verdict via the `COMPILE_GATE_EXEMPT` ledger (the standalone example cannot

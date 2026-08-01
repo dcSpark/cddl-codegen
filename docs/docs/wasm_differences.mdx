@@ -29,7 +29,8 @@ A named rule may deliberately claim a structural name: writing `foo_list = [* fo
 by name at generation time, naming the use that mints the class, rather than shadowing it.
 
 A structural class is not *always* minted here, though: when its element/key/value is a type this
-crate declares `_CDDL_CODEGEN_EXTERN_TYPE_` and a sibling wasm crate already publishes that class,
+crate declares `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` and a sibling wasm
+crate already publishes that class,
 [`@extern_companions`](./comment_dsl#extern_companions) makes the generated code **reference** the
 sibling's class (`use <crate>::<Class>;`) instead — one JS class for one concept, and no duplicate
 `#[wasm_bindgen]` symbol when both crates link into a single cdylib. The dependency-keyed

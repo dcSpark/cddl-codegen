@@ -115,3 +115,36 @@ impl serialization::Deserialize for IdxBaz {
         })
     }
 }
+
+// A BYTE-BACKED element, for the `@extern_companions`-on-a-raw-bytes-marker arm: the consumer
+// declares `idx_hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_` in its OWN spec and borrows this crate's
+// wasm `IdxHashList`, exactly as `idx_foo` borrows `IdxFooList` through the extern marker. The
+// `RawBytesEncoding` impl lives HERE rather than in the consumer because this crate owns the type
+// and the trait is foreign to both (it comes from `extern_dep_crate`, which the consumer reaches
+// through `--common-import-override=index_dep_crate`) — a consumer-side impl would be an orphan.
+// `Hash + Ord` so it works as an `OrderedHashMap` KEY as well as a list element.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct IdxHash([u8; 4]);
+
+impl IdxHash {
+    pub fn new(inner: [u8; 4]) -> Self {
+        Self(inner)
+    }
+}
+
+impl serialization::RawBytesEncoding for IdxHash {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, error::DeserializeError> {
+        <[u8; 4]>::try_from(bytes).map(Self).map_err(|_| {
+            error::DeserializeFailure::CBOR(cbor_event::Error::WrongLen(
+                4,
+                cbor_event::Len::Len(bytes.len() as u64),
+                "IdxHash",
+            ))
+            .into()
+        })
+    }
+}

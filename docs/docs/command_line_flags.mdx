@@ -765,7 +765,7 @@ Every wasm-emitting run writes `wasm/src/generated/collections.rs` — a self-va
 
 - An all-extern wrapper of one dependency whose name is **absent** from that dep's index is minted locally, with an stderr warning naming it (a dep-side inventory change that shifts ownership back to the consumer is then loud in the regen log).
 - A **mixed-element** wrapper (a consumer type, or types from more than one dependency) is always minted locally and silently — it can only live in the consumer.
-- A type marked `_CDDL_CODEGEN_EXTERN_TYPE_` in the consumer's **own** spec (a one-type re-export of a sibling crate's type) has no dependency to key on and no index to consult, so this flag cannot reach its wrappers. That case — including a sibling whose class is **hand-written**, and therefore in no generated index — is [`@extern_companions`](./comment_dsl#extern_companions).
+- A type marked `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` in the consumer's **own** spec (a one-type re-export of a sibling crate's type) has no dependency to key on and no index to consult, so this flag cannot reach its wrappers. That case — including a sibling whose class is **hand-written**, and therefore in no generated index — is [`@extern_companions`](./comment_dsl#extern_companions).
 
 The consumer's own `collections.rs` lists only the wrappers it mints itself; deferred wrappers are brought in by a plain private `use` (never re-exported), so they never enter the consumer's public API and each crate's index is a precise inventory of what it owns — which is exactly what *its* consumers point `--extern-wrapper-index` at.
 

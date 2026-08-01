@@ -21941,11 +21941,21 @@ fn trace_restores_the_full_ir_dump() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `@extern_companions`: a LOCALLY-marked extern rule declares that a structural wasm companion
+/// `@extern_companions`: a LOCALLY-declared marker rule declares that a structural wasm companion
 /// class of its type ALREADY EXISTS in a sibling wasm crate, so the generator references it instead
 /// of minting a second `#[wasm_bindgen]` class of the same name. The acceptance is at the LINK,
 /// where the duplication actually fails: both wasm crates into one `wasm32-unknown-unknown` cdylib,
 /// GREEN with the directive and RED (`duplicate symbol __wbg_idxfoolist_free`) without it.
+///
+/// BOTH honoring markers ride the one fixture, differing in nothing but the marker word:
+/// `idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_` and `idx_hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_`, each used
+/// as a table key and as a list element, each borrowing the sibling's hand-written `<Name>List`.
+/// That pairing is what makes the link verdict attributable to the marker KIND rather than to the
+/// fixture's shape — the raw-bytes half exists because a raw-bytes type is user-defined exactly as
+/// an extern is while the generator still mints its companions, so the collision is the same one.
+/// The dep's `IdxHash` carries its own `RawBytesEncoding` impl: the trait reaches the consumer
+/// through `--common-import-override=index_dep_crate`, so both trait and type are foreign there and
+/// a consumer-side impl would be an orphan.
 ///
 /// Why no flag can do this — the gap the directive fills. `--extern-wrapper-index` and
 /// `--workspace-dep` both resolve a wrapper's constituents to an OWNING DEPENDENCY (a non-exported
@@ -21979,7 +21989,12 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
     let seed_roots = |export: &std::path::Path| {
         for (root, line) in [
             ("rust/src/lib.rs", "pub use index_dep_crate::IdxFoo;\n"),
+            ("rust/src/lib.rs", "pub use index_dep_crate::IdxHash;\n"),
             ("wasm/src/lib.rs", "pub use index_dep_crate_wasm::IdxFoo;\n"),
+            (
+                "wasm/src/lib.rs",
+                "pub use index_dep_crate_wasm::IdxHash;\n",
+            ),
         ] {
             let mut f = std::fs::OpenOptions::new()
                 .append(true)
@@ -22025,26 +22040,43 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
         "the index-absence warning must not fire for an @extern_companions deferral, got stderr:\n{gen_stderr}"
     );
     let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
-    assert!(
-        wasm_mod.contains("use index_dep_crate_wasm::IdxFooList;"),
-        "the listed companion must be imported from the declared sibling crate:\n{wasm_mod}"
-    );
-    assert!(
-        !wasm_mod.contains("pub struct IdxFooList"),
-        "the listed companion must NOT be minted locally:\n{wasm_mod}"
-    );
+    // Both marker flavors, asserted the same way — the import is grouped into one `use` head, so
+    // match on the class rather than a whole line.
+    for class in ["IdxFooList", "IdxHashList"] {
+        assert!(
+            wasm_mod.contains("use index_dep_crate_wasm::") && wasm_mod.contains(class),
+            "the listed companion {class} must be imported from the declared sibling crate:\n{wasm_mod}"
+        );
+        assert!(
+            !wasm_mod.contains(&format!("pub struct {class}")),
+            "the listed companion {class} must NOT be minted locally:\n{wasm_mod}"
+        );
+    }
     assert!(
         wasm_mod.contains("self.0.keys().cloned().collect::<Vec<_>>().into()"),
         "keys() must build the deferred list through From<Vec<_>>, not tuple-struct syntax:\n{wasm_mod}"
     );
+    // The table accessor is TYPED by the sibling's class, which is the property a JS caller sees:
+    // a value it gets back from this crate is the same class the sibling's own API takes.
+    for accessor in [
+        "pub fn keys(&self) -> IdxFooList",
+        "pub fn keys(&self) -> IdxHashList",
+    ] {
+        assert!(
+            wasm_mod.contains(accessor),
+            "expected the deferred-class accessor `{accessor}`:\n{wasm_mod}"
+        );
+    }
     // The deferred class leaves this crate's own collection index, so a downstream
     // `--extern-wrapper-index` consumer is never told this crate owns it.
     let wasm_index =
         std::fs::read_to_string(export.join("wasm/src/generated/collections.rs")).unwrap();
-    assert!(
-        !wasm_index.contains("IdxFooList"),
-        "a deferred companion must be excluded from this crate's own collections.rs:\n{wasm_index}"
-    );
+    for class in ["IdxFooList", "IdxHashList"] {
+        assert!(
+            !wasm_index.contains(class),
+            "a deferred companion ({class}) must be excluded from this crate's own collections.rs:\n{wasm_index}"
+        );
+    }
 
     // Native build first: it isolates every non-link error (imports, conversions, key derives) from
     // the wasm32 link property below, so a failure there is unambiguous.
@@ -22083,17 +22115,26 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
         String::from_utf8_lossy(&green.stderr)
     );
 
-    // RED: same fixture, directive stripped (a scratch copy of `inputs/` — the committed spec is
-    // never edited), so the class is minted locally and the link duplicate-symbols.
+    // RED: same fixture, BOTH directives stripped (a scratch copy of `inputs/` — the committed spec
+    // is never edited), so each class is minted locally and the link duplicate-symbols. One RED run
+    // covers both markers because the linker reports every duplicate it finds, and the symbol names
+    // are what attribute the failure to each arm — asserted individually below.
     let red_inputs =
         std::env::temp_dir().join(format!("cddl_codegen_extcomp_red_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&red_inputs);
     std::fs::create_dir_all(&red_inputs).unwrap();
     let spec = std::fs::read_to_string(test_path.join("inputs/lib.cddl")).unwrap();
-    let stripped = spec.replace(" ; @extern_companions index_dep_crate_wasm=IdxFooList", "");
-    assert_ne!(
-        spec, stripped,
-        "the RED edit must actually remove the directive"
+    let stripped = spec
+        .replace(" ; @extern_companions index_dep_crate_wasm=IdxFooList", "")
+        .replace(" ; @extern_companions index_dep_crate_wasm=IdxHashList", "");
+    assert_eq!(
+        spec.matches(" ; @extern_companions ").count(),
+        2,
+        "the RED edit must find both directives to remove"
+    );
+    assert!(
+        !stripped.contains("@extern_companions"),
+        "the RED edit must actually remove both directives"
     );
     std::fs::write(red_inputs.join("lib.cddl"), stripped).unwrap();
     let red_export = test_path.join("export_nodefer");
@@ -22114,10 +22155,12 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
     );
     seed_roots(&red_export);
     let red_mod = std::fs::read_to_string(red_export.join("wasm/src/generated/mod.rs")).unwrap();
-    assert!(
-        red_mod.contains("pub struct IdxFooList"),
-        "without the directive the class must be minted locally (the RED premise):\n{red_mod}"
-    );
+    for class in ["IdxFooList", "IdxHashList"] {
+        assert!(
+            red_mod.contains(&format!("pub struct {class}")),
+            "without the directive {class} must be minted locally (the RED premise):\n{red_mod}"
+        );
+    }
     let red = tool_cmd("cargo")
         .args(["build", "--target", "wasm32-unknown-unknown"])
         .current_dir(red_export.join("wasm"))
@@ -22131,4 +22174,13 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
          status_success={}, stderr:\n{red_stderr}",
         red.status.success()
     );
+    // Each marker's own arm is attributable: the linker names the class whose `#[wasm_bindgen]`
+    // free-function it found twice, so the raw-bytes arm is not riding on the extern arm's failure.
+    for symbol in ["__wbg_idxfoolist_free", "__wbg_idxhashlist_free"] {
+        assert!(
+            red_stderr.contains(symbol),
+            "the RED link must name the duplicated `{symbol}`, so each marker's arm is \
+             attributable; stderr:\n{red_stderr}"
+        );
+    }
 }

@@ -393,3 +393,71 @@ impl AsRef<OrderedHashMap<u64, String>> for MapU64ToText {
         &self.0
     }
 }
+
+// The byte-backed element (`idx_hash`) and its LOOSE list wrapper, for the
+// `@extern_companions`-on-a-raw-bytes-marker arm. Same hand-written shape as `IdxFoo`/`IdxFooList`
+// above — the point of the pair is that the consumer's marker KIND is the only thing that differs,
+// so the wrapper contract the deferral relies on (`From<Vec<..>>` / `From<.. for Vec>` / `AsRef`,
+// `new`/`len`/`get`/`add`) is byte-for-byte the same one.
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct IdxHash(index_dep_crate::IdxHash);
+
+impl From<index_dep_crate::IdxHash> for IdxHash {
+    fn from(native: index_dep_crate::IdxHash) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IdxHash> for index_dep_crate::IdxHash {
+    fn from(wasm: IdxHash) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<index_dep_crate::IdxHash> for IdxHash {
+    fn as_ref(&self) -> &index_dep_crate::IdxHash {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct IdxHashList(Vec<index_dep_crate::IdxHash>);
+
+#[wasm_bindgen]
+impl IdxHashList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> IdxHash {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &IdxHash) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<index_dep_crate::IdxHash>> for IdxHashList {
+    fn from(native: Vec<index_dep_crate::IdxHash>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IdxHashList> for Vec<index_dep_crate::IdxHash> {
+    fn from(wasm: IdxHashList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<index_dep_crate::IdxHash>> for IdxHashList {
+    fn as_ref(&self) -> &Vec<index_dep_crate::IdxHash> {
+        &self.0
+    }
+}
