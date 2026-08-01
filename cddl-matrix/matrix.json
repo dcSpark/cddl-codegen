@@ -134,8 +134,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen rejected at parse/lex (exit 1)",
-            "status": "unsupported"
+            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e)",
+            "status": "supported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e)",

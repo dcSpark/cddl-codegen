@@ -139,8 +139,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; st
 id = "dsl.custom_wire_major"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
-emission.json.status = "unsupported"
-emission.json.evidence = "probe (emission=json): cddl-codegen rejected at parse/lex (exit 1)"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e)"
 
