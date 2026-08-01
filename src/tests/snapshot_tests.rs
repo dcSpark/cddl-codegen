@@ -1888,7 +1888,35 @@ fn rustfmt_stub(tag: &str, body: &str) -> std::path::PathBuf {
     ));
     std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    path
+
+    // Writing an executable and immediately exec'ing it races every OTHER thread in this test
+    // process: `fork` duplicates our still-open write fd into the child, and exec'ing a file that
+    // any process holds open for writing fails with ETXTBSY. The window belongs to unrelated
+    // concurrent `Command::spawn`s elsewhere in the suite — nothing this function does can close
+    // it by ordering, and `std` deliberately does not retry. So wait it out here rather than in
+    // `rustfmt_source_with`, whose ETXTBSY on a real installed formatter would be a true error
+    // worth surfacing. Waiting is sound because the set of processes holding the fd only shrinks
+    // (each releases at its own exec or exit): once one exec succeeds, the window has passed, so
+    // the path this returns is known-runnable and the leg under test measures the formatter
+    // contract rather than the race.
+    for attempt in 0..50 {
+        match std::process::Command::new(&path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+        {
+            Ok(_) => return path,
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(std::time::Duration::from_millis(2 * (attempt + 1)));
+            }
+            Err(e) => panic!("stub {} is not runnable: {e}", path.display()),
+        }
+    }
+    panic!(
+        "stub {} stayed ETXTBSY for the whole wait-out budget",
+        path.display()
+    )
 }
 
 /// Non-UTF-8 formatter output is an ERROR, never `Ok` carrying the unformatted input.

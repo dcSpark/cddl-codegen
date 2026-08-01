@@ -3351,18 +3351,6 @@ evidence about a gate in another TIER" (the mechanical half is a maintainer call
   `corpus_detect.ts` and the fuzz `cargo check` are seconds), and claim the tier green only by
   COMPLETE gate enumeration — never from the partial log.
 
-- **`snapshot_tests::rustfmt_non_utf8_output_is_an_error` can fail with ETXTBSY on the stub it
-  just wrote.** One sighting, 2026-08-01 (burndown delivery 3, phase A): the test failed with
-  `ExecutableFileBusy` on its CONTROL leg — the `rustfmt_stub("ok", …)` helper writes a throwaway
-  stub and `rustfmt_source_with` execs it in the same breath. It passed on an isolated re-run and on two subsequent
-  full-suite runs, and no other test in the file has ever shown it, so environmental contention
-  (a scanner or the filesystem still holding the just-written file open) is the standing suspicion
-  rather than a race the test owns. Recorded because a one-off ETXTBSY reads as a real
-  rustfmt-plumbing defect to whoever meets it next, and it is not one. Likely fix shape if it
-  recurs, in order of cheapness: close the file handle explicitly before the exec, then retry once
-  on `ErrorKind::ExecutableFileBusy`. Watch, not work item — a second sighting is the trigger, and
-  the sighting is cheap to attribute because the error kind names itself.
-
 ## Declined (decided, with the reopening signal)
 
 - **Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm
