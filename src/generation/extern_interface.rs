@@ -885,14 +885,26 @@ fn project_extern_interface(
                 // `base_type` carries the policy (`with_duplicates_policy` at registration), and the
                 // shape-aware predicates filter the two no-op defaults (set `preserve`, table
                 // `reject`) so only the representation-changing halves project.
+                // `@no_alias` travels for the same anti-skew reason, and is read from the IR's
+                // per-ident record rather than the alias's `rule_metadata`: a collection rule
+                // registers through `AliasInfo::new_manual`, whose metadata is `None` by
+                // construction, so reading it here would project a dep that emits NO `pub type` as
+                // though it emitted one — and the consumer would `use dep::Tbl` for a name the dep
+                // no longer materializes. That is the writer half of the same skew the missing
+                // `@duplicates` projection was.
+                let no_alias = types.is_no_alias_rule(ident);
                 let projected = match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
                     Some(alias) => {
-                        let dup_annotations = duplicates_annotation(&alias.base_type);
+                        let mut annotations = Vec::new();
+                        if no_alias {
+                            annotations.push("@no_alias".to_string());
+                        }
+                        annotations.extend(duplicates_annotation(&alias.base_type));
                         render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
                             .map(|body| {
                                 (
                                     body,
-                                    dup_annotations,
+                                    annotations,
                                     collect_rule_refs(&alias.base_type, types),
                                 )
                             })
@@ -902,7 +914,14 @@ fn project_extern_interface(
                         "a named collection with no registered transparent alias",
                     )),
                 };
-                (projected, ExternCheckKind::Use)
+                // Nothing to `use` when the rule materializes no `pub type` — the same reasoning the
+                // pass-2 `gen_rust_alias` check already applies to a scalar `@no_alias` rule.
+                let check = if no_alias {
+                    ExternCheckKind::None
+                } else {
+                    ExternCheckKind::Use
+                };
+                (projected, check)
             }
             // A c-style enum is transparent — its value choices (`0 / 1 / 2`) — but a real Rust enum
             // lives in the dep, so it still needs the `@rust_name` pin. Value choices reference no
@@ -945,12 +964,12 @@ fn project_extern_interface(
         let components = scope_path(scope);
         // `@no_alias` travels verbatim: a truthful export makes the consumer's generator treat the
         // rule exactly as the dep's did.
+        // Read from the IR's per-ident record rather than `alias_info.rule_metadata`: a named
+        // binding to a generic set nominal registers through `AliasInfo::new_manual` (metadata
+        // `None`), so the metadata read alone would silently drop the annotation on exactly the
+        // binding whose `pub type` the directive suppresses.
         let mut extra_annotations = Vec::new();
-        if alias_info
-            .rule_metadata
-            .as_ref()
-            .is_some_and(|m| m.no_alias)
-        {
+        if types.is_no_alias_rule(ident) {
             extra_annotations.push("@no_alias".to_string());
         }
         // A collection reaching pass 2 (rather than the pass-1 Array/Table arm) still carries its
@@ -976,7 +995,19 @@ fn project_extern_interface(
                         .rust_struct(bound)
                         .is_some_and(|rs| rs.config().set_nominal)
         );
-        let projected: RuleProjection = if set_nominal_ref {
+        let projected: RuleProjection = if set_nominal_ref && !alias_info.gen_rust_alias {
+            // A `@no_alias` binding to a set nominal materializes NO rust name at all: the opaque row
+            // above names the BINDING (the nominal itself is unspellable — it is minted from the
+            // instantiation and has no source rule), so exporting it would hand the consumer a
+            // `use dep::Nset;` for a name the dependency does not emit. Exclude it instead, which
+            // makes a consumer that references the rule fail at ITS parse with an unknown ident
+            // rather than in its rustc.
+            Err(unrenderable(
+                source,
+                "a `@no_alias` binding to a generic set nominal (the rule materializes no rust name \
+                 to reference, and the nominal it binds has no source rule of its own)",
+            ))
+        } else if set_nominal_ref {
             Ok((
                 crate::parsing::EXTERN_MARKER.to_string(),
                 extra_annotations,
@@ -1013,7 +1044,7 @@ fn project_extern_interface(
         // rust type — nothing for the self-check to `use`, so it asserts nothing (`None`). The opaque
         // set-nominal row asserts `Serialize` on the concrete `pub type` (the same bound the pass-1
         // Wrapper arm uses), since the alias resolves to a Serialize-implementing nominal.
-        let kind = if set_nominal_ref {
+        let kind = if set_nominal_ref && alias_info.gen_rust_alias {
             ExternCheckKind::Serialize
         } else if alias_info.gen_rust_alias {
             ExternCheckKind::Use
