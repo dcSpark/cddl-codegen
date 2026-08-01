@@ -9,13 +9,27 @@
 ; it, so it must still mint locally — the class list is a filter, not a blanket opt-out.
 idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions index_dep_crate_wasm=IdxFooList
 
+; The RAW-BYTES twin of `idx_foo`, on the identical contract. A raw-bytes type is user-defined the
+; same way an extern is — this crate names it and never defines it — while the generator still mints
+; its structural companions under names derived from THIS ident, so the sibling's hand-written
+; `IdxHashList` is the same one-concept-one-class collision. Nothing but the marker differs between
+; the two arms, which is what makes the link result attributable to the marker KIND.
+idx_hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @extern_companions index_dep_crate_wasm=IdxHashList
+
 ; A table keyed by the extern: `keys()` returns the deferred `IdxFooList`, built through
 ; `From<Vec<_>>` because a cross-crate wrapper's tuple field is private.
 keyed_table = { * idx_foo => idx_foo }
+
+; The raw-bytes twin of `keyed_table`: a byte-backed key, so `keys()` returns the deferred
+; `IdxHashList`. The map class itself (`HashTable`, aliased `MapIdxHashToU64`) is NOT listed and
+; still mints locally — the class list is a filter on this marker exactly as it is on the extern one.
+hash_table = { * idx_hash => uint }
 
 ; A plain list field of the same extern — the SECOND mint site for the same class, so the deferral
 ; has to be idempotent across emitters, and the import routed at each referencing scope.
 holder = [
   table: keyed_table,
   items: [* idx_foo],
+  hashes: hash_table,
+  hash_items: [* idx_hash],
 ]

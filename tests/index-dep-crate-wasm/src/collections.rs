@@ -15,10 +15,15 @@
 // Also deliberately absent: any restricted `[+ idx_bar]` / `[+ idx_baz]` wrapper —
 // their LOOSE lists below ARE indexed, so the consumer mints the restricted class
 // locally while deferring its `try_from` source here (the deferred-source cells).
+// IdxHashList is listed for the same reason every other wrapper here is — the index
+// claims to name every wrapper this crate defines — but nothing consults it for that
+// class: its consumer borrows it through `@extern_companions`, which reads the spec,
+// not an index.
 pub use crate::ArrIdxFooList;
 pub use crate::IdxBarList;
 pub use crate::IdxBazList;
 pub use crate::IdxFooList;
+pub use crate::IdxHashList;
 pub use crate::MapU64ToIdxFoo;
 pub use crate::MapU64ToText;
 pub use crate::NonEmptyIdxFooList;

@@ -1,7 +1,8 @@
 //! `@extern_companions` — parse (covered in `comment_ast.rs`), validate, and HONOR.
 //!
-//! `@extern_companions <path>=<Class>[,<Class>…]` on a LOCALLY-marked extern rule
-//! (`x = _CDDL_CODEGEN_EXTERN_TYPE_`) declares that the named STRUCTURAL wasm companion classes of
+//! `@extern_companions <path>=<Class>[,<Class>…]` on a LOCALLY-declared marker rule — either
+//! user-supplied flavor, `x = _CDDL_CODEGEN_EXTERN_TYPE_` or `x = _CDDL_CODEGEN_RAW_BYTES_TYPE_` —
+//! declares that the named STRUCTURAL wasm companion classes of
 //! that type already exist in a sibling wasm crate. The generator then REFERENCES them
 //! (`use <path>::<Class>;`) instead of minting its own `#[wasm_bindgen]` classes of the same names —
 //! two such classes linked into one cdylib are a `rust-lld: duplicate symbol __wbg_<class>_free`.
@@ -112,6 +113,87 @@ fn listed_keys_list_defers_while_unlisted_pair_map_mints() {
     assert!(
         index.contains("PairMapTransactionMetadatumToTransactionMetadatum"),
         "the locally-minted companion must still be indexed, got:\n{index}"
+    );
+}
+
+/// The RAW-BYTES marker is the directive's second honoring placement, on the identical contract. A
+/// raw-bytes type is user-defined exactly as an extern is — the crate names it, never defines it —
+/// while the generator still mints its structural companion family from the shapes it appears in,
+/// named from the rule's own ident. So the one-concept-one-class collision with a sibling crate's
+/// hand-written `<Name>List` is the same collision, and the same declaration resolves it.
+///
+/// Both mint SITES are exercised (a table key's `keys()` accessor and a plain `[* rb]` field), since
+/// the deferral has to be idempotent across emitters and the `use` routed at each referencing scope;
+/// and the UNLISTED map companion of the same type still mints locally, so the class list is proven
+/// to be a filter here too rather than a marker-wide opt-out.
+#[test]
+fn raw_bytes_marker_defers_its_listed_companion() {
+    let map = generate_dir(
+        &[(
+            "main.cddl",
+            "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @extern_companions dep_wasm=RbList\n\
+             holder = [items: [* rb], table: { * rb => rb }]\n",
+        )],
+        &[],
+        true,
+        "raw_bytes",
+    )
+    .expect("generation should succeed");
+    let src = joined(&map);
+    assert!(
+        src.contains("use dep_wasm::RbList;"),
+        "the listed companion of a raw-bytes marker must be imported from the declared sibling \
+         crate, got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub struct RbList"),
+        "the listed companion must NOT be minted locally, got:\n{src}"
+    );
+    assert!(
+        src.contains(".collect::<Vec<_>>().into()"),
+        "the table's keys() must build the deferred list through From<Vec<_>>, not tuple-struct \
+         syntax, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub struct MapRbToRb"),
+        "an UNLISTED structural companion of the same raw-bytes type must still mint locally, \
+         got:\n{src}"
+    );
+    let index = map
+        .iter()
+        .find(|(path, _)| path.ends_with("wasm/src/generated/collections.rs"))
+        .map(|(_, content)| content.clone())
+        .expect("wasm collections index");
+    assert!(
+        !index.contains("RbList"),
+        "a deferred companion must be excluded from this crate's own collections.rs, got:\n{index}"
+    );
+}
+
+/// A DEP-scoped RAW-BYTES rule rejects for the same reason a dep-scoped extern does — the scope
+/// check is orthogonal to which marker the rule spells, and the dependency-keyed flags own that
+/// case for both. Without this the relaxation could have been read as "raw-bytes is exempt from the
+/// scope bar".
+#[test]
+fn dep_scoped_raw_bytes_rejects_naming_the_flags() {
+    let err = generate_dir(
+        &[
+            ("main.cddl", "holder = [items: [* dep_rb]]"),
+            (
+                "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep_crate/mod.cddl",
+                "dep_rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @extern_companions dep_crate_wasm=DepRbList",
+            ),
+        ],
+        &[],
+        true,
+        "dep_scoped_raw_bytes",
+    )
+    .expect_err("a dep-scoped raw-bytes rule must reject the directive");
+    assert!(
+        err.contains("@extern_companions")
+            && err.contains("--extern-wrapper-index")
+            && err.contains("--workspace-dep"),
+        "expected a rejection naming both dependency-keyed mechanisms, got:\n{err}"
     );
 }
 

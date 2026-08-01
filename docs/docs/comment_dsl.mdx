@@ -1143,13 +1143,18 @@ Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_
 
 ## @extern_companions
 
-Valid **only** on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule declared in **this crate's own spec** (not in a
-`_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope). It declares that specific **structural wasm companion
-classes** of that extern type already exist in a sibling wasm crate, so the generator **references**
-them instead of minting its own:
+Valid **only** on a non-generic `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule
+declared in **this crate's own spec** (not in a `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope). Both markers
+name a type this crate does **not** define while the generator still mints that type's structural
+companion classes, so both can collide with a sibling crate's class of the same name. The directive
+declares that specific **structural wasm companion classes** of that type already exist in a sibling
+wasm crate, so the generator **references** them instead of minting its own:
 
 ```cddl
 transaction_metadatum = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions cml_chain_wasm=TransactionMetadatumList
+
+; identical contract on the raw-bytes marker — a hash type whose `<Name>List` the sibling owns
+pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @extern_companions cml_chain_wasm=PublicKeyList
 ```
 
 The generated wasm crate then emits `use cml_chain_wasm::TransactionMetadatumList;` and mints no local
@@ -1159,8 +1164,8 @@ anywhere in the argument**.
 
 ### The problem it solves
 
-When a rule declares an extern type, the generator still owns that type's *structural companions* —
-the `<Elem>List`, `Map<K>To<V>` and their siblings it synthesizes for `[* t]` / `{* k => v}` shapes.
+When a rule declares an extern or raw-bytes type, the generator still owns that type's *structural
+companions* — the `<Elem>List`, `Map<K>To<V>` and their siblings it synthesizes for `[* t]` / `{* k => v}` shapes.
 Each is a `#[wasm_bindgen]` class. If the sibling crate that *defines* the extern type also defines a
 class of the same structural name (typically the canonical `<Name>List`), and both wasm crates link
 into one cdylib, the link fails:
@@ -1187,7 +1192,7 @@ it, exactly like the extern marker itself: an absent or wrongly-shaped class fai
 - It derives (or implements) **`Clone`** — every boundary crossing clones before converting.
 - **`From<Inner> for <Class>`** and **`From<<Class>> for Inner`**, plus `AsRef<Inner>`, where `Inner`
   is the rust core type of the shape the class stands for, over **the same rust element type this
-  crate uses** (i.e. the sibling's own rust type, which this crate re-exports for the extern marker):
+  crate uses** (i.e. the sibling's own rust type, which this crate re-exports for the marker rule):
 
   | Deferred class | `Inner` |
   |---|---|
@@ -1251,23 +1256,26 @@ structural name is listed.
 |---|---|
 | The type is declared in a `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` scope (or via `--extern-import`) and the dep's own generation minted the wrapper | [`--extern-wrapper-index=<dep>=<dep>/wasm/src/generated/collections.rs`](./command_line_flags) — the dep's committed index is consulted, so the tool knows the class exists |
 | Same, and the whole workspace regenerates together | [`--workspace-dep=<dep>`](./command_line_flags) — defers unconditionally and records a request sidecar so the dep mints what you need |
-| The type is marked extern in **this** crate's spec (a one-type re-export of a sibling's type), and/or the sibling's class is **hand-written** so no generated index lists it | `@extern_companions` |
+| The type is marked extern **or raw-bytes** in **this** crate's spec (a one-type re-export of a sibling's type), and/or the sibling's class is **hand-written** so no generated index lists it | `@extern_companions` |
 
-The first two key on the constituents' owning **dependency**, which a locally-marked extern does not
-have; and an index can only list what generation minted. Using `@extern_companions` on a dep-scoped
-extern is a hard error naming both flags, so the two never compete for one decision.
+The first two key on the constituents' owning **dependency**, which a locally-declared marker does
+not have; and an index can only list what generation minted. Using `@extern_companions` on a
+dep-scoped rule is a hard error naming both flags, so the two never compete for one decision.
 
 ### Rejected positions
 
-Using it anywhere other than a locally-scoped **non-generic** `_CDDL_CODEGEN_EXTERN_TYPE_` rule is a
+Using it anywhere other than a locally-scoped **non-generic** `_CDDL_CODEGEN_EXTERN_TYPE_` /
+`_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule is a
 hard error: on a
-rule this crate generates (a record, a type/group choice, a collection), on a
-`_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule (that type has no generator-minted wasm companions), at a
+rule this crate generates (a record, a type/group choice, a collection) — such a rule owns the
+companions it mints, so there is nothing to borrow — at a
 field/member position, on a non-last arm of a multi-choice type rule, and on a dep-scoped extern.
 A **generic** extern base (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) is rejected too: every companion
 class is named from the ident at the *use* site, so an instance `i = foo<uint>` used as `[* i]` mints
 `IList` and never `FooList` — a deferral declared on the base is looked up under a name nothing asks
-for. Declare the concrete shape as its own non-generic extern rule and put the deferral there. A
+for. Declare the concrete shape as its own non-generic extern rule and put the deferral there. (The
+raw-bytes marker needs no such rule of its own: a generic `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule is
+rejected outright, directive or not — see its section below.) A
 malformed argument (missing, no `=`, a non-path prefix, an empty or non-identifier class name) is a
 loud parse-time failure rather than a silent drop — a silently dropped declaration re-mints the very
 classes it exists to suppress, and the only symptom would be a duplicate symbol in a *different*
@@ -1286,5 +1294,7 @@ bar = [
 This will treat `foo` as some external type called `Foo`. This type must implement the exported (in `serialization.rs`) trait `RawBytesEncoding`.
 The contract under the json flags is the same as `_CDDL_CODEGEN_EXTERN_TYPE_`'s above: `serde::Serialize`/`serde::Deserialize` under `--json-serde-derives`, plus `schemars::JsonSchema` under `--json-schema-export`, since the generated code delegates its JSON representation to the user type — including the obligation that the impl's `schema_name()` be **unique within the crate**, and that a GENERIC raw-bytes type's impl vary the name with its parameters (`schema_id()` defaults to `schema_name()`, so a constant name silently merges every instantiation into one published definition; the json-gen run fails naming both offenders). If that contract ever changes, both sections change together.
 This can be useful for example when working with cryptographic primitives e.g. a hash or pubkey, as it allows users to have those crypto structs be from a crypto library then they only need to implement the trait for them and they will be able to be directly used without needing any useless generated wrapper struct for the in between.
+
+The wasm companion classes minted for the shapes it appears in (`[* foo]`, `{* foo => …}`, …) are the generator's, exactly as for an extern type — so when a sibling wasm crate already publishes one of them, [`@extern_companions`](#extern_companions) defers to it here under the identical contract.
 
 Placement follows the same contract as `_CDDL_CODEGEN_EXTERN_TYPE_`: define the type in a hand-written module and re-export it at the crate root — the tool emits `pub use crate::Foo;` glue into the declaring scope's generated module (this matters especially when the rule is referenced only through `pub type` aliases, which have no other way to resolve). The wasm crate mirrors this: define the `#[wasm_bindgen]` wrapper in a hand-written wasm-crate module and re-export it at the wasm crate root. See [Output format § Generated crate roots](./output_format#generated-crate-roots-thin-root-seed-once).
