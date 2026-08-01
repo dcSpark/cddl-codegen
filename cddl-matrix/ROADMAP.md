@@ -607,21 +607,16 @@ ledgered here (that's what the probe/gate error messages point at).
   support is owned by the float-table-key boundary entry's ordered-float question); flipping either
   row to `ok` requires real support, not a decay back to the old `group_entry_to_field_name`
   panics.
-- Four comment-DSL candidate fixes surfaced by the `src/tests/dsl_position_tests.rs` position sweep
-  (held in its `KNOWN_SILENT_DROP` pin list — pinned, not fixed; the pins flip loudly when a fix
-  lands): (1) `@name` at a MEMBER-position anonymous inline group never reaches the naming site
-  (`get_comment_after(type2)` ascends only through Type1/TypeChoice), so the "Anonymous groups not
-  allowed" rejection fires despite its message advertising `@name` as the remedy — the remedy DOES
-  work in choice-member position; either make the member-position comment reachable or scope the
-  rejection message's advertised remedy to the positions that can honor it. (2) `@doc` on a fixed-value (dataless C-style enum) type-choice
-  variant is captured into the IR but never emitted — data-carrying variants render the `///` fine.
-  (3) `@raw_bytes_flavor` on a NON-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule is silently accepted
-  as a no-op — the extern-only validity gate rejects only non-extern rules while the docs scope the
-  tag to extern GENERICS, and a non-generic extern has no instances to flavor; either hard-error
-  the non-generic case or document the inertness deliberately. (4) `@used_as_elem` in field
-  position is silently dropped — the field-trailing comment binds to the field's
-  `trailing_comments`, which the rule-level metadata detector never reads, so no wrapper is minted;
-  either make the field comment reachable or hard-error it, so the tag never silently no-ops.
+- **A whole-TABLE custom codec has no spelling.** `@custom_serialize`/`@custom_deserialize` on a
+  table rule is refused (the table lowers to a transparent map alias that owns no codec to
+  override), and the advertised remedies reach only the parts: the row's KEY rule, the row's VALUE
+  rule, or `_CDDL_CODEGEN_EXTERN_TYPE_` for the whole type by hand. Honoring the pair on the rule
+  itself means threading `rule_metadata` through `AliasInfo`, which doc-lookup, the
+  extern-interface projection and alias suppression all read — each needs its own re-audit, which
+  is why the refusal ships first. Reopening signal, measurable by whoever has the problem: a spec
+  whose table needs ONE codec over the whole map (a framing the key and value codecs cannot
+  compose — a length prefix, a whole-map digest, a non-map wire form) and whose author reports
+  reaching for the extern escape to get it.
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,

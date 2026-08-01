@@ -1479,9 +1479,9 @@ spliced into generated trees: `tests/custom_serialization` (core), `tests/custom
   re-minimization, and a serializer refusal surfacing from both call sites.
 - **Placement axis** — `dsl_position_tests` cells: the rejected placements (extern/raw-bytes
   rules, row-entry slots, `@no_alias`, `@newtype`, enum rules in every spelling, record-rule
-  single-half) as `Expect::Reject` beside the honored controls, the record-rule BOTH-set spelling
-  as an accepted-behavior control cell, and two `KNOWN_SILENT_DROP` pins (table-RULE slot;
-  rest-row key-domain `@custom_deserialize`) that flip loudly if honored later. Message texts are
+  single-half, table rule in every spelling incl. a generic def's instance) as `Expect::Reject`
+  beside the honored controls, and the record-rule BOTH-set spelling as an accepted-behavior
+  control cell. Message texts are
   pinned by the `custom_codec`/`single_half_custom_codec` robustness tests.
 - **Oracle exclusion** — the emit-tests encoding-fidelity oracle excludes custom-carrying types
   rep-independently (their wire format isn't the generated serializer's — see the emit-tests
@@ -2970,7 +2970,9 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > "expectation NOT satisfied", which a MISPLACED directive comment satisfies vacuously (the DSL's
 > comma-placement rules are finicky), so a pin is authored only after hand-verifying the placement
 > against the docs' comma rules — ideally beside a control cell using the same placement in a
-> position where the directive works, isolating *position* as the variable.
+> position where the directive works, isolating *position* as the variable. The pin list is
+> currently EMPTY: every cell meets its docs-claimed expectation, by honoring the directive or by
+> refusing it with a message naming the spelling that works, so a new entry is a new finding.
 
 ### Synthesized-name interaction sweep + duplicate-ident backstop
 
