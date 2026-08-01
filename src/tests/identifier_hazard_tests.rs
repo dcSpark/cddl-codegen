@@ -451,7 +451,7 @@ fn identifier_hazard_crates_compile() {
 /// locals are in scope). `export.rs` and `component.rs` are deliberately absent: their emitted
 /// bodies are the json-schema generator and the wit-bindgen guest glue, neither of which puts a
 /// user field name in scope beside a fixed local.
-const EMITTER_SOURCES: &[&str] = &[
+pub(crate) const EMITTER_SOURCES: &[&str] = &[
     "deserialize.rs",
     "serialize.rs",
     "records.rs",
@@ -460,20 +460,45 @@ const EMITTER_SOURCES: &[&str] = &[
     "wrappers.rs",
 ];
 
-/// Extract the contents of every string literal in `src` (normal and raw), skipping line and block
-/// comments and char literals so a quote inside a comment cannot swallow real code. Deliberately
-/// simple: it only has to be right about THESE six files, and `emitter_local_scan_finds_the_known_anchors`
-/// pins that it still finds the locals we know are there.
-fn string_literals(src: &str) -> Vec<String> {
+/// One lexical pass over Rust source, feeding both source-scan gates over the emitters.
+pub(crate) struct ScannedRust {
+    /// `src` with every comment body, char literal and string literal body blanked to spaces
+    /// (newlines kept, so char indices and line numbers still line up with `src`). This is what
+    /// lets a caller match `fn`/`impl` headers and brace extents without a real parser: a `{` or a
+    /// `fn` inside an EMITTED literal cannot be mistaken for the emitter's own code.
+    pub(crate) masked: String,
+    /// `(char index of the literal's first content char in `src`, decoded content)` for every
+    /// string literal, normal and raw.
+    pub(crate) literals: Vec<(usize, String)>,
+}
+
+/// Scan `src` for [`ScannedRust`]: string literal contents (normal and raw) plus the masked source,
+/// skipping line and block comments and char literals so a quote inside a comment cannot swallow
+/// real code. Deliberately simple: it only has to be right about [`EMITTER_SOURCES`], and two gates
+/// pin that it still finds what we know is there — `emitter_local_scan_finds_the_known_anchors`
+/// (here) and `snapshot_tests::emitter_overload_lint_sees_its_anchors` (the fast-tier bare-token
+/// lint, this scan's other consumer).
+pub(crate) fn scan_rust(src: &str) -> ScannedRust {
     let b: Vec<char> = src.chars().collect();
+    let mut masked = b.clone();
+    /// Blank `[from, to)` in the mask, keeping newlines so indices/lines still align with `src`.
+    fn blank(mask: &mut [char], from: usize, to: usize) {
+        for c in mask.iter_mut().take(to).skip(from) {
+            if *c != '\n' {
+                *c = ' ';
+            }
+        }
+    }
     let mut out = Vec::new();
     let mut i = 0;
     while i < b.len() {
+        let start = i;
         match b[i] {
             '/' if i + 1 < b.len() && b[i + 1] == '/' => {
                 while i < b.len() && b[i] != '\n' {
                     i += 1;
                 }
+                blank(&mut masked, start, i);
             }
             '/' if i + 1 < b.len() && b[i + 1] == '*' => {
                 let mut depth = 1;
@@ -489,6 +514,7 @@ fn string_literals(src: &str) -> Vec<String> {
                         i += 1;
                     }
                 }
+                blank(&mut masked, start, i);
             }
             // a char literal (`'x'`, `'\n'`) — a lifetime (`'a`) has no closing quote, so only
             // consume when the closing quote is where a char literal would put it.
@@ -501,6 +527,9 @@ fn string_literals(src: &str) -> Vec<String> {
                     None
                 };
                 i = close.map(|j| j + 1).unwrap_or(i + 1);
+                if close.is_some() {
+                    blank(&mut masked, start, i);
+                }
             }
             'r' if i + 1 < b.len() && (b[i + 1] == '"' || b[i + 1] == '#') => {
                 let mut hashes = 0;
@@ -519,15 +548,17 @@ fn string_literals(src: &str) -> Vec<String> {
                 let rest: String = b[j + 1..].iter().collect();
                 match rest.find(&terminator) {
                     Some(end) => {
-                        out.push(rest[..end].to_owned());
+                        out.push((j + 1, rest[..end].to_owned()));
                         i = j + 1 + rest[..end + terminator.len()].chars().count();
                     }
                     None => i = b.len(),
                 }
+                blank(&mut masked, start, i);
             }
             '"' => {
                 let mut lit = String::new();
                 i += 1;
+                let content_start = i;
                 while i < b.len() && b[i] != '"' {
                     if b[i] == '\\' {
                         i += 1;
@@ -540,21 +571,25 @@ fn string_literals(src: &str) -> Vec<String> {
                     }
                     i += 1;
                 }
-                out.push(lit);
+                out.push((content_start, lit));
                 i += 1;
+                blank(&mut masked, start, i);
             }
             _ => i += 1,
         }
     }
-    out
+    ScannedRust {
+        masked: masked.into_iter().collect(),
+        literals: out,
+    }
 }
 
-fn is_ident_char(c: char) -> bool {
+pub(crate) fn is_ident_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
 /// Read the identifier starting at `chars[at]`, or `None` if that is not an identifier start.
-fn ident_at(chars: &[char], at: usize) -> Option<String> {
+pub(crate) fn ident_at(chars: &[char], at: usize) -> Option<String> {
     let first = *chars.get(at)?;
     if !(first.is_ascii_alphabetic() || first == '_') {
         return None;
@@ -668,7 +703,7 @@ fn scan_emitter_locals() -> std::collections::BTreeMap<String, std::collections:
         let path = format!("{}/src/generation/{file}", env!("CARGO_MANIFEST_DIR"));
         let src = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("cannot read emitter source {path}: {e}"));
-        for lit in string_literals(&src) {
+        for (_, lit) in scan_rust(&src).literals {
             for name in emitted_bindings(&lit) {
                 found.entry(name).or_default().insert((*file).to_owned());
             }

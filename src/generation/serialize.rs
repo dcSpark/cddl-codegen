@@ -374,7 +374,13 @@ pub(super) fn end_len(
             if is_end { "" } else { "?;" }
         ));
     } else if is_end {
-        body.line("Ok(serializer)");
+        // Spelled through the parameter, never as a bare `serializer`: this helper is called with
+        // the caller's `serializer_pass`, which is the `.cbor`-payload inner buffer under a
+        // `serializer_name_overload`. Every overload site sets `is_end(false)` today, so this branch
+        // is reachable only with the default name — but a leaf that hardcodes the default is the
+        // exact failure class `snapshot_tests::emitter_overload_no_bare_default_tokens` lints for,
+        // and it is that lint's arming run that found this one.
+        body.line(&format!("Ok({serializer_use})"));
     }
 }
 

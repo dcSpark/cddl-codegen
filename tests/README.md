@@ -611,6 +611,23 @@ emitted bytes don't *change*, not that they satisfy an invariant; a violation ju
   stopped exercising the construct (the fixture-blind-spot class that once graded the rust crate
   bindgen-free from a fixture lacking any c-style enum).
 
+One gate in the module reads the GENERATOR's own source rather than its output, because the class it
+catches is invisible in output that no composition happens to reach:
+
+- `emitter_overload_no_bare_default_tokens` — `generate_deserialize` and `generate_serialize` each
+  thread an OVERLOADABLE name (the deserializer, `raw` by default but the payload's own cursor under
+  a `bytes .cbor`; the serializer, `serializer` by default but an inner buffer under the same
+  payload, or `buf` for a canonical map key). A leaf that spells the DEFAULT inline compiles,
+  snapshots green, and mis-frames the buffer only where an overload is actually live — four such
+  deserialize leaves were found by composition luck and code-reading, not by any gate. The lint fails
+  any emitted string literal containing a bare `raw` / `serializer` token inside an *overload-scoped*
+  fn: one that RECEIVES the name (a `DeserializeConfig`/`SerializeConfig` parameter, a
+  `deserializer_name:`/`serializer_use:`/`serializer_pass:` parameter, or a `&self` method of the
+  config types). Root emitters are deliberately out of scope — they emit the signature that BINDS
+  the name. Two justified allowlist entries (the accessors' own defaults) and an anti-vacuity
+  sibling, `emitter_overload_lint_sees_its_anchors`, which pins the scoped fn set, a floor on the
+  literals scanned, and that every allowlist entry still matches a live site.
+
 The emission-hygiene gates pin specific shapes found by review; `generated_code_clippy_clean`
 provides the systematic lint axis, while needle gates remain for source-shape classes no rustc or
 clippy lint can see.

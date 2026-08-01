@@ -767,9 +767,7 @@ as a gate for only two files"; "A `no gate demands this` premise probed against 
 evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
 `check.ts` itself); "`--extern-wrapper-index` deferral-boundaries"; "The recombination sweep's
 outcome counts are enforced only by vacuity floors"; and "A rule-position directive is SILENTLY
-DROPPED on every rule shape or spelling whose parse path does not carry it to a marking site". A
-sixth is fired on its own stated axis but not yet re-scoped by a measurement — see "Nothing asserts
-that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
+DROPPED on every rule shape or spelling whose parse path does not carry it to a marking site".
 
 - **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
   extern-interface projection — the cross-crate skew class, invisible to every single-crate
@@ -2429,41 +2427,27 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   next adds a bounded mint. Today that count is one (the `N64` magnitude, transformed through
   `nint_bounds_to_u64`); a SECOND such site means the working rule is being carried by hand in more
   than one place, and hand-carrying is what produced this instance.
-- **Nothing asserts that a recursive emitter's OVERLOADABLE parameter reaches every leaf it
-  emits, so a leaf that hardcodes the default is invisible until a composition happens to reach
-  it.** `generate_deserialize` threads a deserializer name (`raw` by default, `inner_de` under a
-  `bytes .cbor` payload), and four emission sites named `raw` outright: the `bool`/`f32`/`f64`
-  leaves, the indefinite-length break probe, and the INLINED c-style-enum variant sweep (whose
-  helper drops the overload by building a fresh config, and whose OTHER caller is legitimately
-  `raw`-based — the shape that makes a by-eye sweep unreliable). Each emitted a payload decode that
-  read the OUTER buffer, silently mis-framing every member after it. Detection today is entirely
-  by composition luck: the recombination layer-2 sweep found exactly ONE of the four
-  (`arr_mid × cbor_payload × prelude.float64`) because that filler exists; the other three were
-  found only by reading the emitter while fixing the first, and the sweep cannot reach them
-  (`bool` has no `.cbor`-composable filler that lands on the arm, an indefinite inner length is
-  unreachable from an emitter that only writes definite ones, and a c-style enum under `.cbor` is
-  not a composed pair). Detection is also LATE by construction — that sweep is full-tier-only, so
-  the one found instance sat in `LAYER2_KNOWN_BAD` rather than being fixed. All four are now fixed
-  and pinned by `cbor_payload_leaves` / `cbor_payload_indefinite_inner` in `tests/core/tests.rs`,
-  which execute a decode and assert the member AFTER the payload — the assertion a snapshot pin
-  structurally cannot make, since text blessed while the bug was live stays green forever. That
-  assertion shape is current state in `tests/README.md` § "Hand-vector suites"; what remains future
-  here is only the mechanical layer, which is a SOURCE lint rather than a fixture and therefore
-  fast-tier-cheap: enumerate the emitting sites reachable from `generate_deserialize` (its own body
-  plus the transitive closure of the helpers it calls) and fail on any emitted string literal
-  containing a bare `raw` token — the default must be spelled through the config accessor, never
-  inline.
-  **The stated trigger — the COUNT of overloadable emitter parameters, on the axis the cost grows
-  along — is MET, and this entry's own premise about it was falsified by reading the emitter.** It
-  read "today it is one (the deserializer name); the serializer side has the same shape latent". The
-  serializer side is not latent: `SerializeConfig::serializer_name_overload`
-  (`src/generation/serialize.rs`) exists today with the same default-or-overload shape as
-  `DeserializeConfig::deserializer_name`, and two call sites already use it — the `.cbor` payload's
-  `<var>_inner_se` and the canonical map-key `buf`. So the closure IS being carried by hand in two
-  emitters, which is exactly the condition the trigger names. Build the lint over BOTH accessors (a
-  bare `raw` token under `generate_deserialize`, a bare `serializer` token under
-  `generate_serialize`), and let its arming run — not this entry — decide whether the serializer side
-  has live leaves, since no probe has yet asked that question of the serializer's four-leaf analogue.
+- **An emitter that DROPS an overloadable parameter by building a fresh config is invisible to the
+  lint that catches one which hardcodes the default.** The hardcoding half is covered:
+  `snapshot_tests::emitter_overload_no_bare_default_tokens` (fast tier, current state in
+  `tests/README.md` § "Snapshot tests") fails any overload-scoped emitter fn whose emitted literal
+  spells a bare `raw`/`serializer`, and its arming run cleared both axes — the four historical
+  deserialize leaves stay fixed, and the one serializer leaf it found (`end_len`'s `is_end` branch,
+  reachable only with the default name today because every overload site sets `is_end(false)`) was
+  fixed in the same change. What that lint cannot see is the OTHER shape the same four leaves
+  produced: a helper that builds a fresh `DeserializeConfig::new(..)` / `SerializeConfig::new(..)`
+  instead of threading the caller's, so every literal below it correctly spells an accessor that
+  resolves to the default. The emitted text is indistinguishable from correct; only the config's
+  provenance is wrong. A mechanical layer would be a construction lint — a config built inside an
+  overload-scoped fn must inherit rather than start fresh — with the legitimate fresh-config
+  boundaries (the array element, the map key/value, the canonical map key) as its allowlist.
+  Deferred because it would have no work to do on the current tree: all four of today's fresh-config
+  constructions inside an overload-scoped fn sit at exactly those boundaries and each re-threads the
+  overload explicitly (`elem_config.deserializer_name_overload = config.deserializer_name_overload;`
+  and its two map twins; the canonical map key's own `buf`). Reopening signal, on the axis the cost
+  grows along: the COUNT of fresh-config constructions inside overload-scoped fns, measurable by
+  whoever next adds one — today it is four, all at the named boundaries, so a fifth that is NOT one
+  of them is the instance that makes the boundary list worth writing.
 
 - **A cargo FEATURE on a generated crate's dependency can change what emitted code MEANS, and no
   axis varies dependency features — compounded by every generated `Serialize` only ever being
