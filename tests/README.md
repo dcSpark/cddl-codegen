@@ -1085,6 +1085,16 @@ back via `--extern-import` in place of a hand-stub tree (user docs:
   path / malformed value all hard-error; an export whose `; unexported:` records mention DSL tags
   still parses cleanly), the wrapped staleness diagnostic, and single-file-consumer ROOT_SCOPE
   preservation.
+- **Writer vocabulary** (same file, `EXTERN_INTERFACE_WRITER_VOCABULARY` +
+  `extern_interface_writer_vocabulary_matches_the_writers`): every `@…` annotation
+  `generation/extern_interface.rs`'s rule-line assembly can WRITE into an export, paired with the
+  acceptance vector proving this crate's own parse still accepts what its writer emits. The scan is
+  a TOTAL verdict over the emitter's `@…` literals — each is classified writer or diagnostic, so a
+  new writer literal with no row fails, and a row no writer emits fails the other way. It closes
+  the cross-crate skew class in BOTH directions at once: a directive that should travel and does
+  not (the forward direction), and a projection emitting a spelling the parser refuses (the
+  converse, which a refusal delivery has no reason to look for, because the writer already exists
+  and no representation changed). Adding a writer means adding a row AND its consumer vector.
 - **Transitive floor** (same file, `transitive_*` over `tests/extern-import-transitive/`): depth-1
   export purity (a mid-dep transparent rule referencing a base-dep type is closure-excluded, and
   no base-dep ident appears in any exported body), two-flag composition with right-crate `use`
