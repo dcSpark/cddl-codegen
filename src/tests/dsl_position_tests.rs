@@ -16,7 +16,7 @@
 //! flips loudly the day a fix lands. A pin is a FINDING, not a license to fix: do not silence a drop
 //! by re-authoring its expectation, and do not fix a newly-found drop opportunistically. Every fix
 //! that has landed here was TRIGGERED — the scoped rule-position `@name` rejection this module's
-//! Part 2 lands, the non-last-arm rule-level rejection beside it, and the six `@custom_serialize` /
+//! Part 2 lands, the non-last-arm rule-level rejection beside it, and the `@custom_serialize` /
 //! `@custom_deserialize` placement rejections (cells 23a–23n), each of which was ruled before it was
 //! written — and each ships with its own placement CONTROL cell isolating position as the variable.
 //! That is the bar the next one has to clear too.
@@ -69,26 +69,13 @@ struct Cell {
 /// rules are finicky), so the pin would hold for the wrong reason. Only pin a cell after
 /// hand-verifying the placement variants against the docs' comma rules (both the with- and
 /// without-trailing-comma spellings), beside a control cell using the same placement in
-/// a position where the directive DOES work, isolating position as the variable — the table-rule
-/// pin's control is the `type-level` cell.
+/// a position where the directive DOES work, isolating position as the variable.
 ///
-/// One live finding — the custom-serialize hardening's remainder, deliberately left silent because
-/// honoring or refusing it is a design decision, not a call-site fix. Its RULED placements are cells
-/// 23a–23n, which `Reject` rather than pin (23o is the accepted-control beside them):
-///   - `@custom_serialize+deserialize` @ `table-rule`: a table rule is a type-level rule, the docs'
-///     supported position, yet the pair is dropped in both directions. Control: the `type-level` cell
-///     (same rule-trailing placement on a primitive body — it emits both call sites) plus the live
-///     rule slot itself, since a rule-trailing `@duplicates preserve` on this shape does swap in the
-///     PairMap twin. Whether a transparent table alias CAN carry the pair is the open question.
-const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[(
-    "@custom_serialize+deserialize",
-    "table-rule",
-    "the custom (de)serializer pair on a TABLE rule (`t = { * k => v } ; @custom_serialize …`) is \
-         dropped in both directions, although the docs claim type-level rules are a supported \
-         position. The rule slot itself is live (a rule-trailing `@duplicates preserve` on the same \
-         shape does swap in the PairMap twin), so this is the directive being unhonored for the \
-         table shape, not the comment being unseen",
-)];
+/// The list is EMPTY: every cell in the grid now meets its docs-claimed expectation, either by
+/// honoring the directive or by refusing it with a message naming the spelling that works. A new
+/// entry is therefore a NEW finding — pin it with its reason and report it; do not re-author the
+/// cell's expectation to match the drop.
+const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[];
 
 /// The docs-claimed grid. Anchors were verified empirically against emitted source while authoring;
 /// the `must` fragments are the load-bearing bits, not guaranteed-verbatim whole lines.
@@ -691,21 +678,52 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("together with `@newtype`"),
     },
-    // 23g. FINDING (pinned in KNOWN_SILENT_DROP): a TABLE RULE is a type-level rule, which the docs
-    //      say is a supported position, but the pair is dropped there. The rule slot is genuinely
-    //      read — a rule-trailing `@duplicates preserve` on this same shape DOES swap in the PairMap
-    //      twin — so this is the directive being unhonored, not the comment being unseen, and the
-    //      row-entry sibling (23d) rejects rather than masking it.
+    // 23g. REJECT: a TABLE RULE. The rule slot is genuinely read — a rule-trailing
+    //      `@duplicates preserve` on this same shape DOES swap in the PairMap twin — so the comment
+    //      arrives; what is missing is anything for it to override. A table lowers to a transparent
+    //      map alias that owns no codec, so unlike the record rule (23m/23n/23o) there are no impls
+    //      for either half to suppress and BOTH halves are equally unhonored, which is why any
+    //      presence rejects. The row-entry sibling (23d) is the disjoint slot.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "table-rule",
         spec: "t = {\n  * text => uint\n} ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: t]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Effect {
-            must: &["my_ser(", "my_deser("],
-            must_not: &[],
-        },
+        expect: Expect::Reject(
+            "a table rule (`T = { * k => v }`) lowers to a transparent map alias",
+        ),
+    },
+    // 23g-i / 23g-ii. Each half ALONE on a table rule, rejected on its own — the record rule's
+    //      both-halves escape (23o) has no table counterpart, so neither spelling may slip through.
+    Cell {
+        directive: "@custom_serialize",
+        position: "table-rule-alone",
+        spec: "t = {\n  * text => uint\n} ; @custom_serialize my_ser\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize on `T`: a table rule"),
+    },
+    Cell {
+        directive: "@custom_deserialize",
+        position: "table-rule-alone",
+        spec: "t = {\n  * text => uint\n} ; @custom_deserialize my_deser\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize on `T`: a table rule"),
+    },
+    // 23g-iii. GENERIC table def + one instantiation. The kind-walk runs after generic resolution,
+    //      so the instance's materialized struct IS seen and the pair is refused there too. What the
+    //      cell pins is WHICH name the message carries: the monomorphized instance
+    //      (`PtblU64Bytes`), not the def the directive was written on (`ptbl`) — the same naming a
+    //      generic instance gets from every other finalize-seam rejection.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "generic-table-def",
+        spec: "ptbl<k0, v0> = {\n  * k0 => v0\n} ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ptbl<uint, bytes>]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("on `PtblU64Bytes`: a table rule"),
     },
     // 23h. The pair on the KEY-DOMAIN alias of an open struct-map rest row, honored in BOTH
     //      directions. A custom pair on the domain routes the row to the typed seek path
