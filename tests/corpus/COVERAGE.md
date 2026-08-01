@@ -371,7 +371,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
 | `grpent.member` |  |  |  |  |  |  | ✅ | ◐ |  |  |
 | `memberkey.bareword` |  |  |  | · |  |  | ✅ | ➖ |  |  |
-| `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ? |  |  |
+| `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ◐ |  |  |
 | `memberkey.value` |  |  |  | ◐ |  |  | ◐ |  |  |  |
 | `occur.bounded` |  | · |  |  |  |  |  |  |  |  |
 | `occur.one_or_more` |  | · | · |  |  |  |  |  |  |  |
