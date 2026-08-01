@@ -5890,6 +5890,17 @@ fn custom_codec_pair_on_extern_rule_rejects_gracefully() {
             "[{tag}] the rejection must advertise the type-level alias spelling as the remedy, \
              got:\n{err}"
         );
+        // The SECOND road, which keeps the marker's rust type: the pair on an alias OF this rule.
+        // Advertised because it is what a consumer replacing only the WIRE of a hand-written type
+        // wants — the body road would change the rust type too.
+        assert!(
+            err.contains(
+                "put the pair on an ALIAS of it (`<alias> = <rule> ; @custom_serialize <fn> \
+                 @custom_deserialize <fn>`)"
+            ),
+            "[{tag}] the rejection must advertise the alias-of-marker spelling as the second \
+             remedy, got:\n{err}"
+        );
     }
     // CONTROL: the advertised remedy really does route both directions through the custom fns.
     let src = expect_custom_codec_source(
@@ -5900,6 +5911,40 @@ fn custom_codec_pair_on_extern_rule_rejects_gracefully() {
         src.contains("my_ser(") && src.contains("my_deser("),
         "the remedy spelling must emit both custom call sites, got:\n{src}"
     );
+    // CONTROL for the second remedy, both marker flavors: the alias keeps the marker's rust type
+    // (`pub type <Alias> = <Marker>;`) while the pair owns the wire. This is the "this rule IS that
+    // type, written differently" spelling — executed end to end in `tests/alias-of-marker-e2e`
+    // (raw-bytes flavor) and `tests/custom-encodings-e2e` (extern flavor, which additionally
+    // declares its wire because a self-carrying type demands no encoding variables).
+    for (tag, marker, ident) in [
+        (
+            "custom_extern_alias_control",
+            "_CDDL_CODEGEN_EXTERN_TYPE_",
+            "Ext",
+        ),
+        (
+            "custom_raw_bytes_alias_control",
+            "_CDDL_CODEGEN_RAW_BYTES_TYPE_",
+            "Rb",
+        ),
+    ] {
+        let base = ident.to_lowercase();
+        let src = expect_custom_codec_source(
+            tag,
+            &format!(
+                "{base} = {marker}\n\
+                 {base}_v1 = {base} ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+                 holder = [f: {base}_v1]\n"
+            ),
+        );
+        assert!(
+            src.contains(&format!("pub type {ident}V1 = {ident};"))
+                && src.contains("my_ser(")
+                && src.contains("my_deser("),
+            "[{tag}] the alias road must resolve to the marker's type and route both directions \
+             through the custom fns, got:\n{src}"
+        );
+    }
 }
 
 /// The custom (de)serializer pair written in a collection ROW-ENTRY comment slot — a table row, an

@@ -2116,7 +2116,11 @@ fn parse_type(
         // `new_raw_bytes` both store `RustStructConfig::default()`, so the pair never reaches
         // generation and BOTH directions emit the named type's own impls. One class, like `@copy`
         // above treats them; the message names the marker the rule actually spells, since this is
-        // "invalid HERE" rather than `@copy`'s "valid only on X or Y".
+        // "invalid HERE" rather than `@copy`'s "valid only on X or Y". The rejection is scoped to
+        // the rule ITSELF spelling a marker: a pair on an ALIAS whose body REFERENCES this rule is
+        // the honored "this rule is that type, written differently on the wire" spelling (the
+        // general type-level override, applied to a type the crate does not define), which is why
+        // the message advertises it as the second remedy.
         if let Some(marker) = is_extern_marker
             .then_some(EXTERN_MARKER)
             .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER))
@@ -2124,10 +2128,15 @@ fn parse_type(
             types.record_rejection(format!(
                 "{directive} on `{type_name}`: a {marker} rule names a type this crate does \
                  not define, so that type owns its own serialization impls and the custom \
-                 (de)serializer pair never reaches generation. Give the rule a real CDDL body and \
-                 put the pair there (`<rule> = text ; @custom_serialize <fn> @custom_deserialize \
-                 <fn>`) — that states the wire type in the spec and routes the pair through the \
-                 type-level alias override."
+                 (de)serializer pair never reaches generation. Two spellings work. Give the rule a \
+                 real CDDL body and put the pair there (`<rule> = text ; @custom_serialize <fn> \
+                 @custom_deserialize <fn>`), which states the wire type in the spec; or keep this \
+                 rule as the marker and put the pair on an ALIAS of it (`<alias> = <rule> ; \
+                 @custom_serialize <fn> @custom_deserialize <fn>`), which keeps the marker's rust \
+                 type and overrides only how that type is written here — under \
+                 `--preserve-encodings` an alias of {EXTERN_MARKER} must also declare its wire \
+                 with `@custom_encodings`, while an alias of {RAW_BYTES_MARKER} infers it. Both \
+                 route the pair through the type-level alias override."
             ));
         }
         // A generic INSTANTIATION binding mints its type during finalize's generic resolution, from
