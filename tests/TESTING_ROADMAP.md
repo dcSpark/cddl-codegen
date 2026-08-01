@@ -481,29 +481,25 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    consumer CI will trip"; the consumer-report channel stays load-bearing for that remainder, which
    is why those two lints are allowed at the generated root rather than chased per-spec.
 
-7. **The rustfmt-invocation seam's own error paths are contract-untested.**
-   `rustfmt_generated_string` (`src/generation/export.rs`) carries the deliberate
-   non-0/3-exit-is-fatal contract that both the width ladder
-   (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the preserve-fixture rustfmt
-   sweep (`preserve_fixtures_rustfmt_cycle_stability`) cite as their entire assertion mechanism —
-   but the contract's own failure paths have no witness, because every existing test drives the
-   seam through the real toolchain rustfmt, which can produce neither condition:
-   - **Non-UTF-8 stdout is a silent swallow, not a fatal.** When rustfmt's stdout fails UTF-8
-     conversion, the function returns the UNFORMATTED input as `Ok`, ignoring the exit status
-     entirely — the one hole in the fatal contract. A rustfmt that crashed mid-write emitting
-     truncated bytes would thereby ship unformatted output and mask its own error instead of
-     aborting, quietly breaking the canonical-layout invariant and every gate whose only assertion
-     is "a bad format is a generation failure".
-   - **A missing rustfmt binary is a panic, not an error.** The lookup is unwrapped
-     (`rustfmt_path().unwrap()`), so an absent binary gives a CLI user a backtrace where every
-     other formatter failure surfaces as a clean generation error.
-   The systematic layer is a PATH-stubbed fake rustfmt: a scratch stub emitting invalid UTF-8
-   bytes with a non-zero exit drives the swallow leg (assert `Err`, never `Ok`-carrying-the-input,
-   after tightening the conversion), and an empty/absent lookup drives the missing-binary leg
-   (assert `Err` after converting the unwrap). Both are unit-scale, no corpus needed. Interaction:
-   the `prettyplease` swap (Pending maintainer action) dissolves the subprocess seam entirely —
-   but until that maintainer decision lands, the fatal contract two standing gates lean on keeps
-   an untested swallow path at its center, which is the wrong place for one.
+7. **One rustfmt-seam error leg still has no witness, and it is the one that needs a
+   subprocess-scoped test harness.** The seam's non-0/3-exit-is-fatal contract — which both the
+   width ladder (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the
+   preserve-fixture rustfmt sweep (`preserve_fixtures_rustfmt_cycle_stability`) cite as their
+   entire assertion mechanism — now has direct witnesses for its two former holes: non-UTF-8
+   formatter output is an `Err(InvalidData)` rather than an `Ok` carrying the UNFORMATTED input
+   (`rustfmt_non_utf8_output_is_an_error`, with an echoing-stub control so the failing leg cannot
+   pass for being stubbed at all), and an unspawnable formatter binary is a clean `Err` rather than
+   an unwrap backtrace (`rustfmt_unspawnable_binary_is_an_error_not_a_panic`). Both drive
+   `rustfmt_source_with`, which takes the binary path as an argument precisely so a stub needs no
+   `RUSTFMT`/`PATH` mutation — those are process-global and every concurrent formatter call in the
+   same test process would pick the stub up. What that mechanism cannot reach is `rustfmt_path()`'s
+   OWN `Err`: no `RUSTFMT` set AND `which` failing, which requires a `PATH` with no rustfmt on it —
+   process-global again, and racing the tests that spawn `cargo`. The layer that would cover it is a
+   subprocess-scoped harness: re-exec one test in a child process with a controlled environment,
+   assert its exit and stderr. Reopening signal, on the axis the harness's cost is amortized over:
+   the COUNT of error legs that need a controlled process-wide environment to drive, measurable by
+   whoever next writes one — today it is one, so a SECOND is what makes the harness worth building
+   rather than the leg worth skipping.
 
 8. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
    gives the rustfmt-cycle sweep discovery power.**

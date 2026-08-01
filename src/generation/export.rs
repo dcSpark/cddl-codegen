@@ -667,7 +667,24 @@ fn rustfmt_path() -> std::io::Result<std::path::PathBuf> {
 /// `use super::*;`, so per-file "ident absent from this file" does NOT imply unused), so it runs
 /// once over the full file map in `generated_files` — see `import_prune::prune_generated_files`.
 pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
-    let mut cmd = Command::new(rustfmt_path().unwrap());
+    // Propagated, never unwrapped: "no rustfmt on this machine" is a user-facing environment
+    // problem (a missing binary, a bad `RUSTFMT`), and the whole export path is already
+    // `io::Result` — an unwrap here turned it into a backtrace with no diagnosis.
+    rustfmt_source_with(&rustfmt_path()?, source)
+}
+
+/// [`rustfmt_generated_string`] with the formatter binary supplied explicitly.
+///
+/// Split out so the error legs can be driven by a STUB binary in tests WITHOUT mutating `RUSTFMT`
+/// or `PATH`. Both are process-global and `cargo test` runs tests as threads of one process, so a
+/// stub installed in the environment would be picked up by every concurrent caller of this function
+/// — and a mutex serializing the env-touching tests cannot protect callers that do not take it.
+/// Injecting the path is the only stub mechanism that is sound under the test harness we have.
+pub(crate) fn rustfmt_source_with<'a>(
+    rustfmt: &std::path::Path,
+    source: &'a str,
+) -> std::io::Result<Cow<'a, str>> {
+    let mut cmd = Command::new(rustfmt);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     // We invoke rustfmt directly on stdin, so it has no Cargo.toml to read the edition from and
@@ -693,7 +710,7 @@ pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
     std::io::copy(&mut child_stdout, &mut output)?;
 
     let status = child.wait()?;
-    let source = stdin_handle.join().expect(
+    stdin_handle.join().expect(
         "The thread writing to rustfmt's stdin doesn't do \
          anything that could panic",
     );
@@ -725,7 +742,20 @@ pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
                  emitted; this is a generator bug (see the rustfmt output above)",
             )),
         },
-        _ => Ok(Cow::Owned(source)),
+        // rustfmt wrote bytes that are not UTF-8. This used to return the UNFORMATTED input as
+        // `Ok`, ignoring the exit status entirely — the one remaining hole in the "any exit other
+        // than 0/3 is fatal" contract, and the worst-shaped one: it silently breaks the canonical
+        // layout invariant every formatter gate leans on, while reporting success. It is never
+        // benign — the input is a Rust `&str`, so a formatter that merely reformatted it emits
+        // UTF-8 by construction; non-UTF-8 output means rustfmt died mid-write or is not rustfmt.
+        Err(e) => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "rustfmt emitted non-UTF-8 output ({e}) — its input was valid UTF-8, so this is a \
+                 broken or crashed formatter binary (check `RUSTFMT` / the rustfmt on PATH), not a \
+                 property of the generated source. Refusing to write unformatted output."
+            ),
+        )),
     }
 }
 
