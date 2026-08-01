@@ -4609,6 +4609,26 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "buf",
     "byte",
     "bytes",
+    // THE OPEN-TABLE JSON FAMILY — `captured_range`, `ks`, `out`, `seen`, `typed_range` (the other
+    // four point back here). All five are bound ONLY by `emit_open_table_json`, i.e. only in an open
+    // table's hand-written `Serialize`/`Deserialize`/`JsonSchema`, and only under a json flag.
+    //
+    // Swept 2026-08-02 over the five registry shapes — array-rep record, map-rep record, tagged
+    // record (`#6.4n([…])`), embedded plain group, group-choice arm — plus a `bytes`-typed map-rep
+    // shape, × default / `--preserve-encodings` / `--preserve-encodings --canonical-form` × json
+    // flags OFF and ON (the profile axis the registry's original sweep left unprobed, and the one
+    // these locals actually live in), plus the OPEN TABLE shape itself with each name `@name`d onto
+    // the typed row and onto the catch-all row, × the same three profiles × json off/on. 42 bundled
+    // crates, each name in its own rule, every one `cargo check` clean.
+    //
+    // Two structural reasons behind that result, both worth stating because they bound what a future
+    // emitter change could break. An open table has ZERO fixed fields, so the only user-controlled
+    // name reaching these bodies is a ROW's (`@name`) — and every reference to a row's field is
+    // qualified (`self.<row>` on the write side, `out.<row>` on the read side), so a local can never
+    // shadow one: the swept crates really do emit `out.seen.insert(…)` beside `let mut seen`, and
+    // `self.ks.iter()` beside `while let Some(ks)`. `typed_range`/`captured_range` are bound inside
+    // the `json_schema` body, which references no field at all.
+    "captured_range",
     "deser_order",
     "deser_variant",
     "deserializer",
@@ -4639,10 +4659,14 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "k",
     "key",
     "key_order",
+    // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
+    "ks",
     "list",
     "map",
     "native",
     "opt",
+    // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
+    "out",
     "pairs",
     "present",
     "read_len",
@@ -4652,11 +4676,15 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "rest_value",
     "ret",
     "s",
+    // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
+    "seen",
     "serializer",
     "special",
     "string",
     "tag_sz",
     "ty",
+    // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
+    "typed_range",
     "unknown_key",
     "v",
     "value",
