@@ -917,23 +917,61 @@ fn record_roundtrip(
     // (which still round-trips: empty rest ≡ closed-struct bytes). CAPTURE only: an `@ignore`
     // (tolerate-and-drop) row exposes no `.rest` field to mint into — the minted value carries only
     // declared fields, and round-trips trivially (no unknown entries exist in generated-API mint).
-    if let Some(rest) = record.captured_rest() {
+    //
+    // BOTH dynamic rows, so an open table's TYPED row is minted the same way its catch-all is —
+    // otherwise every round-trip of the shape the feature exists for would carry an empty typed
+    // region, i.e. would never execute the wire-major dispatch at all. Each row also contributes to
+    // a COMBINED case below, which is the one that exercises what two dynamic sequences add: the
+    // tagged order encoding and (under canonical) the key merge spanning both regions.
+    //
+    // One exclusion, for the typed row only: a `@custom_wire_major` key whose codec owns the wire
+    // writes bytes of the DECLARED major, which need not be the major the key's rust type would
+    // naturally write. A value minted from the type could therefore land on the wrong side of the
+    // dispatch and read back into the catch-all — a mint artifact reported as a round-trip failure.
+    // Those specs have the acceptance corpus as their oracle; here the row is skipped loudly.
+    let mut per_row_entry_mints: Vec<String> = Vec::new();
+    for rest in record.captured_dynamic_rows() {
+        let typed = record.is_typed_row(rest);
         match &rest.kind {
-            // Map `* k => v` rest row: mint one entry via the `.rest` map `insert` API.
+            // Map `* k => v` rest row: mint one entry via the row's map `insert` API.
             crate::intermediate::RestKind::MapEntries { domain, range, .. } => {
+                if typed
+                    && type_uses_custom_ser(types, domain, &mut std::collections::BTreeSet::new())
+                {
+                    crate::warn!(
+                        "cddl-codegen --emit-tests: {name} typed row's key is written by a custom codec — round-trip covers an empty typed row only"
+                    );
+                    continue;
+                }
                 match (valid_value(types, domain), valid_value(types, range)) {
-                    (Some(k), Some(v)) => cases.push((
-                        format!(
-                            "{{ let mut v = {base}; v.{}.insert({}, {}); v }}",
+                    (Some(k), Some(v)) => {
+                        let mint = format!(
+                            "v.{}.insert({}, {});",
                             rest.field_name,
                             render_rust(&k),
                             render_rust(&v)
-                        ),
-                        "rest entry present".to_owned(),
-                    )),
-                    _ => crate::warn!(
-                        "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
-                    ),
+                        );
+                        cases.push((
+                            format!("{{ let mut v = {base}; {mint} v }}"),
+                            if typed {
+                                "typed row entry present".to_owned()
+                            } else {
+                                "rest entry present".to_owned()
+                            },
+                        ));
+                        per_row_entry_mints.push(mint);
+                    }
+                    _ => {
+                        if typed {
+                            crate::warn!(
+                                "cddl-codegen --emit-tests: {name} typed row not cheaply mintable — round-trip covers an empty typed row only"
+                            )
+                        } else {
+                            crate::warn!(
+                                "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
+                            )
+                        }
+                    }
                 }
             }
             // Array `* t` rest tail: mint one trailing element via the `.rest` `Vec` `push` API.
@@ -953,6 +991,19 @@ fn record_roundtrip(
                 }
             }
         }
+    }
+    // The open table's discriminating case: BOTH regions populated at once. Only this one puts two
+    // dynamic sequences on the wire in one value, which is what the tagged order encoding exists for
+    // — and, under `--canonical-form`, what the key merge spanning both regions has to sort. Emitted
+    // only when both rows minted (a skipped row leaves its own single-region case standing).
+    if record.is_open_table() && per_row_entry_mints.len() == 2 {
+        cases.push((
+            format!(
+                "{{ let mut v = {base}; {} v }}",
+                per_row_entry_mints.join(" ")
+            ),
+            "both rows populated".to_owned(),
+        ));
     }
     roundtrip_body(name, cases, conf, dump_rule, rt)
 }
