@@ -942,6 +942,26 @@ positive_coin = coin ; @doc Does not enforce > 0: plain u64 alias for API conven
 pub type PositiveCoin = u64;
 ```
 
+A **dataless (C-style) enum** — a type choice whose arms are all fixed values — carries docs the same
+way. On any type-choice rule the rule-level doc slot *is* the last arm's trailing comment, so a single
+`@doc` there documents both the enum and that arm's variant:
+
+```cddl
+network = 0 ; @name mainnet @doc the production network
+        / 1 ; @name testnet @doc the test network
+```
+
+```rust
+/// the test network
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+pub enum Network {
+    /// the production network
+    Mainnet,
+    /// the test network
+    Testnet,
+}
+```
+
 Due to the comment dsl parsing this doc comment cannot contain the character `@`.
 
 Known limitation: on a type choice of fixed values only (a dataless enum, e.g. `foo = 0 / 1`),

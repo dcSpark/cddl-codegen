@@ -72,7 +72,7 @@ struct Cell {
 /// a position where the directive DOES work, isolating position as the variable — the anon-group
 /// pin's control is the `anon-group-choice-member` cell.
 ///
-/// Four live findings. Three predate the custom-serialize hardening (none fixed by the task that added
+/// Three live findings. Two predate the custom-serialize hardening (none fixed by the task that added
 /// them — its scoped fix was the rule-position `@name` rejection); the last is that delivery's
 /// remainder, deliberately left silent because honoring or refusing it is a design decision, not a
 /// call-site fix. Its RULED placements are cells 23a–23n, which `Reject` rather than pin (23o is
@@ -82,11 +82,6 @@ struct Cell {
 ///     enclosing group entry's trailing_comments, which the naming site's `get_comment_after(type2)`
 ///     never reaches (it ascends only through Type1/TypeChoice). So `@name` is dropped and the
 ///     anonymous-group rejection fires anyway — the advertised remedy does not work in this position.
-///   - `@doc` @ `type-choice-variant`: on a FIXED-VALUE type choice (`0 / 1`, a dataless C-style
-///     enum) the per-variant `@doc` is captured into the IR (`create_variants_from_type_choices`
-///     threads `rule_metadata.comment`) but never emitted — the dataless-variant rendering drops it.
-///     `@doc` on DATA-carrying type-choice variants (`uint / tstr`) IS emitted, so the drop is
-///     specific to the C-style-enum shape.
 ///   - `@raw_bytes_flavor` @ `non-generic-extern-rule`: the docs say the tag is valid ONLY on an
 ///     extern GENERIC, but the extern-only validity gate rejects only NON-extern rules, so on a
 ///     non-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule the tag is silently ACCEPTED as a no-op (no
@@ -104,12 +99,6 @@ const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
         "@name at a member-position anonymous inline group is unreachable by the naming site's \
          get_comment_after(type2) ascent (Type1/TypeChoice only), so the anonymous-group rejection \
          fires despite its message advertising @name as the remedy",
-    ),
-    (
-        "@doc",
-        "type-choice-variant",
-        "@doc on a fixed-value (dataless C-style enum) type-choice variant is captured into the IR \
-         but never emitted; only data-carrying type-choice variants render the /// doc comment",
     ),
     (
         "@raw_bytes_flavor",
@@ -357,8 +346,10 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
-    // 15. type-choice variant, FIXED values → /// per variant. PINNED: dropped for the dataless
-    //     C-style enum shape. See KNOWN_SILENT_DROP.
+    // 15. type-choice variant, FIXED values → /// per variant. The dataless (C-style) rendering
+    //     builds its `codegen::Variant`s explicitly so each variant's captured `EnumVariant.doc`
+    //     lands as a `///` annotation, exactly as the data-carrying rendering does — the codegen
+    //     crate has no doc support on variants, so both paths go through `annotation`.
     Cell {
         directive: "@doc",
         position: "type-choice-variant",
@@ -367,6 +358,25 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Effect {
             must: &["/// about-first", "/// about-second"],
+            must_not: &[],
+        },
+    },
+    // 15b. TYPE-level `@doc` on the same C-style shape — the sibling of cell 15, and the c-style
+    //      analogue of cell 14 (`struct-level`). On a type-choice rule the rule-level doc slot IS
+    //      the LAST arm's trailing comment, so one `@doc` there does double duty: it documents the
+    //      enum AND that arm's variant (probe-verified against the data-carrying enum, which has
+    //      always emitted both). The anchor is the multi-line one (16b's discipline) so it pins the
+    //      doc to the ENUM's own position and cannot be satisfied by the variant-level `///` alone.
+    Cell {
+        directive: "@doc",
+        position: "cstyle-rule",
+        spec: "foo = 0 ; @name mainnet\n    / 1 ; @name testnet @doc the-enum-doc\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "/// the-enum-doc\n#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]\npub enum Foo {",
+            ],
             must_not: &[],
         },
     },

@@ -598,6 +598,13 @@ pub(super) fn generate_c_style_enum(
     // rust enum containing the data
     let mut e = codegen::Enum::new(name.to_string());
     e.vis("pub");
+    // The rule-level `@doc`, exactly as the data-carrying `generate_enum` emits it. On a type-choice
+    // rule the rule-level doc slot IS the last arm's trailing comment, so one `@doc` there documents
+    // both the enum and that arm's variant — the same double duty the data-carrying path has always
+    // had; the dataless rendering just never read either half.
+    if let Some(doc) = config.doc.as_ref() {
+        e.doc(doc);
+    }
     e.derive("Copy");
     // Eq/PartialEq/Ord/PartialOrd are needed for a c-style enum used as a map/set key. When it *is* a
     // key, `add_struct_derives` (below) adds them — and handles `--preserve-encodings` via `derivative`
@@ -635,7 +642,12 @@ pub(super) fn generate_c_style_enum(
         cli,
     );
     for variant in variants.iter() {
-        e.new_variant(variant.name.to_string());
+        let v = e.new_variant(variant.name.to_string());
+        if let Some(doc) = &variant.doc {
+            // repurposing annotations, as the data-carrying rendering does: the codegen crate has
+            // no doc support on enum variants
+            v.annotation(format!("/// {doc}"));
+        }
     }
     // Only the enum definition is emitted — no serialize/deserialize impl. A c-style enum's
     // fixed-value encoding is generated inline wherever it's used (see the field/variant serializers)
