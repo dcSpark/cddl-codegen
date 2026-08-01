@@ -4629,6 +4629,28 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     // `self.ks.iter()` beside `while let Some(ks)`. `typed_range`/`captured_range` are bound inside
     // the `json_schema` body, which references no field at all.
     "captured_range",
+    // THE NONEMPTY OPEN-TABLE FAMILY — `captured_staged`, `seed`, `typed_staged` (the other two
+    // point back here). All three are bound ONLY where a `{ + K_t => V_t, * K_r => V_r }` rule is
+    // present: `seed` in the seeded `new(first_key, first_value)` door's struct literal, the two
+    // `_staged` vectors in the JSON visitor that assembles through that door (json flags only).
+    //
+    // Swept 2026-08-02 over the five registry shapes — array-rep record, map-rep record, tagged
+    // record (`#6.42([…])`), embedded plain group, group-choice arm — plus a `bytes`-typed map-rep
+    // shape, EACH carrying a field of the name, × default / `--preserve-encodings` /
+    // `--preserve-encodings --canonical-form` × json flags OFF and ON; plus the open table itself
+    // with each name `@name`d onto the typed row AND onto the catch-all row, in both the `*` and the
+    // `+` flavor, over the same six profiles. Every crate `cargo check` clean, and non-vacuously so
+    // (the json+preserve cell emits `let mut seed = OrderedHashMap::new()` inside a struct literal
+    // whose sibling rules carry `pub seed` fields, and `typed_staged.push(…)` in the same crate as
+    // a `pub typed_staged` field).
+    //
+    // The structural reason, worth stating because it bounds what a future emitter change could
+    // break, is the open table's zero-fixed-field shape (the same reason the JSON family above is
+    // safe): the ONLY user-controlled name reaching these bodies is a ROW's (`@name`), every
+    // reference to a row's field is qualified (`self.<row>` / `out.<row>`), and the seeding block
+    // deliberately binds a FIXED local rather than the field's name — so a row named `seed` emits
+    // `seed: { let mut seed = …; }` where the inner binding shadows nothing the block reads.
+    "captured_staged",
     "deser_order",
     "deser_variant",
     "deserializer",
@@ -4676,6 +4698,8 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "rest_value",
     "ret",
     "s",
+    // NonEmpty open-table local; verdict + sweep evidence at `captured_staged` above.
+    "seed",
     // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
     "seen",
     "serializer",
@@ -4685,6 +4709,8 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "ty",
     // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
     "typed_range",
+    // NonEmpty open-table local; verdict + sweep evidence at `captured_staged` above.
+    "typed_staged",
     "unknown_key",
     "v",
     "value",
