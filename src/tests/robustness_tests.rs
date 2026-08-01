@@ -7060,3 +7060,67 @@ fn no_alias_suppresses_the_pub_type_on_every_alias_registering_kind() {
         "@no_alias on a struct-registering rule must be inert, not destructive"
     );
 }
+
+/// `@doc` must reach the construct a rule emits, including the two kinds whose construct is built
+/// from someone else's metadata.
+///
+/// A generic INSTANCE binding (`foo = base<uint>`) mints a struct whose `RustStructConfig` is the
+/// generic DEFINITION's, and a named binding to a generic SET NOMINAL registers its alias through
+/// `AliasInfo::new_manual` (metadata `None`) beside a nominal that belongs to the definition too. On
+/// both, the rule emitted a perfectly documentable construct — a `pub struct` and a `pub type` — and
+/// discarded the doc. The record is per-ident, written at the parse seam and read where each
+/// construct is built, so the rule that WROTE the doc is the one that owns it.
+#[test]
+fn rule_doc_reaches_the_constructs_built_from_borrowed_metadata() {
+    let emit = |cddl: &str| {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_rule_doc_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "rule_doc_unused",
+            "--wasm",
+            "false",
+        ]);
+        let out = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        out.unwrap_or_else(|e| panic!("generation must succeed for:\n{cddl}\ngot: {e}"))
+            .get("rust/src/generated/mod.rs")
+            .expect("mod.rs")
+            .clone()
+    };
+    const DOC: &str = "the rule's own prose";
+    let kinds = [
+        (
+            "generic instance binding (struct built from the definition's config)",
+            "base<T> = [x: T]\nfoo = base<uint>@\nholder = [f: foo]\n",
+        ),
+        (
+            "named binding to a generic set nominal (alias registered without metadata)",
+            "gset<T> = #6.258([* T]) / [* T]\nfoo = gset<uint>@\nholder = [f: foo]\n",
+        ),
+        // The control that already worked — a rule whose own metadata builds its own struct.
+        (
+            "record rule (own config)",
+            "foo = [x: uint]@\nholder = [f: foo]\n",
+        ),
+    ];
+    for (kind, template) in kinds {
+        let without = emit(&template.replace('@', ""));
+        assert!(
+            !without.contains(DOC),
+            "{kind}: the undocumented spec must not contain the doc text — fixture bug"
+        );
+        let with = emit(&template.replace('@', &format!(" ; @doc {DOC}")));
+        assert!(
+            with.contains(&format!("/// {DOC}")),
+            "{kind}: @doc must reach the emitted construct:\n{with}"
+        );
+    }
+}

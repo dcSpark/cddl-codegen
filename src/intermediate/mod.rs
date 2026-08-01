@@ -242,6 +242,15 @@ pub struct IntermediateTypes<'a> {
     // a dep that suppresses its `pub type` must say so, or the consumer imports a name the dep no
     // longer materializes. Determinism: `BTreeSet`. See `RuleMetadata::no_alias`.
     no_alias_rules: BTreeSet<RustIdent>,
+    // Rule-level `@doc` text, keyed by rule ident. The directive's ordinary carrier is
+    // `RustStructConfig::doc` (for a rule that mints a struct) or `AliasInfo::rule_metadata` (for a
+    // transparent alias), and two kinds reach NEITHER with their own metadata: a generic INSTANCE
+    // binding (`foo = base<uint>`) mints a struct whose config is the generic DEFINITION's, and a
+    // named binding to a generic SET NOMINAL registers its alias through `AliasInfo::new_manual`.
+    // Both emitted a documentable construct while silently discarding the doc. Recorded at the same
+    // parse seam as `no_alias_rules`, and applied where each construct is built. Determinism:
+    // `BTreeMap`. See `RuleMetadata::comment`.
+    rule_docs: BTreeMap<RustIdent, String>,
     // Base generic extern idents tagged `@raw_bytes_flavor`: an instance of one whose argument
     // resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases the `<Base>RawBytes` wrapper flavor
     // instead of the plain `<Base>`. Opt-in only — see `RuleMetadata::raw_bytes_flavor`.
@@ -319,6 +328,7 @@ impl<'a> IntermediateTypes<'a> {
             extern_companions: BTreeMap::new(),
             no_json_schema_export: BTreeSet::new(),
             no_alias_rules: BTreeSet::new(),
+            rule_docs: BTreeMap::new(),
             raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
             rust_name_pins: BTreeMap::new(),
@@ -2221,6 +2231,12 @@ impl<'a> IntermediateTypes<'a> {
         mut rust_struct: RustStruct,
         cli: &Cli,
     ) {
+        // A generic INSTANCE's config is the generic DEFINITION's, so the binding rule's own `@doc`
+        // has no route into the struct it mints. Applied here, at the one registration seam every
+        // struct passes through, rather than at the generic-resolution arm alone.
+        if let Some(doc) = self.rule_docs.get(&rust_struct.ident).cloned() {
+            rust_struct.set_doc_if_absent(&doc);
+        }
         match &rust_struct.variant {
             RustStructType::Table {
                 domain,
@@ -4546,6 +4562,19 @@ impl<'a> IntermediateTypes<'a> {
     /// tell a consumer, since the suppressed name is one the dep no longer materializes).
     pub fn is_no_alias_rule(&self, name: &RustIdent) -> bool {
         self.no_alias_rules.contains(name)
+    }
+
+    /// Record `name`'s rule-level `@doc` text. Called from the same parse seam as
+    /// `mark_no_alias_rule`, unconditionally — which construct (if any) ends up carrying it is
+    /// decided later (see the `rule_docs` field comment).
+    pub fn mark_rule_doc(&mut self, name: RustIdent, doc: String) {
+        self.rule_docs.insert(name, doc);
+    }
+
+    /// The rule-level `@doc` written on `name`'s rule, for the construct builders whose own config
+    /// cannot carry it.
+    pub fn rule_doc(&self, name: &RustIdent) -> Option<&str> {
+        self.rule_docs.get(name).map(String::as_str)
     }
 
     /// The base generic extern idents for which a flavored (`<Base>RawBytes`) instance was actually

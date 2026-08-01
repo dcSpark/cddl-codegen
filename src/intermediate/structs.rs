@@ -618,6 +618,17 @@ impl RustStruct {
         &self.config
     }
 
+    /// Attach a rule-level `@doc` this struct's own config does not already carry. Used for the
+    /// structs whose config comes from somewhere other than the annotated rule — a generic
+    /// INSTANCE's config is the generic DEFINITION's, so the binding rule's own doc has no other
+    /// route in. Never overwrites: a config that already has a doc got it from the rule that owns
+    /// the struct.
+    pub fn set_doc_if_absent(&mut self, doc: &str) {
+        if self.config.doc.is_none() {
+            self.config.doc = Some(doc.to_owned());
+        }
+    }
+
     pub fn variant(&self) -> &RustStructType {
         &self.variant
     }
