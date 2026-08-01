@@ -1780,7 +1780,8 @@ fn overload_scoped_literals() -> Vec<(&'static str, String, usize, String, bool,
 /// of scope: they EMIT the `fn deserialize(raw: &mut Deserializer)` / `fn serialize(serializer: &mut
 /// Serializer)` signature that binds the name, so spelling it is what they are for. The residual a
 /// future leaf could slip through: a new helper that receives the name under some THIRD parameter
-/// spelling. `emitter_overload_lint_sees_its_anchors` pins the scoped set against that.
+/// spelling — the anchors test pins only that the KNOWN fns stay scoped, so that gap is
+/// recorded as a work item in `tests/TESTING_ROADMAP.md` (the overload-lint residuals entry).
 #[test]
 fn emitter_overload_no_bare_default_tokens() {
     let mut failures = Vec::new();

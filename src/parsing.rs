@@ -4345,6 +4345,14 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
 ///
 /// Checked uniformly across profiles for the same reason the single-name registry is: the default
 /// profile compiles only because it mints no companions at all.
+///
+/// MAINTENANCE: this list is a hand-carried mirror of DERIVED naming — the emitters mint the
+/// companions via `format!("{}_encoding", …)` / `…_key_encoding` (generation/serialize.rs,
+/// deserialize.rs, mod.rs, enums.rs), and the LOCKSTEP scan
+/// (`generated_local_registry_covers_emitter_locals`) verdicts FIXED locals only, so it cannot
+/// see a companion-naming change. Renaming the companion scheme moves BOTH: these suffixes and
+/// the emitters' format strings, or the pairwise refusal rots in both directions (gratuitous
+/// refusals of the old spellings, unrefused collisions on the new ones).
 const ENCODING_COMPANION_SUFFIXES: &[(&str, bool, &str)] = &[
     // (suffix, map-rep only, what collides)
     (
