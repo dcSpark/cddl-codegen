@@ -5741,6 +5741,52 @@ fn open_table_front_end() {
     );
 }
 
+/// An open table's COMPONENT face carries a getter for BOTH rows. The WIT projection walked only
+/// the catch-all before this shape existed, so a typed row would have crossed the component boundary
+/// SILENTLY ABSENT — the cross-crate loss class, which is worse than an unprojectable error because
+/// the consumer's build succeeds. Both getters, and the `list<tuple<…>>` spelling each takes.
+#[test]
+fn open_table_component_face_projects_both_rows() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_open_table_wit_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "pid = bytes .size 4\nmd = uint / text\nlabels = { * pid => uint, * md => md }\n",
+    )
+    .unwrap();
+    let cli = Cli::parse_from(vec![
+        "cddl-codegen".to_owned(),
+        "--input".to_owned(),
+        path.to_str().unwrap().to_owned(),
+        "--output".to_owned(),
+        "open_table_wit_unused".to_owned(),
+        "--wasm=true".to_owned(),
+        "--component=true".to_owned(),
+    ]);
+    let out = crate::api::generated_strings(&cli).expect("an open table must project to WIT");
+    std::fs::remove_file(&path).ok();
+    let wit = out
+        .iter()
+        .find(|(name, _)| name.ends_with(".wit"))
+        .map(|(_, body)| body.clone())
+        .unwrap_or_else(|| {
+            panic!(
+                "no .wit file generated; got {:?}",
+                out.keys().collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        wit.contains("entries: func() -> list<tuple<pid, u64>>"),
+        "the TYPED row needs its own getter in the component face, got:\n{wit}"
+    );
+    assert!(
+        wit.contains("rest: func() -> list<tuple<md, md>>"),
+        "the catch-all keeps its getter, got:\n{wit}"
+    );
+}
+
 /// A rest row's per-entry VALUE encoding sidecar is populated from the LOCAL vars the value's
 /// deserialize bound (named off the fixed `rest_value` binding), never from the sidecar
 /// DECLARATION's names (named off the row's field name). The two coincide only for the default

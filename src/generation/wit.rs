@@ -28,8 +28,8 @@ use crate::cli::Cli;
 use crate::component_wit_deps::{DepWitPackage, DepWitPackages};
 use crate::intermediate::{
     AliasIdent, ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, ModuleScope,
-    Primitive, ROOT_SCOPE, Representation, RestKind, RestSemantics, RustField, RustIdent,
-    RustRecord, RustStruct, RustStructType, RustType,
+    Primitive, ROOT_SCOPE, Representation, RestKind, RustField, RustIdent, RustRecord, RustStruct,
+    RustStructType, RustType,
 };
 use crate::utils::convert_to_kebab_case;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1681,9 +1681,10 @@ fn project_record(
     }
     // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
     // `@ignore` row stores nothing, so it has no accessor at all.
-    if let Some(rest) = &record.rest
-        && rest.semantics == RestSemantics::Capture
-    {
+    // BOTH dynamic rows: an open table's TYPED row is a second captured container with its own
+    // getter, and a projection that reads only the catch-all would drop it SILENTLY across the
+    // component boundary — the cross-crate loss class this face exists to avoid.
+    for rest in record.captured_dynamic_rows().collect::<Vec<_>>() {
         let ty = match &rest.kind {
             RestKind::MapEntries { domain, range, .. } => {
                 WitType::List(Box::new(WitType::Tuple(vec![
@@ -2906,7 +2907,7 @@ fn struct_rule_refs(
             for field in &record.fields {
                 walk(&field.rust_type);
             }
-            if let Some(rest) = &record.rest {
+            for rest in record.dynamic_rows() {
                 match &rest.kind {
                     RestKind::MapEntries { domain, range, .. } => {
                         walk(domain);
