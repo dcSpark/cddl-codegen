@@ -716,6 +716,105 @@ fn undefined_prelude_rejects_gracefully_in_every_position() {
     );
 }
 
+/// The three head-CONSTRAINED float prelude names — `float16` (`#7.25`), `float16-32`
+/// (`#7.25 / #7.26`) and `float32-64` (`#7.26 / #7.27`) — are refused GRACEFULLY in every position,
+/// never aborted. They are refused rather than registered onto `f32`/`f64` because generated code
+/// does not write a float at the head width its type declares, in EITHER profile: the default one
+/// hands every native float to `Special::Float`, which always writes the 8-byte `#7.27` head, and
+/// `--preserve-encodings` writes a value carrying no recorded width at its narrowest lossless head.
+/// Registering a head-constrained name onto either primitive would therefore emit heads outside the
+/// type's own value set — trading a loud panic for silently spec-divergent bytes. `float` is the
+/// one float name exempt from that, because its prelude definition (`float = float16-32 / float64`,
+/// RFC 8610 App. D) admits all three heads; it stays registered, and it is what the message points
+/// at.
+///
+/// The head SET is asserted per name, for the same reason the sibling `eb*` sweep asserts the tag
+/// number: it is the part a reader checks the message against, and a copy-paste that gave
+/// `float32-64` the `float16-32` set would otherwise read fine.
+///
+/// This shares the `undefined` / `eb*` seam (`IntermediateTypes::new_type`'s unresolved-reserved
+/// fallback), so the message is likewise ROLE-NEUTRAL and one wording is asserted across all three
+/// vectors. Unlike the `eb*` family there is no permanent exclusion here: all three flip to
+/// registrations when float encoding is made head-faithful (`tests/TESTING_ROADMAP.md` § "A
+/// `float32` member accepts every float head and silently narrows the value"), which is why the
+/// disposition is asserted as PENDING rather than as a ruling.
+#[test]
+fn head_constrained_float_prelude_names_reject_gracefully_in_every_position() {
+    let names = [
+        ("float16", "#7.25"),
+        ("float16-32", "#7.25 / #7.26"),
+        ("float32-64", "#7.26 / #7.27"),
+    ];
+    for (name, heads) in names {
+        let vectors = [
+            ("elem", format!("a = [v: {name}, x: uint]\n")),
+            ("map_val", format!("m = {{ k: {name}, j: uint }}\n")),
+            ("rule_body", format!("x = {name}\n")),
+        ];
+        for (pos, spec) in vectors {
+            for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+                let msg = expect_graceful_rejection(&format!("float_{name}_{pos}"), &spec, extra);
+                assert!(
+                    msg.contains(&format!(
+                        "the CDDL prelude type `{name}` ({heads}) is unsupported"
+                    )),
+                    "rejection should name the type AND its head set ({name}/{pos}, {extra:?}), \
+                     got: {msg}"
+                );
+                // The honest reason, not a bare "unsupported": BOTH profiles can emit an
+                // out-of-set head, which is why neither flag rescues the shape.
+                assert!(
+                    msg.contains("#7.27") && msg.contains("narrowest lossless head"),
+                    "rejection should name both profiles' emitted head widths ({name}/{pos}, \
+                     {extra:?}), got: {msg}"
+                );
+                assert!(
+                    msg.contains("`float = float16-32 / float64`"),
+                    "rejection should point at `float` as the head-unconstrained remedy \
+                     ({name}/{pos}, {extra:?}), got: {msg}"
+                );
+                // A deferral, not a ruling — all three register once encoding is head-faithful.
+                assert!(
+                    msg.contains("is pending"),
+                    "the refusal must read as pending a ruling, not as a permanent exclusion \
+                     ({name}/{pos}, {extra:?}), got: {msg}"
+                );
+                // The role-neutral seam can NOT name the position, so it must not pretend to.
+                assert!(
+                    !msg.contains("as a member") && !msg.contains("as a rule body"),
+                    "role-neutral message must not claim a position it cannot know ({name}/{pos}, \
+                     {extra:?}), got: {msg}"
+                );
+            }
+        }
+    }
+
+    // The remedy is asserted honest: `float` really does generate in the same positions, and the
+    // two head-UNCONSTRAINED-by-us siblings stay registered. Without this the sweep could pass
+    // while the refusal had swallowed the whole float family.
+    for name in ["float", "float32", "float64"] {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_float_ok_{name}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, format!("a = [v: {name}, x: uint]\n")).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "float_ok_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        assert!(
+            result.is_ok(),
+            "`{name}` must keep generating — it is the refusal's advertised remedy (or its \
+             already-registered sibling)"
+        );
+    }
+}
+
 /// The four `any`-content prelude tags — `cbor-any` (#6.55799), `eb64url` (#6.21), `eb64legacy`
 /// (#6.22), `eb16` (#6.23) — are refused GRACEFULLY in every position, never aborted. Each tags an
 /// arbitrary CBOR item with advice ABOUT that item, so the payload is `any` and the tag constrains

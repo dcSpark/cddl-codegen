@@ -487,24 +487,26 @@ status = "unsupported"
 reason = "top-level `x = nil` (fixed null value) is rejected gracefully — same graceful path as `null`; works as a struct member (`[x: nil]`) but not as a standalone type. Pinned by `tests/matrix_reject/prelude.nil.cddl`."
 code_anchor = "a top-level rule whose entire body is a bare fixed value"
 
-# float aliases the float-alias system doesn't handle (no native Rust f16; float-choice aliases unsupported)
+# the head-CONSTRAINED float prelude names — refused because generated code does not write a float at
+# the head width its type declares, so registering them would emit out-of-set bytes. `float` (which
+# admits all three heads) and float32/float64 stay registered.
 [[note]]
 id = "prelude.float16"
 status = "unsupported"
-reason = "no native Rust f16 — the float alias system doesn't handle float16, so it panics even as a struct member (float32/float64 work)."
-code_anchor = "should be handled by the alias system instead"
+reason = "`float16` admits only the `#7.25` head, and generated code writes floats at a width its type does not choose (default: always the 8-byte `#7.27` head; preserve: an unrecorded-width value at its narrowest lossless head), so it is rejected gracefully in every position rather than registered onto f32 and encoded out of set. `float` admits all three heads and is the supported spelling. Pinned by `head_constrained_float_prelude_names_reject_gracefully_in_every_position`."
+code_anchor = "does not yet write a float at the head width its type declares"
 
 [[note]]
 id = "prelude.float16-32"
 status = "unsupported"
-reason = "the float16/float32 choice alias isn't handled by the float alias system (it includes the unsupported float16); panics even as a member."
-code_anchor = "should be handled by the alias system instead"
+reason = "`float16-32` admits the `#7.25 / #7.26` heads; the default profile would write it as `#7.27`, so it is rejected gracefully in every position rather than registered onto f32. Same head-faithfulness deferral as `float16`; `float` is the supported spelling. Pinned by `head_constrained_float_prelude_names_reject_gracefully_in_every_position`."
+code_anchor = "does not yet write a float at the head width its type declares"
 
 [[note]]
 id = "prelude.float32-64"
 status = "unsupported"
-reason = "the float32/float64 choice alias isn't handled by the float alias system (the float-choice aliases are unsupported, though float32/float64 work on their own); panics even as a member."
-code_anchor = "should be handled by the alias system instead"
+reason = "`float32-64` admits the `#7.26 / #7.27` heads; under `--preserve-encodings` a freshly-built value is written at its narrowest lossless head, which can be `#7.25`, so it is rejected gracefully in every position rather than registered onto f64. Same head-faithfulness deferral as `float16`; `float` is the supported spelling. Pinned by `head_constrained_float_prelude_names_reject_gracefully_in_every_position`."
+code_anchor = "does not yet write a float at the head width its type declares"
 
 [[note]]
 id = "genericparm.group"

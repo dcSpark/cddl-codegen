@@ -31,6 +31,3 @@ ctl.plus                           PANIC
 ctl.printf                         PANIC
 ctl.regexp                         PANIC
 genericparm.group                  PANIC
-prelude.float16-32                 PANIC
-prelude.float16                    PANIC
-prelude.float32-64                 PANIC

@@ -912,12 +912,12 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.float16",
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.float16-32",
         "status": "unsupported"
       },
@@ -937,7 +937,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.float32-64",
         "status": "unsupported"
       },

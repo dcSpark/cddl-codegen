@@ -634,23 +634,32 @@ ledgered here (that's what the probe/gate error messages point at).
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
-- **`float16` / the float-CHOICE prelude names panic generation in EVERY position** — the only float
-  gap left, and it is a REGISTRATION gap, not a float gap: `float16`, `float16-32` and `float32-64`
-  are the three prelude names `cddl_prelude` routes to the alias system that the alias table
-  (`IntermediateTypes`'s prelude `insert_alias` block) never registers, so every use — top-level
-  `x = float16` and member `[x: float16]` alike — reaches the `unreachable!("… should be handled by
-  the alias system instead")` in `utils.rs`. `float`/`float32`/`float64` ARE registered and work.
-  (`ident_to_primitive` already maps `float16` → `F32`, which is why the gap reads like a
-  member-position success it is not — probe it, do not infer it.) The remedy is three
-  `insert_alias` calls: `float16` and `float16-32` → `F32`, `float32-64` → `F64`, each width
-  exactly representable in the chosen Rust type; generics on plain groups likewise still panic, on
-  their own unrelated path. What this now buys that it would not have before: with the head width
-  preserved, a `float16`-typed field decoded from an `f9` head re-encodes as `f9`, so the alias no
-  longer implies silently widening every value to `fb` on write. The historical blocker rationale ("no
-  native Rust f16") was retired 2026-07-23 when the main crate pinned the dcSpark `cbor_event` fork
-  (lossless software f16/f32↔f64 conversion plus the width-carrying `float_sz` / `write_float_sz` /
-  `smallest_float_sz` endpoints, NaN payloads preserved), and the preserve-mode half is now
-  DELIVERED: a native float's head width is an `Option<cbor_event::Sz>` encoding variable read by
+- **The head-CONSTRAINED float prelude names name a subset of CBOR's float heads, and generated code
+  does not yet write the head its type declares** — so `float16` (`#7.25`), `float16-32`
+  (`#7.25 / #7.26`) and `float32-64` (`#7.26 / #7.27`) are refused gracefully in every position:
+  `x = float16`, `[v: float16, x: uint]` and `{ k: float16, j: uint }` alike exit 1 naming the type
+  and its head set, under the default and `--preserve-encodings` profiles (pinned by
+  `head_constrained_float_prelude_names_reject_gracefully_in_every_position` and the
+  `tests/matrix_reject/prelude.float16.cddl` row and its two siblings). The refusal is what the
+  measured encode behaviour supports, and it is not the deferred work; the REGISTRATIONS are. In the
+  default profile every native float is written as an 8-byte `#7.27` head
+  (`x = [v: float32, w: float64]` at 1.5 encodes `82fb3ff8000000000000fb3ff8000000000000` — the two
+  members byte-identical), and under `--preserve-encodings` a value carrying no recorded width takes
+  its narrowest lossless head (the same struct at 1.5 encodes `82f93e00f93e00`, giving the `float64`
+  member a `#7.25` head). So an `insert_alias` onto `f32`/`f64` would swap a loud panic for silently
+  out-of-set bytes in at least one profile for each name — the class this list exists to keep out of
+  a consumer's production. `float` is exempt and stays registered because its prelude definition
+  (`float = float16-32 / float64`) admits all three heads; `float32`/`float64` stay registered as the
+  pre-existing exposure, which is the accept-AND-encode entry `tests/TESTING_ROADMAP.md` § "A
+  `float32` member accepts every float head and silently narrows the value" owns. That entry is also
+  the flip condition here: when a member writes the head its type declares, these three refusals
+  become the three registrations, and no separate signal is needed — the work is already tracked
+  there. The mechanism the registrations will need already exists: the main crate pins the dcSpark
+  `cbor_event` fork for its lossless software f16/f32↔f64 conversion and its width-carrying
+  `float_sz` / `write_float_sz` / `smallest_float_sz` endpoints (NaN payloads preserved), which
+  retired the historical "no native Rust f16" blocker on 2026-07-23 and is what makes writing a
+  DECLARED head width a plumbing question rather than a representation one. The preserve-mode half
+  of float support is separately DELIVERED: a native float's head width is an `Option<cbor_event::Sz>` encoding variable read by
   `float_sz()` and written by the `write_float` runtime helper, so floats work in every position
   under `--preserve-encodings` — member, element, table value, fixed value (mandatory and optional),
   range newtype, `bytes .cbor` payload, and the nullable-Special `float64 / null`. The
