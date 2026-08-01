@@ -11,7 +11,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~35s<!-- /gen:sh:tests-tier-fast --> |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~43s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~4.1 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~33 min<!-- /gen:sh:tests-tier-full --> |
 
