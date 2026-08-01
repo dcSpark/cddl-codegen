@@ -5694,6 +5694,43 @@ fn open_table_front_end() {
         any_typed.contains("cannot be keyed on `any`"),
         "an `any` typed key must reject by shape, got: {any_typed}"
     );
+    // A bare-`text` typed key is CBOR-only: in JSON it admits every member name, so the typed-first
+    // partition leaves the catch-all unreachable and `from_json` refuses what `to_json` wrote. Both
+    // JSON flags refuse it; without them the shape is perfectly good.
+    for flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
+        let msg = run_flags(
+            &format!("{MD}t = {{ * text => uint, * md => md }}\n"),
+            "baretext",
+            &[flag],
+        )
+        .expect_err("a bare-text typed key under a JSON flag must reject");
+        assert!(
+            msg.contains("keyed on bare `text` is a CBOR-ONLY shape")
+                && msg.contains("leaves the catch-all row unreachable"),
+            "the bare-text rejection must name the CBOR-only nature and the reason, got: {msg}"
+        );
+    }
+    run(
+        &format!("{MD}t = {{ * text => uint, * md => md }}\n"),
+        "baretextok",
+    )
+    .expect("without a JSON face a bare-text typed key is a supported CBOR shape");
+    // The check is TRANSPARENT resolution, so an alias of `text` is caught…
+    let alias_text = run_flags(
+        &format!("{MD}k = text\nt = {{ * k => uint, * md => md }}\n"),
+        "aliastext",
+        &["--json-serde-derives=true"],
+    )
+    .expect_err("an alias of `text` resolves transparently and must reject");
+    assert!(alias_text.contains("CBOR-ONLY shape"), "got: {alias_text}");
+    // …while a `@newtype` mints its own type, whose serde a hand impl owns — undecidable from here,
+    // and the documented hazard rather than a rejection.
+    run_flags(
+        &format!("{MD}k = text ; @newtype\nt = {{ * k => uint, * md => md }}\n"),
+        "newtypetext",
+        &["--json-serde-derives=true"],
+    )
+    .expect("a `@newtype` text key is opaque here and stays a documented hazard");
     // …and `any` on the CATCH-ALL is exactly where it belongs.
     run("t = { * bstr => uint, * any => any }\n", "anycatch")
         .expect("an `any`-keyed catch-all must generate");

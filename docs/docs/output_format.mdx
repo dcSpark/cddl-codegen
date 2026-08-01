@@ -642,10 +642,17 @@ The [rest-row contract](#typed-key-domains-in-json) carries over with T1 **condi
 | **T3** write is loudly fallible on data | the rest row's failures, plus two typed keys imaging identically, plus **a typed key and a captured key imaging identically** — one collision set spans both regions, because they share one object |
 | **T4** refinement on read | unchanged; the message names the typed reading and the catch-all's own readings |
 
-The degenerate case of T1 is worth stating outright: a `K_t` that admits **every** string — a bare
-`text` typed row — takes every member name on read, so the catch-all region is unreachable through
-JSON. Open tables are for a typed row whose admissible names are a proper subset (a fixed-width hex
-image, a decimal domain); a `text` typed row is a CBOR-only shape.
+The degenerate case of T1 is not left to the reader: a `K_t` that admits **every** string takes every
+member name on read, so the catch-all region is unreachable through JSON and `from_json` refuses
+documents `to_json` itself wrote — T1 failing on *every* document with a captured entry, not on an
+edge case. Where that is decidable it is a **graceful rejection**: a `K_t` that transparently resolves
+to `String` (bare `text`, an alias of it, a `.size`-constrained one) is refused under
+`--json-serde-derives`/`--json-schema-export`, naming the CBOR-only nature and the remedies. Generate
+such a spec without the JSON flags, or key the typed row on a type whose admissible names are a proper
+subset (a fixed-width hex image, a decimal domain). Where it is **not** decidable — an opaque `K_t`
+(an extern, or a `@newtype` whose hand-written `Serialize`/`Deserialize` happens to read every
+string) — the tool cannot see the reading and the hazard stands: choosing such a key type is choosing
+a CBOR-only shape, and the T1 row above says what that costs.
 
 ### Schema
 
