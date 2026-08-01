@@ -17404,20 +17404,22 @@ fn decode_conformance_replay() {
     // `value.number.hexfloat`) is GONE: floats carry their head width as an encoding variable and
     // replay under preserve like every other primitive.
     const PRESERVE_SKIP: &[(&str, &str)] = &[
-        // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag on a
-        // TYPE-CHOICE (`t = #6.10(int / tstr)` generates a rust enum) trips an explicit
-        // `assert!(!cli.preserve_encodings)` in generation/enums.rs's tagged-enum serialize path, guarding
-        // an unimplemented case (its own `// TODO: how to even store these?`): the per-variant
-        // encoding metadata preserve needs has no home on the enum. Tags on structs/arrays/maps
+        // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag
+        // directly on an anonymous TYPE-CHOICE rule (`t = #6.10(int / tstr)` generates a rust enum)
+        // is REFUSED gracefully by `IntermediateTypes::finalize` under --preserve-encodings: the
+        // per-variant encoding metadata preserve needs has no home on the enum, so there is nothing
+        // to record how the tag was written. Tags on structs/arrays/maps
         // (contain.tag-content.type2.{array,map}, contain.tag-content.type.choice's non-choice
-        // siblings) preserve fine — only the tag-over-choice combination is unimplemented. Default-
-        // profile decode of this row is fully replayed above; only its preserve leg is skipped.
+        // siblings) preserve fine, and so does the same choice NAMED and tagged by name — only the
+        // anonymous combination is unimplemented. Default-profile decode of this row is fully
+        // replayed above; only its preserve leg is skipped. This gate keys the skip on
+        // generation not succeeding, so it covers the refusal exactly as it covered the panic.
         (
             "contain.tag-content.type.choice",
-            "tag over a type-choice enum is unimplemented under --preserve-encodings \
-             (generation/enums.rs `assert!(!cli.preserve_encodings)` in the tagged-enum serialize path, \
-             with a standing `TODO: how to even store these?`) — a pre-existing generator gap, not a \
-             decoder issue; the default-profile decode of this row still replays",
+            "a tag directly over an anonymous type-choice rule is unimplemented under \
+             --preserve-encodings and refused gracefully in IntermediateTypes::finalize (the \
+             per-variant encoding metadata has no home on the enum) — a pre-existing generator gap, \
+             not a decoder issue; the default-profile decode of this row still replays",
         ),
         // NOT a gap — a DESIGNED rejection. `@ignore` (the tolerate-and-drop open struct-map rest
         // row flavor) is refused under --preserve-encodings by contract: a preserve crate promises

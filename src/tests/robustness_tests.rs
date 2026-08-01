@@ -6470,3 +6470,150 @@ fn nested_cbor_payload_rejects_gracefully() {
         }
     }
 }
+
+/// A CBOR tag riding an ANONYMOUS choice RULE under `--preserve-encodings` — `t = #6.10(int / tstr)`
+/// and its group-choice and all-fixed spellings — used to abort at exit 101 on an explicit
+/// `assert!(!cli.preserve_encodings)` in the tagged-enum serialize path. An assert on a FLAG is a
+/// crash, not a boundary: the shape is valid CDDL and the profile is a user choice. It is now a
+/// graceful rejection recorded in `IntermediateTypes::finalize`, on the same struct-KIND walk the
+/// `@custom_serialize`/`@custom_deserialize` enum rejections use, and keyed on exactly the assert's
+/// own predicate — `generate_enum` is reached from precisely two places, the `TypeChoice` and
+/// `GroupChoice` arms of the rust-struct dispatch, each passing `rust_struct.tag()` straight
+/// through. The assert stays in place as the guard that re-earns the retired
+/// `PRESERVE_ONLY_PANIC_CLASSES` entry if some future path reaches it another way.
+///
+/// The all-fixed vector is not redundant with the other two: `RustStruct::new_type_choice` denies a
+/// TAGGED fixed-value choice the `CStyleEnum` lowering under this profile (`cant_store_tag`), so
+/// `#6.10(0 / 1 / 2)` registers as a `TypeChoice` and reaches the same path — while the SAME choice
+/// named and referenced from a tagged member is the supported spelling the message advertises. Both
+/// advertised remedies are asserted as controls, and the tagged-wrapper one was additionally probed
+/// to build and round-trip byte-exact through a generated preserve crate (a non-minimal `d8 0a` tag
+/// head over a 2-byte uint, and an indefinite-length text arm).
+#[test]
+fn tagged_anonymous_choice_rejects_gracefully_under_preserve() {
+    let vectors = [
+        ("type_choice", "t = #6.10(int / tstr)\n", "a type choice"),
+        (
+            "type_choice_three_arm",
+            "t = #6.10(int / tstr / bytes)\n",
+            "a type choice",
+        ),
+        (
+            "type_choice_all_fixed",
+            "t = #6.10(1 / 2 / 3)\n",
+            "a type choice",
+        ),
+        (
+            "type_choice_referenced",
+            "t = #6.10(int / tstr)\nholder = [x: t]\n",
+            "a type choice",
+        ),
+        (
+            "group_choice_array",
+            "t = #6.10([ a: uint // b: tstr ])\n",
+            "a group choice",
+        ),
+        (
+            "group_choice_map",
+            "t = #6.10({ a: uint // b: tstr })\n",
+            "a group choice",
+        ),
+    ];
+    for (tag, spec, shape) in vectors {
+        let msg = expect_graceful_rejection(
+            &format!("tagged_anon_choice_{tag}"),
+            spec,
+            &["--wasm", "false", "--preserve-encodings", "true"],
+        );
+        assert!(
+            msg.starts_with("rule `T`: a CBOR tag (`#6.10`) directly over ") && msg.contains(shape),
+            "the rejection must name the rule, the tag and the choice shape ({tag}), got: {msg}"
+        );
+        assert!(
+            msg.contains("is unsupported under `--preserve-encodings`")
+                && msg.contains("the encoding metadata preserve records is per-VARIANT"),
+            "the rejection must name the profile and why the enum cannot carry the tag ({tag}), \
+             got: {msg}"
+        );
+        assert!(
+            msg.contains("Name the choice and tag the NAME instead")
+                && msg.contains("Tags over structs, arrays and maps are unaffected")
+                && msg.contains("without `--preserve-encodings` this rule generates"),
+            "the rejection must point at the working alternatives and the profile that works \
+             ({tag}), got: {msg}"
+        );
+        // The DEFAULT profile is untouched: this is a preserve-only refusal, so every vector above
+        // must still generate without the flag. A profile-blind key would silently drop support.
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_tagged_anon_choice_default_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "tagged_anon_choice_default_unused",
+            "--wasm",
+            "false",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        assert!(
+            result.is_ok(),
+            "{tag} must keep generating WITHOUT --preserve-encodings — the refusal is profile-keyed, \
+             got: {:?}",
+            result.err().map(|e| e.to_string())
+        );
+    }
+
+    // Controls under PRESERVE: the two remedies the message names, plus the tag targets the
+    // roadmap entry proves unaffected, plus the untagged choices (the tag is what breaks, not the
+    // choice) and the `T / null` collapse (which never mints an enum at all).
+    for (tag, spec) in [
+        (
+            "named_choice_tagged",
+            "inner = int / tstr\nt = #6.10(inner)\n",
+        ),
+        (
+            "named_cstyle_tagged_member",
+            "inner = 0 / 1 / 2\nt = [f: #6.42(inner)]\n",
+        ),
+        ("tag_over_struct", "s = [a: uint]\nt = #6.10(s)\n"),
+        ("tag_over_array", "t = #6.10([* uint])\n"),
+        ("tag_over_map", "t = #6.10({* uint => tstr})\n"),
+        (
+            "named_group_choice_tagged",
+            "g = [ a: uint // b: tstr ]\nt = #6.10(g)\n",
+        ),
+        ("untagged_type_choice", "t = int / tstr\n"),
+        ("untagged_group_choice", "t = [ a: uint // b: tstr ]\n"),
+        ("tagged_optional", "t = #6.10(uint / null)\n"),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_tagged_anon_choice_ok_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "tagged_anon_choice_control_unused",
+            "--wasm",
+            "false",
+            "--preserve-encodings",
+            "true",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        assert!(
+            result.is_ok(),
+            "the {tag} control must keep generating under preserve — only a tag DIRECTLY over an \
+             anonymous choice is refused, got: {:?}",
+            result.err().map(|e| e.to_string())
+        );
+    }
+}

@@ -678,18 +678,32 @@ ledgered here (that's what the probe/gate error messages point at).
   widths, plus the §4.2.2 canonical-NaN rule), `preserve_encodings_supports_floats`, and the float
   rows of the decode-conformance replays, which now replay rather than sitting in `PRESERVE_SKIP`.
 - **A CBOR tag over a type-choice enum is unimplemented under `--preserve-encodings`** — a non-float
-  preserve gap: `t = #6.10(int / tstr)` panics generation at the tagged-enum serialize path's explicit
-  `assert!(!cli.preserve_encodings)` (its own `TODO: how to even store these?` — the per-variant encoding
-  metadata has no home on the enum). Tags over structs/arrays/maps preserve fine — and so does a
-  tag over a NAMED c-style enum at a member (`t1: #6.42(myenum)` with `myenum = 0 / 1 / 2`), whose
-  encoding rides the owner's sidecar through the inlined dispatch
-  (`tests/corpus/cbor_enum_payload.cddl`); the gap here is specifically the anonymous
-  non-all-fixed choice, where the tag rides the enum RULE. Surfaced by the
-  decode-conformance replay gate's preserve leg (skip-listed there in `PRESERVE_SKIP`, stale-guarded)
-  and now recorded on the emission axis (`contain.tag-content.type.choice` →
-  `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` and the two
-  float-range wrapper rows `rangeop.{inclusive,exclusive}.float` (the wrapper wraps an f64 member,
-  hitting the same native-float-under-preserve `unimplemented!`).
+  preserve gap, now bounded by a refusal rather than a crash. `t = #6.10(int / tstr)` (and the
+  group-choice spellings, and the all-fixed one this profile denies the C-style lowering) is
+  **refused gracefully in `IntermediateTypes::finalize`**, on the struct-KIND walk, keyed on exactly
+  the predicate the tagged-enum serialize path's `assert!(!cli.preserve_encodings)` has — that assert
+  is reached from precisely two places, the `TypeChoice` and `GroupChoice` arms of the rust-struct
+  dispatch, and stays in place as the guard that re-earns the retired panic-ledger entry. Pinned by
+  `tagged_anonymous_choice_rejects_gracefully_under_preserve`.
+  SUPPORT is what remains, and its shape is why it is parked: the tag belongs to the enum RULE while
+  the encoding metadata preserve records is per-VARIANT, so support means giving the tag a home of
+  its own on the enum (the serialize path's standing `TODO: how to even store these?`). Everything
+  around it already works and is what the refusal points at: tags over structs/arrays/maps; the same
+  choice NAMED and tagged by name (`inner = int / tstr`, `t = #6.10(inner)` — a tagged wrapper over
+  the enum, verified to build and round-trip byte-exact through a generated preserve crate, including
+  a non-minimal `d8 0a` tag head and an indefinite-length text arm); and a tag over a NAMED c-style
+  enum at a member (`t1: #6.42(myenum)` with `myenum = 0 / 1 / 2`), whose encoding rides the owner's
+  sidecar through the inlined dispatch (`tests/corpus/cbor_enum_payload.cddl`). Without
+  `--preserve-encodings` the anonymous form generates.
+  **Reopening signal:** a consumer's own wire format (one they do not control) tags an anonymous
+  choice AND that consumer needs `--preserve-encodings` — i.e. they must re-emit bytes they decoded.
+  Both halves are things they can check against a spec and a build flag they already hold; either
+  alone is served today, by the naming remedy or by the default profile. Recorded by the
+  decode-conformance replay gate's preserve leg (skip-listed in `PRESERVE_SKIP`, stale-guarded), by
+  the emission axis (`contain.tag-content.type.choice` → `emission.preserve = unsupported`) alongside
+  `prelude.number` / `prelude.time` and the two float-range wrapper rows
+  `rangeop.{inclusive,exclusive}.float`, and by `EXPECTED_GENERATION_FAIL` in the wasm API parity
+  sweep, which pins `tests/core`'s `tagged_type_choice` on the preserve leg.
 - **A `@custom_json` type produces a non-compiling json/wasm surface standalone (the same
   can't-compile-standalone class as `dsl_custom`).** `@custom_json` intentionally omits the serde
   derives on the rust type (the user is expected to supply custom json (de)serialize code), but the
