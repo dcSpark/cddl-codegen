@@ -6046,6 +6046,54 @@ fn open_table_wasm_wrapper_ident_collisions_reject_gracefully() {
     );
 }
 
+/// `--emit-tests` mints an entry into BOTH rows, not just the catch-all. Without the typed half every
+/// generated round-trip of the shape the feature exists for would carry an empty typed region — the
+/// wire-major dispatch would never execute — and without the COMBINED case nothing would put two
+/// dynamic sequences on the wire at once, which is what the tagged order encoding and the
+/// both-regions canonical key merge exist for. The standalone round-trip arm itself needs no new
+/// code: the minted struct is a Record, so it has a real `Serialize`/`Deserialize` rather than the
+/// transparent `pub type` a table lowers to (which is why the Table arm's skip is permanent).
+#[test]
+fn open_table_emit_tests_mint_both_rows() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_open_table_emit_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "md = uint / text\nlabels = { * bstr => uint, * md => md }\n",
+    )
+    .unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "open_table_emit_unused",
+        "--wasm=false",
+        "--emit-tests=true",
+    ]))
+    .expect("an open table must generate under --emit-tests");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("fn roundtrip_labels()"),
+        "the minted struct owns a REAL standalone round-trip arm (it is a Record, not a \
+         transparent table alias), got:\n{src}"
+    );
+    // one mint per row plus the combined case, on top of the empty baseline
+    let mints = src.matches("let mut v = Labels::new();").count();
+    assert!(
+        mints == 3,
+        "expected a typed-row case, a catch-all case and a both-rows case (3 mints), got {mints} \
+         in:\n{src}"
+    );
+    assert!(
+        src.contains("v.entries.insert(") && src.contains("v.rest.insert("),
+        "each row is minted through its OWN container field, got:\n{src}"
+    );
+}
+
 /// The MEMBER-name hazard flattening creates, and the only one it does: the typed row's accessors
 /// and the catch-all row's getter land on ONE wasm impl, so a `@name`d catch-all spelling a
 /// flattened accessor name would emit two methods of one name (E0592 in the generated crate). All
