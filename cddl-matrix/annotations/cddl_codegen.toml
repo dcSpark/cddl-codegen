@@ -566,7 +566,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.cbor-any"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.decfrac"
@@ -580,17 +580,17 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.eb16"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.eb64legacy"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.eb64url"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "prelude.encoded-cbor"

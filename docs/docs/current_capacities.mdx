@@ -256,10 +256,10 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | Incremental group-choice extension (//=) | `tcpopts = (1: int); tcpopts //= (2: tstr)` | rejected gracefully at parse |
 | Incremental type-choice extension (/=) | `a = int; a /= tstr` | rejected gracefully at parse |
 | Generic group definition | `set<a> = (* a)` | panics generation |
-| cbor-any | `x = cbor-any` | panics generation |
-| eb16 | `x = eb16` | panics generation |
-| eb64legacy | `x = eb64legacy` | panics generation |
-| eb64url | `x = eb64url` | panics generation |
+| cbor-any | `x = cbor-any` | rejected gracefully at parse |
+| eb16 | `x = eb16` | rejected gracefully at parse |
+| eb64legacy | `x = eb64legacy` | rejected gracefully at parse |
+| eb64url | `x = eb64url` | rejected gracefully at parse |
 | false | `x = false` | rejected gracefully at parse |
 | float16 | `x = float16` | panics generation |
 | float16-32 | `x = float16-32` | panics generation |

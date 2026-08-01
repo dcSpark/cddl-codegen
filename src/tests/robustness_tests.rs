@@ -716,6 +716,78 @@ fn undefined_prelude_rejects_gracefully_in_every_position() {
     );
 }
 
+/// The four `any`-content prelude tags — `cbor-any` (#6.55799), `eb64url` (#6.21), `eb64legacy`
+/// (#6.22), `eb16` (#6.23) — are refused GRACEFULLY in every position, never aborted. Each tags an
+/// arbitrary CBOR item with advice ABOUT that item, so the payload is `any` and the tag constrains
+/// nothing a generated type could hold; there is no representation to emit, which is the same
+/// no-representation shape `undefined_prelude_rejects_gracefully_in_every_position` pins one seam
+/// over. They share that seam (`IntermediateTypes::new_type`'s unresolved-reserved fallback), so
+/// the message is likewise ROLE-NEUTRAL — it names the type and its tag, never the position — and
+/// this asserts one wording across all three vectors rather than a per-role one.
+///
+/// The tag NUMBER is asserted per name because it is the part a reader checks the message against;
+/// a copy-paste that gave `eb16` the `eb64url` tag would otherwise read fine. The remedy the
+/// message advertises is asserted honest by `all_supported_constructs_generate` (the matrix's
+/// `prelude.any` row) and by `tests/robustness/any_member.cddl` — `any` really does carry an
+/// arbitrary CBOR item in member position.
+///
+/// The two dispositions are pinned apart because they are decisions, not phrasing: `cbor-any` is a
+/// permanent exclusion (`tests/TESTING_ROADMAP.md` § North star's exclude list), while the three
+/// `eb*` names are merely unbuilt. A future delivery of `eb*` support flips exactly one of these
+/// assertions.
+#[test]
+fn any_content_prelude_tags_reject_gracefully_in_every_position() {
+    let names = [
+        ("cbor-any", "#6.55799(any)"),
+        ("eb64url", "#6.21(any)"),
+        ("eb64legacy", "#6.22(any)"),
+        ("eb16", "#6.23(any)"),
+    ];
+    for (name, tag) in names {
+        let vectors = [
+            ("elem", format!("a = [v: {name}, x: uint]\n")),
+            ("map_val", format!("m = {{ k: {name}, j: uint }}\n")),
+            ("rule_body", format!("x = {name}\n")),
+        ];
+        for (pos, spec) in vectors {
+            for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+                let msg = expect_graceful_rejection(&format!("ebtag_{name}_{pos}"), &spec, extra);
+                assert!(
+                    msg.contains(&format!(
+                        "the CDDL prelude type `{name}` ({tag}) is unsupported"
+                    )),
+                    "rejection should name the type AND its tag ({name}/{pos}, {extra:?}), got: \
+                     {msg}"
+                );
+                assert!(
+                    msg.contains("the supported `any` type"),
+                    "rejection should point at the `any` remedy ({name}/{pos}, {extra:?}), got: \
+                     {msg}"
+                );
+                // The role-neutral seam can NOT name the position, so it must not pretend to.
+                assert!(
+                    !msg.contains("as a member") && !msg.contains("as a rule body"),
+                    "role-neutral message must not claim a position it cannot know ({name}/{pos}, \
+                     {extra:?}), got: {msg}"
+                );
+                if name == "cbor-any" {
+                    assert!(
+                        msg.contains("permanently excluded"),
+                        "`cbor-any`'s refusal must carry the permanent-exclusion ruling \
+                         ({pos}, {extra:?}), got: {msg}"
+                    );
+                } else {
+                    assert!(
+                        msg.contains("is not built"),
+                        "an `eb*` refusal must read as unbuilt, not as a ruling ({name}/{pos}, \
+                         {extra:?}), got: {msg}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// A heterogeneous anonymous inline ARRAY in a position that requires a TYPE (`a = [[int]]`, a
 /// `.cbor` payload, a `/` choice alternative, a map key, a map value, an occurrence target) is
 /// rejected BY DESIGN — a GRACEFUL `Err`, never a `panic!`. This is the BRACKET sibling of

@@ -156,16 +156,24 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         "b64legacy" => Some("#6.34(tstr)"),
         "regexp" => Some("#6.35(tstr)"),
         "mime-message" => Some("#6.36(tstr)"),
-        // TODO: we don't support any (yet) - could we use message-signing's code?
+        // Unreachable from the pipeline, and kept as the guard that would catch a route around it.
+        // All five names are refused one level up, at `IntermediateTypes::new_type`'s
+        // unresolved-reserved fallback — the only caller that can reach this arm and the only one
+        // holding the handle a rejection needs: `any` resolves to the `AnyCbor` runtime type, and
+        // the four `any`-content tags each record a graceful rejection naming the type and its tag
+        // (pinned by `any_content_prelude_tags_reject_gracefully_in_every_position` and the
+        // `tests/matrix_reject/prelude.{cbor-any,eb16,eb64legacy,eb64url}.cddl` catalog rows). A
+        // future refactor that routes a position around `new_type` would reach this panic again and
+        // re-earn the `KNOWN_PANIC_CLASSES` entry that was retired with the refusal, which is why
+        // the arm and its wording stay put rather than being deleted.
         "any" | // #
         "cbor-any" | // #6.55799(any)
         "eb64url" | // #6.21(any)
         "eb64legacy" | // #6.22(any)
         "eb16" => panic!("unsupported cddl prelude type: {}", name), // #6.23(any)
-        // `undefined` (#7.23) is NOT listed above: it is refused gracefully one level up, at
-        // `IntermediateTypes::new_type`'s unresolved-reserved fallback, which is the only caller
-        // that can reach this arm and the only one holding the handle a rejection needs. Reaching
-        // `_ => None` from here is therefore unreachable in practice, and harmless if it ever were.
+        // `undefined` (#7.23) is NOT listed above: it is refused gracefully at the same seam, for
+        // the same reason. Reaching `_ => None` from here is therefore unreachable in practice, and
+        // harmless if it ever were.
         _ => None,
     }
 }

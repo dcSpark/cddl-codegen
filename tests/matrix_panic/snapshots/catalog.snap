@@ -31,10 +31,6 @@ ctl.plus                           PANIC
 ctl.printf                         PANIC
 ctl.regexp                         PANIC
 genericparm.group                  PANIC
-prelude.cbor-any                   PANIC
-prelude.eb16                       PANIC
-prelude.eb64legacy                 PANIC
-prelude.eb64url                    PANIC
 prelude.float16-32                 PANIC
 prelude.float16                    PANIC
 prelude.float32-64                 PANIC

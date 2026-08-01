@@ -438,26 +438,26 @@ code_anchor = "incremental_choice_extension_rejection"
 [[note]]
 id = "prelude.eb64url"
 status = "unsupported"
-reason = "extended-bytes prelude type reduces to `any`; rejected"
-code_anchor = "unsupported cddl prelude type"
+reason = "the expected-conversion tag `#6.21(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
+code_anchor = "no representation for the advice"
 
 [[note]]
 id = "prelude.eb64legacy"
 status = "unsupported"
-reason = "extended-bytes prelude type reduces to `any`; rejected"
-code_anchor = "unsupported cddl prelude type"
+reason = "the expected-conversion tag `#6.22(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
+code_anchor = "no representation for the advice"
 
 [[note]]
 id = "prelude.eb16"
 status = "unsupported"
-reason = "extended-bytes prelude type reduces to `any`; rejected"
-code_anchor = "unsupported cddl prelude type"
+reason = "the expected-conversion tag `#6.23(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
+code_anchor = "no representation for the advice"
 
 [[note]]
 id = "prelude.cbor-any"
 status = "unsupported"
-reason = "reduces to `any`; rejected"
-code_anchor = "unsupported cddl prelude type"
+reason = "the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
+code_anchor = "no representation for the advice"
 
 [[note]]
 id = "prelude.undefined"

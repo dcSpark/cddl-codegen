@@ -852,10 +852,18 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // explicit field name — and its remaining twin (`group_entry_to_field_name`) is unreachable
     // behind the same record-path guard. Both messages stay worded lead-constant so a future ledger
     // entry can key on them.
-    (
-        "unsupported cddl prelude type:",
-        "unsupported prelude types (eb64url/eb64legacy/eb16/cbor-any); pinned by tests/matrix_panic/prelude.eb64url.cddl and siblings. `undefined` is NO LONGER in this class: it is refused gracefully one level up, at `new_type`'s unresolved-reserved fallback (pinned by `undefined_prelude_rejects_gracefully_in_every_position` and tests/robustness/undefined_member.cddl), so it never reaches this panic arm",
-    ),
+    // (retired when the four `any`-content prelude tags became graceful rejections) The
+    // `"unsupported cddl prelude type:"` class held `cbor-any` / `eb64url` / `eb64legacy` /
+    // `eb16` — each an arbitrary CBOR item tagged with advice ABOUT that item, so there is
+    // nothing for a generated type to hold. All four are now refused at `new_type`'s
+    // unresolved-reserved fallback, one arm earlier, exactly where `undefined` had already
+    // moved: the refusal names the type and its tag, points at the `any` widening, and
+    // separates `cbor-any`'s permanent exclusion from the `eb*` names' merely-unbuilt state.
+    // Message identity is pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`
+    // and the outcome category by the four `tests/matrix_reject/prelude.*.cddl` rows that
+    // replaced the panic-catalog ones. The `panic!` arm in `cddl_prelude` is deliberately LEFT
+    // IN PLACE — it is the guard that would catch a future position routed around `new_type`,
+    // and reaching it re-earns this entry rather than being papered over.
     (
         "should be handled by the alias system instead",
         "float16 / float16-32 / float32-64 (no native Rust f16 / float-choice); pinned by tests/matrix_panic/prelude.float16.cddl and siblings",
