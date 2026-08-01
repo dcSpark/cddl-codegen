@@ -416,24 +416,28 @@ ledgered here (that's what the probe/gate error messages point at).
   contains an `undefined` member, i.e. the count of members its owner must hand-rewrite to keep
   generating reaches 1; today the entry's evidence is synthetic probes only, and a synthetic probe
   costs nobody a rewrite.
-- **The remaining prelude abort class: `cbor-any` / `eb64url` / `eb64legacy` / `eb16` still PANIC
-  where `undefined` now refuses.** All four are `any`-content prelude tags (`#6.55799(any)`,
-  `#6.21/22/23(any)`) that reach the `panic!("unsupported cddl prelude type: …")` arm of
-  `cddl_prelude` (`src/utils.rs`) through the same unresolved-reserved fallback the `undefined`
-  refusal intercepts one arm earlier; the panic catalog holds
-  `tests/matrix_panic/prelude.{cbor-any,eb16,eb64url,eb64legacy}.cddl` and the generated
-  Limitations table honestly reads "panics generation" for each. The buildable-now candidate fix
-  is the POSTURE conversion, not support: a graceful refusal at the same seam, naming the type and
-  the supported `any` widening — the exact remedy shape the `undefined` refusal ships (with the
-  same caveat that widening drops the expected-conversion/self-description meaning, so it is a
-  different spec). Support itself is a separate per-name question: `cbor-any` is a decided
-  permanent exclusion (`tests/TESTING_ROADMAP.md` § North star's exclude list — a refusal is
-  consistent with that ruling; a crash is not), while the three `eb*` names have no ruling — with
-  `any` now first-class, the mechanical route would be the prelude-expansion path the supported
-  tags ride (`eb64url` → `#6.21(any)`, as `encoded-cbor` → `#6.24(bstr)` does today). Reopening
-  signal for the `eb*` support half, on the magnitude axis: a spec brought to us uses one of the
-  three names, i.e. the count of rules its owner must widen to `any` to keep generating reaches 1;
-  the refusal half needs no signal — a panic on valid CDDL is a standing defect class.
+- **The `eb*` expected-conversion tags advertise a rendering, not a type, so a spec that uses one
+  must widen it by hand.** `eb64url` (`#6.21(any)`), `eb64legacy` (`#6.22`) and `eb16` (`#6.23`)
+  each wrap an ARBITRARY CBOR item in a tag whose whole content is advice to a consumer rendering
+  that item as text; the payload is `any` and the tag constrains nothing a generated type could
+  hold. All three are refused gracefully in every position — `x = eb64url`, `[v: eb64url, x: uint]`
+  and `{ k: eb64url, j: uint }` alike exit 1 naming the type and its tag under the default and
+  `--preserve-encodings` profiles (pinned by
+  `any_content_prelude_tags_reject_gracefully_in_every_position`,
+  `tests/robustness/eb64url_member.cddl` and the `tests/matrix_reject/prelude.eb64url.cddl` row
+  and its two siblings).
+  That refusal is the correct posture and is not the deferred work; what is deferred is
+  REPRESENTING the tag. With `any` first-class the mechanical route would be the prelude-expansion
+  path the supported tags already ride (`eb64url` → `#6.21(any)`, as `encoded-cbor` →
+  `#6.24(bstr)` does today), and the open design question is what the emitted type does with the
+  advice once the payload is an opaque item. The widening a user can reach for today is not
+  equivalent: `any` carries the item but drops the tag and the conversion it advertises, which is
+  a different spec. Their fourth sibling `cbor-any` (`#6.55799(any)`) shares the refusal but not
+  this entry — its support is a decided permanent exclusion (`tests/TESTING_ROADMAP.md` § North
+  star's exclude list), the self-describe tag being a property of a byte stream rather than of a
+  value. Reopening signal on the magnitude axis: a spec brought to us uses one of the three names,
+  i.e. the count of rules its owner must widen to `any` to keep generating reaches 1; today the
+  entry's evidence is synthetic probes only, and a synthetic probe costs nobody a rewrite.
 - **A byte-string literal has no fixed-MEMBER representation, so a spec that pins a member to a
   literal must be hand-rewritten.** `[v: h'0102', x: uint]`, the unkeyed `[h'0102', x: uint]`,
   `{ k: h'0102', j: uint }` and the UTF-8 spelling `[v: 'text', x: uint]` are all refused gracefully

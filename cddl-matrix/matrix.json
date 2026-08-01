@@ -842,7 +842,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.cbor-any",
         "status": "unsupported"
       },
@@ -862,17 +862,17 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.eb16",
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.eb64legacy",
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.eb64url",
         "status": "unsupported"
       },

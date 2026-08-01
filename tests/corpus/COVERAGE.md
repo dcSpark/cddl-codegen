@@ -131,11 +131,11 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.bool` | ✅ | bool | `bool.cddl` |
 | `prelude.bstr` | ✅ | bstr | `prelude.cddl` |
 | `prelude.bytes` | ✅ | bytes | `primitives.cddl` |
-| `prelude.cbor-any` | ➖ | cbor-any | reduces to `any`; rejected  [`unsupported cddl prelude type`] |
+| `prelude.cbor-any` | ➖ | cbor-any | the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
 | `prelude.decfrac` | ✅ | decfrac | `prelude.cddl` |
-| `prelude.eb16` | ➖ | eb16 | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
-| `prelude.eb64legacy` | ➖ | eb64legacy | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
-| `prelude.eb64url` | ➖ | eb64url | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
+| `prelude.eb16` | ➖ | eb16 | the expected-conversion tag `#6.23(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
+| `prelude.eb64legacy` | ➖ | eb64legacy | the expected-conversion tag `#6.22(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
+| `prelude.eb64url` | ➖ | eb64url | the expected-conversion tag `#6.21(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
 | `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
 | `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone top-level type is rejected gracefully — same graceful path as `true`/`null`; works as a struct/array member (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.false.cddl`.  [`a top-level rule whose entire body is a bare fixed value`] |
 | `prelude.float` | ➕ | float | supported, no corpus fixture (cddl-codegen exit 0) |

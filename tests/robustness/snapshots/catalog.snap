@@ -20,6 +20,7 @@ choice_group_array_arm     ok
 choice_last_any_arm        ok
 collection_rule_cycle_entry ok
 duplicate_rule             error (graceful)
+eb64url_member             error (graceful)
 empty                      ok
 empty_array                ok
 empty_group                ok
