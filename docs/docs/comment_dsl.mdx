@@ -795,11 +795,15 @@ hand-written parent impl is exactly the situation the directive exists for.
 If instead the extern *does* implement `schemars::JsonSchema` and you only want it off the published
 surface, no parent annotation is needed.
 
-One embedding position is exempt, because its schema never asks the field type for one: an [open
-struct-map rest row's KEY domain](output_format#typed-key-domains-in-json). A typed rest key is a
-JSON object *member name*, so the flattened region publishes an open object over the RANGE — a shape
-that mentions `K` nowhere. `holder = { 1: uint, * quiet_ext => uint }` therefore compiles with no
-`@custom_json` on the holder, and `quiet_ext` stays absent from the published document.
+Two embedding positions are exempt, because their schema never asks the field type for one, and both
+are the same position for the same reason: a map row's KEY domain. An [open struct-map rest
+row's](output_format#typed-key-domains-in-json) key, and **both** rows' keys in an [open
+table](output_format#open-tables-a-typed-row-plus-a-catch-all). A row key is a JSON object *member
+name*, so the flattened region publishes an open object over the RANGE(s) — a shape that mentions the
+key type nowhere. `holder = { 1: uint, * quiet_ext => uint }` and
+`tbl = { * quiet_ext => uint, * md => md }` therefore compile with no `@custom_json` on them, and
+`quiet_ext` stays absent from the published document. The RANGES are not exempt — an open region names
+its value type, so a `@no_json_schema_export` *value* still needs the `@custom_json` pairing above.
 
 It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
 wrapper, a collection typedef, a generic instantiation, and a plain group that some rule splices:
@@ -997,6 +1001,8 @@ It lowers to a struct with **two containers** — `entries` (the typed row) and 
 * otherwise the key's type must admit exactly one major. Primitives, primitive-bodied aliases, raw-bytes markers and aliases of them, `.size`-constrained bytes and tagged types qualify. A plain extern, `Int`, a multi-major union, `any` and an optionally-tagged type admit more than one and are refused, with the message naming both routes.
 
 A catch-all whose admissible majors the typed row already exhausts is refused too — it could never capture an entry.
+
+Its JSON face is [one flattened object holding both rows](output_format#open-tables-a-typed-row-plus-a-catch-all), read back typed-first — worth reading before choosing a `K_t`, because a key type admitting every member name leaves the catch-all unreachable through JSON.
 
 Not supported (each a graceful rejection naming the remedy): more than two rows, or two rows mixed with fixed keys; an inline anonymous spelling (`f: { * k1 => v1, * k2 => v2 }` — give it its own named rule); `any` on the *typed* row (it would claim all eight majors, leaving the catch-all nothing — `any` belongs on the catch-all); a null-admitting key on either row; `@ignore` on either row; and the NonEmpty twin `{ + K_t => V_t, * K_r => V_r }`, whose min-1 counts TYPED entries.
 

@@ -6799,6 +6799,78 @@ fn open_struct_map_json_e2e() {
 }
 
 #[test]
+fn open_table_json_e2e() {
+    // Open table (`t = { * K_t => V_t, * K_r => V_r }`) FLATTENED-JSON vectors: both rows' entries
+    // in ONE object, the typed-first read partition, the cross-region write collision check, the
+    // explicit duplicate-member detection, and the read failure naming all three attempts.
+    // --wasm=false to isolate the json surface. See tests/open-table-json-e2e/tests.rs.
+    run_test(
+        "open-table-json-e2e",
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--wasm=false",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+    // The published SCHEMA of the minted struct — a genuine ADDITION to the schema surface (a
+    // CLOSED table is a transparent `pub type` alias and publishes nothing). One open object over
+    // BOTH ranges, naming NEITHER key type: the exemption an open struct-map rest row's key domain
+    // already enjoys, which is also what keeps a `@no_json_schema_export` key from becoming an
+    // E0277 inside a generated file.
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            "tests/open-table-json-e2e/export/wasm/json-gen/schemas/cddl_lib.schema.json",
+        )
+        .expect("the json-gen run must have written the schema document"),
+    )
+    .unwrap();
+    let defs = &document["$defs"];
+    let labels = &defs["Labels"];
+    assert_eq!(labels["type"], "object", "an open object: {labels}");
+    assert!(
+        labels["additionalProperties"]["anyOf"].is_array(),
+        "the open region must range over BOTH rows' ranges: {labels}"
+    );
+    assert!(
+        labels.get("properties").is_none() && labels.get("patternProperties").is_none(),
+        "an open table declares no members and constrains no member NAMES: {labels}"
+    );
+    // Two rows whose ranges publish one schema collapse the union rather than repeating a branch.
+    assert_eq!(
+        defs["Compat"]["additionalProperties"]["type"], "integer",
+        "coinciding ranges publish one branch: {}",
+        defs["Compat"]
+    );
+    assert!(
+        defs.get("PolicyId").is_some(),
+        "the typed key type still publishes its OWN row (it is not suppressed, only unnamed by the \
+         open table's schema): {defs}"
+    );
+    // The TS projection leg, over the document the json-gen crate just wrote. An open table has NO
+    // declared properties, so `widenCatchAlls` has nothing to widen and the published union passes
+    // through as a bare index signature — the shape a consumer's `tsc` must accept.
+    let Some(dts) = assert_schema_projects_to_legal_ts("open-table-json-e2e", "export") else {
+        return;
+    };
+    for open_type in ["LabelsJSON", "CompatJSON", "AnyvalJSON"] {
+        let start = dts
+            .find(&format!("export interface {open_type}"))
+            .unwrap_or_else(|| panic!("no `{open_type}` declaration:\n{dts}"));
+        assert!(
+            dts[start..]
+                .lines()
+                .any(|line| line.trim_start().starts_with("[k: string]")),
+            "`{open_type}` must project to an index signature:\n{dts}"
+        );
+    }
+}
+
+#[test]
 fn golden_hex_preserve() {
     // Known-answer preserve-encodings vectors: irregular RFC 8949 §3 encodings (non-minimal
     // header arguments, indefinite/chunked items, map key order) hand-derived as raw hex —

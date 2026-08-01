@@ -1174,6 +1174,258 @@ fn typed_rest_key_json_arms(
     }
 }
 
+/// An OPEN TABLE's CATCH-ALL region: the write-side key image and the read-side key reading, as an
+/// `(image closure, read EXPRESSION)` pair over a member name bound to `ks`.
+///
+/// The image half is the delivered rest-row convention verbatim (shared with
+/// [`emit_rest_flatten_json`] / [`typed_rest_key_json_arms`] — same domains, same helpers, so a row
+/// images identically whether it sits under an open struct-map or under an open table). Only the
+/// READ half is restated here, and only in shape: the delivered one is a STATEMENT that raises its
+/// own final error, while an open table must fold the reading's failure into a message that also
+/// names the TYPED attempt (the third clause). So this returns a `Result<K, String>` expression the
+/// caller composes, and the delivered statements stay byte-identical for every existing fixture.
+fn open_table_captured_key_arms(
+    types: &IntermediateTypes,
+    rest: &RestRow,
+    key_ty: &str,
+    base: &str,
+    flatten: &str,
+    cli: &Cli,
+) -> (String, String) {
+    let domain = RestKeyDomain::of(types, rest);
+    match domain {
+        RestKeyDomain::Any => (
+            format!("{base}::any_cbor_natural_key_string"),
+            format!("Ok::<_, String>({base}::any_cbor_natural_key_from_string(&ks))"),
+        ),
+        RestKeyDomain::Uint => (
+            "|k: &u64| Ok::<String, core::convert::Infallible>(k.to_string())".to_owned(),
+            "ks.parse::<u64>().map_err(|_| String::from(\"the member name is not a valid uint\"))"
+                .to_owned(),
+        ),
+        RestKeyDomain::Text => (
+            "|k: &String| Ok::<String, core::convert::Infallible>(k.clone())".to_owned(),
+            format!("Ok::<{key_ty}, String>(ks.clone())"),
+        ),
+        RestKeyDomain::Typed => {
+            let (image, _) = typed_rest_key_json_arms(rest, key_ty, flatten, cli);
+            let read = match rest.domain().conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Primitive(Primitive::N64) => format!(
+                    "{flatten}::nint_arg_key_from_string(&ks).ok_or_else(|| \
+                     String::from(\"the member name is not a valid nint\"))"
+                ),
+                ConceptualRustType::Primitive(
+                    Primitive::U8
+                    | Primitive::U16
+                    | Primitive::U32
+                    | Primitive::U64
+                    | Primitive::I8
+                    | Primitive::I16
+                    | Primitive::I32
+                    | Primitive::I64,
+                ) => format!(
+                    "ks.parse::<{key_ty}>().map_err(|_| \
+                     String::from(\"the member name is not a valid {key_ty}\"))"
+                ),
+                ConceptualRustType::Primitive(Primitive::Str) => {
+                    format!("Ok::<{key_ty}, String>(ks.clone())")
+                }
+                ConceptualRustType::Primitive(Primitive::Bytes) => format!(
+                    "Err::<{key_ty}, String>(String::from(\
+                     \"a Bytes key has no JSON member-name image\"))"
+                ),
+                ConceptualRustType::Primitive(Primitive::Bool) => format!(
+                    "Err::<{key_ty}, String>(String::from(\
+                     \"a Special key has no JSON member-name image\"))"
+                ),
+                ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => unreachable!(
+                    "a float-containing rest-row key domain is rejected by the key-demand float instrument"
+                ),
+                _ => {
+                    let common = cli.common_import_rust();
+                    format!(
+                        "{flatten}::rest_key_from_string(&ks, \
+                         <{key_ty} as {common}::serialization::Deserialize>::from_cbor_bytes)\
+                         .map_err(|e| format!(\"{{e}}\"))"
+                    )
+                }
+            };
+            (image, read)
+        }
+    }
+}
+
+/// The JSON face of an OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`): ONE hand-written
+/// `Serialize`/`Deserialize` pair plus a hand-written `JsonSchema`, emitted into the struct's module
+/// in place of the derives (which `create_base_rust_struct` is told to skip).
+///
+/// Hand-written rather than a derive with two `#[serde(flatten)]` members, because serde's flatten
+/// machinery cannot express this shape in either direction (verified against serde 1.0.229): on READ
+/// every unmatched member is handed to BOTH flattened fields (`FlatMapAccess::next_key_seed` borrows
+/// rather than takes), so nothing partitions them; on WRITE both fields forward into one parent map
+/// with no dedup, so two regions imaging one member name emit it twice. The partition and the
+/// cross-region collision check are exactly what an open table needs to be correct, so they live in
+/// ONE emitted impl that owns both regions rather than emerging across two independent fns.
+///
+/// The two regions read in TYPED-FIRST order and image through two different conventions — see
+/// `static/open_table_json.rs` for why that is forced rather than an inconsistency.
+///
+/// The schema is one open object over BOTH ranges (`additionalProperties: anyOf[V_t, V_r]`), named
+/// by a hand impl for the same reason the serde pair is hand-written: schemars merges two flattened
+/// object schemas by keeping the FIRST `additionalProperties` and silently dropping the second
+/// (`schemars::_private::flatten`'s no-op arm), so a derive would publish one region and omit the
+/// other. Neither KEY type is named — the exemption an open struct-map rest row's key domain already
+/// enjoys, extended to both of an open table's rows.
+fn emit_open_table_json(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    record: &RustRecord,
+    cli: &Cli,
+) {
+    let typed = record.typed_row().expect("open table has a typed row");
+    let captured = record
+        .rest
+        .as_deref()
+        .expect("open table has a catch-all row");
+    let base = format!("{}::any_cbor", cli.common_import_rust());
+    let flatten = format!("{}::open_struct_rest_json", cli.common_import_rust());
+    let key_t = typed.domain().for_rust_member(types, false, cli);
+    let key_r = captured.domain().for_rust_member(types, false, cli);
+    let typed_field = &typed.field_name;
+    let captured_field = &captured.field_name;
+    let range_is_any = |row: &RestRow| {
+        matches!(
+            row.range().conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Any
+        )
+    };
+    // Per-region value view, exactly the rest row's rule: an `any` range renders NATURALLY (through
+    // the natural adapters), a typed range through its own serde.
+    let value_view = |row: &RestRow| -> (String, String, String) {
+        if range_is_any(row) {
+            (
+                format!(".map(|(k, v)| (k, {base}::NaturalAnyCborSer(v)))"),
+                format!("{base}::NaturalAnyCborDe"),
+                "v.0".to_owned(),
+            )
+        } else {
+            (
+                String::new(),
+                row.range().for_rust_member(types, false, cli),
+                "v".to_owned(),
+            )
+        }
+    };
+    let (typed_map, typed_value_de, typed_value_unwrap) = value_view(typed);
+    let (captured_map, captured_value_de, captured_value_unwrap) = value_view(captured);
+    let (captured_image, captured_read) =
+        open_table_captured_key_arms(types, captured, &key_r, &base, &flatten, cli);
+
+    let mut out = String::new();
+    if cli.json_serde_derives {
+        out.push_str(&format!(
+            "impl serde::Serialize for {name} {{\n\
+             \x20   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{\n\
+             \x20       {flatten}::serialize_open_table(\n\
+             \x20           {flatten}::open_table_typed_key_string::<{key_t}>,\n\
+             \x20           self.{typed_field}.iter(){typed_map},\n\
+             \x20           {captured_image},\n\
+             \x20           self.{captured_field}.iter(){captured_map},\n\
+             \x20           serializer,\n\
+             \x20       )\n\
+             \x20   }}\n\
+             }}\n\
+             \n\
+             impl<'de> serde::Deserialize<'de> for {name} {{\n\
+             \x20   fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n\
+             \x20       struct OpenTableVisitor;\n\
+             \x20       impl<'de> serde::de::Visitor<'de> for OpenTableVisitor {{\n\
+             \x20           type Value = {name};\n\
+             \x20\n\
+             \x20           fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {{\n\
+             \x20               f.write_str(\"an open table JSON object ({name})\")\n\
+             \x20           }}\n\
+             \x20\n\
+             \x20           fn visit_map<A: serde::de::MapAccess<'de>>(self, mut access: A) -> Result<{name}, A::Error> {{\n\
+             \x20               let mut out = {name}::new();\n\
+             \x20               // ONE set over BOTH regions: the partition is a function of the member\n\
+             \x20               // NAME, so a repeated name is a repeated member whichever row claims it —\n\
+             \x20               // and serde_json's object parser is last-wins, which would silently drop an\n\
+             \x20               // entry the CBOR face rejects as a duplicate key.\n\
+             \x20               let mut seen = alloc::collections::BTreeSet::new();\n\
+             \x20               while let Some(ks) = access.next_key::<String>()? {{\n\
+             \x20                   if !seen.insert(ks.clone()) {{\n\
+             \x20                       return Err(serde::de::Error::custom({flatten}::open_table_duplicate_member(&ks)));\n\
+             \x20                   }}\n\
+             \x20                   // TYPED-FIRST: a member name binds the typed row iff `K_t`'s own reading\n\
+             \x20                   // admits it. Once it binds, the value is read as `V_t` and a refusing\n\
+             \x20                   // value is a HARD error — it does not fall through to the catch-all,\n\
+             \x20                   // matching the CBOR face's refinement-not-tolerance posture.\n\
+             \x20                   match {flatten}::open_table_typed_key_read::<{key_t}>(&ks) {{\n\
+             \x20                       Ok(k) => {{\n\
+             \x20                           let v = access.next_value::<{typed_value_de}>()?;\n\
+             \x20                           out.{typed_field}.insert(k, {typed_value_unwrap});\n\
+             \x20                       }}\n\
+             \x20                       Err(typed_err) => match {captured_read} {{\n\
+             \x20                           Ok(k) => {{\n\
+             \x20                               let v = access.next_value::<{captured_value_de}>()?;\n\
+             \x20                               out.{captured_field}.insert(k, {captured_value_unwrap});\n\
+             \x20                           }}\n\
+             \x20                           Err(captured_err) => {{\n\
+             \x20                               let e = {flatten}::OpenTableKeyReadError {{\n\
+             \x20                                   typed: typed_err,\n\
+             \x20                                   captured: captured_err,\n\
+             \x20                               }};\n\
+             \x20                               return Err(serde::de::Error::custom(format!(\n\
+             \x20                                   \"open table key {{ks:?}} is not a valid key: {{e}}\"\n\
+             \x20                               )));\n\
+             \x20                           }}\n\
+             \x20                       }},\n\
+             \x20                   }}\n\
+             \x20               }}\n\
+             \x20               Ok(out)\n\
+             \x20           }}\n\
+             \x20       }}\n\
+             \x20       deserializer.deserialize_map(OpenTableVisitor)\n\
+             \x20   }}\n\
+             }}\n"
+        ));
+    }
+    if cli.json_schema_export {
+        let range_schema = |row: &RestRow| {
+            if range_is_any(row) {
+                format!("{base}::natural_any_cbor_schema(generator)")
+            } else {
+                format!(
+                    "generator.subschema_for::<{}>()",
+                    row.range().for_rust_member(types, false, cli)
+                )
+            }
+        };
+        let typed_schema = range_schema(typed);
+        let captured_schema = range_schema(captured);
+        out.push_str(&format!(
+            "\nimpl schemars::JsonSchema for {name} {{\n\
+             \x20   fn schema_name() -> alloc::borrow::Cow<'static, str> {{\n\
+             \x20       alloc::borrow::Cow::Borrowed(\"{name}\")\n\
+             \x20   }}\n\
+             \x20\n\
+             \x20   fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {{\n\
+             \x20       let typed_range = {typed_schema};\n\
+             \x20       let captured_range = {captured_schema};\n\
+             \x20       {flatten}::open_table_schema(typed_range, captured_range)\n\
+             \x20   }}\n\
+             \x20\n\
+             \x20   fn inline_schema() -> bool {{\n\
+             \x20       false\n\
+             \x20   }}\n\
+             }}\n"
+        ));
+    }
+    gen_scope.rust(types, name).raw(&out);
+}
+
 /// Emit a rest capture into `block`: account the entry in `read_len`, bind the key (`rest_key`) —
 /// either from `key_val_expr` (already read by the record loop's uint/text peek — for an `any`
 /// domain this is the reconstructed `AnyCbor`, carrying the peeked wire width under preserve) or by
@@ -2262,9 +2514,20 @@ pub(super) fn codegen_struct(
 
     // Rust-only for the rest of this function
 
-    // Struct (fields) + constructor
+    // Struct (fields) + constructor.
+    //
+    // An OPEN TABLE owns its JSON face BY HAND (`emit_open_table_json`, below): the derives cannot
+    // express two flattened regions in one object, so they are suppressed here exactly as
+    // `@custom_json` suppresses them — same switch, same three steering sites (the derives, the
+    // encodings field's `#[serde(skip)]`, and the rows' flatten attributes) — and the impls are
+    // emitted instead. A spec author's own `@custom_json` still wins: there the user owns the impls
+    // and the tool emits none.
+    let hand_written_open_table_json = record.is_open_table()
+        && !config.custom_json
+        && (cli.json_serde_derives || cli.json_schema_export);
+    let manual_json = config.custom_json || hand_written_open_table_json;
     let (mut native_struct, mut native_impl) =
-        create_base_rust_struct(types, name, config.custom_json, None, cli);
+        create_base_rust_struct(types, name, manual_json, None, cli);
     native_struct.vis("pub");
     if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest()) {
         native_struct.doc(&doc);
@@ -2440,7 +2703,7 @@ pub(super) fn codegen_struct(
         // JSON, mirroring the empty-tail ≡ closed-struct CBOR invariant), and — for an `any`-element
         // tail (`Vec<AnyCbor>`) — the natural-fallible walk reusing the homogeneous `[* any]` member
         // `Seq` adapter (a typed element uses its own serde).
-        if !config.custom_json {
+        if !manual_json {
             if rest.is_array_tail() {
                 if cli.json_serde_derives {
                     rest_field
@@ -2471,6 +2734,10 @@ pub(super) fn codegen_struct(
             rest_container_ctor(rest, cli)
         ));
     }
+    // The open table's hand-written JSON face, in place of the derives suppressed above.
+    if hand_written_open_table_json {
+        emit_open_table_json(gen_scope, types, name, record, cli);
+    }
     if !native_new_comments.is_empty() {
         native_new.doc(native_new_comments.join("\n"));
     }
@@ -2479,7 +2746,7 @@ pub(super) fn codegen_struct(
         native_struct.field(
             format!(
                 "{}pub encodings",
-                encoding_var_macros(types.key_demand(name), config.custom_json, cli)
+                encoding_var_macros(types.key_demand(name), manual_json, cli)
             ),
             format!("Option<{encoding_name}>"),
         );
