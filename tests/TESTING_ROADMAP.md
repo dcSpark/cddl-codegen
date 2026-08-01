@@ -224,9 +224,37 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      drops, taking the Q4 over-accepts set red with them. The route out is one of: an
      upstream-oracle-gap exemption for over-acceptance pins (the shape the constraint side already
      has for the rust `uint` control-op gap), or an oracle that discriminates head width.
+   - **The ENCODE side is head-blind too, so the fix must make writing head-faithful and not only
+     narrow acceptance.** A generated member is written at a width its declared type never chooses.
+     In the DEFAULT profile every native float goes through `Special::Float`, which the pinned
+     cbor_event fork writes as `0x1b` + 8 bytes unconditionally: `x = [v: float32, w: float64]` with
+     both members 1.5 encodes `82fb3ff8000000000000fb3ff8000000000000` — the `float32` member is
+     byte-identical to the `float64` one, and carries a `#7.27` head for a `#7.26` type. Under
+     `--preserve-encodings` a value with no recorded width takes `smallest_float_sz`, the narrowest
+     LOSSLESS head, which diverges the other way: the same struct at 1.5 encodes `82f93e00f93e00`,
+     giving the `float64` member a `#7.25` head; at 1.1 it encodes `82fa3f8ccccdfb3ff199999999999a`,
+     which is in-set for both. So the divergence is value-dependent in preserve and unconditional in
+     default, and it is a WRITE-side instance of the same head-blindness the accept side has — which
+     is why one delivery should own both: an acceptance rule that says which heads a member may
+     read, and no rule about which head it writes, still lets a round-trip leave the type's own
+     value set. `float` is the only float name unaffected in either profile, because its prelude
+     definition (`float = float16-32 / float64`) admits all three heads.
+   - **Three prelude names are refused today because of the encode half, and flip when it lands.**
+     `float16` (`#7.25`), `float16-32` (`#7.25 / #7.26`) and `float32-64` (`#7.26 / #7.27`) name
+     proper subsets of the head widths, so registering them onto `f32`/`f64` would emit out-of-set
+     bytes by the measurements above. They are graceful refusals naming the type and its head set
+     (`head_constrained_float_prelude_names_reject_gracefully_in_every_position`, and the
+     `tests/matrix_reject/prelude.float16.cddl` row and its two siblings) rather than the
+     `insert_alias` registrations the panic they replaced invited. The registrations become correct
+     — and are the flip condition for those refusals — exactly when a member writes the head its
+     type declares. `float32` and `float64` stay registered as the pre-existing exposure this
+     entry already describes, not as a judgment that they are in-set.
    - **Surfaces the fix touches:** `ident_to_primitive` in `src/parsing.rs`, the
      `Primitive::F32 | Primitive::F64` arms in `src/generation/deserialize.rs` (the preserve
-     `float_sz()` read and the plain `f32::deserialize` one alike), the float bullet in
+     `float_sz()` read and the plain `f32::deserialize` one alike), their write-side counterparts in
+     `src/generation/serialize.rs` plus the `write_float` helper in `static/` (the encode half
+     above), the three refusal arms in `IntermediateTypes::new_type` and the `aliases()` table they
+     would move to, the float bullet in
      `docs/docs/current_capacities.mdx` (its lossy-narrowing sentence and NaN caveat both go), the
      "values are all f32-exact" scope notes on the `sgl` member in the golden preserve and canonical
      KATs, and — under (b) — the new `prelude.float32` catalog vectors plus a matrix re-probe whose

@@ -130,8 +130,20 @@ pub fn convert_to_camel_case(ident: &str) -> String {
 
 pub fn cddl_prelude(name: &str) -> Option<&str> {
     match name {
-        // custom implemented types like uint, bool, etc
-        // are handled in the alias system and shouldn't reach here
+        // Custom implemented types like uint, bool, etc are handled in the alias system and
+        // shouldn't reach here. Two groups, unreachable for different reasons — the arm stays
+        // shared because both are "not this function's business", and it stays a guard rather than
+        // being trimmed to the first group: reaching it either way re-earns the
+        // `KNOWN_PANIC_CLASSES` entry retired when the second group stopped arriving.
+        //   1. Genuinely alias-handled: `uint`…`false`, plus `float` / `float32` / `float64`, which
+        //      `IntermediateTypes::aliases()` registers.
+        //   2. NOT registered, and refused one level up instead: the head-constrained float names
+        //      `float16` / `float16-32` / `float32-64`. Generated code cannot yet write a float at
+        //      the head width these names declare, so registering them onto an f32/f64 primitive
+        //      would emit out-of-set heads; `new_type`'s unresolved-reserved fallback records a
+        //      graceful rejection naming the type and its head set instead (pinned by
+        //      `head_constrained_float_prelude_names_reject_gracefully_in_every_position` and the
+        //      `tests/matrix_reject/prelude.float16.cddl` row and its two siblings).
         "uint" | "nint" | "int" | "bool" | "tstr" | "text" |
         "bstr" | "bytes" | "null" | "nil" | "true"  | "false" |
         "float16" | // #7.25

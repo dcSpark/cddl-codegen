@@ -864,10 +864,23 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // replaced the panic-catalog ones. The `panic!` arm in `cddl_prelude` is deliberately LEFT
     // IN PLACE — it is the guard that would catch a future position routed around `new_type`,
     // and reaching it re-earns this entry rather than being papered over.
-    (
-        "should be handled by the alias system instead",
-        "float16 / float16-32 / float32-64 (no native Rust f16 / float-choice); pinned by tests/matrix_panic/prelude.float16.cddl and siblings",
-    ),
+    // (retired when the three head-constrained float prelude names became graceful rejections)
+    // The `"should be handled by the alias system instead"` class held `float16` (`#7.25`),
+    // `float16-32` (`#7.25 / #7.26`) and `float32-64` (`#7.26 / #7.27`) — the float names that
+    // admit only SOME of CBOR's three head widths. They are now refused at `new_type`'s
+    // unresolved-reserved fallback, alongside `undefined` and the `any`-content tags. The
+    // refusal, rather than the `insert_alias` registrations the gap invited, is what the
+    // measurements support: neither profile writes a float at its declared width (the default
+    // one always writes the 8-byte `#7.27` head; `--preserve-encodings` writes an
+    // unrecorded-width value at its narrowest lossless head), so a registration would have
+    // swapped a loud panic for silently out-of-set bytes. `float` / `float32` / `float64` stay
+    // registered and never reach the arm — `float` because its prelude definition admits all
+    // three heads, the other two as the pre-existing exposure this delivery does not widen.
+    // Message identity is pinned by
+    // `head_constrained_float_prelude_names_reject_gracefully_in_every_position` and the outcome
+    // category by the three `tests/matrix_reject/prelude.float*.cddl` rows that replaced the
+    // panic-catalog ones. The `unreachable!` arm in `cddl_prelude` is deliberately LEFT IN PLACE
+    // for both groups — reaching it re-earns this entry rather than being papered over.
     // (retired when the member-side type2 catch-all became graceful rejections) An unsupported
     // `type2` in MEMBER / ELEMENT position — a byte-string literal (`h'…'` / `'…'`), an unwrap
     // (`~name`), a bare major-type constraint (`#N` / `#N.M`), the `any` sigil (`#`), a
