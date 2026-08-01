@@ -2428,3 +2428,111 @@ fn extern_import_projects_no_alias_on_collection_rules() {
     let _ = std::fs::remove_dir_all(&export_dir);
     let _ = std::fs::remove_dir_all(&stripped_dir);
 }
+
+/// The CML-shaped cross-crate composition, both directions of the seam. A DEP owns the raw-bytes key
+/// types; a CONSUMER keys an OPEN TABLE's typed row on them and keeps the catch-all consumer-owned.
+///
+/// Three things are asserted, and the third is the one worth the fixture: (1) the minted struct
+/// exports OPAQUE — it has no `pub type` to render transparently, so it joins the Record arm's
+/// class-backed posture; (2) the typed key's derive demand reaches `borrowed_key_types.rs`, which is
+/// what makes the dep derive `Eq`/`Ord`/`PartialOrd` on a type the CONSUMER's `BTreeMap<K_t, _>`
+/// needs them for; (3) the flattened `keys()` wrapper reaches `borrowed_collections.rs` — flattening
+/// moved that accessor onto the STRUCT's class, and a channel that had only ever seen a table's or a
+/// rest row's container class could have lost it silently, leaving the consumer minting a duplicate
+/// `<K_t>List` beside the dep's in one cdylib.
+///
+/// Held against a plain-table control on the SAME key types: both sidecars must come out
+/// byte-identical, because an open table's typed row IS a table's key/value pair as far as the
+/// cross-crate channels are concerned. Anything the control does not also produce would be an
+/// open-table-only cross-crate surface, which the design says does not exist.
+#[test]
+fn extern_import_open_table_borrows_its_typed_key_like_a_table() {
+    let export = mint_export(
+        "policy_id = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nasset_name = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n",
+        "dep",
+        "otbl_keys",
+    );
+    let export_dir = write_export(&export, "dep", "otbl_keys");
+    let import_arg = format!("dep={}", export_dir.to_str().unwrap());
+
+    let consumer = |spec: &str, tag: &str| -> BTreeMap<String, String> {
+        let root = scratch(tag);
+        write(&root, "lib.cddl", spec);
+        let map = generate_wasm(
+            &root.join("lib.cddl"),
+            &[
+                "--extern-import",
+                &import_arg,
+                "--workspace-dep",
+                "dep",
+                "--extern-wasm-crate",
+                "dep=dep_wasm",
+            ],
+        )
+        .unwrap_or_else(|e| panic!("{tag} must generate: {e}"));
+        let _ = std::fs::remove_dir_all(&root);
+        map
+    };
+
+    let open = consumer(
+        "md = uint / text\n\
+         labels = { * policy_id => uint, * md => md }\n\
+         assets = { * asset_name => uint, * md => md }\n",
+        "otbl_consumer",
+    );
+    // The control: the same keys, as plain tables.
+    let table = consumer(
+        "md = uint / text\n\
+         labels = { * policy_id => uint }\n\
+         assets = { * asset_name => uint }\n",
+        "otbl_control",
+    );
+
+    // (1) opaque across the seam. Minted from a self-contained open table (the key types are this
+    // spec's own), because what is under test is the PROJECTION of the minted struct, not the
+    // import direction the rest of this vector covers.
+    let projected = mint_export(
+        "md = uint / text\nlabels = { * bstr => uint, * md => md }\n",
+        "dep",
+        "otbl_opaque",
+    );
+    let own_export = &projected["extern-interface/dep/mod.cddl"];
+    assert!(
+        own_export.contains("labels = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "the minted open-table struct has no `pub type` to render, so it exports OPAQUE like every \
+         other class-backed type:\n{own_export}"
+    );
+
+    // (2) + (3): both sidecars, byte-identical to the plain-table control's.
+    for sidecar in [
+        "rust/src/generated/borrowed_key_types.rs",
+        "wasm/src/generated/borrowed_collections.rs",
+    ] {
+        let from_open = open
+            .get(sidecar)
+            .unwrap_or_else(|| panic!("the open-table consumer must emit {sidecar}"));
+        let from_table = table
+            .get(sidecar)
+            .unwrap_or_else(|| panic!("the control must emit {sidecar}"));
+        assert_eq!(
+            from_open, from_table,
+            "an open table's typed row must borrow exactly what a table on the same key borrows, \
+             in {sidecar}"
+        );
+    }
+    // Positive control on the CONTENT, so the equality above cannot pass on two empty files.
+    let keys = &open["rust/src/generated/borrowed_key_types.rs"];
+    assert!(
+        keys.contains("_assert_key_traits::<dep::PolicyId>();")
+            && keys.contains("(\"dep\", \"policy_id\")"),
+        "the typed key's derive demand must reach the dep:\n{keys}"
+    );
+    let colls = &open["wasm/src/generated/borrowed_collections.rs"];
+    assert!(
+        colls.contains("use dep_wasm::collections::PolicyIdList;")
+            && colls.contains("(\"dep\", \"PolicyIdList\", \"[* policy_id]\")"),
+        "the FLATTENED keys() wrapper must be borrowed from the dep, not re-minted here:\n{colls}"
+    );
+
+    let _ = std::fs::remove_dir_all(&export_dir);
+}
