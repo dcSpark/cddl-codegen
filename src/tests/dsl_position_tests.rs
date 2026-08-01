@@ -554,6 +554,69 @@ const GRID: &[Cell] = &[
             ],
         },
     },
+    // 21d-21g. REJECT: the TRANSPARENT-ALIAS family. `@custom_json` is consumed exclusively through
+    //      `RustStructConfig`, and a rule in this family emits `pub type Foo = …;` — no attribute
+    //      site for the derives to be suppressed on, and (the orphan rule) no nominal type a
+    //      hand-written `Serialize`/`JsonSchema` could target. The refusal is flag-independent, like
+    //      every sibling placement rejection, so these cells stay on the `--wasm=false` baseline with
+    //      NO json flags: 21/21a/21b above are the honored controls that carry the flags.
+    // 21d. the plain scalar alias.
+    Cell {
+        directive: "@custom_json",
+        position: "rule-type-alias",
+        spec: "foo = uint ; @custom_json\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_json on `Foo`: the rule resolves to a transparent alias"),
+    },
+    // 21e. the `T / null` collapse, which is an `Option<T>` alias rather than an enum. Spelled with
+    //      the directive on the LAST arm — the rule slot for a multi-choice rule; the non-last-arm
+    //      spelling has its own (earlier, differently-worded) rejection, cell 21c's class.
+    Cell {
+        directive: "@custom_json",
+        position: "option-collapse-rule",
+        spec: "foo = uint / null ; @custom_json\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_json on `Foo`: the rule resolves to a transparent alias"),
+    },
+    // 21f. the TABLE rule. It DOES mint a `RustStruct` (for the wasm wrapper and the keys-list), so
+    //      the flag reaches a config — but the rust rule is still the transparent map alias, and no
+    //      consumer of `custom_json` reads a table on either side. Caught from the struct config in
+    //      the finalize kind-walk, since the table's alias registration drops its metadata.
+    Cell {
+        directive: "@custom_json",
+        position: "table-rule",
+        spec: "t = { * uint => bytes } ; @custom_json\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_json on `T`: the rule resolves to a transparent alias"),
+    },
+    // 21g. the named ARRAY rule — the table's exact sibling (same `new_manual` alias registration,
+    //      same inert config), so the same seam and the same message.
+    Cell {
+        directive: "@custom_json",
+        position: "array-rule",
+        spec: "al = [* uint] ; @custom_json\nholder = [f: al]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_json on `Al`: the rule resolves to a transparent alias"),
+    },
+    // 21h. ACCEPTED CONTROL for 21d-21g: the advertised remedy. `@newtype` mints a real wrapper
+    //      struct, which is a `RustStructConfig` consumer, so the very same body that rejects one
+    //      line up generates with the derives suppressed — attributing 21d-21g to the alias-ness of
+    //      the rule and not to the directive being unsupported.
+    Cell {
+        directive: "@custom_json",
+        position: "newtype-over-array-rule",
+        spec: "al = [* uint] ; @newtype @custom_json\nctrl = [* uint] ; @newtype\nholder = [f: al, g: ctrl]\n",
+        flags: &["--json-serde-derives=true"],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["impl serde::Serialize for Ctrl"],
+            must_not: &["impl serde::Serialize for Al"],
+        },
+    },
     // 21c. A rule-level directive on a NON-LAST arm of a multi-choice type rule. The rule slot is
     //      the LAST arm's trailing comment (`parse_type_choices` reads `type_choices.last()` and
     //      nothing else); `create_variants_from_type_choices` consumes only `.name`/`.comment` per

@@ -505,7 +505,8 @@ foo = uint ; @newtype @custom_json
 
 Avoids generating and/or deriving json-related traits under the assumption that the user will supply their own implementation to be used in the generated library.
 
-It works on any rule shape — newtypes, record structs (map/array group rules), and sum types.
+It works on any rule shape that mints a **type of its own** — newtypes, record structs (map/array
+group rules), and sum types.
 On a type-choice rule, rule-level directives attach via the trailing comment of the LAST variant:
 
 ```cddl
@@ -534,6 +535,28 @@ together — one decision, not two — so `--json-schema-export` never leaves a 
 behind on a type whose JSON form you own. With `--preserve-encodings`, the `#[serde(skip)]`
 attributes on the type's encoding fields are omitted along with the derives (either alone would not
 compile).
+
+### Rules that cannot carry it: the transparent-alias family
+
+A rule that lowers to a **transparent alias** — `pub type Foo = u64;` — is refused, with generation
+stopping and naming the rule and the remedy. The refusal fires regardless of the JSON flags, because
+where a directive may sit is a property of the spec, not of the build profile. The family is:
+
+* a plain alias rule (`foo = uint ; @custom_json`, and the `foo = bar` typename form);
+* a `T / null` rule, which collapses to an `Option<T>` alias rather than an enum;
+* a **table** rule (`t = { * k => v }`) and a named **array** rule (`al = [* uint]`) — these do mint
+  a struct for the wasm wrapper, but the rust rule is still the transparent alias.
+
+There is nothing there for the directive to do: an alias has no attribute site for the derives to be
+suppressed on, and it is not a nominal type, so the orphan rule forbids the hand-written
+`Serialize`/`JsonSchema` impls the directive promises. Add `@newtype` — `foo = uint ; @newtype
+@custom_json`, `al = [* uint] ; @newtype @custom_json` — and the rule mints a real wrapper struct
+that carries both.
+
+On a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule the directive is accepted
+and does nothing: the named type is hand-written in full, so this crate emits no JSON derives for it
+either way. It is a redundant no-op rather than a dropped intent, which is why it is documented here
+rather than refused.
 
 ### Writing the `Serialize` impl the directive promises
 

@@ -2102,7 +2102,46 @@ impl<'a> IntermediateTypes<'a> {
             let fixed = fixed.clone();
             self.record_bare_fixed_rule_rejection(&alias, &fixed);
         }
+        // `@custom_json` is consumed EXCLUSIVELY through `RustStructConfig` — the derive/attribute
+        // emitters for wrappers, records and enums, `encoding_var_macros`, `needs_hex`. A rule that
+        // lands here mints no `RustStruct` at all: it emits `pub type Foo = u64;`, which has no
+        // attribute site to suppress and no nominal type a hand-written serde/schemars impl could
+        // legally target (the orphan rule owns that ceiling, not this generator). So the flag is
+        // structurally unhonorable here rather than merely unimplemented, and it is refused for the
+        // whole transparent-alias family at the one choke point they all pass through — the scalar
+        // alias, the `T / null` Option collapse, and every tagged/ranged variant that falls back to
+        // an alias. Refused regardless of the json flags, like every sibling placement rejection:
+        // whether a directive may sit somewhere is a property of the spec, not of the build profile.
+        //
+        // The alias is still INSERTED, for the reason the bare-fixed guard above states: a sibling
+        // rule's reference resolves through the alias table during parse, long before `finalize`
+        // turns the recorded rejection into an `Err`.
+        //
+        // The TABLE flavor cannot be caught here — it registers through `AliasInfo::new_manual`,
+        // whose `rule_metadata` is hardcoded `None` — so it is caught from the struct config in the
+        // `finalize` kind-walk instead, beside the custom-codec rejections.
+        if info
+            .rule_metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.custom_json)
+        {
+            self.record_custom_json_on_transparent_alias_rejection(&alias);
+        }
         self.type_aliases.insert(alias.into(), info);
+    }
+
+    /// The rejection for `@custom_json` on a rule that resolves to a transparent alias rather than to
+    /// a generated struct. Shared by the two seams such a rule can be recognized at — the alias table
+    /// (`register_type_alias` above) and the `finalize` kind-walk, which is where the TABLE flavor is
+    /// visible — so the one message they both emit cannot drift apart.
+    pub fn record_custom_json_on_transparent_alias_rejection(&mut self, rule: &RustIdent) {
+        self.record_rejection(format!(
+            "@custom_json on `{rule}`: the rule resolves to a transparent alias (`pub type {rule} = \
+             …;`), which is not a type of its own — there is no attribute site for the JSON derives \
+             to be suppressed on, and no nominal type your hand-written `Serialize`/`JsonSchema` \
+             impls could be written for. Add `@newtype` so the rule mints a real wrapper struct \
+             (`{rule} = … ; @newtype @custom_json`), and hand-write the impls for that."
+        ));
     }
 
     /// The rejection for a top-level rule whose whole body is a bare fixed value. Shared by the two
@@ -3169,8 +3208,25 @@ impl<'a> IntermediateTypes<'a> {
         // during the resolution above. Collected into a `BTreeSet` (determinism + no duplicate line
         // if two registrations ever land on one ident), like the float-key rejections.
         let mut custom_codec_rejections = BTreeSet::new();
+        // The COLLECTION-RULE flavors of the transparent-alias `@custom_json` refusal
+        // (`register_type_alias` owns the rest of that family). A named table or array rule DOES
+        // register a `RustStruct`, so its config carries the flag — but the struct only exists to
+        // drive the wasm wrapper and the keys-list mint; the rust rule itself lowers to a
+        // transparent `pub type` alias (registered through `AliasInfo::new_manual`, which drops the
+        // metadata, so `register_type_alias` cannot see these two). No consumer of `custom_json`
+        // reads either shape, on either the rust or the wasm side — same inert class, same message,
+        // same `@newtype` remedy. Collected here and recorded once the `&self` borrow ends.
+        let mut custom_json_alias_rejections: BTreeSet<RustIdent> = BTreeSet::new();
         for (ident, rust_struct) in &self.rust_structs {
             let config = rust_struct.config();
+            if config.custom_json
+                && matches!(
+                    rust_struct.variant(),
+                    RustStructType::Table { .. } | RustStructType::Array { .. }
+                )
+            {
+                custom_json_alias_rejections.insert(ident.clone());
+            }
             let enum_shape = match rust_struct.variant() {
                 RustStructType::TypeChoice { .. } => Some("a type-choice rule (`a / b`)"),
                 RustStructType::GroupChoice { .. } => {
@@ -3247,6 +3303,9 @@ impl<'a> IntermediateTypes<'a> {
         }
         for msg in custom_codec_rejections {
             self.record_rejection(msg);
+        }
+        for ident in custom_json_alias_rejections {
+            self.record_custom_json_on_transparent_alias_rejection(&ident);
         }
         // A CBOR tag riding an ANONYMOUS choice RULE — `t = #6.10(int / tstr)`, and the group-choice
         // and all-fixed spellings of the same thing — has nowhere to put its encoding metadata under
