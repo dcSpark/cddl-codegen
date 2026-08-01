@@ -964,7 +964,7 @@ fn recombination_generation_sweep() {
     let mut graceful = 0usize;
     let mut panics = 0usize;
     let mut findings: Vec<String> = Vec::new();
-    let mut observed_classes: BTreeSet<&str> = BTreeSet::new();
+    let mut observed_classes: BTreeMap<&str, usize> = BTreeMap::new();
     for (c, o) in comps.iter().zip(outcomes.iter()) {
         match o {
             Outcome::Ok => ok += 1,
@@ -973,7 +973,7 @@ fn recombination_generation_sweep() {
                 panics += 1;
                 match KNOWN_PANIC_CLASSES.iter().find(|(sub, _)| msg.contains(sub)) {
                     Some((sub, _)) => {
-                        observed_classes.insert(sub);
+                        *observed_classes.entry(sub).or_insert(0) += 1;
                     }
                     None => findings.push(format!(
                         "NEW panic class — composition {} ({}):\n--- spec ---\n{}--- panic ---\n{msg}\n\
@@ -1001,22 +1001,21 @@ fn recombination_generation_sweep() {
         findings.join("\n\n")
     );
 
-    // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline, re-measured
-    // 2026-08-01 by running this test with --nocapture and reading its own printed tally
-    // (1544 swept / 892 ok / 18 panic / 634 graceful); floors sit under it so real shrinkage
-    // fails loud while ingredient additions don't churn them.
+    // Vacuity floors — from the EXECUTED artifact, not the inputs. They answer "did the composer
+    // rot"; the CURRENT counts (and their per-class breakdown) live in the committed datum
+    // `tests/recombination-counts.json`, asserted exactly below, which answers "did a class
+    // migrate". Floors sit well under the datum so real shrinkage fails loud while ingredient
+    // additions don't churn them.
     //
-    // The panic column is where this baseline moves, and it moves in ONE direction: every
+    // The panic column is where the outcome split moves, and it moves in ONE direction: every
     // abort-to-rejection conversion migrates a block of compositions panic -> graceful without
     // touching a floor, because the floors bound `ok` and the swept total, and neither changes.
-    // The reading before this one was 106 panic / 546 graceful; two conversions moved the 88:
-    // the prelude-name refusals at the name-resolution seam (`cbor-any` / `eb64url` / `eb64legacy`
-    // / `eb16`, then the head-constrained float names) and the parse-seam conversions beside them
-    // (the four unsupported generic-definition bodies, the control-operator path's own copy of the
-    // float refusal, and its unmapped-head sibling). The split between the two was not measured.
-    // A stale reading here understates how much of the sweep is already diagnosed — which is the
-    // opposite of alarming, and exactly why nothing fails when it rots. Re-measure when a
-    // conversion lands; do not infer it from the floors.
+    // Attribution for the largest such movement to date (106 panic / 546 graceful -> 18 / 634):
+    // two conversions moved the 88 — the prelude-name refusals at the name-resolution seam
+    // (`cbor-any` / `eb64url` / `eb64legacy` / `eb16`, then the head-constrained float names) and
+    // the parse-seam conversions beside them (the four unsupported generic-definition bodies, the
+    // control-operator path's own copy of the float refusal, and its unmapped-head sibling). The
+    // split between the two was not measured.
     //
     // Earlier panic -> ok movements, kept because each names the fixture that owns the shape:
     // generic INSTANTIATION in bare member position, when the `TypeGroupname` group-entry arm was
@@ -1035,11 +1034,107 @@ fn recombination_generation_sweep() {
     );
     for (sub, cite) in KNOWN_PANIC_CLASSES {
         assert!(
-            observed_classes.contains(sub),
+            observed_classes.contains_key(sub),
             "ledgered panic class `{sub}` was never observed (pin: {cite}) — stale ledger entry or \
              a fix landed; prune/retarget the entry"
         );
     }
+
+    check_recombination_counts(&RecombinationCounts {
+        swept: comps.len(),
+        ok,
+        graceful,
+        panic: panics,
+        observed_classes: observed_classes
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), *v))
+            .collect(),
+    });
+}
+
+// ---- the committed outcome-count datum ---------------------------------------------------------
+/// Path (repo-relative) of the committed datum the sweep's outcome counts are held against.
+const RECOMB_COUNTS_PATH: &str = "tests/recombination-counts.json";
+
+/// What `recombination_generation_sweep` measured: the three outcome columns, the swept total, and
+/// the per-ledger-class panic breakdown.
+struct RecombinationCounts {
+    swept: usize,
+    ok: usize,
+    graceful: usize,
+    panic: usize,
+    /// `KNOWN_PANIC_CLASSES` key -> how many compositions panicked into that class.
+    observed_classes: BTreeMap<String, usize>,
+}
+
+impl RecombinationCounts {
+    /// Render the committed JSON form. Hand-rendered rather than serialized so the committed file's
+    /// shape is fixed by this function alone (the `tests/timings.json` house pattern: a leading
+    /// `note` that carries the semantics and the bless command).
+    fn render(&self) -> String {
+        fn esc(s: &str) -> String {
+            s.replace('\\', "\\\\").replace('"', "\\\"")
+        }
+        let mut out = String::new();
+        out.push_str("{\n  \"v\": 1,\n  \"note\": \"");
+        out.push_str(&esc(
+            "Outcome counts measured by src/tests/recombination_tests.rs \
+             `recombination_generation_sweep`, asserted EXACTLY (the vacuity floors in that test \
+             answer \"did the composer rot\"; this datum answers \"did a class migrate\"). \
+             `swept` is the composition count, `ok`/`graceful`/`panic` its three generation \
+             outcomes, and `observed_classes` maps each observed KNOWN_PANIC_CLASSES ledger key to \
+             the number of compositions that panicked into it. Deterministic: the sweep asserts \
+             its enumeration is reproducible. Re-bless after any change that legitimately moves a \
+             column (an abort-to-rejection conversion, an ingredient addition) with \
+             `BLESS_RECOMB_COUNTS=1 cargo test --bin cddl-codegen recombination_generation_sweep`, \
+             and say in the commit message WHY the numbers moved.",
+        ));
+        out.push_str("\",\n");
+        out.push_str(&format!("  \"swept\": {},\n", self.swept));
+        out.push_str(&format!("  \"ok\": {},\n", self.ok));
+        out.push_str(&format!("  \"graceful\": {},\n", self.graceful));
+        out.push_str(&format!("  \"panic\": {},\n", self.panic));
+        out.push_str("  \"observed_classes\": {");
+        let mut first = true;
+        for (k, v) in &self.observed_classes {
+            out.push_str(if first { "\n" } else { ",\n" });
+            first = false;
+            out.push_str(&format!("    \"{}\": {}", esc(k), v));
+        }
+        out.push_str(if first { "}\n}\n" } else { "\n  }\n}\n" });
+        out
+    }
+}
+
+/// Hold the measured counts against the committed datum, exactly. `BLESS_RECOMB_COUNTS=1` rewrites
+/// the file (repo blessing convention, as for `manifest_template_drift` / `editor_schema_…`).
+fn check_recombination_counts(measured: &RecombinationCounts) {
+    let rendered = measured.render();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(RECOMB_COUNTS_PATH);
+    let committed = std::fs::read_to_string(&path).unwrap_or_default();
+    if rendered == committed {
+        return;
+    }
+    if std::env::var("BLESS_RECOMB_COUNTS").map(|v| v == "1") == Ok(true) {
+        std::fs::write(&path, &rendered)
+            .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        return;
+    }
+    let classes = measured
+        .observed_classes
+        .iter()
+        .map(|(k, v)| format!("    {v:>5}  {k}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    panic!(
+        "{RECOMB_COUNTS_PATH} is stale against what the sweep measured — a class migrated, or an \
+         ingredient/composer change moved a column.\n  measured: swept={} ok={} graceful={} \
+         panic={}\n  per-class panic counts:\n{classes}\n\nIf the movement is intended, re-bless \
+         with `BLESS_RECOMB_COUNTS=1 cargo test --bin cddl-codegen \
+         recombination_generation_sweep` and say WHY in the commit message.\n--- committed \
+         ---\n{committed}--- measured ---\n{rendered}",
+        measured.swept, measured.ok, measured.graceful, measured.panic
+    );
 }
 
 // ---- LAYER 2: batched compile + emitted-test execution ----------------------------------------------
