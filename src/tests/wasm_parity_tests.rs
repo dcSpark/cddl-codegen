@@ -475,6 +475,14 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          above",
     ),
     (
+        "open-table-e2e",
+        "open table (one typed table row plus one trailing typed catch-all rest row) CBOR fidelity \
+         e2e fixture: its integration gate generates --preserve-encodings --canonical-form \
+         --wasm=false (wire-major dispatch, the tagged two-sequence order encoding and the canonical \
+         key merge, not the wasm boundary); the wasm surface of the two rows is two container-class \
+         getters, minted by the same path the `open-struct-map` snapshot fixture's parity rows cover",
+    ),
+    (
         "custom-serialize-canonical-e2e",
         "custom-serialize CANONICAL scratch-buffer e2e fixture: its integration gate generates \
          --preserve-encodings --canonical-form --wasm=false (the call form of a free-function \

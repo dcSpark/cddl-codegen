@@ -16,6 +16,7 @@ expression: ir
             custom_serialize: None,
             custom_deserialize: None,
             custom_encodings: None,
+            custom_wire_major: None,
             doc: None,
             newtype_getter: None,
             duplicates: None,
@@ -36,6 +37,7 @@ expression: ir
             custom_serialize: None,
             custom_deserialize: None,
             custom_encodings: None,
+            custom_wire_major: None,
             doc: None,
             newtype_getter: Some(
                 None,

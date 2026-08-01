@@ -5487,6 +5487,295 @@ fn open_struct_map_rest_row_front_end() {
     );
 }
 
+/// Open table (`t = { * K_t => V_t, * K_r => V_r }`) front end: recognition of the two-row shape,
+/// the SHAPE rejections the parse walk owns, the STATICNESS rejections `finalize` owns, and the
+/// `@custom_wire_major` placement policing. Message-level pins for every rejection plus source-shape
+/// assertions for the happy path (the value-level round-trip lives in the compiled e2e
+/// `open_table_e2e`). Each guard carries both polarities where meaningful.
+#[test]
+fn open_table_front_end() {
+    fn run_flags(
+        spec: &str,
+        tag: &str,
+        extra: &[&str],
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_opentable_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            path.to_str().unwrap().to_owned(),
+            "--output".to_owned(),
+            "opentable_unused".to_owned(),
+            "--wasm=false".to_owned(),
+        ];
+        args.extend(extra.iter().map(|s| s.to_string()));
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        run_flags(spec, tag, &[])
+    }
+    fn src(out: &std::collections::BTreeMap<String, String>) -> String {
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    }
+    // `md` is the standing multi-major catch-all key in these legs (majors 0 and 3).
+    const MD: &str = "md = uint / text\n";
+
+    // --- happy path: two rows, zero fixed fields, two containers on one struct ---
+    let ok = run(
+        &format!("{MD}t = {{ * bstr => uint, * md => md }}\n"),
+        "happy",
+    )
+    .expect("an open table with a statically-single-major typed key must generate");
+    let ok_src = src(&ok);
+    assert!(
+        ok_src.contains("pub entries: BTreeMap<Vec<u8>, u64>")
+            && ok_src.contains("pub rest: BTreeMap<Md, Md>"),
+        "both rows must lower to their own `pub` container field, got:\n{ok_src}"
+    );
+    assert!(
+        ok_src.contains("self.entries.len() as u64 + self.rest.len() as u64"),
+        "the map header must fold BOTH rows' live counts, got:\n{ok_src}"
+    );
+    assert!(
+        ok_src.contains("pub fn new() -> Self"),
+        "new() takes neither row (both default empty), got:\n{ok_src}"
+    );
+    assert!(
+        ok_src.contains("cbor_event::Type::Bytes =>"),
+        "the typed row must claim its declared major as its own dispatch arm, got:\n{ok_src}"
+    );
+
+    // --- no-drift: a lone `* k => v` map is still a TABLE, and fixed keys + one row still an open
+    // struct-map (neither becomes an open table) ---
+    let table = run("t = { * uint => text }\n", "table").expect("a lone table must still generate");
+    assert!(
+        !src(&table).contains("pub entries"),
+        "a single-entry `{{ * k => v }}` must stay a TABLE"
+    );
+    let open_struct = run("foo = { 1: uint, * uint => any }\n", "openstruct")
+        .expect("an open struct-map must still generate");
+    assert!(
+        !src(&open_struct).contains("pub entries"),
+        "fixed keys + one rest row stays an open struct-map, not an open table"
+    );
+
+    // --- SHAPE (parse walk) ---
+    // >2 non-fixed rows: the re-worded multiplicity guard names BOTH legal shapes.
+    let three = run(
+        &format!("{MD}t = {{ * bstr => uint, * uint => uint, * md => md }}\n"),
+        "three",
+    )
+    .expect_err("three non-fixed rows must reject");
+    assert!(
+        three.contains("single trailing rest row")
+            && three.contains("open table")
+            && three.contains("3 non-fixed rows"),
+        "the multiplicity message must name both legal shapes and the count, got: {three}"
+    );
+    // Fixed keys mixed with two non-fixed rows: the contract covers ZERO-fixed-field open tables.
+    let mixed = run(
+        &format!("{MD}t = {{ 1: uint, * bstr => uint, * md => md }}\n"),
+        "mixed",
+    )
+    .expect_err("fixed keys beside two non-fixed rows must reject");
+    assert!(
+        mixed.contains("drop the fixed keys to spell an open table"),
+        "the mixed shape must point at the zero-fixed-field spelling, got: {mixed}"
+    );
+    // INLINE anonymous open table: no structural name is synthesized. The pre-existing inline-map
+    // guard fires first (an inline map in member position is unsupported unless it is a table), and
+    // it already names the named-rule remedy — so the open-table recognizer's own inline backstop is
+    // reachable only if that guard ever stops covering the position. What is pinned is the CONTRACT:
+    // an inline spelling rejects gracefully, pointing at the named-rule form.
+    let inline = run(
+        &format!("{MD}f = {{ x: {{ * bstr => uint, * md => md }} }}\n"),
+        "inline",
+    )
+    .expect_err("an inline open table must reject");
+    assert!(
+        inline.contains("name it as its own rule") || inline.contains("its own named rule"),
+        "the inline rejection must name the named-rule form, got: {inline}"
+    );
+    // The `{+ …}` NonEmpty twin: its interim rejection STATES the min-1-counts-TYPED rule.
+    let plus = run(
+        &format!("{MD}t = {{ + bstr => uint, * md => md }}\n"),
+        "plus",
+    )
+    .expect_err("the NonEmpty open table must reject until its phase lands");
+    assert!(
+        plus.contains("NonEmpty open table") && plus.contains("minimum of 1 counts TYPED entries"),
+        "the NonEmpty interim rejection must state the rule it will enforce, got: {plus}"
+    );
+    // `?` on a row is neither shape.
+    let opt = run(
+        &format!("{MD}t = {{ ? bstr => uint, * md => md }}\n"),
+        "opt",
+    )
+    .expect_err("a `?` row must reject");
+    assert!(
+        opt.contains("`*` occurrence"),
+        "a bounded row must name the `*` requirement, got: {opt}"
+    );
+    // `any` on the TYPED row claims all eight majors, leaving the catch-all nothing.
+    let any_typed = run(
+        &format!("{MD}t = {{ * any => uint, * md => md }}\n"),
+        "anytyped",
+    )
+    .expect_err("an `any`-keyed typed row must reject");
+    assert!(
+        any_typed.contains("cannot be keyed on `any`"),
+        "an `any` typed key must reject by shape, got: {any_typed}"
+    );
+    // …and `any` on the CATCH-ALL is exactly where it belongs.
+    run("t = { * bstr => uint, * any => any }\n", "anycatch")
+        .expect("an `any`-keyed catch-all must generate");
+    // A null-admitting key collides with the indefinite-map break on both rows.
+    let nullable = run(
+        "k = text / null\nt = { * k => uint, * uint => uint }\n",
+        "nullable",
+    )
+    .expect_err("a null-admitting key must reject");
+    assert!(
+        nullable.contains("null-admitting key domain"),
+        "a null-admitting key must name the break collision, got: {nullable}"
+    );
+    // `@ignore` on either row would silently discard half the map.
+    let ign = run(
+        &format!("{MD}t = {{ * bstr => uint ; @ignore\n, * md => md }}\n"),
+        "ignore",
+    )
+    .expect_err("`@ignore` on an open table row must reject");
+    assert!(
+        ign.contains("@ignore") && ign.contains("discard half the map"),
+        "`@ignore` must reject naming the loss, got: {ign}"
+    );
+    // Two rows `@name`d onto one field name would be two `pub` fields with one name.
+    let same_name = run(
+        &format!("{MD}t = {{ * bstr => uint ; @name x\n, * md => md ; @name x\n}}\n"),
+        "samename",
+    )
+    .expect_err("two rows naming one field must reject");
+    assert!(
+        same_name.contains("their names must differ"),
+        "a field-name collision between the rows must reject, got: {same_name}"
+    );
+
+    // --- STATICNESS (finalize) ---
+    let multi = run(
+        &format!("{MD}t = {{ * md => uint, * bstr => uint }}\n"),
+        "multi",
+    )
+    .expect_err("a multi-major typed key must reject");
+    assert!(
+        multi.contains("statically known")
+            && multi.contains("admits 2 majors")
+            && multi.contains("@custom_wire_major"),
+        "the staticness message must name the rule, the count and the directive, got: {multi}"
+    );
+    // The complement check: a catch-all whose majors the typed row exhausts can never capture.
+    let empty_complement = run(
+        "k = text\nt = { * k => uint, * text => uint }\n",
+        "complement",
+    )
+    .expect_err("an exhausted catch-all must reject");
+    assert!(
+        empty_complement.contains("can never capture an entry"),
+        "the empty-complement message must say so, got: {empty_complement}"
+    );
+    // A custom-codec key: `cbor_types()` answers about the REPLACED type, so the declaration is
+    // REQUIRED — its absence is a graceful rejection naming the directive.
+    const CODEC: &str =
+        "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex\n";
+    let no_decl = run(
+        &format!("{MD}{CODEC}t = {{ * hex28 => uint, * md => md }}\n"),
+        "nodecl",
+    )
+    .expect_err("a custom-codec typed key with no declared major must reject");
+    assert!(
+        no_decl.contains("@custom_wire_major") && no_decl.contains("the codec owns that wire"),
+        "the missing-declaration message must name the directive and the reason, got: {no_decl}"
+    );
+    // …and with the declaration the typed row dispatches on the DECLARED major (text), not on the
+    // replaced type's (bytes).
+    let declared = run(
+        &format!(
+            "{MD}hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\nt = {{ * hex28 => uint, * uint => uint }}\n"
+        ),
+        "declared",
+    )
+    .expect("a declared major must be honored");
+    assert!(
+        src(&declared).contains("cbor_event::Type::Text =>"),
+        "the DECLARED major drives the dispatch arm, not the replaced type's, got:\n{}",
+        src(&declared)
+    );
+    // no-silent-directive: a declaration no open-table typed row consumes.
+    let unconsumed = run(
+        "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\nf = { x: hex28 }\n",
+        "unconsumed",
+    )
+    .expect_err("an unconsumed @custom_wire_major must reject");
+    assert!(
+        unconsumed.contains("nothing consumes the declared major"),
+        "an inert declaration must reject loudly, got: {unconsumed}"
+    );
+
+    // --- TEMPORARY: the JSON flags have no open-table face yet ---
+    let json = run_flags(
+        &format!("{MD}t = {{ * bstr => uint, * md => md }}\n"),
+        "json",
+        &["--json-serde-derives=true"],
+    )
+    .expect_err("open tables must refuse the JSON flags until their JSON face lands");
+    assert!(
+        json.contains("not supported yet under --json-serde-derives"),
+        "the temporary JSON rejection must name the flags, got: {json}"
+    );
+}
+
+/// A rest row's per-entry VALUE encoding sidecar is populated from the LOCAL vars the value's
+/// deserialize bound (named off the fixed `rest_value` binding), never from the sidecar
+/// DECLARATION's names (named off the row's field name). The two coincide only for the default
+/// field name `rest`, so a `@name`d row with a concrete (sidecar-bearing) value type emitted an
+/// undefined variable and the generated crate failed to compile (E0425). Pinned at the source level
+/// because the shape is one line of emitted code and the failure is a compile error in the OUTPUT
+/// crate, not in this one.
+#[test]
+fn named_rest_row_value_sidecar_reads_the_bound_locals() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_named_rest_sidecar_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "foo = { 1: uint, * uint => text ; @name extra\n}\n").unwrap();
+    let cli = Cli::parse_from(vec![
+        "cddl-codegen".to_owned(),
+        "--input".to_owned(),
+        path.to_str().unwrap().to_owned(),
+        "--output".to_owned(),
+        "named_rest_unused".to_owned(),
+        "--wasm=false".to_owned(),
+        "--preserve-encodings=true".to_owned(),
+    ]);
+    let out = crate::api::generated_strings(&cli).expect("a @name'd rest row must generate");
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("extra_value_encodings.insert(rest_key, rest_value_encoding);"),
+        "the sidecar must be keyed by its DECLARATION name and fed the BOUND local, got:\n{src}"
+    );
+    assert!(
+        !src.contains("extra_value_encodings.insert(rest_key, extra_value_encoding)"),
+        "the declaration's name is not a local binding here, got:\n{src}"
+    );
+}
+
 /// A multi-arm group-choice arm builds its record through the normal registration path, so the arm's
 /// name occupies a Rust struct ident while it is parsed. When that ident is already claimed and the
 /// arm's record SURVIVES parsing (a non-embeddable arm — it is emitted as a real type under that

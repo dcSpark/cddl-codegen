@@ -323,6 +323,12 @@ pub struct RustStructConfig {
     /// transparent ALIAS rule (where it rides `AliasInfo::rule_metadata`) or on a FIELD (where it
     /// rides `RustField::rule_metadata`).
     pub custom_encodings: Option<Vec<crate::comment_ast::EncodingKind>>,
+    /// `@custom_wire_major` written on the RULE. Carried for exactly one reader:
+    /// `IntermediateTypes::finalize`'s refusal of a declaration on a rule that mints a STRUCT. The
+    /// declared major is read only through the ALIAS channel (`AliasInfo::rule_metadata`), when the
+    /// rule keys an OPEN TABLE's typed row — a struct-minting rule has no such channel, so honoring
+    /// it is impossible and dropping it silently is the class this DSL rejects.
+    pub custom_wire_major: Option<crate::comment_ast::WireMajor>,
     pub doc: Option<String>,
     pub newtype_getter: Option<Option<String>>,
     /// `@duplicates` policy for a collection rule (`[* a]` / `[+ a]` / the tag-258 set idiom / a
@@ -346,6 +352,7 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
                 custom_serialize: rule_metadata.custom_serialize.clone(),
                 custom_deserialize: rule_metadata.custom_deserialize.clone(),
                 custom_encodings: rule_metadata.custom_encodings.clone(),
+                custom_wire_major: rule_metadata.custom_wire_major,
                 doc: rule_metadata.comment.clone(),
                 newtype_getter: rule_metadata.newtype.clone(),
                 duplicates: rule_metadata.duplicates,
@@ -815,8 +822,11 @@ impl RustStruct {
                 // occurrences (they can reference named rules), so a reference reachable ONLY through
                 // the rest stays visible to `is_referenced` and friends. Walk the map K/V pair or the
                 // array element per the rest kind.
-                if let Some(rest) = &record.rest {
-                    match &rest.kind {
+                // An open table's TYPED row is the same shape and the same kind of occurrence, so it
+                // walks through the identical arm — iterating both members rather than only `rest`
+                // (a reference reachable only through `K_t`/`V_t` must stay visible too).
+                for row in record.dynamic_rows() {
+                    match &row.kind {
                         RestKind::MapEntries { domain, range, .. } => {
                             domain
                                 .conceptual_type
@@ -865,6 +875,21 @@ pub struct RustRecord {
     /// row) or an `Array`-rep record (rest tail). `Box`ed to keep `RustRecord` (and the
     /// `EnumVariantData::Inlined` embedding it) small — `RestRow` holds one or two `RustType`s.
     pub rest: Option<Box<RestRow>>,
+    /// The TYPED row of an OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`) — the leading
+    /// `* K_t => V_t` row that claims exactly its key's single statically-known CBOR major, with
+    /// `rest` holding the trailing catch-all that sees only the complement. `None` for every other
+    /// record shape (closed struct, open struct-map with fixed keys, open array), so the snapshot
+    /// corpus stays byte-identical for those.
+    ///
+    /// Deliberately a second `RestRow` rather than a new `RustStructType` variant or a fake
+    /// `RustField`: the row is a DYNAMIC sequence exactly like `rest` (no `new()` argument, no JSON
+    /// member name, no codegen-time key bytes, no mandatory-field check), so every piece of the
+    /// delivered capture engine — `container_type()`, the duplicates policy, the encoding sidecars,
+    /// the per-entry capture and serialize — applies to it verbatim. An open table is therefore a
+    /// Record with ZERO fixed fields plus these two rows (`is_open_table()`), and the emitted
+    /// deserialize loop is the delivered zero-declared-keys form, which already IS pure major-type
+    /// dispatch.
+    pub typed_row: Option<Box<RestRow>>,
 }
 
 /// Which of the two open struct-map flavors a rest row selects.
@@ -933,13 +958,24 @@ pub struct RestRow {
     /// The captured field's Rust name (default `rest`, overridable with `@name` on the row/tail).
     /// Only meaningful under `Capture`; `Ignore` emits no field.
     pub field_name: String,
+    /// The single CBOR major type this row CLAIMS in the deserialize loop's `match raw.cbor_type()?`
+    /// dispatch. `Some` only on an open table's TYPED row (`RustRecord::typed_row`), where it is
+    /// derived in `IntermediateTypes::finalize` — never in the parse walk, because deriving it needs
+    /// `cbor_types()` (which panics on an unregistered ident) and must run AFTER generic resolution,
+    /// the same tier and the same reason as the float-key instruments. `None` on every catch-all rest
+    /// row and array tail: those see the COMPLEMENT of the typed row's major (or, with no typed row,
+    /// everything), which is not a single major and is expressed by the loop's arm layout instead.
+    pub dispatch_major: Option<CBORType>,
 }
 
 /// Whether any alias in `ty`'s alias chain carries a `@custom_serialize`/`@custom_deserialize`
 /// directive. Only the ALIAS chain is walked: a rest-row domain reaches the peeked-key fast path only
 /// when it resolves to a bare primitive/`any`, so an owning `Rust(ident)` struct (whose custom pair
 /// lives on the struct config) is already on the typed path by shape.
-fn custom_codec_on_alias_chain(ty: &ConceptualRustType, types: &IntermediateTypes) -> bool {
+pub(super) fn custom_codec_on_alias_chain(
+    ty: &ConceptualRustType,
+    types: &IntermediateTypes,
+) -> bool {
     let mut cur = ty;
     while let ConceptualRustType::Alias(alias_ident, inner) = cur {
         if let Some(info) = types.type_aliases().get(alias_ident)
@@ -951,6 +987,65 @@ fn custom_codec_on_alias_chain(ty: &ConceptualRustType, types: &IntermediateType
         cur = inner;
     }
     false
+}
+
+/// The `@custom_wire_major` declaration on `ty`'s ALIAS CHAIN, if any — the declared-major channel
+/// for a key whose wire a custom codec owns. Walked exactly like `custom_codec_on_alias_chain` (an
+/// alias rule's directives ride `AliasInfo::rule_metadata`), and returning the FIRST declaration
+/// found, walking outward-in: the outermost alias is the one whose codec actually writes the wire.
+pub(super) fn declared_wire_major_on_alias_chain(
+    ty: &ConceptualRustType,
+    types: &IntermediateTypes,
+) -> Option<crate::comment_ast::WireMajor> {
+    let mut cur = ty;
+    while let ConceptualRustType::Alias(alias_ident, inner) = cur {
+        if let Some(info) = types.type_aliases().get(alias_ident)
+            && let Some(rmd) = info.rule_metadata.as_ref()
+            && let Some(major) = rmd.custom_wire_major
+        {
+            return Some(major);
+        }
+        cur = inner;
+    }
+    None
+}
+
+/// Record every alias on `ty`'s chain that carries a `@custom_wire_major`, so the
+/// no-silent-directive check can tell a CONSUMED declaration from an inert one. Walks the whole
+/// chain (not just to the first hit): an inner alias's declaration is equally consumed by the
+/// dispatch that reads through it.
+pub(super) fn mark_wire_major_consumed(
+    ty: &ConceptualRustType,
+    types: &IntermediateTypes,
+    consumed: &mut BTreeSet<AliasIdent>,
+) {
+    let mut cur = ty;
+    while let ConceptualRustType::Alias(alias_ident, inner) = cur {
+        if let Some(info) = types.type_aliases().get(alias_ident)
+            && let Some(rmd) = info.rule_metadata.as_ref()
+            && rmd.custom_wire_major.is_some()
+        {
+            consumed.insert(alias_ident.clone());
+        }
+        cur = inner;
+    }
+}
+
+/// The `cbor_event` major-type value a `@custom_wire_major` token names. The one place the DSL
+/// vocabulary meets the eight CBOR majors, so the mapping cannot drift between the parser and the
+/// dispatch emitter.
+pub(super) fn wire_major_to_cbor_type(major: crate::comment_ast::WireMajor) -> CBORType {
+    use crate::comment_ast::WireMajor;
+    match major {
+        WireMajor::Uint => CBORType::UnsignedInteger,
+        WireMajor::Nint => CBORType::NegativeInteger,
+        WireMajor::Bytes => CBORType::Bytes,
+        WireMajor::Text => CBORType::Text,
+        WireMajor::Array => CBORType::Array,
+        WireMajor::Map => CBORType::Map,
+        WireMajor::Tag => CBORType::Tag,
+        WireMajor::Simple => CBORType::Special,
+    }
 }
 
 impl RestRow {
@@ -1084,13 +1179,54 @@ impl RustRecord {
             .filter(|r| r.semantics == RestSemantics::Ignore)
     }
 
+    /// The open table's TYPED row (`* K_t => V_t`), always a CAPTURE row (`@ignore` is rejected on
+    /// it at recognition — an ignored typed row would leave the whole rule storing nothing).
+    pub fn typed_row(&self) -> Option<&RestRow> {
+        self.typed_row.as_deref()
+    }
+
+    /// Whether this record IS an open table (`t = { * K_t => V_t, * K_r => V_r }`): zero fixed
+    /// fields plus both dynamic rows. The derived predicate that replaces a new `RustStructType`
+    /// variant — every open-table-only behavior keys on THIS rather than on a variant match, so a
+    /// plain record and an open-struct-map keep their exact pre-feature emission.
+    pub fn is_open_table(&self) -> bool {
+        self.fields.is_empty() && self.typed_row.is_some() && self.rest.is_some()
+    }
+
+    /// Both dynamic rows in WIRE-DISPATCH order (typed row first, then the catch-all), skipping the
+    /// absent ones. The single iteration order every walk that must see BOTH members uses — a walk
+    /// that reads only `rest` silently misses an open table's typed row.
+    pub fn dynamic_rows(&self) -> impl Iterator<Item = &RestRow> {
+        self.typed_row
+            .as_deref()
+            .into_iter()
+            .chain(self.rest.as_deref())
+    }
+
+    /// Whether `row` is THIS record's open-table TYPED row. Pointer identity against `typed_row`,
+    /// which is exact for the references `dynamic_rows()` yields (they borrow from `self`) and is a
+    /// PARSE-time fact — unlike `RestRow::dispatch_major`, which only `finalize` fills in.
+    pub fn is_typed_row(&self, row: &RestRow) -> bool {
+        self.typed_row
+            .as_deref()
+            .is_some_and(|t| std::ptr::eq(t, row))
+    }
+
+    /// The CAPTURED dynamic rows in wire-dispatch order — the `dynamic_rows()` twin for every
+    /// capture-only emission (struct field, `new()` line, wasm getter, encoding sidecars, serialize
+    /// replay, `definite_info`'s length fold).
+    pub fn captured_dynamic_rows(&self) -> impl Iterator<Item = &RestRow> {
+        self.dynamic_rows()
+            .filter(|r| r.semantics == RestSemantics::Capture)
+    }
+
     pub fn fixed_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
         // An OPEN struct (rest row present) has a variable number of wire entries, so it is never a
         // fixed-length map: forcing `None` here routes `cbor_len_info` to the dynamic class (so the
         // deserialize length check accounts each rest entry via `read_len.read_elems(1)` in the loop
         // + `read_len.finish()` after, rather than asserting a fixed count up front) and steers
         // `definite_info` to the additive branch that folds in `rest.len()`.
-        if self.rest.is_some() {
+        if self.rest.is_some() || self.typed_row.is_some() {
             return None;
         }
         let mut count = 0;
@@ -1245,13 +1381,15 @@ impl RustRecord {
                 // The all-mandatory-prefix + ignore-tail combo reaches the `conditional_field_expr.
                 // is_empty()` branch below (no optional field, no fold) → the plain mandatory count, not
                 // a malformed `"{n} + "`.
-                if let Some(rest) = self.captured_rest() {
+                // An OPEN TABLE has two captured dynamic rows, so the header folds BOTH live counts
+                // (`self.<typed>.len() + self.<rest>.len()`) — the same additive term per row.
+                for row in self.captured_dynamic_rows() {
                     // `.len()` is `usize`; the map header (`cbor_event::Len::Len(u64)`) and the
                     // additive expression it joins are `u64`, so cast (`as` binds tighter than `+`).
                     let rest_len_expr = if self_expr.is_empty() {
-                        format!("{}.len() as u64", rest.field_name)
+                        format!("{}.len() as u64", row.field_name)
                     } else {
-                        format!("{}.{}.len() as u64", self_expr, rest.field_name)
+                        format!("{}.{}.len() as u64", self_expr, row.field_name)
                     };
                     if !conditional_field_expr.is_empty() {
                         conditional_field_expr.push_str(" + ");

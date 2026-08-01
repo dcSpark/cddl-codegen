@@ -1,0 +1,34 @@
+; Open table (`t = { * K_t => V_t, * K_r => V_r }`) CBOR fidelity end-to-end vectors: one typed
+; table row plus one trailing typed catch-all rest row, dispatched by WIRE MAJOR TYPE peeked before
+; any deserializer runs. Generated under --preserve-encodings --canonical-form (canonical implies
+; preserve), so the one crate exercises byte-exact round-trip (the TAGGED `orig_deser_order` slot
+; encoding over two dynamic sequences) AND the runtime canonical key merge across both regions.
+; Every `wire` byte string in tests.rs is hand-written from the CBOR grammar.
+pid = bytes .size 4
+details = { name: text }
+md = uint / text
+
+; The base shape: a bytes-keyed typed row (major 2) beside a uint/text catch-all (majors 0 and 3).
+; The typed row claims major 2 and nothing else; the catch-all sees the complement.
+labels = { * pid => details, * md => md }
+
+; The typed row keyed on a TEXT primitive (major 3): the catch-all's `md` still admits major 0, so
+; the complement is non-empty and the two partition majors 0/3 between them.
+text_keyed = { * text => uint, * md => md }
+
+; `@duplicates preserve` on BOTH rows: each becomes its own `PairMap` (duplicate keys kept, in wire
+; order) with POSITIONAL encoding sidecars, and the canonical merge still sorts both regions into
+; one order by encoded key bytes.
+dup_both = {
+  * pid => uint ; @duplicates preserve
+  ,
+  * md => md ; @duplicates preserve
+}
+
+; `@name` on both rows: the two containers are two `pub` fields on one struct, so each row names its
+; own field (the defaults are `entries` / `rest`).
+named = {
+  * pid => uint ; @name typed
+  ,
+  * md => md ; @name captured
+}

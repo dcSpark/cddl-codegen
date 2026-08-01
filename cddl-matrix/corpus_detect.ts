@@ -185,7 +185,8 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
   "@copy", "@raw_bytes_flavor", "@ignore", "@duplicates", "@custom_json", "@no_json_schema_export",
-  "@custom_serialize", "@custom_deserialize", "@custom_encodings", "@extern_companions", "@doc",
+  "@custom_serialize", "@custom_deserialize", "@custom_encodings", "@custom_wire_major",
+  "@extern_companions", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -285,6 +286,19 @@ const DSL_TAGS: TagParse[] = [
     const arg = m[0];
     if (arg !== "none" && !arg.split(",").every(k => k === "sz" || k === "str" || k === "len")) return null;
     return { id: "dsl.custom_encodings", rest: after.slice(arg.length) };
+  },
+  // @custom_wire_major: one REQUIRED argument from a strict vocabulary — exactly one of the eight
+  // CBOR major-type tokens. comment_ast PANICS on a missing arg or an unknown token, so such a
+  // fixture could not have generated — the mirror refuses the credit rather than false-crediting,
+  // exactly as the @duplicates and @custom_encodings parsers do.
+  s => {
+    if (!s.startsWith("@custom_wire_major")) return null;
+    const after = ws(s.slice("@custom_wire_major".length));
+    const m = after.match(/^[^\s@]+/);
+    if (!m) return null; // missing required argument — comment_ast panics
+    const arg = m[0];
+    if (!["uint", "nint", "bytes", "text", "array", "map", "tag", "simple"].includes(arg)) return null;
+    return { id: "dsl.custom_wire_major", rest: after.slice(arg.length) };
   },
   // @extern_companions: one REQUIRED argument in a strict SHAPE — `<rust_path>=<Class>[,<Class>…]`,
   // consumed as the arg so a directive after it is still reachable. Unlike @duplicates the argument

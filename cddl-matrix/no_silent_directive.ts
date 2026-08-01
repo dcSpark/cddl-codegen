@@ -96,6 +96,7 @@ const SPELLINGS: Record<string, string> = {
   "@custom_serialize": "@custom_serialize my_serialize",
   "@custom_deserialize": "@custom_deserialize my_deserialize",
   "@custom_encodings": "@custom_encodings sz",
+  "@custom_wire_major": "@custom_wire_major text",
   "@extern_companions": "@extern_companions dep_wasm=FooList",
   "@doc": "@doc explains the rule",
 };
@@ -121,6 +122,11 @@ const WITNESS_PROFILE: Record<string, ProfileId> = {
   // inert by construction, which would make every one of its cells an inert measurement rather than
   // a finding.
   "@custom_encodings": "preserve",
+  // `@custom_wire_major` declares the CBOR major a custom codec's wire starts with. Its consumer is
+  // an OPEN TABLE's typed-row dispatch, and a rule carrying it that no such row consumes is a
+  // graceful REJECTION (the no-silent-directive posture this check exists to enforce) — so under any
+  // shape in this axis the directive is loud, and the cheapest profile that shows it is the default.
+  "@custom_wire_major": "default",
   // json-gen-crate surfaces: `@custom_json` suppresses serde/schemars derives, and
   // `@no_json_schema_export` suppresses a schema-registration row that only exists under the flags.
   "@custom_json": "json",

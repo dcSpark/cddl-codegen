@@ -1929,6 +1929,7 @@ mod tests {
             rep,
             fields,
             rest: None,
+            typed_row: None,
         }
     }
 
