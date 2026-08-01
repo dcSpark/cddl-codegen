@@ -185,7 +185,7 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
   "@copy", "@raw_bytes_flavor", "@ignore", "@duplicates", "@custom_json", "@no_json_schema_export",
-  "@custom_serialize", "@custom_deserialize", "@extern_companions", "@doc",
+  "@custom_serialize", "@custom_deserialize", "@custom_encodings", "@extern_companions", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -272,6 +272,20 @@ const DSL_TAGS: TagParse[] = [
   noArg("dsl.no_json_schema_export", "@no_json_schema_export"),
   argRequired("dsl.custom_serialize", "@custom_serialize"),
   argRequired("dsl.custom_deserialize", "@custom_deserialize"),
+  // @custom_encodings: one REQUIRED argument from a strict vocabulary — a comma-separated list of
+  // `sz`/`str`/`len` with NO whitespace, or the keyword `none`. comment_ast PANICS on a missing arg
+  // or an unknown kind token (a trailing comma and a space after a comma both reach it as an unknown
+  // kind), so such a fixture could not have generated — the mirror refuses the credit rather than
+  // false-crediting, exactly as the @duplicates and @extern_companions parsers do.
+  s => {
+    if (!s.startsWith("@custom_encodings")) return null;
+    const after = ws(s.slice("@custom_encodings".length));
+    const m = after.match(/^[^\s@]+/);
+    if (!m) return null; // missing required argument — comment_ast panics
+    const arg = m[0];
+    if (arg !== "none" && !arg.split(",").every(k => k === "sz" || k === "str" || k === "len")) return null;
+    return { id: "dsl.custom_encodings", rest: after.slice(arg.length) };
+  },
   // @extern_companions: one REQUIRED argument in a strict SHAPE — `<rust_path>=<Class>[,<Class>…]`,
   // consumed as the arg so a directive after it is still reachable. Unlike @duplicates the argument
   // has no closed vocabulary, so the mirror models the shape instead: comment_ast PANICS on a missing
@@ -430,6 +444,14 @@ function selfCheck() {
   const s = featuresIn("hash = bytes .size (0..32)");
   if (!s.ctl.has("ctl.size")) throw new Error("selfCheck: missing ctl.size");
   if (!s.rfc.has("rangeop.inclusive")) throw new Error("selfCheck: missing rangeop.inclusive");
+  // @custom_encodings: the strict-vocabulary argument, and the two refusals that keep the mirror
+  // from crediting a spelling comment_ast would have panicked on.
+  const ce = featuresIn("x = bytes ; @custom_serialize s @custom_deserialize d @custom_encodings sz,str");
+  if (!ce.dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: missing dsl.custom_encodings");
+  if (!ce.dsl.has("dsl.custom_serialize")) throw new Error("selfCheck: @custom_encodings swallowed a preceding directive's credit");
+  if (featuresIn("x = bytes ; @custom_encodings sz,").dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: trailing comma credited @custom_encodings (comment_ast panics)");
+  if (featuresIn("x = bytes ; @custom_encodings bogus").dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: unknown kind credited @custom_encodings (comment_ast panics)");
+  if (!featuresIn("x = bytes ; @custom_encodings none").dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: `none` keyword not credited");
   const d = featuresIn("x = uint ; @newtype @custom_json");
   if (!d.dsl.has("dsl.newtype") || !d.dsl.has("dsl.custom_json")) throw new Error("selfCheck: missing DSL id");
   if (d.rfc.has("type1.ctlop")) throw new Error("selfCheck: DSL `@custom...` leaked into code as a ctlop");

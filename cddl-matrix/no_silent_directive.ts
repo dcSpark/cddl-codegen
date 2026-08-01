@@ -52,13 +52,14 @@ const CONCURRENCY = Number(process.env.NO_SILENT_DIRECTIVE_JOBS ?? "8");
 
 // ---- axis 1: the witness profiles ------------------------------------------------------------
 
-type ProfileId = "default" | "json" | "wasm";
+type ProfileId = "default" | "json" | "wasm" | "preserve";
 
 /** The minimal flag set under which each profile's surface exists. */
 const PROFILES: Record<ProfileId, string[]> = {
   default: ["--wasm=false"],
   json: ["--wasm=false", "--json-serde-derives=true", "--json-schema-export=true"],
   wasm: ["--wasm=true"],
+  preserve: ["--wasm=false", "--preserve-encodings=true"],
 };
 
 // ---- axis 2: the directives (authority = comment_ast.rs) --------------------------------------
@@ -94,6 +95,7 @@ const SPELLINGS: Record<string, string> = {
   "@no_json_schema_export": "@no_json_schema_export",
   "@custom_serialize": "@custom_serialize my_serialize",
   "@custom_deserialize": "@custom_deserialize my_deserialize",
+  "@custom_encodings": "@custom_encodings sz",
   "@extern_companions": "@extern_companions dep_wasm=FooList",
   "@doc": "@doc explains the rule",
 };
@@ -114,6 +116,11 @@ const WITNESS_PROFILE: Record<string, ProfileId> = {
   "@custom_serialize": "default",
   "@custom_deserialize": "default",
   "@doc": "default",
+  // `@custom_encodings` declares the encoding VARIABLES of a custom codec's wire, and no encoding
+  // variable exists at all without `--preserve-encodings` — under any other profile the directive is
+  // inert by construction, which would make every one of its cells an inert measurement rather than
+  // a finding.
+  "@custom_encodings": "preserve",
   // json-gen-crate surfaces: `@custom_json` suppresses serde/schemars derives, and
   // `@no_json_schema_export` suppresses a schema-registration row that only exists under the flags.
   "@custom_json": "json",
