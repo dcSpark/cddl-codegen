@@ -315,6 +315,12 @@ interface HandCell {
   /** When present, the rule body is rendered as a MULTI-LINE type choice over `arms`, and the
    *  toggled directive is placed on `arms[toggledArm]` instead of at rule position. */
   armPlacement?: { arms: string[]; toggledArm: number };
+  /** When present, the rule is a type choice whose FIRST arm is an INLINE table and the toggled
+   *  directive goes in that table's ROW-ENTRY comment slot — INSIDE the braces, on the `* k => v`
+   *  row. Every other placement this gate renders is a rule slot or an arm's trailing comment,
+   *  both of which sit outside the braces, so the row-entry slot needs its own rendering to be
+   *  reachable at all. */
+  rowEntryPlacement?: { row: string; otherArms: string[] };
 }
 
 // The first two cells reproduce shipped wrapper-seam gaps (each byte-identical with/without the
@@ -505,6 +511,20 @@ const HAND_CORPUS: HandCell[] = [
     toggled: "@no_alias",
     shape: "T / null Option-collapse rule, directive on a NON-LAST arm",
   },
+  {
+    // The ROW-ENTRY slot of an INLINE table arm — the one placement whose silent drop this gate
+    // structurally could not see, because every other rendering it has puts the directive OUTSIDE
+    // the braces (rule slot or arm trailing comment) and this slot is inside them. `@duplicates
+    // preserve` there swaps the arm's payload from the loose `BTreeMap` to the `PairMap`
+    // vec-of-pairs twin, so the with-run differs in bytes; it read as byte-identical until the
+    // seam started reading the slot.
+    id: "inline_table_arm_row_entry_preserve",
+    ruleBody: "",
+    rowEntryPlacement: { row: "* uint => text", otherArms: ["int"] },
+    base: [],
+    toggled: "@duplicates preserve",
+    shape: "inline table arm of a type choice, directive in the ROW-ENTRY slot (inside the braces)",
+  },
 ];
 
 // Legitimate byte-identical accepted no-ops: `<cellId>` => one-line justification. A cell on this list
@@ -664,6 +684,17 @@ function renderShape(shape: Shape, holder: string[], directives: string[]): stri
 
 function buildHandRule(cell: HandCell, extra: string[]): string {
   const directives = [...cell.base, ...extra];
+  if (cell.rowEntryPlacement) {
+    // The row-entry slot is the comment that ends the `* k => v` line INSIDE the braces; the
+    // closing brace therefore has to move to its own line (a `}` on the comment's line would be
+    // commented out). Base directives stay at the rule slot (the LAST arm), so only the toggled
+    // directive's POSITION varies between the two runs.
+    const { row, otherArms } = cell.rowEntryPlacement;
+    const rowComment = extra.length ? ` ; ${extra.join(" ")}` : "";
+    const ruleComment = cell.base.length ? ` ; ${cell.base.join(" ")}` : "";
+    const arms = [`{ ${row}${rowComment}\n }`, ...otherArms];
+    return `foo = ${arms.join("\n  / ")}${ruleComment}\nholder = [f: foo]\n`;
+  }
   if (cell.armPlacement) {
     // Multi-line type choice. Base directives stay at the rule slot (the LAST arm), so only the
     // toggled directive's POSITION varies between a cell's two runs.

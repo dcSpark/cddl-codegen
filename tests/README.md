@@ -1464,7 +1464,11 @@ survive:
   codecs keying two of them, `@custom_wire_major` steering their dispatch, a v1/v2 type choice
   discriminated by nothing but the v1 typed row's refusal — measured against a real ON-CHAIN mainnet
   golden (copied with provenance from the consumer's own pin vectors) that must round-trip byte for
-  byte through all four generated levels. Plus the version discrimination executed in both
+  byte through all four generated levels, and against the consumer's two BUILDER-emitted noisy pin
+  vectors (`NOISY_V1_HEX` / `NOISY_V2_HEX`, same provenance), which walk all six capture sites a
+  CIP-25 payload has and carry duplicate keys both inside a captured metadatum map — the inline
+  table's own `@duplicates preserve` — and on the details rest row itself. Plus the version
+  discrimination executed in both
   directions, a float-keyed entry failing both arms, and the typed-major-but-invalid class at every
   level beside its positive control (that class is where the generated semantics deliberately
   diverge from the consumer's hand reader, so the fixture states the divergence rather than
@@ -2182,8 +2186,12 @@ a finding must mean to be actionable.
 The ALLOWLIST is the honest inert inventory — one justification per entry, and a stale entry naming
 no cell fails the gate. Adding one is a claim that the cell is a legitimate accepted no-op (an
 explicit spelling of a default, a directive whose target already satisfies it, a structurally
-excluded emission site), never a place to park a real drop. The 16 hand cells above the product each
+excluded emission site), never a place to park a real drop. The 17 hand cells above the product each
 pin a specific shipped regression or placement control and are kept.
+
+The gate renders three placements: the rule slot, an arm's trailing comment (`armPlacement`), and the
+ROW-ENTRY slot of an inline table (`rowEntryPlacement`) — a comment *inside* the braces, which the
+other two structurally cannot reach and which was where the inline-table `@duplicates` drop hid.
 
 ### Sibling-crate companion classes (`@extern_companions`) — test map
 
