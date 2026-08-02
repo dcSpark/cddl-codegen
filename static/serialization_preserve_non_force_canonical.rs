@@ -76,3 +76,32 @@ impl StringEncoding {
         }
     }
 }
+
+/// The declared-width twin of `write_float`: the same recorded-width fit rule, restricted to the
+/// head set the CDDL type DECLARES (`min_width..=max_width`).
+///
+/// A recorded head replays exactly when it is both in the set and still lossless for the value —
+/// strict decode guarantees the first for any value that was READ, and the second can fail only
+/// after the value was replaced, exactly as for `write_float`. Anything else (no recorded width, a
+/// width outside the set from a hand-built encoding struct, a recorded width that no longer fits)
+/// falls back to the narrowest admitted lossless head. A value that NO admitted head represents
+/// exactly fails loudly in `write_float_sz` rather than being rounded — see `float_head_width`.
+pub fn write_float_width(
+    serializer: &mut Serializer,
+    value: f64,
+    sz: Option<cbor_event::Sz>,
+    min_width: cbor_event::Sz,
+    max_width: cbor_event::Sz,
+) -> cbor_event::Result<&mut Serializer> {
+    let width = match sz {
+        Some(sz)
+            if float_head_rank(sz) >= float_head_rank(min_width)
+                && float_head_rank(sz) <= float_head_rank(max_width)
+                && float_head_rank(sz) >= float_head_rank(cbor_event::se::smallest_float_sz(value)) =>
+        {
+            sz
+        }
+        _ => float_head_width(value, min_width, max_width),
+    };
+    serializer.write_float_sz(value, width)
+}

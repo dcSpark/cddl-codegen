@@ -476,7 +476,14 @@ nem_wire = { m: {+ uint => uint} }
 ; (f8 xx) are 2 and f16/f32/f64 are 3/5/9, so the emitted peek saves/restores the reader position
 ; around `special()` instead of rewinding a fixed width.
 nullable_bool = bool / null
-nullable_float = float64 / null
+; --- the six float prelude names are six WIRE-ACCEPTANCE classes (RFC 8610 App. D over RFC 8949
+; §3.3) ---
+; Each name declares which float heads it admits; a head outside the set is a decode error, and a
+; fresh value is written at the declared width (narrowest admissible lossless one for the two union
+; names). Carriers: `f32` where every admitted head fits it, `f64` otherwise.
+float_heads = [h: float16, u: float16-32, w: float32-64, s: float32, d: float64, f: float]
+
+nullable_float = float / null
 nullable_specials = [b: nullable_bool, f: nullable_float]
 
 ; --- OPTIONAL fixed-value members: a `bool` presence field (false=absent, true=present) ---

@@ -443,6 +443,20 @@ mod cddl_encoding_fidelity {
     /// The input is parsed ONCE and every class emits from the shared item tree (the per-class
     /// `Cfg`s mirror the `widen_step`/… builders the self-check pins byte-for-byte).
     pub fn variants(input: &[u8]) -> Vec<(&'static str, Vec<u8>)> {
+        variants_cfg(input, true)
+    }
+
+    /// [`variants`] with the float-head classes suppressed — for a type carrying a float whose CDDL
+    /// name DECLARES its head set (`float32` is `#7.26` alone). Widening such a head is not an
+    /// irregular encoding of the same value, it is a value the type does not admit, so the decode
+    /// SHOULD fail and the fidelity assertion has nothing to say about it. The mutator works on
+    /// bytes and cannot know which head belongs to which member, so the choice is made by the
+    /// generator, which does.
+    pub fn variants_no_float_widen(input: &[u8]) -> Vec<(&'static str, Vec<u8>)> {
+        variants_cfg(input, false)
+    }
+
+    fn variants_cfg(input: &[u8], widen_floats: bool) -> Vec<(&'static str, Vec<u8>)> {
         let (item, _) = parse_item(input, 0);
         let classes: [(&'static str, Cfg); 7] = [
             (
@@ -488,7 +502,13 @@ mod cddl_encoding_fidelity {
             ),
         ];
         let mut out = Vec::new();
-        for (label, cfg) in classes {
+        for (label, mut cfg) in classes {
+            if !widen_floats {
+                if label == "widen_float" {
+                    continue;
+                }
+                cfg.widen_float = false;
+            }
             let mut m = Vec::new();
             emit_item(&mut m, &item, &cfg);
             if m != input {

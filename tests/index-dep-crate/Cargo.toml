@@ -11,4 +11,4 @@ extern-dep-crate = { path = "../extern-dep-crate" }
 # dcSpark fork (same rev the generated crates pin): shares a dependency tree + cbor_event types with
 # the generated crate and extern-dep-crate, so all sides must resolve the SAME cbor_event. Interim
 # measure — back to a crates.io version once the fork upstreams + releases.
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
+cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc2503374ce53e1dca1cf74ae0e476" }

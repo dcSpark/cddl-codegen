@@ -385,8 +385,12 @@ pub(super) fn generate_wrapper_struct(
                         ConceptualRustType::Primitive(p) => match p {
                             Primitive::Bool => "Bool(inner)",
                             Primitive::Bytes => "Bytes(&inner)",
-                            Primitive::F32 => "Float(inner as f64)",
-                            Primitive::F64 => "Float(inner)",
+                            Primitive::F16 | Primitive::F32 | Primitive::F16To32 => {
+                                "Float(inner as f64)"
+                            }
+                            Primitive::F64 | Primitive::F32To64 | Primitive::Float => {
+                                "Float(inner)"
+                            }
                             Primitive::I8
                             | Primitive::I16
                             | Primitive::I32
@@ -637,7 +641,7 @@ pub(super) fn generate_wrapper_struct(
                 // decimal literal is exact. Reports the ORIGINAL window with its per-side exclusivity.
                 let cast_f64 = matches!(
                     &field_type.conceptual_type,
-                    ConceptualRustType::Primitive(Primitive::F32)
+                    ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
                 );
                 bounds_check_if_block_float(window, cast_f64, "inner", true, location)
             } else {
@@ -652,8 +656,12 @@ pub(super) fn generate_wrapper_struct(
                         ConceptualRustType::Primitive(p) => match p {
                             Primitive::Bytes | Primitive::Str => "inner.len()",
                             Primitive::Bool
+                            | Primitive::Float
+                            | Primitive::F16
                             | Primitive::F32
                             | Primitive::F64
+                            | Primitive::F16To32
+                            | Primitive::F32To64
                             | Primitive::U8
                             | Primitive::U16
                             | Primitive::U32

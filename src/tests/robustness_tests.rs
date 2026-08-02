@@ -716,36 +716,31 @@ fn undefined_prelude_rejects_gracefully_in_every_position() {
     );
 }
 
-/// The three head-CONSTRAINED float prelude names — `float16` (`#7.25`), `float16-32`
-/// (`#7.25 / #7.26`) and `float32-64` (`#7.26 / #7.27`) — are refused GRACEFULLY in every position,
-/// never aborted. They are refused rather than registered onto `f32`/`f64` because generated code
-/// does not write a float at the head width its type declares, in EITHER profile: the default one
-/// hands every native float to `Special::Float`, which always writes the 8-byte `#7.27` head, and
-/// `--preserve-encodings` writes a value carrying no recorded width at its narrowest lossless head.
-/// Registering a head-constrained name onto either primitive would therefore emit heads outside the
-/// type's own value set — trading a loud panic for silently spec-divergent bytes. `float` is the
-/// one float name exempt from that, because its prelude definition (`float = float16-32 / float64`,
-/// RFC 8610 App. D) admits all three heads; it stays registered, and it is what the message points
-/// at.
+/// Every float prelude name generates, in every position, under every profile — and the six names
+/// are six DISTINCT wire-acceptance classes rather than two carrier widths.
 ///
-/// The head SET is asserted per name, for the same reason the sibling `eb*` sweep asserts the tag
-/// number: it is the part a reader checks the message against, and a copy-paste that gave
-/// `float32-64` the `float16-32` set would otherwise read fine.
+/// The head-CONSTRAINED names (`float16` `#7.25`, `float16-32` `#7.25`/`#7.26`, `float32-64`
+/// `#7.26`/`#7.27`) were once refused rather than registered, because generated code wrote every
+/// float at one head regardless of its type. They register now that both directions carry the
+/// declared width. What this pins is the part a rename or a copy-paste would silently break: which
+/// CARRIER each name gets, and that no two names collapsed back onto one identity — `float` and
+/// `float64` in particular, whose carrier is the same `f64` and whose head sets are not.
 ///
-/// This shares the `undefined` / `eb*` seam (`IntermediateTypes::new_type`'s unresolved-reserved
-/// fallback), so the message is likewise ROLE-NEUTRAL and one wording is asserted across all three
-/// vectors. Unlike the `eb*` family there is no permanent exclusion here: all three flip to
-/// registrations when float encoding is made head-faithful (`tests/TESTING_ROADMAP.md` § "A
-/// `float32` member accepts every float head and silently narrows the value"), which is why the
-/// disposition is asserted as PENDING rather than as a ruling.
+/// The carrier is read off the generated ctor signature rather than asserted through the IR so the
+/// test sees what a CONSUMER sees. The head sets themselves are pinned by byte vectors, where they
+/// are observable at all (`tests/core/tests.rs`, `tests/golden_hex_preserve/tests.rs`).
 #[test]
-fn head_constrained_float_prelude_names_reject_gracefully_in_every_position() {
+fn every_float_prelude_name_generates_with_its_own_carrier() {
+    // (CDDL name, rust carrier)
     let names = [
-        ("float16", "#7.25"),
-        ("float16-32", "#7.25 / #7.26"),
-        ("float32-64", "#7.26 / #7.27"),
+        ("float16", "f32"),
+        ("float32", "f32"),
+        ("float16-32", "f32"),
+        ("float64", "f64"),
+        ("float32-64", "f64"),
+        ("float", "f64"),
     ];
-    for (name, heads) in names {
+    for (name, carrier) in names {
         let vectors = [
             ("elem", format!("a = [v: {name}, x: uint]\n")),
             ("map_val", format!("m = {{ k: {name}, j: uint }}\n")),
@@ -753,114 +748,133 @@ fn head_constrained_float_prelude_names_reject_gracefully_in_every_position() {
         ];
         for (pos, spec) in vectors {
             for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
-                let msg = expect_graceful_rejection(&format!("float_{name}_{pos}"), &spec, extra);
-                assert!(
-                    msg.contains(&format!(
-                        "the CDDL prelude type `{name}` ({heads}) is unsupported"
-                    )),
-                    "rejection should name the type AND its head set ({name}/{pos}, {extra:?}), \
-                     got: {msg}"
-                );
-                // The honest reason, not a bare "unsupported": BOTH profiles can emit an
-                // out-of-set head, which is why neither flag rescues the shape.
-                assert!(
-                    msg.contains("#7.27") && msg.contains("narrowest lossless head"),
-                    "rejection should name both profiles' emitted head widths ({name}/{pos}, \
-                     {extra:?}), got: {msg}"
-                );
-                assert!(
-                    msg.contains("`float = float16-32 / float64`"),
-                    "rejection should point at `float` as the head-unconstrained remedy \
-                     ({name}/{pos}, {extra:?}), got: {msg}"
-                );
-                // A deferral, not a ruling — all three register once encoding is head-faithful.
-                assert!(
-                    msg.contains("is pending"),
-                    "the refusal must read as pending a ruling, not as a permanent exclusion \
-                     ({name}/{pos}, {extra:?}), got: {msg}"
-                );
-                // The role-neutral seam can NOT name the position, so it must not pretend to.
-                assert!(
-                    !msg.contains("as a member") && !msg.contains("as a rule body"),
-                    "role-neutral message must not claim a position it cannot know ({name}/{pos}, \
-                     {extra:?}), got: {msg}"
-                );
+                let path = std::env::temp_dir().join(format!(
+                    "cddl_codegen_float_{}_{pos}_{}.cddl",
+                    name.replace('-', "_"),
+                    std::process::id()
+                ));
+                std::fs::write(&path, &spec).unwrap();
+                let mut argv = vec![
+                    "cddl-codegen",
+                    "--input",
+                    path.to_str().unwrap(),
+                    "--output",
+                    "float_names_unused",
+                ];
+                argv.extend_from_slice(extra);
+                let cli = Cli::parse_from(argv);
+                let result = crate::api::generated_strings(&cli);
+                std::fs::remove_file(&path).ok();
+                let files = result.unwrap_or_else(|e| {
+                    panic!("`{name}` must generate in every position ({pos}, {extra:?}): {e}")
+                });
+                if pos == "elem" {
+                    let mod_rs = files
+                        .iter()
+                        .find(|(path, _)| path.ends_with("mod.rs"))
+                        .map(|(_, content)| content.clone())
+                        .unwrap_or_default();
+                    assert!(
+                        mod_rs.contains(&format!("pub fn new(v: {carrier},")),
+                        "`{name}` must carry a `{carrier}` ({extra:?}), got: {mod_rs}"
+                    );
+                }
             }
         }
     }
 
-    // The remedy is asserted honest: `float` really does generate in the same positions, and the
-    // two head-UNCONSTRAINED-by-us siblings stay registered. Without this the sweep could pass
-    // while the refusal had swallowed the whole float family.
-    for name in ["float", "float32", "float64"] {
-        let path = std::env::temp_dir().join(format!(
-            "cddl_codegen_float_ok_{name}_{}.cddl",
-            std::process::id()
-        ));
-        std::fs::write(&path, format!("a = [v: {name}, x: uint]\n")).unwrap();
-        let cli = Cli::parse_from([
-            "cddl-codegen",
-            "--input",
-            path.to_str().unwrap(),
-            "--output",
-            "float_ok_unused",
-        ]);
-        let result = crate::api::generated_strings(&cli);
-        std::fs::remove_file(&path).ok();
-        assert!(
-            result.is_ok(),
-            "`{name}` must keep generating — it is the refusal's advertised remedy (or its \
-             already-registered sibling)"
-        );
-    }
+    // `float` and `float64` share the `f64` carrier and must NOT share an identity: a union of the
+    // two is two variants, which only holds while they are distinct IR types.
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_float_vs_float64_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "x = float / float64\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "float_vs_float64_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    let files = result.expect("`float / float64` must generate");
+    let mod_rs = files
+        .iter()
+        .find(|(path, _)| path.ends_with("mod.rs"))
+        .map(|(_, content)| content.clone())
+        .unwrap_or_default();
+    assert!(
+        mod_rs.contains("Float(f64)") && mod_rs.contains("F64(f64)"),
+        "`float` and `float64` must stay separate variants, got: {mod_rs}"
+    );
 }
 
 /// The CONTROL-OPERATOR path is the one route that reaches a prelude type name without going
 /// through `IntermediateTypes::new_type` — a rule-position `x = <name> .size 4` resolves the ident
-/// through `ident_to_primitive` directly — so the head-constrained float refusal has to be repeated
-/// there or the constraint is a side door around it. It was: `x = float16 .size 4` generated an
-/// `f32`-backed codec at exit 0, silently emitting the wrong-head-width bytes the refusal exists to
-/// stop, and `float16-32 .size 4` / `float32-64 .size 4` aborted at a bare `ident_to_primitive`
-/// unwrap because the choice names have no primitive at all.
+/// through `ident_to_primitive` directly. Every float prelude name must therefore be mapped THERE
+/// too, or a constrained rule resolves to a different type than the same name resolves to
+/// everywhere else. Two names had no primitive at all on this path and aborted at a bare
+/// `ident_to_primitive` unwrap (`float16-32 .size 4`), and `float16` resolved to the SAME primitive
+/// as `float32` — a constrained rule that silently accepted and emitted the wrong head widths.
 ///
 /// Two halves, asserted together because the second is what stops the first from recurring under a
-/// different name: the three names refuse with the SAME message the `new_type` seam records (only
-/// prefixed with the rule, as every constraint rejection on this path is), and ANY other
-/// reserved-but-unmapped head refuses gracefully instead of aborting.
+/// different name: every float name carries its own identity through a constraint (read off the
+/// generated carrier, as in the sibling registration sweep), and ANY reserved-but-unmapped head
+/// refuses gracefully instead of aborting.
 ///
-/// The control vectors are load-bearing: `float32`/`float64`/`uint`/`tstr` with the same operator
-/// must keep generating, or the guard could pass by refusing every constrained rule.
+/// The control vectors are load-bearing: `uint`/`tstr` with the same operator must keep generating,
+/// or the guard could pass by refusing every constrained rule.
 #[test]
-fn control_operator_path_refuses_head_constrained_floats_and_unmapped_heads() {
-    // (name, head set) — the same three the `new_type` sweep covers.
+fn control_operator_path_maps_every_float_name_and_refuses_unmapped_heads() {
+    // (name, rust carrier) — the same six the registration sweep covers.
     let names = [
-        ("float16", "#7.25"),
-        ("float16-32", "#7.25 / #7.26"),
-        ("float32-64", "#7.26 / #7.27"),
+        ("float16", "f32"),
+        ("float32", "f32"),
+        ("float16-32", "f32"),
+        ("float64", "f64"),
+        ("float32-64", "f64"),
+        ("float", "f64"),
     ];
     // One vector per control-operator flavor a typename head can carry at a rule position: the
     // `.size` window, a value comparison (the float-window route), and `.default`.
     let ops = [".size 4", ".le 3.0", ".default 1.0"];
-    for (name, heads) in names {
+    for (name, carrier) in names {
         for op in ops {
             let spec = format!("x = {name} {op}\n");
             for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
-                let msg = expect_graceful_rejection(
-                    &format!("ctlfloat_{name}_{}", op.len()),
-                    &spec,
-                    extra,
-                );
+                let path = std::env::temp_dir().join(format!(
+                    "cddl_codegen_ctlfloat_{}_{}_{}.cddl",
+                    name.replace('-', "_"),
+                    op.len(),
+                    std::process::id()
+                ));
+                std::fs::write(&path, &spec).unwrap();
+                let mut argv = vec![
+                    "cddl-codegen",
+                    "--input",
+                    path.to_str().unwrap(),
+                    "--output",
+                    "ctlfloat_unused",
+                ];
+                argv.extend_from_slice(extra);
+                let cli = Cli::parse_from(argv);
+                let result = crate::api::generated_strings(&cli);
+                std::fs::remove_file(&path).ok();
+                let files = result
+                    .unwrap_or_else(|e| panic!("`{name} {op}` must generate ({extra:?}): {e}"));
+                let all = files
+                    .values()
+                    .map(|content| content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                // the shape differs per op (a windowed rule wraps, a `.default` stays a
+                // transparent alias), so match the carrier in either spelling
                 assert!(
-                    msg.contains(&format!(
-                        "the CDDL prelude type `{name}` ({heads}) is unsupported"
-                    )),
-                    "the control-op path must record the SAME head-constrained float refusal the \
-                     `new_type` seam does ({name} {op}, {extra:?}), got: {msg}"
-                );
-                assert!(
-                    msg.contains("`float = float16-32 / float64`") && msg.contains("is pending"),
-                    "the shared refusal keeps its remedy and its pending disposition ({name} {op}, \
-                     {extra:?}), got: {msg}"
+                    all.contains(&format!("inner: {carrier}"))
+                        || all.contains(&format!("pub type X = {carrier};")),
+                    "`{name} {op}` must keep `{name}`'s own `{carrier}` carrier ({extra:?})"
                 );
             }
         }
@@ -880,12 +894,7 @@ fn control_operator_path_refuses_head_constrained_floats_and_unmapped_heads() {
     );
 
     // Control: the constrained shapes that DO work must keep working, under both profiles.
-    for spec in [
-        "x = float32 .size 4\n",
-        "x = float64 .le 10.5\n",
-        "x = uint .size 4\n",
-        "x = tstr .size 4\n",
-    ] {
+    for spec in ["x = uint .size 4\n", "x = tstr .size 4\n"] {
         for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
             let path = std::env::temp_dir().join(format!(
                 "cddl_codegen_ctl_ok_{}_{}.cddl",
@@ -3611,7 +3620,7 @@ fn fixed_inner_null_collapse_rejects_gracefully_at_both_sites() {
 /// The `.within` / `.and` control operators are unsupported — rejected BY DESIGN via a GRACEFUL
 /// `Err`, never `todo!()`. Follows the `.size`-on-`int` sibling in `parse_control_operator`
 /// (`record_rejection` + an inert full-range placeholder, drained by `finalize`), including its
-/// `float_reject_rule_prefix` rule naming. Pins the message names the rule and the offending
+/// `reject_rule_prefix` rule naming. Pins the message names the rule and the offending
 /// operator spelling. (The `.cbor-seq` third member of the same arm is unreachable — the cddl
 /// parser rejects it at parse/lex — so no red fixture is constructible for it.)
 #[test]
@@ -4914,7 +4923,7 @@ fn size_on_signed_int_rejects_gracefully() {
     }
 
     // top-level rule position: message names the offending rule (in its RustIdent display form,
-    // like the sibling float-window rejections sharing `float_reject_rule_prefix`).
+    // like the sibling float-window rejections sharing `reject_rule_prefix`).
     let msg = run("my_int = int .size 8\n", "top").expect_err(
         "`int .size N` must be a graceful Err, not Ok (the i64 mapping mis-enforces the window)",
     );

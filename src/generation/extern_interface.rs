@@ -410,8 +410,12 @@ fn render_primitive(rule: &str, p: Primitive, config: &RustTypeSerializeConfig) 
         Primitive::Bool => plain_primitive(rule, "bool", bounds),
         // float windows (the only bound a float carries) are handled above; a float with an INTEGER
         // window is an unexpected shape.
+        Primitive::Float => plain_primitive(rule, "float", bounds),
+        Primitive::F16 => plain_primitive(rule, "float16", bounds),
         Primitive::F32 => plain_primitive(rule, "float32", bounds),
         Primitive::F64 => plain_primitive(rule, "float64", bounds),
+        Primitive::F16To32 => plain_primitive(rule, "float16-32", bounds),
+        Primitive::F32To64 => plain_primitive(rule, "float32-64", bounds),
         Primitive::Str => render_text_or_bytes_size(rule, "tstr", bounds),
         Primitive::Bytes => render_text_or_bytes_size(rule, "bytes", bounds),
         // Fixed-width integer identities: no bare CDDL name — spelled as a provably-equivalent
@@ -528,8 +532,12 @@ fn render_int_bounds(
 /// mixed-exclusivity window has no single-op form; both hard-error.
 fn render_float_primitive(rule: &str, p: Primitive, window: FloatWindow) -> RenderResult {
     let base = match p {
+        Primitive::Float => "float",
+        Primitive::F16 => "float16",
         Primitive::F32 => "float32",
         Primitive::F64 => "float64",
+        Primitive::F16To32 => "float16-32",
+        Primitive::F32To64 => "float32-64",
         _ => {
             return Err(unrenderable(
                 rule,
@@ -547,11 +555,16 @@ fn render_float_primitive(rule: &str, p: Primitive, window: FloatWindow) -> Rend
             Ok(format!("{base} {op} {}", render_f64(hi)))
         }
         (Some((lo, lo_excl)), Some((hi, hi_excl))) => {
-            if p == Primitive::F32 {
+            // A bare two-sided literal range (`0.5..10.5`) carries no width, so it parses back
+            // as the width-UNCONSTRAINED `float`. Any other class would lose its declared head set
+            // on the round trip — a different wire type, not a different spelling.
+            if p != Primitive::Float {
                 return Err(unrenderable(
                     rule,
-                    "a two-sided window on `float32` — a literal float range parses as `float64`, \
-                     changing the wire precision",
+                    format!(
+                        "a two-sided window on `{base}` — a literal float range parses as the \
+                         width-unconstrained `float`, changing the accepted head widths"
+                    ),
                 ));
             }
             match (lo_excl, hi_excl) {
@@ -1882,14 +1895,14 @@ mod tests {
         let t = IntermediateTypes::new();
         assert_eq!(
             ok(
-                &float_windowed(Primitive::F64, (Some((0.5, false)), Some((10.5, false)))),
+                &float_windowed(Primitive::Float, (Some((0.5, false)), Some((10.5, false)))),
                 &t
             ),
             "0.5..10.5"
         );
         assert_eq!(
             ok(
-                &float_windowed(Primitive::F64, (Some((0.5, true)), Some((10.5, true)))),
+                &float_windowed(Primitive::Float, (Some((0.5, true)), Some((10.5, true)))),
                 &t
             ),
             "0.5...10.5"
@@ -1897,22 +1910,32 @@ mod tests {
     }
 
     #[test]
-    fn float_two_sided_f32_is_lossy_hard_error() {
-        // A literal float range parses back as float64, so a two-sided float32 window cannot be
-        // spelled without changing wire precision — hard error rather than a lossy spelling.
+    fn float_two_sided_declared_width_is_lossy_hard_error() {
+        // A literal float range carries no width, so it parses back as the width-UNCONSTRAINED
+        // `float`. Every head-constrained class would lose its declared head set on that round trip
+        // — a different wire type, so a hard error rather than a lossy spelling. Only `float` itself
+        // renders two-sided (asserted above).
         let t = IntermediateTypes::new();
-        render(
-            &float_windowed(Primitive::F32, (Some((0.5, false)), Some((10.5, false)))),
-            &t,
-        )
-        .unwrap_err();
+        for p in [
+            Primitive::F16,
+            Primitive::F32,
+            Primitive::F64,
+            Primitive::F16To32,
+            Primitive::F32To64,
+        ] {
+            render(
+                &float_windowed(p, (Some((0.5, false)), Some((10.5, false)))),
+                &t,
+            )
+            .unwrap_err();
+        }
     }
 
     #[test]
     fn float_two_sided_mixed_exclusivity_hard_error() {
         let t = IntermediateTypes::new();
         render(
-            &float_windowed(Primitive::F64, (Some((0.5, false)), Some((10.5, true)))),
+            &float_windowed(Primitive::Float, (Some((0.5, false)), Some((10.5, true)))),
             &t,
         )
         .unwrap_err();

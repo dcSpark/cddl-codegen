@@ -73,6 +73,15 @@ fn cbor_float(f: f64) -> Vec<u8> {
     buf.finalize()
 }
 
+/// A float at a SPECIFIC head width — what a member whose CDDL type declares one needs, since
+/// `cbor_float` always writes the 8-byte `#7.27` head.
+#[allow(dead_code)]
+fn cbor_float_sz(f: f64, sz: cbor_event::Sz) -> Vec<u8> {
+    let mut buf = cbor_event::se::Serializer::new_vec();
+    buf.write_float_sz(f, sz).unwrap();
+    buf.finalize()
+}
+
 fn print_cbor_types(obj_name: &str, vec: &Vec<u8>) {
     use cbor_event::Type;
     let mut raw = cbor_event::de::Deserializer::from(vec.clone());

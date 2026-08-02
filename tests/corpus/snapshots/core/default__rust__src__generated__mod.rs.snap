@@ -739,6 +739,22 @@ impl Default for FloatFixedWhole {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct FloatHeads {
+    pub h: f32,
+    pub u: f32,
+    pub w: f64,
+    pub s: f32,
+    pub d: f64,
+    pub f: f64,
+}
+
+impl FloatHeads {
+    pub fn new(h: f32, u: f32, w: f64, s: f32, d: f64, f: f64) -> Self {
+        Self { h, u, w, s, d, f }
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct FloatRange(pub(crate) f64);
 

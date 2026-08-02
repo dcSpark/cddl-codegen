@@ -1374,7 +1374,12 @@ impl GenerationScope {
                                 &format!("bool::deserialize({deserializer_name})"),
                             ));
                         }
-                        Primitive::F32 | Primitive::F64 => {
+                        Primitive::Float
+                        | Primitive::F16
+                        | Primitive::F32
+                        | Primitive::F64
+                        | Primitive::F16To32
+                        | Primitive::F32To64 => {
                             // NaN-safe window enforced inline via `and_then` (the value is compared
                             // as f64 so the authored decimal literal is exact). Integer `bounds`
                             // never attach to a float (parsing routes those to float_bounds/reject);
@@ -1384,7 +1389,14 @@ impl GenerationScope {
                                 type_cfg.bounds.is_none(),
                                 "integer bounds on an {p} — parsing must route float constraints to float_bounds"
                             );
-                            let is_f32 = *p == Primitive::F32;
+                            let is_f32 = p.float_carrier_is_f32();
+                            let (min_head, max_head) = p.float_head_set().unwrap();
+                            // Width-unconstrained `float` admits every head, so the plain read IS
+                            // the whole check — no head-set test to emit, and its generated shape is
+                            // unchanged. Every other class checks the head it read against the set
+                            // its CDDL type declares, and errors on anything else rather than
+                            // narrowing/widening a value its own type forbids.
+                            let unconstrained = *p == Primitive::Float;
                             if cli.preserve_encodings {
                                 // The head WIDTH is the float encoding variable, so the preserve read
                                 // is `float_sz()` -> `(f64, Sz)` — the same `(value, enc)` tuple shape
@@ -1398,7 +1410,17 @@ impl GenerationScope {
                                 // same reason.
                                 let mut final_exprs = config.final_exprs.clone();
                                 final_exprs.push("Some(enc)".to_owned());
-                                let value_expr = if is_f32 { "x as f32" } else { "x" };
+                                let value_expr = if is_f32 { "narrow_f32(x)" } else { "x" };
+                                // The head-checked read already yields OUR error type (the check
+                                // itself is a `DeserializeFailure`), so neither conversion applies
+                                // to it — only the bare `float_sz()` read needs converting.
+                                let read_expr = if unconstrained {
+                                    format!("{deserializer_name}.float_sz(){error_convert}")
+                                } else {
+                                    format!(
+                                        "read_float_sz_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
+                                    )
+                                };
                                 let tail = match &type_cfg.float_bounds {
                                     // Convert the read's error to DeserializeError so the `.and_then`
                                     // closure's `Err(DeserializeFailure::…into())` sees a consistent
@@ -1407,7 +1429,7 @@ impl GenerationScope {
                                     // guards, shared with `deser_primitive`'s bounds arm).
                                     Some(window) => format!(
                                         "{}.and_then(|(x, enc)| {{ let x = {value_expr}; {} else {{ Ok({}) }} }})",
-                                        if error_convert.is_empty() {
+                                        if error_convert.is_empty() && unconstrained {
                                             convert_err_to_ours
                                         } else {
                                             ""
@@ -1423,22 +1445,42 @@ impl GenerationScope {
                                     ),
                                 };
                                 deser_code.content.line(&format!(
-                                    "{}{}.float_sz(){}{}{}",
+                                    "{}{}{}{}",
                                     before_after.before_str(true),
-                                    deserializer_name,
-                                    error_convert,
+                                    read_expr,
                                     tail,
                                     before_after.after_str(true)
                                 ));
                             } else {
+                                // `float32`/`float64` ARE cbor_event's head-strict `f32`/`f64`
+                                // blanket impls (`#7.26`-only / `#7.27`-only), so the read is the
+                                // check and nothing is emitted around it. The other four classes
+                                // have no blanket impl to match their head set and read through the
+                                // runtime's checked reader; the `f32`-carried ones narrow after the
+                                // check, exactly (never an `as` cast).
+                                let read_expr = match p {
+                                    Primitive::F32 | Primitive::F64 => {
+                                        format!("{p}::deserialize({deserializer_name})")
+                                    }
+                                    _ => {
+                                        let read = format!(
+                                            "read_float_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
+                                        );
+                                        if is_f32 {
+                                            format!("{read}.map(narrow_f32)")
+                                        } else {
+                                            read
+                                        }
+                                    }
+                                };
                                 let result_expr = match &type_cfg.float_bounds {
                                     Some(window) => format!(
-                                        "{p}::deserialize({deserializer_name}).and_then(|x| {} else {{ Ok(x) }})",
+                                        "{read_expr}.and_then(|x| {} else {{ Ok(x) }})",
                                         bounds_check_if_block_float(
                                             window, is_f32, "x", false, None
                                         )
                                     ),
-                                    None => format!("{p}::deserialize({deserializer_name})"),
+                                    None => read_expr,
                                 };
                                 deser_code.content.line(&final_result_expr_complete(
                                     &mut deser_code.throws,

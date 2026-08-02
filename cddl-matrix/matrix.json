@@ -942,14 +942,14 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line.",
         "id": "prelude.float16",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line.",
         "id": "prelude.float16-32",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -967,9 +967,9 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "evidence": "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line.",
         "id": "prelude.float32-64",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {

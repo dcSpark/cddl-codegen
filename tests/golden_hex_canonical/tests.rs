@@ -412,7 +412,7 @@ mod golden_hex_canonical {
         &[0x82, 0xf9, 0x7b, 0xff, 0xf9, 0x00, 0x01],
         |d: &Floats| {
             assert_eq!(d.dbl, 65504.0);
-            assert_eq!(d.sgl.to_bits(), 0x3380_0000u32);
+            assert_eq!(d.sgl.to_bits(), 0x3e70_0000_0000_0000u64);
         }
     );
     // Signed zero shrinks but is NOT normalized: §4.2 minimizes the ENCODING, and -0.0 and 0.0 are

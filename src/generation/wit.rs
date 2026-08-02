@@ -2270,8 +2270,10 @@ fn resolve_through(
 fn map_primitive(p: Primitive) -> WitType {
     match p {
         Primitive::Bool => WitType::Bool,
-        Primitive::F32 => WitType::F32,
-        Primitive::F64 => WitType::F64,
+        // The CARRIER decides the component/wasm ABI type: the six float classes differ only in
+        // which CBOR heads they accept, which is a CBOR-side fact the guest face never sees.
+        Primitive::F16 | Primitive::F32 | Primitive::F16To32 => WitType::F32,
+        Primitive::F64 | Primitive::F32To64 | Primitive::Float => WitType::F64,
         Primitive::U8 => WitType::U8,
         Primitive::U16 => WitType::U16,
         Primitive::U32 => WitType::U32,

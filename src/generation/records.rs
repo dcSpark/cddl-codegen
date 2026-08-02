@@ -1148,7 +1148,7 @@ fn typed_rest_key_json_arms(
         ConceptualRustType::Primitive(Primitive::Bytes) => no_image("Bytes"),
         ConceptualRustType::Primitive(Primitive::Bool) => no_image("Special"),
         // Floats are rejected as a rest-row key domain long before here (no total order).
-        ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => unreachable!(
+        ConceptualRustType::Primitive(p) if p.is_float() => unreachable!(
             "a float-containing rest-row key domain is rejected by the key-demand float instrument"
         ),
         _ => {
@@ -1238,7 +1238,7 @@ fn open_table_captured_key_arms(
                     "Err::<{key_ty}, String>(String::from(\
                      \"a Special key has no JSON member-name image\"))"
                 ),
-                ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => unreachable!(
+                ConceptualRustType::Primitive(p) if p.is_float() => unreachable!(
                     "a float-containing rest-row key domain is rejected by the key-demand float instrument"
                 ),
                 _ => {

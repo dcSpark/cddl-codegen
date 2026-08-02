@@ -139,10 +139,10 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
 | `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone top-level type is rejected gracefully — same graceful path as `true`/`null`; works as a struct/array member (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.false.cddl`.  [`a top-level rule whose entire body is a bare fixed value`] |
 | `prelude.float` | ➕ | float | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.float16` | ➖ | float16 | `float16` admits only the `#7.25` head, and generated code writes floats at a width its type does not choose (default: always the 8-byte `#7.27` head; preserve: an unrecorded-width value at its narrowest lossless head), so it is rejected gracefully in every position rather than registered onto f32 and encoded out of set. `float` admits all three heads and is the supported spelling. Pinned by `head_constrained_float_prelude_names_reject_gracefully_in_every_position`.  [`does not yet write a float at the head width its type declares`] |
-| `prelude.float16-32` | ➖ | float16-32 | `float16-32` admits the `#7.25 / #7.26` heads; the default profile would write it as `#7.27`, so it is rejected gracefully in every position rather than registered onto f32. Same head-faithfulness deferral as `float16`; `float` is the supported spelling. Pinned by `head_constrained_float_prelude_names_reject_gracefully_in_every_position`.  [`does not yet write a float at the head width its type declares`] |
+| `prelude.float16` | ➕ | float16 | supported, no corpus fixture (pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings) |
+| `prelude.float16-32` | ➕ | float16-32 | supported, no corpus fixture (pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings) |
 | `prelude.float32` | ➕ | float32 | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.float32-64` | ➖ | float32-64 | `float32-64` admits the `#7.26 / #7.27` heads; under `--preserve-encodings` a freshly-built value is written at its narrowest lossless head, which can be `#7.25`, so it is rejected gracefully in every position rather than registered onto f64. Same head-faithfulness deferral as `float16`; `float` is the supported spelling. Pinned by `head_constrained_float_prelude_names_reject_gracefully_in_every_position`.  [`does not yet write a float at the head width its type declares`] |
+| `prelude.float32-64` | ➕ | float32-64 | supported, no corpus fixture (pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings) |
 | `prelude.float64` | ✅ | float64 | `homogeneous_array.cddl` |
 | `prelude.int` | ✅ | int | `primitives.cddl` |
 | `prelude.integer` | ✅ | integer | `prelude.cddl` |
@@ -438,7 +438,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **120** — ✅ 67 covered · ➕ 26 supported-untested · ⚠️ 1 partial · ➖ 26 not supported
+- Features: **120** — ✅ 67 covered · ➕ 29 supported-untested · ⚠️ 1 partial · ➖ 23 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 90
 

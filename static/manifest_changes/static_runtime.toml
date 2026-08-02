@@ -48,7 +48,7 @@ set = '"0.4.3"'
 [[change]]
 id = 6
 path = "dependencies.cbor_event"
-set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }'
+set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc2503374ce53e1dca1cf74ae0e476" }'
 
 # The `std` feature, uniform with the generated rust crate's (see `rust.toml`'s entry for the full
 # contract). ASSERTED here for a reason that is not uniformity: `ordered_hash_map.rs` is one file

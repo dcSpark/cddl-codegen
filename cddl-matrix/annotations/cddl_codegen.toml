@@ -30,7 +30,9 @@
 # CONSUMER NOTES (cddl-codegen-specific facts kept OUT of the pure-spec master, recorded here):
 #   * `T / null` type choice -> cddl-codegen emits Option<T> (a consumer special-case of the
 #     ordinary `type = type1 *("/" type1)` production, NOT a distinct ABNF alternative).
-#   * prelude `float` (float16-32 / float64) -> cddl-codegen maps to Rust f64.
+#   * the six float prelude names are six distinct wire-acceptance classes in cddl-codegen, not
+#     two carrier widths: `float16`/`float32`/`float16-32` carry Rust f32, `float64`/`float32-64`/
+#     `float` carry f64, and each accepts only the CBOR heads its own name declares.
 #
 # EMISSION-PROFILE AXIS (dotted `emission.<name>.*` keys): the `status`/`evidence` above is the
 #   DEFAULT-flags verdict. A row whose default verdict is `supported` is ALSO probed under each
@@ -635,13 +637,13 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "prelude.float16"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line."
 
 [[support]]
 id = "prelude.float16-32"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line."
 
 [[support]]
 id = "prelude.float32"
@@ -654,8 +656,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "prelude.float32-64"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line."
 
 [[support]]
 id = "prelude.float64"

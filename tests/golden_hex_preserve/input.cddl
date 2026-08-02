@@ -109,11 +109,10 @@ open_list = [uint, tstr, * uint]
 ; native CBOR floats (major type 7, heads 0xf9/0xfa/0xfb). The encoding variable here is unlike every
 ; other rule in this file: not a header ARGUMENT but the head WIDTH itself. RFC 8949 §3 admits the
 ; same value at every width that holds it losslessly, so the width is DATA — nothing about the value
-; determines it — and must re-emit verbatim. Both member types are present because they are different
-; emission sites: the `float32` member additionally NARROWS on decode (`x as f32`) and widens back to
-; the CBOR float domain (f64) on encode, a lossy hop the `float64` member does not have, so its
-; vectors stay inside the f32-exact values and widths.
-floats = [dbl: float64, sgl: float32]
+; determines it — and must re-emit verbatim. The width-UNCONSTRAINED `float` is the one name where
+; that is true: every OTHER float prelude name declares its head set, so its width is a fact about
+; the TYPE and there is nothing left to record (`float_widths` below pins that side).
+floats = [dbl: float, sgl: float]
 
 ; a FIXED float member: the VALUE is pinned by the spec, so the head WIDTH is the only data left —
 ; and it is preserved anyway. 1.5 is an RFC 8949 Appendix A vector, so all three of its widths are
@@ -122,6 +121,12 @@ fixed_float = [v: 1.5]
 
 ; per-element float widths inside one homogeneous array: each element carries its own width in the
 ; positional encoding sidecar, so one array may hold the same value three times at three widths.
-; Bare `[* float64]` is a transparent Vec alias with no standalone Serialize — wrap it in a record.
-float_seq    = [* float64]
+; Bare `[* float]` is a transparent Vec alias with no standalone Serialize — wrap it in a record.
+float_seq    = [* float]
 float_holder = [fs: float_seq]
+
+; the head-CONSTRAINED names: the head is a fact about the TYPE, so a recorded width is redundant
+; (it can only ever be the declared one — strict acceptance rejects everything else) and a FRESH
+; value writes the declared width rather than its own narrowest lossless one. Vectors in tests.rs
+; pin both halves plus the refusal of every out-of-set head.
+float_widths = [h: float16, s: float32, d: float64]

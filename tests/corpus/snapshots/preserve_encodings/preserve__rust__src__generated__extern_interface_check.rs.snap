@@ -86,6 +86,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::FixedSpecialGroupChoice>();
     _assert_serialize::<crate::generated::FixedSpecialTypeChoice>();
     _assert_deserialize::<crate::generated::FixedSpecialTypeChoice>();
+    _assert_serialize::<crate::generated::FloatHeads>();
+    _assert_deserialize::<crate::generated::FloatHeads>();
     _assert_serialize::<crate::generated::Foo>();
     _assert_deserialize::<crate::generated::Foo>();
     _assert_serialize::<crate::generated::GroupChoice>();

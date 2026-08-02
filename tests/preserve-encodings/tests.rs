@@ -2359,4 +2359,82 @@ mod tests {
         );
         deser_test(&value);
     }
+
+    // ---- the six float prelude names under --preserve-encodings ---------------------------------
+    // Same six wire-acceptance classes as the default profile (see tests/core/tests.rs), plus the
+    // one thing only this profile has: a RECORDED head. Strict acceptance means a recorded head is
+    // in-set by construction, so it replays exactly; a FRESH value falls back to the declared width.
+    const F9_1_5: &[u8] = &[0xf9, 0x3e, 0x00];
+    const FA_1_5: &[u8] = &[0xfa, 0x3f, 0xc0, 0x00, 0x00];
+    const FB_1_5: &[u8] = &[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+    fn float_heads_bytes(items: &[&[u8]]) -> Vec<u8> {
+        let mut v = arr_def(6);
+        for i in items {
+            v.extend_from_slice(i);
+        }
+        v
+    }
+
+    #[test]
+    fn float_heads_replay_every_recorded_in_set_head() {
+        for (uh, wh, fh) in [
+            (F9_1_5, FA_1_5, F9_1_5),
+            (FA_1_5, FB_1_5, FA_1_5),
+            (F9_1_5, FA_1_5, FB_1_5),
+        ] {
+            let bytes = float_heads_bytes(&[F9_1_5, uh, wh, FA_1_5, FB_1_5, fh]);
+            let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
+            assert_eq!((d.h, d.u, d.s), (1.5f32, 1.5f32, 1.5f32));
+            assert_eq!(d.to_cbor_bytes(), bytes, "a recorded in-set head replays exactly");
+        }
+    }
+
+    #[test]
+    fn float_heads_reject_every_out_of_set_head() {
+        let in_set: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, FB_1_5];
+        FloatHeads::from_cbor_bytes(&float_heads_bytes(&in_set)).unwrap();
+        for (idx, bad) in [
+            (0, FA_1_5),
+            (0, FB_1_5),
+            (1, FB_1_5),
+            (2, F9_1_5),
+            (3, F9_1_5),
+            (3, FB_1_5),
+            (4, F9_1_5),
+            (4, FA_1_5),
+        ] {
+            let mut items = in_set.clone();
+            items[idx] = bad;
+            assert!(
+                FloatHeads::from_cbor_bytes(&float_heads_bytes(&items)).is_err(),
+                "member {idx} must reject a head outside its declared set"
+            );
+        }
+    }
+
+    #[test]
+    fn float_heads_fresh_values_write_the_declared_width() {
+        // No recorded width anywhere: `float32` writes `#7.26` even though 1.5's narrowest lossless
+        // head is `#7.25` — that narrowest-lossless rule survives ONLY on `float`, the last member.
+        let value = FloatHeads::new(1.5, 1.5, 1.1, 1.5, 1.5, 1.5);
+        let b = value.to_cbor_bytes();
+        assert_eq!(&b[1..4], F9_1_5, "float16");
+        assert_eq!(&b[4..7], F9_1_5, "float16-32, f16-exact");
+        assert_eq!(b[7], 0xfb, "float32-64, not f32-exact");
+        assert_eq!(&b[16..21], FA_1_5, "float32 writes its declared width, not the narrowest");
+        assert_eq!(b[21], 0xfb, "float64");
+        assert_eq!(b[30], 0xf9, "float stays narrowest-lossless");
+    }
+
+    #[test]
+    fn float_heads_preserve_nan_payloads_at_every_width() {
+        let f9_nan: &[u8] = &[0xf9, 0x7e, 0x01];
+        let fa_nan: &[u8] = &[0xfa, 0x7f, 0xc0, 0x00, 0x01];
+        let fb_nan: &[u8] = &[0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
+        let bytes = float_heads_bytes(&[f9_nan, f9_nan, fa_nan, fa_nan, fb_nan, fb_nan]);
+        let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
+        assert!(d.h.is_nan() && d.u.is_nan() && d.s.is_nan());
+        assert_eq!(d.to_cbor_bytes(), bytes);
+    }
 }

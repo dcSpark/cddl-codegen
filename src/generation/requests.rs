@@ -341,8 +341,12 @@ impl GenerationScope {
 fn primitive_cddl_name(p: &Primitive) -> &'static str {
     match p {
         Primitive::Bool => "bool",
-        Primitive::F64 => "float64",
+        Primitive::Float => "float",
+        Primitive::F16 => "float16",
         Primitive::F32 => "float32",
+        Primitive::F64 => "float64",
+        Primitive::F16To32 => "float16-32",
+        Primitive::F32To64 => "float32-64",
         Primitive::U8 => "u8",
         Primitive::I8 => "i8",
         Primitive::U16 => "u16",
@@ -473,8 +477,12 @@ pub(super) fn load_workspace_deps(types: &IntermediateTypes, cli: &Cli) -> BTree
 fn primitive_from_cddl_name(name: &str) -> Option<Primitive> {
     Some(match name {
         "bool" => Primitive::Bool,
-        "float64" => Primitive::F64,
+        "float" => Primitive::Float,
+        "float16" => Primitive::F16,
         "float32" => Primitive::F32,
+        "float64" => Primitive::F64,
+        "float16-32" => Primitive::F16To32,
+        "float32-64" => Primitive::F32To64,
         "u8" => Primitive::U8,
         "i8" => Primitive::I8,
         "u16" => Primitive::U16,

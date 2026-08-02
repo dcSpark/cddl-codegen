@@ -124,13 +124,13 @@ reason = "extended simple values are not a CDDL construct the generator emits"
 [[note]]
 cell = "enc.major7.float16"
 status = "out_of_scope"
-reason = "under default flags the generator writes every float as a double (`write_special(Special::Float(..))`), so half-precision is never emitted; the f16 head IS emitted under --preserve-encodings (a recorded head width replays) and under --canonical-form (the shortest lossless width), both covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve, tests/golden_hex_canonical)"
-code_anchor = "Special::Float"   # generation/serialize.rs: `Special::Float({expr} as f64)`
+reason = "under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)"
+code_anchor = "Special::Float"   # generation/serialize.rs: the width-unconstrained `float` arm
 
 [[note]]
 cell = "enc.major7.float32"
 status = "out_of_scope"
-reason = "under default flags the generator never emits single-precision (same always-a-double reason as float16); the f32 head is covered under --preserve-encodings / --canonical-form by the sibling KATs"
+reason = "under default flags a width-unconstrained `float` never emits single-precision (same reason as float16); the f32 head is what a `float32` member emits at every profile, and is covered by the sibling KATs and by tests/core's `float_heads` vectors"
 code_anchor = "Special::Float"
 
 [[note]]

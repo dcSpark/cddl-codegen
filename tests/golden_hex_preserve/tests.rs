@@ -947,4 +947,63 @@ mod golden_hex_preserve {
             assert_eq!(d.fs, vec![1.0, 1.0, 1.0]);
         }
     );
+
+    // ---- head-CONSTRAINED float names: the width is the TYPE's, not the input's ----
+    // `float_widths = [h: float16, s: float32, d: float64]`. Where `Floats` above pins "the recorded
+    // width is data", these pin its complement: a name that declares one head has no width left to
+    // record, so the only in-set input round-trips byte-exactly and every other head is refused.
+    // §A: 1.0 -> f9 3c00 / fa 3f800000 / fb 3ff0000000000000.
+    kat_preserve!(
+        float_widths_declared_heads,
+        FloatWidths,
+        &[
+            0x83, 0xf9, 0x3c, 0x00, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xfb, 0x3f, 0xf0, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        ],
+        |d: &FloatWidths| {
+            assert_eq!((d.h, d.s), (1.0f32, 1.0f32));
+            assert_eq!(d.d, 1.0f64);
+        }
+    );
+
+    #[test]
+    fn float_widths_refuse_every_out_of_set_head() {
+        let f9: &[u8] = &[0xf9, 0x3c, 0x00];
+        let fa: &[u8] = &[0xfa, 0x3f, 0x80, 0x00, 0x00];
+        let fb: &[u8] = &[0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let build = |items: [&[u8]; 3]| {
+            let mut v = vec![0x83u8];
+            for i in items {
+                v.extend_from_slice(i);
+            }
+            v
+        };
+        FloatWidths::from_cbor_bytes(&build([f9, fa, fb])).unwrap();
+        for bad in [
+            [fa, fa, fb],
+            [fb, fa, fb],
+            [f9, f9, fb],
+            [f9, fb, fb],
+            [f9, fa, f9],
+            [f9, fa, fa],
+        ] {
+            assert!(
+                FloatWidths::from_cbor_bytes(&build(bad)).is_err(),
+                "a head outside the member's declared set must be a decode error"
+            );
+        }
+    }
+
+    #[test]
+    fn float_widths_write_the_declared_head_for_a_fresh_value() {
+        // 1.0's narrowest lossless head is f9; `s`/`d` write theirs anyway.
+        let v = FloatWidths::new(1.0, 1.0, 1.0);
+        assert_eq!(
+            v.to_cbor_bytes(),
+            &[
+                0x83, 0xf9, 0x3c, 0x00, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xfb, 0x3f, 0xf0, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00
+            ]
+        );
+    }
 }
