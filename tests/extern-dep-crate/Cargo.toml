@@ -11,6 +11,6 @@ crate-type = ["cdylib", "rlib"]
 # crate that references this crate's extern types passes cbor_event Serializer/Deserializer values
 # across the boundary, so both sides must resolve the SAME cbor_event. Interim measure — back to a
 # crates.io version once the fork upstreams + releases.
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc2503374ce53e1dca1cf74ae0e476" }
+cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }
 wasm-bindgen = "0.2"
 hashlink = "0.12.1"

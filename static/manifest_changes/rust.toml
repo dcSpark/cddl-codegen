@@ -74,3 +74,16 @@ set = '["std"]'
 id = 9
 path = "features.std"
 set = '[]'
+
+# Re-pin to the current `float-round-trip` branch head. A rev is only a usable pin while it is
+# reachable from a remote branch: entry 7's rev was never on the remote, so a fresh checkout of a
+# manifest carrying it cannot resolve the dep at all. This rev ("Fix handling of float heads") is
+# the published branch head and carries the float surface the runtime reads against —
+# `se::smallest_float_sz`, `se::f64_to_f32_exact`, `se::f32_to_f64_exact`, `float_sz`/
+# `write_float_sz`. Same interim posture as entry 7: back to a crates.io version `set` (clearing
+# `git`/`rev`, per the source-assertion contract in `src/cargo_manifest.rs`) once the fork
+# upstreams to primetype/cbor_event and releases.
+[[change]]
+id = 10
+path = "dependencies.cbor_event"
+set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }'
