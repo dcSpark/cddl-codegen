@@ -385,44 +385,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    `tests/README.md` § "Per-rule duplicates policy (`@duplicates`) — test map" (the per-layer
    pin inventory) and the user docs (`docs/docs/output_format.mdx`, `current_capacities.mdx`,
    `wasm_differences.mdx`, `comment_dsl.mdx`). What remains:
-   - **Recursive-map-KEY limitation (pre-existing, orthogonal).** A table whose DOMAIN is a
-     not-yet-registered recursive UNION panics in `register_rust_struct`'s keys-list synthesis
-     (`name_as_wasm_array_ct` → `is_enum` asserts on the un-registered union) — WITHOUT any
-     directive, so it is a general recursive-table-key gap, not a duplicates-policy one. **The gap
-     is narrower than the shape**, and the boundary is measured (2026-08-01, at `0a0f969e`): what
-     survives is the ROOTING, not the union-keyed shape. Rooted at the COLLECTION
-     (`key_holder = [key_map]`, `key_val = key_map / int / bytes / text`,
-     `key_map = { * key_val => key_val }`) it generates at exit 0 AND the emitted rust and wasm
-     crates both `cargo check` clean, minting a `KeyValList` keys-list wrapper the `keys()` accessor
-     agrees with — that spelling is now the `key_` block of
-     `tests/recursive-collection-ref/input.cddl` (both profiles, plus a wire vector) with the wasm
-     half pinned by `recursive_union_keyed_table_mints_its_keys_list_under_wasm`. Single-rule
-     spellings that inline the table as a union arm (`tmd = { * tmd => tmd } / int / bytes / text`,
-     either arm order) likewise generate. What still aborts is the UNION-rooted ordering
-     (`u_holder = [u_val]`), which registers the table before its named domain exists — pinned as a
-     committed `PANIC` row by `tests/robustness/recursive_union_keyed_table_nominal.cddl`, and note
-     it reproduces under `--wasm=false` too: the synthesis runs on the parse walk, so this is not
-     the wasm-only exposure the entry originally recorded. The
-     golden_hex headline keys the recursive metadatum map by `tstr` (recursion in the map VALUE) to
-     sidestep it. The tempting one-line route — relax `is_enum`'s assert to a graceful `false` — is
-     still WRONG, though its old blocker is gone: the assert
-     (`self.generic_instances.contains_key(ident)`, `src/intermediate/mod.rs`) was once also the
-     "`any` in member/element position" panic class, but the loose-CBOR delivery retired that class
-     by intercepting `any` at `new_type` before it ever reaches the assert
-     (`tests/robustness/any_member.cddl` is now an `ok` fixture). What remains is the assert's own
-     job: it guards genuinely-unregistered generic instances, and a graceful `false` would silently
-     misclassify every such ident instead of failing loudly. Closing the
-     recursive-key gap therefore needs the deeper route — defer the keys-list synthesis past the
-     recursive registration cycle (so the domain is classifiable when `name_as_wasm_array_ct` runs)
-     — which is out of scope for a duplicates-policy packet. That deferral seam now EXISTS:
-     `finalize_generic_table_keys_lists` (intermediate/mod.rs, from the wasm-ABI matrix's
-     generic-instance-keyed-map fix) already defers the keys-list mint past `finalize`'s domain
-     resolution for GENERIC-INSTANCE domains, naming from the final domain — extending the same
-     defer-to-finalize route to recursively-registered union domains is the concrete pickup, with
-     the positive `any`-member fixture (`tests/robustness/any_member.cddl`, an `ok` row) as the
-     boundary that must stay intact. The union-KEYED shape is not the real
-     Cardano driver anyway (metadata keys are int/text/bytes; the recursion is in the VALUE, covered
-     by the tstr-keyed headline).
    - **Set-nominalization residuals (Delivery 2 of the set-architecture rethink —
      `d177516`/`816969f`/`13b63a2`/`7daca67`).** Named, generic-instance, and inline `#6.258` sets
      are now nominal wrapper types owning their `{tag, len, elem}` encodings. Three follow-ups
@@ -471,8 +433,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      `0a0f969e`, its standalone holder generates at exit 0 and the emitted rust and wasm crates both
      `cargo check` clean under BOTH the default and `--preserve-encodings` profiles, and
      `table_preserve.mdmap` sits in `tests/decode_conformance/corpus_catalog.toml` with accept
-     vectors and no `pinned_reason`. The recursion-in-the-DOMAIN sibling is the one with a live
-     half — see "Recursive-map-KEY limitation" above.)
+     vectors and no `pinned_reason`. The recursion-in-the-DOMAIN sibling carries none either: the
+     union-rooted ordering that used to abort now defers its keys-list mint to finalize, and both
+     rootings hold a compile-and-wire floor in the `key_`/`ukey_`/`upres_` blocks of
+     `tests/recursive-collection-ref/input.cddl`.)
 
 6. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
@@ -2560,10 +2524,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   form, and `no_silent_directive`'s shape vocabulary has no
   inline-map-arm-inside-a-type-choice ROW-ENTRY cell (its `@duplicates` witnesses are
   rule-position) — the pin is what closes the detection gap; the DECISION is what this entry
-  defers. The honor road is the valuable one: together with the recursive-union nominal-ordering
-  abort (the `recursive_union_keyed_table_nominal.cddl` PANIC entry above — for a SELF-referential
-  union BOTH spellings are dead, which is why the two defects gate the same consumer), it is
-  exactly what keeps CML's offered `NOISY_V1_HEX`/`NOISY_V2_HEX` CIP-25 vectors out of
+  defers. The honor road is the valuable one: it is now the LAST of the two defects that gated the
+  same consumer — the NAMED spelling of a self-referential union-keyed table generates in either
+  rooting (`recursive_union_keyed_table_nominal.cddl` is an `ok` row), so an author who names the
+  arm's rule has a working road today and only the INLINE arm still drops. It is exactly what keeps
+  CML's offered `NOISY_V1_HEX`/`NOISY_V2_HEX` CIP-25 vectors out of
   `tests/open-table-cip25-acceptance` — both parse to within one `DuplicateKey` of round-tripping
   (the open-tables Phase D probe). Priority signal, already observed rather than hypothetical: two
   committed-quality acceptance vectors are blocked on it.

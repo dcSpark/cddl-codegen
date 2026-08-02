@@ -2674,7 +2674,7 @@ fn generic_preserve_table_instance_lowers_to_pair_map_under_wasm() {
 /// instance (naming it `GcollU64List`), but `finalize` then rewrites the exposable domain to bare
 /// `Array(u64)` and the `keys()` accessor names the wrapper from THAT resolved form (`ArrU64List`) —
 /// so the minted and referenced names diverged. The mint is now DEFERRED to
-/// `finalize_generic_table_keys_lists` (after the domain resolution), so both derive from the final
+/// `finalize_deferred_table_keys_lists` (after the domain resolution), so both derive from the final
 /// `Array(u64)` domain. A NON-exposable-element instance (`gcoll<foo>`) crosses by its `GcollFoo`
 /// wrapper name at both sites and is unaffected — its keys-list stays `GcollFooList`.
 #[test]
@@ -2718,9 +2718,10 @@ fn exposable_generic_collection_instance_keyed_map_lowers_keys_list_structurally
 /// its profiles. So the collection-rooted spelling that fixture carries is pinned here for the wasm
 /// pass: it generates, and the minted wrapper agrees with the accessor that references it.
 ///
-/// The UNION-rooted spelling of the same three rules (`key_holder = [key_val]`) still aborts at that
-/// synthesis — pinned as a PANIC row by tests/robustness/recursive_union_keyed_table_nominal.cddl,
-/// so this test's scope is exactly the half that works.
+/// The UNION-rooted spelling of the same three rules (`key_holder = [key_val]`) reaches the same
+/// mint through the DEFERRED route instead (the table registers before its named domain exists);
+/// it is pinned by `union_rooted_recursive_union_keyed_table_mints_its_keys_list`, and this test's
+/// scope stays the collection-rooted ordering, which mints at registration time.
 #[test]
 fn recursive_union_keyed_table_mints_its_keys_list_under_wasm() {
     const CDDL: &str = "key_holder = [key_map]\n\
@@ -2746,6 +2747,89 @@ fn recursive_union_keyed_table_mints_its_keys_list_under_wasm() {
         src.contains("pub struct KeyValList(pub(crate) Vec<cddl_lib::KeyVal>)")
             && src.contains("pub fn keys(&self) -> KeyValList"),
         "the keys-list wrapper and keys() accessor must both name `KeyValList`, got:\n{src}"
+    );
+}
+
+/// The UNION-rooted ordering of the same recursive-union-keyed table (`u_holder = [u_val]` roots the
+/// cycle at the UNION, so dep ordering registers `u_map` while `u_val` is still nothing) generates
+/// too. `register_rust_struct` cannot name a keys-list wrapper from a domain naming an ident that is
+/// in neither `rust_structs` nor `generic_instances` — `name_as_wasm_array_ct` → `is_enum` asserts —
+/// so the mint is DEFERRED to `finalize_deferred_table_keys_lists`, exactly as it already is for a
+/// generic-collection-instance domain, and names the wrapper from the (by then registered) union.
+///
+/// Both `--wasm` legs are exercised because the failing synthesis ran on the PARSE walk, so the
+/// abort was never wasm-only; the mint/reference agreement is wasm-side and asserted there.
+#[test]
+fn union_rooted_recursive_union_keyed_table_mints_its_keys_list() {
+    const CDDL: &str = "u_holder = [u_val]\n\
+                        u_val = u_map / int / bytes / text\n\
+                        u_map = { * u_val => u_val }\n";
+    let path =
+        std::env::temp_dir().join(format!("cddl_codegen_urooted_{}.cddl", std::process::id()));
+    std::fs::write(&path, CDDL).unwrap();
+    let run = |wasm: &str| {
+        crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "urooted_unused",
+            wasm,
+        ]))
+    };
+    let rust_only = run("--wasm=false")
+        .expect("the union-rooted recursive-union-keyed table must generate under --wasm=false");
+    let out = run("--wasm=true")
+        .expect("the union-rooted recursive-union-keyed table must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    // the rust leg lowers the table itself, whichever ordering the cycle is rooted at
+    let rust_src = rust_only.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        rust_src.contains("pub type UMap = BTreeMap<UVal, UVal>;"),
+        "the union-rooted table must still lower to its map typedef, got:\n{rust_src}"
+    );
+    // and the wasm leg mints the keys-list the `keys()` accessor references (deferred mint)
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("pub struct UValList(pub(crate) Vec<cddl_lib::UVal>)")
+            && src.contains("pub fn keys(&self) -> UValList"),
+        "the keys-list wrapper and keys() accessor must both name `UValList`, got:\n{src}"
+    );
+}
+
+/// The consumer-shaped spelling of the same class: a NAMED recursive union used as the domain of a
+/// `@duplicates preserve` table, with the union carrying an array arm too (`md = md_map / [* md] /
+/// int / bytes / text`) — the CIP-25/`transaction_metadata` shape, in the union-rooted ordering that
+/// used to abort. Recursion × rule-position directive compose: the deferred keys-list mint does not
+/// disturb the policy, so the table still lowers to the `PairMap` twin on both faces.
+#[test]
+fn union_rooted_recursive_preserve_table_keeps_its_pair_map() {
+    const CDDL: &str = "md = md_map / [* md] / int / bytes / text\n\
+                        md_map = { * md => md } ; @duplicates preserve\n";
+    let path =
+        std::env::temp_dir().join(format!("cddl_codegen_mdpres_{}.cddl", std::process::id()));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "mdpres_unused",
+        "--wasm=true",
+    ]))
+    .expect("a preserve-policy table keyed by a recursive union must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // rust: the preserve twin, keyed and valued by the union
+    assert!(
+        src.contains("pub type MdMap = PairMap<Md, Md>;"),
+        "the preserve policy must still select the PairMap twin, got:\n{src}"
+    );
+    // wasm: the pair-map wrapper class and the keys-list the accessor names
+    assert!(
+        src.contains("pub struct MdList(pub(crate) Vec<cddl_lib::Md>)")
+            && src.contains("pub fn keys(&self) -> MdList"),
+        "the keys-list wrapper and keys() accessor must both name `MdList`, got:\n{src}"
     );
 }
 

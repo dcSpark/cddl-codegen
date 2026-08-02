@@ -2358,18 +2358,11 @@ impl<'a> IntermediateTypes<'a> {
                 // owns nor references from its own spec, duplicating a wrapper the dep exports. The
                 // `register_type_alias` below still runs unconditionally so the ident resolves as a
                 // type for cross-crate references.
-                // A domain typed as a not-yet-resolved GENERIC-COLLECTION instance is still a bare
-                // `Rust(<instance>)` here (its transparent alias is registered only in `finalize`),
-                // so naming the keys-list wrapper from it now bakes the INSTANCE-ident name
-                // (`GcollU64List` for `gcoll<uint>`). But `finalize`'s
-                // `resolve_generic_collection_instance_fields` then rewrites the domain to its resolved
-                // collection (`Array(u64)` for an exposable element), and the wasm `keys()` accessor
-                // names the wrapper from THAT — the structural `ArrU64List`, an E0425 against the
-                // instance-named mint. Defer the mint to `finalize_generic_table_keys_lists` (run
-                // right after the domain resolution) so the keys-list is named from the FINAL domain,
-                // matching `keys()`. Non-generic table domains are already final here and mint as before.
+                // A domain that is not FINAL here defers its mint to
+                // `finalize_deferred_table_keys_lists` (see `table_keys_list_mint_must_defer` for the
+                // two classes); a final domain mints in place, as before.
                 if self.scope(&rust_struct.ident).export()
-                    && !matches!(&domain.conceptual_type, ConceptualRustType::Rust(id) if self.generic_instances.contains_key(id))
+                    && !self.table_keys_list_mint_must_defer(&domain.conceptual_type)
                 {
                     // we must provide the keys type to return
                     self.create_and_register_array_type(
@@ -2695,19 +2688,67 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    /// Mint the keys-list array wrapper for each exported table whose domain was a generic-collection
-    /// instance (deferred from `register_rust_struct`; see the deferral comment there). Runs in
-    /// `finalize` AFTER `resolve_generic_collection_instance_fields` has rewritten each such domain to
-    /// its resolved collection, so the wrapper name derives from the FINAL domain and matches the wasm
-    /// `keys()` accessor. Wasm-only (rust maps use native `.keys()`; the wrapper exists only to cross
-    /// the wasm boundary). Guarded by "not already registered": a non-generic table minted its keys-list
-    /// at parse (its domain was final there) and is a no-op here — so the byte output for any spec
-    /// WITHOUT a generic-collection-instance-keyed table is unchanged. Deterministic (`BTreeMap` order).
+    /// Whether the keys-list wasm wrapper for a table with this DOMAIN must be minted in `finalize`
+    /// (by `finalize_deferred_table_keys_lists`) rather than at `register_rust_struct`. Two classes,
+    /// both "the domain is not FINAL at registration time", and both answered by the same deferral:
+    ///
+    /// 1. A not-yet-resolved GENERIC-COLLECTION instance is still a bare `Rust(<instance>)` here (its
+    ///    transparent alias is registered only in `finalize`), so naming the wrapper now bakes the
+    ///    INSTANCE-ident name (`GcollU64List` for `gcoll<uint>`). `finalize`'s
+    ///    `resolve_generic_collection_instance_fields` then rewrites the domain to its resolved
+    ///    collection (`Array(u64)` for an exposable element) and the wasm `keys()` accessor names the
+    ///    wrapper from THAT — the structural `ArrU64List`, an E0425 against the instance-named mint.
+    /// 2. A RECURSIVELY-registered named domain: rooting a `{ * u_val => u_val }` cycle at the UNION
+    ///    (`u_holder = [u_val]`) orders the table's registration BEFORE `u_val` exists as a struct, so
+    ///    the domain names an ident in neither `rust_structs` nor `generic_instances`. Naming the
+    ///    wrapper routes through `name_as_wasm_array_ct` → `directly_wasm_exposable_ct` → `is_enum`,
+    ///    whose registered-or-generic assertion then aborts generation. The assert is right to fire —
+    ///    it guards genuinely-unregistered generic instances, and answering `false` there would
+    ///    silently misclassify every such ident — so the mint moves instead of the guard.
+    ///
+    /// The recursion mirrors exactly the arms `Array(domain).directly_wasm_exposable_ct` can reach an
+    /// `is_enum` call through, so a domain whose naming is already answerable keeps minting in place
+    /// and its emitted bytes are unchanged: `Array`/`Map` stop that probe without consulting an ident,
+    /// and a named alias is only followed when it names no wrapper struct.
+    fn table_keys_list_mint_must_defer(&self, domain: &ConceptualRustType) -> bool {
+        match domain {
+            ConceptualRustType::Rust(ident) => {
+                self.generic_instances.contains_key(ident) || self.rust_struct(ident).is_none()
+            }
+            ConceptualRustType::Optional(ty) => {
+                self.table_keys_list_mint_must_defer(&ty.conceptual_type)
+            }
+            ConceptualRustType::Alias(AliasIdent::Reserved(_), ty) => {
+                self.table_keys_list_mint_must_defer(ty)
+            }
+            ConceptualRustType::Alias(AliasIdent::Rust(ident), ty) => {
+                match self.rust_struct(ident).map(|rs| rs.variant()) {
+                    // a wrapper struct answers the probe itself; anything else is followed through
+                    Some(RustStructType::CStyleEnum { .. }) | None => {
+                        self.table_keys_list_mint_must_defer(ty)
+                    }
+                    Some(_) => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Mint the keys-list array wrapper for each exported table whose domain was not final when the
+    /// table registered (deferred from `register_rust_struct`; the two classes are
+    /// `table_keys_list_mint_must_defer`'s). Runs in `finalize` AFTER
+    /// `resolve_generic_collection_instance_fields` has rewritten each generic-instance domain to its
+    /// resolved collection, and after every rule in the spec has registered — so the wrapper name
+    /// derives from the FINAL domain and matches the wasm `keys()` accessor. Wasm-only (rust maps use
+    /// native `.keys()`; the wrapper exists only to cross the wasm boundary). Guarded by "not already
+    /// registered": a table whose domain was final at parse minted its keys-list there and is a no-op
+    /// here — so the byte output for any spec without a deferred domain is unchanged. Deterministic
+    /// (`BTreeMap` order).
     /// If two deferred tables resolve to the SAME domain, both pass the not-registered filter before
     /// either mints; the second `create_and_register_array_type` re-mints the identical keys-list
     /// struct, which `register_rust_struct` overwrites with a byte-identical entry — the same
     /// last-wins-on-shared-shape idiom the parse-time keys-list mint already relies on, so it is benign.
-    fn finalize_generic_table_keys_lists(&mut self, parent_visitor: &ParentVisitor, cli: &Cli) {
+    fn finalize_deferred_table_keys_lists(&mut self, parent_visitor: &ParentVisitor, cli: &Cli) {
         if !cli.wasm {
             return;
         }
@@ -3173,7 +3214,7 @@ impl<'a> IntermediateTypes<'a> {
         // domain — deferred from `register_rust_struct` until now, so they name from the resolved
         // domain (see the deferral comment there). Idempotent by the not-yet-registered guard: a
         // non-generic table already minted its keys-list at parse and is skipped here.
-        self.finalize_generic_table_keys_lists(parent_visitor, cli);
+        self.finalize_deferred_table_keys_lists(parent_visitor, cli);
         // Phase 2.4: nominalize INLINE `#6.258([* T])` occurrences into shape-derived `Set<Elem>`
         // wrappers, at the ONE post-collapse seam (over the finalized construction PRODUCTS, never in
         // `rust_type_from_type2`). Must run BEFORE the key-demand analysis below so the minted

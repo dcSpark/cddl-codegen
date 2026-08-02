@@ -1,23 +1,17 @@
-; TRACKED-KNOWN PANIC (a committed `PANIC` row in the catalog snapshot, per its header) — a table
-; whose DOMAIN is a NAMED recursive union, with the cycle rooted so the table registers FIRST.
+; A table whose DOMAIN is a NAMED recursive union, with the cycle rooted at the UNION so the table
+; registers FIRST — `u_holder = [u_val]` makes dep ordering register `u_map` while `u_val` is still
+; nothing. `register_rust_struct` cannot name the keys-list wasm wrapper from such a domain
+; (`name_as_wasm_array_ct` -> `directly_wasm_exposable_ct` -> `is_enum`, whose registered-or-generic
+; assertion is right to fire on an ident in neither map), so the mint is DEFERRED to
+; `finalize_deferred_table_keys_lists`, which names it from the by-then-final domain — the same route
+; a generic-collection-instance domain already took. This row is the OUTCOME half of that fix: it
+; asserts the ordering generates at all, under the catalog's default flags.
 ;
-; `register_rust_struct` synthesizes the keys-list wasm wrapper from the domain at registration time,
-; naming it through `name_as_wasm_array_ct` -> `directly_wasm_exposable_ct` -> `is_enum`. Rooting the
-; holder at the UNION (`u_holder = [u_val]`) makes dep ordering register `u_map` before `u_val`
-; exists as a struct, so `is_enum` finds the ident in neither `rust_structs` nor `generic_instances`
-; and its assertion aborts generation. Reproduces under `--wasm=false` too: the synthesis runs on the
-; parse walk, not on the wasm pass.
-;
-; The COLLECTION-rooted spelling of the same three rules generates and compiles cleanly on both
-; faces — it is the `key_` block of tests/recursive-collection-ref/input.cddl, with the wasm half
-; pinned by `recursive_union_keyed_table_mints_its_keys_list_under_wasm`. That pairing is what makes
-; this fixture's variable the ROOTING, not the union-keyed shape itself. Single-rule spellings that
-; inline the table as a union arm (`tmd = { * tmd => tmd } / int`) also generate.
-;
-; The fix route is the one this class already took once: defer the mint past the point where the
-; domain resolves, as `finalize_generic_table_keys_lists` does for generic-collection instances.
-; Tracked by the "Recursive-map-KEY limitation" entry in tests/TESTING_ROADMAP.md. When it lands,
-; this row flips to `ok` in the catalog snapshot and the fixture becomes an ordinary regression pin.
+; The behavioural halves live beside it: the mint/reference agreement and the `--wasm=false` leg in
+; `union_rooted_recursive_union_keyed_table_mints_its_keys_list`, the compile-and-wire floor in the
+; `ukey_`/`upres_` blocks of tests/recursive-collection-ref/input.cddl (both profiles), and the
+; collection-rooted twin — the ordering that mints at registration time — in that fixture's `key_`
+; block with `recursive_union_keyed_table_mints_its_keys_list_under_wasm`.
 u_holder = [u_val]
 u_val = u_map / int / bytes / text
 u_map = { * u_val => u_val }

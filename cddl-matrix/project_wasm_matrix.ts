@@ -141,7 +141,7 @@ const SHAPES: Record<string, Shape> = {
   // was a keys-list naming divergence (E0425: the keys-list wrapper was MINTED from the still-named
   // `Rust(GcollU64)` table domain as `GcollU64List` while `keys()` REFERENCED the resolved-domain
   // structural `ArrU64List`), fixed by deferring the keys-list mint to after the domain resolution
-  // (`finalize_generic_table_keys_lists`) so both name the structural `ArrU64List`; pinned by
+  // (`finalize_deferred_table_keys_lists`) so both name the structural `ArrU64List`; pinned by
   // `exposable_generic_collection_instance_keyed_map_lowers_keys_list_structurally_under_wasm`.
   gcollexp: { defs: ["gcoll<e0> = [* e0]"], ty: "gcoll<uint>" },
   // NAMED-instance-rule boundary control: a `gcn = gcoll<foo>` rule keeps its OWN-name wasm class
