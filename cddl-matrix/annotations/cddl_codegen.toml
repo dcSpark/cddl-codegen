@@ -638,12 +638,20 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.float16"
 status = "supported"
-evidence = "hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`); accepts 10 foreign spec-derived vector(s); wasm/json/preserve emission and oracle columns not re-run"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 
 [[support]]
 id = "prelude.float16-32"
 status = "supported"
-evidence = "hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`); accepts 10 foreign spec-derived vector(s); wasm/json/preserve emission and oracle columns not re-run"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 
 [[support]]
 id = "prelude.float32"
@@ -657,7 +665,11 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.float32-64"
 status = "supported"
-evidence = "hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`); accepts 10 foreign spec-derived vector(s); wasm/json/preserve emission and oracle columns not re-run"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 
 [[support]]
 id = "prelude.float64"

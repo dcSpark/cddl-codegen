@@ -139,10 +139,10 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
 | `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone top-level type is rejected gracefully — same graceful path as `true`/`null`; works as a struct/array member (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.false.cddl`.  [`a top-level rule whose entire body is a bare fixed value`] |
 | `prelude.float` | ➕ | float | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.float16` | ➕ | float16 | supported, no corpus fixture (hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings) |
-| `prelude.float16-32` | ➕ | float16-32 | supported, no corpus fixture (hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings) |
+| `prelude.float16` | ➕ | float16 | supported, no corpus fixture (cddl-codegen exit 0) |
+| `prelude.float16-32` | ➕ | float16-32 | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.float32` | ➕ | float32 | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.float32-64` | ➕ | float32-64 | supported, no corpus fixture (hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings) |
+| `prelude.float32-64` | ➕ | float32-64 | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.float64` | ✅ | float64 | `homogeneous_array.cddl` |
 | `prelude.int` | ✅ | int | `primitives.cddl` |
 | `prelude.integer` | ✅ | integer | `prelude.cddl` |
