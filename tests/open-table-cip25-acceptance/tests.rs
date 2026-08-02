@@ -43,6 +43,30 @@ mod cip25_acceptance {
     const TEST_POLICY_HEX_TEXT: &str = "baadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00d";
     const TEST_POLICY_BYTES_HEX: &str = "baadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00d";
 
+    /// CML's noisy **v1** pin vector.
+    ///
+    /// PROVENANCE: copied verbatim from `cip25/rust/tests/preserve_vectors.rs` in the
+    /// cardano-multiplatform-lib checkout, where it is `NOISY_V1_HEX`. It is BUILDER-emitted, not
+    /// hand-typed: that file assembles raw CBOR by major type / head width / length framing and
+    /// never calls the crate's serializer, then pins the bytes. So it is an independent vector on
+    /// both sides — neither this generator nor CML's hand writer produced it.
+    ///
+    /// It is the vector CML uses to prove all six of a CIP-25 payload's capture sites replay
+    /// byte-exactly, and its noise is ENCODING-shaped on purpose: non-minimal head widths
+    /// (`b90003`, `1b…02d1`), indefinite framing at the policy table, chunked byte and text strings,
+    /// nested maps and lists used as capture KEYS, and — the reason it could not live here before —
+    /// a DUPLICATE key inside a captured metadatum map.
+    const NOISY_V1_HEX: &str = "b900031b00000000000002d1bf00813a000000007900386261616466303064626161646630306462616164663030646261616466303064626161646630306462616164663030646261616466303064b80379000b4d7941737365744e616d65a5646e616d65677631206e616d65696172776561766549646a36737270585a4f54664b65696d6167659f6c697066733a2f2f7061727431657061727432ff1a00000003b8020161610161626566696c657381a4646e616d65626631696d656469615479706569696d6167652f706e676373726368697066733a2f2f731900003b0000000000000004805f42dead41beffa1616b017f617862797aff42deadb90000ff1a0000002a3a0000012c1b00000000000000015f42dead42beefff";
+
+    /// CML's noisy **v2** pin vector. Same provenance and same builder discipline as
+    /// [`NOISY_V1_HEX`] (there it is `NOISY_V2_HEX`).
+    ///
+    /// The v2 shape adds the wrapper level, so this vector carries junk at all six sites INCLUDING
+    /// the wrapper — where one captured key is itself an empty MAP. It carries duplicate keys at
+    /// two different levels: inside a captured metadatum map (`5 => { "d": 1, "d": 2 }`) and on the
+    /// details rest ROW itself (the key `5` appears twice there).
+    const NOISY_V2_HEX: &str = "bf1905397f62736965626c696e67ff1a000002d1b8046776657273696f6e1802a06c6a756e6b2d77726170706572780464617461a359001cbaadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00dbf075f4201024103ff44cafed00da865696d6167657821687474733a2f2f736f6d652e776562736974652e636f6d2f696d6167652e706e67190005a26164016164190002646e616d656d4d65746164617461204e616d656566696c65739801a4637372637f637372636131ff403a0000012c646e616d656966696c656e616d6531696d65646961547970656966696c6574797065316b6465736372697074696f6e826870617274206f6e6568706172742074776f8201027840303132333435363738393031323334353637383930313233343536373839303132333435363738393031323334353637383930313233343536373839303132331900055f41be41efff78096d656469615479706567696d6167652f2a390009826178a0ff6c6e6f742d612d706f6c6963793b000000000000000081017f626162626364ff65657874726198013a000000011809ba0000000139000998015a00000002baadff";
+
     // ---------------------------------------------------------------------------------------
     // The v1 golden: four generated levels reproduce a real on-chain payload byte for byte
     // ---------------------------------------------------------------------------------------
@@ -76,6 +100,137 @@ mod cip25_acceptance {
             "the golden's unmodelled members (`arweaveId`, `traits`, `type`) land on the details \
              rest row — the delivered open struct-map row this feature composes with"
         );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // CML's noisy pin vectors: the consumer's own six-capture-site oracles, on this grammar
+    // ---------------------------------------------------------------------------------------
+    //
+    // These are the vectors CML pins its ~700 lines of hand serialization against. They are the
+    // acceptance question stated in the consumer's own terms: does the generated composition hold
+    // the same bytes the hand code holds? Both carry duplicate keys inside a captured metadatum
+    // map, which is why they arrive with the inline-table `@duplicates preserve` landing — before
+    // it, `md`'s map arm was the loose container and both vectors failed `DuplicateKey`.
+
+    /// The `md` map variant's captured entries, or a panic naming what was found instead.
+    fn md_map_entries(md: &Md) -> &PairMap<Md, Md> {
+        match md {
+            Md::Map { map, .. } => map,
+            other => panic!("expected a captured metadatum MAP, found {other:?}"),
+        }
+    }
+
+    /// The one `rest` entry whose key is the uint `label`, and how many entries share that key.
+    fn rest_by_uint<'a>(rest: &'a PairMap<Md, Md>, label: u64) -> (Vec<&'a Md>, usize) {
+        let want = Int::new_uint(label);
+        let hits: Vec<&Md> = rest
+            .iter()
+            .filter(|(k, _)| matches!(k, Md::Int(i) if *i == want))
+            .map(|(_, v)| v)
+            .collect();
+        let n = hits.len();
+        (hits, n)
+    }
+
+    #[test]
+    fn cmls_noisy_v1_vector_round_trips_byte_exact() {
+        let wire = bytes(NOISY_V1_HEX);
+        let v = Cip25::from_cbor_bytes(&wire).expect("CML's noisy v1 pin vector must parse");
+        assert_eq!(
+            v.to_cbor_bytes(),
+            wire,
+            "the consumer's own v1 pin vector must replay byte for byte through the generated \
+             composition — non-minimal heads, indefinite framing, duplicate keys and all"
+        );
+    }
+
+    #[test]
+    fn cmls_noisy_v1_vector_captures_every_site_and_keeps_its_duplicate_keys() {
+        let v = Cip25::from_cbor_bytes(&bytes(NOISY_V1_HEX)).unwrap();
+        // site 1 — the top-level rest row: labels 42 (a nint) and 1 (a chunked bstr).
+        assert_eq!(v.rest.len(), 2, "two junk labels beside 721");
+        let LabelMetadata::V1(v1) = &v.key_721 else {
+            panic!("a 56-hex-digit TEXT policy key must discriminate to the v1 arm")
+        };
+        // site 3 — the policy table (v1 IS the policy table): a uint key and a bstr key.
+        assert_eq!(v1.entries.len(), 1, "one typed policy");
+        assert_eq!(v1.rest.len(), 2, "the uint and byte-string policy-level keys");
+        // site 4 — the asset table: an ARRAY key and a MAP key, both metadatum-typed.
+        let assets = v1.entries.values().next().unwrap();
+        assert_eq!(assets.entries.len(), 1, "one typed asset");
+        assert_eq!(assets.rest.len(), 2, "the array-keyed and map-keyed entries");
+        // site 5 — the details rest row: `arweaveId` and the uint key 3.
+        let details = assets.entries.values().next().unwrap();
+        assert_eq!(details.name.get(), "v1 name");
+        assert_eq!(details.rest.len(), 2);
+        // …and the entry the whole vector was blocked on: `3 => { 1: "a", 1: "b" }`, a captured
+        // metadatum MAP holding the SAME key twice. Only the pair-map twin can represent it.
+        let (at_3, n) = rest_by_uint(&details.rest, 3);
+        assert_eq!(n, 1, "the label 3 appears once at the details rest row");
+        let dup_map = md_map_entries(at_3[0]);
+        assert_eq!(
+            dup_map.len(),
+            2,
+            "the captured map keeps BOTH entries — a loose table would have collapsed them"
+        );
+        assert!(
+            dup_map
+                .iter()
+                .all(|(k, _)| matches!(k, Md::Int(i) if *i == Int::new_uint(1))),
+            "both captured entries are keyed `1`: that is the duplicate"
+        );
+        // site 6 — the files rest row: one uint-keyed entry.
+        assert_eq!(details.files.as_ref().unwrap()[0].rest.len(), 1);
+    }
+
+    #[test]
+    fn cmls_noisy_v2_vector_round_trips_byte_exact() {
+        let wire = bytes(NOISY_V2_HEX);
+        let v = Cip25::from_cbor_bytes(&wire).expect("CML's noisy v2 pin vector must parse");
+        assert_eq!(
+            v.to_cbor_bytes(),
+            wire,
+            "the consumer's own v2 pin vector must replay byte for byte, wrapper junk included"
+        );
+    }
+
+    #[test]
+    fn cmls_noisy_v2_vector_keeps_duplicates_at_both_levels_it_carries_them() {
+        let v = Cip25::from_cbor_bytes(&bytes(NOISY_V2_HEX)).unwrap();
+        // site 1 — the top-level rest row: labels 1337 and 9.
+        assert_eq!(v.rest.len(), 2);
+        let LabelMetadata::V2(v2) = &v.key_721 else {
+            panic!("`data`/`version` text keys must discriminate to the v2 arm")
+        };
+        // site 2 — the wrapper: an empty-MAP key and the text key `extra`.
+        assert_eq!(v2.rest.len(), 2, "the wrapper's own captured entries");
+        // site 3 — the policy table: `not-a-policy` (text) and an array key.
+        assert_eq!(v2.data.entries.len(), 1, "one typed policy");
+        assert_eq!(v2.data.rest.len(), 2);
+        // site 4 — the asset table: a uint key and a nint key.
+        let assets = v2.data.entries.values().next().unwrap();
+        assert_eq!(assets.entries.len(), 1, "one typed asset");
+        assert_eq!(assets.rest.len(), 2);
+        // site 5 — the details rest row, which carries the SECOND duplicate: the label `5` appears
+        // TWICE there (once mapping to a captured map, once to a chunked bstr). This half is the
+        // rest row's own `@duplicates preserve`; the map value below is the inline table's.
+        let details = assets.entries.values().next().unwrap();
+        assert_eq!(details.name.get(), "Metadata Name");
+        assert_eq!(details.rest.len(), 3, "three captured entries, two sharing a key");
+        let (at_5, n) = rest_by_uint(&details.rest, 5);
+        assert_eq!(n, 2, "the label 5 is captured TWICE on the details rest row");
+        // the first of the two is `{ "d": 1, "d": 2 }` — a captured metadatum map with a duplicate
+        // TEXT key, which is the inline map arm's own pair-map doing the work.
+        let dup_map = md_map_entries(at_5[0]);
+        assert_eq!(dup_map.len(), 2, "the captured map keeps both `d` entries");
+        assert!(
+            dup_map
+                .iter()
+                .all(|(k, _)| matches!(k, Md::Text { text, .. } if text == "d")),
+            "both captured entries are keyed \"d\": that is the duplicate"
+        );
+        // site 6 — the files rest row: one entry, keyed by an EMPTY byte string.
+        assert_eq!(details.files.as_ref().unwrap()[0].rest.len(), 1);
     }
 
     // ---------------------------------------------------------------------------------------
