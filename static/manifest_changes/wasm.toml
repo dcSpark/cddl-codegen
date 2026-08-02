@@ -68,3 +68,13 @@ set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc25033
 id = 11
 path = "dependencies.linked-hash-map"
 remove = true
+
+# Re-pin to the current `float-round-trip` branch head — same rev and same rationale as the rust
+# log's entry 10 (entry 10 here pinned a rev that was never reachable from a remote branch, so a
+# fresh checkout could not resolve the dep). Every manifest this tool writes must name ONE
+# cbor_event rev: the generated crates pass `Serializer`/`Deserializer` values across their
+# boundaries, so a skew between the rust and wasm pins is a type mismatch.
+[[change]]
+id = 12
+path = "dependencies.cbor_event"
+set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }'

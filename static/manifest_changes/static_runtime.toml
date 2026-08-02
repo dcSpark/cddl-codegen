@@ -105,3 +105,13 @@ set = '{ version = "0.4.3", default-features = false, features = ["alloc"] }'
 id = 10
 path = "dependencies.hex"
 set = '{ package = "const-hex", version = "1.19.1", default-features = false, features = ["alloc", "core-error"] }'
+
+# Re-pin to the current `float-round-trip` branch head — same rev and same rationale as the rust
+# log's entry 10 (entry 6 here pinned a rev that was never reachable from a remote branch, so a
+# fresh checkout could not resolve the dep). The exported runtime shares cbor_event types with the
+# crates generated beside it, so its pin moves with theirs. (Co-owned manifest: this dep is
+# asserted, never removed.)
+[[change]]
+id = 11
+path = "dependencies.cbor_event"
+set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }'
