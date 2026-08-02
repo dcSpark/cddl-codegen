@@ -4483,6 +4483,12 @@ fn generated_code_clippy_clean() {
         "unused_braces",
         "-D",
         "unused_allocation",
+        // `unused_variables` has no legitimate generated-code residue — an emitted binding nothing
+        // reads is a generator defect every time — so it is denied here. `unused_imports` is NOT,
+        // and the asymmetry is the point: the import prune deliberately keeps trait imports
+        // (`cbor_event::se::Serialize`) whose only use is a method call no name-scan can see.
+        "-D",
+        "unused_variables",
     ];
     const PERMANENT_ALLOWS: &[&str] = &["-A", "clippy::disallowed_names"];
     let rich_input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
@@ -4525,6 +4531,15 @@ type_choice_bool = true / tstr
             &["--preserve-encodings=true", "--annotate-fields=false"][..],
             Some(FIXED_SPECIAL_SPEC),
         ),
+        // The json profile is here for the THIRD generated crate: `--json-schema-export` mints
+        // `wasm/json-gen`, whose emitted `add_schemas`/`export_schemas` bodies and registration rows
+        // were outside every lint gate. Same flag pair `super::ALL_PROFILES` spells for its `json`
+        // row, so this case lints the crate the corpus already snapshot-pins.
+        (
+            "json_schema_export",
+            &["--json-serde-derives=true", "--json-schema-export=true"][..],
+            None,
+        ),
     ];
     // shared scratch + target under temp_dir (per-checkout), like `flag_value_smoke` and the other
     // generate+check gates — never the committed `tests/<dir>/export` dirs the fixtures reuse.
@@ -4558,46 +4573,45 @@ type_choice_bool = true / tstr
             ));
             continue;
         }
-        let clippy = tool_cmd("cargo")
-            .arg("clippy")
-            .current_dir(out.join("rust"))
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .args(["--", "-D", "clippy::all"])
-            .args(RUSTC_STYLE_DENIES)
-            // Input-dependent, permanent allow: the fixture's own `foo`/`bar` rule names become
-            // generated parameter names, which clippy::disallowed_names flags — not a generator
-            // defect. This is the rust crate's ONLY allow: the emission-quality burn-down list is
-            // fully retired, so every other clippy::all lint class (and any NEW one a generator
-            // regression might mint) is hard-red on both profiles.
-            .args(PERMANENT_ALLOWS)
-            .output()
-            .unwrap();
-        if !clippy.status.success() {
-            failures.push(format!(
-                "{label}: `cargo clippy -- -D clippy::all` failed on the generated rust crate\n\
-                 --- stdout ---\n{}\n--- stderr ---\n{}",
-                String::from_utf8_lossy(&clippy.stdout),
-                String::from_utf8_lossy(&clippy.stderr)
-            ));
+        // Every generated crate this case mints, in dependency order. `--json-schema-export` adds
+        // the third one; `wasm/json-gen` is an INDEPENDENT nested crate (not a dependency of
+        // `wasm/`), so linting `wasm/` never reaches it — the same reason `feature_corpus_compiles`
+        // lists it explicitly. The `crate` label is what the failure message names.
+        let mut crate_subs: Vec<(&str, &str)> = vec![("rust", "rust"), ("wasm", "wasm")];
+        if options.contains(&"--json-schema-export=true") {
+            crate_subs.push(("json-gen", "wasm/json-gen"));
         }
-        let wasm_clippy = tool_cmd("cargo")
-            .arg("clippy")
-            .current_dir(out.join("wasm"))
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .args(["--", "-D", "clippy::all"])
-            .args(RUSTC_STYLE_DENIES)
-            .args(PERMANENT_ALLOWS)
-            // The wasm crate's emission-quality burn-down list is fully retired too. New
-            // clippy::all lint classes are hard-red on both profiles and both generated crates.
-            .output()
-            .unwrap();
-        if !wasm_clippy.status.success() {
-            failures.push(format!(
-                "{label}: `cargo clippy -- -D clippy::all` failed on the generated wasm crate\n\
-                 --- stdout ---\n{}\n--- stderr ---\n{}",
-                String::from_utf8_lossy(&wasm_clippy.stdout),
-                String::from_utf8_lossy(&wasm_clippy.stderr)
-            ));
+        for (crate_label, crate_sub) in crate_subs {
+            if !out.join(crate_sub).join("Cargo.toml").exists() {
+                // A crate this case is supposed to mint went missing: the leg would otherwise go
+                // vacuously green (cargo would run in the parent dir, or not at all).
+                failures.push(format!(
+                    "{label}: no {crate_label} crate at {crate_sub}/ — the leg is not linting anything"
+                ));
+                continue;
+            }
+            let clippy = tool_cmd("cargo")
+                .arg("clippy")
+                .current_dir(out.join(crate_sub))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .args(["--", "-D", "clippy::all"])
+                .args(RUSTC_STYLE_DENIES)
+                // Input-dependent, permanent allow: the fixture's own `foo`/`bar` rule names become
+                // generated parameter names, which clippy::disallowed_names flags — not a generator
+                // defect. It is the ONLY allow any of the three crates gets: the emission-quality
+                // burn-down list is fully retired, so every other clippy::all lint class (and any
+                // NEW one a generator regression might mint) is hard-red on every case.
+                .args(PERMANENT_ALLOWS)
+                .output()
+                .unwrap();
+            if !clippy.status.success() {
+                failures.push(format!(
+                    "{label}: `cargo clippy -- -D clippy::all` failed on the generated {crate_label} crate\n\
+                     --- stdout ---\n{}\n--- stderr ---\n{}",
+                    String::from_utf8_lossy(&clippy.stdout),
+                    String::from_utf8_lossy(&clippy.stderr)
+                ));
+            }
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
