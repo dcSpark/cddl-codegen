@@ -60,11 +60,12 @@ pub enum DeserializeFailure {
         min_inclusive: bool,
         max_inclusive: bool,
     },
-    /// A CBOR float head outside the set the CDDL type declares (`float32` is `#7.26` alone,
-    /// `float16-32` is `#7.25`/`#7.26`, `float` admits all three). Separate from
-    /// `CBOR(cbor_event::Error::ExpectedFloatWidth)` — which the single-width classes raise through
-    /// cbor_event's own head-strict `f32`/`f64` impls — because a multi-width class admits a RANGE
-    /// of heads and has no single required width to report.
+    /// A float VALUE outside the class the CDDL type names. The CDDL float names partition the
+    /// float values by their shortest lossless form (`float16` is the values whose shortest form is
+    /// `#7.25`, `float32` `#7.26`, `float64` `#7.27`, with `float16-32`/`float32-64` spanning two);
+    /// `found` is the width of the value's shortest form, `min`/`max` the window the class spans.
+    /// Nothing here is about the head the value arrived under — every head is accepted and the
+    /// decoded value is what is judged.
     FloatWidth{
         found: cbor_event::Sz,
         min: cbor_event::Sz,
@@ -161,15 +162,15 @@ impl DeserializeError {
                 write!(f, "{} not in float range ({}, {})", found, lo, hi)
             },
             DeserializeFailure::FloatWidth{ found, min, max } => {
-                let head = |sz: &cbor_event::Sz| match sz {
-                    cbor_event::Sz::Two => "#7.25",
-                    cbor_event::Sz::Four => "#7.26",
-                    _ => "#7.27",
+                let class = |sz: &cbor_event::Sz| match sz {
+                    cbor_event::Sz::Two => "float16",
+                    cbor_event::Sz::Four => "float32",
+                    _ => "float64",
                 };
                 if min == max {
-                    write!(f, "Expected float head {}, found {}", head(min), head(found))
+                    write!(f, "Expected a {} value, found a {} value", class(min), class(found))
                 } else {
-                    write!(f, "Expected float head {} - {}, found {}", head(min), head(max), head(found))
+                    write!(f, "Expected a {} - {} value, found a {} value", class(min), class(max), class(found))
                 }
             },
             DeserializeFailure::TagMismatch{ found, expected } => write!(f, "Expected tag {}, found {}", expected, found),

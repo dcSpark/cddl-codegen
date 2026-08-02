@@ -1418,12 +1418,12 @@ impl GenerationScope {
                                 "integer bounds on an {p} — parsing must route float constraints to float_bounds"
                             );
                             let is_f32 = p.float_carrier_is_f32();
-                            let (min_head, max_head) = p.float_head_set().unwrap();
-                            // Width-unconstrained `float` admits every head, so the plain read IS
-                            // the whole check — no head-set test to emit, and its generated shape is
-                            // unchanged. Every other class checks the head it read against the set
-                            // its CDDL type declares, and errors on anything else rather than
-                            // narrowing/widening a value its own type forbids.
+                            let (min_head, max_head) = p.float_class_window().unwrap();
+                            // Width-unconstrained `float` is EVERY float value, so the plain read IS
+                            // the whole check — no membership test to emit. Every other class reads
+                            // at any head and then tests the decoded VALUE against the window its
+                            // CDDL name spans, erroring on a value its own class excludes rather
+                            // than accepting one.
                             let unconstrained = *p == Primitive::Float;
                             if cli.preserve_encodings {
                                 // The head WIDTH is the float encoding variable, so the preserve read
@@ -1432,16 +1432,16 @@ impl GenerationScope {
                                 // preserve half with the float window in place of the integer one.
                                 //
                                 // An f32 member narrows AFTER the read (the CBOR float domain is f64),
-                                // and the window is checked on the NARROWED value so a bounded
+                                // and the bounds window is checked on the NARROWED value so a bounded
                                 // `float32` accepts/rejects identically in both profiles — the
-                                // non-preserve arm below checks `f32::deserialize`'s output for the
-                                // same reason.
+                                // non-preserve arm below reads through the same helper for the same
+                                // reason.
                                 let mut final_exprs = config.final_exprs.clone();
                                 final_exprs.push("Some(enc)".to_owned());
                                 let value_expr = if is_f32 { "narrow_f32(x)" } else { "x" };
-                                // The head-checked read already yields OUR error type (the check
-                                // itself is a `DeserializeFailure`), so neither conversion applies
-                                // to it — only the bare `float_sz()` read needs converting.
+                                // The membership-checked read already yields OUR error type (the
+                                // check itself is a `DeserializeFailure`), so neither conversion
+                                // applies to it — only the bare `float_sz()` read needs converting.
                                 let read_expr = if unconstrained {
                                     format!("{deserializer_name}.float_sz(){error_convert}")
                                 } else {
@@ -1480,25 +1480,29 @@ impl GenerationScope {
                                     before_after.after_str(true)
                                 ));
                             } else {
-                                // `float32`/`float64` ARE cbor_event's head-strict `f32`/`f64`
-                                // blanket impls (`#7.26`-only / `#7.27`-only), so the read is the
-                                // check and nothing is emitted around it. The other four classes
-                                // have no blanket impl to match their head set and read through the
-                                // runtime's checked reader; the `f32`-carried ones narrow after the
+                                // Width-unconstrained `float` IS cbor_event's `f64` blanket impl:
+                                // that impl accepts any float head and decoding into `f64` is total
+                                // (every CBOR float value is binary64-representable), which is
+                                // exactly the vacuous class. So the read is the whole of it and
+                                // nothing is emitted around it.
+                                //
+                                // No other class may use a blanket impl. cbor_event's `f32` impl
+                                // asks "is this value binary32-representable" — the NESTED reading
+                                // of the CDDL names, under which `1.5` is a `float32`. Our classes
+                                // partition instead (`1.5` is a `float16` and not a `float32`), so
+                                // all five constrained classes read through the runtime's
+                                // membership-checked reader; the `f32`-carried ones narrow after the
                                 // check, exactly (never an `as` cast).
-                                let read_expr = match p {
-                                    Primitive::F32 | Primitive::F64 => {
-                                        format!("{p}::deserialize({deserializer_name})")
-                                    }
-                                    _ => {
-                                        let read = format!(
-                                            "read_float_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
-                                        );
-                                        if is_f32 {
-                                            format!("{read}.map(narrow_f32)")
-                                        } else {
-                                            read
-                                        }
+                                let read_expr = if unconstrained {
+                                    format!("{p}::deserialize({deserializer_name})")
+                                } else {
+                                    let read = format!(
+                                        "read_float_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
+                                    );
+                                    if is_f32 {
+                                        format!("{read}.map(narrow_f32)")
+                                    } else {
+                                        read
                                     }
                                 };
                                 let result_expr = match &type_cfg.float_bounds {

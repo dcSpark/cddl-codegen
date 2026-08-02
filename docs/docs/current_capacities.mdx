@@ -16,40 +16,58 @@ sidebar_position: 3
 * `int` (signed integer, `uint / nint`) - maps to a generated `Int` enum covering the full CBOR
   integer range, in any position: as a member, an array element, a table value, or a bare
   top-level alias (`x = int`, `x = bytes .cbor int`)
-* Floats - **the CDDL name decides which CBOR heads a member accepts, and which one it writes.** RFC
-  8610's prelude defines the six names as representation types (`float16 = #7.25`,
-  `float32 = #7.26`, `float64 = #7.27`, plus the two unions and the catch-all `float`), and the
-  generated codec honors that literally, in both directions and in every profile:
+* Floats - **the CDDL name is a set of VALUES, not of encodings.** RFC 8610 § 2.2.3 is explicit
+  that the `#7.x` notation "is about a set of values at the data model level … it does not mandate
+  that these values also do have to be serialized as half-precision floats: CDDL does not provide
+  any language means to restrict the choice of serialization variants", and § 3.3 defines `float32`
+  as "a number **representable as** a single-precision float". The six prelude names therefore
+  **partition** the float values by their *shortest lossless form*, and the generated codec
+  implements exactly that partition in both directions and in every profile:
 
-  | CDDL name | accepts (decode) | Rust type | writes a fresh value, default profile | …under preserve / canonical |
-  |---|---|---|---|---|
-  | `float16` | `0xf9` | `f32` | `0xf9` | `0xf9` |
-  | `float32` | `0xfa` | `f32` | `0xfa` | `0xfa` |
-  | `float64` | `0xfb` | `f64` | `0xfb` | `0xfb` |
-  | `float16-32` | `0xf9`, `0xfa` | `f32` | narrowest of the two that is exact | same |
-  | `float32-64` | `0xfa`, `0xfb` | `f64` | narrowest of the two that is exact | same |
-  | `float` | `0xf9`, `0xfa`, `0xfb` | `f64` | `0xfb` | narrowest of the three that is exact |
+  | CDDL name | contains the values whose shortest lossless form is | Rust type | writes |
+  |---|---|---|---|
+  | `float16` | `0xf9` | `f32` | `0xf9` |
+  | `float32` | `0xfa` | `f32` | `0xfa` |
+  | `float64` | `0xfb` | `f64` | `0xfb` |
+  | `float16-32` | `0xf9` or `0xfa` | `f32` | that width |
+  | `float32-64` | `0xfa` or `0xfb` | `f64` | that width |
+  | `float` | any float value | `f64` | that width |
 
-  A head outside the declared set is a **decode error** with the usual location annotation — never a
-  silent narrowing or widening of the value, so a member's decoded value never depends on bytes its
-  own type forbids. Under `--preserve-encodings` the head width is ordinary encoding data: a
-  *recorded* head replays byte-exactly (it is in-set by construction), and only a member with no
-  record falls back to the write column above. `--canonical-form` leaves a declared-width name alone
-  — its declared width *is* its canonical form. The narrowest-lossless rule is therefore where RFC
-  8949 § 4.1 preferred serialization actually has a choice to make: always for the two union names,
-  and for `float` in every profile except the default one, which writes `0xfb` unchanged.
+  The classes are **disjoint**: `1.5` is a `float16` and *not* a `float32`, at any head. That is the
+  only reading under which `float16-32` and `float32-64` are not redundant spellings of
+  `float32`/`float64`.
 
-  Because every admitted head is exact for its Rust type, decoding never loses precision and a
-  **NaN payload survives byte-exactly** at every width (both conversions are done in software, so no
-  platform-specific float cast can quiet a signaling NaN or drop its payload).
+  **Decoding accepts every float head** — `0xf9`, `0xfa` and `0xfb` alike — and judges the decoded
+  *value*. An `0xfb`-headed `1.5` is a perfectly good `float16`; an `0xfa`-headed `1.5` is *not* a
+  `float32`. Head-strictness would be wrong in both directions here: RFC 8949 § 4.1 preferred
+  serialization lets any conforming encoder pick a different width for the same value, so a
+  head-strict reader would reject its own class's canonical bytes. A value outside the class is a
+  **decode error** with the usual location annotation.
 
-  The one place the strictness is visible on the *write* side is `float16`, whose single admitted
-  head cannot represent every `f32`. Serializing a `float16` member holding, say, `1.1` **fails**
-  rather than rounding — rounding to fit is exactly the silent value mutation a declared width
-  exists to prevent. The error is returned through `Serialize`, but note that the convenience
-  `to_cbor_bytes()` door unwraps it, so that door **panics** on such a value; call
-  `cbor_event::se::Serialize::serialize` directly (or keep the value f16-exact) where the input is
-  untrusted. This is the pre-existing design of that door, not specific to floats
+  **Writing is always the smallest head that preserves the value** (RFC 8949 § 4.1 preferred
+  serialization), uniformly, the same rule the integer writes follow. For a member of a constrained
+  class that head *is* its declared width — membership means "the value's shortest form is that
+  width" — so no separate width-choice rule is needed. Under `--preserve-encodings` the head width
+  is ordinary encoding data: a *recorded* head replays byte-exactly whenever it still represents the
+  value (so the `0xfb`-headed `1.5` above round-trips as `0xfb`), and only a value with no record
+  takes its shortest form. `--canonical-form` ignores recorded widths and writes the shortest form.
+
+  Because every value a class contains is exact in its Rust carrier, decoding never loses precision
+  and a **NaN payload survives byte-exactly** at every width (both conversions are done in software:
+  an `as` cast's NaN-payload behaviour is not merely platform-dependent — LLVM const-folds the
+  conversion to a canonical quiet NaN, so `as` can differ between the const-evaluated and runtime
+  paths of one binary). Note that a NaN's class follows the same rule as any other value: the
+  canonical quiet NaN's shortest form is `0xf9 0x7e00`, so it is a `float16` value and not a
+  `float64` one.
+
+  On the **write** side the partition is visible as a membership check: serializing a value the
+  member's class does not contain — `1.1` in a `float16`, or `1.5` in a `float32` — **fails** rather
+  than picking some head that would fit. Writing it wider would emit bytes this crate's own decoder
+  rejects for that member; writing it narrower would round the value. The error is returned through
+  `Serialize`, but note that the convenience `to_cbor_bytes()` door unwraps it, so that door
+  **panics** on such a value; call `cbor_event::se::Serialize::serialize` directly (or keep the
+  value inside its class) where the input is untrusted. This is the pre-existing design of that
+  door, not specific to floats
 * Array values - `[uint]`
 * Table types as members - `foo = ( x: { * a => b } )`
 * Inline groups at root level - `foo = ( a: uint, b: uint)`
@@ -172,7 +190,7 @@ Comparisons and hashing are unchanged: the wrapper derives `PartialEq/Eq/Partial
 
 A rule that is a plain reference to another type (`foo = bar`) or a wire-transparent wrapper (`basic = (uint)`, where parentheses have no CBOR effect) generates a transparent `pub type Foo = ...` alias. Use `; @newtype` to opt into a `pub struct` wrapper instead (see [comment DSL](comment_dsl#newtype)).
 
-A top-level **range** rule whose window does not collapse exactly onto a Rust primitive width — literal-headed (`c = -10..-3`) or typename-headed (`bounded = int .le 10`) — generates a newtype wrapper whose constructor and deserializer enforce the window (a transparent alias has nothing to hang the check on). An exact collapse (`u8ish = 0..255`) stays a `pub type` alias. Float-typed range windows are enforced the same way: a float range (`c = 0.5..10.5`, exclusive `0.5...10.5`, or a control form like `float64 .lt 10.5`) wraps into a newtype whose constructor and deserializer enforce the window with a NaN-safe check (NaN is always rejected), and a tagged float range writes/requires its tag. Boundaries: `.ne` over a float and a decimal bound on an integer-primitive head (`uint .le 10.5`) are rejected at generation time with a clear error (there is no principled single-value float exclusion, and silently flooring a decimal onto an int head would mis-enforce). Under `--preserve-encodings` a float window is enforced on the same value the default profile checks — an `f32`-carried member's window is checked on the `f32` the head-strict read produced, and every head such a member admits is `f32`-exact — so accept/reject does not vary by profile, and no window verdict depends on a rounding step.
+A top-level **range** rule whose window does not collapse exactly onto a Rust primitive width — literal-headed (`c = -10..-3`) or typename-headed (`bounded = int .le 10`) — generates a newtype wrapper whose constructor and deserializer enforce the window (a transparent alias has nothing to hang the check on). An exact collapse (`u8ish = 0..255`) stays a `pub type` alias. Float-typed range windows are enforced the same way: a float range (`c = 0.5..10.5`, exclusive `0.5...10.5`, or a control form like `float64 .lt 10.5`) wraps into a newtype whose constructor and deserializer enforce the window with a NaN-safe check (NaN is always rejected), and a tagged float range writes/requires its tag. Boundaries: `.ne` over a float and a decimal bound on an integer-primitive head (`uint .le 10.5`) are rejected at generation time with a clear error (there is no principled single-value float exclusion, and silently flooring a decimal onto an int head would mis-enforce). Under `--preserve-encodings` a float window is enforced on the same value the default profile checks — an `f32`-carried member's window is checked on the `f32` its read produced, and every value such a member's class contains is `f32`-exact — so accept/reject does not vary by profile, and no window verdict depends on a rounding step. A window and a float *class* compose: `float64 .lt 10.5` admits the values that are inside the window **and** are `float64` values, so `1.5` (a `float16` value) is refused however the window reads.
 
 A top-level single-type **tag** rule is the exception: it always generates the tag-writing/tag-checking newtype wrapper (`pub struct Tagged(pub(crate) String)` whose serialize writes `write_tag(42)` and whose deserialize rejects a wrong tag with `TagMismatch`). This holds for *every* single-type inner — a primitive or named type (`tagged = #6.42(text)`, `uri = #6.32(tstr)`), a `bytes .cbor T` wrapper (`foo_bytes = #6.20(bytes .cbor foo)`), a `.default`-carrying inner (`#6.42(uint .default 5)` — the default has no meaning on an always-present standalone value and is dropped), and a ranged inner (`#6.42(uint .le 255)` or the literal-headed `#6.5(3..10)`, whether or not the range collapses exactly onto a rust primitive). A transparent `pub type` alias cannot carry a custom serialize impl, so an alias would silently drop the tag from that type's own standalone `to/from_cbor_bytes` API — a CBOR conformance bug. `@newtype` is therefore redundant (though harmless) on a tag rule. Tag rules whose body is a group (`rational = #6.30([...])`) already generate a struct that writes the tag and are unaffected.
 

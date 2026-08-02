@@ -717,18 +717,18 @@ fn undefined_prelude_rejects_gracefully_in_every_position() {
 }
 
 /// Every float prelude name generates, in every position, under every profile — and the six names
-/// are six DISTINCT wire-acceptance classes rather than two carrier widths.
+/// are six DISTINCT value classes rather than two carrier widths.
 ///
-/// The head-CONSTRAINED names (`float16` `#7.25`, `float16-32` `#7.25`/`#7.26`, `float32-64`
-/// `#7.26`/`#7.27`) were once refused rather than registered, because generated code wrote every
-/// float at one head regardless of its type. They register now that both directions carry the
-/// declared width. What this pins is the part a rename or a copy-paste would silently break: which
-/// CARRIER each name gets, and that no two names collapsed back onto one identity — `float` and
-/// `float64` in particular, whose carrier is the same `f64` and whose head sets are not.
+/// The narrower names (`float16`, `float16-32`, `float32-64`) were once refused rather than
+/// registered, because generated code judged every float the same way regardless of its type. They
+/// register now that both directions carry the class. What this pins is the part a rename or a
+/// copy-paste would silently break: which CARRIER each name gets, and that no two names collapsed
+/// back onto one identity — `float` and `float64` in particular, whose carrier is the same `f64`
+/// and whose value sets are not.
 ///
 /// The carrier is read off the generated ctor signature rather than asserted through the IR so the
-/// test sees what a CONSUMER sees. The head sets themselves are pinned by byte vectors, where they
-/// are observable at all (`tests/core/tests.rs`, `tests/golden_hex_preserve/tests.rs`).
+/// test sees what a CONSUMER sees. The value classes themselves are pinned by byte vectors
+/// (`tests/core/tests.rs`, `tests/golden_hex_preserve/tests.rs`).
 #[test]
 fn every_float_prelude_name_generates_with_its_own_carrier() {
     // (CDDL name, rust carrier)
@@ -817,7 +817,7 @@ fn every_float_prelude_name_generates_with_its_own_carrier() {
 /// too, or a constrained rule resolves to a different type than the same name resolves to
 /// everywhere else. Two names had no primitive at all on this path and aborted at a bare
 /// `ident_to_primitive` unwrap (`float16-32 .size 4`), and `float16` resolved to the SAME primitive
-/// as `float32` — a constrained rule that silently accepted and emitted the wrong head widths.
+/// as `float32` — a constrained rule that silently accepted the wrong value class.
 ///
 /// Two halves, asserted together because the second is what stops the first from recurring under a
 /// different name: every float name carries its own identity through a constraint (read off the

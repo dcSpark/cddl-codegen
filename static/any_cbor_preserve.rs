@@ -521,7 +521,7 @@ fn serialize_special<'a>(
             // assemblies, so it cannot be called with one spelling — the same reason `fit_int_sz` /
             // `len_sz` / `str_len_sz` above are local mirrors. Keep the two in step.
             //
-            // `smallest_float_sz` is the RFC 8949 §4.2.1 value-preserving smallest width (NaN payload
+            // `smallest_float_sz` is the RFC 8949 §4.1 value-preserving smallest width (NaN payload
             // included); the NaN-drops-payload canonical case is handled above. A recorded width is
             // honored only while it still represents the value EXACTLY, because `write_float_sz`
             // ERRORS (`InvalidLenPassed`) on a lossy width rather than emitting a merely non-minimal

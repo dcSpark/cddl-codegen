@@ -555,15 +555,15 @@ fn render_float_primitive(rule: &str, p: Primitive, window: FloatWindow) -> Rend
             Ok(format!("{base} {op} {}", render_f64(hi)))
         }
         (Some((lo, lo_excl)), Some((hi, hi_excl))) => {
-            // A bare two-sided literal range (`0.5..10.5`) carries no width, so it parses back
-            // as the width-UNCONSTRAINED `float`. Any other class would lose its declared head set
-            // on the round trip — a different wire type, not a different spelling.
+            // A bare two-sided literal range (`0.5..10.5`) names no float class, so it parses
+            // back as the UNCONSTRAINED `float`. Any other class would lose its value partition on
+            // the round trip — a different type, not a different spelling.
             if p != Primitive::Float {
                 return Err(unrenderable(
                     rule,
                     format!(
                         "a two-sided window on `{base}` — a literal float range parses as the \
-                         width-unconstrained `float`, changing the accepted head widths"
+                         unconstrained `float`, changing the admitted value class"
                     ),
                 ));
             }
@@ -1911,10 +1911,10 @@ mod tests {
 
     #[test]
     fn float_two_sided_declared_width_is_lossy_hard_error() {
-        // A literal float range carries no width, so it parses back as the width-UNCONSTRAINED
-        // `float`. Every head-constrained class would lose its declared head set on that round trip
-        // — a different wire type, so a hard error rather than a lossy spelling. Only `float` itself
-        // renders two-sided (asserted above).
+        // A literal float range names no float class, so it parses back as the UNCONSTRAINED
+        // `float`. Every other class would lose its value partition on that round trip — a
+        // different type, so a hard error rather than a lossy spelling. Only `float` itself renders
+        // two-sided (asserted above).
         let t = IntermediateTypes::new();
         for p in [
             Primitive::F16,

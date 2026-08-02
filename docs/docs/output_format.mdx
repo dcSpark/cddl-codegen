@@ -140,12 +140,15 @@ pub struct A {
 `bool` is used rather than `Option<()>` precisely because it crosses the wasm and serde/schemars
 boundaries cleanly (wasm-bindgen has no `()` ABI, and serde collapses `Some(())`/`None`). Every
 fixed-value kind is covered — bool, null, uint, nint, text, and **float** (`? v: 2.5`): the float
-presence field serializes with `write_special(Special::Float(<lit>))` and verifies on read with an
-exact `raw.float()? != <lit>` compare, the same spellings the mandatory fixed-float path emits
-(`tests/corpus/optional_fixed_float.cddl`, hand vectors in `tests/core/tests.rs`'s
-`opt_fixed_member_float`). Under `--preserve-encodings` the member additionally carries its head-width
-encoding variable, so an absent member stores no width and a present one re-emits at the width it
-arrived on. A fixed float value is a literal, not a prelude name, so it declares no head set and accepts the literal at any width — the per-name head sets are the separate rule in [Floats](current_capacities#types), and the canonical narrowing is under [`--canonical-form`](command_line_flags).
+presence field serializes at the literal's smallest value-preserving head (RFC 8949 § 4.1) and
+verifies on read with an exact `raw.float()? != <lit>` compare, the same spellings the mandatory
+fixed-float path emits (`tests/corpus/optional_fixed_float.cddl`, hand vectors in
+`tests/core/tests.rs`'s `opt_fixed_member_float`). Under `--preserve-encodings` the member
+additionally carries its head-width encoding variable, so an absent member stores no width and a
+present one re-emits at the width it arrived on. A fixed float value is a literal, not a prelude
+name, so it names no value class and accepts the literal at any width — the per-name value classes
+are the separate rule in [Floats](current_capacities#types), and the canonical narrowing is under
+[`--canonical-form`](command_line_flags).
 
 ## Nominal tag-258 set types
 

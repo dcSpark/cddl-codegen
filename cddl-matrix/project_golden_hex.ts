@@ -301,7 +301,7 @@ w(`  - ${emittable.length} **emittable but no Appendix A vector lands here** (e.
 w(`- Golden tests: ${tests.size} default-flags · sibling sets: ${preserveKats} preserve + ${canonicalKats} canonical (below)`);
 w();
 w("**Sibling golden sets (not in this grid):** the encodings the default-flags set can never");
-w("exercise — the ➖ `.indef` cells, the ➖ `.float16`/`.float32` heads, and non-minimal header arguments — have their own spec-anchored");
+w("exercise — the ➖ `.indef` cells, the non-minimal float spellings of a value whose shortest form is narrower, and non-minimal header arguments — have their own spec-anchored");
 w("KATs: `tests/golden_hex_preserve/tests.rs` (irregular RFC 8949 §3 encodings must re-encode");
 w("byte-identically under `--preserve-encodings`) and `tests/golden_hex_canonical/tests.rs` (the");
 w("same irregular inputs must re-encode to hand-derived §4.2 minimal bytes under `--canonical-form`).");
@@ -422,8 +422,8 @@ w("`corpus_detect.ts`'s text scan, which matches a construct by NAME, then corre
 w("plain aliases (`bytes = bstr`, `text = tstr`, `null = nil`, derived from the pinned prelude): the");
 w("fixture writing `tstr` credits `prelude.text` too, because they are one construct under two");
 w("spellings. What is NOT corrected is a construct the fixture reaches by writing a **wider type that");
-w("the generator narrows at emission**: `one_float = [v: float]` asserts `fb…` doubles, so");
-w("`prelude.float64`'s cell is exercised in fact, yet no rule names `float64` and it reads ✗. That is a");
+w("the generator narrows at emission**: `one_float = [v: float]` asserts each value at its shortest");
+w("form, so `prelude.float16`'s cell is exercised in fact, yet no rule names `float16` and it reads ✗. That is a");
 w("claim about what cddl-codegen picks when it emits a union, not about spec structure — not derivable");
 w("from the prelude, and deliberately not guessed. For those rows read ✗ as *no golden rule names this");
 w("construct*, which is the honest fact, not as *nothing resembling it is asserted anywhere*.");

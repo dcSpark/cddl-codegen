@@ -127,27 +127,35 @@ pub fn escape_rust_str(s: &str) -> String {
     s.escape_default().to_string()
 }
 
-/// The CDDL float prelude names are SIX distinct wire-acceptance classes, not two carrier widths.
-/// Each name declares which CBOR float heads (`#7.25`/`#7.26`/`#7.27` — RFC 8610 App. D over RFC
-/// 8949 §3.3) its values may take, and a head outside that set is a decode error rather than a
-/// silent narrowing/widening. The Rust CARRIER is a function of the set (`f32` when every admitted
-/// head fits it), so two classes can share a carrier and still be distinct types — which is why
-/// `float` and `float64` cannot share one identity: both carry `f64`, but `float` admits all three
-/// heads and `float64` admits only `#7.27`.
+/// The CDDL float prelude names are SIX distinct VALUE classes, not two carrier widths, and not
+/// wire-encoding constraints. RFC 8610 §2.2.3 is explicit that the `#7.x` notation "is about a set
+/// of values at the data model level … it does not mandate that these values also do have to be
+/// serialized as half-precision floats: CDDL does not provide any language means to restrict the
+/// choice of serialization variants". The six names PARTITION the float values by their shortest
+/// lossless form: `float16` is the values whose shortest form is `#7.25`, `float32` `#7.26`,
+/// `float64` `#7.27`, with `float16-32`/`float32-64` spanning two and `float` all three. The classes
+/// are disjoint — `1.5` is a `float16` and not a `float32` — which is the only reading under which
+/// `float16-32`/`float32-64` are not redundant spellings.
+///
+/// The Rust CARRIER is a function of the class window (`f32` when every value in the class fits it),
+/// so two classes can share a carrier and still be distinct types — which is why `float` and
+/// `float64` cannot share one identity: both carry `f64`, but `float` is every float value and
+/// `float64` only those needing all eight bytes.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Primitive {
     Bool,
-    /// CDDL `float` — width-UNCONSTRAINED (`float = float16-32 / float64`): all three heads.
+    /// CDDL `float` (`float = float16-32 / float64`) — UNCONSTRAINED: every float value.
     Float,
-    /// CDDL `float64` — `#7.27` (`fb`) only.
+    /// CDDL `float64` — the values whose shortest lossless form is `#7.27` (`fb`).
     F64,
-    /// CDDL `float32` — `#7.26` (`fa`) only.
+    /// CDDL `float32` — the values whose shortest lossless form is `#7.26` (`fa`).
     F32,
-    /// CDDL `float16` — `#7.25` (`f9`) only. Carried as `f32`: every f16 widens into it exactly.
+    /// CDDL `float16` — the values whose shortest lossless form is `#7.25` (`f9`). Carried as
+    /// `f32`: every such value widens into it exactly.
     F16,
-    /// CDDL `float16-32` — `#7.25` / `#7.26`.
+    /// CDDL `float16-32` — shortest lossless form `#7.25` or `#7.26`.
     F16To32,
-    /// CDDL `float32-64` — `#7.26` / `#7.27`.
+    /// CDDL `float32-64` — shortest lossless form `#7.26` or `#7.27`.
     F32To64,
     // u8 in our cddl
     U8,
@@ -197,13 +205,15 @@ impl std::fmt::Display for Primitive {
 }
 // TODO: impl display or fmt or whatever rust uses
 impl Primitive {
-    /// The CBOR float heads this primitive's CDDL type admits, as the `cbor_event::Sz` spellings of
-    /// the NARROWEST and WIDEST admitted head — or `None` when it is not a float. The set is always
-    /// contiguous in width order (`Two` < `Four` < `Eight`), which is what lets both directions
-    /// express it as a pair of bounds: decode rejects a head outside them, and a fresh write picks
-    /// the narrowest LOSSLESS head within them (RFC 8949 §4.2.2 preferred serialization restricted
-    /// to the type's own head set).
-    pub fn float_head_set(self) -> Option<(&'static str, &'static str)> {
+    /// The window of SHORTEST-LOSSLESS-FORM widths this primitive's CDDL float class spans, as the
+    /// `cbor_event::Sz` spellings of its narrowest and widest — or `None` when it is not a float.
+    /// A value belongs to the class exactly when `smallest_float_sz(value)` lands inside the window,
+    /// which is what lets both directions express the class as a pair of bounds: decode accepts any
+    /// head and rejects a VALUE whose shortest form falls outside, and a write emits that same
+    /// shortest form (RFC 8949 §4.1 preferred serialization), which for a member is its declared
+    /// width by construction. The window is always contiguous in width order (`Two` < `Four` <
+    /// `Eight`).
+    pub fn float_class_window(self) -> Option<(&'static str, &'static str)> {
         Some(match self {
             Primitive::F16 => ("Two", "Two"),
             Primitive::F32 => ("Four", "Four"),
@@ -217,14 +227,15 @@ impl Primitive {
 
     /// Whether this is one of the six float classes.
     pub fn is_float(self) -> bool {
-        self.float_head_set().is_some()
+        self.float_class_window().is_some()
     }
 
-    /// Whether a float class's Rust carrier is `f32` — true exactly when every head it admits fits
+    /// Whether a float class's Rust carrier is `f32` — true exactly when every VALUE it admits fits
     /// an `f32` exactly (`float16`, `float32`, `float16-32`). The wire domain is `f64` either way,
     /// so an `f32`-carried class narrows after a read and widens before a write; both conversions
-    /// are exact by construction and go through the runtime's `narrow_f32`/`widen_f32` (never an
-    /// `as` cast, whose NaN-payload behavior is platform-dependent).
+    /// are exact by construction and go through the runtime's `narrow_f32` /
+    /// `cbor_event::se::f32_to_f64_exact` (never an `as` cast, whose NaN-payload behavior is both
+    /// platform-dependent and const-fold-dependent within one binary).
     pub fn float_carrier_is_f32(self) -> bool {
         matches!(self, Primitive::F16 | Primitive::F32 | Primitive::F16To32)
     }
@@ -256,8 +267,8 @@ impl Primitive {
     pub fn cbor_types(&self) -> Vec<CBORType> {
         match self {
             Primitive::Bool => vec![CBORType::Special],
-            // Every float class is major type 7 regardless of which HEADS it admits — the head set
-            // is checked after the type dispatch, not by it.
+            // Every float class is major type 7 regardless of which VALUES it admits — class
+            // membership is checked after the type dispatch, not by it.
             Primitive::Float
             | Primitive::F16
             | Primitive::F32

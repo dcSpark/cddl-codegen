@@ -1939,12 +1939,12 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     `static/error.rs`; if the captured Display does NOT name the violated constraint, that is a
     wrong-reason rejection to investigate, never a string to pin. Capture the fragment from the
     DEFAULT profile, which is the leg the replay gate asserts it on — a rejection's SPELLING can
-    differ by profile even when its cause does not. The float head-set rows are the live example: a
-    single-width name (`float32`, `float64`) reads through cbor_event's head-strict blanket impl by
-    default (`expected a float of width \`Four' but received width \`Two'`) and through
-    `read_float_sz_width` under `--preserve-encodings`, which must return the head in order to
-    record it and so reports `Expected float head #7.26, found #7.25` instead. Pinning the preserve
-    spelling would pass every local check and fail the gate. This class is Q4's
+    differ by profile even when its cause does not. The float value-class rows report through
+    `DeserializeFailure::FloatWidth` in BOTH profiles (`Expected a float32 value, found a float16
+    value`): reads go through `read_float_width`/`read_float_sz_width` for every one of the five
+    constrained names, and neither cbor_event blanket impl is reachable for them (the crate's `f32`
+    impl asks whether the value is binary32-representable, the NESTED reading, which is not the
+    partition our classes implement). This class is Q4's
     `enforce = yes (bounded-reject)` evidence (`query_q4_directional.ts` counts `class="constraint"`
     only). NOTE: the numeric range/eq rows carry these vectors only because their probe examples
     target `int` with literal, non-vacuous bounds — the rust corroborating oracle (`cddl` 0.10.x)

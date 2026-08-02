@@ -67,14 +67,16 @@ fn cbor_bytes_sz(bytes: Vec<u8>, sz: cbor_event::StringLenSz) -> Vec<u8> {
     buf.finalize()
 }
 
+/// A float at the smallest head that preserves its value (RFC 8949 §4.1) — what every generated
+/// write now emits, so an expected-bytes vector spelled with this helper says what the generator
+/// says. Reads accept any head, so it serves equally for hand-built decoder INPUT.
 fn cbor_float(f: f64) -> Vec<u8> {
     let mut buf = cbor_event::se::Serializer::new_vec();
-    buf.write_special(cbor_event::Special::Float(f)).unwrap();
+    buf.write_float_sz(f, cbor_event::se::smallest_float_sz(f)).unwrap();
     buf.finalize()
 }
 
-/// A float at a SPECIFIC head width — what a member whose CDDL type declares one needs, since
-/// `cbor_float` always writes the 8-byte `#7.27` head.
+/// A float at a SPECIFIC head width — for a vector that must pin a head other than the shortest.
 #[allow(dead_code)]
 fn cbor_float_sz(f: f64, sz: cbor_event::Sz) -> Vec<u8> {
     let mut buf = cbor_event::se::Serializer::new_vec();

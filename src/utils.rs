@@ -134,7 +134,7 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         // shouldn't reach here. The arm stays a guard rather than being deleted: reaching it
         // re-earns the `KNOWN_PANIC_CLASSES` entry retired when these names stopped arriving.
         // All six float prelude names are alias-handled — `IntermediateTypes::aliases()` registers
-        // one primitive per name, because each declares a different CBOR head set.
+        // one primitive per name, because each names a different set of float VALUES.
         "uint" | "nint" | "int" | "bool" | "tstr" | "text" |
         "bstr" | "bytes" | "null" | "nil" | "true"  | "false" |
         "float16" | // #7.25

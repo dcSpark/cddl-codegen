@@ -77,15 +77,18 @@ impl StringEncoding {
     }
 }
 
-/// The declared-width twin of `write_float`: the same recorded-width fit rule, restricted to the
-/// head set the CDDL type DECLARES (`min_width..=max_width`).
+/// The class-constrained twin of `write_float`: the same recorded-width fit rule, over a value the
+/// CDDL class spanning `min_width..=max_width` must ADMIT.
 ///
-/// A recorded head replays exactly when it is both in the set and still lossless for the value —
-/// strict decode guarantees the first for any value that was READ, and the second can fail only
-/// after the value was replaced, exactly as for `write_float`. Anything else (no recorded width, a
-/// width outside the set from a hand-built encoding struct, a recorded width that no longer fits)
-/// falls back to the narrowest admitted lossless head. A value that NO admitted head represents
-/// exactly fails loudly in `write_float_sz` rather than being rounded — see `float_head_width`.
+/// Membership is decided first and a non-member fails loudly (`float_class_width`); the recorded
+/// width is then honored on exactly the rule `write_float` uses — whenever it still represents the
+/// value — and anything else falls back to the value's shortest form, which for a member is the
+/// class's declared width.
+///
+/// The recorded width is deliberately NOT required to lie inside the class window. Reads accept any
+/// head and judge the VALUE, so an `fb`-headed `1.5` is a perfectly good `float16` and records
+/// `Sz::Eight`; clamping that back into the window on write would break the byte-exact round-trip
+/// this flag exists for.
 pub fn write_float_width(
     serializer: &mut Serializer,
     value: f64,
@@ -93,15 +96,10 @@ pub fn write_float_width(
     min_width: cbor_event::Sz,
     max_width: cbor_event::Sz,
 ) -> cbor_event::Result<&mut Serializer> {
+    let smallest = float_class_width(value, min_width, max_width)?;
     let width = match sz {
-        Some(sz)
-            if float_head_rank(sz) >= float_head_rank(min_width)
-                && float_head_rank(sz) <= float_head_rank(max_width)
-                && float_head_rank(sz) >= float_head_rank(cbor_event::se::smallest_float_sz(value)) =>
-        {
-            sz
-        }
-        _ => float_head_width(value, min_width, max_width),
+        Some(sz) if sz_max(sz) >= sz_max(smallest) => sz,
+        _ => smallest,
     };
     serializer.write_float_sz(value, width)
 }

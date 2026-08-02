@@ -924,7 +924,7 @@ fn rule_position_metadata(type_choices: &[TypeChoice]) -> RuleMetadata {
 /// The range machinery lowers a constraint onto the primitive that backs the constrained type, so a
 /// head `ident_to_primitive` does not map has nothing to lower onto — it used to abort at a bare
 /// `.unwrap()`. Recorded gracefully instead, for ANY such ident, so the next reserved-but-unmapped
-/// name class (the head-constrained float names were the first) cannot re-earn the panic.
+/// name class (the narrower float prelude names were the first) cannot re-earn the panic.
 fn unmapped_control_head_rejection(type_name: &RustIdent, cddl_ident: &CDDLIdent) -> String {
     format!(
         "rule `{type_name}`: a range or `.size` control operator on `{cddl_ident}` is unsupported — \
@@ -1445,7 +1445,7 @@ fn ident_to_primitive(ident: &CDDLIdent) -> Option<Primitive> {
         "int" => Some(Primitive::I64),
         "uint" => Some(Primitive::U64),
         "nint" => Some(Primitive::N64),
-        // One primitive per float prelude name: each declares a different CBOR head set.
+        // One primitive per float prelude name: each names a different set of float VALUES.
         "float16" => Some(Primitive::F16),
         "float32" => Some(Primitive::F32),
         "float64" => Some(Primitive::F64),

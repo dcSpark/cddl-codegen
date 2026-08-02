@@ -122,18 +122,6 @@ status = "out_of_scope"
 reason = "extended simple values are not a CDDL construct the generator emits"
 
 [[note]]
-cell = "enc.major7.float16"
-status = "out_of_scope"
-reason = "under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)"
-code_anchor = "Special::Float"   # generation/serialize.rs: the width-unconstrained `float` arm
-
-[[note]]
-cell = "enc.major7.float32"
-status = "out_of_scope"
-reason = "under default flags a width-unconstrained `float` never emits single-precision (same reason as float16); the f32 head is what a `float32` member emits at every profile, and is covered by the sibling KATs and by tests/core's `float_heads` vectors"
-code_anchor = "Special::Float"
-
-[[note]]
 cell = "enc.major7.break"
 status = "out_of_scope"
 reason = "break only terminates indefinite-length items, which the generator never emits under default flags"
@@ -157,3 +145,85 @@ reason = "generator emits definite-length arrays under default flags; indefinite
 cell = "enc.major5.indef"
 status = "out_of_scope"
 reason = "generator emits definite-length maps under default flags; indefinite is covered by the sibling preserve/canonical KATs"
+
+# ---- major 7 floats: the shortest-form write rule decides which of these the generator emits ----
+# A float write is the smallest head that preserves the value (RFC 8949 §4.1). So each Appendix A
+# float VALUE has exactly one encoding this suite can assert, and its wider spellings are bytes the
+# generator never produces under default flags. The three float cells are covered
+# (`float_half` / `float_single` / `float_double`); these notes classify the remainder.
+
+[[note]]
+hex = "f90000"   # 0.0
+status = "redundant"
+reason = "same f16 path (head 0xf9) as 1.5, covered by float_half"
+
+[[note]]
+hex = "f90001"   # 5.960464477539063e-08 (smallest subnormal binary16)
+status = "redundant"
+reason = "same f16 path as 1.5; a subnormal payload is not a distinct generator path"
+
+[[note]]
+hex = "f90400"   # 6.103515625e-05 (smallest normal binary16)
+status = "redundant"
+reason = "same f16 path as 1.5, covered by float_half"
+
+[[note]]
+hex = "f93c00"   # 1.0
+status = "redundant"
+reason = "same f16 path as 1.5, covered by float_half"
+
+[[note]]
+hex = "f97bff"   # 65504.0 (largest binary16)
+status = "redundant"
+reason = "same f16 path as 1.5, covered by float_half"
+
+[[note]]
+hex = "f98000"   # -0.0
+status = "redundant"
+reason = "same f16 path as 1.5; the sign bit is not a distinct generator path"
+
+[[note]]
+hex = "f9c400"   # -4.0
+status = "redundant"
+reason = "same f16 path as 1.5, covered by float_half"
+
+[[note]]
+hex = "fa7f7fffff"   # 3.4028234663852886e+38 (largest binary32)
+status = "redundant"
+reason = "same f32 path (head 0xfa) as 100000.0, covered by float_single"
+
+[[note]]
+hex = "fa7f800000"   # Infinity as binary32
+status = "out_of_scope"
+reason = "Infinity's shortest lossless form is the half `f97c00` (covered by float_infinity), so a write never selects the single-precision spelling; reads accept it"
+code_anchor = "smallest_float_sz"
+
+[[note]]
+hex = "fa7fc00000"   # NaN as binary32
+status = "out_of_scope"
+reason = "the canonical quiet NaN's shortest lossless form is the half `f97e00` (covered by float_nan), so a write never selects the single-precision spelling; reads accept it"
+code_anchor = "smallest_float_sz"
+
+[[note]]
+hex = "faff800000"   # -Infinity as binary32
+status = "out_of_scope"
+reason = "-Infinity's shortest lossless form is the half `f9fc00` (covered by float_neg_infinity), so a write never selects the single-precision spelling; reads accept it"
+code_anchor = "smallest_float_sz"
+
+[[note]]
+hex = "fb7ff0000000000000"   # Infinity as binary64
+status = "out_of_scope"
+reason = "same as the single-precision Infinity spelling: the shortest lossless form is `f97c00`, so a write never selects the double"
+code_anchor = "smallest_float_sz"
+
+[[note]]
+hex = "fb7ff8000000000000"   # NaN as binary64
+status = "out_of_scope"
+reason = "same as the single-precision NaN spelling: the shortest lossless form is `f97e00`, so a write never selects the double"
+code_anchor = "smallest_float_sz"
+
+[[note]]
+hex = "fbfff0000000000000"   # -Infinity as binary64
+status = "out_of_scope"
+reason = "same as the single-precision -Infinity spelling: the shortest lossless form is `f9fc00`, so a write never selects the double"
+code_anchor = "smallest_float_sz"

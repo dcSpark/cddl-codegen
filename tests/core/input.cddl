@@ -318,7 +318,7 @@ float_bounds = [
     excl: 0.5 ... 10.5,       ; exclusive upper endpoint (10.5 rejected)
     lt: float64 .lt 10.5,     ; one-sided exclusive max
     ge: float64 .ge 0.5,      ; one-sided inclusive min
-    eq: float64 .eq 3.5,      ; single accepted value
+    eq: float64 .eq 3.3,      ; single accepted value (a float64 one: 3.5's shortest form is f9)
     f32le: float32 .le 10.5   ; f32 variant, compared as f64
 ]
 

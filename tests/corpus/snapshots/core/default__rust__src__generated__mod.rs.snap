@@ -693,11 +693,11 @@ impl FloatBounds {
             }
             .into());
         }
-        if !(eq >= 3.5f64 && eq <= 3.5f64) {
+        if !(eq >= 3.3f64 && eq <= 3.3f64) {
             return Err(DeserializeFailure::RangeCheckFloat {
                 found: eq as f64,
-                min: Some(3.5f64),
-                max: Some(3.5f64),
+                min: Some(3.3f64),
+                max: Some(3.3f64),
                 min_inclusive: true,
                 max_inclusive: true,
             }

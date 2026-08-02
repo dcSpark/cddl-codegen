@@ -2361,12 +2361,21 @@ mod tests {
     }
 
     // ---- the six float prelude names under --preserve-encodings ---------------------------------
-    // Same six wire-acceptance classes as the default profile (see tests/core/tests.rs), plus the
-    // one thing only this profile has: a RECORDED head. Strict acceptance means a recorded head is
-    // in-set by construction, so it replays exactly; a FRESH value falls back to the declared width.
+    // Same six VALUE classes as the default profile (see tests/core/tests.rs), plus the one thing
+    // only this profile has: a RECORDED head. Reads accept ANY head and judge the decoded value, so
+    // a recorded head is NOT confined to the class's own width — an `fb`-headed 1.5 is a `float16`
+    // that must replay as `fb`. A fresh value falls back to its shortest lossless form, which for a
+    // member IS the class's declared width.
+
+    // 1.5 — shortest form `f9`, so a `float16` value.
     const F9_1_5: &[u8] = &[0xf9, 0x3e, 0x00];
     const FA_1_5: &[u8] = &[0xfa, 0x3f, 0xc0, 0x00, 0x00];
     const FB_1_5: &[u8] = &[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    // 1e10 — binary32-exact, outside binary16's range, so shortest form `fa`: a `float32` value.
+    const FA_1E10: &[u8] = &[0xfa, 0x50, 0x15, 0x02, 0xf9];
+    const FB_1E10: &[u8] = &[0xfb, 0x42, 0x02, 0xa0, 0x5f, 0x20, 0x00, 0x00, 0x00];
+    // 1.1 — needs the full binary64 mantissa, so shortest form `fb`: a `float64` value.
+    const FB_1_1: &[u8] = &[0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a];
 
     fn float_heads_bytes(items: &[&[u8]]) -> Vec<u8> {
         let mut v = arr_def(6);
@@ -2377,27 +2386,32 @@ mod tests {
     }
 
     #[test]
-    fn float_heads_replay_every_recorded_in_set_head() {
-        for (uh, wh, fh) in [
-            (F9_1_5, FA_1_5, F9_1_5),
-            (FA_1_5, FB_1_5, FA_1_5),
-            (F9_1_5, FA_1_5, FB_1_5),
+    fn float_heads_replay_every_recorded_head_including_wider_than_the_class() {
+        // `float_heads = [h: float16, u: float16-32, w: float32-64, s: float32, d: float64,
+        //  f: float]`. Each row feeds every member a value ITS class contains, at a head that
+        // carries it — including heads wider than the class's own width, which is precisely what a
+        // conforming preferred-serialization peer is free NOT to have used.
+        for (h, u, w, sfa, f) in [
+            (F9_1_5, F9_1_5, FA_1E10, FA_1E10, F9_1_5),
+            (FA_1_5, FA_1_5, FB_1E10, FB_1E10, FA_1_5),
+            (FB_1_5, FB_1_5, FB_1E10, FA_1E10, FB_1_5),
         ] {
-            let bytes = float_heads_bytes(&[F9_1_5, uh, wh, FA_1_5, FB_1_5, fh]);
+            let bytes = float_heads_bytes(&[h, u, w, sfa, FB_1_1, f]);
             let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
-            assert_eq!((d.h, d.u, d.s), (1.5f32, 1.5f32, 1.5f32));
-            assert_eq!((d.w, d.d, d.f), (1.5f64, 1.5f64, 1.5f64));
-            assert_eq!(d.to_cbor_bytes(), bytes, "a recorded in-set head replays exactly");
+            assert_eq!((d.h, d.u, d.s), (1.5f32, 1.5f32, 1e10f32));
+            assert_eq!((d.w, d.d, d.f), (1e10f64, 1.1f64, 1.5f64));
+            assert_eq!(d.to_cbor_bytes(), bytes, "a recorded head replays exactly");
         }
     }
 
     #[test]
     fn float_replays_a_non_minimal_recorded_head() {
-        // The regression floor for width-unconstrained `float`, the one name whose fresh writes still
-        // pick the narrowest lossless head: a RECORDED head is data and outranks that rule, so 1.5
-        // read at `#7.26` or `#7.27` re-encodes at the head it arrived on and not at `#7.25`.
+        // A RECORDED head is data and outranks the shortest-form write rule, so 1.5 read at `#7.26`
+        // or `#7.27` re-encodes at the head it arrived on and not at `#7.25`. Asserted on the
+        // unconstrained `float` member, where the two rules are visibly distinguishable.
         for recorded in [FA_1_5, FB_1_5] {
-            let bytes = float_heads_bytes(&[F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, recorded]);
+            let bytes =
+                float_heads_bytes(&[F9_1_5, F9_1_5, FA_1E10, FA_1E10, FB_1_1, recorded]);
             let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
             assert_eq!(d.f, 1.5f64);
             assert_eq!(
@@ -2405,53 +2419,62 @@ mod tests {
                 bytes,
                 "a non-minimal recorded head on `float` replays verbatim",
             );
-            // ... and dropping the record falls back to narrowest-lossless, so the two rules are
+            // ... and dropping the record falls back to the shortest form, so the two rules are
             // distinguishable rather than accidentally agreeing on this value.
             let mut fresh = d.clone();
             fresh.encodings = None;
             assert_eq!(
                 fresh.to_cbor_bytes(),
-                float_heads_bytes(&[F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, F9_1_5]),
-                "with no record, `float` writes the narrowest lossless head",
+                float_heads_bytes(&[F9_1_5, F9_1_5, FA_1E10, FA_1E10, FB_1_1, F9_1_5]),
+                "with no record, a float writes its shortest lossless form",
             );
         }
     }
 
     #[test]
-    fn float_heads_reject_every_out_of_set_head() {
-        let in_set: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, FB_1_5];
-        FloatHeads::from_cbor_bytes(&float_heads_bytes(&in_set)).unwrap();
-        for (idx, bad) in [
-            (0, FA_1_5),
-            (0, FB_1_5),
-            (1, FB_1_5),
-            (2, F9_1_5),
-            (3, F9_1_5),
-            (3, FB_1_5),
-            (4, F9_1_5),
-            (4, FA_1_5),
+    fn float_heads_reject_values_outside_their_class() {
+        let in_class: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1E10, FA_1E10, FB_1_1, F9_1_5];
+        FloatHeads::from_cbor_bytes(&float_heads_bytes(&in_class)).unwrap();
+        for (idx, bad, why) in [
+            (0usize, FA_1E10, "1e10 is a float32, not a float16"),
+            (0, FB_1_1, "1.1 is a float64, not a float16"),
+            (1, FB_1_1, "1.1 is a float64, not a float16-32"),
+            (2, FB_1_5, "an fb-headed 1.5 is still a float16, not a float32-64"),
+            (3, FA_1_5, "an fa-headed 1.5 is still a float16, not a float32"),
+            (3, FB_1_1, "1.1 is a float64, not a float32"),
+            (4, FB_1_5, "an fb-headed 1.5 is still a float16, not a float64"),
+            (4, FA_1E10, "1e10 is a float32, not a float64"),
         ] {
-            let mut items = in_set.clone();
+            let mut items = in_class.clone();
             items[idx] = bad;
             assert!(
                 FloatHeads::from_cbor_bytes(&float_heads_bytes(&items)).is_err(),
-                "member {idx} must reject a head outside its declared set"
+                "member {idx}: {why}"
             );
         }
     }
 
     #[test]
-    fn float_heads_fresh_values_write_the_declared_width() {
-        // No recorded width anywhere: `float32` writes `#7.26` even though 1.5's narrowest lossless
-        // head is `#7.25` — that narrowest-lossless rule survives ONLY on `float`, the last member.
-        let value = FloatHeads::new(1.5, 1.5, 1.1, 1.5, 1.5, 1.5);
+    fn float_heads_fresh_values_write_the_shortest_form() {
+        // No recorded width anywhere: every member writes its value's shortest lossless form, which
+        // for a member of a constrained class IS that class's declared width — no separate rule.
+        let value = FloatHeads::new(1.5, 1.5, 1.1, 1e10, 1.1, 1.5);
         let b = value.to_cbor_bytes();
         assert_eq!(&b[1..4], F9_1_5, "float16");
-        assert_eq!(&b[4..7], F9_1_5, "float16-32, f16-exact");
-        assert_eq!(b[7], 0xfb, "float32-64, not f32-exact");
-        assert_eq!(&b[16..21], FA_1_5, "float32 writes its declared width, not the narrowest");
+        assert_eq!(&b[4..7], F9_1_5, "float16-32 holding a float16 value");
+        assert_eq!(b[7], 0xfb, "float32-64 holding a float64 value");
+        assert_eq!(&b[16..21], FA_1E10, "float32");
         assert_eq!(b[21], 0xfb, "float64");
-        assert_eq!(b[30], 0xf9, "float stays narrowest-lossless");
+        assert_eq!(b[30], 0xf9, "float takes the shortest form too");
+    }
+
+    #[test]
+    fn float_heads_non_member_fails_serialize_loudly() {
+        // 1.5 is a `float16` value, so it is not a `float32` one: no head at which writing it into
+        // `s` is right, and the write fails rather than emitting bytes our own reader refuses.
+        let value = FloatHeads::new(1.5, 1.5, 1.1, 1.5, 1.1, 1.5);
+        let mut buf = cbor_event::se::Serializer::new_vec();
+        assert!(cbor_event::se::Serialize::serialize(&value, &mut buf).is_err());
     }
 
     #[test]
