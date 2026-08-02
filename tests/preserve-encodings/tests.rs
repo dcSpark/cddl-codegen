@@ -2386,7 +2386,34 @@ mod tests {
             let bytes = float_heads_bytes(&[F9_1_5, uh, wh, FA_1_5, FB_1_5, fh]);
             let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
             assert_eq!((d.h, d.u, d.s), (1.5f32, 1.5f32, 1.5f32));
+            assert_eq!((d.w, d.d, d.f), (1.5f64, 1.5f64, 1.5f64));
             assert_eq!(d.to_cbor_bytes(), bytes, "a recorded in-set head replays exactly");
+        }
+    }
+
+    #[test]
+    fn float_replays_a_non_minimal_recorded_head() {
+        // The regression floor for width-unconstrained `float`, the one name whose fresh writes still
+        // pick the narrowest lossless head: a RECORDED head is data and outranks that rule, so 1.5
+        // read at `#7.26` or `#7.27` re-encodes at the head it arrived on and not at `#7.25`.
+        for recorded in [FA_1_5, FB_1_5] {
+            let bytes = float_heads_bytes(&[F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, recorded]);
+            let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
+            assert_eq!(d.f, 1.5f64);
+            assert_eq!(
+                d.to_cbor_bytes(),
+                bytes,
+                "a non-minimal recorded head on `float` replays verbatim",
+            );
+            // ... and dropping the record falls back to narrowest-lossless, so the two rules are
+            // distinguishable rather than accidentally agreeing on this value.
+            let mut fresh = d.clone();
+            fresh.encodings = None;
+            assert_eq!(
+                fresh.to_cbor_bytes(),
+                float_heads_bytes(&[F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, F9_1_5]),
+                "with no record, `float` writes the narrowest lossless head",
+            );
         }
     }
 
