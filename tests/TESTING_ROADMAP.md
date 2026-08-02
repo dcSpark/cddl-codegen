@@ -176,98 +176,39 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-1. **A `float32` member accepts every float head and silently narrows the value, so the preserve
-   contract's accept ⇒ byte-exact re-encode does NOT hold for it.** RFC 8610's prelude defines
-   `float32 = #7.26`, so strict CDDL matches a `float32` member against a `0xfa` head alone;
-   `ident_to_primitive` in `src/parsing.rs` routes both `float16` and `float32` onto one
-   `Primitive::F32`, whose read is the pinned cbor_event fork's `impl Deserialize for f32` —
-   `raw.float().map(|f| f as f32)` — taking `f9`/`fa`/`fb` alike and narrowing with an `as` cast.
-   Two consequences the generated crate never signals: spec-invalid input is accepted, and an
-   accepted double that is not f32-exact comes back MUTATED, so preserve re-encodes it to different
-   bytes under the same recorded head width (`fb` 1.1 → the nearest f32 → a different 8-byte
-   payload; `fb` 1e300 → `+Inf`). `float64` members and the `any` path stay byte-exact for every
-   well-formed float, so the hole is exactly the float32/float16 member type — and the
-   platform-dependent float32-NaN caveat in `docs/docs/current_capacities.mdx` exists only because
-   of that same cast.
-   - **Two restorations, either of which makes accept ⇒ byte-exact true again.** The choice is a
-     spec-strictness decision, not a mechanical one. (a) Prelude semantics: a `float32` member
-     accepts `fa` only and a `float16` member `f9` only — what `#7.26`/`#7.25` say. (b)
-     Value-lossless acceptance: accept any head whose value is exactly representable at the member's
-     precision and reject the rest, which keeps the liberal cases that are ALREADY byte-exact (an
-     `fb`-headed 1.5 decodes and re-encodes verbatim today — the golden preserve KATs prove it) and
-     rejects only the mutating ones.
-   - **Under either option the `as` narrowing is replaced by a bit-exact conversion.** The pinned
-     cbor_event fork already ships `f64_to_f32_bits_exact`, which is `None` exactly for the values
-     that would mutate and carries a NaN payload across when it fits the 23-bit mantissa. That is
-     what makes an accepted NaN deterministic, so the fix DELETES the float32-NaN caveat and the
-     lossy-narrowing sentence from the capacities doc instead of keeping them documented.
-   - **It is a default-profile behavior change, not a preserve-only one.** Accept/reject must not
-     vary by profile here — float range windows are already enforced on the narrowed value in both
-     profiles for that reason — so a tightened acceptance lands in both and belongs in the changelog
-     as a decode-acceptance narrowing.
-   - **`float16` needs its own ruling in the same change.** It is aliased onto `Primitive::F32`
-     today, so a `float16` member is an f32 member with a wider accept set than even option (b)
-     would grant it; whichever option lands must say whether float16 keeps f32 storage with an
-     `f9`-only (or f16-exact) accept rule, or gains its own primitive.
-   - **The evidence cannot see the divergence, and no catalog vector can certify it yet — this is
-     the fix's first work item.** Every conformance vector on the `prelude.float32` row is
-     `fa`-headed, so the row's `supported` / `emission.preserve supported` annotation is true of
-     everything it has ever been shown. The two vectors that would discriminate are
-     `8200fb3ff199999999999a` (1.1 — accepted today, value mutates) and `8200fb3ff8000000000000`
-     (1.5 — accepted today, byte-exact; the vector the two options split on, since (a) rejects it
-     and (b) keeps it). Both are spec-INVALID per `#7.26`, so their only legitimate home is
-     `class="over-acceptance"`, which the mint keeps only while BOTH oracles reject the bytes — and
-     the rust oracle does not: `cddl --ci validate` accepts `f9`/`fa`/`fb` alike against a `float32`
-     member (and `fa` against `float64`), while the ruby oracle classifies by the decoded value's
-     MINIMAL width rather than the wire head and so rejects a spec-valid `fa`-headed 1.5 as readily
-     as the `fb` ones. Landing the pins before that is settled would commit vectors the next mint
-     drops, taking the Q4 over-accepts set red with them. The route out is one of: an
-     upstream-oracle-gap exemption for over-acceptance pins (the shape the constraint side already
-     has for the rust `uint` control-op gap), or an oracle that discriminates head width.
-   - **The ENCODE side is head-blind too, so the fix must make writing head-faithful and not only
-     narrow acceptance.** A generated member is written at a width its declared type never chooses.
-     In the DEFAULT profile every native float goes through `Special::Float`, which the pinned
-     cbor_event fork writes as `0x1b` + 8 bytes unconditionally: `x = [v: float32, w: float64]` with
-     both members 1.5 encodes `82fb3ff8000000000000fb3ff8000000000000` — the `float32` member is
-     byte-identical to the `float64` one, and carries a `#7.27` head for a `#7.26` type. Under
-     `--preserve-encodings` a value with no recorded width takes `smallest_float_sz`, the narrowest
-     LOSSLESS head, which diverges the other way: the same struct at 1.5 encodes `82f93e00f93e00`,
-     giving the `float64` member a `#7.25` head; at 1.1 it encodes `82fa3f8ccccdfb3ff199999999999a`,
-     which is in-set for both. So the divergence is value-dependent in preserve and unconditional in
-     default, and it is a WRITE-side instance of the same head-blindness the accept side has — which
-     is why one delivery should own both: an acceptance rule that says which heads a member may
-     read, and no rule about which head it writes, still lets a round-trip leave the type's own
-     value set. `float` is the only float name unaffected in either profile, because its prelude
-     definition (`float = float16-32 / float64`) admits all three heads.
-   - **Three prelude names are refused today because of the encode half, and flip when it lands.**
-     `float16` (`#7.25`), `float16-32` (`#7.25 / #7.26`) and `float32-64` (`#7.26 / #7.27`) name
-     proper subsets of the head widths, so registering them onto `f32`/`f64` would emit out-of-set
-     bytes by the measurements above. They are graceful refusals naming the type and its head set
-     (`head_constrained_float_prelude_names_reject_gracefully_in_every_position`, and the
-     `tests/matrix_reject/prelude.float16.cddl` row and its two siblings) rather than the
-     `insert_alias` registrations the panic they replaced invited. The refusal is recorded at TWO
-     seams, and a flip has to move both: `IntermediateTypes::new_type`'s unresolved-reserved
-     fallback, which every ordinary position funnels through, and the rule-position CONTROL-OPERATOR
-     path in `parsing.rs`, which resolves an ident through `ident_to_primitive` and never calls
-     `new_type` (`x = float16 .size 4` generated an `f32`-backed codec at exit 0 until it did —
-     pinned by `control_operator_path_refuses_head_constrained_floats_and_unmapped_heads`, which
-     also holds the general reserved-but-unmapped-head rejection that replaced the bare
-     `ident_to_primitive` unwrap beside it). Both seams share one message through
-     `intermediate::head_constrained_float_rejection`, so a flip is one function and two call sites.
-     The registrations become correct — and are the flip condition for those refusals — exactly when
-     a member writes the head its type declares. `float32` and `float64` stay registered as the pre-existing exposure this
-     entry already describes, not as a judgment that they are in-set.
-   - **Surfaces the fix touches:** `ident_to_primitive` in `src/parsing.rs`, the
-     `Primitive::F32 | Primitive::F64` arms in `src/generation/deserialize.rs` (the preserve
-     `float_sz()` read and the plain `f32::deserialize` one alike), their write-side counterparts in
-     `src/generation/serialize.rs` plus the `write_float` helper in `static/` (the encode half
-     above), `intermediate::head_constrained_float_rejection` and its two call sites (the
-     `new_type` arm and the control-operator guard) and the `aliases()` table they would move to,
-     the float bullet in
-     `docs/docs/current_capacities.mdx` (its lossy-narrowing sentence and NaN caveat both go), the
-     "values are all f32-exact" scope notes on the `sgl` member in the golden preserve and canonical
-     KATs, and — under (b) — the new `prelude.float32` catalog vectors plus a matrix re-probe whose
-     shape lets that row's evidence discriminate.
+1. **The float head boundary has no ORACLE-CERTIFIED evidence, because both reference oracles
+   over-accept it.** The generator side landed: each of the six float prelude names accepts only the
+   CBOR heads its own name declares and writes the width it declares, in every profile (the wire
+   contract is pinned by the `float_heads` vectors in `tests/core/tests.rs` and
+   `tests/preserve-encodings/tests.rs` and the `float_widths` KATs in
+   `tests/golden_hex_preserve/tests.rs`). What remains is the matrix evidence, and it is blocked on
+   the oracles rather than on us.
+   - **The reject-side vectors diverge from BOTH oracles, so they cannot ship as ordinary pins.** An
+     `f9` or `fb` head against a `float32` member is spec-invalid per `#7.26` and is now refused,
+     which puts those vectors in `class="over-acceptance"` — a class the mint keeps only while both
+     oracles reject the bytes. Neither does: the rust reference oracle's `cddl --ci validate`
+     accepts `f9`/`fa`/`fb` alike against a `float32` member (and `fa` against `float64`), and the
+     ruby oracle classifies by the decoded value's MINIMAL width rather than the wire head, so it
+     rejects a spec-valid `fa`-headed 1.5 as readily as the `fb` ones. Committing the pins before
+     that is settled commits vectors the next mint drops, taking the Q4 over-accepts set red.
+   - **The route out is a per-vector stale-guarded exemption plus a submittable writeup.** Each such
+     vector takes an exemption entry citing a committed upstream report (the shape the constraint
+     side already has for the rust `uint` control-op gap). The ruby half of that report is a work
+     item in its own right, and is what the exemption's honesty rests on: prior "ruby is wrong"
+     readings have been answered by the ruby author showing OUR spec reading was wrong, so the
+     report has to be written so he can answer it — our reading cited to section (RFC 8610 App. D
+     prelude `#7.25`/`#7.26`; RFC 8949 §3.3/§4.2.2 head semantics), the exact vectors (hex + CDDL),
+     ruby's probed behaviour with the command, and the live branch "if ruby is right, the exemption
+     is wrong and the acceptance rule reopens" stated as an answerable question. A vector whose
+     writeup case cannot be made concrete does not ship exempted.
+   - **The `supported` rows for `float16` / `float16-32` / `float32-64` carry hand-written evidence
+     until a `verify.ts` pass replaces it.** Their annotation lines say so explicitly. The accept
+     side also wants re-minting for all six rows: every committed vector on the float rows is
+     structurally `fa`- or `fb`-headed, so a green float row today says nothing about the new
+     boundary in either direction.
+   - **Reopening signal:** none needed — this is scheduled work, not a deferral. It is done when the
+     six float rows' evidence is minted by `verify.ts` and every exempted reject vector names a
+     committed writeup.
 
 2. **Two uncovered surfaces around `export()`, both measured while probing the aggregate-package
    deferral above.** Neither depends on that feature ever shipping.
