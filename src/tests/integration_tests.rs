@@ -8161,7 +8161,14 @@ fn ir_conformance_corpus() {
     //   draft/cddl-size-on-int-divergence.md). If upstream ships the per-value semantics and
     //   cddl-codegen supports the construct, its fixture re-grows the member — possibly back onto
     //   this list until the fork fix lands.)
-    const RUST_ORACLE_SKIP: &[&str] = &["alias_positions"];
+    //   open_table rides the same gap-#11 class, sharpened by the TWO-ROW shape: for
+    //   `{ * bstr => uint, * md => md }` the validator binds a minted `h'00'` key against the
+    //   NAMED-RULE row's arms and reports `map requires entry key of type uint` / `text` — `md`'s
+    //   types, not `bstr`'s — rejecting a value that plainly matches the first row. All three of
+    //   the fixture's rules carry the named-rule `md` row, so all three fail with the signature;
+    //   the ruby gem judges them instead (the gate's own run is the check — a wrongly-added
+    //   resident that starts passing trips the stale guard).
+    const RUST_ORACLE_SKIP: &[&str] = &["alias_positions", "open_table"];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
