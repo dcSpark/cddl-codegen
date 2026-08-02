@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en" dir="ltr" class="docs-wrapper plugin-docs plugin-id-default docs-version-current docs-doc-page docs-doc-id-component_differences" data-has-hydrated="false">
+<head>
+<meta charset="UTF-8">
+<meta name="generator" content="Docusaurus v3.10.1">
+<title data-rh="true">Component Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/component_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Component Differences | cddl-codegen"><meta data-rh="true" name="description" content="--component emits a third face beside the rust and wasm crates: a"><meta data-rh="true" property="og:description" content="--component emits a third face beside the rust and wasm crates: a"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/component_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
+<script src="/cddl-codegen/assets/js/runtime~main.1033709a.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
+</head>
+<body>
+<svg style="display: none;"><defs>
+<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"/></symbol>
+</defs></svg>
+<script>!function(){var t=function(){try{return new URLSearchParams(window.location.search).get("docusaurus-theme")}catch(t){}}()||function(){try{return window.localStorage.getItem("theme")}catch(t){}}();document.documentElement.setAttribute("data-theme",t||"light"),document.documentElement.setAttribute("data-theme-choice",t||"light")}(),function(){try{const c=new URLSearchParams(window.location.search).entries();for(var[t,e]of c)if(t.startsWith("docusaurus-data-")){var a=t.replace("docusaurus-data-","data-");document.documentElement.setAttribute(a,e)}}catch(t){}}()</script><div id="__docusaurus"><link rel="preload" as="image" href="/cddl-codegen/img/favicon.svg"><div role="region" aria-label="Skip to main content"><a class="skipToContent_fXgn" href="#__docusaurus_skipToContent_fallback">Skip to main content</a></div><nav aria-label="Main" class="theme-layout-navbar navbar navbar--fixed-top"><div class="navbar__inner"><div class="theme-layout-navbar-left navbar__items"><button aria-label="Toggle navigation bar" aria-expanded="false" class="navbar__toggle clean-btn" type="button"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2" d="M4 7h22M4 15h22M4 23h22"></path></svg></button><a class="navbar__brand" href="/cddl-codegen/"><div class="navbar__logo"><img src="/cddl-codegen/img/favicon.svg" alt="dcSpark logo" class="themedComponent_mlkZ themedComponent--light_NVdE"><img src="/cddl-codegen/img/favicon.svg" alt="dcSpark logo" class="themedComponent_mlkZ themedComponent--dark_xIcU"></div><b class="navbar__title text--truncate">cddl-codegen</b></a></div><div class="theme-layout-navbar-right navbar__items navbar__items--right"><div class="navbar__item dropdown dropdown--hoverable dropdown--right"><a href="#" aria-haspopup="true" aria-expanded="false" role="button" class="navbar__link"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" class="iconLanguage_nlXk"><path fill="currentColor" d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"></path></svg>English</a><ul class="dropdown__menu"><li><a href="/cddl-codegen/component_differences" target="_self" rel="noopener noreferrer" class="dropdown__link dropdown__link--active" lang="en">English</a></li></ul></div><a href="https://github.com/dcSpark/cddl-codegen" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">GitHub<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a><div class="toggle_vylO colorModeToggle_DEke"><button class="clean-btn toggleButton_gllP toggleButtonDisabled_aARS" type="button" disabled="" title="system mode" aria-label="Switch between dark and light mode (currently system mode)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP lightToggleIcon_pyhR"><path fill="currentColor" d="M12,9c1.65,0,3,1.35,3,3s-1.35,3-3,3s-3-1.35-3-3S10.35,9,12,9 M12,7c-2.76,0-5,2.24-5,5s2.24,5,5,5s5-2.24,5-5 S14.76,7,12,7L12,7z M2,13l2,0c0.55,0,1-0.45,1-1s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S1.45,13,2,13z M20,13l2,0c0.55,0,1-0.45,1-1 s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S19.45,13,20,13z M11,2v2c0,0.55,0.45,1,1,1s1-0.45,1-1V2c0-0.55-0.45-1-1-1S11,1.45,11,2z M11,20v2c0,0.55,0.45,1,1,1s1-0.45,1-1v-2c0-0.55-0.45-1-1-1C11.45,19,11,19.45,11,20z M5.99,4.58c-0.39-0.39-1.03-0.39-1.41,0 c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0s0.39-1.03,0-1.41L5.99,4.58z M18.36,16.95 c-0.39-0.39-1.03-0.39-1.41,0c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0c0.39-0.39,0.39-1.03,0-1.41 L18.36,16.95z M19.42,5.99c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06c-0.39,0.39-0.39,1.03,0,1.41 s1.03,0.39,1.41,0L19.42,5.99z M7.05,18.36c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06 c-0.39,0.39-0.39,1.03,0,1.41s1.03,0.39,1.41,0L7.05,18.36z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP darkToggleIcon_wfgR"><path fill="currentColor" d="M9.37,5.51C9.19,6.15,9.1,6.82,9.1,7.5c0,4.08,3.32,7.4,7.4,7.4c0.68,0,1.35-0.09,1.99-0.27C17.45,17.19,14.93,19,12,19 c-3.86,0-7-3.14-7-7C5,9.07,6.81,6.55,9.37,5.51z M12,3c-4.97,0-9,4.03-9,9s4.03,9,9,9s9-4.03,9-9c0-0.46-0.04-0.92-0.1-1.36 c-0.98,1.37-2.58,2.26-4.4,2.26c-2.98,0-5.4-2.42-5.4-5.4c0-1.81,0.89-3.42,2.26-4.4C12.92,3.04,12.46,3,12,3L12,3z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP systemToggleIcon_QzmC"><path fill="currentColor" d="m12 21c4.971 0 9-4.029 9-9s-4.029-9-9-9-9 4.029-9 9 4.029 9 9 9zm4.95-13.95c1.313 1.313 2.05 3.093 2.05 4.95s-0.738 3.637-2.05 4.95c-1.313 1.313-3.093 2.05-4.95 2.05v-14c1.857 0 3.637 0.737 4.95 2.05z"></path></svg></button></div><div class="navbarSearchContainer_Bca1"><div class="navbar__search searchBarContainer_NW3z" dir="ltr"><input placeholder="Search" aria-label="Search" class="navbar__search-input searchInput_YFbd" value=""><div class="loadingRing_RJI3 searchBarLoadingRing_YnHq"><div></div><div></div><div></div><div></div></div></div></div></div></div><div role="presentation" class="navbar-sidebar__backdrop"></div></nav><div id="__docusaurus_skipToContent_fallback" class="theme-layout-main main-wrapper mainWrapper_z2l0"><div class="docsWrapper_hBAB"><button aria-label="Scroll back to top" class="clean-btn theme-back-to-top-button backToTopButton_sjWU" type="button"></button><div class="docRoot_UBD9"><aside class="theme-doc-sidebar-container docSidebarContainer_YfHR"><div class="sidebarViewport_aRkj"><div class="sidebar_njMd"><nav aria-label="Docs sidebar" class="menu thin-scrollbar menu_SIkG"><ul class="theme-doc-sidebar-menu menu__list"><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/"><span title="Introduction" class="linkLabel_WmDU">Introduction</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/getting_started"><span title="Installation &amp; Getting Started" class="linkLabel_WmDU">Installation &amp; Getting Started</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/command_line_flags"><span title="Command line flags" class="linkLabel_WmDU">Command line flags</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/current_capacities"><span title="Current capacities" class="linkLabel_WmDU">Current capacities</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/config_file"><span title="Config file" class="linkLabel_WmDU">Config file</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/output_format"><span title="Output format" class="linkLabel_WmDU">Output format</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/preserving_edits"><span title="Preserving edits to generated code" class="linkLabel_WmDU">Preserving edits to generated code</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/wasm_differences"><span title="Wasm Differences" class="linkLabel_WmDU">Wasm Differences</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/comment_dsl"><span title="Comment DSL" class="linkLabel_WmDU">Comment DSL</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link menu__link--active" aria-current="page" href="/cddl-codegen/component_differences"><span title="Component Differences" class="linkLabel_WmDU">Component Differences</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/examples"><span title="Examples" class="linkLabel_WmDU">Examples</span></a></li><li class="theme-doc-sidebar-item-link theme-doc-sidebar-item-link-level-1 menu__list-item"><a class="menu__link" href="/cddl-codegen/integration-other"><span title="Integration with other cddl-codegen libraries" class="linkLabel_WmDU">Integration with other cddl-codegen libraries</span></a></li></ul></nav></div></div></aside><main class="docMainContainer_TBSr"><div class="container padding-top--md padding-bottom--lg"><div class="row"><div class="col docItemCol_VOVn"><div class="docItemContainer_Djhp"><article><div class="tocCollapsible_ETCw theme-doc-toc-mobile tocMobile_ITEo"><button type="button" class="clean-btn tocCollapsibleButton_TO0P">On this page</button></div><div class="theme-doc-markdown markdown"><header><h1>Component Differences</h1></header>
+<p><a class="" href="/cddl-codegen/command_line_flags"><code>--component</code></a> emits a third face beside the rust and wasm crates: a
+generated <strong>WIT</strong> package plus the <code>wit-bindgen</code> guest glue that implements it over the rust crate,
+built for <code>wasm32-wasip2</code>. This document is to that face what
+<a class="" href="/cddl-codegen/wasm_differences">Wasm differences</a> is to the <code>wasm-bindgen</code> one — the record of <em>why</em> the
+boundary looks the way it does, so that a shape you did not expect reads as a decision rather than
+an accident.</p>
+<p>The two faces answer to different type systems, so they differ in ways that are worth knowing
+before you build against either. Where a difference exists, it is stated here as a difference —
+this face is a <strong>parallel with documented deltas</strong>, not a re-skin of the wasm one.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="resources-not-records">Resources, not records<a href="#resources-not-records" class="hash-link" aria-label="Direct link to Resources, not records" title="Direct link to Resources, not records" translate="no">​</a></h2>
+<p>Every type the tool defines crosses the boundary as a WIT <code>resource</code> — an opaque handle — rather
+than as a <code>record</code> value. Four reasons, in the order they actually bind:</p>
+<ul>
+<li class=""><strong>Invariant safety.</strong> A WIT <code>record</code> has no validated construction, so any constrained type
+(a value bound, a <code>[+ …]</code> non-empty container, a <code>@duplicates reject</code> set) could be built
+through by a caller in a state the rust type forbids. A resource&#x27;s constructor is the only door.</li>
+<li class=""><strong>Recursion.</strong> WIT <code>record</code>s and <code>variant</code>s may not be recursive; CDDL specs routinely are.
+Handles are opaque, so <code>resource node { children: func() -&gt; list&lt;node&gt;; }</code> is legal and
+recursion costs nothing.</li>
+<li class=""><strong>Copying.</strong> The canonical ABI <em>copies</em> values across the boundary; handles are table
+operations. A record-of-records API copies its whole transitive contents on every call.</li>
+<li class=""><strong>Encoding state.</strong> Under <code>--preserve-encodings</code> a type carries a hidden <code>*Encoding</code> sidecar
+that is not representable as a WIT value and must stay behind the handle for byte-exact
+round-trips.</li>
+</ul>
+<p><strong>Parameters borrow, returns own.</strong> Every parameter position — constructors, setters, statics,
+methods — takes <code>borrow&lt;t&gt;</code> for a composite, and <code>list&lt;borrow&lt;t&gt;&gt;</code> for a collection of them. Every
+return position mints fresh <code>own</code> handles. That is not a style preference: the canonical ABI
+<em>transfers</em> ownership of an <code>own</code> handle at the call boundary (lifting an <code>own</code> removes it from the
+caller&#x27;s table), so a <code>list&lt;own&lt;t&gt;&gt;</code> parameter would consume <strong>every element</strong> of the caller&#x27;s
+array. That is the same bug class the wasm face&#x27;s <code>FooList</code> wrapper classes exist to prevent — see
+<a class="" href="/cddl-codegen/wasm_differences#heterogeneous-arrays">Wasm differences</a> — reached here by a position rule
+instead of by wrapper classes. <code>borrow</code> is parameter-position only; a return that transitively
+contains one is rejected when the WIT is resolved.</p>
+<p>A type the projection cannot render is <strong>excluded and recorded</strong>, never silently dropped: the
+emitted <code>world.wit</code> carries a <code>// unexported: &lt;ident&gt; — &lt;reason&gt;</code> comment row for it, and any
+signature that would have referenced it is excluded with the same reason. The generated WIT&#x27;s
+validity is gated by <code>component_wit_validates</code> and, at corpus breadth, by
+<code>component_wit_validates_the_corpus</code>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="getters-hand-back-a-snapshot">Getters hand back a snapshot<a href="#getters-hand-back-a-snapshot" class="hash-link" aria-label="Direct link to Getters hand back a snapshot" title="Direct link to Getters hand back a snapshot" translate="no">​</a></h2>
+<p>A getter clones the field and returns a fresh owned handle. Mutating what you got does <strong>not</strong>
+mutate the parent, and mutating the parent afterwards does not change what you got — in both the
+return and the parameter direction. This is the same clone-at-the-boundary rule the wasm face
+already follows, and it is asserted end to end by the behavioural gate <code>component_host</code>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="collections-are-plain-lists">Collections are plain lists<a href="#collections-are-plain-lists" class="hash-link" aria-label="Direct link to Collections are plain lists" title="Direct link to Collections are plain lists" translate="no">​</a></h2>
+<p>There are <strong>no wrapper classes</strong> on this face. An array field is <code>list&lt;t&gt;</code>, a map field is
+<code>list&lt;tuple&lt;k, v&gt;&gt;</code>, and a consumer builds a native array rather than calling
+<code>FooList.new()</code>/<code>add()</code>. The wasm face&#x27;s wrappers exist for ownership safety first and type-support
+gaps second; the borrow-parameter rule above covers the ownership half, and WIT&#x27;s type system has
+neither of the gaps (nested lists, lists of handles and nested <code>option</code>s are all expressible).</p>
+<p>The consequence is that <strong>constraints move from the type to the door</strong>. A <code>[+ t]</code> non-empty
+container, a <code>@duplicates reject</code> set and a <code>@duplicates preserve</code> pair-map all despecialize to a
+plain <code>list&lt;…&gt;</code>, and the invariant is re-checked where the list is <em>consumed</em> — the constructor or
+setter that takes it returns <code>result&lt;…, string&gt;</code> and reports the same refusal the rust crate&#x27;s own
+<code>TryFrom</code> door would. Nothing is lost; the check simply happens at the call that would have
+violated it.</p>
+<p><strong>Access granularity is coarser than the wasm face&#x27;s.</strong> A map-typed field&#x27;s only read is the
+whole-map getter: it materializes every entry and mints a fresh handle per resource-typed entry on
+every call. There is no <code>get(key)</code> and no incremental <code>insert</code> as the wasm face&#x27;s table wrappers
+have. If whole-map materialization ever dominates a real profile, keyed accessors on the parent
+resource are the follow-up that would address it.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="setters-exist-only-for-optional-fields">Setters exist only for optional fields<a href="#setters-exist-only-for-optional-fields" class="hash-link" aria-label="Direct link to Setters exist only for optional fields" title="Direct link to Setters exist only for optional fields" translate="no">​</a></h2>
+<p>The constructor takes every <strong>mandatory</strong> non-fixed field, and each non-fixed field gets a bare
+getter named after it. Only an <strong>optional</strong> field additionally gets a <code>set-&lt;field&gt;</code> — a mandatory
+field has no setter at all, because the constructor is the only place its value can be established.
+There is no indexed setter of any kind (no <code>set-&lt;field&gt;-at(i, v)</code>); a collection field is written
+whole.</p>
+<p>Getter and setter are deliberately asymmetric: the getter of an optional field returns
+<code>option&lt;t&gt;</code>, while its setter takes the <strong>bare</strong> <code>t</code>. A setter sets a value; it never clears one.
+An optional <em>fixed-value</em> field — one whose only information is whether it is present — instead
+gets a <code>bool</code> presence getter and a <code>set-&lt;field&gt;(present: bool)</code>.</p>
+<p>A setter whose type carries a bound is fallible (<code>result&lt;_, string&gt;</code>); one whose type does not is
+infallible, so the signature tells you whether a value can be refused.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="rest-rows-and-open-tables-project-as-extra-getters">Rest rows and open tables project as extra getters<a href="#rest-rows-and-open-tables-project-as-extra-getters" class="hash-link" aria-label="Direct link to Rest rows and open tables project as extra getters" title="Direct link to Rest rows and open tables project as extra getters" translate="no">​</a></h2>
+<p>A rule that captures entries it did not declare — an
+<a class="" href="/cddl-codegen/output_format#open-struct-maps-rest-rows">open struct-map</a> (<code>{ 1: uint, * k =&gt; v }</code>), an
+<a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, * t]</code>), or an <strong>open table</strong>
+(<code>t = { * k1 =&gt; v1, * k2 =&gt; v2 }</code>) — projects each captured row as one <strong>read-only getter</strong> on the
+resource, named after the row (<code>rest</code> by default, or whatever
+<a class="" href="/cddl-codegen/comment_dsl#name"><code>@name</code></a> gives it). A map row is <code>list&lt;tuple&lt;k, v&gt;&gt;</code>, an array tail is <code>list&lt;t&gt;</code>,
+which is the collection spelling above with nothing new added.</p>
+<p>Each such getter is read-only in the strong sense: the row is <strong>not</strong> a constructor parameter and has
+<strong>no setter</strong>, so on this face a captured region can be read but not written. That is the same
+posture the wasm face takes on the field itself, minus the mutable wrapper the wasm face hands back —
+here the whole-map snapshot rule applies, so what you get is a copy. An
+<a class="" href="/cddl-codegen/comment_dsl#ignore"><code>@ignore</code></a> row stores nothing and therefore projects <strong>no</strong> getter at all.</p>
+<p>An open table projects <strong>both</strong> of its rows this way, the typed one and the trailing catch-all, each
+its own <code>list&lt;tuple&lt;…&gt;&gt;</code> getter. This is the one place the component face is <em>less</em> despecialized
+than the wasm face rather than more: the wasm class flattens the typed row&#x27;s map surface onto itself
+and keeps only the catch-all behind a getter, while here both rows are symmetric getters, because
+this face has no per-key accessors to flatten.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="passing-a-resource-into-itself-stores-a-snapshot">Passing a resource into itself stores a snapshot<a href="#passing-a-resource-into-itself-stores-a-snapshot" class="hash-link" aria-label="Direct link to Passing a resource into itself stores a snapshot" title="Direct link to Passing a resource into itself stores a snapshot" translate="no">​</a></h2>
+<p>Because exported resource methods take <code>&amp;self</code>, the guest holds each type in a <code>RefCell</code>. The
+canonical ABI permits lending the same handle twice into one call, so <code>x.set-children([x])</code> is a
+legal thing for a caller to write, and recursive CDDL types make it type-legal in many places.</p>
+<p>Generated glue <strong>materializes every parameter to an owned value before it touches <code>self</code></strong>, so such
+a call returns normally and <code>x</code> stays usable. What is stored is a <strong>value copy</strong> — a snapshot taken
+at the moment of the call — so mutating <code>x</code> afterwards leaves the stored child untouched. An
+aliased cycle is impossible by construction.</p>
+<p>This matters more than it looks. Glue that held two <code>RefCell</code> guards at once would panic, and a
+panic in a component is a <strong>trap</strong>; a trap poisons the instance, so every subsequent call on it
+fails. In a composed topology, where one instance of a shared library component serves every
+consumer, that is an availability failure and not merely a failed call. The emission rule is pinned
+by <code>component_glue_never_holds_two_refcell_guards</code>, and its runtime consequence by <code>component_host</code>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="nested-options-work">Nested options work<a href="#nested-options-work" class="hash-link" aria-label="Direct link to Nested options work" title="Direct link to Nested options work" translate="no">​</a></h2>
+<p><code>option&lt;option&lt;t&gt;&gt;</code> is a legal WIT type, so a nullable value in a position that adds its own
+presence-<code>option</code> keeps all three states — absent, present-and-null, present-with-value — directly
+in the signature. The wasm face&#x27;s flattening plus additive <code>has_*</code> accessors (see
+<a class="" href="/cddl-codegen/wasm_differences#nullable--nested-options">Wasm differences</a>) is a <code>wasm-bindgen</code> workaround
+that this face does not need and does not emit.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="naming">Naming<a href="#naming" class="hash-link" aria-label="Direct link to Naming" title="Direct link to Naming" translate="no">​</a></h2>
+<p>WIT identifiers are kebab-case ASCII, and an interface is one flat namespace with a
+<em>strong-uniqueness</em> rule — names compare equal after acronym lowercasing and after stripping the
+<code>[method]</code>/<code>[static]</code>/<code>[constructor]</code> prefixes, so a resource may not carry a member with the
+resource&#x27;s own name. The tool converts rust identifiers deterministically and refuses a spec whose
+converted names collide, naming the collision; the remedy is the
+<a class="" href="/cddl-codegen/comment_dsl"><code>@name</code></a> comment-DSL rename, which changes no wire bytes.</p>
+<p>Four rules are worth knowing because they are visible in the emitted WIT:</p>
+<ul>
+<li class=""><strong>Digit-led words merge into the word before them</strong> — <code>index_0</code> becomes <code>index0</code>, not <code>index-0</code>.
+This is a <strong>consumer-compatibility floor, not a legality constraint</strong>: <code>index-0</code> is accepted end
+to end by the toolchain floor below (it resolves, encodes, validates, and builds), and is
+rejected only by wasm-tools 1.231-era consumer tooling. The merge is what keeps generated
+packages readable by those consumers.</li>
+<li class=""><strong>Keywords are <code>%</code>-escaped against the union of keyword sets across supported toolchain
+versions</strong>, because the set has moved in <em>both</em> directions: <code>map</code> is a keyword at the pinned
+floor and was not at 1.231, while <code>float32</code>/<code>float64</code> were keywords at the older end and are not
+now. Escaping a non-keyword is accepted everywhere, so the union is the only choice compatible in
+both directions. The <code>%</code> is WIT syntax and never reaches the generated Rust bindings.</li>
+<li class=""><strong>A choice&#x27;s member names follow the rust CONSTRUCTOR name, never the enum arm identifier.</strong> A
+rust <code>Value::new_uint(u64)</code> whose arm is spelled <code>Value::U64</code> projects to <code>new-uint</code> and
+<code>as-uint</code>, never <code>new-u64</code>. The <code>new-</code>/<code>as-</code>/<code>kind</code> families all derive from that one source, so
+they agree with each other by construction.</li>
+<li class=""><strong>Each exported module scope becomes one <code>interface</code></strong>, nested scope paths flatten with <code>-</code>
+(<code>a::c</code> → <code>a-c</code>), and the world is <code>&lt;lib-name&gt;-world</code>. Interfaces linked with <code>use</code> must be
+acyclic, which is why a multi-file spec with mutually-referencing scopes generates without
+<code>--component</code> and is refused with it.</li>
+</ul>
+<p><strong>A name change is a composition-breaking change, on the same footing as a shape change.</strong> Two
+components unify a type only when the package id, the interface name, the type name and the shape
+all agree — renaming a type, an interface, or a <code>variant</code> arm makes a composition that previously
+linked refuse to link. Note the asymmetry in <em>who enforces it</em>: a composer such as <code>wac</code> checks the
+named type exports and refuses a mismatch, while a <code>wasmtime::Linker</code> satisfies an import by
+<strong>function set</strong> and will happily accept a structurally identical type under a different name. Do
+not conclude from a host harness that a rename was safe.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="int-is-a-variant-and-its-nint-arm-is-cbor-biased"><code>Int</code> is a variant, and its <code>nint</code> arm is CBOR-biased<a href="#int-is-a-variant-and-its-nint-arm-is-cbor-biased" class="hash-link" aria-label="Direct link to int-is-a-variant-and-its-nint-arm-is-cbor-biased" title="Direct link to int-is-a-variant-and-its-nint-arm-is-cbor-biased" translate="no">​</a></h2>
+<p>CDDL&#x27;s <code>int</code> spans the full CBOR uint/nint range, which exceeds <code>s64</code>, so it crosses as a value
+type rather than a handle:</p>
+<div class="language-wit codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-wit codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">variant int {</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  uint(u64),</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  nint(u64),</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">}</span><br></div></code></pre></div></div>
+<p><strong>The <code>nint</code> payload is the CBOR-encoded magnitude, not the absolute value:</strong> <code>nint(n)</code> means
+<code>-(n + 1)</code>, so <code>nint(4)</code> is <strong>−5</strong>. The arm names follow CBOR&#x27;s major-type terminology and the rust
+constructors (<code>Int::new_uint</code> / <code>Int::new_nint</code>), and nothing in the WIT type expresses the bias —
+which is why the emitted WIT carries the bias as a comment on the arm, and why it is stated here.</p>
+<p>Because arm names participate in cross-package unification, this spelling is frozen: changing
+<code>nint</code> to something more self-describing would break every already-composed consumer.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="any-cbor-is-bytes-exactly-one-item-canonically-re-encoded"><code>any-cbor</code> is bytes, exactly one item, canonically re-encoded<a href="#any-cbor-is-bytes-exactly-one-item-canonically-re-encoded" class="hash-link" aria-label="Direct link to any-cbor-is-bytes-exactly-one-item-canonically-re-encoded" title="Direct link to any-cbor-is-bytes-exactly-one-item-canonically-re-encoded" translate="no">​</a></h2>
+<p>CDDL <a class="" href="/cddl-codegen/current_capacities#the-any-type-loose-cbor"><code>any</code></a> crosses as a transparent alias:</p>
+<div class="language-wit codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-wit codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">type any-cbor = list&lt;u8&gt;;</span><br></div></code></pre></div></div>
+<p>A structural recursive variant is impossible (WIT forbids recursive value types), and a resource
+would fail composability exactly where <code>any</code> matters most — metadata extension points shared
+between libraries. Bytes are the one representation two independently generated packages can agree
+on without a shared package. Three consequences, all of which have bitten in probing:</p>
+<ul>
+<li class=""><strong>Exactly one CBOR item.</strong> Validity is checked where the bytes are <em>consumed</em>; getters always
+return valid bytes. Trailing data is an error rather than a silent truncation: handing <code>0102</code>
+(two items) to a door returns <code>Err(Unexpected trailing data in CBOR)</code> rather than accepting the
+first item.</li>
+<li class=""><strong>Byte-exact means &quot;against the rust crate&#x27;s serialization&quot;, not &quot;against what you passed in&quot;.</strong>
+Under the default (non-preserve) posture a stored <code>any</code> is re-encoded canonically on read-back:
+set an indefinite-length <code>9f0102ff</code> and the getter returns the definite-length <code>820102</code>. That is
+the same rule every type in that posture follows — <code>any</code> is simply where a caller is most likely
+to assume otherwise. Under <code>--preserve-encodings</code> the original encoding is retained as it is for
+every other type.</li>
+<li class=""><strong>Introspection is a free function, and it is fallible.</strong>
+<code>cbor-kind: func(v: any-cbor) -&gt; result&lt;any-cbor-kind, string&gt;</code>
+takes caller-supplied bytes, so decoding <em>is</em> the check; the
+fallible shape keeps <code>any-cbor-kind</code> a 1:1 projection of the runtime discriminant with no
+synthetic <code>invalid</code> case. Under <code>--json-serde-derives</code> the free functions <code>cbor-to-json</code> and
+<code>cbor-from-json</code> join it, both fallible for the same reason. Invalid bytes always cross as a
+normal <code>Err</code>, never as a trap.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="fallible-doors-return-the-rust-error-text">Fallible doors return the rust error text<a href="#fallible-doors-return-the-rust-error-text" class="hash-link" aria-label="Direct link to Fallible doors return the rust error text" title="Direct link to Fallible doors return the rust error text" translate="no">​</a></h2>
+<p>Anything that can refuse — a bounds-checking constructor, a despecialized collection door, a
+<code>from-cbor-bytes</code>, a JSON door — returns <code>result&lt;…, string&gt;</code>, and the string is the rust type&#x27;s
+<code>Display</code> text, equal to the native <code>DeserializeError</code> a direct rust caller would see (e.g.
+<code>Deserialization failed in Hash because: 31 not in range 32 - 32</code>). A structured error <code>variant</code> is
+a possible future refinement; today the text is the contract. A refusal is a normal <code>Err</code> and never
+a trap, so the instance stays usable afterwards.</p>
+<p>Note a template-level distinction visible in the WIT: a fallible <strong>constructor</strong> is
+<code>constructor(...) -&gt; result&lt;t, string&gt;</code>, while a fallible <strong>static</strong> is
+<code>from-cbor-bytes: static func(...) -&gt; result&lt;t, string&gt;</code>. A resource cannot carry both a
+<code>constructor</code> and a static named <code>new</code> — <code>wit-bindgen</code> lowers both to the same Rust method — so the
+generated vocabulary avoids that collision by construction.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="encoding-posture-is-a-property-of-the-package-not-of-a-type">Encoding posture is a property of the package, not of a type<a href="#encoding-posture-is-a-property-of-the-package-not-of-a-type" class="hash-link" aria-label="Direct link to Encoding posture is a property of the package, not of a type" title="Direct link to Encoding posture is a property of the package, not of a type" translate="no">​</a></h2>
+<p>There are no flavored types — no <code>canonical-int</code> beside a <code>preserve-int</code>. Posture is decided by the
+flags the crate was generated with and belongs to the package as a whole:</p>
+<ul>
+<li class=""><strong>Value types are pure semantics.</strong> Encoding state never crosses the boundary as part of a value.
+This is not new: the wasm face has always returned bare values from getters, with preserve state
+riding the <em>container&#x27;s</em> hidden sidecar.</li>
+<li class=""><strong>Byte-exactness attaches to handles.</strong> A resource never loses its encoding state, because that
+state never leaves the component that owns it. If you need a byte-exact embedding, take a
+<code>borrow&lt;t&gt;</code> or take <code>list&lt;u8&gt;</code> — never a bare value type. In generated code this is automatic; in
+hand-written WIT that composes with a generated package, it is the rule to follow.</li>
+<li class=""><strong>A posture change is a package change.</strong> A preserve-generated crate and a canonical-generated
+crate of the same spec have different surfaces (<code>to-canonical-cbor-bytes</code> exists or does not), so
+they are different packages, which is what package identity already expresses. Composing across a
+posture mismatch is an integration-time obligation, not something the type system catches.</li>
+</ul>
+<p>The <a class="" href="/cddl-codegen/command_line_flags"><code>--wit-package</code></a> flag names that identity, and its version follows
+semver&#x27;s <code>0.x</code> rule: a host resolves <code>a:b/c@0.2.0</code> against a defined <code>0.2.1</code> but not against
+<code>0.3.0</code>, so on a <code>0.x</code> line a <strong>minor</strong> bump is a link-time break. For wire types that is arguably
+what you want — an incompatible API fails to link rather than misbehaving at runtime — as long as
+it is a decision rather than a surprise.</p>
+<p>A version bump is not the only link-time break, though: unification is by name <strong>and</strong> shape, so a
+WIT name change sits on exactly the same footing as a shape change — renaming an alias with the
+shape untouched makes a composition that previously linked refuse to link. That makes the naming
+rules load-bearing for interop rather than cosmetic; <a href="#naming" class="">Naming</a> states the rule and the
+asymmetry in who enforces it.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="sharing-types-across-packages">Sharing types across packages<a href="#sharing-types-across-packages" class="hash-link" aria-label="Direct link to Sharing types across packages" title="Direct link to Sharing types across packages" translate="no">​</a></h2>
+<p>The reason this face exists. Point a consumer at a dependency&#x27;s generated WIT and the dependency&#x27;s
+types cross as <strong>imported</strong> WIT resources: one dependency component instance serves every consumer,
+and handles minted by one are usable by all of them. Without that, a consumer&#x27;s dependency types
+would be its own private resources — structurally identical to the dependency&#x27;s and interchangeable
+with nothing.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="import-mode-is-opt-in-and-the-fallback-is-exclusion">Import mode is opt-in, and the fallback is exclusion<a href="#import-mode-is-opt-in-and-the-fallback-is-exclusion" class="hash-link" aria-label="Direct link to Import mode is opt-in, and the fallback is exclusion" title="Direct link to Import mode is opt-in, and the fallback is exclusion" translate="no">​</a></h3>
+<p>A dependency reached through <a class="" href="/cddl-codegen/command_line_flags"><code>--extern-import</code></a> enters import mode only when
+you also supply its WIT with <a class="" href="/cddl-codegen/command_line_flags"><code>--component-extern-wit</code></a>. Opt-in because a
+dependency need not have a component face at all — a hand-written or stub dependency has no
+<code>component/wit</code> to point at, and a mandatory flag would make such a spec ungeneratable with
+<code>--component</code>.</p>
+<p>Be clear about what the no-flag path gives you, because it is <em>not</em> a degraded-but-working surface:
+a dependency type with no WIT projection is excluded, and so is every consumer signature naming one.
+The emitted <code>world.wit</code> records each with a <code>// unexported: &lt;ident&gt; — &lt;reason&gt;</code> row, exactly as it
+does for any other unprojectable type. A consumer made entirely of dependency types therefore
+projects to an empty interface. Import mode only ever <em>adds</em>.</p>
+<p>Under <code>--config</code>, both flags derive from a <code>deps</code> edge whenever both crates have <code>component = true</code>;
+see <a class="" href="/cddl-codegen/config_file#the-component-face">The component face</a>.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-seam-is-cbor-bytes-and-it-costs-what-that-costs">The seam is CBOR bytes, and it costs what that costs<a href="#the-seam-is-cbor-bytes-and-it-costs-what-that-costs" class="hash-link" aria-label="Direct link to The seam is CBOR bytes, and it costs what that costs" title="Direct link to The seam is CBOR bytes, and it costs what that costs" translate="no">​</a></h3>
+<p>A consumer&#x27;s rust struct holds the dependency&#x27;s <strong>native</strong> rust type, because its own serializer
+needs it; the WIT surface carries an imported resource <strong>handle</strong>. Converting between them is a
+serialize on one side and a deserialize on the other:</p>
+<ul>
+<li class="">a getter returning a dependency type does <code>ImportedFoo::from_cbor_bytes(&amp;native.to_cbor_bytes())</code>;</li>
+<li class="">a parameter taking one does <code>dep_crate::Foo::from_cbor_bytes(&amp;handle.to_cbor_bytes())</code>.</li>
+</ul>
+<p><strong>One serialize + one copy + one deserialize per dependency-typed value, per crossing, in each
+direction.</strong> CBOR is self-delimiting, so the seam is well defined; it is not free, and a design that
+crosses a large collection element-by-element on a hot path will feel it. Said plainly here rather
+than buried: the alternative to knowing the cost is discovering it.</p>
+<p>A consequence worth stating on its own: <strong>the object that comes back is live, and the value it
+carries is a copy.</strong> A consumer getter mints a fresh resource in the <em>dependency instance&#x27;s</em> table,
+so the dependency&#x27;s own exported interface — including its setters — works on the handle you get
+back. It is not the handle you passed in, and mutating one does not reach the other.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="getters-on-dependency-typed-fields-are-fallible">Getters on dependency-typed fields are fallible<a href="#getters-on-dependency-typed-fields-are-fallible" class="hash-link" aria-label="Direct link to Getters on dependency-typed fields are fallible" title="Direct link to Getters on dependency-typed fields are fallible" translate="no">​</a></h3>
+<p><code>from_cbor_bytes</code> on the far side can reject a value the consumer&#x27;s own serializer just produced, if
+the dependency component and the consumer&#x27;s linked dependency rust crate disagree on a type&#x27;s shape.
+That is a failure class which is a compile error today, so the signatures say so: a getter returning
+a dependency type is <code>result&lt;foo, string&gt;</code>, and a constructor or setter taking one is fallible the
+same way.</p>
+<p>The two skews are caught in different places. <strong>API-shape skew</strong> is caught at composition time by WIT
+versioning (a <code>0.x</code> minor bump is a link-time break — see above). <strong>Same-API encoding skew</strong> is
+caught only at runtime, by these <code>Err</code>s. Version-matching the dependency component against the
+dependency crate the consumer links is the integrator&#x27;s obligation.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="dependency-typed-collection-parameters-take-an-accumulator">Dependency-typed collection parameters take an accumulator<a href="#dependency-typed-collection-parameters-take-an-accumulator" class="hash-link" aria-label="Direct link to Dependency-typed collection parameters take an accumulator" title="Direct link to Dependency-typed collection parameters take an accumulator" translate="no">​</a></h3>
+<p>A <code>[* dep_type]</code> parameter is <em>not</em> spelled <code>list&lt;borrow&lt;token&gt;&gt;</code>. It is spelled
+<code>borrow&lt;token-list&gt;</code>, where <code>token-list</code> is a consumer-exported accumulator you fill one element at
+a time:</p>
+<div class="language-wit codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-wit codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">resource token-list {</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  constructor();</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  push: func(v: borrow&lt;token&gt;) -&gt; result&lt;_, string&gt;;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  len: func() -&gt; u32;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">}</span><br></div></code></pre></div></div>
+<p>Name the cause, because that is what gives a future toolchain fix a trigger to revisit this:
+<strong><code>wit-bindgen</code>&#x27;s Rust backend miscompiles every <em>repeated</em> position of <code>borrow&lt;imported-resource&gt;</code>.</strong>
+Its lowering hoists a single handle binding out of the loop and reassigns it per iteration while a
+reference to it is retained, which is <code>E0506</code>. Measured unfixed from the pinned 0.57.1 through
+0.60.0. The WIT itself is fine — the same package resolves, encodes and validates.</p>
+<table><thead><tr><th>parameter shape</th><th>lowering</th></tr></thead><tbody><tr><td><code>borrow&lt;t&gt;</code></td><td>works</td></tr><tr><td><code>option&lt;borrow&lt;t&gt;&gt;</code></td><td>works</td></tr><tr><td><code>list&lt;borrow&lt;t&gt;&gt;</code> over an <strong>exported</strong> resource</td><td>works</td></tr><tr><td><code>list&lt;borrow&lt;t&gt;&gt;</code> over an <strong>imported</strong> resource</td><td><code>E0506</code></td></tr><tr><td><code>list&lt;option&lt;borrow&lt;t&gt;&gt;&gt;</code>, <code>list&lt;tuple&lt;u64, borrow&lt;t&gt;&gt;&gt;</code></td><td><code>E0506</code></td></tr></tbody></table>
+<p>So the borrow moves one level up, out of the repeated position, and the per-element seam conversion
+happens inside <code>push</code> rather than once at the door — which is why <code>push</code> is fallible on the same
+grounds as the getters. Map-shaped parameters get the same treatment with
+<code>insert: func(k: …, v: …)</code>. The alternatives lost on their own terms: <code>list&lt;own t&gt;</code> would <strong>consume
+the caller&#x27;s handles at the ABI boundary</strong>, which is the exact bug class the borrow rule exists to
+prevent, and <code>list&lt;list&lt;u8&gt;&gt;</code> would trade a typed surface for nested bytes. The restriction is on
+imported resources only — own-crate collection parameters keep <code>list&lt;borrow&lt;t&gt;&gt;</code>, and collection
+<em>returns</em> stay <code>list&lt;own t&gt;</code> in both cases.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="posture-matching-is-an-integrator-obligation">Posture matching is an integrator obligation<a href="#posture-matching-is-an-integrator-obligation" class="hash-link" aria-label="Direct link to Posture matching is an integrator obligation" title="Direct link to Posture matching is an integrator obligation" translate="no">​</a></h3>
+<p>The seam is byte-exact only while both crates agree about what CBOR they write and accept, so a
+<code>preserve-encodings</code>, <code>canonical-form</code> or <code>deserialize-depth-limit</code> mismatch across it <strong>silently
+re-encodes on every crossing</strong> rather than failing. This is the seam&#x27;s stake in
+<a href="#encoding-posture-is-a-property-of-the-package-not-of-a-type" class="">Encoding posture is a property of the package</a>,
+which already frames posture as an integration obligation.</p>
+<p><code>--config</code> sees both ends of a <code>deps</code> edge and refuses a mismatched one before anything is written,
+naming both crates, the axis and each side&#x27;s value; the rule is stated in
+<a class="" href="/cddl-codegen/config_file#the-component-face">The component face</a>. A hand-written flag invocation sees one crate
+at a time and cannot check it. The scope is narrow on purpose: it applies only where the seam exists,
+because on any other <code>deps</code> edge the dependency&#x27;s types are reached by ordinary rust linkage, no
+bytes are produced or parsed at a boundary, and there is no crossing to re-encode.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="instantiate-the-dependency-once--nothing-enforces-it">Instantiate the dependency once — nothing enforces it<a href="#instantiate-the-dependency-once--nothing-enforces-it" class="hash-link" aria-label="Direct link to Instantiate the dependency once — nothing enforces it" title="Direct link to Instantiate the dependency once — nothing enforces it" translate="no">​</a></h3>
+<p>Resource types are <strong>generative per instantiation</strong>: two instances of the same dependency component
+have mutually incompatible handle types despite wearing the same interface name. So a composition
+must instantiate the dependency <strong>once</strong> and use that single instance both as every consumer&#x27;s
+instantiation argument and as the world&#x27;s re-export.</p>
+<p>The trap is that nothing catches the mistake. A two-instance topology <strong>composes at exit 0</strong>,
+validates, and decodes to a world whose exported interfaces are <em>indistinguishable</em> from the correct
+one&#x27;s — measured on this project&#x27;s own acceptance fixture, the two artifacts differ by 417 bytes of
+instantiation metadata and by nothing a reader of the world would notice. It survives loading into a
+host, too. The mistake surfaces only at the first handle crossing, as <code>mismatched resource types</code>.</p>
+<p>Prescribed shape: one <code>instantiate</code> per package; alias the dependency&#x27;s exported interface <strong>once</strong>;
+use that alias as the consumer&#x27;s instantiation argument <em>and</em> export it from the world. Do not use
+<code>wac plug</code> — it satisfies the consumer&#x27;s import from the dependency&#x27;s export and then <strong>drops that
+export</strong>, leaving a single-export world in which a host cannot mint a dependency object at all.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="known-limitation-no-binary-dedupe">Known limitation: no binary dedupe<a href="#known-limitation-no-binary-dedupe" class="hash-link" aria-label="Direct link to Known limitation: no binary dedupe" title="Direct link to Known limitation: no binary dedupe" translate="no">​</a></h3>
+<p>The consumer component still statically contains the dependency&#x27;s rust code, because its own
+serializer needs it. Module-level dedupe, API dedupe and object identity are achieved; <strong>full binary
+dedupe is not.</strong> Measured on the acceptance fixture&#x27;s <code>wasm32-wasip2</code> debug builds: 4,474,750 B +
+4,862,282 B of parts against a 9,339,587 B composition — composition adds about 2.5 KB of wiring and
+removes nothing.</p>
+<p>Eliminating it would mean generating a second serializer that composes the imported
+<code>to-cbor-bytes</code> fragments instead of linking the dependency crate. That is real work, and it is
+deferred.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="toolchain-floor-and-the-ambient-wasm-tools-trap">Toolchain floor, and the ambient-<code>wasm-tools</code> trap<a href="#toolchain-floor-and-the-ambient-wasm-tools-trap" class="hash-link" aria-label="Direct link to toolchain-floor-and-the-ambient-wasm-tools-trap" title="Direct link to toolchain-floor-and-the-ambient-wasm-tools-trap" translate="no">​</a></h2>
+<p>This face emits <strong>fallible constructors</strong> for every bounds-validating type. That is a spec feature
+with a real minimum: <code>wasm-tools</code> 1.231.0 rejects them both at parse time and when validating a
+built artifact, while <code>wit-parser</code>/<code>wit-component</code> 0.247, <code>wit-bindgen</code> 0.57, rustc 1.96&#x27;s
+<code>wasm-component-ld</code> and wasmtime 47 all accept them. <strong>Consumers need 0.247-era tooling or newer.</strong></p>
+<p>The practical trap is that a <code>wasm-tools</code> binary already on your <code>PATH</code> may be older than that, in
+which case it cannot read these artifacts <em>at all</em> — it will report an invalid constructor export
+or an invalid identifier for a package that is perfectly valid. An old <code>wasm-tools</code> is not evidence
+about a component; check its version before believing it. This project&#x27;s own gates never shell out
+to an ambient binary for that reason: <code>component_wit_validates</code> uses in-process <code>wit-parser</code> /
+<code>wit-component</code> / <code>wasmparser</code> pinned at the floor.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="known-limitation-the-wasm32-wasip2-cdylib-link-crash">Known limitation: the <code>wasm32-wasip2</code> cdylib link crash<a href="#known-limitation-the-wasm32-wasip2-cdylib-link-crash" class="hash-link" aria-label="Direct link to known-limitation-the-wasm32-wasip2-cdylib-link-crash" title="Direct link to known-limitation-the-wasm32-wasip2-cdylib-link-crash" translate="no">​</a></h2>
+<p>The generated <code>rust/Cargo.toml</code> declares <code>crate-type = [&quot;cdylib&quot;, &quot;rlib&quot;]</code> for the wasm face&#x27;s sake,
+and on <code>wasm32-wasip2</code> that <code>cdylib</code> can crash the linker in the rust sysroot with a SIGSEGV inside
+<code>wasm-component-ld</code>/LLD. It is spec-dependent, it is not a diagnostic about your spec, and building
+only the <code>component/</code> crate does not avoid it. The fix — narrowing the rust crate to
+<code>crate-type = [&quot;rlib&quot;]</code> in the consuming workspace — and the exact failure signature are documented
+on the <a class="" href="/cddl-codegen/command_line_flags"><code>--component</code> flag</a>, which is where a user turning this face on
+meets it; that account is the single source for it and is not restated here.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="known-limitation-shapes-whose-glue-does-not-yet-compile">Known limitation: shapes whose glue does not yet compile<a href="#known-limitation-shapes-whose-glue-does-not-yet-compile" class="hash-link" aria-label="Direct link to Known limitation: shapes whose glue does not yet compile" title="Direct link to Known limitation: shapes whose glue does not yet compile" translate="no">​</a></h2>
+<p>Two shape classes (three corpus fixtures) currently emit a component crate whose glue does not
+compile. The failure is loud — the generated component crate&#x27;s own build fails; the <code>rust/</code> and
+<code>wasm/</code> faces are unaffected — the WIT itself is valid, and each shape is pinned with its
+diagnosis in the corpus compile gate&#x27;s ledger (<code>EXPECTED_COMPILE_FAIL</code>, gate
+<code>component_corpus_compiles</code>), so a fix announces itself by turning the pin stale rather than
+needing rediscovery:</p>
+<ul>
+<li class=""><strong>Nested despecialization</strong>: a constrained collection (<code>NonEmptyVec</code>, <code>NonEmptyMap</code>) sitting
+<em>below</em> the top level of a parameter — a named table rule whose map key is a non-empty list, or
+a non-empty list as a list element. The conversion walk sees WIT types only below the top
+level, so the constrained rust type&#x27;s <code>TryFrom</code> door is never routed.</li>
+<li class=""><strong><code>@default</code> fields</strong>: a defaulted field is a plain <code>T</code> on the rust side (the default fills
+absence in) while the projection still treats it as optional, so the glue reads and writes an
+<code>Option</code> that does not exist.</li>
+</ul>
+<p>Until these close, a spec relying on either shape should keep <code>--component</code> off or restructure
+the shape; every other corpus shape compiles and validates.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="flag-semantics-deltas">Flag-semantics deltas<a href="#flag-semantics-deltas" class="hash-link" aria-label="Direct link to Flag-semantics deltas" title="Direct link to Flag-semantics deltas" translate="no">​</a></h2>
+<ul>
+<li class=""><strong><code>--to-from-bytes-methods</code> does not gate this face.</strong> <code>to-cbor-bytes</code> and <code>from-cbor-bytes</code> are
+always emitted, because the bytes seam is load-bearing for cross-crate composition and for the
+extern-type bridges, both of which have nothing else to cross on.
+<code>to-canonical-cbor-bytes</code> is the exception that <em>is</em> posture-gated: it appears only under
+<code>--preserve-encodings --canonical-form</code>, the one posture whose composed runtime declares it.</li>
+<li class=""><strong><code>--json-serde-derives</code></strong> adds a fallible <code>to-json</code> / <code>from-json</code> pair to each type the tool
+defines, plus the <code>cbor-to-json</code> / <code>cbor-from-json</code> free functions. They are strings only; there
+is no <code>JsValue</code> equivalent to mirror the wasm face&#x27;s <code>to_json_value()</code>.</li>
+<li class=""><strong><code>--json-schema-export</code> and the json-gen crate are orthogonal and untouched.</strong> They are gated on
+their own flag and exist even under <code>--wasm=false</code>, so a <code>--component --wasm=false</code> user loses
+nothing.</li>
+<li class=""><strong><code>--emit-tests</code> with <code>--component</code> prints a one-line skip and continues</strong> —
+<code>cddl-codegen --emit-tests: component module skipped (component test emission not yet supported)</code>. Test emission for this face is not built yet, and the tool says so out loud rather
+than silently emitting nothing.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="javascript-via-jco">JavaScript via jco<a href="#javascript-via-jco" class="hash-link" aria-label="Direct link to JavaScript via jco" title="Direct link to JavaScript via jco" translate="no">​</a></h2>
+<p>A JS host does not <em>run</em> a component — it <strong>transpiles</strong> one. <code>jco</code> rewrites the component into an
+ES module graph, and the surface it synthesizes is not the wasmtime one, so what a JS consumer meets
+is stated here on its own terms. Everything below is a <strong>runtime observation</strong> against <strong>jco
+1.26.1</strong>, <strong><code>@bytecodealliance/preview2-shim</code> 0.19.0</strong> and <strong>node 22.21.1</strong>, pinned by the
+<code>component_jco</code> gate. Runtime rather than typings on purpose: what the emitted <code>.d.ts</code> <em>intends</em> and
+what the boundary <em>does</em> disagreed on the enum face, which is the one delta most likely to break a
+port from the wasm face.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="transpiling-install-the-shim-map-nothing">Transpiling: install the shim, map nothing<a href="#transpiling-install-the-shim-map-nothing" class="hash-link" aria-label="Direct link to Transpiling: install the shim, map nothing" title="Direct link to Transpiling: install the shim, map nothing" translate="no">​</a></h3>
+<p><code>jco transpile &lt;component&gt;.wasm -o &lt;dir&gt; --name &lt;module&gt;</code> is the whole command. The 14 <code>wasi:*</code>
+imports every wasip2 artifact carries (see <a href="#binary-size" class="">Binary size</a>) need no flag: jco rewrites
+them to <code>@bytecodealliance/preview2-shim</code> <strong>by default</strong>, so that package must be <em>installed</em> and
+must <strong>not</strong> be mapped. A hand-written <code>--map &#x27;wasi:*=@bytecodealliance/preview2-shim/*&#x27;</code> breaks the
+output, because the shim exposes one module per <strong>subsystem</strong> with named exports
+(<code>preview2-shim/cli#environment</code>) rather than one module per interface.</p>
+<p>Reach the interface by its <strong>fully-qualified name</strong> — <code>mod[&#x27;cddl:my-lib/types@0.1.0&#x27;]</code>. jco also
+emits a bare <code>types</code> alias; it resolves on a single-component artifact and is a trap on a composed
+one (see <a href="#do-not-transpile-a-composed-artifact" class="">Do not transpile a composed artifact</a>), so the
+qualified spelling is the one to write everywhere.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-js-surface-row-by-row">The JS surface, row by row<a href="#the-js-surface-row-by-row" class="hash-link" aria-label="Direct link to The JS surface, row by row" title="Direct link to The JS surface, row by row" translate="no">​</a></h3>
+<table><thead><tr><th>WIT</th><th>What JS sees</th></tr></thead><tbody><tr><td><code>resource</code></td><td>a class, with kebab-case members camelCased (<code>set-nested</code> → <code>setNested</code>, <code>from-cbor-bytes</code> → the static <code>fromCborBytes</code>)</td></tr><tr><td><code>enum</code></td><td>a <strong>string label</strong>, never a number: <code>kind()</code> returns <code>&#x27;i1&#x27;</code>, and passing the number <code>1</code> is refused with <code>TypeError: &quot;1&quot; is not one of the cases of &lt;enum&gt;</code>, naming the WIT enum</td></tr><tr><td><code>variant int</code></td><td>an object literal in both directions — <code>{ tag: &#x27;uint&#x27;, val: 5n }</code> / <code>{ tag: &#x27;nint&#x27;, val: 4n }</code>. The <code>nint</code> payload carries its CBOR bias unapplied, exactly as <a href="#int-is-a-variant-and-its-nint-arm-is-cbor-biased" class="">the WIT variant declares it</a></td></tr><tr><td><code>u64</code></td><td><code>bigint</code> (<code>42n</code>), never <code>number</code></td></tr><tr><td><code>option&lt;t&gt;</code> in a return</td><td><code>t</code> or <code>undefined</code> — so an <code>as-&lt;variant&gt;</code> that does not match reads as <code>undefined</code>, and so does an unset optional field</td></tr><tr><td><code>option&lt;option&lt;t&gt;&gt;</code></td><td>the tagged form, because flattening would be ambiguous: <code>{ tag: &#x27;none&#x27; }</code> (absent), <code>{ tag: &#x27;some&#x27;, val: &#x27;x&#x27; }</code> (present with a value), <code>{ tag: &#x27;some&#x27; }</code> with <strong>no <code>val</code> key</strong> (present and null). All three are distinguishable; <code>setNested(undefined)</code> produces the third</td></tr><tr><td><code>any-cbor</code></td><td><code>Uint8Array</code> in both directions, with trailing data refused where the bytes are consumed</td></tr><tr><td>free function</td><td>a module-level export beside the classes (<code>cbor-kind</code> → <code>cborKind</code>)</td></tr><tr><td><code>result&lt;…, string&gt;</code></td><td><strong>thrown</strong>, not returned — see below</td></tr></tbody></table>
+<p>The enum row is the delta to plan a port around: the wasm face&#x27;s c-style enums take the numeric
+discriminant and this one refuses it. That was the <em>expected</em> delta before it was probed; it is now
+measured, and the refusal is a <code>TypeError</code> at the JS boundary rather than a deserialize error from
+the component.</p>
+<p>Snapshot semantics cross unchanged. A getter hands back a fresh handle rather than a view, and
+lending a handle as receiver <em>and</em> argument (<code>node.setChildren([node])</code>) returns normally and stores
+a copy — the <a href="#getters-hand-back-a-snapshot" class="">same rules</a> a wasmtime host sees, asserted again from
+JS because a transpiler is free to get them wrong.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="a-refusal-is-thrown-and-the-instance-survives-it">A refusal is thrown, and the instance survives it<a href="#a-refusal-is-thrown-and-the-instance-survives-it" class="hash-link" aria-label="Direct link to A refusal is thrown, and the instance survives it" title="Direct link to A refusal is thrown, and the instance survives it" translate="no">​</a></h3>
+<p>A fallible door does not hand back a <code>{ tag: &#x27;err&#x27; }</code>. jco <strong>throws</strong> a <code>ComponentError</code> whose
+<code>.payload</code> is the WIT <code>string</code> and whose <code>.message</code> is the same text; <code>e instanceof Error</code> holds, so
+ordinary <code>try</code>/<code>catch</code> works:</p>
+<div class="language-js codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-js codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token keyword control-flow" style="color:#00009f">try</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  </span><span class="token keyword" style="color:#00009f">new</span><span class="token plain"> </span><span class="token class-name">T</span><span class="token class-name punctuation" style="color:#393A34">.</span><span class="token class-name">Hash</span><span class="token punctuation" style="color:#393A34">(</span><span class="token keyword" style="color:#00009f">new</span><span class="token plain"> </span><span class="token class-name">Uint8Array</span><span class="token punctuation" style="color:#393A34">(</span><span class="token number" style="color:#36acaa">3</span><span class="token punctuation" style="color:#393A34">)</span><span class="token punctuation" style="color:#393A34">)</span><span class="token punctuation" style="color:#393A34">;</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token punctuation" style="color:#393A34">}</span><span class="token plain"> </span><span class="token keyword control-flow" style="color:#00009f">catch</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">(</span><span class="token plain">e</span><span class="token punctuation" style="color:#393A34">)</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  e</span><span class="token punctuation" style="color:#393A34">.</span><span class="token property-access">payload</span><span class="token punctuation" style="color:#393A34">;</span><span class="token plain"> </span><span class="token comment" style="color:#999988;font-style:italic">// &quot;Deserialization failed in Hash because: 3 not in range 32 - 32&quot;</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token punctuation" style="color:#393A34">}</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token keyword" style="color:#00009f">new</span><span class="token plain"> </span><span class="token class-name">T</span><span class="token class-name punctuation" style="color:#393A34">.</span><span class="token class-name">Hash</span><span class="token punctuation" style="color:#393A34">(</span><span class="token keyword" style="color:#00009f">new</span><span class="token plain"> </span><span class="token class-name">Uint8Array</span><span class="token punctuation" style="color:#393A34">(</span><span class="token number" style="color:#36acaa">32</span><span class="token punctuation" style="color:#393A34">)</span><span class="token punctuation" style="color:#393A34">)</span><span class="token punctuation" style="color:#393A34">;</span><span class="token plain"> </span><span class="token comment" style="color:#999988;font-style:italic">// the component is fine — the failure poisoned nothing</span><br></div></code></pre></div></div>
+<p>That second line is the point of returning <code>result&lt;…&gt;</code> instead of trapping: a trap would take the
+whole instance down and every later caller with it. The despecialized bounds behave the same way —
+<code>setAliases([])</code> on a <code>[+ text]</code> field throws <code>0 not at least 1</code> and the object stays usable.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="disposal-is-an-own-property-and-reclamation-is-otherwise-gc-driven">Disposal is an own property, and reclamation is otherwise GC-driven<a href="#disposal-is-an-own-property-and-reclamation-is-otherwise-gc-driven" class="hash-link" aria-label="Direct link to Disposal is an own property, and reclamation is otherwise GC-driven" title="Direct link to Disposal is an own property, and reclamation is otherwise GC-driven" translate="no">​</a></h3>
+<p>jco defines <code>[Symbol.dispose]</code> as an <strong>own property on each owned instance</strong>, not on the prototype —
+so <code>Cls.prototype[Symbol.dispose]</code> is <code>undefined</code> and a feature detect must run against the
+<em>instance</em>. <code>Symbol.dispose</code> exists in node 22, so <code>using</code> declarations work. Calling it frees the
+guest handle, and a later method call on that object throws
+<code>TypeError: Resource error: Not a valid &quot;…&quot; resource</code>.</p>
+<p>Without an explicit dispose, a <code>FinalizationRegistry</code> reclaims the handle on GC. That is the
+sentence a long-running dApp has to care about: handles are cheap to mint and their release is
+<strong>non-deterministic</strong>, so a loop that mints thousands of them holds guest-side table entries until
+the collector gets around to it. Dispose explicitly where the lifetime is known.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="two-generated-packages-transpile-each-one-wire-them-with---map">Two generated packages: transpile each one, wire them with <code>--map</code><a href="#two-generated-packages-transpile-each-one-wire-them-with---map" class="hash-link" aria-label="Direct link to two-generated-packages-transpile-each-one-wire-them-with---map" title="Direct link to two-generated-packages-transpile-each-one-wire-them-with---map" translate="no">​</a></h3>
+<p>The prescribed cross-crate shape is <strong>one transpile per component</strong>, with the dependency edge wired
+in the JS module graph:</p>
+<div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">jco transpile chain.wasm  -o chain  --name chain</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">jco transpile wallet.wasm -o wallet --name wallet \</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  --map &#x27;cddl:chain/types@0.1.0=@scope/chain#types&#x27;</span><br></div></code></pre></div></div>
+<p>The <code>--map</code> value is <code>&lt;interface id&gt;=&lt;module specifier&gt;#&lt;export&gt;</code>. Both specifier forms work: a
+relative one (<code>../chain/chain.js#types</code>, what the gate drives) and a <strong>bare npm specifier</strong>
+(<code>@scope/chain#types</code>) resolved through <code>node_modules</code>.</p>
+<p>The whole cross-crate flow then behaves as it does through a native host: mint a <code>chain.Token</code>,
+push it through the consumer&#x27;s <code>wallet.TokenList</code> accumulator, construct a <code>wallet.Ledger</code>, get a
+chain-typed handle back from <code>ledger.head()</code>, and mutate it through the <em>dependency&#x27;s</em> own
+interface. Values survive the crossing unmutated, the returned handle is a live resource in the
+dependency&#x27;s table (<code>ledger.head() instanceof chain.Token</code>), and snapshot semantics hold across the
+seam exactly as they do inside one component.</p>
+<p><strong>Instantiate-once comes free here.</strong> The invariant that
+<a href="#instantiate-the-dependency-once--nothing-enforces-it" class="">nothing enforces at composition time</a> is
+delivered by ES module semantics: every consumer importing the same dependency specifier shares one
+module instance, so there is no two-instance topology to get wrong.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="do-not-transpile-a-composed-artifact">Do not transpile a composed artifact<a href="#do-not-transpile-a-composed-artifact" class="hash-link" aria-label="Direct link to Do not transpile a composed artifact" title="Direct link to Do not transpile a composed artifact" translate="no">​</a></h3>
+<p>Composing the two components into one world <em>first</em> and transpiling the result is the obvious
+alternative, and it is <strong>broken under jco 1.26.1</strong> — in two places, one of which is silent. The
+runtime half and the bare-alias resolution are pinned by the <code>component_jco</code> gate&#x27;s composed leg, so
+a jco fix is reported as the good news it is rather than discovered years later; the <code>tsc</code> verdict
+below is a measurement beside it rather than a gated one.</p>
+<ul>
+<li class=""><strong>At build time</strong>, the composed world&#x27;s root typings do not compile. Both packages&#x27; single
+interface is named <code>types</code>, so the <code>.d.ts</code> emits <code>export * as types</code> twice and <code>tsc --strict</code>
+fails with <code>TS2300: Duplicate identifier &#x27;types&#x27;</code>. The runtime <code>.js</code> disambiguates by exporting
+the fully-qualified names, so the bare <code>types</code> alias silently resolves to the <strong>first</strong> interface
+only.</li>
+<li class=""><strong>At run time</strong>, handles do not cross between the composed instances. Passing a dependency-minted
+handle into a consumer function throws <code>TypeError: Resource error: Not a valid &quot;…&quot; resource</code> — in
+the scalar-borrow position and through the accumulator alike. Worse, in the other direction a
+consumer getter returning a dependency-typed <code>own</code> handle resolves the index <strong>in the wrong
+table</strong> and hands back a <em>different object</em>: a freshly decoded ledger&#x27;s <code>head()</code> reads correctly,
+and after three unrelated dependency handles have been minted the same expression returns some
+other object&#x27;s fields, with no error anywhere.</li>
+</ul>
+<p>The cause, read off the transpiled JS, is that jco allocates a <strong>separate handle table per component
+instance</strong> for the same resource type and emits no transfer between them for a JS-held handle. This
+is a jco defect and not an emitter one: the identical composed artifact is driven correctly through
+wasmtime by <code>component_compose</code>.</p>
+<p>The short-name collision is general rather than a property of that fixture. Each exported module
+scope becomes one interface, so a <strong>single-scope crate&#x27;s interface is always named <code>types</code></strong> — any
+two generated packages composed into one world collide on that name.</p>
+<p><strong>The boundary is about instances, not interfaces.</strong> Many interfaces in <em>one</em> component is fine:
+a generated two-interface crate whose types take <code>borrow&lt;leaf&gt;</code> and <code>list&lt;borrow&lt;leaf&gt;&gt;</code> from a
+sibling interface and return <code>own leaf</code> transpiles and drives correctly, repeated-borrow position
+and all — measured on such a crate, since the gate&#x27;s own fixtures are single-interface. It is many
+component <em>instances</em> in one composed artifact that jco cannot yet wire. So a single generated crate
+needs nothing special, and a multi-crate consumer transpiles per component.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="packaging-documented-not-generated">Packaging: documented, not generated<a href="#packaging-documented-not-generated" class="hash-link" aria-label="Direct link to Packaging: documented, not generated" title="Direct link to Packaging: documented, not generated" translate="no">​</a></h3>
+<p>There is <strong>no <code>--package-json</code> component flavor</strong>, and none is planned on the strength of what is
+known today. The <code>--map</code> target is an npm package <em>name</em>, and no existing flag carries one:
+<a class="" href="/cddl-codegen/command_line_flags"><code>--component-dep</code></a> names the dependency&#x27;s <strong>rust</strong> package and
+<a class="" href="/cddl-codegen/command_line_flags"><code>--component-extern-wit</code></a> names a WIT <strong>directory</strong>. A generated flavor
+therefore needs a new cross-crate flag family with its config keys, its documented rows and its
+<code>deps</code>-edge derivation, plus a ruling on how a <code>component/</code> package sits under <code>--package-json</code>&#x27;s
+<code>rust/</code>-nesting layout — which is a good deal more than the scripts entry it looks like from
+outside.</p>
+<p>What ships instead is the shape itself: <strong>one npm package per generated component</strong>, <code>jco transpile</code>
+in its build script, and the dependency wired by <code>--map</code> to the dependency package&#x27;s specifier.</p>
+<div class="language-jsonc codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-jsonc codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">// @scope/chain — the dependency package</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">{</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  &quot;name&quot;: &quot;@scope/chain&quot;, &quot;type&quot;: &quot;module&quot;, &quot;exports&quot;: &quot;./dist/chain.js&quot;,</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  &quot;scripts&quot;: { &quot;build&quot;: &quot;jco transpile chain_component.wasm -o dist --name chain&quot; }</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">}</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">// @scope/wallet — the consumer package, dependencies: { &quot;@scope/chain&quot;: &quot;…&quot; }</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">{</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  &quot;name&quot;: &quot;@scope/wallet&quot;, &quot;type&quot;: &quot;module&quot;, &quot;exports&quot;: &quot;./dist/wallet.js&quot;,</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  &quot;scripts&quot;: {</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">    &quot;build&quot;: &quot;jco transpile wallet_component.wasm -o dist --name wallet --map &#x27;cddl:chain/types@0.1.0=@scope/chain#types&#x27;&quot;</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  }</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">}</span><br></div></code></pre></div></div>
+<p>Reach for a generated flavor when the hand-maintained part stops being trackable by hand: a
+generated tree whose consumer crates each carry more than a couple of <code>deps</code> edges, where
+regenerating with a changed dependency set leaves a <code>--map</code> entry stale or missing and nothing says
+so. That count — dependency edges per consumer — is the dimension the cost grows along, and it is
+visible to the party maintaining the transpile script.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="not-probed-on-this-face">Not probed on this face<a href="#not-probed-on-this-face" class="hash-link" aria-label="Direct link to Not probed on this face" title="Direct link to Not probed on this face" translate="no">​</a></h3>
+<p>Stated so the remainder is visible rather than implied. Each of these is unprobed <strong>from JS</strong>; the
+underlying feature is exercised elsewhere:</p>
+<ul>
+<li class=""><strong><code>--json-serde-derives</code>&#x27; <code>to-json</code> / <code>from-json</code> doors.</strong> The fixtures behind <code>component_jco</code>
+carry no JSON methods. Probing it means generating one of them with the flag and driving the two
+doors from node.</li>
+<li class=""><strong>The browser.</strong> Everything here is <code>preview2-shim</code>&#x27;s <em>node</em> build. Probing it means running the
+same drivers under a headless browser against the shim&#x27;s browser entry.</li>
+<li class=""><strong><code>--preserve-encodings</code>&#x27; <code>to-canonical-cbor-bytes</code>.</strong> Probing it means generating the surface
+fixture at that posture and asserting byte-exactness across the JS boundary.</li>
+<li class=""><strong>Other versions.</strong> jco 1.26.1 and node 22 only — the gate pins both exactly, which is what makes
+its verdict a statement about a known vintage rather than about whatever npm resolved today.
+Probing another means a second pinned lockfile or node version.</li>
+<li class=""><strong>jco&#x27;s other transpile options</strong> — <code>--instantiation</code>, <code>--minify</code>, <code>--optimize</code>, <code>--tracing</code>,
+<code>--no-wasi-shim</code>, <code>--valid-lifting-optimization</code>, <code>--import-bindings</code>. None were needed for any of
+the above and none were exercised. Note <code>--optimize</code> runs <code>wasm-opt</code>, which
+<a href="#binary-size" class="">refuses whole components outright</a>.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="binary-size">Binary size<a href="#binary-size" class="hash-link" aria-label="Direct link to Binary size" title="Direct link to Binary size" translate="no">​</a></h2>
+<p>Measured on this project&#x27;s own generated output under rustc 1.96.1, <code>--target wasm32-wasip2</code>,
+<code>[profile.release] opt-level = &quot;s&quot;</code>, with the rust crate narrowed to <code>crate-type = [&quot;rlib&quot;]</code>:</p>
+<table><thead><tr><th>Spec</th><th>Component <code>.wasm</code></th><th>With <code>[profile.release] strip = true</code></th></tr></thead><tbody><tr><td>A small single-scope spec (records, a choice, a bounded type, a map, an <code>any</code> field)</td><td>275,768 B</td><td>211,930 B (−23.1 %)</td></tr><tr><td>A larger single-scope spec (the project&#x27;s <code>json</code> fixture)</td><td>338,772 B</td><td>251,406 B (−25.8 %)</td></tr><tr><td>The smallest real spec measured (one bounded-bytes rule)</td><td>145,020 B</td><td>—</td></tr></tbody></table>
+<p>Three things to take from that:</p>
+<ul>
+<li class=""><strong>The floor is the rust crate, not the glue.</strong> A one-rule spec still produces a 145 KB component,
+because every generated component statically links the CBOR runtime it bridges to. Spec size
+moves the number far less than its presence does.</li>
+<li class=""><strong><code>strip = true</code> is the cheap win, and it is a cargo profile key rather than a post-processing
+step.</strong> Roughly a quarter of an unstripped artifact is the wasm <code>name</code> section (63,825 B of the
+small fixture&#x27;s core module). Note that stripping also removes the <code>target_features</code> custom
+section, which post-processing tools read — if you then run one, you may have to re-declare the
+features explicitly.</li>
+<li class=""><strong><code>wasm-opt</code> cannot process a component at all.</strong> Binaryen 125 refuses the file outright
+(<code>this looks like a wasm component, which Binaryen does not support yet</code>), so there is no
+post-<code>wasm-opt</code> component size to quote. As an upper bound on what a component-aware Binaryen
+would recover, running <code>wasm-opt -Os</code> on the <em>embedded core module</em> takes the small fixture&#x27;s
+257,255 B module to 158,872 B (−38.2 %) and the large one&#x27;s 296,870 B to 169,504 B (−42.9 %) —
+but most of that is the same <code>name</code>-section stripping <code>strip = true</code> already gives you; the
+optimisation itself accounts for about 7 % of the module.</li>
+</ul>
+<p><strong>The WASI import surface is a fixed floor, not a function of your spec.</strong> Every artifact measured
+above — including the 145 KB one — imports exactly <strong>14</strong> <code>wasi:*</code> interfaces
+(<code>wasi:io/{poll,error,streams}</code>, <code>wasi:clocks/monotonic-clock</code>, and ten <code>wasi:cli/*</code>, all at
+<code>@0.2.9</code> under this toolchain) and exports exactly one interface. Those imports come from the
+sysroot&#x27;s reactor adapter, not from generated code, and a host must satisfy them even for a pure
+codec: an empty host linker fails on <code>wasi:io/poll</code> before your code runs. The generated WIT itself
+stays WASI-free.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/comment_dsl"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Comment DSL</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/examples"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Examples</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#resources-not-records" class="table-of-contents__link toc-highlight">Resources, not records</a></li><li><a href="#getters-hand-back-a-snapshot" class="table-of-contents__link toc-highlight">Getters hand back a snapshot</a></li><li><a href="#collections-are-plain-lists" class="table-of-contents__link toc-highlight">Collections are plain lists</a></li><li><a href="#setters-exist-only-for-optional-fields" class="table-of-contents__link toc-highlight">Setters exist only for optional fields</a></li><li><a href="#rest-rows-and-open-tables-project-as-extra-getters" class="table-of-contents__link toc-highlight">Rest rows and open tables project as extra getters</a></li><li><a href="#passing-a-resource-into-itself-stores-a-snapshot" class="table-of-contents__link toc-highlight">Passing a resource into itself stores a snapshot</a></li><li><a href="#nested-options-work" class="table-of-contents__link toc-highlight">Nested options work</a></li><li><a href="#naming" class="table-of-contents__link toc-highlight">Naming</a></li><li><a href="#int-is-a-variant-and-its-nint-arm-is-cbor-biased" class="table-of-contents__link toc-highlight"><code>Int</code> is a variant, and its <code>nint</code> arm is CBOR-biased</a></li><li><a href="#any-cbor-is-bytes-exactly-one-item-canonically-re-encoded" class="table-of-contents__link toc-highlight"><code>any-cbor</code> is bytes, exactly one item, canonically re-encoded</a></li><li><a href="#fallible-doors-return-the-rust-error-text" class="table-of-contents__link toc-highlight">Fallible doors return the rust error text</a></li><li><a href="#encoding-posture-is-a-property-of-the-package-not-of-a-type" class="table-of-contents__link toc-highlight">Encoding posture is a property of the package, not of a type</a></li><li><a href="#sharing-types-across-packages" class="table-of-contents__link toc-highlight">Sharing types across packages</a><ul><li><a href="#import-mode-is-opt-in-and-the-fallback-is-exclusion" class="table-of-contents__link toc-highlight">Import mode is opt-in, and the fallback is exclusion</a></li><li><a href="#the-seam-is-cbor-bytes-and-it-costs-what-that-costs" class="table-of-contents__link toc-highlight">The seam is CBOR bytes, and it costs what that costs</a></li><li><a href="#getters-on-dependency-typed-fields-are-fallible" class="table-of-contents__link toc-highlight">Getters on dependency-typed fields are fallible</a></li><li><a href="#dependency-typed-collection-parameters-take-an-accumulator" class="table-of-contents__link toc-highlight">Dependency-typed collection parameters take an accumulator</a></li><li><a href="#posture-matching-is-an-integrator-obligation" class="table-of-contents__link toc-highlight">Posture matching is an integrator obligation</a></li><li><a href="#instantiate-the-dependency-once--nothing-enforces-it" class="table-of-contents__link toc-highlight">Instantiate the dependency once — nothing enforces it</a></li><li><a href="#known-limitation-no-binary-dedupe" class="table-of-contents__link toc-highlight">Known limitation: no binary dedupe</a></li></ul></li><li><a href="#toolchain-floor-and-the-ambient-wasm-tools-trap" class="table-of-contents__link toc-highlight">Toolchain floor, and the ambient-<code>wasm-tools</code> trap</a></li><li><a href="#known-limitation-the-wasm32-wasip2-cdylib-link-crash" class="table-of-contents__link toc-highlight">Known limitation: the <code>wasm32-wasip2</code> cdylib link crash</a></li><li><a href="#known-limitation-shapes-whose-glue-does-not-yet-compile" class="table-of-contents__link toc-highlight">Known limitation: shapes whose glue does not yet compile</a></li><li><a href="#flag-semantics-deltas" class="table-of-contents__link toc-highlight">Flag-semantics deltas</a></li><li><a href="#javascript-via-jco" class="table-of-contents__link toc-highlight">JavaScript via jco</a><ul><li><a href="#transpiling-install-the-shim-map-nothing" class="table-of-contents__link toc-highlight">Transpiling: install the shim, map nothing</a></li><li><a href="#the-js-surface-row-by-row" class="table-of-contents__link toc-highlight">The JS surface, row by row</a></li><li><a href="#a-refusal-is-thrown-and-the-instance-survives-it" class="table-of-contents__link toc-highlight">A refusal is thrown, and the instance survives it</a></li><li><a href="#disposal-is-an-own-property-and-reclamation-is-otherwise-gc-driven" class="table-of-contents__link toc-highlight">Disposal is an own property, and reclamation is otherwise GC-driven</a></li><li><a href="#two-generated-packages-transpile-each-one-wire-them-with---map" class="table-of-contents__link toc-highlight">Two generated packages: transpile each one, wire them with <code>--map</code></a></li><li><a href="#do-not-transpile-a-composed-artifact" class="table-of-contents__link toc-highlight">Do not transpile a composed artifact</a></li><li><a href="#packaging-documented-not-generated" class="table-of-contents__link toc-highlight">Packaging: documented, not generated</a></li><li><a href="#not-probed-on-this-face" class="table-of-contents__link toc-highlight">Not probed on this face</a></li></ul></li><li><a href="#binary-size" class="table-of-contents__link toc-highlight">Binary size</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
+</body>
+</html>
