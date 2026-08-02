@@ -2035,9 +2035,9 @@ impl<'a> IntermediateTypes<'a> {
             "false",
             ConceptualRustType::Fixed(FixedValue::Bool(false)).into(),
         );
-        // `float` is width-UNCONSTRAINED (`float = float16-32 / float64`, RFC 8610 App. D): it is
-        // its own wire-acceptance class, NOT an alias of `float64`. Sharing one identity with
-        // `float64` is what made a `float64` member accept an `f9`/`fa` head.
+        // `float` is UNCONSTRAINED (`float = float16-32 / float64`, RFC 8610 App. D): it is its
+        // own value class — every float value — NOT an alias of `float64`, which holds only the
+        // values needing all eight bytes. Sharing one identity is what made them indistinguishable.
         insert_alias(
             "float",
             ConceptualRustType::Primitive(Primitive::Float).into(),

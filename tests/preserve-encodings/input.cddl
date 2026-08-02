@@ -302,13 +302,13 @@ nem_preserve = [ m: {+ uint => tstr} ]
 ; --- cbor_event 3.2.0 upgrade vectors: the preserve flavor of the nullable-Special null-peek ---
 ; (see tests/core/input.cddl). BOTH major-type-7 flavors: the encoding-less `bool` and the
 ; width-carrying `float`, whose head width survives the null-peek and the Optional wrapper.
-; Width-UNCONSTRAINED `float` deliberately: the recorded-width fit/fallback rule these vectors pin
-; is exactly what a declared width replaces (`float64` accepts `#7.27` and writes `#7.27`, full stop).
+; Unconstrained `float` deliberately: the recorded-width fit/fallback rule these vectors pin is
+; the same one every float name obeys, isolated here from any value-class question.
 nullable_bool = bool / null
-; --- the six float prelude names are six WIRE-ACCEPTANCE classes, under preserve ---
-; A RECORDED head replays exactly (strict acceptance means a recorded head is in-set by
-; construction); a FRESH value writes the declared width, where the width-unconstrained `float`
-; writes its narrowest lossless head.
+; --- the six float prelude names are six VALUE classes, under preserve ---
+; A RECORDED head replays exactly, and is NOT confined to the class's own width: reads accept any
+; head and judge the value, so an fb-headed 1.5 is a `float16` that replays as fb. A FRESH value
+; writes its shortest lossless form, which for a member IS the class's declared width.
 float_heads = [h: float16, u: float16-32, w: float32-64, s: float32, d: float64, f: float]
 
 nullable_float = float / null
