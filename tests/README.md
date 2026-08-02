@@ -1183,7 +1183,12 @@ crate); that combination is rejected in `api::with_types` and pinned by
 `generated_code_clippy_clean` runs `cargo clippy` over the generated rust and wasm crates for two
 representative profiles (default flags, and `--preserve-encodings --canonical-form`), generated from
 the same rich extern-free input as `flag_value_smoke` into its own temp dir (so it can't race the
-fixtures' reused `tests/<dir>/export` outputs). What it proves: emitted source is lint-clean for
+fixtures' reused `tests/<dir>/export` outputs). A third case swaps the input for a minimal spec the
+gate writes into that same temp dir, under `--preserve-encodings --annotate-fields=false`: verify-only
+fixed bool/null in member position and in all three arm positions (map-rep, array-rep, type-choice).
+Those shapes are the gate's own coverage floor — the rich fixture spells none of them, and
+`--annotate-fields=false` is what makes the member position emit its unbound value, so one case
+covers all four emission sites. What it proves: emitted source is lint-clean for
 the covered profiles, modulo the permanent input-dependent allow described below — the
 emission-quality class that snapshots and round-trip suites are blind to (they pin bytes and
 behavior, not idiomatic-ness; a degenerate `();` statement compiles and round-trips green but

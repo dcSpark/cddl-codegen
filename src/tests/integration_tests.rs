@@ -3937,10 +3937,10 @@ fn flag_value_smoke() {
 /// tests/TESTING_ROADMAP.md's declined flag-powerset entry: escaped interactions earn their own
 /// standing cells rather than the whole powerset). No profile combines preserve with
 /// annotate=false, and `flag_value_smoke`'s annotate=false case runs a spec with no encoding-LESS
-/// fixed member, so the combination's fixed-value deserialize path was unreachable by every gate:
-/// it emitted a bare `()` value expr with no statement terminator before the next statement
-/// (non-parsing output, array and map arms — found by reading during the optional-fixed-value
-/// delivery, fixed by terminating the preserve-only trailing `()` with `;`). This cell generates
+/// fixed member, so the combination's fixed-value deserialize path was unreachable by every gate,
+/// and that path emitted a bare `()` value expr with no statement terminator before the next
+/// statement (non-parsing output, array and map arms). The emission now suppresses that value
+/// wherever nothing binds it, and this cell holds the compile floor for the pair. This cell generates
 /// the two fixed-member corpus fixtures (mandatory: `fixed_bool_member.cddl`; optional presence
 /// bools: `optional_fixed_member.cddl`) under exactly that flag pair and `cargo check`s the
 /// result, so a regression fails here rather than only in a consumer running annotate=false.
@@ -4452,6 +4452,10 @@ fn wasm_collections_index_lists_every_minted_wrapper() {
 /// clippy::all` over a rich, extern-free fixture (`tests/canonical/input.cddl`, which
 /// `flag_value_smoke` already relies on for exactly its extern-freedom + breadth) under two
 /// representative profiles: default flags, and `--preserve-encodings=true --canonical-form=true`.
+/// A third case swaps the input for a minimal scratch-written spec under `--preserve-encodings=true
+/// --annotate-fields=false`, closing the coverage bound that let a `clippy::no_effect` `();` ship
+/// inside this gate's own deny set: the rich fixture spells no verify-only fixed bool/null, in
+/// member or arm position.
 ///
 /// Deny only `clippy::all` plus a curated rustc style-lint set, NOT `-D warnings`: generated code
 /// legitimately over-imports traits/globs (only the concrete collection-type imports are pruned —
@@ -4481,12 +4485,45 @@ fn generated_code_clippy_clean() {
         "unused_allocation",
     ];
     const PERMANENT_ALLOWS: &[&str] = &["-A", "clippy::disallowed_names"];
-    let input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
-    let cases: &[(&str, &[&str])] = &[
-        ("default", &[][..]),
+    let rich_input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
+    // Third case: the verify-only fixed bool/null shapes, which the rich fixture cannot host. Two
+    // reasons it is a dedicated input rather than more rules in `tests/canonical/input.cddl` (the
+    // route the identity-op provocations took): the MEMBER position only emits its unbound value
+    // under `--annotate-fields=false`, which neither existing profile passes, so the rich fixture
+    // would need a third profile anyway; and that fixture is the whole-program snapshot corpus'
+    // input, so a shape addition lands a blessed diff across consumers with no stake in this lint.
+    // Written into the gate's own scratch dir (same shape as
+    // `wasm_collections_index_lists_every_minted_wrapper`), so it carries no fixture-registry or
+    // snapshot obligations. `--annotate-fields=false` is what makes ONE case cover all four
+    // emission positions: the member path (records.rs `generate_array_struct_deserialization`) plus
+    // the map-rep / array-rep / type-choice arm paths (enums.rs), which emit their unbound value
+    // under either annotate setting.
+    const FIXED_SPECIAL_SPEC: &str = "\
+; Fixed bool/null in MEMBER position: mandatory (zero-information, binds nothing) and optional
+; (a `bool` presence field). Under --preserve-encodings the fixed-value deserialize used to end in
+; a bare `();` statement here — `clippy::no_effect`, inside this gate's own deny set.
+arr_member = [v: true, x: uint]
+map_member = {k: false, x: uint}
+null_member = [n: null, y: uint]
+opt_member = [x: uint, ? v: true]
+; The three ARM positions, whose unbound value is emitted under either --annotate-fields setting.
+map_bool_arm = { flag: true // label: tstr }
+map_null_arm = { absent: null // label: tstr }
+arr_bool_arm = [ flag: true // label: tstr ]
+arr_null_arm = [ absent: null // label: tstr ]
+type_choice_bool = true / tstr
+";
+    let cases: &[(&str, &[&str], Option<&str>)] = &[
+        ("default", &[][..], None),
         (
             "preserve_canonical",
             &["--preserve-encodings=true", "--canonical-form=true"][..],
+            None,
+        ),
+        (
+            "preserve_fixed_special",
+            &["--preserve-encodings=true", "--annotate-fields=false"][..],
+            Some(FIXED_SPECIAL_SPEC),
         ),
     ];
     // shared scratch + target under temp_dir (per-checkout), like `flag_value_smoke` and the other
@@ -4495,7 +4532,16 @@ fn generated_code_clippy_clean() {
         std::env::temp_dir().join(format!("cddl_codegen_clippy_gate_{:016x}", checkout_hash()));
     let target_dir = scratch.join("target");
     let mut failures = Vec::new();
-    for (label, options) in cases {
+    for (label, options, inline_spec) in cases {
+        let input = match inline_spec {
+            None => rich_input.clone(),
+            Some(src) => {
+                let path = scratch.join(format!("{label}.cddl"));
+                std::fs::create_dir_all(&scratch).unwrap();
+                std::fs::write(&path, src).unwrap();
+                path
+            }
+        };
         let out = scratch.join(label);
         let _ = std::fs::remove_dir_all(&out);
         let gen_out = codegen_cmd()

@@ -4005,14 +4005,13 @@ impl Deserialize for FixedSpecialGroupChoice {
                 }
                 let flag_key_encoding = StringEncoding::from(flag_key_encoding);
                 let flag_value = raw.bool()?;
-                if flag_value != true {
+                if !flag_value {
                     return Err(DeserializeFailure::FixedValueMismatch {
                         found: Key::Bool(flag_value),
                         expected: Key::Bool(true),
                     }
                     .into());
                 }
-                ();
                 match len {
                     cbor_event::LenSz::Len(_, _) => (),
                     cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -4048,7 +4047,6 @@ impl Deserialize for FixedSpecialGroupChoice {
                 if raw.special()? != cbor_event::Special::Null {
                     return Err(DeserializeFailure::ExpectedNull.into());
                 }
-                ();
                 match len {
                     cbor_event::LenSz::Len(_, _) => (),
                     cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -4134,14 +4132,13 @@ impl Deserialize for FixedSpecialTypeChoice {
             match raw.cbor_type()? {
                 cbor_event::Type::Special => {
                     let true_value = raw.bool()?;
-                    if true_value != true {
+                    if !true_value {
                         return Err(DeserializeFailure::FixedValueMismatch {
                             found: Key::Bool(true_value),
                             expected: Key::Bool(true),
                         }
                         .into());
                     }
-                    ();
                     Ok(FixedSpecialTypeChoice::True)
                 }
                 cbor_event::Type::Text => {
@@ -6811,7 +6808,7 @@ impl Deserialize for OptFixedMap {
                                 (|| -> Result<_, DeserializeError> {
                                     read_len.read_elems(1)?;
                                     let m_bool_value = raw.bool()?;
-                                    if m_bool_value != true {
+                                    if !m_bool_value {
                                         return Err(DeserializeFailure::FixedValueMismatch {
                                             found: Key::Bool(m_bool_value),
                                             expected: Key::Bool(true),

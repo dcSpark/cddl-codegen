@@ -5566,7 +5566,7 @@ impl Deserialize for OptFixedArr {
                 (|| -> Result<_, DeserializeError> {
                     read_len.read_elems(1)?;
                     let bfix_value = raw.bool()?;
-                    if bfix_value != true {
+                    if !bfix_value {
                         return Err(DeserializeFailure::FixedValueMismatch {
                             found: Key::Bool(bfix_value),
                             expected: Key::Bool(true),
@@ -5847,7 +5847,7 @@ impl Deserialize for OptFixedMap {
                             m_bool_present = (|| -> Result<_, DeserializeError> {
                                 read_len.read_elems(1)?;
                                 let m_bool_value = raw.bool()?;
-                                if m_bool_value != true {
+                                if !m_bool_value {
                                     return Err(DeserializeFailure::FixedValueMismatch {
                                         found: Key::Bool(m_bool_value),
                                         expected: Key::Bool(true),
