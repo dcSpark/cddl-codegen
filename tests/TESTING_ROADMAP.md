@@ -176,41 +176,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-1. **The float head boundary has no ORACLE-CERTIFIED evidence, because both reference oracles
-   over-accept it.** The generator side landed: each of the six float prelude names accepts only the
-   CBOR heads its own name declares and writes the width it declares, in every profile (the wire
-   contract is pinned by the `float_heads` vectors in `tests/core/tests.rs` and
-   `tests/preserve-encodings/tests.rs` and the `float_widths` KATs in
-   `tests/golden_hex_preserve/tests.rs`). What remains is the matrix evidence, and it is blocked on
-   the oracles rather than on us.
-   - **The reject-side vectors diverge from BOTH oracles, so they cannot ship as ordinary pins.** An
-     `f9` or `fb` head against a `float32` member is spec-invalid per `#7.26` and is now refused,
-     which puts those vectors in `class="over-acceptance"` — a class the mint keeps only while both
-     oracles reject the bytes. Neither does: the rust reference oracle's `cddl --ci validate`
-     accepts `f9`/`fa`/`fb` alike against a `float32` member (and `fa` against `float64`), and the
-     ruby oracle classifies by the decoded value's MINIMAL width rather than the wire head, so it
-     rejects a spec-valid `fa`-headed 1.5 as readily as the `fb` ones. Committing the pins before
-     that is settled commits vectors the next mint drops, taking the Q4 over-accepts set red.
-   - **The route out is a per-vector stale-guarded exemption plus a submittable writeup.** Each such
-     vector takes an exemption entry citing a committed upstream report (the shape the constraint
-     side already has for the rust `uint` control-op gap). The ruby half of that report is a work
-     item in its own right, and is what the exemption's honesty rests on: prior "ruby is wrong"
-     readings have been answered by the ruby author showing OUR spec reading was wrong, so the
-     report has to be written so he can answer it — our reading cited to section (RFC 8610 App. D
-     prelude `#7.25`/`#7.26`; RFC 8949 §3.3/§4.2.2 head semantics), the exact vectors (hex + CDDL),
-     ruby's probed behaviour with the command, and the live branch "if ruby is right, the exemption
-     is wrong and the acceptance rule reopens" stated as an answerable question. A vector whose
-     writeup case cannot be made concrete does not ship exempted.
-   - **The `supported` rows for `float16` / `float16-32` / `float32-64` carry hand-written evidence
-     until a `verify.ts` pass replaces it.** Their annotation lines say so explicitly. The accept
-     side also wants re-minting for all six rows: every committed vector on the float rows is
-     structurally `fa`- or `fb`-headed, so a green float row today says nothing about the new
-     boundary in either direction.
-   - **Reopening signal:** none needed — this is scheduled work, not a deferral. It is done when the
-     six float rows' evidence is minted by `verify.ts` and every exempted reject vector names a
-     committed writeup.
-
-2. **Two uncovered surfaces around `export()`, both measured while probing the aggregate-package
+1. **Two uncovered surfaces around `export()`, both measured while probing the aggregate-package
    deferral above.** Neither depends on that feature ever shipping.
    - **A generated crate's `package.name` can collide with an existing workspace member and nothing
      says so.** The tool writes `rust/Cargo.toml` with `package.name` derived from `--lib-name`,
@@ -229,7 +195,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      no-prior-output-dependence plus four diagnostic-only prior-output reads — and it is the half a
      refactor there would most easily break silently.
 
-3. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
+2. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
    `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
    profile-parameterized layer-2 gates `recombination_crates_execute` /
@@ -303,7 +269,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-4. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
+3. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
    The `from_cbor_bytes` fuzz crate generates from `tests/preserve-encodings/input.cddl`, which now
    carries a `@duplicates reject` collapsed tag-set field minted as a GENERIC instance
    (`oset_p<a> = #6.258([* a]) / [* a] ; @duplicates reject`, used by `reject_set_preserve`) — so
@@ -319,7 +285,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    surface is actually walked, not merely compiled — the compile-rot gate cannot see a panic that
    only a live libFuzzer input triggers.
 
-5. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
+4. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
    preserve-encodings, canonical, JSON/schemars, wasm, extern-interface projection, and the
    `dsl.duplicates.{reject,preserve}` matrix feature rows. Current state lives in
@@ -379,7 +345,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      rootings hold a compile-and-wire floor in the `key_`/`ukey_`/`upres_` blocks of
      `tests/recursive-collection-ref/input.cddl`.)
 
-6. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
+5. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on two profiles (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
@@ -402,7 +368,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    consumer CI will trip"; the consumer-report channel stays load-bearing for that remainder, which
    is why those two lints are allowed at the generated root rather than chased per-spec.
 
-7. **One rustfmt-seam error leg still has no witness, and it is the one that needs a
+6. **One rustfmt-seam error leg still has no witness, and it is the one that needs a
    subprocess-scoped test harness.** The seam's non-0/3-exit-is-fatal contract — which both the
    width ladder (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the
    preserve-fixture rustfmt sweep (`preserve_fixtures_rustfmt_cycle_stability`) cite as their
@@ -422,7 +388,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    whoever next writes one — today it is one, so a SECOND is what makes the harness worth building
    rather than the leg worth skipping.
 
-8. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
+7. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
    gives the rustfmt-cycle sweep discovery power.**
    `preserve_fixtures_rustfmt_cycle_stability` holds the post-rustfmt on-disk fixed point over
    every fixture, but only over fold positions the corpus expresses — its own delivery record is
@@ -445,7 +411,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    formatter's novel comment re-owning — the sweep's version-bump tripwire is the instrument for
    those.
 
-9. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
+8. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
    SAME-VERSION suite by construction: every case's `old.rs` and `new.rs` agree on generated code
    bytes except where the fixture deliberately drifts one item, which is the shape a re-run of one
    tool version produces. A tool UPGRADE is the other shape — it adds tokens and rewrites others
@@ -464,7 +430,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    does NOT reproduce — a block that self-clears is a false positive by construction, which is
    exactly how the no_std one was identified.
 
-10. **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
+9. **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
     coverage — its placement behaviour rests on one hand cell per construct.** Most of the IR's
     containers are `Map`/`Array` nodes a walk meets as composites; a few are assembled from inner
     types stored separately, so every walk that reasons about containers has to be told about them
@@ -493,7 +459,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
       (placement × reference mode × profile) is coverage three constructs are each doing without.
 
-11. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
+10. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
     lost one layer above where the spelling rule operates.** `holder = [j: bytes .cbor
     stake_credential]` emits `pub j: Credential` — not `StakeCredential` — while the tag form of the
     same shape (`f: #6.9(stake_credential)`) keeps `Alias(StakeCredential, Rust(Credential))` and
@@ -515,7 +481,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       public API loses a name they wrote. That is one grep of their own generated source, and it does
       not require anyone to recognise it as a parse-layer issue.
 
-12. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
+11. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
     comes from a bounded probe matrix, so a position that matrix never touched can still ship an
     uncompilable crate.** A field whose emitted identifier is one of the fixed locals the generated
     serialization bodies bind now rejects at parse time (`parsing::GENERATED_LOCAL_RESERVED`, seven
@@ -541,7 +507,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       reserved name used in a shape outside its declared scope — the compile error names the
       binding, so the report arrives pre-diagnosed and says exactly which row to widen.
 
-13. **The wasm face's fixed re-export vocabulary is asserted by nothing, and one member of it is
+12. **The wasm face's fixed re-export vocabulary is asserted by nothing, and one member of it is
     absent in the posture that owes it.** `to_canonical_cbor_bytes` is a default method on the
     generated `Serialize` trait (declared in `static/serialization_preserve_force_canonical.rs`), and
     the wasm face's job for that whole family is to re-export trait methods as inherent fns because
@@ -583,7 +549,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       along which a hand-listed vocabulary stops being maintainable. This entry records one such
       member, so the signal is not already met by its own body.
 
-14. **A self-referential named collection aborts the tool, and the panic catalog structurally cannot
+13. **A self-referential named collection aborts the tool, and the panic catalog structurally cannot
     observe an abort.** `foos = [* foos]` plus a rule holding it ends generation with
     `thread 'main' has overflowed its stack` / `fatal runtime error: stack overflow, aborting`
     (SIGABRT, exit 134). Reproduced at master `781e6b8a` under `--wasm=false`, no `--component`. The
@@ -623,7 +589,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       subset-versus-everything choice actually costs. This entry records exactly one such shape,
       found by hand, so the signal is not already met by its own body.
 
-15. **A refusal recorded at one name-resolution seam does not bind the others — sweep the
+14. **A refusal recorded at one name-resolution seam does not bind the others — sweep the
     refused-name × resolution-context product.** Proven by the head-constrained float delivery
     needing TWO seams in one cycle: the refusal shipped at `new_type`'s unresolved-reserved
     fallback, and `x = float16 .size 4` still generated an `f32`-backed codec at exit 0 because a
@@ -652,6 +618,22 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     This is a work item, not a deferral: its trigger fired the day the second seam was found, and
     the axis it closes grows every time the burndown converts another panic class into a refusal
     — seven names joined the inventory in one delivery.
+
+15. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
+    serialize error into a panic.** A `float16` member's carrier is `f32`, and a carrier value that
+    is not f16-exact cannot be written at the one head the type declares — so `Serialize` returns
+    `Err` (`InvalidLenPassed`, the declared-width refusal working as designed: rounding to fit
+    would be a silent value mutation), and `docs/docs/current_capacities.mdx` documents both the
+    error and the door. The tension is the door itself: `ToCBORBytes::to_cbor_bytes()` UNWRAPS,
+    on the pre-existing design premise that generated serialization is total — a premise
+    declared-width floats are the first type class to break. A library panic on a user-supplied
+    value is loud, in-policy, and documented; whether it should instead be a `Result`-returning
+    door (or a validating construction path for the f16 carrier) is an API-shape decision with
+    breaking-change surface across every generated crate, so it is the maintainer's to take, not
+    an implementer's — already flagged to the maintainer at delivery (T1-01, cycle 2). The
+    fixture pin for the current contract is `float_heads_inexact_float16_fails_serialize_loudly`
+    (`tests/core/tests.rs`). Reopening signal: the maintainer takes the ruling, or a consumer
+    reports the panic from production data (measurable by the party holding the inexact value).
 
 ## Standing-system residuals (recur-first)
 
