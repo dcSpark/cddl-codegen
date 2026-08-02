@@ -645,7 +645,7 @@ export function updateDigest(rows: Row[], prior: Digest, machine = machineId()):
         if (cls === "warm") pushHistory(row, d.value);
         writes.push(
           `timings: ${id} ${cls} ${before === undefined ? "(none)" : compactDur(before)} -> ${compactDur(d.value)} ` +
-          `(n=${w.length}) — tests/timings.json updated, commit it`,
+          `(n=${w.length})`,
         );
       } else if (d.note) notes.add(d.note);
     }
@@ -667,7 +667,7 @@ export function updateDigest(rows: Row[], prior: Digest, machine = machineId()):
       pushHistory(row, d.value);
       writes.push(
         `timings: tier=${tier} wall ${before === undefined ? "(none)" : compactDur(before)} -> ${compactDur(d.value)} ` +
-        `(n=${w.length}) — tests/timings.json updated, commit it`,
+        `(n=${w.length})`,
       );
     } else if (d.note) notes.add(d.note);
     nextTiers.push(row);
@@ -676,6 +676,26 @@ export function updateDigest(rows: Row[], prior: Digest, machine = machineId()):
   const digest: Digest = { ...prior, gates: next, tiers: nextTiers };
   const changed = serializeDigest(digest) !== serializeDigest(prior);
   return { writes, notes: [...notes], digest, changed };
+}
+
+/**
+ * The `--update` pass as a callable: read the ledger, recompute, write the digest when it moved, and
+ * print one attributable line per write. Exported because check.ts runs this at the end of every tier
+ * and needs the `changed` verdict — `tests/timings.json` is the deriving source for the tier-time
+ * spans in `tests/README.md`, so a digest write that lands without its spans leaves the NEXT run to
+ * fail-fast on `project_status_headers`. The commit hint is deliberately NOT printed here: only the
+ * caller knows whether the derived spans were regenerated in the same flow, and therefore which files
+ * belong in the one commit.
+ */
+export function runDigestUpdate(): UpdateReport {
+  const u = updateDigest(readLedger(), readDigest());
+  for (const n of u.notes) console.log(n);
+  if (u.changed) {
+    writeFileSync(DIGEST, serializeDigest(u.digest));
+    for (const w of u.writes) console.log(w);
+    if (!u.writes.length) console.log("timings: tests/timings.json row set now matches the check.ts registry");
+  }
+  return u;
 }
 
 // ==================================================================================================
@@ -1486,15 +1506,11 @@ async function main(): Promise<void> {
   }
 
   if (mode === "--update") {
-    const rows = readLedger();
-    const prior = readDigest();
-    const u = updateDigest(rows, prior);
-    for (const n of u.notes) console.log(n);
-    if (u.changed) {
-      writeFileSync(DIGEST, serializeDigest(u.digest));
-      for (const w of u.writes) console.log(w);
-      if (!u.writes.length) console.log("timings: tests/timings.json row set now matches the check.ts registry — commit it");
-    }
+    // Standalone: nobody has regenerated the derived spans, so the hint names the writer that does.
+    // check.ts calls `runDigestUpdate` directly and runs that writer itself.
+    if (runDigestUpdate().changed)
+      console.log("timings: commit tests/timings.json together with the spans it derives — " +
+        "run `bun run project_status_headers.ts --write` and commit both");
     return;
   }
 

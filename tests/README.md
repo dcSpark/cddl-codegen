@@ -229,8 +229,18 @@ its summary still contributes every gate it finished), and `--update` recomputes
 shift before it moves, so one loaded-machine outlier cannot move it at all, and a write takes
 several runs of sustained change. Comparing against the *stored* value rather than the previous run
 is what lets slow monotonic creep accumulate until it trips instead of staying invisible forever.
-When it does write, it prints one attributable line naming the gate, the old and new values, and
-that `tests/timings.json` now needs committing.
+When it does write, it prints one attributable line naming the gate and the old and new values.
+
+**A digest write and the spans DERIVED from it are one commit or neither.** The tier table above
+reads its wall times out of `tests/timings.json` through `project_status_headers.ts`'s generated
+spans, so a re-measurement committed alone leaves the next tier run to fail-fast on the
+`project_status_headers` drift gate — a full tier iteration spent on a one-line writer run. `check.ts`
+therefore calls the update in-process (`runDigestUpdate`, which returns whether the digest moved) and,
+when it did, runs `project_status_headers.ts --write` in the same flow before printing a commit hint
+naming every file the pair touched. If that writer fails, the run says so loudly and names the manual
+step; it never changes the tier verdict, because a failure to write a number is not a failure of the
+repo. Standalone `project_timings.ts --update` has no such flow, so its own hint names the writer
+command to run beside it.
 
 The `timings_digest_check` gate (`local`) asserts **structure only** — a digest row per non-stub
 registry gate, and no orphan rows — plus the update rule's pure-function pins. **No gate anywhere
