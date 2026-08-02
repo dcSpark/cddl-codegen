@@ -510,9 +510,12 @@ fn reject_custom_codec_on_row_entry(
 /// type just built for it.
 ///
 /// The anonymous twin of a NAMED table's row slot (`register_rust_struct`'s `HomogenousMap` arm):
-/// the same entry, read the same way, so both spellings of one shape agree on what the slot means.
-/// `@duplicates preserve` swaps the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin
-/// exactly as it does for a named table. An explicit `reject` is that policy's accepted default (a
+/// the same entry, read the same way. What the two slots DO with `@duplicates` differs by design and
+/// leaves exactly one honored spelling per shape — an anonymous table has no rule slot, so its row
+/// is where the policy has to live; a named table has one, so its row REJECTS the directive and
+/// points there. `@duplicates preserve` here swaps the member to the `PairMap`/`NonEmptyPairMap`
+/// vec-of-pairs twin, the same representation a named table's rule slot selects. An explicit
+/// `reject` is that policy's accepted default (a
 /// loose table is key-unique by construction) and is deliberately NOT stored: `duplicates_reject()`
 /// reads the flag without looking at the container, and a `Map` carrying it reads as DESPECIALIZED
 /// at the WIT boundary — a `TryFrom<Vec<(K, V)>>` door `BTreeMap` has not got.
@@ -6366,10 +6369,12 @@ fn parse_group_choice(
             if rule_metadata.ignore {
                 reject_ignore_not_applicable(types, name);
             }
-            // A table's single row carries a trailing comment slot that nothing reads — disjoint from
-            // the rule's own slot (a rule-trailing `@duplicates` reaches `rule_metadata`; the same
-            // directive spelled on the row does not). A custom (de)serializer pair written there is
-            // therefore inert; reject it and point at the key/value rule spelling that works.
+            // A table's single row carries a trailing comment slot DISJOINT from the rule's own (a
+            // rule-trailing `@duplicates` reaches `rule_metadata`; the same directive spelled on the
+            // row does not reach it). Nothing a named table's row slot can carry is honored, so the
+            // slot's whole job here is to refuse loudly rather than swallow: a custom (de)serializer
+            // pair (a TYPE-level override; a row declares no type), its `@custom_encodings`
+            // declarations, and `@duplicates` (whose honored spelling is the rule slot).
             // (`InlineGroup` is skipped: `group_entry_rule_metadata` panics on one, and a
             // parenthesized table row `{ * (k => v) }` has no entry slot of its own anyway.)
             if let [(row_ge, row_comma)] =
@@ -6396,11 +6401,27 @@ fn parse_group_choice(
                     &format!("the table row (`* k => v`) of rule `{src}`"),
                     &row_metadata,
                 );
+                // A `@duplicates` written on the row is read into `row_metadata` and dropped —
+                // BOTH policies, `preserve` and the explicit `reject` alike (the rule slot is what
+                // `register_rust_struct` reads). An ANONYMOUS inline table honors this slot
+                // precisely because it has no rule slot to carry the policy; a named table has one,
+                // so a second honored spelling would only invite the two to drift. Reject it and
+                // point at the rule slot.
+                if row_metadata.duplicates.is_some() {
+                    types.record_rejection(format!(
+                        "@duplicates on the table row (`* k => v`) of rule `{src}`: a named \
+                         table's duplicates policy is read from the RULE's own trailing slot, not \
+                         from the row's, so it is not honored here. Move it after the closing \
+                         brace (`{src} = {{ * k => v }} ; @duplicates <policy>`). (An ANONYMOUS \
+                         inline table — one written directly at a member, element or union-arm \
+                         type — does carry the policy on its row, because it has no rule slot.)"
+                    ));
+                }
             }
             // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
             // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
-            // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. Nothing
-            // to reject here.
+            // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. That is the
+            // RULE slot's reading; the row slot's is rejected above.
             // Same registration gap as the array arm above: a plain group used as a table key or
             // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
             // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded

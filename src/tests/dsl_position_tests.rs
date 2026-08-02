@@ -1524,6 +1524,45 @@ const GRID: &[Cell] = &[
             "@custom_encodings on the row entry of an inline table (`{ * k => v }`)",
         ),
     },
+    // 38j–38l. The NAMED table's row slot, which is a DIFFERENT slot from 38c's and holds the
+    //     opposite ruling: a named table has a rule slot to carry the policy, so its row rejects the
+    //     directive and points there — one honored spelling per shape, in both directions. Both
+    //     policies reject (each was silently dropped there, `reject` indistinguishably so, which is
+    //     exactly why it needs its own cell rather than being inferred from `preserve`'s). 38l is
+    //     the placement CONTROL: the same directive on the same rule at the RULE slot is honored, so
+    //     the two rejections are attributable to position, not to the rule kind.
+    Cell {
+        directive: "@duplicates preserve",
+        position: "named-table-row-entry",
+        spec: "tbl = { * uint => text ; @duplicates preserve\n}\nholder = [f: tbl]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "Move it after the closing brace (`tbl = { * k => v } ; @duplicates",
+        ),
+    },
+    Cell {
+        directive: "@duplicates reject",
+        position: "named-table-row-entry",
+        spec: "tbl = { * uint => text ; @duplicates reject\n}\nholder = [f: tbl]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "@duplicates on the table row (`* k => v`) of rule `tbl`: a named table's duplicates \
+             policy is read from the RULE's own trailing slot",
+        ),
+    },
+    Cell {
+        directive: "@duplicates preserve",
+        position: "named-table-rule-slot",
+        spec: "tbl = { * uint => text } ; @duplicates preserve\nholder = [f: tbl]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub type Tbl = PairMap<u64, String>"],
+            must_not: &["BTreeMap<u64, String>"],
+        },
+    },
 ];
 
 /// Generate a standalone crate's source map for `spec` (writes to a unique temp `.cddl`).
