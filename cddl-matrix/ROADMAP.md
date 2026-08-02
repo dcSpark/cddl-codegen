@@ -1000,16 +1000,17 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
 - **F9 — interaction tuples** (A-in-B-in-role-C-with-operator-D): richer-than-binary containment; stretch
   query (Q7) only.
 - **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
+- **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and
+  `; unexported:` records that `--extern-import` input files carry beyond the two `ext.*` sentinels
+  (strictly parsed at the seam; comments to the grammar). They are tool-interchange rather than
+  user-authored CDDL, and their strictness is enforced where it binds — the consumer seam's
+  hard-error pins `extern_import_unknown_version_hard_errors` and
+  `extern_import_unknown_annotation_hard_errors` (`src/tests/extern_import_tests.rs`). A matrix row
+  would restate that enforcement as model surface for constructs no user authors. Reopening signal:
+  a concrete matrix consumer query that needs vendor-sentinel rows.
 
 ## Pending decisions (need a human call)
 
-- **Extern-interface seam sentinels — are they matrix surface?** `--extern-import` input files carry
-  vendor constructs beyond the two `ext.*` sentinels: the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`
-  header and `; unexported:` records (strictly parsed at the seam; comments to the grammar). They are
-  tool-interchange rather than user-authored CDDL, so rows may be out of scope — but they ARE consumed
-  input surface, and the `CDDL_CODEGEN` profile's whole premise is that vendor surface rides the same
-  pipeline. A deliberate yes/no belongs here rather than silent omission; a "yes" costs the
-  registration chain in `README.md` § "Registering a new vendor (CDDL_CODEGEN) feature row".
 - **Over-acceptance denominator:** the `class="over-acceptance"` vector class pins each CERTIFIED
   instance (the numerator; rows are enumerated per the "Intra-alternative variation rows" rule as
   instances surface). Still undecided is the DENOMINATOR for any completeness claim about that axis:
