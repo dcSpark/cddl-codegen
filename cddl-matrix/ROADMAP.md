@@ -45,24 +45,21 @@ matrix's own side — as opposed to in the generator, which is the findings ledg
 kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
 (deferred, so each names the observable that would reopen it).
 
-- **Classify the fixed-value member CELLS as enforcement-bearing in `query_q4_directional.ts` —
-  buildable now.** `carriesConstraint`'s own comment already claims the member forms
-  ("`value.number*` (and the other `value.*` fixed-value rows' member forms) — a fixed value is a
-  rejectable equality constraint"), but the predicate tests only FEATURE-id prefixes (`ctl.*`,
-  `memberkey.cut`, `occur.bounded*`, `value.number*`), which no `contain.*` cell id matches — found
-  by reading during the 2026-07-28 boundary-vector delivery (scope: the 15 supported fixed-value
-  member cells' ids checked against the predicate; nothing executed). Consequence: a
-  supported-but-vectorless fixed-value member cell derives `n/a (no constraint)` instead of
-  `unverified (no reject vector)` — indistinguishable from "carries no constraint", exactly the
-  state the classification exists to make visible, and the state all 15 cells sat in from their
-  grounding until their wrong-constant vectors landed. Today the gap is latent (every such cell
-  carries a constraint vector, and the `EXPECTED_ENFORCE_YES` pin guards decay), so the cost falls
-  on FUTURE cells: the nint member cell ("Enumerate the remaining fixed-value KINDS, in both the arm
-  and the member position", § findings) or any newly enumerated fixed-value cell can land
-  supported-and-vectorless with no pin drifting. The fix is to extend `carriesConstraint` to the
-  fixed-value cell ids (`contain.<role>.prelude.{true,false,null}`, `contain.<role>.type2.value*`,
-  `contain.<role>.value.*`), turning the unverified-set pin into the forcing function that lands
-  each new cell WITH its wrong-constant vector.
+- **The fixed-value ARM position has no enforcement classification, and no evidence that would
+  justify one.** `query_q4_directional.ts` classifies a fixed value in a MEMBER position as
+  enforcement-bearing (`cellCarriesConstraint`, by the cell's role × feature), so a supported member
+  cell landing without a reject vector reads `unverified (no reject vector)` and trips the
+  unverified-set pin. Three roles are deliberately outside that classification because their
+  rejection story is not value equality: `role.map-key` (a fixed key is looked up; the wrong key
+  rejects as a missing required member), and `role.group-choice-arm` / `role.choice-member` (a fixed
+  value selects an alternative, so the rejection is "no arm matched"). Eight supported cells sit in
+  those roles today with no reject vector, and classifying them would assert enforcement evidence
+  nobody has gone and got — the arm half of "Enumerate the remaining fixed-value KINDS, in both the
+  arm and the member position" (§ findings) is what would get it.
+  - **Reopening signal:** an arm-position reject vector landing in the catalog — the moment one
+    exists, the arm rejection HAS a vector class, and leaving the role unclassified would let the
+    next arm cell land vectorless with no pin drifting, which is the member-side defect all over
+    again.
 - **The open struct-map rest row's KEY-DOMAIN axis is unmodelled.** The generator's support
   boundary moved (typed key domains on rest rows, delivered 2026-08-01: any deserializable
   non-float, non-null-admitting `K` — named rules, unions, bytes, nint, sized ints, tagged,

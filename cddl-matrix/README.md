@@ -201,6 +201,18 @@ discriminatingly (the released 0.10.x CLI misvalidates any control-op-carrying r
 an array entry — gap #4 below; that fork fix is also what let the row's accept side mint).
 `ctl.default` is `n/a` (it governs an absent field — no rejectable instance).
 
+**What counts as enforcement-bearing is classified, not inferred from the green set.** A row with no
+reject vector reads `unverified (no reject vector)` when it carries a constraint and `n/a (no
+constraint)` when it does not, and the difference is what makes a missing vector visible instead of
+looking like "nothing to enforce here". For CONTAINMENT cells the classification is by the cell's own
+role × feature out of `matrix.json` — every fixed-value feature (`prelude.{true,false,null}`,
+`type2.value`, `value.*`) in every position EXCEPT `role.map-key`, `role.group-choice-arm` and
+`role.choice-member`, whose rejection story is key lookup or arm selection rather than value equality
+(see ROADMAP § Matrix-side work). Because the rule is role × feature rather than an id list, a newly
+enumerated fixed-value member cell — the nint member cell, or a fixed value under a tag head — is
+classified the moment it exists, so landing it supported-and-vectorless drifts the unverified-set pin
+instead of passing silently.
+
 **A certified over-acceptance projects `enforce = no (over-accepts: M)`** — the fifth enforce value,
 dominating `yes`/`unverified`/`n/a`. Its evidence is a `class="over-acceptance"` accept vector:
 spec-INVALID CBOR (both oracles reject at mint, the same inverse gate as `class="constraint"`) the
