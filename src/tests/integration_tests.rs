@@ -17846,6 +17846,23 @@ fn decode_conformance_replay() {
             "`@custom_json` omits the serde derives the json leg's serde_json usage needs — references \
              user-supplied custom-json code, can't compile standalone (cddl-matrix/ROADMAP.md § findings)",
         ),
+        // A bare-`bstr` typed row: its serde image is a JSON array, so the open table's hand-written
+        // `to_json` errors LOUDLY (OpenTableKeyImageError — the documented member-name contract) on
+        // every vector holding a typed entry. The loud error IS the contract; the remedied spelling
+        // (a string-producing key serde impl) is executed in tests/open-table-json-e2e
+        // (cddl-matrix/ROADMAP.md § findings, the non-string-map-key entry).
+        (
+            "contain.occurrence-target.memberkey.type1.open_table",
+            "a bare-bstr typed key has no JSON member-name image, so to_json errors loudly on every \
+             typed entry — the documented open-table contract; remedied spellings are executed in \
+             tests/open-table-json-e2e (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "contain.occurrence-target.memberkey.type1.open_table_plus",
+            "a bare-bstr typed key has no JSON member-name image, so to_json errors loudly on every \
+             typed entry — the documented open-table contract; remedied spellings are executed in \
+             tests/open-table-json-e2e (cddl-matrix/ROADMAP.md § findings)",
+        ),
     ];
     // WASM_SURFACE_SKIP: rows whose `--wasm` generation or wasm-crate compile legitimately fails. Each
     // resident cites a finding. Distinct from a MECHANICAL skip — a type with no `from_cbor_bytes`
