@@ -18884,6 +18884,22 @@ fn corpus_decode_replay() {
             "everything",
             "composite includes the map-reordering transform",
         ),
+        // The open table's `@duplicates preserve` flavor: BOTH rows are pair-maps in every profile
+        // (`entries: PairMap<Vec<u8>, u64>`, `rest: PairMap<Md, Md>` under default flags — probed),
+        // so entry order is value-bearing exactly as for `table_preserve` — same class (b), same
+        // contract section. The base `open_table` and the `{+ …}` twin use LOOSE containers and
+        // replay their reordering variants cleanly, which is the control that keeps this entry
+        // honest.
+        (
+            "open_table.open_table_dup",
+            "reverse_maps",
+            "both rows are preserve pair-maps — entry order is value-bearing",
+        ),
+        (
+            "open_table.open_table_dup",
+            "everything",
+            "composite includes the map-reordering transform",
+        ),
     ];
     // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects with
     // an adjacent-duplicate error location segment (`Foo.Foo`). Empty at HEAD; stale-guarded.
