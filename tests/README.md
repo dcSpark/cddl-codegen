@@ -927,6 +927,25 @@ control-constrained signed-int member
 fields on a 32-bit target — the class where `isize` fields overflowed the `i64::MIN`/`MAX`
 literals, which 64-bit host builds can never see.
 
+Two sibling cells over `tests/extern-deps-index-named` reuse the same dep pair for the reference
+positions and companion wrappers that fixture does not reach.
+`extern_wrapper_index_named_rule_reference_unifies_with_dep` drives the NAMED-RULE reference
+position (`inputs_named`): a user rule whose ident coincides with a structural wrapper name the dep
+indexes, referenced from a record field by rule name only. Both flavors are asserted with their
+stderr texts — the ARRAY flavor defers (no local class) and the by-name reference must route the
+dep import, warned as a UNIFICATION of the rule with the dep's class; the TABLE flavor is screened
+by `exists_in_rust`, keeps the consumer's own class, and is warned as the duplicate-`#[wasm_bindgen]`
+configuration it is. `extern_wrapper_index_deferred_try_from_sources` (`inputs_sources`) covers the
+companion `try_from` SOURCES: the map-side deferred source (`{+ uint => idx_foo}` over a dep-indexed
+loose `MapU64ToIdxFoo`), its sole-owner-screened variant (a loose shape with a sole table-rule owner
+resolves to that owner's local alias, never a dep import), and the reject-set combination (a
+`@duplicates reject` wrapper can never defer, so it mints locally and is indexed here, while its
+loose source defers). Both floor on the generated CONSUMER wasm crate's `cargo check` through
+`gate_cache::run_cached`; the wasm32 link is deliberately not re-run, since
+`extern_wrapper_index_defers_to_dep`'s RED leg already demonstrates that failure mode.
+`inputs_sources` generates at the preserve profile because its cross-crate MAP conversion resolves
+against the hand pair's `OrderedHashMap`-flavored wrapper contract.
+
 ### Hand-vector suites (`tests/<dir>/tests.rs`) — the assertions no other layer can make
 
 Each fixture dir's `tests.rs` is appended into the generated crate and `cargo test`ed, so it runs

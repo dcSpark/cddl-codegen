@@ -297,6 +297,26 @@ impl GenerationScope {
             }
             dep
         };
+        // A RULE-declared wrapper reaching this point had its ident coincide with the structural
+        // name (screened at the top) AND that name is listed in `dep`'s index — so the class the
+        // rule authored is not minted here at all, and every wasm-side reference to the rule
+        // resolves to the DEPENDENCY's class. That unification is the consumer's to accept or
+        // refuse, so it is stated rather than performed silently. The message asserts only what
+        // this branch checked: the coincidence, the listing, and what the deferral does with them.
+        // It deliberately does not claim the two types are structurally identical — the index is
+        // name-only and carries no shape column (unlike the workspace sidecar), so nothing here
+        // has compared them; the consumer's own wasm build is what checks that.
+        if rule_declared && self.deferred_warned.insert(wrapper_ident.clone()) {
+            crate::warn!(
+                "warning: rule-declared type {structural_name} names the collection wrapper \
+                 dependency {dep:?} lists in its --extern-wrapper-index; the authored class is NOT \
+                 minted here, so on the wasm surface this rule and the dependency's class are \
+                 UNIFIED — every reference to the rule resolves to {dep}'s {structural_name} (the \
+                 rust-side `pub type {structural_name}` this rule declares is kept). Remedy, if \
+                 this rule was meant to be a DIFFERENT type that merely shares the name: rename the \
+                 rule, or give it a distinct @name."
+            );
+        }
         // Deferred: import from the dep's `collections` module. The non-exported scope
         // `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/collections` is remapped by
         // `add_imports_from_scope_refs` to `<dep_wasm>::collections` when `--extern-wasm-crate` maps
@@ -310,6 +330,44 @@ impl GenerationScope {
         self.deferred_wrappers
             .insert(wrapper_ident.clone(), dep_scope);
         true
+    }
+
+    /// The one dep-indexed-name configuration `try_defer_wrapper` never sees: a RULE-declared LOOSE
+    /// table. Its class is minted through the `exists_in_rust` path
+    /// (`mint_sole_owner_table` / `codegen_table_type(exists_in_rust = true)`), which reaches no
+    /// defer seam — so the consumer keeps its own class under the rule's ident while a mapped
+    /// dependency's index lists that same name, and the two are duplicate `#[wasm_bindgen]` symbols
+    /// the moment both crates link into one cdylib. Nothing in the emitted output says so, so this
+    /// says it on stderr.
+    ///
+    /// Keyed on the RULE IDENT because that is the emitted CLASS name: a rule whose ident DIFFERS
+    /// from the structural name exposes the structural name as a `pub type` alias instead (see
+    /// `mint_sole_owner_table`), and a type alias carries no `__wbg_*` symbol — nothing to collide.
+    /// Once per ident, sharing `deferred_warned` with the `try_defer_wrapper` warnings beside it.
+    /// Emits nothing when the index flag is unused, and never changes an emitted byte.
+    pub(super) fn warn_rule_declared_table_shadows_index(&mut self, rust_ident: &RustIdent) {
+        let name = rust_ident.as_ref();
+        // Several deps listing one name is already its own warned condition on the defer path; here
+        // the collision is the same whichever dep hosts it, so name the first (BTreeMap order, so
+        // the choice is deterministic) rather than reciting the set.
+        let Some(dep) = self
+            .extern_wrapper_index
+            .iter()
+            .find(|(_, names)| names.contains(name))
+            .map(|(dep, _)| dep.clone())
+        else {
+            return;
+        };
+        if !self.deferred_warned.insert(rust_ident.clone()) {
+            return;
+        }
+        crate::warn!(
+            "warning: rule-declared table {name} is minted locally, but dependency {dep:?} also \
+             lists {name} in its --extern-wrapper-index; a table rule keeps the consumer's own \
+             class, so both crates export a #[wasm_bindgen] {name} and the two duplicate-symbol \
+             when linked into one cdylib. Remedy: rename the rule, or give it a distinct @name, or \
+             drop the rule and let {dep} own the type."
+        );
     }
 
     // generate array type ie [Foo] generates Foos if not already created

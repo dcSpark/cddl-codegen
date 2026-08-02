@@ -1,0 +1,22 @@
+; Consumer spec for the NAMED-RULE reference position under `--extern-wrapper-index`: every rule
+; below declares an ident that COINCIDES with a structural collection-wrapper name the dependency's
+; index already lists, and `holder` references them by RULE NAME only — never by an inline
+; structural shape. The two flavors take different paths and both are asserted:
+;
+;   * ARRAY flavor (`idx_foo_list`): reaches `try_defer_wrapper`, whose index branch DEFERS the
+;     rule-declared wrapper — the authored wasm class is not minted, and the rule's name resolves to
+;     the dependency's class (the unification the stderr warning announces). The by-name reference
+;     must route `use index_dep_crate_wasm::collections::IdxFooList;` into the referencing module,
+;     exactly as an inline `[* idx_foo]` member already does.
+;   * TABLE flavor (`map_u64_to_idx_foo`): a rule-declared loose table never reaches
+;     `try_defer_wrapper` (the `exists_in_rust` screen), so the consumer's own class is minted and
+;     re-exported under a name the dep's index also lists — two `#[wasm_bindgen] MapU64ToIdxFoo` in
+;     one cdylib. That stays the shipped behavior and is announced on stderr instead.
+idx_foo_list = [* idx_foo]
+
+map_u64_to_idx_foo = { * uint => idx_foo }
+
+; References BOTH by rule name only. This is the whole point of the fixture: nothing here spells an
+; inline `[* idx_foo]` / `{* uint => idx_foo}`, so the only reference position exercised is the
+; named one.
+holder = [a: idx_foo_list, b: map_u64_to_idx_foo]

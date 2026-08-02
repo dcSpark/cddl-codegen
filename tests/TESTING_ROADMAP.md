@@ -1494,8 +1494,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   deferred import only the inline-map reference position ever registered: E0412 stranding plus a
   false criterion-9 shadow warning; pinned by `workspace_dep_named_table_deferred_keys_list`);
   (2) requested-hosted × co-hosted-keys-list (the host importing from root a class it mints
-  itself: E0432; pinned by `workspace_requests_cohosted_keys_list_no_self_import`); (3) a LIVE
-  RED found by probing the named-REFERENCE position under index mode (probe scope: default
+  itself: E0432; pinned by `workspace_requests_cohosted_keys_list_no_self_import`); (3) a RED
+  found by probing the named-REFERENCE position under index mode, closed by this entry's first
+  cut (see the ruling below) — probe scope: default
   profile, root scope, array + table flavors; not probed: preserve/json, non-root scopes, the
   wasm32 link): a user rule whose ident equals a dep-indexed structural name
   (`idx_foo_list = [* idx_foo]`), referenced ONLY by rule name from a record field, generates at
@@ -1517,27 +1518,32 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `[+ idx_foo]`/`NonEmptyIdxFooList` cell plus its order-hostile deferred-source cells
   (`abc_bars = [+ idx_bar]` walked first; the inline `only_nb_baz: [+ idx_baz]` twin); the
   MAP-side source routing is the same helper pattern but has no dedicated cell in any mode
-  (verified by grepping every committed mode fixture for `{+` — zero hits). The open DECISION
-  riding this entry — USER rules claiming a dep-indexed structural name — is now THREE-way, and
-  the status quo is not a defensible "leave it": one of its branches emits a non-compiling crate
-  at exit 0 with empty stderr, the exact class the repo's honesty invariants exist to make loud.
-  (a) Adopt the workspace guard (warn + keep local — workspace mode already threads real rule
-  provenance via `rule_declared`/`is_synthesized_collection` and warns, pinned by
-  `workspace_dep_defers_to_dep`'s shadowing cell): consistent cross-mode semantics, but converts
-  every such cell into a warned duplicate-symbol link failure when consumer and dep share a
-  cdylib, breaking the one population today's defer serves — a consumer restating a dep-owned
-  rule referenced only inline. (b) Keep the defer but make it honest: consult the deferred map in
-  the named-reference/`set_ref` path (fixing the E0425) and WARN that the authored rule's wasm
-  class is unified with the dep's. (c) Reject the coincidence outright under index mode.
-  Whichever wins needs its own red-first cell, and the table-flavor half (silent local mint of a
-  dep-indexed name) independently deserves the not-in-index-style stderr warning regardless. A
-  defensible first cut that discharges all the arming evidence before the full sweep: the
-  named-reference cell pair above (red-first — it forces the DECISION), the map-side deferred
-  `try_from`-source cell, and a reject-set × deferred-loose-source cell — all on the existing
-  bespoke-harness idiom beside `extern_wrapper_index_defers_to_dep`, reusing the committed
-  `tests/index-dep-crate{,-wasm}` pair, with `run_cached` floors; the sweep proper (table-driven,
-  participation-aware, batched per (mode, floor), compile floors at full tier) follows, since its
-  value — grid completeness — is not a property of any cell subset. (The cross-crate
+  (the map-side source and the reject-set combination now have cells — see the first cut below).
+  The DECISION this entry rode — USER rules claiming a dep-indexed structural name — is RULED and
+  SHIPPED as **honest defer**: the named-reference path consults the deferred map exactly as the
+  inline path already did, so the two reference positions agree and the exit-0/E0425 branch is
+  gone; the array/defer flavor warns that the authored rule and the dependency's class are
+  UNIFIED on the wasm surface (the consumer's rule name now resolves to the dep's class, with the
+  rust-side alias kept); and the table flavor — screened by `exists_in_rust`, so it keeps the
+  consumer's own class — warns that both crates then export the same `#[wasm_bindgen]` name.
+  Delivered as this entry's FIRST CUT, pinned by
+  `extern_wrapper_index_named_rule_reference_unifies_with_dep` (both flavors, both warning texts,
+  consumer wasm `cargo check` floor) and `extern_wrapper_index_deferred_try_from_sources` (the
+  map-side deferred source, its sole-owner-screened variant, and the reject-set × deferred-loose-
+  source combination), over `tests/extern-deps-index-named/inputs_named/lib.cddl` and
+  `tests/extern-deps-index-named/inputs_sources/lib.cddl`.
+  **What remains of this entry is the sweep proper**: the table-driven, participation-aware grid,
+  batched per (mode, floor), whose value — grid completeness — is not a property of any cell
+  subset, with the per-mode floors above and the compile/link floors at full tier. The first cut
+  de-risked its design (it forced both the participation table and the DECISION), so the sweep
+  starts from a settled grid rather than a cold one. One probe-seeded cell the first cut surfaced
+  and did NOT close, because it is a different branch than the one ruled on: a rule-declared
+  wrapper whose constituents include a CONSUMER-owned type takes the R3c "mixed → local, silent"
+  path BEFORE any rule-declared consideration, so a nested rule like
+  `arr_idx_foo_list = [* idx_foo_list]` mints locally and silently under a name the dep's index
+  also lists — the same duplicate-symbol configuration the table flavor now warns about, reached
+  by a path that warns nothing (probe scope: default profile, root scope, index mode; not probed
+  under workspace mode). (The cross-crate
   duplicate-symbol flavor of the synthesized-name interaction class stays owned HERE: the
   duplicate-ident backstop scans one crate's own files and
   `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`

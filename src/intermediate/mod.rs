@@ -1203,6 +1203,26 @@ impl<'a> IntermediateTypes<'a> {
             match &ty.conceptual_type {
                 ConceptualRustType::Alias(alias_ident, alias_ty) => {
                     if let AliasIdent::Rust(rust_ident) = alias_ident {
+                        // A named COLLECTION rule whose ident COINCIDES with a structural wrapper
+                        // name a mapped dependency's `--extern-wrapper-index` lists is DEFERRED at
+                        // mint time: no class of that name exists locally, so `set_ref`'s
+                        // same-scope no-op would leave every by-name reference naming an undefined
+                        // type (E0425). Route the import from the dep's `collections` module into
+                        // EVERY using scope, root included — the same rule the structural
+                        // Array/Map arms below apply, which is the point: the named and inline
+                        // reference positions must agree about where a deferred wrapper lives.
+                        // Recursion stays suppressed (wrapper and element are both the
+                        // dependency's), as it is for the local-rule case just below. `deferred` is
+                        // empty for the rust pass and whenever the flag families are unused, so
+                        // output is byte-identical without the flag.
+                        if let Some(dep_scope) = deferred.get(rust_ident) {
+                            refs.entry(current_scope.to_owned())
+                                .or_default()
+                                .entry(dep_scope.clone())
+                                .or_default()
+                                .insert(rust_ident.clone());
+                            return;
+                        }
                         set_ref(refs, types, current_scope, rust_ident);
                         // A named COLLECTION rule (`recs = [* foo]` / `withdrawals = {* k => v}`, or a
                         // generic instance like `gcn = gcoll<foo>`) registers a transparent alias, so
@@ -1247,6 +1267,13 @@ impl<'a> IntermediateTypes<'a> {
                         &alias_target,
                     );
                 }
+                // No deferred consult here, unlike the Alias arm above: an ident can only enter
+                // `deferred` from `try_defer_wrapper`, whose `wrapper_ident` is either a
+                // synthesized structural wrapper name or the ident of a rust struct whose variant
+                // is `Array` or `Table` — and `register_rust_struct` gives BOTH of those variants a
+                // transparent type alias, so every by-name reference to a deferrable ident arrives
+                // as `Alias(Rust(ident), …)` and is handled there. A bare `Rust(ident)` is a
+                // Record / choice / Wrapper struct, none of which is ever a defer candidate.
                 ConceptualRustType::Rust(rust_ident) => {
                     set_ref(refs, types, current_scope, rust_ident)
                 }
