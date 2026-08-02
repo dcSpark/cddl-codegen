@@ -22,15 +22,23 @@ before being projected, which is that doc-rot class's trigger to derive rather t
 make `full` cheap.
 
 `fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
-policy below). `local` is "run before considering work done" — the heavy correctness gates (full
+policy below). Beside fmt/clippy/snapshot tests it carries the whole **sub-second no-cargo
+file-scanner class**: the matrix-drift gates plus the decode-conformance catalog, recombination
+ingredients, `query_q*`, status-header count and doc-citation gates
+(`project_decode_conformance.ts`, `project_recombination.ts`, the four `query_q*.ts`,
+`project_status_headers.ts`, `lint_doc_citations.ts`). What makes a gate a member — and what a new
+gate must satisfy to join, rather than defaulting to `local` — is that it reads only committed
+files: no cargo, no network, no `cddl-matrix/node_modules`, no `draft/` ledger. `local` is "run
+before considering work done" — the heavy correctness gates (full
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
-`cddl-matrix/` once; the runtime stays dependency-free), `verify_selftest` (`verify.ts`'s
+`cddl-matrix/` once; the runtime stays dependency-free — which is also why it is NOT in the class
+above: CI cannot install it without a second `run:` step), `verify_selftest` (`verify.ts`'s
 assert-at-startup deciders, run standalone in ~30 ms — their own gate is `full`-tier, and a wrong
 verdict token or evidence-stage name is silent in production, so the cheap tier is where it must
-fail), `no_std_check` (the no_std drift gate — see its section below), and the decode-conformance catalog +
-status-header count and doc-citation drift gates (`project_decode_conformance.ts`,
-`project_status_headers.ts`, `lint_doc_citations.ts`) live here, NOT in CI. The doc-citation gate
+fail), `no_std_check` (the no_std drift gate — see its section below), `no_silent_directive` (which
+spawns `cargo build` plus generator runs) and `timings_digest_check` live here, NOT in CI. The
+doc-citation gate
 checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, bans
 ephemeral plan-internal references (delivery-phase probe/ruling id spellings, spec-file names, the
 plan scratchpad path — matched phase-generically so a new delivery phase's letter is covered by
@@ -546,7 +554,11 @@ commits). The fast tier of the registry is the single definition of what CI does
 and check.ts's `self_checks` gate fails if the workflow grows any other run step. Keep the fast
 tier the absolute minimum: new gates default to `local` or `full`; promoting one into `fast` is a
 maintainer decision. Everything heavier than the fast tier runs locally, and is documented as a
-local/manual run.
+local/manual run. The workflow's `paths:` filter has to cover every tree a fast-tier gate READS —
+it includes `docs/**` and the root-level `*.md` because `lint_doc_citations` scans every tracked
+`.md`/`.mdx` and `query_q1_gaps` byte-compares a generated block in
+`docs/docs/current_capacities.mdx`; a promoted gate whose inputs fall outside the filter is blind
+to exactly the commit class it exists to catch, and would first go red on an unrelated later push.
 
 ## Golden snapshots (`snapshot_tests.rs`)
 

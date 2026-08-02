@@ -120,25 +120,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   internal-error class, so the exit-contract tripwire it leans on stops being where formatter
   surprises surface).
 
-- **Consider promoting the sub-second drift/count gates from `local` into `fast` (CI).** The
-  local-tier placement of `project_recombination_check`, `project_decode_conformance`, the
-  `query_q*` gates, `project_status_headers`, and `lint_doc_citations` is the registry's DEFAULT
-  for new gates, not a considered cost decision — their older siblings
-  (`build_matrix_check`/`project_robustness_check`/`project_wasm_matrix_check`/
-  `project_golden_hex_check`/`project_corpus`, the same no-cargo file-scanner class) are already
-  `fast`, and all of these run in well under a second. Proven cost of the split: a HEAD commit
-  (the `@raw_bytes_flavor` registration) shipped CI-green with THREE local drift gates red
-  (`tests/recomb/ingredients.json` stale, the Q6 `VENDOR_FEATURE_COUNT` pin, the status-header
-  count spans), and check.ts's fail-fast meant only the first showed per run — the rot surfaced
-  one layer at a time in an unrelated later session. The same commit also left the FULL-tier
-  `ir_conformance_corpus` deterministically red (its extern fixture ledgered in `COMPILE_SKIP`
-  but not the gate's then-twin `GEN_SKIP` — since unified onto `COMPILE_SKIP` as single owner),
-  invisible until an unrelated session's next manual full-tier run — the full-tier flavor of the
-  same skipped-tier cost, with no promotion remedy (full stays manual by design; the mitigations
-  are the single-owner unification and running full before shipping a feature). Promotion is a maintainer decision (CI
-  policy, § above); until then the mitigating discipline is unchanged: run `local` before
-  considering matrix-surface work done, and expect stacked reds behind fail-fast when de-rotting.
-
 - **Mint decode-conformance + confirm matrix coverage for the tag-258 reject-default flip.** The
   well-known-tag registry (`parsing::well_known_tag_default_duplicates`) defaults a no-directive
   tag-258 set to `@duplicates reject`. The registry's DEFAULT path (as opposed to an explicit

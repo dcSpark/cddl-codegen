@@ -1074,16 +1074,35 @@ export const REGISTRY: Gate[] = [
   { id: "verify_selftest", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "verify.ts", "--selftest"], cwd: MATRIX,
     desc: "verify.ts's two pure evidence-vocabulary deciders (ruby-generate Bernoulli classifier + wasm-evidence stage taxonomy), whose failures are silent in production" },
-  { id: "lint_doc_citations", tier: "local", kind: "cmd",
+  // --- THE SUB-SECOND NO-CARGO FILE-SCANNER CLASS, promoted from `local` into `fast` (CI) ---
+  // Eight gates: `lint_doc_citations`, `project_decode_conformance`, `project_recombination_check`,
+  // the four `query_q*` gates and `project_status_headers`. Maintainer call, 2026-08-03 — the same
+  // promotion form as `project_multifile_matrix_check` below ("maintainer call, 2026-07"), taken for
+  // the whole class at once: measured 629 ms warm for all eight together, ~4 % of the fast tier's
+  // wall, against a proven cost of the split (a HEAD commit shipped CI-green with three of these
+  // red locally, surfacing one per session behind fail-fast).
+  //
+  // THE CLASS BOUNDARY, so the next gate addition can answer for itself whether it belongs here:
+  // pure reads of COMMITTED files, no cargo, no network, no `cddl-matrix/node_modules`, no `draft/`
+  // ledger. `lint_doc_citations` shells `git ls-files -z` and `project_status_headers` imports this
+  // registry — both fine on any checkout; neither is a subprocess CI must provision for.
+  // Two `local` neighbours below are deliberately OUTSIDE the class, and stay `local`:
+  //   - `matrix_typecheck` needs `cddl-matrix/node_modules`, which CI cannot have without a second
+  //     `run:` step — and meta-check 3 rejects one by design.
+  //   - `no_silent_directive` spawns `cargo build --bin cddl-codegen` plus generator runs; its warm
+  //     5 s is a warm-target-dir number and it is not a file scanner at all.
+  // `verify_selftest` and `timings_digest_check` are in the class by COST but were not part of the
+  // ruling; promoting either is a new maintainer call, never an extension of this one.
+  { id: "lint_doc_citations", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "lint_doc_citations.ts"], cwd: MATRIX,
     script: "lint_doc_citations.ts", desc: "documentation citation existence + positional-citation + MD022 lint" },
-  { id: "project_decode_conformance", tier: "local", kind: "cmd",
+  { id: "project_decode_conformance", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_decode_conformance.ts"], cwd: MATRIX,
     script: "project_decode_conformance.ts", desc: "decode-conformance catalog drift gate (matrix.json + catalog.toml, no cargo)" },
   { id: "no_silent_directive", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "no_silent_directive.ts"], cwd: MATRIX,
     script: "no_silent_directive.ts", desc: "comment-DSL directive×shape silent-drop net (generate with/without each directive, FAIL on byte-identical-and-unmentioned)" },
-  { id: "project_recombination_check", tier: "local", kind: "cmd",
+  { id: "project_recombination_check", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_recombination.ts", "--check"], cwd: MATRIX,
     script: "project_recombination.ts", desc: "recombination-fuzzer ingredients drift gate (matrix.json → tests/recomb/ingredients.json, no cargo)" },
   // Sub-second file-scanner promoted to `fast` beside its sibling `project_wasm_matrix_check`
@@ -1091,15 +1110,15 @@ export const REGISTRY: Gate[] = [
   { id: "project_multifile_matrix_check", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_multifile_matrix.ts", "--check"], cwd: MATRIX,
     script: "project_multifile_matrix.ts", desc: "multifile placement matrix fixtures drift gate" },
-  { id: "query_q4_directional", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q4_directional.ts", "--check"], cwd: MATRIX,
+  { id: "query_q4_directional", tier: "fast", kind: "cmd", cmd: ["bun", "run", "query_q4_directional.ts", "--check"], cwd: MATRIX,
     script: "query_q4_directional.ts", desc: "Q4 directional-support query + consistency gate (matrix.json + catalog.toml, no cargo)" },
-  { id: "query_q1_gaps", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q1_gaps.ts", "--check"], cwd: MATRIX,
+  { id: "query_q1_gaps", tier: "fast", kind: "cmd", cmd: ["bun", "run", "query_q1_gaps.ts", "--check"], cwd: MATRIX,
     script: "query_q1_gaps.ts", desc: "Q1 support-gap query + generated-Limitations drift gate (matrix.json → current_capacities.mdx, no cargo)" },
-  { id: "query_q5_completeness", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q5_completeness.ts", "--check"], cwd: MATRIX,
+  { id: "query_q5_completeness", tier: "fast", kind: "cmd", cmd: ["bun", "run", "query_q5_completeness.ts", "--check"], cwd: MATRIX,
     script: "query_q5_completeness.ts", desc: "Q5 matrix-self-completeness query + reconciliation gate (matrix.json + sources/*.abnf/.prelude, no cargo)" },
-  { id: "query_q6_diff", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q6_diff.ts", "--check"], cwd: MATRIX,
+  { id: "query_q6_diff", tier: "fast", kind: "cmd", cmd: ["bun", "run", "query_q6_diff.ts", "--check"], cwd: MATRIX,
     script: "query_q6_diff.ts", desc: "Q6 profile/version-diff query + profile-set consistency, vacuity & annotation-completeness gate (matrix.json, no cargo)" },
-  { id: "project_status_headers", tier: "local", kind: "cmd",
+  { id: "project_status_headers", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_status_headers.ts", "--check"], cwd: MATRIX,
     script: "project_status_headers.ts",
     desc: "status-header count spans drift gate (matrix.json + catalog.toml + check.ts registry → ROADMAP/README/tests-README, no cargo)" },
