@@ -397,6 +397,20 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    upstream issue filed yet. Differential grid, two adjacent same-neighborhood observations
    (nested-map VALUES in a `*` table; multi-entry composite-array-key tables), and close-out
    steps: `draft/rust-cddl-named-key-map-gap.md` (local note).
+12. **float prelude names not head-validated at all** (OPEN at `ac1b98e`, NOT fork-fixed):
+    `validate` accepts EVERY major-7 float head against EVERY float prelude name — `f9`-, `fa`- and
+    `fb`-headed instances all validate against `float16`, `float32`, `float64`, `float16-32` and
+    `float32-64` alike (30 of 30 probes accept). RFC 8610 App. D defines those names as `#7.25` /
+    `#7.26` / `#7.27` and their unions, and RFC 8949 § 3.3 puts the width entirely in the head, so
+    the additional-information byte is exactly what distinguishes them; the validator appears not to
+    look at it. Unlike gaps #1–#11 this one has no half the matrix can lean on: it makes rust
+    unable to certify ANY float head violation, which is why all eight `class="constraint"` head
+    vectors on the five head-constrained float rows carry a `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry
+    (lib.ts) naming `rust`. Four of the eight ALSO name `ruby` — the gem has the opposite-shaped
+    defect, classifying a float by the narrowest IEEE width its VALUE fits rather than by the head,
+    so it both accepts out-of-set heads and rejects canonical in-set ones; that half is written up
+    for filing in `upstream-reports/ruby-cddl-float-width-validation.md`. No upstream issue filed
+    yet for either oracle.
 
 ## Gotchas (read before touching the support seam or probe examples)
 

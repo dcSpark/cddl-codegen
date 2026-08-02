@@ -41,7 +41,7 @@ import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   ALT_PRODUCTIONS, CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, CatalogRow,
-  CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, GATE_CACHE_SCHEMA, GateCacheEntry, PRELUDE_NAMES, ROOT,
+  CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, DECODE_REJECT_ORACLE_GAP_EXEMPT, GATE_CACHE_SCHEMA, GateCacheEntry, PRELUDE_NAMES, ROOT,
   composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules,
   gateCacheEnabled, gateCacheKey, grammarAltCoverage, hashTree, loadMatrixInputs, parseCatalog,
   readGateCacheEntry, resolveChoiceArmClasses, rubyGenerateIsBernoulli, stableJson, vectorShapeClass,
@@ -1314,7 +1314,8 @@ function decodeForeignEvidence(fo?: ForeignOutcome): string {
 // accept per resolvable arm class, so a randomized draw that misses a whole arm can't under-claim the
 // row.
 function mintRow(id: string, axis: string, example: string, prev: CatalogRow | undefined,
-                 triage: string[], pinBreak: string[], dropped: string[]): CatalogRow {
+                 triage: string[], pinBreak: string[], dropped: string[],
+                 staleRejectGapExemptions: string[]): CatalogRow {
   const pin = (reason: string): CatalogRow => ({ id, axis, example, pinned_reason: reason, vectors: [] });
   // COMPILE_GATE_EXEMPT rows reference user-supplied code, so their crate GENERATES (exit 0) but can
   // never compile standalone — the replay `cargo test` would fail as a compile error, not a decode
@@ -1439,7 +1440,21 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   for (const p of rejectPins) {
     const { ruby, rust } = validateBoth(spec, p.hex);
     if (p.class === "constraint") {
-      if (ruby !== 0 && rust !== 0) validatedRejectPins.push(p);
+      // An oracle that does not implement the rule AT ALL cannot join the both-reject consensus. A
+      // ledgered exemption (DECODE_REJECT_ORACLE_GAP_EXEMPT, lib.ts) names exactly which oracles
+      // accept these bytes anyway, so certification narrows to the remaining oracles plus the cited
+      // writeup instead of vanishing. Stale guard, the MINT half (the half that holds the oracles): a
+      // ledgered oracle that now REJECTS has closed its gap, so the entry over-claims — reported at
+      // the end of the mint so the entry is narrowed (or dropped) in the same change that re-certifies
+      // the vector the ordinary way.
+      const gap = DECODE_REJECT_ORACLE_GAP_EXEMPT[`${id}/${p.hex}`];
+      const exempt = new Set(gap?.oracles ?? []);
+      for (const [name, exit] of [["ruby", ruby], ["rust", rust]] as const)
+        if (exempt.has(name) && exit !== 0)
+          staleRejectGapExemptions.push(
+            `${id}/${p.hex}: DECODE_REJECT_ORACLE_GAP_EXEMPT lists \`${name}\` as ACCEPTING these spec-invalid bytes, but ${name} now REJECTS them (exit ${exit}) — that gap closed; drop \`${name}\` from the entry (and the whole entry once no oracle remains), and prune the matching case in ${gap!.writeup}`,
+          );
+      if ((ruby !== 0 || exempt.has("ruby")) && (rust !== 0 || exempt.has("rust"))) validatedRejectPins.push(p);
       else dropped.push(`${id}/${p.hex} (constraint vector is no longer spec-INVALID per both oracles — upstream spec drift; ruby ${ruby} rust ${rust})`);
     } else {
       if (ruby === 0 && rust === 0) validatedRejectPins.push(p);
@@ -1544,11 +1559,12 @@ function runMintDecodeForeign(): never {
   const triage: string[] = [];   // spec-valid vectors our decoder REJECTED (new, class-less) -> exit 1
   const pinBreak: string[] = []; // committed reject pins that now decode -> exit 1
   const dropped: string[] = [];  // contested / oracle-artifact vectors dropped (logged, not committed)
+  const staleRejectGapExemptions: string[] = [];  // DECODE_REJECT_ORACLE_GAP_EXEMPT entries whose gap closed -> exit 1
   const pinnedRows: string[] = [];
   for (const id of toMint) {
     const meta = exampleOf.get(id);
     if (!meta) { console.error(`HARNESS FAILURE: supported row '${id}' has no example in matrix.json — cannot mint.`); process.exit(2); }
-    const row = mintRow(id, meta.axis, meta.example, existing.get(id), triage, pinBreak, dropped);
+    const row = mintRow(id, meta.axis, meta.example, existing.get(id), triage, pinBreak, dropped, staleRejectGapExemptions);
     if (row.pinned_reason !== undefined) pinnedRows.push(`${id}: ${row.pinned_reason}`);
     outRows.set(id, row);
     const tag = row.pinned_reason !== undefined ? `PINNED (${row.pinned_reason})` : `${row.mode}, ${row.vectors.length} vector(s) [${row.type_name}]`;
@@ -1582,7 +1598,11 @@ function runMintDecodeForeign(): never {
     console.log("\nPIN RE-CHECK FAILURES (committed reject pins that now decode — re-triage/unpin):");
     for (const p of pinBreak) console.log(`  - ${p}`);
   }
-  if (triage.length || pinBreak.length) { console.log("\nRESULT: MINT wrote the catalog but exits 1 (triage pending — see above)."); process.exit(1); }
+  if (staleRejectGapExemptions.length) {
+    console.log("\nSTALE ORACLE-GAP EXEMPTIONS (a ledgered oracle now rejects the bytes — the gap closed):");
+    for (const s of staleRejectGapExemptions) console.log(`  - ${s}`);
+  }
+  if (triage.length || pinBreak.length || staleRejectGapExemptions.length) { console.log("\nRESULT: MINT wrote the catalog but exits 1 (triage pending — see above)."); process.exit(1); }
   console.log("\nRESULT: MINT PASS");
   process.exit(0);
 }

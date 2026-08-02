@@ -19,7 +19,10 @@
 #         constraint = spec-INVALID CBOR (source="hand") that VIOLATES a constraint the row enforces
 #           (an over/under-`.size` string, a below-`.ge` value, a cut-violating map value); the
 #           generated decoder must DURABLY reject it. Re-validated spec-INVALID (both oracles reject)
-#           at each mint — never pruned; `reason` names the violated constraint. This is Q4's
+#           at each mint — never pruned; `reason` names the violated constraint. An oracle that does
+#           NOT implement the rule at all cannot join that consensus: such a vector is certified by
+#           the remaining oracles plus a per-vector DECODE_REJECT_ORACLE_GAP_EXEMPT entry (lib.ts)
+#           naming the accepting oracles and citing a committed writeup. This is Q4's
 #           `enforce = yes (bounded-reject)` evidence. A constraint vector ALSO carries a required
 #           `expect_err`: a substring the generated decoder's error Display must contain when it
 #           rejects the vector — the rust replay gate pins the rejection REASON, not just that it

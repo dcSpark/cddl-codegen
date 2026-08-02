@@ -46,8 +46,12 @@
  *     AND round-trips its own", not "we independently verified encode against a foreign fixture".
  *
  * A NOTE ON `enforce = yes` AND THE NUMERIC-OP GAP: enforcement evidence is a `class="constraint"` reject
- * vector — spec-INVALID CBOR (certified by BOTH oracles at mint time) whose ONLY invalidity is the
- * constraint itself (the instance is valid for the base type), durably rejected by the generated decoder.
+ * vector — spec-INVALID CBOR whose ONLY invalidity is the constraint itself (the instance is valid for
+ * the base type), durably rejected by the generated decoder. Spec-invalidity is normally certified by
+ * BOTH oracles at mint time; an oracle that does not implement the rule at all cannot join that
+ * consensus, so a vector may instead be certified by the remaining oracle plus a per-vector
+ * `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry (lib.ts) citing a committed spec argument — the float
+ * head-set rows are the only residents, and both halves of that ledger are stale-guarded.
  * Three rows carry one today and project `enforce = yes (bounded-reject)`: `ctl.size` (over- AND
  * under-size strings — valid bstrs, only `.size 4` rejects them), `ctl.cbor` (`h'f6'` is a valid bstr
  * whose payload is CBOR null, not a uint — only `.cbor uint` rejects it), and `memberkey.cut` (a
@@ -328,7 +332,10 @@ function vacuityProblems(rs: Directional[]): string[] {
     problems.push(`no row reaches the enforcement axis (every enforce is n/a) — the ctl.* enforcement-axis read looks broken/empty`);
   // With class="constraint" vectors present, ≥1 row MUST project enforce=yes, and the green set must be
   // EXACTLY the rows whose vector's ONLY invalidity is the constraint itself (base-type-valid instance,
-  // both oracles certify spec-invalid, decoder durably rejects). Two families qualify:
+  // spec-invalidity certified, decoder durably rejects). Certification is normally "both oracles
+  // reject", but an oracle that does not implement the rule AT ALL cannot join that consensus — see
+  // family (e), where the certifying evidence is the remaining oracle plus a per-vector
+  // DECODE_REJECT_ORACLE_GAP_EXEMPT entry (lib.ts) citing a committed spec argument. Families:
   //   (a) The control ops. `ctl.size` / `ctl.cbor` / `memberkey.cut`, plus the numeric range/eq ops
   //       (`.le/.lt/.gt/.eq/.ne/.ge`) whose probe examples target `int` with literal, non-vacuous
   //       bounds — over `int` BOTH oracles enforce them, so each row carries an in-type boundary
@@ -374,6 +381,20 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       decoder that stops checking the member. The optional cells' instances are PRESENT-wrong
   //       (absence is a legal accept shape), which routes through the optional peek path and still
   //       lands on the constant check. Both oracles certify every one.
+  //   (e) The head-constrained float prelude names. `float16`/`float32`/`float64` are `#7.25`/`#7.26`/
+  //       `#7.27` (RFC 8610 App. D), `float16-32` and `float32-64` the two-head unions; each row
+  //       carries out-of-set-head reject vectors whose value is deliberately in range at every width,
+  //       so the HEAD is the sole invalidity. `prelude.float` has no out-of-set head and so no vector
+  //       — it is width-unconstrained by definition, not an enforcement blind spot. These five are the
+  //       first rows certified WITHOUT a two-oracle consensus: the pinned rust oracle performs no float
+  //       head validation at all, and the ruby gem classifies a float by the narrowest IEEE width its
+  //       VALUE fits (so it accepts four of the eight vectors — and, symmetrically, rejects canonical
+  //       in-set encodings like an `fa`-headed 1.5 against `float32`). Each affected vector carries a
+  //       DECODE_REJECT_ORACLE_GAP_EXEMPT entry naming the accepting oracle(s) and citing
+  //       cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md, which states the spec
+  //       reading and the branch that would retract it. Both halves of that ledger are stale-guarded,
+  //       so an oracle fix pulls these rows back onto the ordinary consensus route rather than leaving
+  //       a permanent carve-out.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
     "contain.array-element.prelude.false", "contain.array-element.prelude.null",
@@ -387,6 +408,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.occurrence-target.type2.value.optional_keyed_array",
     "contain.occurrence-target.type2.value.optional_keyed_map", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper", "occur.one_or_more",
+    "prelude.float16", "prelude.float16-32", "prelude.float32", "prelude.float32-64", "prelude.float64",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
     "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
     "value.number.bin", "value.number.hex", "value.number.hexfloat"];

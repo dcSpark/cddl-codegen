@@ -881,6 +881,20 @@ remains is deleting the notes that explain why we do not have it yet.
   still-open adjacent map-matching gaps found during that fix (a fourth, the float-key/null
   copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
   when convenient.
+- When either oracle starts validating float prelude names by CBOR HEAD (README gap #12 — OPEN at
+  the pinned `ac1b98e` rev for rust, and in ruby gem 0.12.14, whose defect is the opposite shape:
+  it matches by narrowest exact VALUE width, so it accepts out-of-set heads AND rejects canonical
+  in-set ones). The ruby half is written up for filing, tracked by
+  `cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md` — a committed, paste-ready
+  report; the rust half has no writeup yet. Neither is filed. When a fix lands: drop the fixed
+  oracle from the affected `DECODE_REJECT_ORACLE_GAP_EXEMPT` entries (lib.ts) — the mint's stale
+  guard names each one as soon as that oracle starts rejecting — remove any entry left naming no
+  oracle, re-mint the five head-constrained float rows so their vectors carry ordinary two-oracle
+  certification (`--mint-decode-foreign --only=prelude.float16,prelude.float16-32,prelude.float32,prelude.float32-64,prelude.float64`),
+  and prune README gap #12, the family-(e) paragraph in `query_q4_directional.ts`, and — for the
+  ruby half — the writeup itself. If instead the ruby author answers that the VALUE reading is
+  correct, the exemptions are wrong rather than stale: the acceptance rule reopens and the writeup's
+  own closing section says so.
 
 ## wasm-ABI & multifile placement matrices — remaining work
 
