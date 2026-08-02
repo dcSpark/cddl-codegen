@@ -107,6 +107,75 @@ mod recursive_collection_ref {
     }
 
     #[test]
+    fn union_rooted_union_keyed_table_round_trips() {
+        // The same `[ { {1: 2}: 3 } ]` payload through the UNION-rooted ordering of the union-keyed
+        // table: the cycle is rooted so the table registers before its named domain exists, which is
+        // the ordering whose keys-list wrapper can only be named after the union does. The rooting
+        // must not be observable on the wire, so the claim is byte equality with the
+        // collection-rooted twin above, not merely a successful round-trip.
+        let bytes: &[u8] = &[0x81, 0xa1, 0xa1, 0x01, 0x02, 0x03];
+        //
+        // Arm assertions are `matches!` with `{ .. }` and the entry counts are read off the emitted
+        // HEAD byte, because the two profiles give the union different variant shapes (preserve
+        // carries per-variant encoding sidecars, so the same variant is a struct variant there) —
+        // one destructuring spelling cannot serve both, and the head byte is what the wire claim is
+        // about anyway.
+        let h = UkeyHolder::from_cbor_bytes(bytes).unwrap();
+        assert!(
+            matches!(h.ukey_val, UkeyVal::UkeyMap { .. }),
+            "the union-rooted holder's union must decode the table arm"
+        );
+        assert_eq!(
+            h.ukey_val.to_cbor_bytes()[0],
+            0xa1,
+            "the outer table must re-emit as a 1-entry map"
+        );
+        assert_eq!(h.to_cbor_bytes(), bytes);
+        assert_eq!(
+            h.to_cbor_bytes(),
+            KeyHolder::from_cbor_bytes(bytes).unwrap().to_cbor_bytes(),
+            "both rootings of the union-keyed table must emit the same bytes for the same wire input"
+        );
+    }
+
+    #[test]
+    fn union_rooted_preserve_table_carries_duplicate_union_keys() {
+        // `[ { {1: 2}: 3, {1: 2}: 4 } ]` — the consumer's CIP-25 shape: duplicate keys that are
+        // THEMSELVES tables, under a rule-position `@duplicates preserve` on a union-rooted cycle.
+        // Recursion in the DOMAIN and the per-rule policy have to compose: a loose container would
+        // collapse the two entries and re-emit a 1-entry map (`0xa1 …`), which the byte comparison
+        // catches and a decode-succeeds assertion would not.
+        let bytes: &[u8] = &[
+            0x81, 0xa2, 0xa1, 0x01, 0x02, 0x03, 0xa1, 0x01, 0x02, 0x04,
+        ];
+        let h = UpresHolder::from_cbor_bytes(bytes).unwrap();
+        assert!(
+            matches!(h.upres_val, UpresVal::UpresMap { .. }),
+            "the preserve table's union must decode the pair-map arm"
+        );
+        assert_eq!(
+            h.upres_val.to_cbor_bytes()[0],
+            0xa2,
+            "both duplicate table-KEYED entries must survive — a collapsed container re-emits 0xa1"
+        );
+        assert_eq!(h.to_cbor_bytes(), bytes);
+    }
+
+    #[test]
+    fn union_rooted_preserve_union_dispatches_its_array_arm() {
+        // `[ [ 1 ] ]` — the same union carries an ARRAY arm beside the table arm (`md_map / [* md] /
+        // …`), so the two container arms must stay distinguishable by cbor_type. A domain-driven
+        // mint that disturbed the union's dispatch would show up here as a misdispatch.
+        let bytes: &[u8] = &[0x81, 0x81, 0x01];
+        let h = UpresHolder::from_cbor_bytes(bytes).unwrap();
+        assert!(
+            matches!(h.upres_val, UpresVal::ArrUpresVal { .. }),
+            "an array payload must take the array arm, not the pair-map arm"
+        );
+        assert_eq!(h.to_cbor_bytes(), bytes);
+    }
+
+    #[test]
     fn nominal_reference_carries_occurrence_bounds() {
         // The `{+ }` twin: the bounds ride the struct the same way the duplicates policy does, and
         // select `NonEmptyMap` — whose single `TryFrom` door is what rejects the empty map.
