@@ -693,6 +693,28 @@ std::thread_local! {
     static LAST_PANIC: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
+/// The normalized form every ledger key is written against: `<whitespace-collapsed message> @
+/// <file> @ fn <symbol>`. Shared by the sweep's capturing hook and the citation detector so a key
+/// that matches in one matches in the other.
+fn normalize_panic(info: &std::panic::PanicHookInfo) -> String {
+    let msg = info
+        .payload()
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| info.payload().downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_else(|| "<non-string panic payload>".to_owned());
+    let file = info
+        .location()
+        .map(|l| l.file().to_owned())
+        .unwrap_or_default();
+    // Symbolication happens ONLY on a panic, never on the ok path.
+    let symbol = production_frame_symbol(&std::backtrace::Backtrace::force_capture().to_string());
+    format!(
+        "{} @ {file} @ fn {symbol}",
+        msg.split_whitespace().collect::<Vec<_>>().join(" ")
+    )
+}
+
 /// Classify every composition's generation outcome, parallelized across worker threads (the
 /// composition SET is fixed beforehand; workers only classify, so thread count never changes WHAT
 /// is swept, only how fast). One silenced-hook window for the whole pass: inside it we swap in a
@@ -723,25 +745,7 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
                 .unwrap_or_else(|e| e.into_inner())
                 .contains(&std::thread::current().id());
             if is_worker {
-                let msg = info
-                    .payload()
-                    .downcast_ref::<String>()
-                    .cloned()
-                    .or_else(|| info.payload().downcast_ref::<&str>().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "<non-string panic payload>".to_owned());
-                let file = info
-                    .location()
-                    .map(|l| l.file().to_owned())
-                    .unwrap_or_default();
-                // Symbolication happens ONLY here (on a panic, ~500/sweep), never on the ok path.
-                let symbol = production_frame_symbol(
-                    &std::backtrace::Backtrace::force_capture().to_string(),
-                );
-                let norm = format!(
-                    "{} @ {file} @ fn {symbol}",
-                    msg.split_whitespace().collect::<Vec<_>>().join(" ")
-                );
-                LAST_PANIC.with(|p| *p.borrow_mut() = Some(norm));
+                LAST_PANIC.with(|p| *p.borrow_mut() = Some(normalize_panic(info)));
             } else {
                 delegate(info)
             }
@@ -819,7 +823,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 /// committed pin (a matrix fixture row, a `tests/robustness/` fixture, or a `cddl-matrix/ROADMAP.md`
 /// findings-ledger entry) — cite stable identifiers, never positions. Every entry is also asserted
 /// OBSERVED by the sweep (stale-pin guard: an entry whose class stops firing must be pruned or the
-/// composer fixed). A PANIC matching no entry is a NEW finding and fails the sweep.
+/// composer fixed), and its CITATION is asserted to hold by
+/// [`known_panic_classes_cite_fixtures_that_produce_them`] (at least one cited fixture must actually
+/// produce the class when generated). A PANIC matching no entry is a NEW finding and fails the sweep.
 ///
 /// Messages are normalized to `<whitespace-collapsed message> @ <file> @ fn <symbol>` (no line
 /// numbers — see `production_frame_symbol`), so a substring may pin the file AND the panicking
@@ -940,6 +946,115 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
 // is a rule-graph dependency and is alias-resolved when parsed, so both generate —
 // tests/robustness/choice_cbor_ref_arm.cddl and tests/robustness/cbor_ref_rule_body.cddl are `ok`
 // fixtures. Both messages stay worded lead-constant so a future ledger entry can key on them.
+
+// ---- the ledger's CITATION detector ------------------------------------------------------------
+/// Every `tests/**/*.cddl` fixture a citation names, in citation order. Citations are prose, so the
+/// scan is deliberately shape-based (a whitespace-delimited token under `tests/` ending `.cddl`,
+/// stripped of trailing prose punctuation) rather than a format the ledger would have to keep.
+fn cited_fixtures(cite: &str) -> Vec<String> {
+    cite.split_whitespace()
+        .map(|t| t.trim_matches(|c: char| !(c.is_alphanumeric() || "/._-".contains(c))))
+        .filter(|t| t.starts_with("tests/") && t.ends_with(".cddl"))
+        .map(|t| t.to_owned())
+        .collect()
+}
+
+/// Generate `path` and return the normalized panic message it produced, or `None` if generation did
+/// not panic. Same flags the panic/reject catalogs probe with (`--wasm=false`, default profile), so
+/// a fixture's captured message here is the one those catalogs' `PANIC` row records the category of.
+fn captured_panic_for_fixture(path: &std::path::Path) -> Option<String> {
+    crate::tests::robustness_tests::with_thread_silenced_panics(|| {
+        let prev: std::sync::Arc<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync> =
+            std::sync::Arc::from(std::panic::take_hook());
+        let mine = std::thread::current().id();
+        let delegate = prev.clone();
+        std::panic::set_hook(Box::new(move |info| {
+            if std::thread::current().id() == mine {
+                LAST_PANIC.with(|p| *p.borrow_mut() = Some(normalize_panic(info)));
+            } else {
+                delegate(info)
+            }
+        }));
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "citation_detector_unused",
+            "--wasm",
+            "false",
+        ]);
+        LAST_PANIC.with(|p| *p.borrow_mut() = None);
+        let out = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::api::generated_strings(&cli)
+        })) {
+            Err(_) => Some(
+                LAST_PANIC
+                    .with(|p| p.borrow_mut().take())
+                    .unwrap_or_else(|| "<panic with no hook capture>".to_owned()),
+            ),
+            Ok(_) => None,
+        };
+        let _ = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| prev(info)));
+        out
+    })
+}
+
+/// The ledger is guarded on its KEY — the sweep asserts every entry's substring is still OBSERVED —
+/// and this guards the other half, the CITATION, which is the half a human reads during triage. A
+/// citation naming the wrong fixture resolves (so no citation lint can fire) while sending a reader
+/// to the wrong parse site; the instance on record split two anonymous-composite classes by the
+/// composite's BRACKET and named the wrong one. So: run each cited fixture and require at least one
+/// of them to actually produce the entry's substring.
+///
+/// A row whose citation names NO runnable fixture fails too. Only a fixture makes the claim
+/// mechanically checkable, so a prose-only pin (a findings-ledger entry) has to be accompanied by
+/// one rather than standing alone.
+#[test]
+fn known_panic_classes_cite_fixtures_that_produce_them() {
+    let mut failures = Vec::new();
+    for (sub, cite) in KNOWN_PANIC_CLASSES {
+        let fixtures = cited_fixtures(cite);
+        if fixtures.is_empty() {
+            failures.push(format!(
+                "  `{sub}` cites no `tests/**/*.cddl` fixture, so nothing can check the citation \
+                 — pin: {cite}"
+            ));
+            continue;
+        }
+        let mut observed = Vec::new();
+        let mut hit = false;
+        for f in &fixtures {
+            let path = std::path::Path::new(f);
+            if !path.exists() {
+                observed.push(format!("{f}: MISSING"));
+                continue;
+            }
+            match captured_panic_for_fixture(path) {
+                Some(msg) if msg.contains(sub) => {
+                    hit = true;
+                    break;
+                }
+                Some(msg) => observed.push(format!("{f}: {msg}")),
+                None => observed.push(format!("{f}: did not panic")),
+            }
+        }
+        if !hit {
+            failures.push(format!(
+                "  `{sub}` — no cited fixture produces it:\n    {}\n    pin as written: {cite}",
+                observed.join("\n    ")
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "`KNOWN_PANIC_CLASSES` entries whose CITATION does not hold — triage following one of \
+         these lands on the wrong site:\n{}\n\nRe-derive each by running the fixture and cite the \
+         one that produces the class (or, if the class moved, retarget the entry).",
+        failures.join("\n")
+    );
+}
 
 // ---- LAYER 1: the generation-classification sweep ---------------------------------------------------
 /// Sweep every composition through in-process generation and classify ok / graceful / PANIC.

@@ -2140,27 +2140,15 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   a filesystem-effect claim has no artifact inventory to enumerate. If a flag-level instance actually
   ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its
   documentation makes claims about.
-- **`KNOWN_PANIC_CLASSES` is guarded on its KEY and unguarded on its CITATION, and the citation is
-  the half a human reads.** Each entry is `(panic-message substring, "…pinned by <fixture>")`. The
-  sweep asserts the SUBSTRING is still observed (`observed_classes.contains(sub)`), so a fixed class
-  fails loud — but nothing checks that the cited fixture actually produces the cited class, and
-  `lint_doc_citations` cannot help: the path resolves, so no citation lint can fire. That is the
-  claim-semantics boundary again, EXCEPT that here the claim is mechanically checkable, which is
-  what separates it from the declined prose-drift class in this section. Proven instance
-  (read-caught by a cycle that needed the pin, not by any gate): the `"Anonymous groups not allowed"`
-  entry cited the then-`tests/matrix_panic/` row for `contain.array-element.type2.map` (the cell has
-  since moved to `tests/matrix_reject/` with the graceful-rejection conversion), which actually produced
-  `"TODO: non-table types as types"` — the two anonymous-composite classes split by the composite's
-  BRACKET, and the citation named the wrong bracket, so triage following it would land on the wrong
-  parse site. Every citation has since been re-derived by RUNNING the named fixture, and the entries
-  now say which bracket each owns. Detector, cheap because the machinery already exists: the
-  robustness harness runs each `tests/matrix_panic/` fixture under `catch_unwind` and captures its
-  message, so assert per entry that at least one cited fixture's captured message CONTAINS the
-  entry's substring — a mis-citation becomes a red test instead of a mislead, with no new nested
-  cargo. Trigger to build rather than defer, on the axis the cost grows along and measurable by
-  whoever pays it: a SECOND mis-citation, or the first report from someone who followed a citation
-  during triage and reached the wrong site.
-  SECOND FORM of the same class, in a population the detector above cannot reach — the cited thing
+- **A citation that RESOLVES while naming the wrong thing is invisible to every citation lint, and
+  the claim it makes is the half a human reads.** The `KNOWN_PANIC_CLASSES` form of this is closed:
+  each entry pairs a panic-message substring with prose naming the fixture that owns the class, and
+  `known_panic_classes_cite_fixtures_that_produce_them` (always-on, `local` tier) now generates each
+  `tests/**/*.cddl` fixture an entry names and requires at least one to produce the entry's substring, so a mis-citation is a red test rather than a mislead during triage — the
+  instance on record cited a fixture whose actual class was the other anonymous-composite BRACKET,
+  which would have sent a reader to the wrong parse site (current state in `tests/README.md` §
+  "Shape-recombination fuzzer"). What remains is the
+  SECOND FORM of the same class, in a population that detector cannot reach — the cited thing
   is a GATE and the claim is that the gate is EVIDENCE for a property. Instance (read-caught in
   orchestrator review, never committed): a delivery report cited `check.ts fast` as proof that an
   `--emit-tests` map-key spelling was byte-identical, but the snapshot corpus holds zero `__i as …`
