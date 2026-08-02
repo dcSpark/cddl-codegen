@@ -66,7 +66,9 @@
  *   - adding a direct `run: cargo test` step to build.yml -> meta-check 3 FAILED (bypasses registry)
  *   canaries reverted after confirming red.
  */
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, unlinkSync, writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import {
@@ -437,6 +439,161 @@ function warmupThenOffline(tier: Tier) {
   }
   process.env.CARGO_NET_OFFLINE = "true";
   console.log("warm-up: fetched — CARGO_NET_OFFLINE=true for all gates");
+}
+
+// ---- run-start scratch sweep: leaked nested-cargo scratch retires itself -------------------------
+/**
+ * Every nested-cargo gate and in-process test suite mints per-run scratch under `tmpdir()` and relies
+ * on end-of-run cleanup that a KILLED or crashed run never reaches, so debris accumulates silently
+ * across sessions. Measured once at machine-killing scale: 3316 leaked entries totalling 43 GB filled
+ * the root filesystem to 0 bytes free, which killed one session's full tier mid-gate, left a
+ * half-written `cddl-matrix/annotations` overlay that failed the NEXT run's `build_matrix_check`, and
+ * broke harness task-output plumbing for every concurrent session. So scratch retires itself here,
+ * under three bounds and no fourth.
+ *
+ * **An explicit prefix registry, never a glob.** `tmpdir()` is shared with everything else on the
+ * machine, and a `cddl*` glob that matched one unrelated directory would be a data-loss bug reported
+ * as a test-runner bug. Every member of `SCRATCH_PREFIXES` is a literal leading substring of a name
+ * THIS REPO mints, derived by walking the `temp_dir()`/`tmpdir()` join sites in `src/`, `check.ts`
+ * and `cddl-matrix/` — an enumeration of the mint sites, not a grep for a keyword. A new mint site
+ * outside these prefixes leaks (the failure direction is debris accumulating, never a stranger's
+ * directory deleted), so add its prefix here when you add it.
+ *
+ * **Age, never emptiness or size.** The longest tier measured runs well under an hour, so a
+ * 24-hour-old entry cannot belong to a live run of anything; and the hand remediation the incident
+ * needed used exactly this rule. Age is the NEWEST mtime among an entry and its immediate children,
+ * because a long-lived `CARGO_TARGET_DIR` root keeps its own mtime while cargo rewrites the files
+ * inside it — reading the root alone would retire a target dir that is amortising builds every day.
+ *
+ * **A live-process guard.** AGENTS.md's pattern-kill rule — "another session's live run matches the
+ * same substring" — binds deletion at least as hard as it binds killing, and a scratch root reaches
+ * its gate as often through `CARGO_TARGET_DIR` as through argv. So the guard reads `cmdline`,
+ * `environ` and `cwd` for every process, and if it cannot read `/proc` at all the sweep does not run:
+ * a guard that fails open is not a guard.
+ *
+ * `.lock` files are never swept. They are `acquire_scratch_lock`'s sibling flocks, they hold no
+ * bytes, and unlinking one a live run holds lets a third run acquire a fresh inode while the first
+ * still owns the old one — the precise race the lock's own placement comment exists to prevent.
+ */
+export const SCRATCH_PREFIXES: readonly string[] = [
+  "cddl_codegen_",       // src/tests/** (the bulk, incl. every `scratch_name` root), src/api.rs,
+                         // cddl-matrix/no_std_check.ts
+  "cddl_config_",        // src/tests/config_tests.rs
+  "cddl_verify_",        // cddl-matrix/verify.ts — the probe root plus the ~2 GiB compile/wasm targets
+  "cddl_verbosity_",     // src/tests/integration_tests.rs
+  "cddl_wr_",            // src/tests/integration_tests.rs (wrapper-request sidecar fixtures)
+  "cddl_json_gen_dep_",  // src/tests/integration_tests.rs
+  "cddl_timing_cells_",  // src/tests/timing_cells.rs
+  "cddl_cm_feat_",       // src/cargo_manifest.rs
+  "cddl-retention-",     // cddl-matrix/project_timings.ts (retainLogs' own fixtures)
+  "gate_cache_audit_",   // cddl-matrix/audit_gate_cache_closure.ts (scratch + forced-miss cache dir)
+  "cache_transparency_", // cddl-matrix/cache_transparency.ts
+  "no-silent-dir-",      // cddl-matrix/no_silent_directive.ts
+];
+
+/** 24 h: >40× the longest measured tier, so no live run's scratch can reach it. */
+export const SCRATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export interface ScratchSweep {
+  status: "ran" | "skipped";
+  reason?: string;
+  removed: string[];
+  bytes: number;
+  keptFresh: number;
+  keptLive: string[];
+}
+
+/** Newest mtime among an entry and its immediate children — see the age bound above. */
+function newestMtimeMs(path: string): number {
+  let newest = 0;
+  try { newest = statSync(path).mtimeMs; } catch { return Date.now(); }
+  try {
+    for (const child of readdirSync(path)) {
+      try { newest = Math.max(newest, statSync(join(path, child)).mtimeMs); } catch { /* raced away */ }
+    }
+  } catch { /* a file, or unreadable: its own mtime stands */ }
+  return newest;
+}
+
+/** Names appearing in any live process's argv, environment or cwd; `null` if `/proc` is unreadable. */
+export function liveScratchNames(procRoot = "/proc"): Set<string> | null {
+  let pids: string[];
+  try { pids = readdirSync(procRoot).filter(d => /^\d+$/.test(d)); } catch { return null; }
+  const blobs: string[] = [];
+  for (const pid of pids) {
+    for (const f of ["cmdline", "environ"]) {
+      try { blobs.push(readFileSync(join(procRoot, pid, f), "utf8")); } catch { /* gone or not ours */ }
+    }
+    try { blobs.push(readlinkSync(join(procRoot, pid, "cwd"))); } catch { /* gone or not ours */ }
+  }
+  return new Set(blobs);
+}
+
+function duBytes(path: string): number {
+  const r = Bun.spawnSync(["du", "-sk", path], { stdout: "pipe", stderr: "ignore" });
+  const kib = parseInt((r.stdout?.toString() ?? "").trim().split(/\s+/)[0] ?? "", 10);
+  return r.exitCode === 0 && Number.isFinite(kib) ? kib * 1024 : 0;
+}
+
+export function sweepScratch(o: {
+  root: string;
+  liveNames: () => Set<string> | null;
+  now?: number;
+  maxAgeMs?: number;
+  prefixes?: readonly string[];
+  dryRun?: boolean;
+}): ScratchSweep {
+  const now = o.now ?? Date.now();
+  const maxAge = o.maxAgeMs ?? SCRATCH_MAX_AGE_MS;
+  const prefixes = o.prefixes ?? SCRATCH_PREFIXES;
+  const empty: ScratchSweep = { status: "ran", removed: [], bytes: 0, keptFresh: 0, keptLive: [] };
+
+  let names: string[];
+  try { names = readdirSync(o.root); } catch { return { ...empty, status: "skipped", reason: `cannot read ${o.root}` }; }
+  const candidates = names.filter(n => !n.endsWith(".lock") && prefixes.some(p => n.startsWith(p)));
+  if (candidates.length === 0) return empty;
+
+  let keptFresh = 0;
+  const stale = candidates.filter(n => {
+    if (now - newestMtimeMs(join(o.root, n)) < maxAge) { keptFresh++; return false; }
+    return true;
+  });
+  if (stale.length === 0) return { ...empty, keptFresh };
+
+  // Only once deletion is actually on the table does the guard have to succeed — the quiet case
+  // stays quiet on a machine with no `/proc`, and the loud case fails closed.
+  const live = o.liveNames();
+  if (live === null)
+    return { status: "skipped", reason: "the live-process scan failed — refusing to delete scratch without the guard",
+             removed: [], bytes: 0, keptFresh, keptLive: [] };
+  const named = [...live].join("\0");
+
+  const removed: string[] = [];
+  const keptLive: string[] = [];
+  let bytes = 0;
+  for (const n of stale) {
+    if (named.includes(n)) { keptLive.push(n); continue; }
+    const path = join(o.root, n);
+    bytes += duBytes(path);
+    if (!o.dryRun) { try { rmSync(path, { recursive: true, force: true }); } catch { continue; } }
+    removed.push(n);
+  }
+  return { status: "ran", removed, bytes, keptFresh, keptLive };
+}
+
+/** Runs the sweep over `tmpdir()` and prints ONE line — silent when nothing qualified. */
+function printScratchSweep(): void {
+  const s = sweepScratch({ root: tmpdir(), liveNames: () => liveScratchNames() });
+  if (s.status === "skipped") {
+    if (s.reason && !s.reason.startsWith("cannot read")) console.log(`scratch sweep: ${s.reason}`);
+    return;
+  }
+  if (s.removed.length === 0 && s.keptLive.length === 0) return;
+  const live = s.keptLive.length ? `; kept ${s.keptLive.length} named by a live process` : "";
+  console.log(
+    `scratch sweep: removed ${s.removed.length} stale entr${s.removed.length === 1 ? "y" : "ies"} ` +
+    `(older than ${SCRATCH_MAX_AGE_MS / 3_600_000} h) under ${tmpdir()}, ${fmtBytes(s.bytes)} freed${live}`,
+  );
 }
 
 // ---- resource preflight: a memory cap cannot be discovered mid-run ------------------------------
@@ -1713,6 +1870,9 @@ async function main() {
   const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz"), cacheTransparency: flags.has("--cache-transparency") };
   const { jobs: requestedJobs, warning: jobsWarning } = parseJobs(process.env.CHECK_JOBS);
   if (jobsWarning) console.log(`check.ts: ${jobsWarning}`);
+  // Deliberately BEFORE the preflight: space this run recovers is space the disk floor should count,
+  // so a machine whose only problem is last week's debris starts instead of refusing.
+  printScratchSweep();
   // Before anything expensive: a tier commits to its peak resource in its first seconds and cannot
   // discover a memory cap mid-run.
   const jobs = resourcePreflight(tier, requestedJobs);

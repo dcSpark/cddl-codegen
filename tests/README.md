@@ -11,7 +11,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~43s<!-- /gen:sh:tests-tier-fast --> |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~32s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~5 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~33 min<!-- /gen:sh:tests-tier-full --> |
 
@@ -152,6 +152,32 @@ the largest single `rustc` resident set observed across that batch and a whole `
 **455 MiB**, so a count-based bound would still admit a very different peak from a gate that compiles
 one big crate rather than many small ones. Hence the memory derivation, with a deliberate ~4× margin
 over what was measured.
+
+**Run-start scratch sweep (every tier).** Nested-cargo gates and the in-process suites mint per-run
+scratch under the system temp dir and rely on end-of-run cleanup that a killed or crashed run never
+reaches, so debris accumulates across sessions until a disk fills — measured once at 3316 leaked
+entries / 43 GB / 0 bytes free, which killed a full tier mid-gate and broke harness plumbing for every
+concurrent session. So every run sweeps first, under three bounds and no fourth:
+
+- **An explicit prefix registry** (`SCRATCH_PREFIXES` in `check.ts`), never a `cddl*` glob. The temp
+  dir is shared with the whole machine, so a glob matching one unrelated directory would be a
+  data-loss bug reported as a test-runner bug. The registry is an enumeration of the repo's
+  `temp_dir()`/`tmpdir()` join sites, and it stays one: `the_scratch_prefix_registry_covers_every_temp_dir_mint_site`
+  (in the `timings_digest_check` gate) re-derives the sites on every run and fails on a mint site no
+  prefix covers, or on one it cannot resolve. A new mint site outside the registry LEAKS rather than
+  deleting a stranger's directory — the failure direction is deliberate.
+- **Age**, at 24 h — more than 40× the longest measured tier, so no live run's scratch can reach it.
+  Age is the newest mtime among an entry and its immediate children, because a long-lived
+  `CARGO_TARGET_DIR` root keeps its own mtime while cargo rewrites the files inside it.
+- **A live-process guard**: an entry named in any process's `cmdline`, `environ` or `cwd` survives
+  (a scratch root reaches its gate through `CARGO_TARGET_DIR` at least as often as through argv). The
+  guard fails **closed** — an unreadable `/proc` skips the sweep rather than deleting unguarded — and
+  it is consulted only once deletion is on the table, so a machine with nothing stale stays silent.
+
+`.lock` files are never swept: they are `acquire_scratch_lock`'s sibling flocks, they hold no bytes,
+and unlinking one a live run holds would let a third run acquire a fresh inode. The sweep runs before
+the preflight below, so space it recovers counts toward the disk floor, and prints one line naming
+entries removed and bytes freed — nothing at all when nothing qualified.
 
 **Resource preflight (`local`/`full` only).** A tier commits to its peak in its first seconds and
 cannot discover a memory cap mid-run; the failure mode is not a red gate but a machine that stops

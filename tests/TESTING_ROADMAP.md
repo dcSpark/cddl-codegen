@@ -3028,10 +3028,20 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `build_matrix_check`), and harness task-output plumbing broke for every concurrent session.
   Manual remediation (delete only entries older than a day, sparing paths named by live
   processes' cmdlines — the pattern-kill warning in AGENTS.md applies to deletion too) recovered
-  35 GB. The missing system: scratch dirs should be self-retiring — a run-start sweep of stale
-  entries under a recognizable namespace (age-based, live-process-guarded), or a bounded named
-  scratch root the tiers reuse and truncate. Until built, treat unexplained ENOSPC/mid-gate
-  deaths as possible scratch-debris saturation and sweep before re-attributing. Two corroborating
+  35 GB. Scratch is self-retiring since: every `check.ts` run sweeps registry-named, day-old,
+  live-process-unguarded entries before its disk preflight (`tests/README.md` § "Run-start scratch
+  sweep"), and the sweep's first run on the development box removed 8284 entries / 42 GiB — the same
+  saturation, re-formed. What the sweep cannot reach bounds what is left to watch: debris younger
+  than the 24 h threshold (a single day of crashed full-tier runs can leak tens of GiB inside the
+  window), and scratch minted by a `cargo test` invocation that never goes through `check.ts`. So
+  still treat unexplained ENOSPC/mid-gate deaths as possible scratch saturation and check before
+  re-attributing — but read the run's own sweep line first, because a run that swept and still
+  refused on the disk floor is reporting a different problem.
+  - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
+    retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
+    on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
+    log the operator already has, so the report arrives self-diagnosing.
+  Two corroborating
   sightings from the concurrent session, same saturation window: a first-ever generation run
   exiting 1 whose only capture went through `tail -3` (evidence burned — the exact failure mode
   the evidence-preservation rule names; green on immediate rerun, attribution now unrecoverable
