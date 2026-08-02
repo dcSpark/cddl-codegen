@@ -746,7 +746,16 @@ ledgered here (that's what the probe/gate error messages point at).
   the generated serde derives. Surfaced by the json/wasm decode-surface legs of `corpus_decode_replay`
   on `bytes_map_key.bkeys`, `bytes_map_key.bytes_key_holder`, and `composite_map_key.holder`, which are
   on that gate's `JSON_SURFACE_SKIP` citing this entry (which also suppresses their wasm `from_json`
-  sub-leg). Largely a JSON-format limitation rather than a codegen bug; a candidate mitigation is a
+  sub-leg). The same class reaches an OPEN TABLE's typed row through its own hand-written face: a
+  bare `bstr` typed key's serde image is a JSON array, so `to_json` errors loudly
+  (`OpenTableKeyImageError`, the documented member-name contract in `docs/docs/output_format.mdx`
+  § "Open tables (a typed row plus a catch-all)") on every vector holding a typed entry — surfaced
+  by `decode_conformance_replay`'s json legs on the
+  `contain.occurrence-target.memberkey.type1.open_table` and `…open_table_plus` cells, on that
+  gate's `JSON_SURFACE_SKIP` citing this entry. The remedy a real consumer takes is a key type with
+  a string-producing `Serialize` (a `@newtype`/raw-bytes hex impl — the acceptance fixtures do
+  exactly this), which is also why the cells' bare-`bstr` examples stay: they pin the loud-error
+  posture for the un-remedied spelling. Largely a JSON-format limitation rather than a codegen bug; a candidate mitigation is a
   generated serde impl that hex/base64-encodes non-string keys into json strings (and reverses it), at
   the cost of a non-obvious wire mapping — decide before building. The tree now carries a decided
   precedent for one position that went the OTHER way: an open struct-map rest row's typed key domain
