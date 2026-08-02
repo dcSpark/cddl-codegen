@@ -82,7 +82,8 @@ const CATALOG_REL = "tests/decode_conformance/catalog.toml";
 
 // --- matrix.json ----------------------------------------------------------------------------------
 interface Annotation { id: string; status: string; evidence: string }
-interface UnivRow { id: string }
+/** `role`/`feature` are carried by containment rows only — a cell IS a (role × feature) pair. */
+interface UnivRow { id: string; role?: string; feature?: string }
 interface MatrixJson {
   annotations: { cddl_codegen: Annotation[] };
   features: UnivRow[];
@@ -98,6 +99,12 @@ type Axis = "feature" | "containment-cell" | "control-op";
 const axisById = new Map<string, Axis>();
 for (const r of matrix.features) axisById.set(r.id, "feature");
 for (const r of matrix.containment) axisById.set(r.id, "containment-cell");
+// A containment cell's enforcement class is its FEATURE's, read in the POSITION its role names — both
+// out of the universe row rather than pattern-matched off the id. A role name carries dots and a
+// variant suffix can spell anything, so string surgery on `contain.<role>.<feature>[.<variant>]` is a
+// guess where the row is an answer.
+const cellRole = new Map(matrix.containment.map(r => [r.id, r.role]));
+const cellFeature = new Map(matrix.containment.map(r => [r.id, r.feature]));
 for (const r of matrix.control_operators) axisById.set(r.id, "control-op");
 
 // --- catalog.toml: per-id accept / classified-reject vector counts --------------------------------
@@ -198,7 +205,10 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 //   - `value.number*` (and the other `value.*` fixed-value rows' member forms) — a fixed value is a
 //     rejectable equality constraint. (Today all `value.number*` rows are `unsupported`, so they
 //     derive n/a by status — the classification still matters so a future supported+vectorless state
-//     reads `unverified`, not n/a.)
+//     reads `unverified`, not n/a.) The member forms are the CONTAINMENT CELLS carrying those
+//     features, classified by `cellCarriesConstraint` below — the FEATURE-id tests here match no
+//     `contain.*` id, so before that branch existed the classification the sentence claims was
+//     absent from the code, and every fixed-value cell derived `n/a (no constraint)`.
 // EXCEPTION: `ctl.default` governs an ABSENT field (`? b: uint .default 0` supplies a value when the
 // member is missing) — there is no rejectable instance, so it carries no enforcement constraint and
 // derives n/a rather than an honest-gap `unverified`.
@@ -215,10 +225,44 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // each carrying its certified out-of-window map pin. (The seed instance — the no-occurrence type-domain
 // arrow widening — took the other branch: closed by graceful rejection at generation, so its row left
 // the supported set and the catalog.)
+/**
+ * The fixed-value CELLS: a literal in a member position is a rejectable equality constraint, so a
+ * supported one without a reject vector must read `unverified (no reject vector)` rather than
+ * `n/a (no constraint)` — the two are indistinguishable to a reader, and n/a is the state the
+ * classification exists to make impossible for something that IS enforced.
+ *
+ * Classification is by (role, feature), and the role half is the load-bearing half. Three positions
+ * are excluded because their rejection story is not value equality:
+ *   - `role.map-key` — a fixed key is looked UP; the wrong key rejects as a missing required member,
+ *     which is a different vector class and is not evidence about `.size`-style value enforcement.
+ *   - `role.group-choice-arm` / `role.choice-member` — a fixed value SELECTS an alternative, so the
+ *     rejection is "no arm matched" rather than "this member's value is wrong". The arm position is
+ *     its own axis, tracked by cddl-matrix's "Enumerate the remaining fixed-value KINDS, in both the
+ *     arm and the member position" work item; classifying it here would assert enforcement evidence
+ *     that item exists to go and get.
+ * Everything else is an INCLUSION by default — a fixed value under a tag head or a `.cbor` payload
+ * constrains its own instance exactly as an array element's does, so a cell landing in one of those
+ * positions classifies without this predicate being touched, which is the forcing function's point.
+ */
+const FIXED_VALUE_NON_MEMBER_ROLES = new Set([
+  "role.map-key", "role.group-choice-arm", "role.choice-member",
+]);
+const isFixedValueFeature = (f: string): boolean =>
+  f === "type2.value" || f.startsWith("value.") ||
+  f === "prelude.true" || f === "prelude.false" || f === "prelude.null";
+
+function cellCarriesConstraint(id: string): boolean {
+  const role = cellRole.get(id);
+  const feature = cellFeature.get(id);
+  if (role === undefined || feature === undefined) return false; // not a containment cell
+  return isFixedValueFeature(feature) && !FIXED_VALUE_NON_MEMBER_ROLES.has(role);
+}
+
 function carriesConstraint(id: string): boolean {
   if (id === "ctl.default") return false; // no rejectable constraint (governs an absent field)
   return id.startsWith("ctl.") || id === "memberkey.cut"
-    || id.startsWith("occur.bounded") || id.startsWith("value.number");
+    || id.startsWith("occur.bounded") || id.startsWith("value.number")
+    || cellCarriesConstraint(id);
 }
 
 function deriveEnforce(id: string, status: string): string {
