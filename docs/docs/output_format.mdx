@@ -145,7 +145,7 @@ exact `raw.float()? != <lit>` compare, the same spellings the mandatory fixed-fl
 (`tests/corpus/optional_fixed_float.cddl`, hand vectors in `tests/core/tests.rs`'s
 `opt_fixed_member_float`). Under `--preserve-encodings` the member additionally carries its head-width
 encoding variable, so an absent member stores no width and a present one re-emits at the width it
-arrived on — see [`--preserve-encodings`](command_line_flags) for the float width rules.
+arrived on. A fixed float value is a literal, not a prelude name, so it declares no head set and accepts the literal at any width — the per-name head sets are the separate rule in [Floats](current_capacities#types), and the canonical narrowing is under [`--canonical-form`](command_line_flags).
 
 ## Nominal tag-258 set types
 

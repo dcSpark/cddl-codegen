@@ -1804,7 +1804,14 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     including the bound and the vector's own found value (both deterministic — same bytes, same
     decoder), e.g. `11 not at most 10`, `not in float range (>=0.5, <=10.5)` — formats in
     `static/error.rs`; if the captured Display does NOT name the violated constraint, that is a
-    wrong-reason rejection to investigate, never a string to pin. This class is Q4's
+    wrong-reason rejection to investigate, never a string to pin. Capture the fragment from the
+    DEFAULT profile, which is the leg the replay gate asserts it on — a rejection's SPELLING can
+    differ by profile even when its cause does not. The float head-set rows are the live example: a
+    single-width name (`float32`, `float64`) reads through cbor_event's head-strict blanket impl by
+    default (`expected a float of width \`Four' but received width \`Two'`) and through
+    `read_float_sz_width` under `--preserve-encodings`, which must return the head in order to
+    record it and so reports `Expected float head #7.26, found #7.25` instead. Pinning the preserve
+    spelling would pass every local check and fail the gate. This class is Q4's
     `enforce = yes (bounded-reject)` evidence (`query_q4_directional.ts` counts `class="constraint"`
     only). NOTE: the numeric range/eq rows carry these vectors only because their probe examples
     target `int` with literal, non-vacuous bounds — the rust corroborating oracle (`cddl` 0.10.x)
