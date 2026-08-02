@@ -14,7 +14,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->69 `class="constraint"` enforcement reject vectors over 48 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->68 `class="constraint"` enforcement reject vectors over 48 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — the widened-occurrence-marker table
 class is CLOSED (`+`/`1*` is honored as a non-empty container and the other count-permitting markers
@@ -109,8 +109,9 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   `tests/golden_hex/COVERAGE.md` marks a construct exercised when a golden rule NAMES it, corrected
   for the prelude's plain aliases (derivable, so applied rather than disclaimed). Not corrected: a
   construct the fixture reaches only through a WIDER type that cddl-codegen narrows when it emits.
-  `one_float = [v: float]` asserts `fb…` doubles, so `prelude.float64`'s cell is exercised in fact
-  while no rule names `float64`, and the row reads ✗ with its cell listed untested. Closing it means
+  `one_float = [v: float]` asserts each value at its shortest form, so `prelude.float16`'s cell is
+  exercised in fact while no rule names `float16`, and the row reads ✗ with its cell listed
+  untested. Closing it means
   modelling which arm of a union the generator picks at emission — a claim about the generator, not
   about spec structure, so it cannot be derived from the pinned prelude and must not be guessed; the
   honest fixes are a golden rule that names the narrow type, or an emission model. *Reopening
@@ -878,20 +879,20 @@ remains is deleting the notes that explain why we do not have it yet.
   still-open adjacent map-matching gaps found during that fix (a fourth, the float-key/null
   copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
   when convenient.
-- When either oracle starts validating float prelude names by CBOR HEAD (README gap #12 — OPEN at
-  the pinned `ac1b98e` rev for rust, and in ruby gem 0.12.14, whose defect is the opposite shape:
-  it matches by narrowest exact VALUE width, so it accepts out-of-set heads AND rejects canonical
-  in-set ones). The ruby half is written up for filing, tracked by
-  `cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md` — a committed, paste-ready
-  report; the rust half has no writeup yet. Neither is filed. When a fix lands: drop the fixed
-  oracle from the affected `DECODE_REJECT_ORACLE_GAP_EXEMPT` entries (lib.ts) — the mint's stale
-  guard names each one as soon as that oracle starts rejecting — remove any entry left naming no
-  oracle, re-mint the five head-constrained float rows so their vectors carry ordinary two-oracle
-  certification (`--mint-decode-foreign --only=prelude.float16,prelude.float16-32,prelude.float32,prelude.float32-64,prelude.float64`),
-  and prune README gap #12, the family-(e) paragraph in `query_q4_directional.ts`, and — for the
-  ruby half — the writeup itself. If instead the ruby author answers that the VALUE reading is
-  correct, the exemptions are wrong rather than stale: the acceptance rule reopens and the writeup's
-  own closing section says so.
+- When the rust oracle starts distinguishing the float prelude names at all (README gap #12 — OPEN
+  at the pinned `ac1b98e` rev: all six names collapse to one "is it a float" test). The ruby gem
+  0.12.14 already implements the shortest-form partition head-independently, so this is a
+  one-oracle divergence and every affected `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry names `rust`
+  alone. Written up for filing, tracked by
+  `cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md` — a committed, paste-ready
+  report. Not filed. When a fix lands: drop `rust` from the affected entries (lib.ts) — the mint's
+  stale guard names each one as soon as that oracle starts rejecting — remove the entries left
+  naming no oracle, re-mint the five constrained float rows so their vectors carry ordinary
+  two-oracle certification (`--mint-decode-foreign --only=prelude.float16,prelude.float16-32,prelude.float32,prelude.float32-64,prelude.float64`),
+  and prune README gap #12, the family-(e) paragraph in `query_q4_directional.ts`, and the writeup
+  itself. If instead the answer is that all six names denote the same set, the exemptions are wrong
+  rather than stale: the shortest-form partition reopens, and the writeup's own closing section
+  says exactly what moves.
 
 ## wasm-ABI & multifile placement matrices — remaining work
 

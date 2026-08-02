@@ -30,9 +30,11 @@
 # CONSUMER NOTES (cddl-codegen-specific facts kept OUT of the pure-spec master, recorded here):
 #   * `T / null` type choice -> cddl-codegen emits Option<T> (a consumer special-case of the
 #     ordinary `type = type1 *("/" type1)` production, NOT a distinct ABNF alternative).
-#   * the six float prelude names are six distinct wire-acceptance classes in cddl-codegen, not
-#     two carrier widths: `float16`/`float32`/`float16-32` carry Rust f32, `float64`/`float32-64`/
-#     `float` carry f64, and each accepts only the CBOR heads its own name declares.
+#   * the six float prelude names are six distinct VALUE classes in cddl-codegen, not two carrier
+#     widths: `float16`/`float32`/`float16-32` carry Rust f32, `float64`/`float32-64`/`float` carry
+#     f64, and each admits exactly the values whose SHORTEST lossless CBOR form its own name spans
+#     (so the classes are disjoint — 1.5 is a `float16` and not a `float32`). Reads accept every
+#     float head and judge the decoded value; writes take the smallest head that preserves it.
 #
 # EMISSION-PROFILE AXIS (dotted `emission.<name>.*` keys): the `status`/`evidence` above is the
 #   DEFAULT-flags verdict. A row whose default verdict is `supported` is ALSO probed under each
@@ -638,7 +640,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.float16"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 12 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"
@@ -647,7 +649,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.float16-32"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 11 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"
@@ -656,7 +658,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.float32"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 11 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"

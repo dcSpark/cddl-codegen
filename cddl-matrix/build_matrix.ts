@@ -97,6 +97,11 @@ for (const f of features)
 // exactly the defect class this check exists to catch, so the near-duplication is load-bearing.
 // Parametric heads (`type2.tag`'s user-chosen `#6.N`, `type2.major7`'s `#7.N`) are not prelude rules
 // and never reach here — they keep the parent ref, which is the correct claim for them.
+// SCOPE, worth stating for the float rows: this axis classifies ENCODINGS — the head a conforming
+// preferred-serialization encoder (RFC 8949 § 4.1) emits for a value of the construct. It says
+// nothing about what a DECODER accepts. The float prelude names partition the float VALUES by their
+// shortest lossless form (RFC 8610 § 2.2.3 / § 3.3), so a `float16` value's shortest form IS `#7.25`
+// and the declared cell stays exactly right — while a decoder still accepts that value at `fa`/`fb`.
 const tagNumberCell = (n: number) =>
   `enc.major6.${n <= 23 ? "imm" : n <= 255 ? "ai24" : n <= 65535 ? "ai25" : n <= 0xffffffff ? "ai26" : "ai27"}`;
 const AI_CELL: Record<number, string> = { 24: "ai24", 25: "float16", 26: "float32", 27: "float64", 31: "break" };

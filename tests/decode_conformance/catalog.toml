@@ -6899,70 +6899,80 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "8200f9013a"
+hex = "8200f90845"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f92f44"
+hex = "8200f90cb2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f96cd9"
+hex = "8200f921ae"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f98056"
+hex = "8200f92c18"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f99855"
+hex = "8200f95db2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f9b156"
+hex = "8200f960a4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f9b6fe"
+hex = "8200f9711a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f9bb2c"
+hex = "8200f99998"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f9bba0"
+hex = "8200f9a72c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f9cda5"
+hex = "8200f9c996"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "8200fa3f8ccccd"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 1.100000023841858 against `float16`. The CDDL float names partition the float VALUES by their shortest lossless form (RFC 8610 §2.2.3: the `#7.x` notation \"is about a set of values at the data model level\"; §3.3: \"representable as\"), and this value's shortest form is `#7.26` — it is a `float32` value, so `float16` excludes it whatever head it arrives under. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only: the pinned rust `cddl` build collapses all six float prelude names into a single is-float test and accepts it; the ruby gem rejects it, implementing the same partition — see cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md"
+expect_err = "Expected a float16 value, found a float32 value"
 
 [[row.vector]]
 hex = "8200fa3fc00000"
 source = "hand"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fb3ff199999999999a"
+source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "an `fa` (#7.26) head against `float16`, which RFC 8610 App. D defines as `#7.25` alone — the head is the sole invalidity (the value 1.5 is f16-exact, so the row's own `f9` encoding of it is an accept). Certified by our spec reading plus a DECODE_REJECT_ORACLE_GAP_EXEMPT entry: both oracles accept it (ruby classifies by value width, the pinned rust oracle does not validate float heads at all) — see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "Expected float head #7.25, found #7.26"
+reason = "the value 1.1 against `float16`: its shortest lossless form is `#7.27`, so it is a `float64` value and outside the one-class window (the same value-class rule as this row's other constraint vector, one class further out). Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only — the ruby gem rejects it; see cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md"
+expect_err = "Expected a float16 value, found a float64 value"
 
 [[row.vector]]
 hex = "8200fb3ff8000000000000"
 source = "hand"
-expect = "reject"
-class = "constraint"
-reason = "an `fb` (#7.27) head against `float16` (`#7.25` alone, RFC 8610 App. D); the head is the sole invalidity (1.5 is f16-exact). Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT — both oracles accept it; see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "Expected float head #7.25, found #7.27"
+expect = "accept"
 
 [[row]]
 id = "prelude.float16-32"
@@ -6973,62 +6983,67 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "8200f909d9"
+hex = "8200f91821"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f91b00"
+hex = "8200f937a1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f91eaf"
+hex = "8200f94ab9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f92119"
+hex = "8200f9ab20"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f93a91"
+hex = "8200f9b16f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200f952f2"
+hex = "8200f9bba6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa1c5be6f5"
+hex = "8200fa6d2832fc"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa7e941459"
+hex = "8200fa87c86264"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200faa33e64c3"
+hex = "8200fac2dce71f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200faace8c7a0"
+hex = "8200fac89dd2c6"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "8200fb3ff199999999999a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 1.1 against `float16-32` = `float16 / float32`. The CDDL float names partition the float VALUES by their shortest lossless form (RFC 8610 §2.2.3, §3.3), and 1.1's shortest form is `#7.27` — it is a `float64` value, the one class this two-class window excludes, at any head. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only: the pinned rust `cddl` build collapses all six float prelude names into a single is-float test and accepts it; the ruby gem rejects it, implementing the same partition — see cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md"
+expect_err = "Expected a float16 - float32 value, found a float64 value"
 
 [[row.vector]]
 hex = "8200fb3ff8000000000000"
 source = "hand"
-expect = "reject"
-class = "constraint"
-reason = "an `fb` (#7.27) head against `float16-32` = `float16 / float32` = `#7.25` / `#7.26` (RFC 8610 App. D) — the only out-of-set head this name has; the head is the sole invalidity (1.5 is f16-exact). Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT — both oracles accept it; see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "Expected float head #7.25 - #7.26, found #7.27"
+expect = "accept"
 
 [[row]]
 id = "prelude.float32"
@@ -7043,66 +7058,63 @@ hex = "8200f93e00"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "an `f9` (#7.25) head against `float32`, which RFC 8610 App. D defines as `#7.26` alone; the head is the sole invalidity (1.5 is exactly representable at every width). Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only — ruby rejects it too, but by VALUE width, the same rule that makes ruby reject this row's canonical `fa`-headed 1.5; see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "expected a float of width `Four' but received width `Two'"
+reason = "the value 1.5 against `float32`. The CDDL float names partition the float VALUES by their shortest lossless form (RFC 8610 §2.2.3: the `#7.x` notation \"is about a set of values at the data model level\"; §3.3: \"representable as\"), and 1.5's shortest form is `#7.25` — it is a `float16` value, so `float32` excludes it. The `f9` head here is simply the value's own shortest encoding; the same value at `fa` or `fb` is rejected identically. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only: the pinned rust `cddl` build collapses all six float prelude names into a single is-float test and accepts it; the ruby gem rejects it, implementing the same partition — see cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md"
+expect_err = "Expected a float32 value, found a float16 value"
 
 [[row.vector]]
-hex = "8200fa08232555"
+hex = "8200fa0794b328"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa1077068c"
+hex = "8200fa36dc65fa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa2624fad0"
+hex = "8200fa4b7263e0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa41ddba35"
+hex = "8200fa6ecfd020"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa47303ade"
+hex = "8200fa78bbbde3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa98232953"
+hex = "8200fa8ae9f7d7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fac9252f34"
+hex = "8200fa8ecdb90d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fad5874037"
+hex = "8200faac71596d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fad986ee37"
+hex = "8200fab25c5067"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fae1770547"
+hex = "8200fabf2b0ae3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
 hex = "8200fb3ff19999a0000000"
 source = "hand"
-expect = "reject"
-class = "constraint"
-reason = "an `fb` (#7.27) head against `float32` (`#7.26` alone, RFC 8610 App. D), carrying 1.100000023841858 — an f32-exact value widened losslessly to eight bytes, so the head is the sole invalidity. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT — both oracles accept it; see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "expected a float of width `Four' but received width `Eight'"
+expect = "accept"
 
 [[row]]
 id = "prelude.float32-64"
@@ -7117,56 +7129,56 @@ hex = "8200f93e00"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "an `f9` (#7.25) head against `float32-64` = `float32 / float64` = `#7.26` / `#7.27` (RFC 8610 App. D) — the only out-of-set head this name has; the head is the sole invalidity. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only — ruby rejects it by value width, not by head; see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "Expected float head #7.26 - #7.27, found #7.25"
+reason = "the value 1.5 against `float32-64` = `float32 / float64`. The CDDL float names partition the float VALUES by their shortest lossless form (RFC 8610 §2.2.3, §3.3), and 1.5's shortest form is `#7.25` — it is a `float16` value, the one class this two-class window excludes, at any head. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only: the pinned rust `cddl` build collapses all six float prelude names into a single is-float test and accepts it; the ruby gem rejects it, implementing the same partition — see cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md"
+expect_err = "Expected a float32 - float64 value, found a float16 value"
 
 [[row.vector]]
-hex = "8200fa12039ece"
+hex = "8200fa191629ee"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa5d215f06"
+hex = "8200fa36a958f4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fa68c68730"
+hex = "8200fa52aa6cd2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fabf8d5faf"
+hex = "8200fa8d0353a3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb0d9d0aaef068bd5c"
+hex = "8200fa9d0c9c6c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb54e04073fa8ddb98"
+hex = "8200faf7b32129"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb720a0159cbc69e05"
+hex = "8200fb054cd5cd9746a5ec"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbca8364e0c5940a00"
+hex = "8200fb1b4df219e4e5bd60"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbd31eb98223a814cc"
+hex = "8200fb79fbba81e402fc6f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbd94ea9cab3dc8f7a"
+hex = "8200fbe3e1675d37316211"
 source = "ruby-generate"
 expect = "accept"
 
@@ -7183,64 +7195,64 @@ hex = "8200f93e00"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "an `f9` (#7.25) head against `float64`, which RFC 8610 App. D defines as `#7.27` alone; the head is the sole invalidity. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only — ruby rejects it by value width, not by head; see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "expected a float of width `Eight' but received width `Two'"
+reason = "the value 1.5 against `float64`. The CDDL float names partition the float VALUES by their shortest lossless form (RFC 8610 §2.2.3: the `#7.x` notation \"is about a set of values at the data model level\"; §3.3: \"representable as\"), and 1.5's shortest form is `#7.25` — it is a `float16` value, so `float64` excludes it. A consequence worth stating: `float64` has no NaN either, since canonical quiet NaN's shortest form is `#7.25` too. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only: the pinned rust `cddl` build collapses all six float prelude names into a single is-float test and accepts it; the ruby gem rejects it, implementing the same partition — see cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md"
+expect_err = "Expected a float64 value, found a float16 value"
 
 [[row.vector]]
 hex = "8200fa3fc00000"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "an `fa` (#7.26) head against `float64` (`#7.27` alone, RFC 8610 App. D); the head is the sole invalidity. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only — ruby rejects it by value width, not by head; see cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md"
-expect_err = "expected a float of width `Eight' but received width `Four'"
+reason = "the same `float16` value 1.5 against `float64`, written at an `fa` head instead of its own shortest `f9` — rejected identically, which is what makes this row's pair of constraint vectors evidence that the class is decided by the VALUE and not by the head it arrived under. Ledgered in DECODE_REJECT_ORACLE_GAP_EXEMPT for the rust oracle only: the pinned rust `cddl` build collapses all six float prelude names into a single is-float test and accepts it; the ruby gem rejects it, implementing the same partition — see cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md"
+expect_err = "Expected a float64 value, found a float16 value"
 
 [[row.vector]]
-hex = "8200fb106df00066531eda"
+hex = "8200fb18d31570e51a373d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb3754aeca688b6c38"
+hex = "8200fb2325c3d33003eb54"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb4260caf1310527cc"
+hex = "8200fb24cede36ccbc5245"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb7446535fae5f8cfc"
+hex = "8200fb38e8f7fda5b24a2c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fb9e625289b2557e07"
+hex = "8200fb3a1a00d359abcb0a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbbf9b98c5474a9a08"
+hex = "8200fb4f211bef6d00bdcb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbd8cd785fa2204048"
+hex = "8200fb91b9d74c99721742"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbdb9432033593ba03"
+hex = "8200fbddf42f99f4c79a60"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbec215a6956c8e49c"
+hex = "8200fbf2ea7daf824b8249"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200fbf33b17db5a92bed0"
+hex = "8200fbf840d34d46dc5782"
 source = "ruby-generate"
 expect = "accept"
 

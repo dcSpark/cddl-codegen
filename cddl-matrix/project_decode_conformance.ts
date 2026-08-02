@@ -382,11 +382,13 @@ const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "prelude.bigint": ["6"],
   "prelude.bool": ["7"],
   "prelude.float": ["7"],
-  // The two head-union float names spell a choice of two float TYPES (`float16 / float32`,
+  // The two spanning float names spell a choice of two float TYPES (`float16 / float32`,
   // `float32 / float64`), which is one wire class — every arm is major 7 — so the floor asks only
-  // that the row carry a major-7 accept. The per-HEAD evidence those names actually need is not a
-  // shape the arm floor can see (a head width is inside the major type, not a major type), and lives
-  // in the byte-exact vectors instead: `float_heads` in tests/core and tests/preserve-encodings.
+  // that the row carry a major-7 accept. The per-CLASS evidence those names actually need is not a
+  // shape the arm floor can see: the arms partition the float VALUES by shortest lossless form, and a
+  // value class is not a major type (it is not even a head — reads accept every float head and judge
+  // the decoded value). It lives in the byte-exact vectors instead: `float_heads` in tests/core and
+  // tests/preserve-encodings, plus this catalog's own per-class constraint vectors.
   "prelude.float16-32": ["7"],
   "prelude.float32-64": ["7"],
   "prelude.int": ["int"],   // bare `x = int` — the uint/nint arm merges to "int"
