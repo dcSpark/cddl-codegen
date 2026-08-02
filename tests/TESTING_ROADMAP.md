@@ -2611,6 +2611,36 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 
 ## Deferred features (build when a real consumer needs them)
 
+- **`@duplicates preserve` on an inline map arm's row entry inside a type choice: honor it or
+  reject it — today it is a pinned SILENT DROP, and it has a waiting consumer.** The row-entry
+  comment slot of `tmd = { * k => v ; @duplicates preserve\n } / int` is accepted and the directive
+  ignored (loose container emitted; both comma spellings verified), while the identical slot on a
+  named open struct-map's rest row honors it — pinned by `dsl_position_tests` cells 38/38b and the
+  `KNOWN_SILENT_DROP` entry, and now stated in `comment_dsl.mdx`'s `@duplicates` section. Neither
+  standing net caught it: the docs route the shape to a named rule so no fixture spelled the inline
+  form, and `no_silent_directive`'s shape vocabulary has no
+  inline-map-arm-inside-a-type-choice ROW-ENTRY cell (its `@duplicates` witnesses are
+  rule-position) — the pin is what closes the detection gap; the DECISION is what this entry
+  defers. The honor road is the valuable one: together with the recursive-union nominal-ordering
+  abort (the `recursive_union_keyed_table_nominal.cddl` PANIC entry above — for a SELF-referential
+  union BOTH spellings are dead, which is why the two defects gate the same consumer), it is
+  exactly what keeps CML's offered `NOISY_V1_HEX`/`NOISY_V2_HEX` CIP-25 vectors out of
+  `tests/open-table-cip25-acceptance` — both parse to within one `DuplicateKey` of round-tripping
+  (the open-tables Phase D probe). Priority signal, already observed rather than hypothetical: two
+  committed-quality acceptance vectors are blocked on it.
+
+- **`check.ts` should keep the derived tier-time spans in lockstep with the timings ledger it
+  writes.** Three times in one session a run re-measured a tier (fast 28s→35s→43s, local
+  3.3→4.1 min), the run's own `tests/timings.json` write was committed, and the NEXT tier run
+  fail-fasted on `project_status_headers` because the derived `tests/README.md` span went stale —
+  each occurrence costing a full tier iteration to learn what a one-line writer run fixes. The
+  magnitude signal is met (three firings, one session), so this is a build item, not a deferral:
+  when `check.ts` rewrites `timings.json`, either regenerate the spans in the same write (the
+  writer is `cddl-matrix/project_status_headers.ts --write`, already dependency-free) or print the
+  writer command next to the "commit it" hint so the span commit and the timings commit cannot
+  separate. The interim discipline — commit spans and timings together — lives only in commit
+  messages, which is exactly the rot this entry replaces.
+
 - **A workspace-mode `wasm32-wasip2` build gate for the generated rust crate, once the `cdylib`
   crate-type question is ruled.** The generated `rust/Cargo.toml` declares
   `crate-type = ["cdylib", "rlib"]` for the wasm face, and building that incidental cdylib for

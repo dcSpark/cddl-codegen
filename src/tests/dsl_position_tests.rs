@@ -72,11 +72,18 @@ struct Cell {
 /// without-trailing-comma spellings), beside a control cell using the same placement in
 /// a position where the directive DOES work, isolating position as the variable.
 ///
-/// The list is EMPTY: every cell in the grid now meets its docs-claimed expectation, either by
-/// honoring the directive or by refusing it with a message naming the spelling that works. A new
-/// entry is therefore a NEW finding — pin it with its reason and report it; do not re-author the
-/// cell's expectation to match the drop.
-const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[];
+/// A new entry is a NEW finding — pin it with its reason and report it; do not re-author the
+/// cell's expectation to match the drop. Every other cell in the grid meets its docs-claimed
+/// expectation, either by honoring the directive or by refusing it with a message naming the
+/// spelling that works.
+const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[(
+    "@duplicates preserve",
+    "inline-map-arm-row-entry-in-type-choice",
+    "the row-entry slot of an inline map arm inside a type choice is accepted and the directive \
+     silently ignored (loose container emitted, PairMap never swapped in) — cell 38 is the \
+     placement control; honor-or-reject is ledgered in tests/TESTING_ROADMAP.md (it gates CML's \
+     noisy CIP-25 vectors)",
+)];
 
 /// The docs-claimed grid. Anchors were verified empirically against emitted source while authoring;
 /// the `must` fragments are the load-bearing bits, not guaranteed-verbatim whole lines.
@@ -1405,6 +1412,45 @@ const GRID: &[Cell] = &[
         flags: &[],
         wasm: false,
         expect: Expect::Reject("Put it on the rule that defines the element type"),
+    },
+    // 38. PLACEMENT CONTROL for the inline-map-arm pin below (the KNOWN_SILENT_DROP authoring
+    //     rule): `@duplicates preserve` in the ROW-ENTRY comment slot of a named open struct-map's
+    //     rest row IS honored — the container swaps to the PairMap twin — proving the slot itself
+    //     is live under exactly this comma-free trailing-comment spelling. What varies in the pin
+    //     is only the CONTAINER CONTEXT the slot sits in.
+    Cell {
+        directive: "@duplicates preserve",
+        position: "open-map-rest-row-entry",
+        spec: "ctrl = { 0: uint, * uint => text ; @duplicates preserve\n }\nholder = [f: ctrl]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["PairMap<u64, String>"],
+            must_not: &[],
+        },
+    },
+    // 38b. PINNED SILENT DROP: the same row-entry slot inside an INLINE map arm of a type choice.
+    //     The docs' `@duplicates` section routes this shape to a named rule ("an inline map arm of
+    //     a union must be given its own named rule to carry the directive"), but the inline
+    //     spelling itself is ACCEPTED and the directive silently ignored — the container stays the
+    //     loose `BTreeMap`, so historical duplicate-keyed bytes fail `DuplicateKey` with no hint
+    //     the author's directive was dropped. Hand-verified per the authoring rule: both the
+    //     comma-free and trailing-comma spellings parse and drop identically, and cell 38 proves
+    //     the slot live one container over. Found by the open-tables acceptance work: this drop
+    //     (plus the recursive-union nominal-ordering abort pinned by
+    //     tests/robustness/recursive_union_keyed_table_nominal.cddl) is what keeps CML's noisy
+    //     CIP-25 vectors out of the acceptance corpus — the honor-or-reject decision is ledgered
+    //     in tests/TESTING_ROADMAP.md.
+    Cell {
+        directive: "@duplicates preserve",
+        position: "inline-map-arm-row-entry-in-type-choice",
+        spec: "tmd = { * uint => text ; @duplicates preserve\n } / int\nholder = [f: tmd]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["PairMap<u64, String>"],
+            must_not: &[],
+        },
     },
 ];
 

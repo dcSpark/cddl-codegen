@@ -2002,7 +2002,12 @@ the matrix catalog. The enumerator and the per-rule dependency-closure builder l
 mint derived. Refresh flow: `cd cddl-matrix && bun run verify.ts --mint-decode-corpus` (`--only=`
 takes row ids AND bare fixture stems — a stem expands to the fixture's rows — preserving every
 unselected row byte-identically; mint-ONLY: it writes this catalog and nothing else, never
-annotations or the matrix catalog).
+annotations or the matrix catalog). **Always scope an additive mint with `--only`**: a bare mint
+re-mints the WHOLE catalog, re-rolling every ruby-generated random vector in it (~1,900 changed
+lines observed for a four-row addition, and 20 minutes against 23 seconds) — replacing the
+committed regression vectors wholesale, which is a lossy trade even before the gap-11 caveat in
+`cddl-matrix/README.md` § "Upstream oracle gaps" (an open-gap re-mint can demote live rows to
+pinned).
 
 Every active corpus row is **holder mode**: the probe spec is `__probe_holder = [0, <rule>]` plus the
 rule's dependency closure (the target rule's span + every fixture rule transitively referenced from
