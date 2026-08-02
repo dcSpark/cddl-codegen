@@ -112,7 +112,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { CatalogRow, CorpusRule } from "./lib";
-import { CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, DECODE_FLOOR_ARM_EXEMPT, PRELUDE_NAMES, composeCatalog, corpusClosureBody, corpusProbeSpec, corpusArmExample, dependencyClosure, enumerateCorpusRules, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
+import { CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, DECODE_FLOOR_ARM_EXEMPT, DECODE_REJECT_ORACLE_GAP_EXEMPT, PRELUDE_NAMES, composeCatalog, corpusClosureBody, corpusProbeSpec, corpusArmExample, dependencyClosure, enumerateCorpusRules, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
 
 const HERE = import.meta.dir;
 const CATALOG_REL = "tests/decode_conformance/catalog.toml";
@@ -435,6 +435,27 @@ for (const key of [...uncoveredInScope].sort()) {
 for (const key of Object.keys(DECODE_FLOOR_ARM_EXEMPT).sort())
   if (!uncoveredInScope.has(key))
     problems.push(`DECODE_FLOOR_ARM_EXEMPT names \`${key}\` which is no longer a genuinely-uncovered in-scope arm class (covered now, or the row left the floor's scope) — stale ledger entry, remove it`);
+
+// Oracle-gap exemption stale guard, the DRIFT-GATE half (the half that holds the CATALOG; the mint
+// half, which holds the oracles, lives in verify.ts and fires when a ledgered oracle starts rejecting).
+// Every DECODE_REJECT_ORACLE_GAP_EXEMPT key must still name a live `class="constraint"` reject vector
+// in its row: a vector that was re-minted away, re-classed, or whose row was dropped leaves an entry
+// that certifies nothing while still reading as a live upstream claim.
+{
+  const constraintHexes = new Set<string>();
+  for (const r of rows)
+    for (const v of r.vector ?? [])
+      if (v.expect === "reject" && v.class === "constraint") constraintHexes.add(`${r.id}/${v.hex}`);
+  for (const key of Object.keys(DECODE_REJECT_ORACLE_GAP_EXEMPT).sort()) {
+    const e = DECODE_REJECT_ORACLE_GAP_EXEMPT[key];
+    if (!constraintHexes.has(key))
+      problems.push(`DECODE_REJECT_ORACLE_GAP_EXEMPT names \`${key}\`, which is no longer a class="constraint" reject vector in that row — stale ledger entry, remove it`);
+    if (e.oracles.length === 0)
+      problems.push(`DECODE_REJECT_ORACLE_GAP_EXEMPT \`${key}\` names no accepting oracle — an exemption that exempts nothing; remove it`);
+    if (!existsSync(join(HERE, "..", e.writeup)))
+      problems.push(`DECODE_REJECT_ORACLE_GAP_EXEMPT \`${key}\` cites writeup \`${e.writeup}\`, which does not exist — an exemption's spec argument must be readable by the party it accuses`);
+  }
+}
 
 // Completeness §1: every supported matrix row must have a catalog row.
 for (const id of [...supported].sort())

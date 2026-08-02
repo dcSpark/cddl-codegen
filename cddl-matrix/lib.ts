@@ -610,6 +610,92 @@ export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
 // empty: no corpus arm class is ledgered unmintable at HEAD.
 export const CORPUS_DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
 
+// Exemption ledger for a `class="constraint"` reject vector whose spec-invalidity an ORACLE does not
+// see, keyed `"<row id>/<hex>"`. It exists because the two-oracle certification a constraint vector
+// normally passes (BOTH oracles reject the bytes, verify.ts `mintForeignRow`) certifies "spec-invalid
+// by consensus" — and consensus is unavailable for a rule an oracle does not implement at all. An
+// entry names exactly the oracles that still ACCEPT the bytes, so the certification narrows to the
+// remaining oracles plus a written, answerable spec argument rather than disappearing.
+//
+// The `writeup` is that argument, and it is REQUIRED: a committed, submittable report of our spec
+// reading against the diverging oracle's behavior, with the vectors, the probe commands and the
+// explicit branch "if the oracle is right, this exemption is wrong". An exemption nobody can argue
+// with is indistinguishable from a decoder bug we declared correct.
+//
+// Two stale guards, because the two failure modes are seen by different consumers:
+//   - the MINT (verify.ts) holds the oracles: a ledgered oracle that now REJECTS the bytes has closed
+//     its gap, so the entry over-claims and must lose that oracle (or go away entirely).
+//   - the DRIFT GATE (project_decode_conformance.ts) holds the catalog: a key naming a vector that is
+//     no longer a `class="constraint"` reject vector in its row is a dangling entry.
+export interface RejectOracleGapExemption {
+  /** The oracles that ACCEPT these spec-invalid bytes — `"ruby"`, `"rust"`, or both. */
+  oracles: ("ruby" | "rust")[];
+  /** Why we read the bytes as spec-invalid, and what the oracle does instead. */
+  reason: string;
+  /** Repo-relative path of the committed writeup arguing the divergence. */
+  writeup: string;
+}
+const FLOAT_HEAD_WRITEUP = "cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md";
+const RUST_HEAD_BLIND =
+  "the pinned rust oracle (local-fixes @ ac1b98e) performs NO float head-width validation at all — it " +
+  "accepts every major-7 float head against every float prelude name (README.md § \"Upstream oracle " +
+  "gaps\" #12)";
+const RUBY_WIDTH_BY_VALUE =
+  "the ruby `cddl` gem 0.12.14 classifies a float by the narrowest IEEE width that represents its " +
+  "VALUE exactly and ignores the wire head, so it accepts this out-of-set head (and, symmetrically, " +
+  "REJECTS canonical in-set encodings)";
+export const DECODE_REJECT_ORACLE_GAP_EXEMPT: Record<string, RejectOracleGapExemption> = {
+  // `float16` is `#7.25` alone (RFC 8610 App. D), so an `fa`/`fb` head is out of set whatever the
+  // value is. 1.5 is f16-exact, so ruby reads both as "a float16" and accepts.
+  "prelude.float16/8200fa3fc00000": {
+    oracles: ["ruby", "rust"],
+    reason: `an \`fa\` (#7.26) head against \`float16\` (#7.25 only); ${RUBY_WIDTH_BY_VALUE} because 1.5 is f16-exact, and ${RUST_HEAD_BLIND}`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+  "prelude.float16/8200fb3ff8000000000000": {
+    oracles: ["ruby", "rust"],
+    reason: `an \`fb\` (#7.27) head against \`float16\` (#7.25 only); ${RUBY_WIDTH_BY_VALUE} because 1.5 is f16-exact, and ${RUST_HEAD_BLIND}`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+  // `float32` is `#7.26` alone. ruby agrees on the f9-headed vector (1.5's minimal width is f16, not
+  // f32) — for the wrong reason, but it rejects, so only rust needs exempting.
+  "prelude.float32/8200f93e00": {
+    oracles: ["rust"],
+    reason: `an \`f9\` (#7.25) head against \`float32\` (#7.26 only); ${RUST_HEAD_BLIND}. ruby rejects it, but by value width (1.5 is f16-exact) rather than by head — the same rule that makes it reject the canonical \`fa\`-headed 1.5 this row ACCEPTS`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+  "prelude.float32/8200fb3ff19999a0000000": {
+    oracles: ["ruby", "rust"],
+    reason: `an \`fb\` (#7.27) head against \`float32\` (#7.26 only), carrying 1.100000023841858 — an f32-exact value widened losslessly to 8 bytes; ${RUBY_WIDTH_BY_VALUE} because the value is f32-exact, and ${RUST_HEAD_BLIND}`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+  // `float64` is `#7.27` alone. A value carried at an f9/fa head is f16-/f32-exact, so ruby's
+  // value-width rule rejects it too; only rust needs exempting.
+  "prelude.float64/8200f93e00": {
+    oracles: ["rust"],
+    reason: `an \`f9\` (#7.25) head against \`float64\` (#7.27 only); ${RUST_HEAD_BLIND}. ruby rejects it by value width, not by head`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+  "prelude.float64/8200fa3fc00000": {
+    oracles: ["rust"],
+    reason: `an \`fa\` (#7.26) head against \`float64\` (#7.27 only); ${RUST_HEAD_BLIND}. ruby rejects it by value width, not by head`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+  // `float16-32` = `#7.25`/`#7.26`, so `fb` is the only out-of-set head.
+  "prelude.float16-32/8200fb3ff8000000000000": {
+    oracles: ["ruby", "rust"],
+    reason: `an \`fb\` (#7.27) head against \`float16-32\` (#7.25/#7.26); ${RUBY_WIDTH_BY_VALUE} because 1.5 is f16-exact, and ${RUST_HEAD_BLIND}`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+  // `float32-64` = `#7.26`/`#7.27`, so `f9` is the only out-of-set head — and a value at an f9 head is
+  // f16-exact, which ruby's value-width rule rejects for this name anyway.
+  "prelude.float32-64/8200f93e00": {
+    oracles: ["rust"],
+    reason: `an \`f9\` (#7.25) head against \`float32-64\` (#7.26/#7.27); ${RUST_HEAD_BLIND}. ruby rejects it by value width, not by head`,
+    writeup: FLOAT_HEAD_WRITEUP,
+  },
+};
+
 // The prelude rule-name set (from the same pinned source the arm resolver parses). Exported for the
 // corpus enumeration-time collision assert — a corpus rule named like a prelude type would make
 // reference extraction ambiguous — checked by BOTH the corpus mint and the corpus drift-gate half.
@@ -853,7 +939,10 @@ export function composeCatalog(rows: CatalogRow[], intro: string[] = DEFAULT_CAT
     "#         constraint = spec-INVALID CBOR (source=\"hand\") that VIOLATES a constraint the row enforces",
     "#           (an over/under-`.size` string, a below-`.ge` value, a cut-violating map value); the",
     "#           generated decoder must DURABLY reject it. Re-validated spec-INVALID (both oracles reject)",
-    "#           at each mint — never pruned; `reason` names the violated constraint. This is Q4's",
+    "#           at each mint — never pruned; `reason` names the violated constraint. An oracle that does",
+    "#           NOT implement the rule at all cannot join that consensus: such a vector is certified by",
+    "#           the remaining oracles plus a per-vector DECODE_REJECT_ORACLE_GAP_EXEMPT entry (lib.ts)",
+    "#           naming the accepting oracles and citing a committed writeup. This is Q4's",
     "#           `enforce = yes (bounded-reject)` evidence. A constraint vector ALSO carries a required",
     "#           `expect_err`: a substring the generated decoder's error Display must contain when it",
     "#           rejects the vector — the rust replay gate pins the rejection REASON, not just that it",
