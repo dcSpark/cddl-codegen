@@ -1873,9 +1873,22 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     re-encodings (the shipped `cddl_encoding_fidelity::variants` mutator, reused harness-side:
     indefinite framing, non-minimal int/len widths, chunked strings, reversed maps): a re-encoding
     the decoder REJECTS (over-strict, the motivating class) or mis-decodes to a different value
-    fails the gate. `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) would ledger any
-    (row, label) that legitimately fails against a `cddl-matrix/ROADMAP.md` finding; a variant-test
-    vacuity floor keeps the leg live.
+    fails the gate. `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) ledgers any
+    (row, label) that legitimately fails against a `cddl-matrix/ROADMAP.md` finding — a claim about
+    the DECODER, which stays hand-reviewed; a variant-test vacuity floor keeps the leg live.
+    A second exemption class is DERIVED rather than listed: the two map-reordering labels
+    (`reverse_maps`, `everything`) assume entry order is an encoding detail, which an
+    `@duplicates preserve` pair-map's contract makes false — its order is part of the value, so the
+    reordered vector is a genuinely DIFFERENT value. `encoding_variant_skip_kind` reads that off the
+    row's own `spec` (the directive in a line's comment half, a `=>` in its code half), so a new
+    preserve row owes no ledger entries and a re-minted vector cannot make a live exemption look
+    stale. It is one-way and narrow on purpose: `@duplicates preserve` on a SET derives nothing
+    (reordering a map is the identity on an array, so a failure there would be a real finding), and
+    a row that only mentions the directive in prose derives nothing — which is what keeps the
+    loose-container control rows (`open_table.open_table` and its `{+ …}` twin) replaying their
+    reordering variants beside the pair-map rows. Derived skips are recorded in the run output and
+    carry NO stale guard, because a derived suppression that never fires is correct (a vector whose
+    reordering is the identity — an empty or single-entry map).
   - *Header-mutation leg* — each accept vector also derives spec-INVALID reject mutants
     (`header_mutants`, pure byte transforms of the item-under-test's leading CBOR head; holder rows
     mutate past the `82 00` = `[0, _]` preamble): `wrong_major` flips the major type, `trunc_head`
@@ -1928,8 +1941,19 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   embed rows as members, so a shape the alias never reaches can be preserve-broken under a
   `supported` verdict; the retired float class was exactly that divergence, and nothing about the
   probe shape has changed since. The corpus twin gate below has no annotation axis at all — its rows
-  are keyed to corpus fixtures. See the entry on pin-masked ledger obligations in
-  `tests/TESTING_ROADMAP.md` for how far the mechanical layer can go.
+  are keyed to corpus fixtures.
+
+  What the annotation CAN carry one-directionally is checked without running the gate:
+  `preserve_unsupported_rows_carry_a_preserve_skip_entry` (a plain `#[test]`, two TOML reads, no
+  generation — it runs at `local` via the full `cargo test`, since `fast`'s only cargo-test
+  invocation filters on `snapshot_tests`) asserts every catalog row annotated
+  `emission.preserve.status = "unsupported"` appears in the ledger, which lives at module scope
+  (`DECODE_CONFORMANCE_PRESERVE_SKIP`) so the check can read it. It covers PINNED rows as well as
+  active ones, and that is the whole point: a pinned row is never replayed, so its ledger
+  obligations are otherwise invisible until the distant commit that activates it — `dsl.ignore`
+  shipped pinned with its `unsupported` annotation already in place and the missing entry surfaced
+  only at activation, two work packages later. A SUBSET assertion, never equality: extra ledger
+  entries are legitimate (the bare-alias probe divergence above is exactly how one arises).
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),
@@ -2046,11 +2070,14 @@ Two gates mirror the matrix legs:
   accept vectors at HEAD (the enforcement / over-acceptance axes are matrix-owned), so the
   constraint-reason and over-acceptance machinery stays armed but idle (the over-acceptance
   completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds only the by-design
-  `dsl_ignore.ignored` row
+  `dsl_ignore.ignored` / `dsl_ignore.ignored_list` rows
   (`@ignore` under `--preserve-encodings` is a contract rejection, so its stale-entry guard is a
   regression tripwire), the
   json/wasm surface ledgers hold this gate's corpus residents (listed in § "json/wasm surface
-  legs"), and every other ledger is empty and stale-guarded.
+  legs"), and every other ledger is empty and stale-guarded. Its `ENCODING_VARIANT_SKIP` is empty
+  too: the `table_preserve.*` and `open_table.open_table_dup` reordering exemptions it used to carry
+  are DERIVED from each row's own `spec` (see the encoding-variant leg above), so this catalog's
+  pair-map rows and its loose-container control rows need no hand entries to stay distinguished.
 
 #### json/wasm surface legs
 

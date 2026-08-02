@@ -2034,37 +2034,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `*-spec.md` files for id-like tokens (the probe-index/ruling tables are structured enough to
   extract) and fail if any harvested id is matched by NO ephemeral pattern — lockstep with the
   authority exactly where the authority is present.
-- **A catalog row's per-gate ledger obligations are enforced only while the row is ACTIVE, so a
-  pin→activate transition surfaces latent ledger gaps at a DISTANCE from the change that created
-  them.** Proven instance (a real full-tier failure, but far from its cause): the `dsl.ignore`
-  feature row and `dsl_ignore.ignored` corpus row shipped PINNED (decode vectors deferred to the
-  close-out mint), so neither replay gate ever built their specs — the missing
-  `PRESERVE_SKIP` entries (the `@ignore`-under-preserve rejection is BY DESIGN, needing the
-  designed-rejection skip) stayed invisible through both WPs' green local tiers and failed the
-  tier only when the close-out mint activated the rows. The annotation ALREADY encoded the fact
-  the whole time (`emission.preserve.status = "unsupported"` landed with the feature row).
-  Mechanical layer, cheap and one-directional (build on the second instance of any
-  pin-masked-obligation flavor, or fold into the next replay-gate touch): a static cross-check
-  in both replay gates — every catalog row (ACTIVE or PINNED) whose matrix annotation says
-  `emission.preserve.status = "unsupported"` must have a `PRESERVE_SKIP` entry, checked without
-  generating anything, so the gap fires at the WP commit that adds the row, not at activation.
-  (Full derivation of `PRESERVE_SKIP` from the annotation verdict stays out of reach for two
-  reasons that hold with no float rows left in either ledger, so the cross-check is
-  subset-direction only. The corpus replay gate has no annotation axis to derive FROM — its
-  catalog rows are keyed to `tests/corpus/*.cddl` fixtures, which the matrix does not annotate, so
-  its whole ledger is hand-owned by construction. And on the matrix leg the verdict is a single
-  boolean: both residents are annotated `unsupported`, while the ledger's job is to say WHICH kind
-  each one is, because that decides what a stale-guard trip MEANS — a gap closing, or the
-  `@ignore` contract regressing. The bare-alias probe shape is also still narrower than the
-  replay's member-embedded specs, so a `supported` verdict over a preserve-broken shape remains
-  possible; that seam is now uninstanced rather than fixed.) A designed-rejection skip cannot be
-  pre-landed against a pinned row at all — each replay gate's `PRESERVE_SKIP` stale-guard requires
-  every listed id to name an ACTIVE row (`tests/README.md` § "Decode-direction conformance
-  (`tests/decode_conformance/` — accept what the spec accepts)"), so the static annotation-side
-  cross-check, which reads catalog + annotation without touching the skip ledger, is the only shape
-  that can fire at pin time; the alternative that keeps the ledger honest same-commit is to land the
-  row ACTIVE with a hand-derived accept vector.
-
 - **A rule-position directive can still be SILENTLY DROPPED in the group-rule spellings the PARSER
   discards, which no sweep can reach.** The directive×rule-shape reachability product itself is
   swept (`cddl-matrix/no_silent_directive.ts`, `local` tier — see `tests/README.md` § "The
@@ -2332,36 +2301,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   is the open question and the reason this is recorded rather than built: the ledger's detector keys
   on a Rust test's `catch_unwind` capture, while a cell note is TOML consumed by TypeScript, so a
   single detector spanning both is a claim to establish, not to assume.
-- **An encoding-variant mutator asserts a spec-equality premise that is a property of the TYPE
-  FLAVOR, not of CBOR — and the exemption for that is hand-listed per row, so the guard is loud on
-  a STALE entry and silent until tier-time on a MISSING one.** The replay gates mutate an accept
-  vector (indefinite framing, non-minimal widths, chunked strings, reversed map entries) and require
-  the decoded value to be unchanged. `reverse_maps` / `everything` embed the premise that map entry
-  order is an encoding detail. For an `@duplicates preserve` rule that premise is FALSE by design:
-  the rule lowers to `PairMap<K, V>` — a `Vec<(K, V)>` with derived `PartialEq`, in every profile —
-  so reordering produces a genuinely different value, which is the feature's whole contract. The
-  mutator operates on raw CBOR bytes and holds no type information, so it structurally cannot know
-  which nested maps carry the policy; that is why the exemption lives in each gate's
-  `ENCODING_VARIANT_SKIP` rather than in the mutator, and that placement is correct.
-  Proven instance: `table_preserve.mdmap` failed 12 assertions in a `full` tier at exactly these two
-  labels while every order-preserving variant passed. All five sibling rows already carried the
-  exemption; `mdmap` did not, because its row was PINNED (`cddl-codegen cannot generate this
-  construct standalone`) until the collection-typedef fix un-pinned it, so no vector of it had ever
-  been replayed and the exemption had nothing to attach to. **The generalizable point is about
-  pinned rows, not about pair-maps: a pinned row hides the evidence machinery's untested assumptions
-  about its shape, not merely the shape. Un-pinning one is therefore never a no-op for the
-  machinery — it activates premises nothing has exercised, and the bill arrives at tier time.**
-  Deliverable, which removes the hand-maintenance rather than adding to it: DERIVE the exemption
-  from the row instead of listing it. Each catalog row already carries its `spec` text, and
-  `@duplicates preserve` is present in it, so a gate can compute "this row's decoded value is
-  order-sensitive" and skip the order-changing labels itself — turning both the stale-entry and the
-  missing-entry cases into the same automatically-correct answer. Keep the explicit ledger for
-  class (a) (a real decoder gap over a genuinely spec-equal re-encoding), which is a different claim
-  and must stay reviewed. Reopening signal on the axis the cost actually grows along, measurable by
-  whoever pays it: a SECOND full-tier run spent discovering a missing order-sensitivity exemption
-  (the count of hand-maintained exemptions is 14 today — six rows × two labels in the corpus gate,
-  one row × two in the matrix gate — and every newly un-pinned or newly added preserve row owes two
-  more).
 - **Nothing asserts how MANY times a rejection message is emitted, and nested composites emit
   theirs twice.** `a = [x: [* 5]]` prints its refusal twice because the parse walk visits a nested
   composite twice; `a = [x: { uint => tstr }]` duplicates the same way, so the class predates the
@@ -3103,7 +3042,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   layer on a second instance: have the mint refuse a full refresh that REDUCES any row's vector-shape
   diversity (it already classifies vectors by shape — `vectorShapeClass` — so an empty-map-only row
   where the committed one had multi-entry maps is detectable at mint time, before the pin ever goes
-  stale). Trigger: a second pin retired or nearly-retired by vector churn rather than by a fix.
+  stale). Trigger: a second pin retired or nearly-retired by vector churn rather than by a fix. (The
+  order-sensitivity pins that produced the proven instance are gone — those exemptions are now
+  derived from each row's `spec` and carry no stale guard, precisely because "this vector's
+  reordering was the identity" is not evidence about the row. Every remaining stale-guarded pin is
+  still exposed to the class, which is why the watch stands.)
 
 - **A migration handoff's "complete list found by survey" is a NEGATIVE premise, and the first
   consumer falsified one twice.** The no_std handoff's hand-action survey ended "Nothing else,"
