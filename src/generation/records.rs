@@ -253,10 +253,12 @@ pub(super) fn generate_array_struct_deserialization(
             if cli.annotate_fields {
                 (Cow::from(""), Cow::from("?;"))
             } else if cli.preserve_encodings {
-                // preserve bool/null: the deserialize emits a trailing `()` value expr; without a
-                // terminating `;` the following statement fails to parse. (Non-preserve fixed
-                // deserialize asserts an empty `after` — it emits no value — so keep it empty
-                // there.)
+                // preserve bool/null: the deserialize emits a value expr only when a wrapping
+                // path already pushed encoding exprs; the unbound unit case is suppressed at the
+                // source (`DeserializeBeforeAfter::discards_value`) so no degenerate `();`
+                // statement reaches the consumer. The `;` terminates whatever IS emitted.
+                // (Non-preserve fixed deserialize asserts an empty `after` — it emits no value
+                // at all — so keep it empty there.)
                 (Cow::from(""), Cow::from(";"))
             } else {
                 (Cow::from(""), Cow::from(""))
@@ -439,9 +441,10 @@ pub(super) fn generate_array_struct_deserialization(
                         type_check_else.line(format!("Ok({defaults})"));
                         type_check_else.after("?;");
                     } else if enc_names.is_empty() {
-                        // encoding-less (bool/null): the deserialize emits its verify plus a
-                        // trailing `()` value expr. Terminate it (`;`) so the appended `true`
-                        // becomes the block's tail expression rather than a parse error.
+                        // encoding-less (bool/null): the deserialize emits its verify and, at this
+                        // discarding position, no value expr at all — the appended `true` is the
+                        // block's tail expression. The `;` terminates any value a wrapping
+                        // encoding path does contribute.
                         let mut present = gen_scope.generate_deserialize(
                             types,
                             (&field.rust_type).into(),

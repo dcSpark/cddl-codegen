@@ -19,8 +19,9 @@
 ;                     the `Ok(T::True)` name-it-don't-call-it spelling.
 ; The preserve profile is load-bearing for all five: under the default profile a fixed-value arm
 ; takes the verify-only exemption unconditionally, so the empty-binding case never arises. Under
-; preserve the verify-only arm still needs the terminating `;`, because the `Fixed` deserialize
-; branch emits a trailing `()` value EXPRESSION there (the default branch emits no value at all).
+; preserve the verify-only arm emits no value expression either — the `Fixed` branch suppresses the
+; unit `()` wherever nothing binds it, so the arm carries the verify alone and no degenerate `();`
+; statement (a `clippy::no_effect` finding) reaches a consumer's crate.
 ;
 ; NOT spelled here, deliberately:
 ;   `t = null / tstr` — a two-arm type choice with `null` never becomes a fixed-value arm at all;

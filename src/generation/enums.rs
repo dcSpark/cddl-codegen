@@ -913,9 +913,10 @@ fn make_keyed_map_variant_deser_code(
     // specials with no encoding variation, so they contribute no sidecar either and
     // `encoding_var_names_str` is EMPTY: a `let {} = ` LHS would emit invalid Rust (`let  = ...`).
     // Those fall through to the verify-only branch, same guard the member-position path carries
-    // (records.rs `generate_array_struct_deserialization`). The trailing `;` is the preserve-only
-    // nuance from that same site: under preserve the `Fixed` branch still emits a trailing `()`
-    // value EXPRESSION, so without a terminator the following statement fails to parse.
+    // (records.rs `generate_array_struct_deserialization`). At that discarding position the `Fixed`
+    // branch emits no value expression either (`DeserializeBeforeAfter::discards_value`), so no
+    // degenerate `();` statement reaches the consumer; the `;` terminates whatever a wrapping
+    // encoding path does contribute.
     let (before, after) = if cli.preserve_encodings {
         if var_names_str.is_empty() {
             (Cow::from(""), ";")
@@ -1434,9 +1435,11 @@ fn generate_enum(
                         // are single-byte specials with no encoding variation, so their binding
                         // list is EMPTY and `let {} = ` would emit invalid Rust (`let  = ...`).
                         // Guard on emptiness rather than on the profile, and keep the terminating
-                        // `;`: the preserve `Fixed` branch emits a trailing `()` value EXPRESSION
-                        // that the next statement cannot parse past unterminated. Same guard and
-                        // same nuance as the member-position path in records.rs.
+                        // `;` for the value a wrapping encoding path can still contribute — the
+                        // unbound unit case emits no value expression at all
+                        // (`DeserializeBeforeAfter::discards_value`), so no degenerate `();`
+                        // statement reaches the consumer. Same guard and same nuance as the
+                        // member-position path in records.rs.
                         let (before, after) = if cli.preserve_encodings && var_names_str.is_empty()
                         {
                             (Cow::from(""), ";")

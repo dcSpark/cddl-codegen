@@ -347,9 +347,14 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 5. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
-   on two profiles (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
+   on three cases (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
-   for the shape that mints them. The gate's input (`tests/canonical/input.cddl`) now carries the
+   for the shape that mints them. The gate's third case answers that for shapes the rich fixture
+   cannot host at all: a minimal scratch-written spec under `--preserve-encodings
+   --annotate-fields=false` covering verify-only fixed bool/null in member position and in all
+   three arm positions, which is where a `clippy::no_effect` `();` and a `clippy::bool_comparison`
+   `x != true` both shipped inside the deny set while the gate stayed green. The gate's rich input
+   (`tests/canonical/input.cddl`) carries the
    identity-op provocations (`clippy_neg_bounded` — a record-field bounded `nint` whose deserialize
    RangeCheck exercises the no-`as i128`-cast path; `clippy_wrapped_map` — a `@newtype` over a map
    whose rust `From` impl must be `new(inner)`; `clippy_enum_record` — a record with a c-style enum
@@ -1313,26 +1318,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   strings (the builder owns the markers), and the § "Blessing changes" discipline — review the
   blessed diff, never accept blind, ESPECIALLY when snapshots were already red before your
   change (the diff then contains someone else's unreviewed delta interleaved with yours).
-- **A lint class INSIDE `generated_code_clippy_clean`'s deny set is emittable through shapes its
-  fixture does not spell — the gate's promise is bounded by one input file, and the bound is now
-  proven non-vacuous.** The gate denies `clippy::all` (its own doc names `clippy::no_effect`
-  degenerate `();` statements as a target) over `tests/canonical/input.cddl` under two profiles —
-  but the preserve-mode verify-only emission for a fixed bool/null (member position in records.rs,
-  and since the choice-arm fix the map-rep/array-rep/type-choice arm positions in enums.rs) ends
-  in exactly such a bare `();` statement, and the canonical fixture spells none of those shapes,
-  so the shipped policy and the shipped emission contradict each other wherever a consumer's spec
-  does (their `cargo clippy` over the regenerated crate flags `no_effect` on code our lint gate
-  calls clean; committed exemplars: the `();` lines in
-  `tests/corpus/snapshots/group_choice_fixed_special/preserve__rust__src__generated__serialization.rs.snap`).
-  Candidate remedies, cheapest first: suppress the trailing `()` value expression when nothing
-  binds it (an emission change — re-blesses the preserve snapshots of every fixed bool/null
-  spelling); or add the shapes to the gate's input and decide the policy explicitly (which today
-  means turning the gate red or allowing `no_effect`). Distinct from the OUTSIDE-`clippy::all`
-  entry below: that class is beyond the deny set's reach by lint tier, this one is inside the deny
-  set and beyond the FIXTURE's reach — a coverage bound, not a policy bound. Reopening signal, on
-  the axis the cost grows along: a consumer reports a clippy finding on a regenerated crate that
-  our gate's input cannot reproduce — the same act-on-consumer-report disposition as the
-  neighbouring entry, since today the class is warn-tier noise in consumer builds, not an error.
 - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
   reach — the wasm-boundary clone-of-owned class stays ledgered, no machinery yet.** The
   boundary ops (`from_wasm_boundary_clone`) clone every non-Copy expr regardless of the call

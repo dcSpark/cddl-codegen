@@ -41,7 +41,7 @@ impl Deserialize for ArrBoolArm {
                     read_len.read_elems(1)?;
                     read_len.finish()?;
                     let flag_value = raw.bool()?;
-                    if flag_value != true {
+                    if !flag_value {
                         return Err(DeserializeFailure::FixedValueMismatch {
                             found: Key::Bool(flag_value),
                             expected: Key::Bool(true),
@@ -177,7 +177,7 @@ impl Deserialize for MapBoolArm {
                     .into());
                 }
                 let flag_value = raw.bool()?;
-                if flag_value != true {
+                if !flag_value {
                     return Err(DeserializeFailure::FixedValueMismatch {
                         found: Key::Bool(flag_value),
                         expected: Key::Bool(true),
@@ -345,7 +345,7 @@ impl Deserialize for TypeChoiceBool {
             match raw.cbor_type()? {
                 cbor_event::Type::Special => {
                     let true_value = raw.bool()?;
-                    if true_value != true {
+                    if !true_value {
                         return Err(DeserializeFailure::FixedValueMismatch {
                             found: Key::Bool(true_value),
                             expected: Key::Bool(true),

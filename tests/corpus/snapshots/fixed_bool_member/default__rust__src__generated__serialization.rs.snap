@@ -34,7 +34,7 @@ impl Deserialize for ArrMember {
             read_len.finish()?;
             (|| -> Result<_, DeserializeError> {
                 let v_value = raw.bool()?;
-                if v_value != true {
+                if !v_value {
                     return Err(DeserializeFailure::FixedValueMismatch {
                         found: Key::Bool(v_value),
                         expected: Key::Bool(true),
@@ -102,7 +102,7 @@ impl Deserialize for MapMember {
                             }
                             k_present = (|| -> Result<_, DeserializeError> {
                                 let k_value = raw.bool()?;
-                                if k_value != false {
+                                if k_value {
                                     return Err(DeserializeFailure::FixedValueMismatch {
                                         found: Key::Bool(k_value),
                                         expected: Key::Bool(false),
@@ -210,7 +210,7 @@ impl Deserialize for TaggedMembers {
                 match raw.tag()? {
                     11 => {
                         let v3_value = raw.bool()?;
-                        if v3_value != true {
+                        if !v3_value {
                             return Err(DeserializeFailure::FixedValueMismatch {
                                 found: Key::Bool(v3_value),
                                 expected: Key::Bool(true),

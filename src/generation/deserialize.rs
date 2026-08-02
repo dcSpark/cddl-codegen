@@ -291,6 +291,16 @@ impl<'a> DeserializeBeforeAfter<'a> {
         }
     }
 
+    /// Whether a value expression emitted at this position is DISCARDED: nothing to the left binds
+    /// it (`before` is empty) and no caller is waiting on an `Ok(..)` wrapper. Used by the fixed
+    /// bool/null arms under `--preserve-encodings`, whose only value is the unit `()` — emitting it
+    /// at a discarding position leaves a degenerate `();` statement that `clippy::no_effect` flags
+    /// in every consumer's regenerated crate. Every discarding call site pairs an empty `before`
+    /// with an `after` of `""` or `";"`, so suppressing the whole line drops only the terminator.
+    pub(super) fn discards_value(&self) -> bool {
+        self.before.is_empty() && !self.expects_result
+    }
+
     pub(super) fn after_str(&self, is_result: bool) -> String {
         match (self.expects_result, is_result) {
             // Result<T, _> -> T
@@ -808,12 +818,18 @@ impl GenerationScope {
                                 //   `[v: #6.1(null), x: uint]`).
                                 let unit_if_no_encs =
                                     config.final_exprs.is_empty().then(|| "()".to_owned());
-                                deser_code.content.line(&format!(
-                                    "{}{}{}",
-                                    before_after.before_str(false),
-                                    final_expr(config.final_exprs, unit_if_no_encs),
-                                    before_after.after_str(false)
-                                ));
+                                // ...and when the value is unit AND nothing consumes it, emit no
+                                // value line at all: a block with no tail expression already
+                                // evaluates to `()`, while a bare `();` is a `clippy::no_effect`
+                                // finding in every consumer's regenerated crate.
+                                if !(unit_if_no_encs.is_some() && before_after.discards_value()) {
+                                    deser_code.content.line(&format!(
+                                        "{}{}{}",
+                                        before_after.before_str(false),
+                                        final_expr(config.final_exprs, unit_if_no_encs),
+                                        before_after.after_str(false)
+                                    ));
+                                }
                             }
                         }
                         FixedValue::Uint(x) => {
@@ -957,8 +973,16 @@ impl GenerationScope {
                                 "let {}_value = {}.bool()?;",
                                 config.var_name, deserializer_name
                             ));
-                            let mut compare_block =
-                                Block::new(format!("if {}_value != {}", config.var_name, b));
+                            // `x != true` / `x != false` are `clippy::bool_comparison` findings in
+                            // every consumer's regenerated crate (inside this repo's own
+                            // `generated_code_clippy_clean` deny set), so spell the mismatch test
+                            // as the negation / the identity. Same predicate, and the failure
+                            // payload below still names the AUTHORED constant on both sides.
+                            let mut compare_block = Block::new(if *b {
+                                format!("if !{}_value", config.var_name)
+                            } else {
+                                format!("if {}_value", config.var_name)
+                            });
                             compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Bool({}_value), expected: Key::Bool({}) }}.into());", config.var_name, b));
                             deser_code.content.push_block(compare_block);
                             if cli.preserve_encodings {
@@ -969,12 +993,16 @@ impl GenerationScope {
                                 // E0308).
                                 let unit_if_no_encs =
                                     config.final_exprs.is_empty().then(|| "()".to_owned());
-                                deser_code.content.line(&format!(
-                                    "{}{}{}",
-                                    before_after.before_str(false),
-                                    final_expr(config.final_exprs, unit_if_no_encs),
-                                    before_after.after_str(false)
-                                ));
+                                // Same discard suppression as the Null arm: an unconsumed unit
+                                // value would emit a degenerate `();` statement.
+                                if !(unit_if_no_encs.is_some() && before_after.discards_value()) {
+                                    deser_code.content.line(&format!(
+                                        "{}{}{}",
+                                        before_after.before_str(false),
+                                        final_expr(config.final_exprs, unit_if_no_encs),
+                                        before_after.after_str(false)
+                                    ));
+                                }
                             }
                         }
                     };

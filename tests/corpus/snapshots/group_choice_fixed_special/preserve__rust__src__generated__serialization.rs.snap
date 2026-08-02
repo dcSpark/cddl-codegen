@@ -51,14 +51,13 @@ impl Deserialize for ArrBoolArm {
                     read_len.read_elems(1)?;
                     read_len.finish()?;
                     let flag_value = raw.bool()?;
-                    if flag_value != true {
+                    if !flag_value {
                         return Err(DeserializeFailure::FixedValueMismatch {
                             found: Key::Bool(flag_value),
                             expected: Key::Bool(true),
                         }
                         .into());
                     }
-                    ();
                     match len {
                         cbor_event::LenSz::Len(_, _) => (),
                         cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -135,7 +134,6 @@ impl Deserialize for ArrNullArm {
                     if raw.special()? != cbor_event::Special::Null {
                         return Err(DeserializeFailure::ExpectedNull.into());
                     }
-                    ();
                     match len {
                         cbor_event::LenSz::Len(_, _) => (),
                         cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -230,14 +228,13 @@ impl Deserialize for MapBoolArm {
                 }
                 let flag_key_encoding = StringEncoding::from(flag_key_encoding);
                 let flag_value = raw.bool()?;
-                if flag_value != true {
+                if !flag_value {
                     return Err(DeserializeFailure::FixedValueMismatch {
                         found: Key::Bool(flag_value),
                         expected: Key::Bool(true),
                     }
                     .into());
                 }
-                ();
                 match len {
                     cbor_event::LenSz::Len(_, _) => (),
                     cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -362,7 +359,6 @@ impl Deserialize for MapNullArm {
                 if raw.special()? != cbor_event::Special::Null {
                     return Err(DeserializeFailure::ExpectedNull.into());
                 }
-                ();
                 match len {
                     cbor_event::LenSz::Len(_, _) => (),
                     cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -446,14 +442,13 @@ impl Deserialize for TypeChoiceBool {
             match raw.cbor_type()? {
                 cbor_event::Type::Special => {
                     let true_value = raw.bool()?;
-                    if true_value != true {
+                    if !true_value {
                         return Err(DeserializeFailure::FixedValueMismatch {
                             found: Key::Bool(true_value),
                             expected: Key::Bool(true),
                         }
                         .into());
                     }
-                    ();
                     Ok(TypeChoiceBool::True)
                 }
                 cbor_event::Type::Text => {
