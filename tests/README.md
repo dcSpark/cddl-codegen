@@ -789,6 +789,18 @@ banner-only sidecar files, pinned by `extern_interface_check_regen_over_deletion
 (a real regen-over-prior-output with a rule deletion) and
 `extern_interface_check_has_no_trailing_row_comments` (a source-shape floor).
 
+The other comment-loss path the overlay cannot see is a file it never merges: a `.rs` left under a
+generated tree by a PRIOR run, which nothing declares any more, so it and its comments drop out of
+the build silently. `export()` warns about that (and about a crate-root `lib.rs` that predates the
+thin-root layout), and since the warning IS the whole mitigation, both are pinned as texts by
+subprocess tests — `stale_generated_file_warning_names_the_orphan` and
+`legacy_root_warning_fires_only_for_legacy_shape` (integration; a real CLI spawn, per § "Design
+rules" on why output assertions spawn). Each pins three things a silent regression would move
+independently: the warning fires with its text and names the offending file, it does NOT fire on the
+clean shape, and it is absent under `--verbosity=error` — the level gate is a second way either
+could go quiet. Both also assert the diagnostic changed no bytes (the legacy root is left verbatim,
+the orphan is reported rather than deleted).
+
 Lexer-level tests (char-vs-lifetime, raw identifiers, in-string `//`) stay inline in
 `comment_preserve.rs` — they test `lex`, not the merge.
 

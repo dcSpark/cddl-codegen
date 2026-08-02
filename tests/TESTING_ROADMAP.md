@@ -3298,17 +3298,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 - **An orphan-fixture-directory meta-test** (assert every `tests/<dir>/` is referenced by some gate):
   fixture dirs change rarely and a new gate's author touches the dir listing anyway; the failure
   mode (a committed fixture nothing runs) is caught by review at that rate.
-- **Assertions on `export()`'s stderr diagnostics** — the legacy-root warning and the
-  comment-preservation stale-file scan (an orphaned `.rs` under a generated tree) emit via
-  `crate::warn!` in-process, and the behaviors' *output-byte* halves are pinned (seed-once, overlay
-  tests); only the warning text itself is unasserted. **Both halves of the original decline have since
-  weakened, so this is now a cheap item rather than a declined one.** The cost half — "`cargo test`
-  can't capture in-process output without a subprocess harness" — is already paid: the verbosity
-  delivery built the subprocess pattern these assertions need (`generator_bin()` / `codegen_cmd()`,
-  see `tests/README.md` § "Design rules" on why output assertions spawn), so writing one is now
-  additive rather than infrastructural. And the "if either diagnostic grows logic" condition has
-  fired: every one of these sites is now level-gated, which is a second reason each could go silent
-  and a second thing no test watches.
 - **Restructuring `features.std` into a tool-owned sub-feature (a `_cddl-codegen-std` key
   referenced from a consumer-owned `std`).** Declined because the key layout cannot change the
   SEMANTICS, and its two legibility benefits are each dominated by a cheaper reversible channel.
