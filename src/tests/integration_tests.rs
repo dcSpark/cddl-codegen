@@ -1697,6 +1697,33 @@ fn unused_generated_variable_scan_flags_named_binding() {
     );
 }
 
+/// Fail if a nested cargo run over a purely-generated crate reported an unused import or an unused
+/// variable. Both scans above own their classes; this is the call shape for the CROSS-CRATE gates,
+/// which is where the scans' other home (`feature_corpus_compiles`) is blind: the corpus cells never
+/// generate under `--wrapper-requests` / `--workspace-dep`, so prune imprecision that only the
+/// requested-collections sidecar can produce reaches consumers before any gate sees it. Near-zero
+/// cost — these gates already capture the stderr for their compile assertion.
+///
+/// Applies only where the crate under cargo is 100% generated. The `run_test` fixture crates are
+/// NOT: they carry hand-appended `tests.rs`/`deser_test` modules and path deps on hand-written
+/// stand-in crates, whose own warnings the raw scan cannot tell from the generator's. Wiring those
+/// sites needs a generated-files-only restriction first — see `tests/TESTING_ROADMAP.md`
+/// § "`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
+/// reach" for that remainder and for the emission defect it is blocked behind.
+fn assert_no_unused_generated_warnings(label: &str, stderr: &[u8]) {
+    let text = String::from_utf8_lossy(stderr);
+    let mut hits = unused_generated_import_lines(&text);
+    hits.extend(unused_generated_variable_lines(&text));
+    assert!(
+        hits.is_empty(),
+        "{label}: the generated crate compiles with {} unused-import/variable warning(s) — these \
+         crates are 100% generated, so each is a prune or emission imprecision that reaches a \
+         consumer as build noise:\n{}",
+        hits.len(),
+        hits.join("\n")
+    );
+}
+
 /// Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted under, since
 /// non-compiling output can be flag-specific (a bare construct compiled but its preserve/json
 /// variant did not). Generates with `--wasm=true` and `cargo check`s BOTH the `rust` and (when
@@ -12986,6 +13013,10 @@ fn workspace_requests_hosts_borrowed_wrappers() {
             "the {wasm_dir} wasm crate must link for wasm32-unknown-unknown:\n{}",
             String::from_utf8_lossy(&build.stderr)
         );
+        assert_no_unused_generated_warnings(
+            &format!("workspace_requests_hosts_borrowed_wrappers/{wasm_dir} wasm32 build"),
+            &build.stderr,
+        );
     }
 }
 
@@ -14722,6 +14753,10 @@ fn workspace_requests_hosts_cross_scope_elements() {
          at crate::generated::sub::module::ScopedFoo:\n{}",
         String::from_utf8_lossy(&check1.stderr)
     );
+    assert_no_unused_generated_warnings(
+        "workspace_requests_hosts_cross_scope_elements facet-1 wasm check",
+        &check1.stderr,
+    );
 
     // ===== Facet 2: scoped EXTERN / facade element — generation assertion (bare-stub, no runtime) ===
     let scratch2 = base.join("export_xscope_f2_scratch");
@@ -14855,6 +14890,10 @@ fn workspace_requests_cohosted_keys_list_no_self_import() {
         check.status.success(),
         "the co-hosted-keys wasm crate must compile (no self-import of StakeCredList):\n{}",
         String::from_utf8_lossy(&check.stderr)
+    );
+    assert_no_unused_generated_warnings(
+        "workspace_requests_cohosted_keys_list_no_self_import wasm check",
+        &check.stderr,
     );
 }
 
