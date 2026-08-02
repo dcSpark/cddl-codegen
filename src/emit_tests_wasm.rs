@@ -46,9 +46,12 @@
 //! `Int`) and `RustStructType::RawBytesType`, and `materialize_at` mints no `Rust(ident)` at all, so
 //! NO `MintValue` for those classes exists anywhere. A type with an extern/raw-bytes ctor arg — or a
 //! wrapper around one — therefore fails to mint upstream and is dropped with the rust half's own
-//! loud warn ("… not cheaply mintable") before this renderer is reached. The extern/raw-bytes arms
-//! below are defensive backstops that fire only if the minter ever learns those classes; they are
-//! unreachable at HEAD, so nothing in this module observes an extern value today.
+//! loud warn ("… not cheaply mintable") before this renderer is reached. Nothing in this module
+//! observes an extern value today. Of the two arms that name the class: `wasm_named`'s is a
+//! variant-specific backstop nothing can reach (kept as the site a future extern-minting change
+//! must teach), while `wasm_wrapper_roundtrip`'s from_cbor_bytes fallback IS live for a DIFFERENT
+//! cause — an inner the rust minter can mint but this renderer can't express, verified on
+//! `#6.42(any)` — which is why its message names the condition rather than the class.
 //!
 //! Optional-nullable flatten points need no skip: optional fields are not ctor args, so no
 //! mint ever constructs a present-null state (the three-state write/read surface is covered by the
@@ -417,9 +420,12 @@ fn wasm_named(
             Some(format!("{name}::from({})", rust_scoped(mv, scoped)))
         }
         // extern / raw-bytes reference user-supplied types with no generated conversion to lean on.
-        // Defensive backstop, unreachable at HEAD: the shared minter never produces a `MintValue`
-        // for these classes (see the module header), so the enclosing type is dropped rust-side —
-        // loudly — before any `mv` can arrive here.
+        // Defensive backstop, unreachable at HEAD and unreachable by anything else either — the arm
+        // is variant-specific, and the shared minter never produces a `MintValue` for these two
+        // variants (see the module header), so the enclosing type is dropped rust-side — loudly —
+        // before any `mv` can arrive here. Kept, not deleted: it is the site a future
+        // extern-minting change must teach, and deleting it would silently widen `wasm_named`'s
+        // contract to "every variant is buildable".
         RustStructType::Extern | RustStructType::RawBytesType => {
             crate::warn!(
                 "cddl-codegen --emit-tests: no wasm build for {name} ctor arg (extern/raw-bytes — user-supplied type)"
@@ -798,13 +804,15 @@ fn wasm_wrapper_roundtrip(
     // Build the inner value through the SAME ctor-arg machinery the wrapper's `new(inner)` param uses
     // (`wasm_arg` applies the by-ref/`&` boundary of `for_wasm_param`). When the inner has no faithful
     // wasm build, fall back to decoding the rust twin's bytes with a loud skip of the ctor
-    // differential — the wire round-trip still runs. Reachable for a name-erased wrapper collection
-    // or a `Fixed`/`Alias`/`any` inner; NOT for the extern/raw-bytes class the message names, which
-    // fails the shared mint upstream and never reaches here (see the module header). The message
-    // keeps its wording as the backstop's, since it is what a future extern-minting change would hit.
+    // differential — the wire round-trip still runs. This arm IS live, but never for the
+    // extern/raw-bytes class: those fail the shared mint upstream and no wrapper around one is ever
+    // reached (module header). What reaches it is an inner the wasm renderer can't express while the
+    // rust minter can — verified on `#6.42(any)`, whose `AnyCbor` inner has no value-destructuring
+    // wasm ctor — plus a wrapper collection that sat past a name-erasing point. So the message names
+    // the CONDITION rather than a cause it cannot have.
     let Some(inner_expr) = wasm_arg(types, inner, wrapped, scoped, cli) else {
         crate::warn!(
-            "cddl-codegen --emit-tests: no wasm ctor build for {name} (inner is extern/raw-bytes); building via from_cbor_bytes, ctor differential skipped"
+            "cddl-codegen --emit-tests: no wasm ctor build for {name} (inner has no wasm ctor expression); building via from_cbor_bytes, ctor differential skipped"
         );
         return Some(format!(
             "    {{

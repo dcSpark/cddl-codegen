@@ -983,22 +983,31 @@ composition-space cross-check that complements this matrix's curated per-shape g
   companion-wrapper pair (the named-table workspace keys-list and the co-hosted requested
   keys-list) plus a probed named-reference-position red — details, the participation table, and
   the leg's axis refinements live in that entry.
-- **Mint the extern / raw-bytes ctor-arg wasm-surface class (or declare it permanent).** Extern /
-  raw-bytes ctor args (user-supplied types with no generated conversion) fall back to the compile
-  verdict today, with the loud skip on the RUST side of the emitted-test surface (`tests/README.md`
-  § "wasm-crate test module" states where it lives and why). The cost is **not** the def-splice the
-  compile gate does for `rawbytes` cells (`append_raw_bytes_defs`): that appends user definitions
-  into the generated crate AFTER generation so it COMPILES, while the mint decision is taken during
-  generation off the IR struct variant — `emit_tests::mint_struct` yields no `MintValue` for
-  `RustStructType::Extern` (other than the reserved `Int`) or `RustStructType::RawBytesType`, so no
-  splice can change the answer. Minting therefore means teaching the shared minter to construct a
-  user-supplied type, which needs a user-supplied hint: the raw-bytes class has a generator-knowable
-  door (`RawBytesEncoding::from_raw_bytes`) but no generator-knowable accepted LENGTH (the in-repo
-  `PubKey` fixture takes exactly 32 bytes and rejects everything else), and the extern class has no
-  contract at all. That is a feature (a mint-hint directive, its own red-first vectors, a
-  `docs/docs/` note), not test infrastructure. Either fund that or record compile-verdict fallback as
-  the permanent posture — on the same reasoning as the macro modes, that the assertion would judge a
-  hand-written fixture type rather than the generator — and prune this item.
+- **Extern / raw-bytes ctor args as a behavioral wasm-surface class — PENDING MAINTAINER RE-RULING.**
+  These cells fall back to the compile verdict today, with the loud skip on the RUST side of the
+  emitted-test surface (`tests/README.md` § "wasm-crate test module" states where it lives and why).
+  The cost premise this item was previously written on — that the mint is the def-splice the compile
+  gate already does for `rawbytes` cells (`append_raw_bytes_defs`) extended to ctor args, i.e. shared
+  machinery — is **falsified**: that splice appends user definitions into the generated crate AFTER
+  generation so it COMPILES, while the mint decision is taken DURING generation off the IR struct
+  variant. `emit_tests::mint_struct` yields no `MintValue` for `RustStructType::Extern` (other than
+  the reserved `Int`) or `RustStructType::RawBytesType`, and `materialize_at` mints no `Rust(ident)`
+  at all, so no splice can change the answer and no harness-side design can reach these cells. The
+  two honest branches, for a maintainer call:
+  - **(A) Fund the mint as a feature.** Teaching the shared minter to construct a user-supplied type
+    needs a user-supplied hint — a per-extern mint expression or a raw-bytes payload-length
+    directive — which is new DSL/flag surface with its own red-first vectors, a `docs/docs/` note and
+    a vendor-row registration. Not test infrastructure.
+  - **(B) Declare the class compile-verdict-permanent**, on the same reasoning the `--wasm-*-macro`
+    modes were ruled on: with no generator-knowable constructor, a behavioral assertion judges the
+    fixture's hand-written type rather than the generator's output. Note the asymmetry the branch has
+    to answer: raw-bytes DOES have a knowable trait door (`RawBytesEncoding::from_raw_bytes`) but no
+    knowable accepted LENGTH (the in-repo `PubKey` fixture takes exactly 32 bytes and rejects
+    everything else), so an emitted mint would be runtime-red against a correct generator, while the
+    extern class has no contract at all.
+  Reopening signals if (B) is taken: a consumer asking for minted extern values, or a
+  consumer-reported wasm-boundary defect on an extern/raw-bytes ctor arg that the compile verdict
+  passed.
 
 ## Explicitly out of scope (decided, not overlooked)
 

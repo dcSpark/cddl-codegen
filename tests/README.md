@@ -2788,8 +2788,11 @@ the same-class wrapper-entry ctor differential, plus the whole module under any
 one's: the shared minter (`emit_tests::mint_struct`) produces no `MintValue` for
 `RustStructType::Extern` (other than the reserved `Int`) or `RustStructType::RawBytesType`, so a type
 with such a ctor arg — or a wrapper around one — fails to mint upstream and is dropped with the rust
-half's own loud "not cheaply mintable" warn. The extern/raw-bytes arms in `emit_tests_wasm.rs` are
-defensive backstops, unreachable at HEAD. (Optional-nullable
+half's own loud "not cheaply mintable" warn. Of the two `emit_tests_wasm.rs` arms that named the
+class, `wasm_named`'s is a variant-specific backstop nothing can reach (kept as the site a future
+extern-minting change must teach); the wrapper-entry from_cbor_bytes fallback IS live, but for a
+different cause — an inner the rust minter can mint while the wasm renderer can't express it,
+verified on `#6.42(any)`, whose `AnyCbor` inner has no value-destructuring wasm ctor. (Optional-nullable
 flatten points need no skip: optional fields are not ctor args, so no mint constructs a present-null
 state — the three-state surface is covered by the hand-written `tests/nullable-wasm/` fixture.) The
 macro-mode skip is a **decided posture, not a gap** (2026-08-03): those flags replace the wrapper
