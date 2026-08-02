@@ -1581,6 +1581,13 @@ const OVERLOAD_LINT_ALLOW: &[(&str, &str, &str, &str)] = &[
     ),
 ];
 
+/// The parameter spellings under which an emitter fn RECEIVES an overloadable name, per axis. This
+/// is the scoping rule's own vocabulary: [`overload_scoped_literals`] treats a fn taking one of
+/// these as in scope for its axis, and [`emitter_overload_lint_scopes_every_name_param`] fails any
+/// name-typed `serializ`-identifier parameter spelled some OTHER way, so the two cannot drift.
+const DESERIALIZE_NAME_PARAMS: &[&str] = &["deserializer_name"];
+const SERIALIZE_NAME_PARAMS: &[&str] = &["serializer_use", "serializer_pass"];
+
 /// One `fn` in an emitter source: its name, the char range its header+body spans, and its parameter
 /// list (masked, so a `(` inside an emitted literal cannot close it early).
 struct EmitterFn {
@@ -1735,18 +1742,17 @@ fn overload_scoped_literals() -> Vec<(&'static str, String, usize, String, bool,
                     .iter()
                     .any(|(h, s, e)| h.contains(ty) && *s <= idx && idx <= *e)
             };
-            let scoped = |cfg_ty: &str, param: &str| {
+            let scoped = |cfg_ty: &str, params: &[&str]| {
                 enclosing.iter().any(|f| {
                     f.params_no_ws.contains(cfg_ty)
-                        || f.params_no_ws.contains(param)
+                        || params
+                            .iter()
+                            .any(|p| f.params_no_ws.contains(&format!("{p}:")))
                         || (f.is_method && in_config_impl(cfg_ty))
                 })
             };
-            let de = scoped("DeserializeConfig", "deserializer_name:");
-            let se = scoped("SerializeConfig", "serializer_use:")
-                || enclosing
-                    .iter()
-                    .any(|f| f.params_no_ws.contains("serializer_pass:"));
+            let de = scoped("DeserializeConfig", DESERIALIZE_NAME_PARAMS);
+            let se = scoped("SerializeConfig", SERIALIZE_NAME_PARAMS);
             if de || se {
                 let innermost = enclosing
                     .iter()
@@ -1778,10 +1784,13 @@ fn overload_scoped_literals() -> Vec<(&'static str, String, usize, String, bool,
 /// `serializer_use:` / `serializer_pass:` parameter, or a `&self` method of the config types. Root
 /// emitters (`codegen_struct`, `generate_enum`, `generate_wrapper_struct`, …) are deliberately out
 /// of scope: they EMIT the `fn deserialize(raw: &mut Deserializer)` / `fn serialize(serializer: &mut
-/// Serializer)` signature that binds the name, so spelling it is what they are for. The residual a
-/// future leaf could slip through: a new helper that receives the name under some THIRD parameter
-/// spelling — the anchors test pins only that the KNOWN fns stay scoped, so that gap is
-/// recorded as a work item in `tests/TESTING_ROADMAP.md` (the overload-lint residuals entry).
+/// Serializer)` signature that binds the name, so spelling it is what they are for. A helper that
+/// receives the name under a spelling the rule does not know would be silently out of scope; that
+/// is guarded from the other side by [`emitter_overload_lint_scopes_every_name_param`], while
+/// [`emitter_overload_lint_sees_its_anchors`] pins that the KNOWN fns stay scoped. The residual
+/// neither can see — a scoped fn that builds a FRESH config instead of threading the caller's, so
+/// every literal below it correctly spells an accessor resolving to the default — is recorded with
+/// its reopening signal in `tests/TESTING_ROADMAP.md` (the overload-lint residuals entry).
 #[test]
 fn emitter_overload_no_bare_default_tokens() {
     let mut failures = Vec::new();
@@ -1853,6 +1862,136 @@ fn emitter_overload_lint_sees_its_anchors() {
                 .any(|(f, fun, _, l, ..)| f == file && fun == func && l == lit),
             "stale `OVERLOAD_LINT_ALLOW` entry: {file} (fn {func}) no longer emits {lit:?} — an \
              allowlist entry that matches nothing hides the next real leaf at that site"
+        );
+    }
+}
+
+/// The type spellings a parameter carrying an overloadable NAME can have. The shipped overloads are
+/// `Option<&'a str>` (deserializer cursor) and `Option<(&'a str, bool)>` (serializer buffer + its
+/// `is_end` flag), so a helper receives one either unwrapped or still wrapped. Everything else is
+/// type-distinguished and therefore out of scope by construction — in particular a root-binding
+/// `serializer: &mut Serializer` (the emitter's own `Serializer` handle, not a name) and the
+/// `serializing_rust_type: SerializingRustType` / `generate_serialize_embedded: bool` parameters
+/// whose identifiers merely contain `serializ`.
+const NAME_PARAM_TYPES: &[&str] = &["&str", "(&str,bool)", "Option<&str>", "Option<(&str,bool)>"];
+
+/// Split a whitespace-stripped parameter list (`(&self,serializer_use:&str,cli:&Cli)`) into its
+/// `(identifier, type)` pairs. Bracket depth is tracked over `<>`/`()`/`[]` so a `,` inside a
+/// generic or a tuple type does not split a parameter (a `>` closing an `->` return arrow is not a
+/// bracket), and lifetimes are stripped from the type so `&'a str` and `&str` compare equal.
+/// A receiver (`&self`) carries no `:` and is dropped.
+fn split_params(params_no_ws: &str) -> Vec<(String, String)> {
+    let inner = params_no_ws
+        .strip_prefix('(')
+        .and_then(|s| s.strip_suffix(')'))
+        .unwrap_or(params_no_ws);
+    let mut pieces = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    let mut prev = '\0';
+    for ch in inner.chars() {
+        match ch {
+            '<' | '(' | '[' => depth += 1,
+            '>' if prev != '-' => depth -= 1,
+            ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                pieces.push(std::mem::take(&mut cur));
+                prev = ch;
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(ch);
+        prev = ch;
+    }
+    pieces.push(cur);
+    pieces
+        .into_iter()
+        .filter_map(|p| {
+            let at = p.find(':')?;
+            let (name, ty) = (p[..at].to_string(), p[at + 1..].to_string());
+            // drop `'a` / `'_` lifetime tokens from the type
+            let mut stripped = String::new();
+            let mut chars = ty.chars().peekable();
+            while let Some(c) = chars.next() {
+                if c == '\'' {
+                    while chars
+                        .peek()
+                        .is_some_and(|n| super::identifier_hazard_tests::is_ident_char(*n))
+                    {
+                        chars.next();
+                    }
+                    continue;
+                }
+                stripped.push(c);
+            }
+            Some((name, stripped))
+        })
+        .collect()
+}
+
+/// Fourth-spelling guard for the scoping rule behind [`emitter_overload_no_bare_default_tokens`]
+/// (FAST tier, same module). The lint only inspects fns it considers overload-SCOPED, and it
+/// recognizes them by the parameter spellings that exist today — so a future helper that receives
+/// the name under a spelling the rule does not know is silently unlinted, and the first observable
+/// would be the next mis-framed leaf, in a consumer. This closes that by scanning the same emitter
+/// sources for the inverse: every fn parameter whose identifier contains `serializ` AND whose type
+/// is one a NAME is carried in ([`NAME_PARAM_TYPES`]) must be spelled one of the ways
+/// [`DESERIALIZE_NAME_PARAMS`]/[`SERIALIZE_NAME_PARAMS`] list.
+#[test]
+fn emitter_overload_lint_scopes_every_name_param() {
+    let mut failures = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for file in super::identifier_hazard_tests::EMITTER_SOURCES {
+        let path = format!("{}/src/generation/{file}", env!("CARGO_MANIFEST_DIR"));
+        let src = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read emitter source {path}: {e}"));
+        let masked: Vec<char> = super::identifier_hazard_tests::scan_rust(&src)
+            .masked
+            .chars()
+            .collect();
+        for f in emitter_fns(&masked) {
+            let line = 1 + masked[..f.start].iter().filter(|c| **c == '\n').count();
+            for (name, ty) in split_params(&f.params_no_ws) {
+                if !name.contains("serializ") || !NAME_PARAM_TYPES.contains(&ty.as_str()) {
+                    continue;
+                }
+                let known = DESERIALIZE_NAME_PARAMS
+                    .iter()
+                    .chain(SERIALIZE_NAME_PARAMS)
+                    .any(|p| name == *p || name == format!("mut{p}"));
+                if known {
+                    seen.push(name);
+                } else {
+                    failures.push(format!(
+                        "  {file}:{line} (fn {}) takes `{name}: {ty}`",
+                        f.name
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "an emitter fn receives an overloadable name under a parameter spelling the overload \
+         scoping rule does not recognize, so every literal below it is UNLINTED by \
+         `emitter_overload_no_bare_default_tokens`:\n{}\n\nTwo remedies, either is fine: teach the \
+         scoping rule the new spelling (add it to `DESERIALIZE_NAME_PARAMS` / \
+         `SERIALIZE_NAME_PARAMS`), or rename the parameter to one of the spellings already there \
+         ({:?} / {:?}).",
+        failures.join("\n"),
+        DESERIALIZE_NAME_PARAMS,
+        SERIALIZE_NAME_PARAMS,
+    );
+    // Anti-vacuity, and staleness in the same assertion: a scoping spelling that matches no
+    // parameter is one a rename already moved past, and it would keep the renamed parameter
+    // looking recognized to nobody while this guard reports nothing.
+    for p in DESERIALIZE_NAME_PARAMS.iter().chain(SERIALIZE_NAME_PARAMS) {
+        assert!(
+            seen.iter().any(|s| s == p || s == &format!("mut{p}")),
+            "the scoping rule recognizes `{p}` but no emitter fn takes a name-typed parameter \
+             spelled that way — either the parameter was renamed (teach the rule the new \
+             spelling and drop this one) or the parameter scan has gone vacuous (it found {seen:?})"
         );
     }
 }

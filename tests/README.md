@@ -660,9 +660,14 @@ catches is invisible in output that no composition happens to reach:
   fn: one that RECEIVES the name (a `DeserializeConfig`/`SerializeConfig` parameter, a
   `deserializer_name:`/`serializer_use:`/`serializer_pass:` parameter, or a `&self` method of the
   config types). Root emitters are deliberately out of scope — they emit the signature that BINDS
-  the name. Two justified allowlist entries (the accessors' own defaults) and an anti-vacuity
-  sibling, `emitter_overload_lint_sees_its_anchors`, which pins the scoped fn set, a floor on the
-  literals scanned, and that every allowlist entry still matches a live site.
+  the name. Two justified allowlist entries (the accessors' own defaults) and two siblings guarding
+  the scoping rule from both sides: `emitter_overload_lint_sees_its_anchors` pins the scoped fn set,
+  a floor on the literals scanned, and that every allowlist entry still matches a live site;
+  `emitter_overload_lint_scopes_every_name_param` pins the converse — every fn parameter whose
+  identifier contains `serializ` and whose type is one a name is carried in (`&str`,
+  `(&str, bool)`, or either wrapped in `Option`) must be spelled one of the three the rule knows, so
+  a helper receiving the name under a fourth spelling fails here instead of going silently unlinted.
+  A root-binding `serializer: &mut Serializer` is type-distinguished and exempt.
 
 The emission-hygiene gates pin specific shapes found by review; `generated_code_clippy_clean`
 provides the systematic lint axis, while needle gates remain for source-shape classes no rustc or
