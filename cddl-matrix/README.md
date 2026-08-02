@@ -693,8 +693,11 @@ cost six fail-fast tier iterations. In order:
    tier, and route each finding to its designed ledger rather than a weakened contract:
    `JSON_SURFACE_SKIP` (a value class that cannot cross the json boundary — cite the findings
    entry), `RUST_ORACLE_SKIP` (a rust-validator gap, ruby keeps judging — cite the gap number),
-   `ENCODING_VARIANT_SKIP` (a reordering variant whose value-equality premise is false for the
-   type — keep a loose-container control row honest beside it). All three are stale-guarded.
+   `ENCODING_VARIANT_SKIP` (a real DECODER gap over a genuinely spec-equal re-encoding — cite the
+   findings entry). All three are stale-guarded. A reordering variant whose value-equality premise
+   is false for the TYPE is not ledgered at all: an `@duplicates preserve` pair-map's exemption is
+   derived from the row's own `spec`, and the loose-container control rows that keep it honest fall
+   out of the same rule rather than needing to be maintained beside it.
 
 ## Evidence/id convention
 

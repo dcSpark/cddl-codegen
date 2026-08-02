@@ -16038,6 +16038,206 @@ struct ReplayRow {
     vectors: Vec<ReplayVector>,
 }
 
+/// The `cddl_encoding_fidelity::variants` labels whose transform REORDERS MAP ENTRIES — the only
+/// classes whose "a spec-equal re-encoding decodes to the same value" premise depends on map entry
+/// order being an ENCODING detail rather than part of the value. `reverse_maps` reverses the entries
+/// outright; `everything` composes the structure transforms, reversal included. The other classes
+/// (`indef_containers`, `widen_step`, `widen_float`, `chunk_strings`) leave entry order alone, so the
+/// premise holds for them on every type.
+///
+/// These strings name classes in the mutator's own `classes` table
+/// (`static/emit_tests_encoding_fidelity.rs`, `variants`). `order_changing_variant_labels_are_live`
+/// asserts both still come back from `variants()`, so a renamed label fails a plain `#[test]` loudly
+/// instead of silently un-deriving the exemption below in a heavy gate nobody runs per-commit.
+const ORDER_CHANGING_VARIANT_LABELS: &[&str] = &["reverse_maps", "everything"];
+
+/// Why a DEFAULT-leg encoding-variant FAILURE is not a finding. Both replay gates
+/// (`decode_conformance_replay`, `corpus_decode_replay`) reach this through
+/// `encoding_variant_skip_kind`; the two kinds are stale-guarded differently, which is the reason
+/// they are distinguished rather than collapsed to a bool.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VariantSkip {
+    /// Class (a): hand-ledgered in the gate's `ENCODING_VARIANT_SKIP` — a real decoder gap over a
+    /// genuinely spec-EQUAL re-encoding, cited to a `cddl-matrix/ROADMAP.md` § findings entry. A
+    /// ledger entry ASSERTS a live failure, so it is stale-guarded: a listed (row, label) that stops
+    /// failing fails the gate.
+    Ledgered,
+    /// Class (b): DERIVED from the row's own catalog `spec` — the row puts `@duplicates preserve` on
+    /// a map-shaped rule, so its decoded value is a `PairMap<K, V>` whose entry ORDER is part of the
+    /// value in every profile (docs/docs/output_format.mdx § "Preserve-duplicates tables (pair-map
+    /// twins)"). A reordered re-encoding of such a row is a genuinely DIFFERENT value, so the
+    /// mutator's premise is false by design and the failure is not evidence of anything.
+    ///
+    /// Deliberately NOT stale-guarded: a derived suppression that never fires is correct, not stale.
+    /// The transform can be identity on a particular vector (an empty or single-entry map reverses to
+    /// itself), so "this row+label no longer fails" says nothing about whether the row is still
+    /// order-sensitive — unlike a hand ledger entry, which claims a live gap.
+    DerivedPreservePairMap,
+}
+
+/// Does this catalog row's own `spec` text put a `@duplicates preserve` policy on a MAP-shaped rule,
+/// i.e. does the row's decoded value contain a pair-map whose entry order is value-bearing?
+///
+/// The test is per LINE and splits at the first `;` (CDDL's comment marker, which is also where the
+/// comment-DSL directives live): the directive must sit in the COMMENT half and a `=>` — a map entry
+/// or table declaration — must sit in the CODE half of the same line. Both halves are load-bearing,
+/// and each excludes a live catalog row that a bare `spec.contains("@duplicates preserve")` would
+/// wrongly capture:
+///
+/// - the CODE-half `=>` excludes `@duplicates preserve` on a SET (`s = #6.258([* uint]) / [* uint] ;
+///   @duplicates preserve`). A preserve set lowers to an order-bearing `Vec`, but `reverse_maps`
+///   reverses MAP entries and is the identity on an array, so a reordering failure on such a row is
+///   NOT explained by the order-is-value premise — it would be a real finding, and those rows
+///   replay their reordering variants cleanly today.
+/// - the COMMENT-half placement excludes a row that only MENTIONS the directive in prose. The
+///   `open_table.open_table` row's spec ends with the comment `; both rows under `@duplicates
+///   preserve`` describing its sibling rule — and that row is precisely the loose-container CONTROL
+///   whose clean reordering replay keeps the exemption honest, so capturing it would delete the
+///   control (`preserve_pair_map_derivation_keeps_the_loose_container_control_row_honest` pins this
+///   against the live catalogs).
+///
+/// A spelling this misses (a map rule whose closing `}` and directive share a line the `=>` is not
+/// on) fails SAFELY: the row simply is not derived, and its reordering failure is reported with the
+/// gate's ordinary message rather than swallowed.
+fn spec_declares_preserve_pair_map(spec: &str) -> bool {
+    spec.lines().any(|line| match line.find(';') {
+        Some(i) => {
+            let (code, comment) = line.split_at(i);
+            comment.contains("@duplicates preserve") && code.contains("=>")
+        }
+        None => false,
+    })
+}
+
+/// The single decision both replay gates use for "this DEFAULT-leg encoding-variant test FAILED —
+/// is that a finding?". Suppress-on-FAIL in both directions: the variant test always RUNS, and only
+/// its failure is classified here.
+///
+/// A hand ledger entry wins over the derivation so the stale guard keeps seeing it (a class-(a) claim
+/// about a row that also happens to hold a pair-map stays reviewed, and stays loud when it closes).
+fn encoding_variant_skip_kind(row_spec: &str, label: &str, ledgered: bool) -> Option<VariantSkip> {
+    if ledgered {
+        return Some(VariantSkip::Ledgered);
+    }
+    if ORDER_CHANGING_VARIANT_LABELS.contains(&label) && spec_declares_preserve_pair_map(row_spec) {
+        return Some(VariantSkip::DerivedPreservePairMap);
+    }
+    None
+}
+
+/// The two labels `ORDER_CHANGING_VARIANT_LABELS` names must still be classes the mutator EMITS.
+/// Renaming one there would otherwise silently un-derive every class-(b) exemption, and the only
+/// thing that would notice is a `full`-tier replay gate.
+#[test]
+fn order_changing_variant_labels_are_live() {
+    // `{1: 2, 3: 4}` — a two-entry map, so the reordering classes are non-identity and `variants()`
+    // emits them (it drops a class whose output equals its input).
+    let labels: Vec<&str> = cddl_encoding_fidelity::variants(&[0xa2, 0x01, 0x02, 0x03, 0x04])
+        .into_iter()
+        .map(|(l, _)| l)
+        .collect();
+    for wanted in ORDER_CHANGING_VARIANT_LABELS {
+        assert!(
+            labels.contains(wanted),
+            "ORDER_CHANGING_VARIANT_LABELS names `{wanted}`, but \
+             cddl_encoding_fidelity::variants() emits {labels:?} for a two-entry map — the mutator's \
+             class label was renamed/removed, which silently un-derives the preserve pair-map \
+             order-sensitivity exemption in both decode replay gates"
+        );
+    }
+}
+
+/// The class-(b) derivation: an `@duplicates preserve` pair-map's entry order is part of its VALUE,
+/// so the map-reordering variants are exempt — derived from the row's own `spec` instead of the
+/// per-row hand ledger both gates used to carry.
+#[test]
+fn preserve_pair_map_order_sensitivity_is_derived_from_the_row_spec() {
+    // `tests/decode_conformance/catalog.toml` row `dsl.duplicates.preserve`, verbatim.
+    let pair_map = "__probe_holder = [0, meta]\nmeta = { * uint => text } ; @duplicates preserve";
+    // `tests/decode_conformance/corpus_catalog.toml` row `tag_set_idiom.int_set`: `@duplicates
+    // preserve` on a SET, not a map.
+    let preserve_set = "__probe_holder = [0, int_set]\nint_set = #6.258([* uint]) / [* uint] ; @duplicates preserve";
+    // The `open_table.open_table` row: the directive appears only in a trailing PROSE comment about
+    // the sibling rule, and this row is the loose-container control.
+    let prose_mention = "__probe_holder = [0, open_table]\nopen_table = { * bstr => uint, * md => md }\n\n; both rows under `@duplicates preserve`";
+
+    for label in ORDER_CHANGING_VARIANT_LABELS {
+        assert_eq!(
+            encoding_variant_skip_kind(pair_map, label, false),
+            Some(VariantSkip::DerivedPreservePairMap),
+            "a pair-map row must derive its `{label}` exemption with no ledger entry"
+        );
+        assert_eq!(
+            encoding_variant_skip_kind(preserve_set, label, false),
+            None,
+            "`@duplicates preserve` on a SET does not make MAP entry order value-bearing — \
+             `{label}` must stay covered"
+        );
+        assert_eq!(
+            encoding_variant_skip_kind(prose_mention, label, false),
+            None,
+            "a row that only MENTIONS the directive in a comment must keep its `{label}` coverage"
+        );
+        // A hand ledger entry still suppresses, and is reported as the stale-guarded class.
+        assert_eq!(
+            encoding_variant_skip_kind(preserve_set, label, true),
+            Some(VariantSkip::Ledgered),
+            "a class-(a) ledger entry must keep suppressing (and stay stale-guarded)"
+        );
+    }
+    // Order-PRESERVING variant classes are covered on a pair-map row like any other row: the
+    // exemption is about entry order, not about the row.
+    for label in [
+        "indef_containers",
+        "widen_step",
+        "chunk_strings",
+        "widen_float",
+    ] {
+        assert_eq!(
+            encoding_variant_skip_kind(pair_map, label, false),
+            None,
+            "`{label}` does not reorder map entries, so a pair-map row must stay covered for it"
+        );
+    }
+}
+
+/// The derivation is only honest while the loose-container CONTROL rows keep their reordering
+/// coverage — a row shaped like the pair-map rows but WITHOUT the policy, whose reordering variants
+/// replay cleanly. Pinned against the live catalogs (not a copied literal) so a catalog edit that
+/// pushed the control into the derived set would fail here rather than in a `full`-tier gate.
+#[test]
+fn preserve_pair_map_derivation_keeps_the_loose_container_control_row_honest() {
+    let src = std::fs::read_to_string("tests/decode_conformance/corpus_catalog.toml")
+        .expect("cannot read tests/decode_conformance/corpus_catalog.toml");
+    let doc: toml::Value = toml::from_str(&src).expect("corpus_catalog.toml is valid TOML");
+    let rows = doc
+        .get("row")
+        .and_then(|v| v.as_array())
+        .expect("corpus_catalog.toml has [[row]] entries");
+    let spec_of = |id: &str| -> String {
+        rows.iter()
+            .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(id))
+            .unwrap_or_else(|| panic!("corpus_catalog.toml has no row `{id}`"))
+            .get("spec")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("corpus_catalog.toml row `{id}` has no `spec`"))
+            .to_string()
+    };
+    assert!(
+        spec_declares_preserve_pair_map(&spec_of("open_table.open_table_dup")),
+        "the `@duplicates preserve` open-table flavor must derive its order-sensitivity — its rows \
+         are pair-maps in every profile"
+    );
+    assert!(
+        !spec_declares_preserve_pair_map(&spec_of("open_table.open_table")),
+        "the LOOSE open-table row is the control that keeps the pair-map exemption honest: it must \
+         keep replaying its reordering variants. Its spec mentions `@duplicates preserve` only in a \
+         trailing prose comment about the sibling rule, so the derivation must read the directive's \
+         POSITION (comment half of a line whose code half declares a map), not the bare presence of \
+         the string"
+    );
+}
+
 /// Turn `"820080"` into the `0x82, 0x00, 0x80` a Rust byte-array literal wants (mirrors verify.ts's
 /// `replayInDir`, so the two harnesses feed the decoder byte-identical inputs).
 fn hex_to_byte_literals(hex: &str) -> String {
@@ -17653,6 +17853,155 @@ fn decode_replay_json_wasm_legs(
     r
 }
 
+/// `decode_conformance_replay`'s preserve-leg ledger: rows whose generation/compile legitimately
+/// fails under `--preserve-encodings=true`. A row here that starts generating+replaying cleanly
+/// under preserve is a stale entry and fails that gate. The native-float class that used to dominate
+/// this list (`prelude.float{,32,64}`, the float arm of `prelude.number`/`prelude.time`,
+/// `rangeop.{inclusive,exclusive}.float`, `value.number.hexfloat`) is GONE: floats carry their head
+/// width as an encoding variable and replay under preserve like every other primitive.
+///
+/// At module scope rather than inside the gate so `preserve_unsupported_rows_carry_a_preserve_skip_entry`
+/// can cross-check it against the matrix annotations without running the gate. `corpus_decode_replay`
+/// keeps its own local `PRESERVE_SKIP`: its rows are keyed to `tests/corpus/*.cddl` fixtures, which
+/// the matrix does not annotate, so there is nothing to cross-check it against.
+const DECODE_CONFORMANCE_PRESERVE_SKIP: &[(&str, &str)] = &[
+    // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag
+    // directly on an anonymous TYPE-CHOICE rule (`t = #6.10(int / tstr)` generates a rust enum)
+    // is REFUSED gracefully by `IntermediateTypes::finalize` under --preserve-encodings: the
+    // per-variant encoding metadata preserve needs has no home on the enum, so there is nothing
+    // to record how the tag was written. Tags on structs/arrays/maps
+    // (contain.tag-content.type2.{array,map}, contain.tag-content.type.choice's non-choice
+    // siblings) preserve fine, and so does the same choice NAMED and tagged by name — only the
+    // anonymous combination is unimplemented. Default-profile decode of this row is fully
+    // replayed above; only its preserve leg is skipped. This gate keys the skip on
+    // generation not succeeding, so it covers the refusal exactly as it covered the panic.
+    (
+        "contain.tag-content.type.choice",
+        "a tag directly over an anonymous type-choice rule is unimplemented under \
+         --preserve-encodings and refused gracefully in IntermediateTypes::finalize (the \
+         per-variant encoding metadata has no home on the enum) — a pre-existing generator gap, \
+         not a decoder issue; the default-profile decode of this row still replays",
+    ),
+    // NOT a gap — a DESIGNED rejection. `@ignore` (the tolerate-and-drop open struct-map rest
+    // row flavor) is refused under --preserve-encodings by contract: a preserve crate promises
+    // byte-exact round-trips, which a deliberately-lossy type undermines crate-wide (see
+    // docs/docs/comment_dsl.mdx § "@ignore"; the rejection message points at capture and at
+    // @custom_serialize/@custom_deserialize). The default-profile decode of this row fully
+    // replays its foreign vectors — only the by-design-impossible preserve leg is skipped. The
+    // stale-entry guard doubles as a tripwire: if @ignore ever starts generating under
+    // preserve, that is a contract regression to investigate, not a gap closing.
+    (
+        "dsl.ignore",
+        "`@ignore` is REJECTED under --preserve-encodings by design (a preserve crate's \
+         byte-exact round-trip contract cannot hold for a deliberately-lossy type; see \
+         docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
+         not a generator gap; default-profile decode fully replays this row's vectors",
+    ),
+];
+
+/// Every catalog row the matrix annotations call preserve-UNSUPPORTED must already carry a
+/// `DECODE_CONFORMANCE_PRESERVE_SKIP` entry — checked over the catalog's PINNED rows as well as its
+/// active ones, which is the entire point.
+///
+/// A pinned row is never replayed, so its per-gate ledger obligations are invisible until the commit
+/// that ACTIVATES it — and that commit is usually far from the one that created the obligation. That
+/// distance is not hypothetical: the `dsl.ignore` row shipped pinned with its annotation already
+/// recording `emission.preserve.status = "unsupported"` (the `@ignore`-under-preserve rejection is
+/// BY DESIGN), and the missing skip entry stayed invisible through two work packages' green local
+/// tiers before failing a `full` tier at activation. Reading the annotation instead of the replay
+/// makes the gap fire at the commit that adds the row.
+///
+/// Deliberately ONE-DIRECTIONAL and matrix-only. Extra ledger entries are legitimate (the ledger
+/// also carries generator gaps the annotations call supported at their narrower bare-alias probe
+/// shape), so this asserts a SUBSET, never equality; and `corpus_decode_replay`'s ledger has no
+/// annotation axis to check against at all (its rows are keyed to `tests/corpus/*.cddl` fixtures).
+///
+/// Always-on (no `#[ignore]`): it reads two committed TOML files and generates nothing. Note the
+/// `fast` tier's only cargo-test invocation filters on `snapshot_tests`, so this runs at `local` via
+/// the full `cargo test` — see tests/README.md § "Decode-direction conformance
+/// (`tests/decode_conformance/` — accept what the spec accepts)".
+#[test]
+fn preserve_unsupported_rows_carry_a_preserve_skip_entry() {
+    let catalog_path = "tests/decode_conformance/catalog.toml";
+    let catalog_src = std::fs::read_to_string(catalog_path)
+        .unwrap_or_else(|e| panic!("cannot read {catalog_path}: {e}"));
+    let catalog: toml::Value = toml::from_str(&catalog_src).expect("catalog.toml is valid TOML");
+    let rows = catalog
+        .get("row")
+        .and_then(|v| v.as_array())
+        .expect("catalog.toml has [[row]] entries");
+    // Same non-vacuity floor the replay gate uses on this parse (119 rows at HEAD: 104 active + 15
+    // pinned): a truncated/wrong parse must not pass by seeing nothing.
+    assert!(
+        rows.len() >= 110,
+        "catalog parsed only {} rows (expected >= 110) — truncated/incorrect parse",
+        rows.len()
+    );
+    let catalog_ids: std::collections::BTreeSet<&str> = rows
+        .iter()
+        .filter_map(|r| r.get("id").and_then(|v| v.as_str()))
+        .collect();
+
+    let ann_path = "cddl-matrix/annotations/cddl_codegen.toml";
+    let ann_src =
+        std::fs::read_to_string(ann_path).unwrap_or_else(|e| panic!("cannot read {ann_path}: {e}"));
+    let ann: toml::Value = toml::from_str(&ann_src).expect("cddl_codegen.toml is valid TOML");
+    let supports = ann
+        .get("support")
+        .and_then(|v| v.as_array())
+        .expect("cddl_codegen.toml has [[support]] entries");
+    assert!(
+        supports.len() >= 100,
+        "annotations parsed only {} [[support]] entries (expected >= 100) — truncated/incorrect parse",
+        supports.len()
+    );
+
+    let ledgered: std::collections::BTreeSet<&str> = DECODE_CONFORMANCE_PRESERVE_SKIP
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    let mut cross_checked: Vec<&str> = Vec::new();
+    let mut missing: Vec<&str> = Vec::new();
+    for entry in supports {
+        let id = entry
+            .get("id")
+            .and_then(|v| v.as_str())
+            .expect("every [[support]] entry has an `id`");
+        let preserve_status = entry
+            .get("emission")
+            .and_then(|e| e.get("preserve"))
+            .and_then(|p| p.get("status"))
+            .and_then(|v| v.as_str());
+        if preserve_status != Some("unsupported") || !catalog_ids.contains(id) {
+            continue;
+        }
+        cross_checked.push(id);
+        if !ledgered.contains(id) {
+            missing.push(id);
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "catalog row(s) {missing:?} are annotated `emission.preserve.status = \"unsupported\"` in \
+         {ann_path} but carry no DECODE_CONFORMANCE_PRESERVE_SKIP entry — decode_conformance_replay's \
+         preserve leg will fail on them the moment the row is replayed. Fix it one of two ways, in \
+         the commit that adds the row: land the row ACTIVE with a hand-derived accept vector AND add \
+         the skip entry with an honest reason (a skip entry CANNOT be pre-landed against a still-PINNED \
+         row — that ledger's stale guard requires every listed id to name an active row); or, if \
+         preserve actually works for the row's shape, correct the annotation instead. This check reads \
+         the annotation rather than the replay precisely so a PINNED row's ledger obligation fires \
+         here instead of at whatever distant commit activates it"
+    );
+    // Non-vacuity: `dsl.ignore` is unsupported under preserve BY CONTRACT (a preserve crate's
+    // byte-exact round-trip cannot hold for a deliberately-lossy type), so it can never leave the
+    // annotation's unsupported set — this floor cannot rot into a self-invalidating pin.
+    assert!(
+        !cross_checked.is_empty(),
+        "no catalog row was cross-checked — the annotation ids and the catalog ids stopped sharing a \
+         namespace, or the `emission.preserve.status` key moved; this check is vacuous as written"
+    );
+}
+
 /// Deterministic decode-direction replay of the committed `tests/decode_conformance/catalog.toml`
 /// corpus (no oracles — the bytes were spec-cross-validated at mint time). Per active row: generate
 /// the crate from `spec`, replay every vector through the generated decoder (accept => Ok, reject
@@ -17677,9 +18026,12 @@ fn decode_replay_json_wasm_legs(
 /// The default leg also feeds each accept vector's mechanically-derived ENCODING VARIANTS
 /// (`cddl_encoding_fidelity::variants` — indefinite framing, non-minimal widths, chunked strings,
 /// reversed maps) to the decoder: a spec-EQUAL re-encoding that the decoder REJECTS (over-strict — the
-/// motivating class) or mis-decodes to a different value fails the gate. `ENCODING_VARIANT_SKIP`
-/// (stale-guarded) ledgers any (row, label) that legitimately fails against a `cddl-matrix/ROADMAP.md`
-/// finding; it is EMPTY at HEAD (every variant decodes cleanly).
+/// motivating class) or mis-decodes to a different value fails the gate. Two failure classes are
+/// legitimate. A real DECODER GAP over a genuinely spec-equal re-encoding is hand-ledgered in
+/// `ENCODING_VARIANT_SKIP` (stale-guarded) against a `cddl-matrix/ROADMAP.md` finding — EMPTY at HEAD.
+/// A row whose "spec-equal" PREMISE is false — an `@duplicates preserve` pair-map, whose entry order
+/// is part of its VALUE — is exempted from the two map-reordering labels automatically, DERIVED from
+/// the row's own `spec` by `encoding_variant_skip_kind` rather than hand-listed.
 ///
 /// The default leg ALSO derives HEADER-MUTATION reject mutants of each accept vector (`header_mutants`
 /// — pure byte transforms, no oracle): `wrong_major` (flip the leading head's major type) and
@@ -17721,81 +18073,32 @@ fn decode_conformance_replay() {
         return;
     }
 
-    // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. A row here
-    // that starts generating+replaying cleanly under preserve is a stale entry and fails the gate.
-    // The native-float class that used to dominate this list (`prelude.float{,32,64}`, the float arm
-    // of `prelude.number`/`prelude.time`, `rangeop.{inclusive,exclusive}.float`,
-    // `value.number.hexfloat`) is GONE: floats carry their head width as an encoding variable and
-    // replay under preserve like every other primitive.
-    const PRESERVE_SKIP: &[(&str, &str)] = &[
-        // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag
-        // directly on an anonymous TYPE-CHOICE rule (`t = #6.10(int / tstr)` generates a rust enum)
-        // is REFUSED gracefully by `IntermediateTypes::finalize` under --preserve-encodings: the
-        // per-variant encoding metadata preserve needs has no home on the enum, so there is nothing
-        // to record how the tag was written. Tags on structs/arrays/maps
-        // (contain.tag-content.type2.{array,map}, contain.tag-content.type.choice's non-choice
-        // siblings) preserve fine, and so does the same choice NAMED and tagged by name — only the
-        // anonymous combination is unimplemented. Default-profile decode of this row is fully
-        // replayed above; only its preserve leg is skipped. This gate keys the skip on
-        // generation not succeeding, so it covers the refusal exactly as it covered the panic.
-        (
-            "contain.tag-content.type.choice",
-            "a tag directly over an anonymous type-choice rule is unimplemented under \
-             --preserve-encodings and refused gracefully in IntermediateTypes::finalize (the \
-             per-variant encoding metadata has no home on the enum) — a pre-existing generator gap, \
-             not a decoder issue; the default-profile decode of this row still replays",
-        ),
-        // NOT a gap — a DESIGNED rejection. `@ignore` (the tolerate-and-drop open struct-map rest
-        // row flavor) is refused under --preserve-encodings by contract: a preserve crate promises
-        // byte-exact round-trips, which a deliberately-lossy type undermines crate-wide (see
-        // docs/docs/comment_dsl.mdx § "@ignore"; the rejection message points at capture and at
-        // @custom_serialize/@custom_deserialize). The default-profile decode of this row fully
-        // replays its foreign vectors — only the by-design-impossible preserve leg is skipped. The
-        // stale-entry guard doubles as a tripwire: if @ignore ever starts generating under
-        // preserve, that is a contract regression to investigate, not a gap closing.
-        (
-            "dsl.ignore",
-            "`@ignore` is REJECTED under --preserve-encodings by design (a preserve crate's \
-             byte-exact round-trip contract cannot hold for a deliberately-lossy type; see \
-             docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
-             not a generator gap; default-profile decode fully replays this row's vectors",
-        ),
-    ];
+    // The preserve-leg ledger lives at module scope (`DECODE_CONFORMANCE_PRESERVE_SKIP`) so the
+    // always-on `preserve_unsupported_rows_carry_a_preserve_skip_entry` cross-check can read it
+    // without running this heavy gate.
+    const PRESERVE_SKIP: &[(&str, &str)] = DECODE_CONFORMANCE_PRESERVE_SKIP;
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
     // bytes (decodes Ok, `to_cbor_bytes()` != input). Empty at HEAD — no row exhibits this. A newly-
     // appearing byte-identity mismatch is a FINDING to triage, not something to bury here; adding it
     // needs a reason, and a listed row that starts round-tripping byte-identically fails the gate.
     const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
 
-    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails.
-    // TWO legitimate classes: (a) a spec-equal re-encoding (indefinite framing, non-minimal width,
-    // chunked string, reversed map) the generated decoder is over-strict about, or mis-decodes — an
-    // HONEST finding ledgered in `cddl-matrix/ROADMAP.md` § findings (a real decoder gap, NOT fixed
-    // here); or (b) a variant whose "spec-equal" PREMISE is false for the row's type BY DESIGN — the
-    // `reverse_maps`/`everything` map-reordering transforms assume entry order is an encoding detail,
-    // but an `@duplicates preserve` pair-map's contract makes entry order VALUE-BEARING in every
-    // profile (docs/docs/output_format.mdx § "Preserve-duplicates tables (pair-map twins)"), so the
-    // reordered variant genuinely decodes to a DIFFERENT value. Stale-guarded either way: a listed
-    // (row, label) whose variant now decodes+re-encodes cleanly fails the gate, so a closed gap (or a
-    // silently order-collapsing representation regression) can't rot into a silent skip.
-    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[
-        (
-            "dsl.duplicates.preserve",
-            "reverse_maps",
-            "entry order is value-bearing for the @duplicates preserve pair-map (PairMap<K, V> — \
-             order + duplicates are the row's whole contract), so a reversed-entry re-encoding is a \
-             DIFFERENT value by design, not a spec-equal encoding variant; the mutator cannot know \
-             which nested maps carry the policy, so the exemption lives here",
-        ),
-        (
-            "dsl.duplicates.preserve",
-            "everything",
-            "the `everything` composite applies the map-reordering transform, so it inherits \
-             `reverse_maps`' inapplicability to the order-faithful pair-map; its other transforms \
-             (non-minimal widths) are covered for pair-maps by the golden_hex_preserve \
-             `pmap_duplicate_key_nonminimal_head` KAT",
-        ),
-    ];
+    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately
+    // fails. CLASS (a) ONLY: a spec-EQUAL re-encoding (indefinite framing, non-minimal width, chunked
+    // string, reversed map) the generated decoder is over-strict about, or mis-decodes — an HONEST
+    // finding ledgered in `cddl-matrix/ROADMAP.md` § findings (a real decoder gap, NOT fixed here).
+    // Such a claim is about the DECODER and stays hand-reviewed. EMPTY at HEAD.
+    //
+    // Class (b) — a variant whose "spec-equal" PREMISE is false for the row's type by design — is no
+    // longer hand-listed: `encoding_variant_skip_kind` DERIVES it from the row's own `spec`, because
+    // an `@duplicates preserve` pair-map's entry order is value-bearing in every profile and the row
+    // says so itself. That removes the hand-maintenance in both directions (a new preserve row owes
+    // no entries, and a re-minted vector cannot make a live exemption look stale).
+    //
+    // Stale-guarded: a listed (row, label) whose variant now decodes+re-encodes cleanly fails the
+    // gate, so a closed decoder gap can't rot into a silent skip. (Derived skips carry no stale
+    // guard — see `VariantSkip::DerivedPreservePairMap`.)
+    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
 
     // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects
     // with an adjacent-duplicate error location segment (`Foo.Foo`). EMPTY at HEAD: a newly-appearing
@@ -18055,6 +18358,11 @@ fn decode_conformance_replay() {
     // (row, label) pairs whose variant test failed AND was suppressed by an ENCODING_VARIANT_SKIP
     // entry; the stale guard flags any listed entry that is NOT here (the gap closed).
     let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    // (row, label) pairs whose variant test failed AND was suppressed by the DERIVED class-(b)
+    // exemption (`VariantSkip::DerivedPreservePairMap`). Recorded and printed rather than guarded:
+    // it is what the run did, and a derived suppression that never fires is correct.
+    let mut derived_order_sensitivity_skips: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
     // (row, replay test-name) pairs whose replay test failed AND was suppressed by a
     // DOUBLED_LOCATION_SKIP entry; the stale guard flags any listed entry that is NOT here.
@@ -18334,16 +18642,30 @@ fn decode_conformance_replay() {
                     let name = format!("accept_{i}_var_{label}");
                     let orig_hex = &row.vectors[*i].hex;
                     let passed = results.get(&name).copied().unwrap_or(false);
-                    let skipped =
-                        encoding_variant_skip.contains_key(&(row.id.as_str(), label.as_str()));
+                    // Suppress-on-FAIL: the variant test always RAN; only its failure is classified.
+                    let skip = encoding_variant_skip_kind(
+                        &row.spec,
+                        label,
+                        encoding_variant_skip.contains_key(&(row.id.as_str(), label.as_str())),
+                    );
                     if passed {
-                        // A passing skip-listed variant is a closed gap — the stale guard (below) fires
-                        // because this (row, label) never lands in `variant_skip_still_failing`.
+                        // A passing LEDGERED variant is a closed gap — the stale guard (below) fires
+                        // because this (row, label) never lands in `variant_skip_still_failing`. A
+                        // passing DERIVED one is simply correct (this vector's reordering happened to
+                        // be the identity — an empty or single-entry map), which is why derived skips
+                        // have no stale guard.
                         continue;
                     }
-                    if skipped {
-                        variant_skip_still_failing.insert((row.id.clone(), label.clone()));
-                        continue;
+                    match skip {
+                        Some(VariantSkip::Ledgered) => {
+                            variant_skip_still_failing.insert((row.id.clone(), label.clone()));
+                            continue;
+                        }
+                        Some(VariantSkip::DerivedPreservePairMap) => {
+                            derived_order_sensitivity_skips.insert((row.id.clone(), label.clone()));
+                            continue;
+                        }
+                        None => {}
                     }
                     // The needle's trailing ':' (prefix-collision guard) lives in the classifier.
                     match classify_variant_failure(&combined, &name) {
@@ -18359,7 +18681,12 @@ fn decode_conformance_replay() {
                         VariantFailureKind::ValueMismatch => failures.push(format!(
                             "{}: encoding variant `{label}` of accept vector {orig_hex} decoded to a \
                              DIFFERENT value than the original (its default re-encoding differs) — a \
-                             mis-decode of a spec-equal re-encoding. Captured output:\n{combined}",
+                             mis-decode of a spec-equal re-encoding. If instead the row's value is \
+                             genuinely ORDER-BEARING (an `@duplicates preserve` pair-map, for which \
+                             the reordering labels' spec-equal premise is false by design), the \
+                             exemption is DERIVED from the row's `spec` and this row's spelling \
+                             escaped it — fix `spec_declares_preserve_pair_map`, do not hand-ledger \
+                             it. Captured output:\n{combined}",
                             row.id
                         )),
                         VariantFailureKind::OrigDecodeFailed => failures.push(format!(
@@ -18727,6 +19054,22 @@ fn decode_conformance_replay() {
          {wasm_mechanical_skips} mechanically skipped for having no from_cbor_bytes wrapper surface) — \
          the wasm leg looks disabled or nearly every type lost its wasm decode surface"
     );
+    // Record the DERIVED class-(b) suppressions distinguishably in the run output (`--nocapture`), so
+    // a reader can tell "no failure" from "a failure the row's own spec explains". No stale guard:
+    // an empty list is correct (see `VariantSkip::DerivedPreservePairMap`).
+    if !derived_order_sensitivity_skips.is_empty() {
+        println!(
+            "decode_conformance_replay: {} encoding-variant failure(s) suppressed as `derived: preserve pair-map \
+             order-sensitivity` (the row's spec puts @duplicates preserve on a map, so entry order \
+             is part of the value): {}",
+            derived_order_sensitivity_skips.len(),
+            derived_order_sensitivity_skips
+                .iter()
+                .map(|(id, label)| format!("({id}, {label})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     assert!(
         failures.is_empty(),
         "decode-conformance replay found {} problem(s):\n\n{}",
@@ -18803,104 +19146,19 @@ fn corpus_decode_replay() {
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
     // bytes. Empty at HEAD — a newly-appearing byte-identity mismatch is a FINDING to triage.
     const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
-    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails.
-    // Same two-class contract as the matrix gate's ledger (see its comment): (a) a decoder gap over a
-    // genuinely spec-equal re-encoding — an HONEST `cddl-matrix/ROADMAP.md` § findings entry; or (b) a
-    // variant whose spec-equal PREMISE is false for the row's type by design. Every entry below is
-    // class (b): the `table_preserve` fixture's rows are (or embed) `@duplicates preserve` pair-maps,
-    // whose entry order is VALUE-BEARING in every profile — the map-reordering `reverse_maps` /
-    // `everything` transforms produce a genuinely different value, which is the feature's contract
-    // (docs/docs/output_format.mdx § "Preserve-duplicates tables (pair-map twins)"), not a mis-decode.
-    // Stale-guarded: an entry whose variant starts round-tripping cleanly fails the gate — the loud
-    // signal for an order-collapsing representation regression.
-    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[
-        (
-            "table_preserve.pmap",
-            "reverse_maps",
-            "entry order is value-bearing for the preserve pair-map",
-        ),
-        (
-            "table_preserve.pmap",
-            "everything",
-            "composite includes the map-reordering transform",
-        ),
-        (
-            "table_preserve.nepmap",
-            "reverse_maps",
-            "entry order is value-bearing for the preserve pair-map",
-        ),
-        (
-            "table_preserve.nepmap",
-            "everything",
-            "composite includes the map-reordering transform",
-        ),
-        (
-            "table_preserve.pmap_txt",
-            "reverse_maps",
-            "entry order is value-bearing for the preserve pair-map (generic instance)",
-        ),
-        (
-            "table_preserve.pmap_txt",
-            "everything",
-            "composite includes the map-reordering transform",
-        ),
-        (
-            "table_preserve.md",
-            "reverse_maps",
-            "the metadatum union's map arm is a preserve pair-map — entry order is value-bearing",
-        ),
-        (
-            "table_preserve.md",
-            "everything",
-            "composite includes the map-reordering transform",
-        ),
-        // `mdmap` IS the preserve pair-map the other rows reach through a union or a field
-        // (`pub type Mdmap = PairMap<String, Md>` in every profile), so it is the most direct
-        // instance of this class, not a new one. It was absent until the collection-typedef fix
-        // un-pinned the row — its `pinned_reason` said generation aborted, so no vector of it had
-        // ever been replayed and the exemption had nothing to attach to. Proven for this row
-        // specifically rather than assumed from its siblings: on accept vector
-        // `8200a267596f6c616e64611909ac636375728180`, the original and its entry-reversed twin BOTH
-        // decode and BOTH re-encode byte-exactly to their own input — so the decoder is faithful in
-        // both directions, and since encoding is a function of the value, the two inputs cannot be
-        // the same value. The reordering is a different VALUE, not a spec-equal re-encoding.
-        (
-            "table_preserve.mdmap",
-            "reverse_maps",
-            "entry order is value-bearing for the preserve pair-map (this row IS the pair-map)",
-        ),
-        (
-            "table_preserve.mdmap",
-            "everything",
-            "composite includes the map-reordering transform",
-        ),
-        (
-            "table_preserve.holder",
-            "reverse_maps",
-            "the holder embeds preserve pair-map fields — entry order is value-bearing",
-        ),
-        (
-            "table_preserve.holder",
-            "everything",
-            "composite includes the map-reordering transform",
-        ),
-        // The open table's `@duplicates preserve` flavor: BOTH rows are pair-maps in every profile
-        // (`entries: PairMap<Vec<u8>, u64>`, `rest: PairMap<Md, Md>` under default flags — probed),
-        // so entry order is value-bearing exactly as for `table_preserve` — same class (b), same
-        // contract section. The base `open_table` and the `{+ …}` twin use LOOSE containers and
-        // replay their reordering variants cleanly, which is the control that keeps this entry
-        // honest.
-        (
-            "open_table.open_table_dup",
-            "reverse_maps",
-            "both rows are preserve pair-maps — entry order is value-bearing",
-        ),
-        (
-            "open_table.open_table_dup",
-            "everything",
-            "composite includes the map-reordering transform",
-        ),
-    ];
+    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately
+    // fails. Same contract as the matrix gate's ledger (see its comment): CLASS (a) ONLY — a real
+    // decoder gap over a genuinely spec-equal re-encoding, cited to a `cddl-matrix/ROADMAP.md`
+    // § findings entry, hand-reviewed and stale-guarded. EMPTY at HEAD.
+    //
+    // The `table_preserve.*` and `open_table.open_table_dup` rows that used to fill this list were
+    // class (b) — pair-map rows whose entry order is VALUE-BEARING, so the map-reordering
+    // `reverse_maps` / `everything` transforms produce a genuinely different value rather than a
+    // spec-equal re-encoding. That exemption is now DERIVED from each row's own `spec`
+    // (`encoding_variant_skip_kind`). The loose-container `open_table.open_table` base and its
+    // `{+ …}` twin carry no policy, derive nothing, and keep replaying their reordering variants —
+    // the control that keeps the derivation honest.
+    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
     // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects with
     // an adjacent-duplicate error location segment (`Foo.Foo`). Empty at HEAD; stale-guarded.
     const DOUBLED_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
@@ -19176,6 +19434,11 @@ fn corpus_decode_replay() {
             .collect();
     let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
+    // (row, label) pairs whose variant test failed AND was suppressed by the DERIVED class-(b)
+    // exemption (`VariantSkip::DerivedPreservePairMap`). Recorded and printed rather than guarded:
+    // it is what the run did, and a derived suppression that never fires is correct.
+    let mut derived_order_sensitivity_skips: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
     let mut doubled_location_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
     let header_mutant_accept_skip: std::collections::BTreeMap<(&str, &str), &str> =
@@ -19403,14 +19666,30 @@ fn corpus_decode_replay() {
                     let name = format!("accept_{i}_var_{label}");
                     let orig_hex = &row.vectors[*i].hex;
                     let passed = results.get(&name).copied().unwrap_or(false);
-                    let skipped =
-                        encoding_variant_skip.contains_key(&(row.id.as_str(), label.as_str()));
+                    // Suppress-on-FAIL: the variant test always RAN; only its failure is classified.
+                    let skip = encoding_variant_skip_kind(
+                        &row.spec,
+                        label,
+                        encoding_variant_skip.contains_key(&(row.id.as_str(), label.as_str())),
+                    );
                     if passed {
+                        // A passing LEDGERED variant is a closed gap — the stale guard (below) fires
+                        // because this (row, label) never lands in `variant_skip_still_failing`. A
+                        // passing DERIVED one is simply correct (this vector's reordering happened to
+                        // be the identity — an empty or single-entry map), which is why derived skips
+                        // have no stale guard.
                         continue;
                     }
-                    if skipped {
-                        variant_skip_still_failing.insert((row.id.clone(), label.clone()));
-                        continue;
+                    match skip {
+                        Some(VariantSkip::Ledgered) => {
+                            variant_skip_still_failing.insert((row.id.clone(), label.clone()));
+                            continue;
+                        }
+                        Some(VariantSkip::DerivedPreservePairMap) => {
+                            derived_order_sensitivity_skips.insert((row.id.clone(), label.clone()));
+                            continue;
+                        }
+                        None => {}
                     }
                     match classify_variant_failure(&combined, &name) {
                         VariantFailureKind::Rejected => failures.push(format!(
@@ -19425,7 +19704,12 @@ fn corpus_decode_replay() {
                         VariantFailureKind::ValueMismatch => failures.push(format!(
                             "{}: encoding variant `{label}` of accept vector {orig_hex} decoded to a \
                              DIFFERENT value than the original (its default re-encoding differs) — a \
-                             mis-decode of a spec-equal re-encoding. Captured output:\n{combined}",
+                             mis-decode of a spec-equal re-encoding. If instead the row's value is \
+                             genuinely ORDER-BEARING (an `@duplicates preserve` pair-map, for which \
+                             the reordering labels' spec-equal premise is false by design), the \
+                             exemption is DERIVED from the row's `spec` and this row's spelling \
+                             escaped it — fix `spec_declares_preserve_pair_map`, do not hand-ledger \
+                             it. Captured output:\n{combined}",
                             row.id
                         )),
                         VariantFailureKind::OrigDecodeFailed => failures.push(format!(
@@ -19762,6 +20046,22 @@ fn corpus_decode_replay() {
          {wasm_mechanical_skips} mechanically skipped) — the wasm leg looks disabled or the corpus \
          lost its ProbeHolder decode surface"
     );
+    // Record the DERIVED class-(b) suppressions distinguishably in the run output (`--nocapture`), so
+    // a reader can tell "no failure" from "a failure the row's own spec explains". No stale guard:
+    // an empty list is correct (see `VariantSkip::DerivedPreservePairMap`).
+    if !derived_order_sensitivity_skips.is_empty() {
+        println!(
+            "corpus_decode_replay: {} encoding-variant failure(s) suppressed as `derived: preserve pair-map \
+             order-sensitivity` (the row's spec puts @duplicates preserve on a map, so entry order \
+             is part of the value): {}",
+            derived_order_sensitivity_skips.len(),
+            derived_order_sensitivity_skips
+                .iter()
+                .map(|(id, label)| format!("({id}, {label})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     assert!(
         failures.is_empty(),
         "corpus decode-conformance replay found {} problem(s):\n\n{}",
