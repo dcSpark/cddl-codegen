@@ -80,9 +80,18 @@ Reading the table by column: the verdict depends only on the value's minimal exa
 are the same value and give the same verdict; rows 4 and 5 differ only in value). The three bolded
 cells are canonical encodings of a value at exactly the width the name declares, rejected.
 
-Script that produced the table:
-<https://github.com/dcSpark/cddl-codegen> — `draft/float-oracle-probe.ts` (it shells out to
-`cddl <spec> validate <cbor>` exactly as above).
+The whole table reproduces with one loop — no tooling of ours involved:
+
+```bash
+for name in float16 float32 float64 float16-32 float32-64 float; do
+  printf '__probe_holder = [0, x]\nx = %s\n' "$name" > probe.cddl
+  for hex in 8200f93e00 8200fa3fc00000 8200fb3ff8000000000000 8200fa3f8ccccd 8200fb3ff199999999999a; do
+    printf "$(echo "$hex" | sed 's/../\\x&/g')" > probe.cbor
+    cddl probe.cddl validate probe.cbor >/dev/null 2>&1 \
+      && echo "$name $hex ACCEPT" || echo "$name $hex reject"
+  done
+done
+```
 
 ## The part we are confident about
 
