@@ -71,7 +71,8 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import {
   appendRows, cellCountsFor, compactDur, keptRunKeys, machineId, parseLog, readCells, readDigest,
-  readLedger, runKeysInOrder, splitLogName, tierWindow, trimCellLines, trimRows, upsert, writeLedger,
+  readLedger, runDigestUpdate, runKeysInOrder, splitLogName, tierWindow, trimCellLines, trimRows,
+  upsert, writeLedger,
   KEEP_RUNS_IN_CELLS, type Digest, type GateRow, type Row, type RunRow,
 } from "./cddl-matrix/project_timings.ts";
 import { runNoStdCheckGate } from "./cddl-matrix/no_std_check.ts";
@@ -1800,13 +1801,33 @@ async function main() {
   // the newest point in the tier window it is about to take a median over.
   if (ctx) finalizeRun(ctx, wall, fails.length ? "fail" : "pass", emitted);
 
-  // ---- refresh the measured-duration digest ---------------------------------------------------
+  // ---- refresh the measured-duration digest, and the spans DERIVED from it ---------------------
   // Runs on EVERY invocation, including a failing one: the rule is a median over a few thousand
   // local rows, so it costs sub-millisecond and there is no reason to defer it behind a bless step
   // that would rot. It is silent unless a deadband tripped, and it can never turn a green run red —
   // durations are nondeterministic, and a failure to write a number is not a failure of the repo.
-  if (sh(["bun", "run", "project_timings.ts", "--update"], MATRIX) !== 0)
-    console.log("check.ts: timings digest refresh failed (non-fatal — durations are never a gate)");
+  //
+  // The digest and the tier-time spans it derives (`tests/README.md`'s tier table, projected by
+  // `project_status_headers.ts`) are ONE commit or neither: a re-measurement committed alone leaves
+  // the NEXT tier run to fail-fast on the `project_status_headers` gate, which cost a full tier
+  // iteration three times in one session before the pair was joined here. So a changed digest
+  // regenerates the spans in the same flow, and the hint names every file the pair touched.
+  let digestChanged = false;
+  try {
+    digestChanged = runDigestUpdate().changed;
+  } catch (e) {
+    console.log("check.ts: timings digest refresh failed (non-fatal — durations are never a gate): " +
+      (e instanceof Error ? e.message : String(e)));
+  }
+  if (digestChanged) {
+    if (sh(["bun", "run", "project_status_headers.ts", "--write"], MATRIX) === 0)
+      console.log("timings: commit tests/timings.json together with the spans it derives — " +
+        "tests/README.md, cddl-matrix/README.md, cddl-matrix/ROADMAP.md");
+    else
+      console.log("check.ts: STALE SPANS — tests/timings.json was rewritten but " +
+        "`project_status_headers.ts --write` failed; run it by hand before committing, or the next " +
+        "tier run fail-fasts on the `project_status_headers` gate (non-fatal here — durations are never a gate)");
+  }
 
   if (fails.length) {
     console.log(`RESULT: FAIL — ${fails.length} gate(s) failed: ${fails.join(", ")}`);

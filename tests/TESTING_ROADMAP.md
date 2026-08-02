@@ -2437,18 +2437,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 
 ## Deferred features (build when a real consumer needs them)
 
-- **`check.ts` should keep the derived tier-time spans in lockstep with the timings ledger it
-  writes.** Three times in one session a run re-measured a tier (fast 28s→35s→43s, local
-  3.3→4.1 min), the run's own `tests/timings.json` write was committed, and the NEXT tier run
-  fail-fasted on `project_status_headers` because the derived `tests/README.md` span went stale —
-  each occurrence costing a full tier iteration to learn what a one-line writer run fixes. The
-  magnitude signal is met (three firings, one session), so this is a build item, not a deferral:
-  when `check.ts` rewrites `timings.json`, either regenerate the spans in the same write (the
-  writer is `cddl-matrix/project_status_headers.ts --write`, already dependency-free) or print the
-  writer command next to the "commit it" hint so the span commit and the timings commit cannot
-  separate. The interim discipline — commit spans and timings together — lives only in commit
-  messages, which is exactly the rot this entry replaces.
-
 - **A workspace-mode `wasm32-wasip2` build gate for the generated rust crate, once the `cdylib`
   crate-type question is ruled.** The generated `rust/Cargo.toml` declares
   `crate-type = ["cdylib", "rlib"]` for the wasm face, and building that incidental cdylib for
