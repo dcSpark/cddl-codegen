@@ -896,6 +896,11 @@ self-documenting no-op. `preserve` swaps the transparent-alias target to a **pai
 - `{ + k => v }` → **`NonEmptyPairMap<K, V>`**, whose single `TryFrom` door composes the min-1 check
   on top of the same vec-of-pairs shape.
 
+An **anonymous inline table** in type position (a union arm, a field or element type) carries the
+directive on its own row instead — `{ * k => v ; @duplicates preserve` with the closing brace on the
+next line — and gets the same twin at that one use site (the union arm's payload becomes
+`PairMap<K, V>`). See [`@duplicates` on an inline table's row](comment_dsl#duplicates-on-an-inline-tables-row).
+
 The driver is a duplicate-keyed map that must **round-trip byte-exactly** — pre-Conway Cardano
 `transaction_metadata`, whose auxiliary-data hash is computed over the ORIGINAL bytes, so a reader that
 collapses or reorders duplicate keys fails hash verification. A `BTreeMap` cannot do this; the
