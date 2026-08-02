@@ -387,21 +387,47 @@ In the JSON representation a `PairMap` is an **array of `[k, v]` pairs**, not an
 would silently collapse duplicate keys).
 
 The policy is a **per-rule** knob (not a CLI flag) because mixed-era specs need both stances in one
-document — a Conway-strict set next to a historical preserve-mode set. Because it is per-rule, an
-**inline map arm of a union must be given its own named rule** to carry the directive, e.g.
-`metadata_map = { * metadatum => metadatum } ; @duplicates preserve`, referenced from the union.
-That routing works for a **self-referential** union too (`md = md_map / [* md] / …` with
+document — a Conway-strict set next to a historical preserve-mode set.
+
+### `@duplicates` on an inline table's row
+
+An **anonymous inline table** written in type position — a union arm, a field type, an array element
+type — carries the directive in its own **row-entry slot**: a trailing comment on the `* k => v` row,
+*inside* the braces, with the closing brace on the next line.
+
+```cddl
+tmd = { * transaction_metadatum => transaction_metadatum ; @duplicates preserve
+      } / [* transaction_metadatum] / int / bytes / text
+```
+
+`preserve` there swaps that inline table to the same `PairMap<K, V>` twin a named preserve table gets
+(here the union's map variant holds a `PairMap`), and an explicit `reject` is the accepted default. The
+slot is **inline shapes only**: a table written as its own rule and *referenced* by name takes its
+policy from that rule, never from the reference site, so one shared type can never end up with two
+duplicate stances depending on who embeds it.
+
+The named spelling remains available and is the better one whenever the same table is used twice:
+`metadata_map = { * metadatum => metadatum } ; @duplicates preserve`, referenced from the union. It
+works for a **self-referential** union too (`md = md_map / [* md] / …` with
 `md_map = { * md => md } ; @duplicates preserve`, the transaction-metadatum shape) — in either rule
-order, whether the cycle is written starting from the union or from the map. One honest limit of the
-routing is currently pinned rather than fixed:
+order, whether the cycle is written starting from the union or from the map.
 
-* Writing the directive on the inline arm's own row (`{ * k => v ; @duplicates preserve` on the
-  line, then the closing brace) is **accepted and silently ignored** today — the loose container is
-  emitted and duplicate-keyed bytes fail `DuplicateKey` with no hint the directive was dropped.
-  Treat the silence as unspecified, not as a stance; it is pinned as a known silent drop and will
-  become either honored or a loud rejection.
+The row-entry slot honors `@duplicates` and nothing else. Every other directive written there is a
+**loud rejection** naming the spelling that works — a row entry declares no rule, field or type of its
+own, so `@name`, `@doc`, `@ignore`, the `@custom_serialize`/`@custom_deserialize` pair and its
+`@custom_encodings`/`@custom_wire_major` declarations have nothing to attach to. `@name` on a union's
+map arm belongs *after* the closing brace, where it names the **variant** — and since a comment runs to
+end of line, the next arm has to start on the next line:
 
-The directive is **rule-level scoped**: on a type-choice rule (the tag-set idiom's two arms) it
+```cddl
+tmd = { * uint => text } ; @name captured
+    / int
+```
+
+A **parenthesized** row (`{ * (k => v) }`) has no entry slot of its own — write the row unparenthesized
+to carry a directive on it.
+
+The directive is otherwise **rule-level scoped**: on a type-choice rule (the tag-set idiom's two arms) it
 applies to the whole collapsed rule, and it must be written as a trailing comment **after the last
 arm** — a rule-level directive placed after an earlier arm is a loud misplacement rejection naming
 the directive and the last-arm remedy, never silently ignored.

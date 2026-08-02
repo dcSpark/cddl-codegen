@@ -2514,25 +2514,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 
 ## Deferred features (build when a real consumer needs them)
 
-- **`@duplicates preserve` on an inline map arm's row entry inside a type choice: honor it or
-  reject it — today it is a pinned SILENT DROP, and it has a waiting consumer.** The row-entry
-  comment slot of `tmd = { * k => v ; @duplicates preserve\n } / int` is accepted and the directive
-  ignored (loose container emitted; both comma spellings verified), while the identical slot on a
-  named open struct-map's rest row honors it — pinned by `dsl_position_tests` cells 38/38b and the
-  `KNOWN_SILENT_DROP` entry, and now stated in `comment_dsl.mdx`'s `@duplicates` section. Neither
-  standing net caught it: the docs route the shape to a named rule so no fixture spelled the inline
-  form, and `no_silent_directive`'s shape vocabulary has no
-  inline-map-arm-inside-a-type-choice ROW-ENTRY cell (its `@duplicates` witnesses are
-  rule-position) — the pin is what closes the detection gap; the DECISION is what this entry
-  defers. The honor road is the valuable one: it is now the LAST of the two defects that gated the
-  same consumer — the NAMED spelling of a self-referential union-keyed table generates in either
-  rooting (`recursive_union_keyed_table_nominal.cddl` is an `ok` row), so an author who names the
-  arm's rule has a working road today and only the INLINE arm still drops. It is exactly what keeps
-  CML's offered `NOISY_V1_HEX`/`NOISY_V2_HEX` CIP-25 vectors out of
-  `tests/open-table-cip25-acceptance` — both parse to within one `DuplicateKey` of round-tripping
-  (the open-tables Phase D probe). Priority signal, already observed rather than hypothetical: two
-  committed-quality acceptance vectors are blocked on it.
-
 - **`check.ts` should keep the derived tier-time spans in lockstep with the timings ledger it
   writes.** Three times in one session a run re-measured a tier (fast 28s→35s→43s, local
   3.3→4.1 min), the run's own `tests/timings.json` write was committed, and the NEXT tier run
