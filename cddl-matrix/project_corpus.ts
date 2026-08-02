@@ -36,6 +36,7 @@
  * matrix models nothing for — informational (no verdict), enforced against staleness by `coverage_md_diff`.
  */
 import { readFileSync, existsSync } from "node:fs";
+import { annotationsHeaderLines } from "./lib";
 import { featuresIn, rolesIn, NO_DETECTOR } from "./corpus_detect.ts";
 import overlay from "./annotations/corpus/cddl_codegen.toml";
 
@@ -340,6 +341,32 @@ for (const f of findings) {
 
 const w = (s = "") => console.log(s);
 
+// J. the machine-owned annotations header. verify.ts rewrites annotations/cddl_codegen.toml from
+// lib.ts's `annotationsHeaderLines` template after every passing run, so a hand edit to the
+// RENDERED header is silently reverted by the next run (proven once — see the template's doc
+// comment). This check makes both desync directions loud at fast-tier speed: a hand edit to the
+// rendered file fails here immediately (edit the template instead), and a template edit not
+// mirrored into the committed file fails here until it is. The committed file's decode-foreign
+// form is detected from its own bytes so an opted-out run's output is compared against the
+// matching template flavor.
+const headerDriftJ: string[] = (() => {
+  const lines = readFileSync(`${HERE}/annotations/cddl_codegen.toml`, "utf8").split("\n");
+  const expected = annotationsHeaderLines(lines.some(l => l.startsWith("# DECODE-FOREIGN clause")));
+  for (let i = 0; i < expected.length; i++) {
+    if (lines[i] !== expected[i]) {
+      // the first divergence is the story; dumping the rest is noise
+      return [
+        `annotations/cddl_codegen.toml line ${i + 1} diverges from the header template:`,
+        `  committed: ${JSON.stringify(lines[i] ?? "<EOF>")}`,
+        `  template:  ${JSON.stringify(expected[i])}`,
+        `  the header is a machine-regenerated region — edit lib.ts \`annotationsHeaderLines\` (and mirror`,
+        `  the change into the committed file), never the rendered header alone`,
+      ];
+    }
+  }
+  return [];
+})();
+
 // --- CHECK REGISTRY ------------------------------------------------------------------------------
 // The verdict-bearing checks live in ONE list that drives both `hardFail` and the ❌/✅ console
 // blocks, so a check cannot fail the gate without printing what failed (the sibling of the same
@@ -398,6 +425,12 @@ const CHECKS: CheckSection[] = [
     key: "staleFindingClaims", group: "nuance", hard: true, items: staleFindingClaims,
     fail: n => `❌ I. STALE FINDING CLAIMS (${n}) — a failure-claim finding with no resolvable pin:`,
     ok: `✅ I. every failure-claim finding names a resolvable tracking pin (tests/ file or src/tests/ symbol).`,
+  },
+  {
+    key: "headerDriftJ", group: "nuance", hard: true, items: headerDriftJ,
+    fail: () => `❌ J. ANNOTATIONS HEADER DRIFT — committed header != lib.ts \`annotationsHeaderLines\` template:`,
+    ok: `✅ J. the annotations header matches its template (hand edits to the rendered header cannot survive).`,
+    body: items => items.map(x => `   ${x}`),
   },
 ];
 {
