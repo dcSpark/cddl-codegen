@@ -51,9 +51,9 @@ import { cpus, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   REGISTRY, SCRATCH_MAX_AGE_MS, SCRATCH_PREFIXES, cargoJobsForBatch, etaLines, gateRow, longestFirst,
-  memTotalGiB, parseJobs, parseJoinTimeoutMs, planBatches, preflightDecision, retainLogs, runPool,
-  runRow, sweepScratch,
-  type Gate, type RunContext,
+  memTotalGiB, parseArgv, parseJobs, parseJoinTimeoutMs, planBatches, preflightDecision, resolveSelection,
+  retainLogs, runPool, runRow, sweepScratch,
+  type Gate, type RunContext, type SelectionResult,
 } from "../check.ts";
 
 const HERE = import.meta.dir;
@@ -1065,6 +1065,25 @@ export async function selfTests(): Promise<TestResult[]> {
       rmSync(dir, { recursive: true });
     }
 
+    // A `--only` run's log is named OUTSIDE the tier regex on purpose — no tier median, no
+    // `--backfill` tier attribution, no per-tier retention window may absorb a partial run. The flip
+    // side of that exclusion is that nothing would ever DELETE such a log, so `only` is its own
+    // keep-N class: trimmed exactly like a tier, pooled with none of them.
+    {
+      const files: [string, number][] = [...seq("check-only-", 13), ...seq("check-fast-", 4)];
+      const { dir, logs, ledger } = mk(files);
+      writeFileSync(ledger, '{"v":1}\n');
+      const r = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+      const left = new Set(readdirSync(logs));
+      ok("retention_trims_only_logs_as_their_own_keep_class",
+        r.deleted.length === 3 && r.deleted.every(f => f.startsWith("check-only-")) &&
+        [0, 1, 2].every(i => !left.has(`check-only-00${i}.log`)) &&
+        left.has("check-only-003.log") &&
+        [0, 1, 2, 3].every(i => left.has(`check-fast-00${i}.log`)),
+        JSON.stringify({ deleted: r.deleted, left: [...left].sort() }));
+      rmSync(dir, { recursive: true });
+    }
+
     // The ledger interlock is PER-FILE, not global. A non-empty ledger proves some history was
     // scraped, not that THIS log's was — and until check.ts emits rows itself the ledger only grows
     // when someone runs `--backfill` by hand, so every run leaves a log that reaches the end of the
@@ -1424,6 +1443,50 @@ export async function selfTests(): Promise<TestResult[]> {
         uncovered.length === 0 && unresolved.length === 0,
         JSON.stringify({ uncovered: uncovered.slice(0, 8), unresolved: unresolved.slice(0, 8) }));
     }
+  }
+
+  // ---- `--only` selection, and the argv shape it needs ------------------------------------------
+  // The fence's refusal half. Each of these is a way a partial run could quietly assert more than it
+  // ran: an id nobody has, a gate this tier never offers, or half of a pair whose other half writes
+  // what it reads. They live here for the same reason the retention tests do — pure functions of
+  // check.ts, testable without running a gate.
+  {
+    const msg = (r: SelectionResult): string => (r.ok ? "" : r.message);
+    const reg: Gate[] = [
+      { id: "alpha", tier: "fast", kind: "cmd", desc: "alpha" },
+      { id: "beta", tier: "fast", kind: "cmd", desc: "beta",
+        requires: [{ gate: "alpha", why: "it diffs what alpha rewrites" }] },
+      { id: "gamma", tier: "full", kind: "cmd", desc: "gamma" },
+    ];
+    const r1 = resolveSelection(["beta", "alpha"], "fast", reg);
+    ok("selection_accepts_an_in_tier_set_carrying_its_prerequisite",
+      r1.ok && [...r1.ids].sort().join() === "alpha,beta", JSON.stringify(r1));
+    const r2 = resolveSelection(["nope"], "fast", reg);
+    ok("selection_refuses_an_unknown_gate_id_naming_the_known_ones",
+      !r2.ok && /unknown gate 'nope'/.test(msg(r2)) && /alpha, beta, gamma/.test(msg(r2)), msg(r2));
+    const r3 = resolveSelection(["gamma"], "fast", reg);
+    ok("selection_refuses_an_out_of_tier_gate_naming_the_tier_to_run",
+      !r3.ok && /'gamma' is not in the 'fast' tier/.test(msg(r3)) && /check\.ts full --only gamma/.test(msg(r3)),
+      msg(r3));
+    const r4 = resolveSelection(["beta"], "fast", reg);
+    ok("selection_refuses_a_dependency_split_naming_the_prerequisite",
+      !r4.ok && /requires 'alpha'/.test(msg(r4)) && /diffs what alpha rewrites/.test(msg(r4)), msg(r4));
+    // The REAL registry's two order-dependent pairs — enumerated from the gates whose verdict reads
+    // a file or cache another gate WRITES in the same run. A dropped `requires:` would restore the
+    // silent-vacuous-pass this fence exists to refuse, and nothing else would notice.
+    const real = [resolveSelection(["coverage_md_diff"], "fast"), resolveSelection(["verify_cache_transparency"], "full")];
+    ok("the_registrys_order_dependent_pairs_refuse_to_split",
+      real.every(r => !r.ok) && /requires 'project_corpus'/.test(msg(real[0]!)) &&
+      /requires 'verify'/.test(msg(real[1]!)),
+      JSON.stringify(real.map(msg)));
+    // Both spellings, and — the reason argv is walked rather than filtered — the space form's value
+    // must not be mistaken for the tier positional.
+    const a1 = parseArgv(["full", "--only", "verify,corpus_detect", "--keep-going"]);
+    const a2 = parseArgv(["--only=verify", "--only", "corpus_detect", "fast"]);
+    ok("argv_parses_both_only_spellings_without_eating_the_tier",
+      a1.positional.join() === "full" && a1.only!.join() === "verify,corpus_detect" && a1.flags.has("--keep-going") &&
+      a2.positional.join() === "fast" && a2.only!.join() === "verify,corpus_detect",
+      JSON.stringify({ a1: { ...a1, flags: [...a1.flags] }, a2: { ...a2, flags: [...a2.flags] } }));
   }
 
   // ---- check.ts's gate scheduler --------------------------------------------------------------
