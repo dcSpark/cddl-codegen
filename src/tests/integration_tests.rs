@@ -18922,6 +18922,26 @@ fn corpus_decode_replay() {
             "a composite (array) map key is not json-serializable — serde_json requires string keys \
              (cddl-matrix/ROADMAP.md § findings)",
         ),
+        // The open-table corpus fixture's three rules all carry a bare-`bstr` TYPED row, whose serde
+        // image is a JSON array — the open table's hand-written to_json errors loudly on every typed
+        // entry (OpenTableKeyImageError, the documented member-name contract). Same finding, reached
+        // through the hand face instead of a derive; the remedied string-producing-key spelling is
+        // executed in tests/open-table-json-e2e.
+        (
+            "open_table.open_table",
+            "a bare-bstr typed-row key has no JSON member-name image — the open table's to_json \
+             errors loudly by contract (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "open_table.open_table_dup",
+            "a bare-bstr typed-row key has no JSON member-name image — the open table's to_json \
+             errors loudly by contract (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "open_table.open_table_non_empty",
+            "a bare-bstr typed-row key has no JSON member-name image — the open table's to_json \
+             errors loudly by contract (cddl-matrix/ROADMAP.md § findings)",
+        ),
         // The non-empty-walker position pins keep a NonEmpty map in map-KEY position (that placement
         // IS what the fixture pins), so their json legs hit the same non-string-key class as
         // `composite_map_key.holder`.
