@@ -54,7 +54,7 @@ non_empty_map_wrapper_name_collision error (graceful)
 non_empty_wrapper_collision_array_element error (graceful)
 non_empty_wrapper_name_collision error (graceful)
 prelude_biguint            ok
-recursive_union_keyed_table_nominal PANIC
+recursive_union_keyed_table_nominal ok
 self_recursive             ok
 single_bareword_map_field  ok
 tagged_literal             error (graceful)

@@ -1665,8 +1665,9 @@ across the same layers:
   re-emits byte-exactly, the second proving per-entry POSITIONAL encoding — a non-minimal head on one
   entry re-emits faithfully), plus the in-process `pair_map_surface_and_nonempty_door` (the pair-map
   read surface — `get` first-match / `get_all` — and the `{+}` NonEmptyPairMap min-1 door). The
-  recursive union-keyed table (`{* md => md}`) headline trips a pre-existing, policy-independent
-  keys-list synthesis panic, recorded as a residual in `tests/TESTING_ROADMAP.md`.
+  headline keys its metadatum map by `tstr` (recursion in the map VALUE); the recursive union-KEYED
+  spelling (`{* md => md}`) is held instead by the `upres_` block of
+  `tests/recursive-collection-ref/input.cddl`, which carries the same directive on both profiles.
 - **Canonical stable-sort** — `tests/golden_hex_canonical/tests.rs`: `canon_dup_pmap_key_sort` and
   `canon_dup_pmap_nonminimal_head` pin that `--canonical-form` stable-sorts entries by encoded key
   bytes with duplicates adjacent in first-appearance order and minimizes per-entry heads independently

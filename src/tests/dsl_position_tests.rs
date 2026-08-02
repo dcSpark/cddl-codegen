@@ -1436,11 +1436,12 @@ const GRID: &[Cell] = &[
     //     loose `BTreeMap`, so historical duplicate-keyed bytes fail `DuplicateKey` with no hint
     //     the author's directive was dropped. Hand-verified per the authoring rule: both the
     //     comma-free and trailing-comma spellings parse and drop identically, and cell 38 proves
-    //     the slot live one container over. Found by the open-tables acceptance work: this drop
-    //     (plus the recursive-union nominal-ordering abort pinned by
-    //     tests/robustness/recursive_union_keyed_table_nominal.cddl) is what keeps CML's noisy
-    //     CIP-25 vectors out of the acceptance corpus — the honor-or-reject decision is ledgered
-    //     in tests/TESTING_ROADMAP.md.
+    //     the slot live one container over. Found by the open-tables acceptance work: this drop is
+    //     what keeps CML's noisy CIP-25 vectors out of the acceptance corpus — the union-rooted
+    //     recursive-union table that used to abort beside it now generates
+    //     (tests/robustness/recursive_union_keyed_table_nominal.cddl is an `ok` row), so the
+    //     inline-arm drop is the remaining half. The honor-or-reject decision is ledgered in
+    //     tests/TESTING_ROADMAP.md.
     Cell {
         directive: "@duplicates preserve",
         position: "inline-map-arm-row-entry-in-type-choice",

@@ -36,16 +36,26 @@ nem_map = { + text => nem_val }
 ; `transaction_metadata` shape). The keys-list wasm wrapper is minted from the domain, so this is the
 ; spelling that has to answer for a domain naming a struct that is itself the collection.
 ;
-; NOTE — only the COLLECTION-rooted spelling is here, because it is the only one that works. Rooting
-; the same three rules at the union instead (`key_holder = [key_val]`) orders the table's
-; registration BEFORE its named union domain exists, and the keys-list synthesis still aborts on
-; `is_enum`'s `generic_instances` assertion — under both `--wasm=true` and `--wasm=false`. That live
-; half is pinned by tests/robustness/recursive_union_keyed_table_nominal.cddl and tracked by the
-; "Recursive-map-KEY limitation" entry in tests/TESTING_ROADMAP.md; when it is fixed, add its
-; resolved-alias control here beside the `res_` block.
 key_holder = [key_map]
 key_val = key_map / int / bytes / text
 key_map = { * key_val => key_val }
+
+; Union-KEYED table in the UNION-rooted ordering — the same three rules with the cycle rooted at the
+; union, which orders the table's registration BEFORE its named domain exists as a struct. The
+; keys-list wrapper cannot be named from an ident that is registered as nothing yet, so its mint is
+; deferred to `finalize_deferred_table_keys_lists`; the wasm half of that (mint/reference agreement)
+; is pinned by `union_rooted_recursive_union_keyed_table_mints_its_keys_list`, and this block holds
+; the ordering to the same compile-and-wire floor as its collection-rooted twin above.
+ukey_holder = [ukey_val]
+ukey_val = ukey_map / int / bytes / text
+ukey_map = { * ukey_val => ukey_val }
+
+; The consumer's CIP-25 metadatum shape in that union-rooted ordering: the union carries an ARRAY arm
+; and the table takes `@duplicates preserve`, so recursion composes with a rule-position directive —
+; the deferred mint must leave the policy (the `PairMap` twin) alone.
+upres_holder = [upres_val]
+upres_val = upres_map / [* upres_val] / int / bytes / text
+upres_map = { * upres_val => upres_val } ; @duplicates preserve
 
 ; --- resolved-alias reference (cycle entered at the union rule) — the CONTROL ---
 ; Identical rules to the `nom_` block but rooted at the union, which orders `res_map` first. This
