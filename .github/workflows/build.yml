@@ -25,6 +25,13 @@ on:
       # Matrix-only edits don't touch tests/**, so without this the drift gates in the fast tier
       # would never trigger on the change that caused the drift.
       - "cddl-matrix/**"
+      # The docs and the root-level hand docs are SCANNED by two fast-tier gates:
+      # `lint_doc_citations` reads every tracked .md/.mdx, and `query_q1_gaps` byte-compares a
+      # generated block in docs/docs/current_capacities.mdx. Without these two patterns a doc-only
+      # commit triggers no CI at all, so those gates would first go red on the next unrelated push
+      # — blind to exactly the commit class they exist to catch.
+      - "docs/**"
+      - "*.md"
   pull_request:
     branches: [ master ]
     paths:
@@ -42,6 +49,13 @@ on:
       # Matrix-only edits don't touch tests/**, so without this the drift gates in the fast tier
       # would never trigger on the change that caused the drift.
       - "cddl-matrix/**"
+      # The docs and the root-level hand docs are SCANNED by two fast-tier gates:
+      # `lint_doc_citations` reads every tracked .md/.mdx, and `query_q1_gaps` byte-compares a
+      # generated block in docs/docs/current_capacities.mdx. Without these two patterns a doc-only
+      # commit triggers no CI at all, so those gates would first go red on the next unrelated push
+      # — blind to exactly the commit class they exist to catch.
+      - "docs/**"
+      - "*.md"
 
 jobs:
   fast:
