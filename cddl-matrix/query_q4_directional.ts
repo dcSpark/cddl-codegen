@@ -51,7 +51,7 @@
  * BOTH oracles at mint time; an oracle that does not implement the rule at all cannot join that
  * consensus, so a vector may instead be certified by the remaining oracle plus a per-vector
  * `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry (lib.ts) citing a committed spec argument — the float
- * head-set rows are the only residents, and both halves of that ledger are stale-guarded.
+ * value-class rows are the only residents, and both halves of that ledger are stale-guarded.
  * Three rows carry one today and project `enforce = yes (bounded-reject)`: `ctl.size` (over- AND
  * under-size strings — valid bstrs, only `.size 4` rejects them), `ctl.cbor` (`h'f6'` is a valid bstr
  * whose payload is CBOR null, not a uint — only `.cbor uint` rejects it), and `memberkey.cut` (a
@@ -425,17 +425,19 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       decoder that stops checking the member. The optional cells' instances are PRESENT-wrong
   //       (absence is a legal accept shape), which routes through the optional peek path and still
   //       lands on the constant check. Both oracles certify every one.
-  //   (e) The head-constrained float prelude names. `float16`/`float32`/`float64` are `#7.25`/`#7.26`/
-  //       `#7.27` (RFC 8610 App. D), `float16-32` and `float32-64` the two-head unions; each row
-  //       carries out-of-set-head reject vectors whose value is deliberately in range at every width,
-  //       so the HEAD is the sole invalidity. `prelude.float` has no out-of-set head and so no vector
-  //       — it is width-unconstrained by definition, not an enforcement blind spot. These five are the
-  //       first rows certified WITHOUT a two-oracle consensus: the pinned rust oracle performs no float
-  //       head validation at all, and the ruby gem classifies a float by the narrowest IEEE width its
-  //       VALUE fits (so it accepts four of the eight vectors — and, symmetrically, rejects canonical
-  //       in-set encodings like an `fa`-headed 1.5 against `float32`). Each affected vector carries a
-  //       DECODE_REJECT_ORACLE_GAP_EXEMPT entry naming the accepting oracle(s) and citing
-  //       cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md, which states the spec
+  //   (e) The value-class-constrained float prelude names. The six names PARTITION the float values by
+  //       their shortest lossless form (RFC 8610 § 2.2.3 / § 3.3): `float16` is the values whose
+  //       shortest form is `#7.25`, `float32` `#7.26`, `float64` `#7.27`, with `float16-32` and
+  //       `float32-64` spanning two adjacent classes. Each row carries reject vectors whose VALUE
+  //       belongs to a class the name excludes — never a head violation, since reads accept every
+  //       float head and judge the decoded value (`prelude.float64` carries the same 1.5 at two
+  //       different heads precisely to make that head-independence observable). `prelude.float` spans
+  //       all three classes and so has no excludable value — vectorless by definition, not an
+  //       enforcement blind spot. These five are the only rows certified WITHOUT a two-oracle
+  //       consensus: the pinned rust oracle collapses all six names into a single is-float test, so it
+  //       accepts every one. The ruby gem implements the same partition and REJECTS every one, so each
+  //       vector carries a DECODE_REJECT_ORACLE_GAP_EXEMPT entry naming `rust` alone and citing
+  //       cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md, which states the spec
   //       reading and the branch that would retract it. Both halves of that ledger are stale-guarded,
   //       so an oracle fix pulls these rows back onto the ordinary consensus route rather than leaving
   //       a permanent carve-out.

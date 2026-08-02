@@ -635,64 +635,62 @@ export interface RejectOracleGapExemption {
   /** Repo-relative path of the committed writeup arguing the divergence. */
   writeup: string;
 }
-const FLOAT_HEAD_WRITEUP = "cddl-matrix/upstream-reports/ruby-cddl-float-width-validation.md";
-const RUST_HEAD_BLIND =
-  "the pinned rust oracle (local-fixes @ ac1b98e) performs NO float head-width validation at all — it " +
-  "accepts every major-7 float head against every float prelude name (README.md § \"Upstream oracle " +
-  "gaps\" #12)";
-const RUBY_WIDTH_BY_VALUE =
-  "the ruby `cddl` gem 0.12.14 classifies a float by the narrowest IEEE width that represents its " +
-  "VALUE exactly and ignores the wire head, so it accepts this out-of-set head (and, symmetrically, " +
-  "REJECTS canonical in-set encodings)";
+const FLOAT_CLASS_WRITEUP = "cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md";
+const RUST_FLOAT_NAME_BLIND =
+  "the pinned rust oracle (local-fixes @ ac1b98e) collapses all six float prelude names into a single " +
+  "\"is this a float\" test — every major-7 float instance validates against every float name, so it " +
+  "cannot certify ANY float-class violation (README.md § \"Upstream oracle gaps\" #12)";
+const RUBY_AGREES =
+  "the ruby `cddl` gem 0.12.14 — written by the RFC's author — REJECTS these bytes, implementing the " +
+  "same shortest-form partition head-independently, so the divergence is rust's alone";
 export const DECODE_REJECT_ORACLE_GAP_EXEMPT: Record<string, RejectOracleGapExemption> = {
-  // `float16` is `#7.25` alone (RFC 8610 App. D), so an `fa`/`fb` head is out of set whatever the
-  // value is. 1.5 is f16-exact, so ruby reads both as "a float16" and accepts.
-  "prelude.float16/8200fa3fc00000": {
-    oracles: ["ruby", "rust"],
-    reason: `an \`fa\` (#7.26) head against \`float16\` (#7.25 only); ${RUBY_WIDTH_BY_VALUE} because 1.5 is f16-exact, and ${RUST_HEAD_BLIND}`,
-    writeup: FLOAT_HEAD_WRITEUP,
+  // The CDDL float names partition the float VALUES by their shortest lossless form (RFC 8610 §2.2.3:
+  // the `#7.x` notation "is about a set of values at the data model level"; §3.3: "representable as"),
+  // so every vector below is a value whose class is NOT the row's name — at any head, since reads are
+  // head-independent in both our decoder and ruby's. Only rust needs exempting on every one.
+  //
+  // `float16` = the values whose shortest form is `#7.25`. 1.100000023841858 is f32-exact but not
+  // f16-exact, and 1.1 is neither, so both are out of the class at their own canonical heads.
+  "prelude.float16/8200fa3f8ccccd": {
+    oracles: ["rust"],
+    reason: `the value 1.100000023841858 against \`float16\`: its shortest lossless form is \`#7.26\`, so it is a \`float32\` value, not a \`float16\` one. ${RUST_FLOAT_NAME_BLIND}; ${RUBY_AGREES}`,
+    writeup: FLOAT_CLASS_WRITEUP,
   },
-  "prelude.float16/8200fb3ff8000000000000": {
-    oracles: ["ruby", "rust"],
-    reason: `an \`fb\` (#7.27) head against \`float16\` (#7.25 only); ${RUBY_WIDTH_BY_VALUE} because 1.5 is f16-exact, and ${RUST_HEAD_BLIND}`,
-    writeup: FLOAT_HEAD_WRITEUP,
+  "prelude.float16/8200fb3ff199999999999a": {
+    oracles: ["rust"],
+    reason: `the value 1.1 against \`float16\`: its shortest lossless form is \`#7.27\`, so it is a \`float64\` value, not a \`float16\` one. ${RUST_FLOAT_NAME_BLIND}; ${RUBY_AGREES}`,
+    writeup: FLOAT_CLASS_WRITEUP,
   },
-  // `float32` is `#7.26` alone. ruby agrees on the f9-headed vector (1.5's minimal width is f16, not
-  // f32) — for the wrong reason, but it rejects, so only rust needs exempting.
+  // `float16-32` = shortest form `#7.25` or `#7.26`, so a `float64` value is the only class it excludes.
+  "prelude.float16-32/8200fb3ff199999999999a": {
+    oracles: ["rust"],
+    reason: `the value 1.1 against \`float16-32\`: its shortest lossless form is \`#7.27\`, so it is a \`float64\` value and outside the two-class window. ${RUST_FLOAT_NAME_BLIND}; ${RUBY_AGREES}`,
+    writeup: FLOAT_CLASS_WRITEUP,
+  },
+  // `float32` = shortest form `#7.26`. 1.5 is f16-exact, so it is a `float16` value however it is
+  // written — the `f9` head here is its own shortest form, not the reason for the rejection.
   "prelude.float32/8200f93e00": {
     oracles: ["rust"],
-    reason: `an \`f9\` (#7.25) head against \`float32\` (#7.26 only); ${RUST_HEAD_BLIND}. ruby rejects it, but by value width (1.5 is f16-exact) rather than by head — the same rule that makes it reject the canonical \`fa\`-headed 1.5 this row ACCEPTS`,
-    writeup: FLOAT_HEAD_WRITEUP,
+    reason: `the value 1.5 against \`float32\`: its shortest lossless form is \`#7.25\`, so it is a \`float16\` value, not a \`float32\` one. ${RUST_FLOAT_NAME_BLIND}; ${RUBY_AGREES}`,
+    writeup: FLOAT_CLASS_WRITEUP,
   },
-  "prelude.float32/8200fb3ff19999a0000000": {
-    oracles: ["ruby", "rust"],
-    reason: `an \`fb\` (#7.27) head against \`float32\` (#7.26 only), carrying 1.100000023841858 — an f32-exact value widened losslessly to 8 bytes; ${RUBY_WIDTH_BY_VALUE} because the value is f32-exact, and ${RUST_HEAD_BLIND}`,
-    writeup: FLOAT_HEAD_WRITEUP,
+  // `float32-64` = shortest form `#7.26` or `#7.27`, so a `float16` value is the only class it excludes.
+  "prelude.float32-64/8200f93e00": {
+    oracles: ["rust"],
+    reason: `the value 1.5 against \`float32-64\`: its shortest lossless form is \`#7.25\`, so it is a \`float16\` value and outside the two-class window. ${RUST_FLOAT_NAME_BLIND}; ${RUBY_AGREES}`,
+    writeup: FLOAT_CLASS_WRITEUP,
   },
-  // `float64` is `#7.27` alone. A value carried at an f9/fa head is f16-/f32-exact, so ruby's
-  // value-width rule rejects it too; only rust needs exempting.
+  // `float64` = shortest form `#7.27`. Both vectors carry 1.5 — a `float16` value — at DIFFERENT heads,
+  // which is the pair that makes the rejection's head-independence observable in the catalog itself.
   "prelude.float64/8200f93e00": {
     oracles: ["rust"],
-    reason: `an \`f9\` (#7.25) head against \`float64\` (#7.27 only); ${RUST_HEAD_BLIND}. ruby rejects it by value width, not by head`,
-    writeup: FLOAT_HEAD_WRITEUP,
+    reason: `the value 1.5 against \`float64\`: its shortest lossless form is \`#7.25\`, so it is a \`float16\` value, not a \`float64\` one. ${RUST_FLOAT_NAME_BLIND}; ${RUBY_AGREES}`,
+    writeup: FLOAT_CLASS_WRITEUP,
   },
   "prelude.float64/8200fa3fc00000": {
     oracles: ["rust"],
-    reason: `an \`fa\` (#7.26) head against \`float64\` (#7.27 only); ${RUST_HEAD_BLIND}. ruby rejects it by value width, not by head`,
-    writeup: FLOAT_HEAD_WRITEUP,
-  },
-  // `float16-32` = `#7.25`/`#7.26`, so `fb` is the only out-of-set head.
-  "prelude.float16-32/8200fb3ff8000000000000": {
-    oracles: ["ruby", "rust"],
-    reason: `an \`fb\` (#7.27) head against \`float16-32\` (#7.25/#7.26); ${RUBY_WIDTH_BY_VALUE} because 1.5 is f16-exact, and ${RUST_HEAD_BLIND}`,
-    writeup: FLOAT_HEAD_WRITEUP,
-  },
-  // `float32-64` = `#7.26`/`#7.27`, so `f9` is the only out-of-set head — and a value at an f9 head is
-  // f16-exact, which ruby's value-width rule rejects for this name anyway.
-  "prelude.float32-64/8200f93e00": {
-    oracles: ["rust"],
-    reason: `an \`f9\` (#7.25) head against \`float32-64\` (#7.26/#7.27); ${RUST_HEAD_BLIND}. ruby rejects it by value width, not by head`,
-    writeup: FLOAT_HEAD_WRITEUP,
+    reason: `the same \`float16\` value 1.5 against \`float64\`, written at an \`fa\` head instead — rejected identically, because the class is decided by the value and not by the head it arrived under. ${RUST_FLOAT_NAME_BLIND}; ${RUBY_AGREES}`,
+    writeup: FLOAT_CLASS_WRITEUP,
   },
 };
 
@@ -755,9 +753,11 @@ export function annotationsHeaderLines(decodeForeign: boolean): string[] {
     "# CONSUMER NOTES (cddl-codegen-specific facts kept OUT of the pure-spec master, recorded here):",
     "#   * `T / null` type choice -> cddl-codegen emits Option<T> (a consumer special-case of the",
     '#     ordinary `type = type1 *("/" type1)` production, NOT a distinct ABNF alternative).',
-    "#   * the six float prelude names are six distinct wire-acceptance classes in cddl-codegen, not",
-    "#     two carrier widths: `float16`/`float32`/`float16-32` carry Rust f32, `float64`/`float32-64`/",
-    "#     `float` carry f64, and each accepts only the CBOR heads its own name declares.",
+    "#   * the six float prelude names are six distinct VALUE classes in cddl-codegen, not two carrier",
+    "#     widths: `float16`/`float32`/`float16-32` carry Rust f32, `float64`/`float32-64`/`float` carry",
+    "#     f64, and each admits exactly the values whose SHORTEST lossless CBOR form its own name spans",
+    "#     (so the classes are disjoint — 1.5 is a `float16` and not a `float32`). Reads accept every",
+    "#     float head and judge the decoded value; writes take the smallest head that preserves it.",
     "#",
     "# EMISSION-PROFILE AXIS (dotted `emission.<name>.*` keys): the `status`/`evidence` above is the",
     "#   DEFAULT-flags verdict. A row whose default verdict is `supported` is ALSO probed under each",

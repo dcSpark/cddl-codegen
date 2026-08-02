@@ -409,20 +409,22 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    upstream issue filed yet. Differential grid, two adjacent same-neighborhood observations
    (nested-map VALUES in a `*` table; multi-entry composite-array-key tables), and close-out
    steps: `draft/rust-cddl-named-key-map-gap.md` (local note).
-12. **float prelude names not head-validated at all** (OPEN at `ac1b98e`, NOT fork-fixed):
-    `validate` accepts EVERY major-7 float head against EVERY float prelude name — `f9`-, `fa`- and
-    `fb`-headed instances all validate against `float16`, `float32`, `float64`, `float16-32` and
-    `float32-64` alike (30 of 30 probes accept). RFC 8610 App. D defines those names as `#7.25` /
-    `#7.26` / `#7.27` and their unions, and RFC 8949 § 3.3 puts the width entirely in the head, so
-    the additional-information byte is exactly what distinguishes them; the validator appears not to
-    look at it. Unlike gaps #1–#11 this one has no half the matrix can lean on: it makes rust
-    unable to certify ANY float head violation, which is why all eight `class="constraint"` head
-    vectors on the five head-constrained float rows carry a `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry
-    (lib.ts) naming `rust`. Four of the eight ALSO name `ruby` — the gem has the opposite-shaped
-    defect, classifying a float by the narrowest IEEE width its VALUE fits rather than by the head,
-    so it both accepts out-of-set heads and rejects canonical in-set ones; that half is written up
-    for filing in `upstream-reports/ruby-cddl-float-width-validation.md`. No upstream issue filed
-    yet for either oracle.
+12. **float prelude names not distinguished at all** (OPEN at `ac1b98e`, NOT fork-fixed):
+    `validate` collapses all six float prelude names into a single "is this a float" test — every
+    major-7 float instance validates against `float16`, `float32`, `float64`, `float16-32`,
+    `float32-64` and `float` alike (36 of 36 probes accept, NaN included), while a non-float in the
+    same position is correctly rejected by all six. The names denote six DISJOINT value classes —
+    the partition by shortest lossless form (RFC 8610 § 2.2.3: the `#7.x` notation "is about a set
+    of values at the data model level"; § 3.3: "representable as") — so `1.1`, a value no narrower
+    form represents, ought not to validate against `float16`. Unlike gaps #1–#11 this one has no
+    half the matrix can lean on: it makes rust unable to certify ANY float-class violation, which
+    is why all seven `class="constraint"` vectors on the five constrained float rows carry a
+    `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry (lib.ts) naming `rust`. The ruby gem — written by RFC
+    8610's author — implements the same partition head-independently and REJECTS all seven, so the
+    certification narrows to that oracle plus the written argument rather than vanishing; the
+    divergence is written up for filing in `upstream-reports/rust-cddl-float-name-blindness.md`,
+    whose closing section states what moves if the answer is "the validator is right". No upstream
+    issue filed yet.
 
 ## Gotchas (read before touching the support seam or probe examples)
 
