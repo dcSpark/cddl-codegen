@@ -79,6 +79,9 @@ input = "specs/cip36"
 output = "cip36"
 lib-name = "cml-cip36"
 profiles = ["encoded"]
+# `cml_chain` IS in this config, and this is still not a `deps` edge: cip36's spec carries a
+# hand-written extern-deps stub for those types, so it needs the wasm face named and nothing else.
+# Legal because the key names a crate rather than a file to read — see Dependencies between crates.
 extern-wasm-crate = { cml_crypto = "cml_crypto_wasm", cml_chain = "cml_chain_wasm" }
 
 [crates.multi-era]
@@ -444,6 +447,28 @@ boundary, and the rule does not apply.
 A hand-written sub-table entry for the same key always wins, silently — an explicit value is you
 overriding the sugar for a case it does not cover, not a conflict. Only the key it names is
 overridden; the rest of the edge still derives.
+
+That the sub-tables are for a dependency the config does not contain is **checked, not just
+stated**. A sub-table naming a *path into another crate's output* — `extern-import`,
+`component-extern-wit`, `extern-wrapper-index`, and the reverse `wrapper-requests` / `key-requests`
+— whose key is the `lib-name` of a crate this same config generates, with no `deps` edge behind it,
+is refused when the config loads:
+
+```
+[crates.ledger].extern-wrapper-index names `core`, which is `[crates.core]` in this config. Inside
+one config an edge onto a crate the config itself generates is `deps`: declare `deps = ["core"]` in
+`[crates.ledger]` and drop the hand-spelled `extern-wrapper-index` entry […]
+```
+
+Hand-spelled, such an edge is invisible to every [convergence
+instrument](#generation-order-and-the-convergence-pass) at once — there is no sidecar to watch, no
+crate to re-run, and no edge to walk — so the path is read while the other crate is still mid-run,
+the run exits 0, and the next run over an unchanged tree writes different bytes. An entry backed by
+a `deps` edge is untouched: that is the override above. So are `extern-wasm-crate` and
+`json-schema-dep`, which name a crate and a rust module path rather than a file to read — nothing of
+ours moves underneath them, and a crate whose spec carries a hand-written
+`_CDDL_CODEGEN_EXTERN_DEPS_DIR_/` stub for a type another crate here happens to generate needs
+exactly that spelling (a `deps` edge would derive an `--extern-import` colliding with the stub).
 
 `deps` is per-crate only. A shared edge is not a graph: it would make every crate depend on every
 crate named, itself included.
@@ -1060,6 +1085,11 @@ cannot leave the first crate's output half-migrated on disk.
   generated tree belonging to another, with the run reporting success. It is also the copy-paste
   mistake this file invites most: duplicate a `[crates.*]` block, change `input`, forget `output`.
   Sibling directories that merely share a name prefix (`gen/alpha` and `gen/alphabet`) are fine.
+- **A cross-crate path hand-spelled at a crate this config generates is a hard error**, naming the
+  crate, the key, and the `deps` line that replaces it. Inside one config the edge is `deps`; the
+  hand-spelled sub-tables are for a dependency the config does not generate. See [Dependencies
+  between crates](#dependencies-between-crates) for which sub-tables this covers and which it
+  deliberately does not.
 - **A `[runtime]` no single static runtime can serve is a hard error** naming the keys the crates
   disagree on, or the crate each missing key comes from. Selecting a subset does not soften it:
   which crate can carry the shared runtime is a property of the config, so
