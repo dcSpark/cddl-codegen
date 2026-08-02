@@ -8436,18 +8436,12 @@ fn ir_conformance_corpus() {
              Repro + upstream steps: \
              draft/ruby-cddl-inline-composite-control-arg-gap.md",
         ),
-        (
-            "homogeneous_array",
-            "float_holder",
-            "gem VALIDATOR gap (cddl 0.12.14): the width-specific prelude names `float32`/`float64` \
-             match NO cbor float at any wire width, while `float` and `float16` match correctly — so \
-             this rule's spec-valid `[[0.0]]` case (`81 81 fb 00…`, a genuine #7.27 double, which the \
-             rust oracle accepts) is rejected. The gem parses the type fine; its own message prints \
-             the expected `[:prim, 7, 27]` and still fails to match, and substituting `float` for \
-             `float64` in the same spec flips the verdict to accept. The fixture's SIBLING rules \
-             (`nums`/`bools`/`bool_holder`) stay judged — this ledger is per (fixture, rule). Repro \
-             table + upstream steps: draft/ruby-cddl-float32-64-prelude-name-gap.md",
-        ),
+        // (homogeneous_array / `float_holder` is a PAST resident, and its retirement is a correction
+        //  rather than a fix landing: the entry claimed the gem's `float32`/`float64` matched NO cbor
+        //  float at any wire width. That was a sampling artifact of a mint that drew `0.0` — whose
+        //  shortest lossless form is `f9`, making it a `float16` VALUE, which is why the gem refused
+        //  it for a `float64` field. The gem implements the shortest-form partition, head-independently
+        //  and correctly; once the mint drew class MEMBERS the divergence disappeared entirely.)
     ];
 
     // Vacuity floor on total cases the gem actually validated across the corpus. 70 swept at landing;
