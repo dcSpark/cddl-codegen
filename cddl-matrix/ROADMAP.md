@@ -983,14 +983,12 @@ composition-space cross-check that complements this matrix's curated per-shape g
   companion-wrapper pair (the named-table workspace keys-list and the co-hosted requested
   keys-list) plus a probed named-reference-position red — details, the participation table, and
   the leg's axis refinements live in that entry.
-- **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
-  raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
-  modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud
-  skips today (the list: `tests/README.md` § "wasm-crate test module"). Minting the former means
-  extending the def-splice the compile gate already does for `rawbytes` cells
-  (`append_raw_bytes_defs`) to ctor-arg minting; the latter needs the user macro definitions in scope
-  (the `tests/wasm-macro-crate` pattern). Either close them or record compile-verdict fallback as the
-  permanent posture and prune this item.
+- **Mint the extern / raw-bytes ctor-arg wasm-surface class (or declare it permanent).** Extern /
+  raw-bytes ctor args (user-supplied types with no generated conversion) fall back to the compile
+  verdict with loud skips today (the list: `tests/README.md` § "wasm-crate test module"). Minting
+  them means extending the def-splice the compile gate already does for `rawbytes` cells
+  (`append_raw_bytes_defs`) to ctor-arg minting. Either close the class or record compile-verdict
+  fallback as the permanent posture and prune this item.
 
 ## Explicitly out of scope (decided, not overlooked)
 
@@ -1000,6 +998,12 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
 - **F9 — interaction tuples** (A-in-B-in-role-C-with-operator-D): richer-than-binary containment; stretch
   query (Q7) only.
 - **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
+- **Behavioral wasm-surface rows for the `--wasm-*-macro` modes** — those flags replace the whole
+  wrapper method surface with user-supplied macro definitions, so an assertion over that surface
+  would judge the FIXTURE's macro bodies rather than the generator's output. The compile verdict
+  plus a loud skip (`tests/README.md` § "wasm-crate test module") is the permanent posture, decided
+  2026-08-03. Reopening signal: a consumer-reported behavioral defect in a macro-mode wasm surface
+  that the compile verdict passed.
 - **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and
   `; unexported:` records that `--extern-import` input files carry beyond the two `ext.*` sentinels
   (strictly parsed at the seam; comments to the grammar). They are tool-interchange rather than
