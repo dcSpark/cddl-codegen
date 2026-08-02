@@ -485,24 +485,171 @@ fn reject_custom_encodings_without_pair(
 /// the type whose codec it replaces, and a row entry declares no type of its own, so the directives
 /// are read into the row's `RuleMetadata` and dropped. (`@name`, `@duplicates` and `@ignore` are the
 /// spellings that slot legitimately carries — they are row-scoped by construction, which is exactly
-/// what the pair is not.) `slot` names the row shape and `remedy` names the rule to move the pair
-/// onto, both of which differ per call site. Returns whether anything was rejected.
+/// what the pair is not.) `position` names the row the way that row's other rejections do (the named
+/// rows spell themselves `<shape> of rule `<src>``, an anonymous inline table has no rule to name) and
+/// `remedy` names the rule to move the pair onto. Returns whether anything was rejected.
 fn reject_custom_codec_on_row_entry(
     types: &mut IntermediateTypes,
-    src: &str,
-    slot: &str,
+    position: &str,
     remedy: &str,
     metadata: &RuleMetadata,
 ) -> bool {
     let found = custom_codec_directives(metadata);
     for directive in &found {
         types.record_rejection(format!(
-            "{directive} on the {slot} of rule `{src}`: the custom (de)serializer pair is a \
+            "{directive} on the {position}: the custom (de)serializer pair is a \
              TYPE-level override keyed on the type whose codec it replaces, and a row entry \
              declares no type of its own, so it is not honored in this slot. {remedy}"
         ));
     }
     !found.is_empty()
+}
+
+/// Read the ROW-ENTRY comment slot of an ANONYMOUS inline table (`{ * k => v ; @directive }` used as
+/// a member, element, `.cbor` payload or type-choice-arm type) and apply what it declares to the map
+/// type just built for it.
+///
+/// The anonymous twin of a NAMED table's row slot (`register_rust_struct`'s `HomogenousMap` arm):
+/// the same entry, read the same way, so both spellings of one shape agree on what the slot means.
+/// `@duplicates preserve` swaps the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin
+/// exactly as it does for a named table. An explicit `reject` is that policy's accepted default (a
+/// loose table is key-unique by construction) and is deliberately NOT stored: `duplicates_reject()`
+/// reads the flag without looking at the container, and a `Map` carrying it reads as DESPECIALIZED
+/// at the WIT boundary — a `TryFrom<Vec<(K, V)>>` door `BTreeMap` has not got.
+///
+/// Every other directive the slot can carry declares something a row entry has no place for, so it
+/// is rejected with the spelling that works: nothing written here is accepted-and-inert.
+///
+/// SCOPE — inline shapes exactly. A NAMED table referenced by name never reaches this seam
+/// (`Type2::Typename` handles it), so a per-site policy can never fork a shared type's identity,
+/// which is why the general member-position `@duplicates` on named references stays unsupported.
+fn apply_inline_table_row_metadata(
+    types: &mut IntermediateTypes,
+    group_choice: &GroupChoice,
+    map_type: RustType,
+) -> RustType {
+    let entries = flatten_group_entries(&group_choice.group_entries, Representation::Map);
+    // A parenthesized row (`{ * (k => v) }`) has no entry slot of its own, and
+    // `group_entry_rule_metadata` panics on an `InlineGroup` — the guard the named seam takes.
+    // Probed: the cddl AST binds a comment written there to NOTHING this seam can reach (the
+    // `InlineGroup` variant carries no trailing-comment field and the entry's `OptionalComma` comes
+    // back `trailing_comments: None`), so there is no directive here to honor OR to reject — the
+    // spelling that carries one is the unparenthesized row.
+    let [(row_ge, row_comma)] = entries[..] else {
+        return map_type;
+    };
+    if matches!(row_ge, GroupEntry::InlineGroup { .. }) {
+        return map_type;
+    }
+    let metadata = group_entry_rule_metadata(row_ge, row_comma);
+    let position = "row entry of an inline table (`{ * k => v }`)";
+    reject_custom_codec_on_row_entry(
+        types,
+        position,
+        "Name the table's key or value type as its own rule and put the pair there (`k = text ; \
+         @custom_serialize <fn> @custom_deserialize <fn>`, then `{ * k => v }`).",
+        &metadata,
+    );
+    // …and a `@custom_encodings` declaration with no pair to describe is dropped the same way.
+    reject_custom_encodings_without_pair(types, &format!("the {position}"), &metadata);
+    reject_inert_inline_table_row_directives(types, position, &metadata);
+    match metadata.duplicates {
+        Some(DuplicatesPolicy::Preserve) => {
+            map_type.with_duplicates_policy(Some(DuplicatesPolicy::Preserve))
+        }
+        _ => map_type,
+    }
+}
+
+/// Reject every directive an inline table's row-entry slot can carry that the slot does not honor.
+///
+/// The slot became live when `@duplicates` started being read there, and a live slot must not also
+/// be a silent-drop slot — so this enumerates `RuleMetadata` EXHAUSTIVELY (the destructure is the
+/// enforcement: a new directive field fails to compile here until it is classified as honored or
+/// rejected). The custom-codec pair and its `@custom_encodings`/`@custom_wire_major` declarations are
+/// owned by the two helpers that run before this one, so they are excluded here rather than reported
+/// twice.
+fn reject_inert_inline_table_row_directives(
+    types: &mut IntermediateTypes,
+    position: &str,
+    metadata: &RuleMetadata,
+) -> bool {
+    let RuleMetadata {
+        name,
+        rust_name,
+        newtype,
+        no_alias,
+        key_demand,
+        used_as_elem,
+        copy,
+        raw_bytes_flavor,
+        ignore,
+        // honored here — the whole reason the slot is live
+        duplicates: _,
+        custom_json,
+        no_json_schema_export,
+        // owned by `reject_custom_codec_on_row_entry` / `reject_custom_encodings_without_pair`
+        custom_serialize: _,
+        custom_deserialize: _,
+        custom_encodings: _,
+        custom_wire_major: _,
+        extern_companions,
+        comment,
+    } = metadata;
+    // `@name` is the one with a real alternative spelling worth naming: on a type-choice arm the
+    // variant name lives in the slot AFTER the closing brace, which is a different comment entirely.
+    let name_remedy = "To name a type-choice variant put `; @name <n>` AFTER the closing brace \
+                       (`{ * k => v } ; @name <n> / int`); to rename a field put it on the field \
+                       entry. To carry any other directive, name the table as its own rule \
+                       (`t = { * k => v } ; @<directive>`) and reference `t`.";
+    let rule_remedy = "Name the table as its own rule (`t = { * k => v } ; @<directive>`) and \
+                       reference `t`, or remove it.";
+    let found: [(&str, bool, &str); 12] = [
+        ("@name", name.is_some(), name_remedy),
+        ("@rust_name", rust_name.is_some(), rule_remedy),
+        ("@newtype", newtype.is_some(), rule_remedy),
+        ("@no_alias", *no_alias, rule_remedy),
+        ("@used_as_key", key_demand.is_some(), rule_remedy),
+        ("@used_as_elem", *used_as_elem, rule_remedy),
+        ("@copy", *copy, rule_remedy),
+        ("@raw_bytes_flavor", *raw_bytes_flavor, rule_remedy),
+        ("@ignore", *ignore, rule_remedy),
+        ("@custom_json", *custom_json, rule_remedy),
+        (
+            "@no_json_schema_export",
+            *no_json_schema_export,
+            rule_remedy,
+        ),
+        (
+            "@extern_companions",
+            extern_companions.is_some(),
+            rule_remedy,
+        ),
+    ];
+    let mut rejected = false;
+    for (directive, written, remedy) in found {
+        if !written {
+            continue;
+        }
+        types.record_rejection(format!(
+            "{directive} on the {position}: the row entry declares no rule, field or type of its \
+             own, so only `@duplicates` (which selects the row's container) is honored there. \
+             {remedy}"
+        ));
+        rejected = true;
+    }
+    // `@doc` last: it is the one spelling an author reaches for reflexively, and its own message
+    // says where the documentation would have to live to be emitted.
+    if comment.is_some() {
+        types.record_rejection(format!(
+            "@doc on the {position}: an anonymous inline table emits no type of its own to \
+             document (it renders as the container type at each use site). Put the `@doc` on the \
+             field or element that holds the table, or name the table as its own rule \
+             (`t = {{ * k => v }} ; @doc <text>`) and reference `t`."
+        ));
+        rejected = true;
+    }
+    rejected
 }
 
 /// The CDDL source name a rule ident was registered under, falling back to the ident itself for a
@@ -4147,10 +4294,15 @@ fn rust_type_from_type2(
                             let map_type: RustType =
                                 ConceptualRustType::Map(Box::new(key_type), Box::new(value_type))
                                     .into();
-                            match bounds {
+                            let map_type = match bounds {
                                 Some(bounds) => map_type.with_bounds(bounds),
                                 None => map_type,
-                            }
+                            };
+                            // The row entry's own comment slot (`{ * k => v ; @duplicates preserve }`)
+                            // is read here, giving the inline spelling the same row-scoped directives
+                            // the NAMED table has — and rejecting everything else it can carry, so a
+                            // live slot is never also a silent-drop slot.
+                            apply_inline_table_row_metadata(types, group_choice, map_type)
                         }
                         // Every non-table inline map — `{ a: int, b: uint }`, `{ g }`, `{ * uint }`,
                         // `{}`. For `Representation::Map` `parse_group_type` returns only
@@ -5527,8 +5679,7 @@ fn open_table_row(
     let metadata = group_entry_rule_metadata(ge_entry, comma);
     if reject_custom_codec_on_row_entry(
         types,
-        src,
-        slot,
+        &format!("{slot} of rule `{src}`"),
         "Name the row's key or value type as its own rule and put the pair there (`k = text ; \
          @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).",
         &metadata,
@@ -5766,8 +5917,7 @@ fn recognize_rest_row(
     // reject it here rather than generating default wire in both directions.
     if reject_custom_codec_on_row_entry(
         types,
-        &src,
-        "open struct-map rest row (`* k => v`)",
+        &format!("open struct-map rest row (`* k => v`) of rule `{src}`"),
         "Name the row's key or value type as its own rule and put the pair there (`k = text ; \
          @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).",
         &rest_metadata,
@@ -6018,8 +6168,7 @@ fn recognize_array_rest_tail(
     // reject it here rather than generating default wire in both directions.
     if reject_custom_codec_on_row_entry(
         types,
-        &src,
-        "open-array rest tail (`* t`)",
+        &format!("open-array rest tail (`* t`) of rule `{src}`"),
         "Name the tail element type as its own rule and put the pair there (`e = uint ; \
          @custom_serialize <fn> @custom_deserialize <fn>`, then `* e`).",
         &tail_metadata,
@@ -6234,8 +6383,7 @@ fn parse_group_choice(
                     .unwrap_or_else(|| name.to_string());
                 reject_custom_codec_on_row_entry(
                     types,
-                    &src,
-                    "table row (`* k => v`)",
+                    &format!("table row (`* k => v`) of rule `{src}`"),
                     "Name the table's key or value type as its own rule and put the pair there \
                      (`k = text ; @custom_serialize <fn> @custom_deserialize <fn>`, then \
                      `{ * k => v }`).",

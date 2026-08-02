@@ -76,14 +76,7 @@ struct Cell {
 /// cell's expectation to match the drop. Every other cell in the grid meets its docs-claimed
 /// expectation, either by honoring the directive or by refusing it with a message naming the
 /// spelling that works.
-const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[(
-    "@duplicates preserve",
-    "inline-map-arm-row-entry-in-type-choice",
-    "the row-entry slot of an inline map arm inside a type choice is accepted and the directive \
-     silently ignored (loose container emitted, PairMap never swapped in) — cell 38 is the \
-     placement control; honor-or-reject is ledgered in tests/TESTING_ROADMAP.md (it gates CML's \
-     noisy CIP-25 vectors)",
-)];
+const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[];
 
 /// The docs-claimed grid. Anchors were verified empirically against emitted source while authoring;
 /// the `must` fragments are the load-bearing bits, not guaranteed-verbatim whole lines.
@@ -1429,19 +1422,11 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
-    // 38b. PINNED SILENT DROP: the same row-entry slot inside an INLINE map arm of a type choice.
-    //     The docs' `@duplicates` section routes this shape to a named rule ("an inline map arm of
-    //     a union must be given its own named rule to carry the directive"), but the inline
-    //     spelling itself is ACCEPTED and the directive silently ignored — the container stays the
-    //     loose `BTreeMap`, so historical duplicate-keyed bytes fail `DuplicateKey` with no hint
-    //     the author's directive was dropped. Hand-verified per the authoring rule: both the
-    //     comma-free and trailing-comma spellings parse and drop identically, and cell 38 proves
-    //     the slot live one container over. Found by the open-tables acceptance work: this drop is
-    //     what keeps CML's noisy CIP-25 vectors out of the acceptance corpus — the union-rooted
-    //     recursive-union table that used to abort beside it now generates
-    //     (tests/robustness/recursive_union_keyed_table_nominal.cddl is an `ok` row), so the
-    //     inline-arm drop is the remaining half. The honor-or-reject decision is ledgered in
-    //     tests/TESTING_ROADMAP.md.
+    // 38b. The same row-entry slot inside an INLINE map arm of a type choice — HONORED, and the
+    //     variant that holds the map is the pair-map twin (`MapU64ToText(PairMap<u64, String>)`).
+    //     Cell 38 is its placement control one container over: the slot and the spelling are
+    //     identical, so what this cell isolates is the container CONTEXT. Both the comma-free and
+    //     trailing-comma spellings parse and honor identically.
     Cell {
         directive: "@duplicates preserve",
         position: "inline-map-arm-row-entry-in-type-choice",
@@ -1449,9 +1434,95 @@ const GRID: &[Cell] = &[
         flags: &[],
         wasm: false,
         expect: Expect::Effect {
-            must: &["PairMap<u64, String>"],
-            must_not: &[],
+            must: &["MapU64ToText(PairMap<u64, String>)"],
+            must_not: &["MapU64ToText(BTreeMap"],
         },
+    },
+    // 38c. The same slot on an inline table in plain FIELD position (no type choice). The seam is
+    //     `rust_type_from_type2`'s `Type2::Map` arm, which every anonymous inline table in type
+    //     position reaches, so honoring is uniform across the inline positions rather than special
+    //     to the union arm.
+    Cell {
+        directive: "@duplicates preserve",
+        position: "inline-map-field-row-entry",
+        spec: "holder = [f: { * uint => text ; @duplicates preserve\n }]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub f: PairMap<u64, String>"],
+            must_not: &["pub f: BTreeMap"],
+        },
+    },
+    // 38d. Explicit `@duplicates reject` in the same slot: the ACCEPTED DEFAULT, exactly as on a
+    //     named table (a loose table is key-unique by construction). The no-op is deliberate and
+    //     asserted so it can never decay into a drop of `preserve`'s sibling spelling — 38c is the
+    //     positive control proving the slot is read at all.
+    Cell {
+        directive: "@duplicates reject",
+        position: "inline-map-field-row-entry",
+        spec: "holder = [f: { * uint => text ; @duplicates reject\n }]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub f: BTreeMap<u64, String>"],
+            must_not: &["PairMap"],
+        },
+    },
+    // 38e–38i. The rest of what the now-live slot can carry. A live slot must not also be a
+    //     silent-drop slot, so every directive a row entry has no place for is refused with the
+    //     spelling that works. `@name` gets its own remedy because it has a real alternative
+    //     spelling: on a type-choice arm the VARIANT name lives in the slot AFTER the closing brace
+    //     (probe-verified: `{ * k => v } ; @name blah / int` emits variant `Blah`), which is a
+    //     different comment entirely from the one inside the braces.
+    Cell {
+        directive: "@name",
+        position: "inline-map-field-row-entry",
+        spec: "holder = [f: { * uint => text ; @name blah\n }]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("put `; @name <n>` AFTER the closing brace"),
+    },
+    Cell {
+        directive: "@ignore",
+        position: "inline-map-field-row-entry",
+        spec: "holder = [f: { * uint => text ; @ignore\n }]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "@ignore on the row entry of an inline table (`{ * k => v }`): the row entry declares \
+             no rule, field or type of its own",
+        ),
+    },
+    Cell {
+        directive: "@doc",
+        position: "inline-map-field-row-entry",
+        spec: "holder = [f: { * uint => text ; @doc about-the-table\n }]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "@doc on the row entry of an inline table (`{ * k => v }`): an anonymous inline table \
+             emits no type of its own to document",
+        ),
+    },
+    Cell {
+        directive: "@custom_serialize",
+        position: "inline-map-field-row-entry",
+        spec: "holder = [f: { * uint => text ; @custom_serialize ser @custom_deserialize deser\n }]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "@custom_serialize on the row entry of an inline table (`{ * k => v }`)",
+        ),
+    },
+    Cell {
+        directive: "@custom_encodings",
+        position: "inline-map-field-row-entry",
+        spec: "holder = [f: { * uint => text ; @custom_encodings len\n }]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject(
+            "@custom_encodings on the row entry of an inline table (`{ * k => v }`)",
+        ),
     },
 ];
 
