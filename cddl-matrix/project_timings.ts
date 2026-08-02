@@ -50,8 +50,9 @@ import { createHash } from "node:crypto";
 import { cpus, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  REGISTRY, cargoJobsForBatch, etaLines, gateRow, longestFirst, memTotalGiB, parseJobs,
-  parseJoinTimeoutMs, planBatches, preflightDecision, retainLogs, runPool, runRow,
+  REGISTRY, SCRATCH_MAX_AGE_MS, SCRATCH_PREFIXES, cargoJobsForBatch, etaLines, gateRow, longestFirst,
+  memTotalGiB, parseJobs, parseJoinTimeoutMs, planBatches, preflightDecision, retainLogs, runPool,
+  runRow, sweepScratch,
   type Gate, type RunContext,
 } from "../check.ts";
 
@@ -765,6 +766,59 @@ function replay(series: number[], seed: number, machine = "m0"): number[] {
   return writes;
 }
 
+/**
+ * Walk the repo's `temp_dir()` / `tmpdir()` join sites and report the scratch names check.ts's
+ * `SCRATCH_PREFIXES` does not cover. The registry has to be an enumeration of the mint sites to be
+ * worth anything, and an enumeration written once is a snapshot that rots — so the enumeration is
+ * re-derived here on every run of the `timings_digest_check` gate.
+ *
+ * `unresolved` is a failure, not a note: a join whose name this walker cannot read is exactly where a
+ * new spelling would hide, and the cost of guessing wrong is scratch that leaks until a disk fills.
+ * `.lock` names are excluded because the sweep excludes them by design (they are
+ * `acquire_scratch_lock`'s sibling flocks, and unlinking a held one breaks the mutual exclusion).
+ */
+export function scratchMintSites(): { uncovered: string[]; unresolved: string[] } {
+  const files: string[] = [join(ROOT, "check.ts")];
+  const walk = (dir: string) => {
+    let entries: string[];
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const e of entries) {
+      if (e === "node_modules" || e === "target" || e === "generated") continue;
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (e.endsWith(".rs") || e.endsWith(".ts")) files.push(p);
+    }
+  };
+  for (const d of ["src", "fuzz", "cddl-matrix"]) walk(join(ROOT, d));
+
+  const uncovered: string[] = [];
+  const unresolved: string[] = [];
+  const covered = (lit: string) => lit.endsWith(".lock") || SCRATCH_PREFIXES.some(p => lit.startsWith(p));
+  const RUST = /temp_dir\(\)\s*\.join\(\s*(?:&\s*)?(?:format!\(\s*)?(?:"((?:[^"\\]|\\.)*)"|([A-Za-z_][A-Za-z0-9_]*)\s*\))/g;
+  const TS = /join\(\s*tmpdir\(\)\s*,\s*[`"]([^`"$\n]*)/g;
+
+  for (const f of files) {
+    const src = readFileSync(f, "utf8");
+    const rel = f.slice(ROOT.length + 1);
+    if (f.endsWith(".rs")) {
+      for (const m of src.matchAll(RUST)) {
+        let lit = m[1];
+        if (lit === undefined) {
+          // A variable join (`.join(&scratch_name)`) — resolve its `let` in the same file.
+          const v = m[2]!;
+          const a = new RegExp(`let\\s+${v}\\s*(?::[^=]*)?=\\s*(?:format!\\(\\s*)?"((?:[^"\\\\]|\\\\.)*)"`).exec(src);
+          if (!a) { unresolved.push(`${rel}: .join(${v}) — cannot resolve the name`); continue; }
+          lit = a[1]!;
+        }
+        if (!covered(lit)) uncovered.push(`${rel}: ${lit}`);
+      }
+    } else {
+      for (const m of src.matchAll(TS)) if (!covered(m[1]!)) uncovered.push(`${rel}: ${m[1]}`);
+    }
+  }
+  return { uncovered, unresolved };
+}
+
 export async function selfTests(): Promise<TestResult[]> {
   const t: TestResult[] = [];
   const ok = (name: string, cond: boolean, detail?: string) => t.push({ name, ok: cond, detail });
@@ -1253,6 +1307,122 @@ export async function selfTests(): Promise<TestResult[]> {
       ok("retention_is_silent_and_asserts_nothing_when_nothing_expired",
         r.status === "ran" && r.deleted.length === 0 && r.kept === 4 && !consulted, JSON.stringify(r));
       rmSync(dir, { recursive: true });
+    }
+  }
+
+  // ---- the run-start scratch sweep: the other IRREVERSIBLE operation -----------------------------
+  // Deleting under a shared `tmpdir()` is the failure class AGENTS.md's pattern-kill rule names, one
+  // level worse: a wrong `pkill` costs another session its run, a wrong `rm -rf` costs it its data.
+  // So every bound is pinned here rather than reachable only by leaving a machine dirty for a day.
+  // These run against a synthetic root, never the real `tmpdir()`.
+  {
+    const DAY = 24 * 60 * 60;
+    const NOW = 1_800_000_000_000; // ms
+    /** A synthetic scratch root: `[name, ageHours, kind]`, `dir` unless a name ends in `.lock`. */
+    const mk = (entries: [string, number][]) => {
+      const root = mkdtempSync(join(tmpdir(), "cddl-retention-sweep-"));
+      for (const [name, ageHours] of entries) {
+        const p = join(root, name);
+        const t = NOW / 1000 - ageHours * 3600;
+        if (name.endsWith(".lock")) writeFileSync(p, "");
+        else { mkdirSync(p); writeFileSync(join(p, "payload"), "x".repeat(100)); utimesSync(join(p, "payload"), t, t); }
+        utimesSync(p, t, t);
+      }
+      return root;
+    };
+    const sweep = (root: string, live: string[] | null, dryRun = false) =>
+      sweepScratch({ root, now: NOW, liveNames: () => (live === null ? null : new Set(live)), dryRun });
+
+    // The registry, not a glob. An unregistered name is another program's directory, and the sweep
+    // must be incapable of touching it however stale it looks. A `.lock` is `acquire_scratch_lock`'s
+    // sibling flock: unlinking one a live run holds lets a third run acquire a fresh inode.
+    {
+      const root = mk([
+        ["cddl_codegen_stale_deadbeef", 48], ["cddl_verify_target_old", 72],
+        ["somebody_elses_build_cache", 999], ["cddl-ish-but-unregistered", 999],
+        ["cddl_codegen_ir_conformance_00.lock", 999],
+      ]);
+      const r = sweep(root, []);
+      const left = new Set(readdirSync(root));
+      ok("scratch_sweep_removes_only_registered_prefixes_and_never_a_lock",
+        r.status === "ran" && r.removed.length === 2 &&
+        !left.has("cddl_codegen_stale_deadbeef") && !left.has("cddl_verify_target_old") &&
+        left.has("somebody_elses_build_cache") && left.has("cddl-ish-but-unregistered") &&
+        left.has("cddl_codegen_ir_conformance_00.lock"),
+        JSON.stringify({ r, left: [...left] }));
+      rmSync(root, { recursive: true });
+    }
+
+    // Age, and age read from the NEWEST immediate child. A long-lived `CARGO_TARGET_DIR` keeps its
+    // own mtime while cargo rewrites the files inside it, so reading the root alone would retire a
+    // target dir that is amortising builds every day — a correctness-neutral bug that silently
+    // deletes the whole point of path-keying those roots.
+    {
+      const root = mk([["cddl_codegen_wasm_matrix_00", 1], ["cddl_codegen_dead_00", 48]]);
+      const fresh = join(root, "cddl_codegen_target_00");
+      mkdirSync(fresh);
+      writeFileSync(join(fresh, "hot"), "x");
+      utimesSync(join(fresh, "hot"), NOW / 1000 - 60, NOW / 1000 - 60); // child touched a minute ago
+      utimesSync(fresh, NOW / 1000 - 30 * DAY, NOW / 1000 - 30 * DAY);  // root itself a month old
+      const r = sweep(root, []);
+      ok("scratch_sweep_ages_an_entry_by_its_newest_child",
+        r.removed.join() === "cddl_codegen_dead_00" && r.keptFresh === 2 &&
+        existsSync(fresh) && existsSync(join(root, "cddl_codegen_wasm_matrix_00")),
+        JSON.stringify({ r, left: readdirSync(root) }));
+      rmSync(root, { recursive: true });
+    }
+
+    // A stale entry NAMED by a live process survives and is counted: a scratch root reaches its gate
+    // through `CARGO_TARGET_DIR` as often as through argv, and a run whose clock says a day has
+    // passed (a suspended laptop, a long `#[ignore]`d gate) is still a run.
+    {
+      const root = mk([["cddl_codegen_busy_00", 48], ["cddl_codegen_idle_00", 48]]);
+      const r = sweep(root, ["CARGO_TARGET_DIR=/tmp/cddl_codegen_busy_00\0RUST_LOG=info"]);
+      ok("scratch_sweep_spares_an_entry_named_by_a_live_process",
+        r.removed.join() === "cddl_codegen_idle_00" && r.keptLive.join() === "cddl_codegen_busy_00" &&
+        existsSync(join(root, "cddl_codegen_busy_00")),
+        JSON.stringify({ r, left: readdirSync(root) }));
+      rmSync(root, { recursive: true });
+    }
+
+    // The guard FAILS CLOSED. An unreadable `/proc` and "no process names anything" are
+    // indistinguishable at the call site, and the difference between them is another session's run.
+    {
+      const root = mk([["cddl_codegen_stale_00", 48]]);
+      const r = sweep(root, null);
+      ok("scratch_sweep_fails_closed_when_the_live_process_scan_fails",
+        r.status === "skipped" && r.removed.length === 0 && existsSync(join(root, "cddl_codegen_stale_00")) &&
+        /live-process scan failed/.test(r.reason ?? ""),
+        JSON.stringify(r));
+      rmSync(root, { recursive: true });
+    }
+
+    // Nothing stale -> silent success, and the guard is never even consulted. CI and a fresh checkout
+    // must stay quiet, and a sweep that scanned `/proc` on every invocation to say nothing is waste.
+    {
+      const root = mk([["cddl_codegen_fresh_00", 1]]);
+      let consulted = false;
+      const r = sweepScratch({ root, now: NOW, liveNames: () => { consulted = true; return new Set(); } });
+      ok("scratch_sweep_is_silent_and_consults_nothing_when_nothing_is_stale",
+        r.status === "ran" && r.removed.length === 0 && r.keptFresh === 1 && !consulted, JSON.stringify(r));
+      rmSync(root, { recursive: true });
+    }
+
+    // The threshold is a documented choice, not an accident: >40x the longest measured tier, so no
+    // live run's scratch can reach it even on a machine whose clock jumped.
+    ok("the_scratch_age_threshold_is_a_day",
+      SCRATCH_MAX_AGE_MS === 86_400_000, String(SCRATCH_MAX_AGE_MS));
+
+    // The registry is only honest while it still covers the mint sites. This walks the `temp_dir()`
+    // / `tmpdir()` joins in the repo and fails on any scratch name no registered prefix covers — the
+    // failure direction being a new mint site that LEAKS, which is invisible until a disk fills.
+    // A site whose name this walker cannot resolve is a FAILURE too: an unreadable site is exactly
+    // where a new spelling would hide.
+    {
+      const { uncovered, unresolved } = scratchMintSites();
+      ok("the_scratch_prefix_registry_covers_every_temp_dir_mint_site",
+        uncovered.length === 0 && unresolved.length === 0,
+        JSON.stringify({ uncovered: uncovered.slice(0, 8), unresolved: unresolved.slice(0, 8) }));
     }
   }
 
