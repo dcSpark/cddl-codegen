@@ -387,7 +387,13 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    why `alias_positions` — the corpus fixture whose whole subject is aliased (i.e. named-rule) map
    keys — rides `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` with its ruby half left judging: its
    maps sit in MEMBER position, where the empty-map instance that spares the three rows above is not
-   what the minter draws, so five of its six rules carry the signature. No
+   what the minter draws, so five of its six rules carry the signature. A TWO-ROW map sharpens the
+   wrong-rule binding further: for `open_table = { * bstr => uint, * md => md }` (`md = uint / text`)
+   the validator reports `map requires entry key of type uint` / `text` — the NAMED-RULE row's arm
+   types — against a minted `h'00'` key that plainly matches the first row's inline `bstr`, so the
+   presence of one named-rule row poisons keys belonging to a DIFFERENT, inline-typed row of the
+   same map (`open_table` is the second `RUST_ORACLE_SKIP` resident on this evidence; ruby accepts
+   all three rules' minted values). No
    upstream issue filed yet. Differential grid, two adjacent same-neighborhood observations
    (nested-map VALUES in a `*` table; multi-entry composite-array-key tables), and close-out
    steps: `draft/rust-cddl-named-key-map-gap.md` (local note).
@@ -597,6 +603,11 @@ records the ORDER (walked empirically for the `@used_as_elem` registration):
 
 1. Add the feature row in `features/cddl_codegen.toml`, then `bun run build_matrix.ts`.
 2. Full `bun run verify.ts` — writes the row's verdicts into `annotations/cddl_codegen.toml`.
+   **If the row's example references user-supplied code** (custom-codec fns, extern/raw-bytes
+   types), add its `COMPILE_GATE_EXEMPT` entry in `verify.ts` BEFORE this step: minted without it,
+   the standalone-compile probe fails and the row verdicts `unsupported`, costing a second full run
+   to correct (walked both ways: the `dsl.custom_encodings` registration paid the second ~12 min
+   run; `dsl.custom_wire_major` pre-added the entry and minted `supported` first try).
 3. `bun run project_robustness.ts` — mints `tests/matrix_supported/<id>.cddl`.
 4. `bun run verify.ts --mint-decode-foreign --only=<id>` — mints the decode catalog vectors.
 5. Full `verify.ts` again — satisfies the decode-foreign evidence clause.
@@ -653,6 +664,37 @@ as flavored sibling rows ONLY — no bare base row, and the vendor-count pin mov
 flavors. The forward (completeness) lint accepts this: a documented directive is modelled either
 by a row whose `alt` IS the directive or by rows whose `alt` starts with `<directive> ` — walked
 empirically for the `dsl.duplicates.{reject,preserve}` registration.
+
+## Registering a CONTAINMENT cell
+
+Same discipline, different obligation chain — walked empirically for the three
+`contain.occurrence-target.memberkey.type1.open_table*` cells, where discovering it gate-by-gate
+cost six fail-fast tier iterations. In order:
+
+1. Add the `[[contain]]` rows in `containment/<axis>.toml`, then `bun run build_matrix.ts`.
+2. Full `bun run verify.ts` — mints each cell's `[[support]]` verdict (an `unsupported` verdict for
+   a deliberately-rejected composition is CORRECT and is what keeps a supported sibling from
+   over-claiming — the `open_table_catchall_plus` cell exists for exactly that).
+3. `bun run project_robustness.ts` — supported cells mint `tests/matrix_supported/<id>.cddl`,
+   rejected cells mint `tests/matrix_reject/<id>.cddl`.
+4. A rejected cell's row must ALSO land in the committed reject catalog:
+   `INSTA_UPDATE=always cargo test --bin cddl-codegen unsupported_construct_reject_catalog`
+   re-blesses `tests/matrix_reject/snapshots/catalog.snap` (the catalog↔matrix clause of
+   `project_robustness_check` demands the row).
+5. Supported cells need decode rows in `tests/decode_conformance/catalog.toml`: self-contained
+   examples take REAL minted vectors (`verify.ts --mint-decode-foreign --only=<id>,...`);
+   user-code examples take a `pinned_reason` row. A mint then requires the full `verify.ts`
+   AGAIN — the evidence clause must record `accepts N foreign vector(s)`, and the drift check
+   says so verbatim ("mint BEFORE probe, or re-probe after").
+6. `build_matrix.ts`, then the projections: `project_corpus.ts`, `project_status_headers.ts
+   --write`, `query_q1_gaps.ts --write` (the generated Limitations block moves with the cell
+   arithmetic), and the `--check` trio (`q6`, `decode_conformance`, `build_matrix`).
+7. Expect the cells' examples to meet the REPLAY oracles for the first time on the next full
+   tier, and route each finding to its designed ledger rather than a weakened contract:
+   `JSON_SURFACE_SKIP` (a value class that cannot cross the json boundary — cite the findings
+   entry), `RUST_ORACLE_SKIP` (a rust-validator gap, ruby keeps judging — cite the gap number),
+   `ENCODING_VARIANT_SKIP` (a reordering variant whose value-equality premise is false for the
+   type — keep a loose-container control row honest beside it). All three are stale-guarded.
 
 ## Evidence/id convention
 
