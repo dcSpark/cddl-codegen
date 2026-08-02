@@ -2146,6 +2146,120 @@ fn mixed_policy_map_shapes_mint_distinct_flavored_wasm_wrappers() {
     );
 }
 
+/// An ANONYMOUS inline table carrying `@duplicates preserve` on its own row composes with every
+/// surface the member-level pair-map has — the point being that the policy now rides a use-site type
+/// with no rule of its own, so nothing can look the container up by rule ident.
+///
+/// The load-bearing position is the TYPE-CHOICE ARM (an enum variant holding the map), because that
+/// is the shape the CIP-25 metadatum grammar needs and the one whose wasm surface has to synthesize a
+/// wrapper class for a type the author never named. The `{+ …}` arm beside it proves the occurrence
+/// bound composes with the flavor rather than replacing it.
+///
+/// A scratch e2e (rust + wasm + json-gen `cargo check` of this spec under default, preserve,
+/// canonical, wasm and json profiles, plus a duplicate-keyed byte-exact round-trip at the arm
+/// position) backs the compile claim; the string pins catch a regression without the crate-build
+/// cost. The COMPILED wire evidence lives in `integration_tests::open_table_cip25_acceptance`, whose
+/// two noisy vectors decode duplicates out of exactly this shape.
+#[test]
+fn an_inline_preserve_table_arm_carries_the_pair_map_through_every_surface() {
+    // the row directive trails the row on its own line — a `; @duplicates preserve }` spelling
+    // would swallow the closing brace into the comment
+    // `g`'s table is written INLINE at the field too: a NAMED `{+ …}` rule takes its policy from
+    // the RULE slot (`ne = { + k => v } ; @duplicates preserve`), which is a different comment.
+    const CDDL: &str = "tmd = { * uint => text ; @duplicates preserve\n\
+                        } / int\n\
+                        holder = [f: tmd, g: { + uint => text ; @duplicates preserve\n\
+                        }]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_inline_preserve_arm_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let generate = |extra: &[&str]| {
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "inline_preserve_arm_unused",
+        ];
+        args.extend_from_slice(extra);
+        crate::api::generated_strings(&Cli::parse_from(args))
+            .expect("an inline preserve table arm must generate")
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    // rust, default profile: the ARM's payload is the pair-map twin, and the `{+}` field is its
+    // non-empty flavor — both at member positions that have no rule ident to look up.
+    let rust = generate(&["--wasm=false"]);
+    assert!(
+        rust.contains("MapU64ToText(PairMap<u64, String>)"),
+        "the type-choice arm's payload must be the pair-map twin, got:\n{rust}"
+    );
+    assert!(
+        rust.contains("NonEmptyPairMap<u64, String>"),
+        "the `{{+ …}}` inline table must compose the min-1 bound with the flavor, got:\n{rust}"
+    );
+
+    // preserve/canonical: the arm gains the per-entry encoding sidecars a pair map needs to replay
+    // duplicate-keyed bytes in wire order (a loose table's sidecar is keyed, and cannot).
+    let canonical = generate(&[
+        "--wasm=false",
+        "--preserve-encodings=true",
+        "--canonical-form=true",
+    ]);
+    assert!(
+        canonical.contains("map_u64_to_text_key_encodings")
+            && canonical.contains("map_u64_to_text_value_encodings"),
+        "the preserve arm needs positional key/value encoding sidecars, got:\n{canonical}"
+    );
+
+    // wasm: the arm's payload crosses as the FLAVORED structural class, synthesized for a type the
+    // author never named — and the enum's accessors on both directions name that same class.
+    let wasm = generate(&["--wasm=true", "--preserve-encodings=true"]);
+    assert!(
+        wasm.contains("pub struct PairMapU64ToText(pub(crate) PairMap<u64, String>)"),
+        "the inline preserve arm must mint the flavored loose class, got:\n{wasm}"
+    );
+    assert!(
+        wasm.contains(
+            "pub struct NonEmptyPairMapU64ToText(pub(crate) NonEmptyPairMap<u64, String>)"
+        ),
+        "the inline `{{+ …}}` preserve table must mint the non-empty flavored class, got:\n{wasm}"
+    );
+    assert!(
+        wasm.contains("pub fn as_map_u64_to_text(&self) -> Option<PairMapU64ToText>"),
+        "the variant getter must return the flavored class, got:\n{wasm}"
+    );
+    assert!(
+        wasm.contains("pub fn new_map_u64_to_text(map_u64_to_text: &PairMapU64ToText)"),
+        "the variant constructor must take the flavored class, got:\n{wasm}"
+    );
+
+    // json + schemars: the enum derives them over a variant whose payload is the pair map, whose own
+    // JSON image is an array of `[k, v]` pairs (a JSON object cannot carry duplicate keys). The
+    // pair-map runtime module itself is a COPIED static file (and its `use` is injected at export),
+    // so the derive over the variant is what the string emit can see; the scratch `cargo check` of
+    // the json-gen crate over this spec is what proves the two fit together.
+    let json = generate(&[
+        "--wasm=true",
+        "--json-serde-derives=true",
+        "--json-schema-export=true",
+    ]);
+    assert!(
+        json.contains(
+            "#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]\n\
+             pub enum Tmd {\n    MapU64ToText(PairMap<u64, String>),"
+        ),
+        "the enum must derive serde+schemars over the pair-map variant, got:\n{json}"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
 /// The rule-ident-vs-wrapper-ident sibling for the LOOSE pair-map wrapper name family: a user rule
 /// spelling `PairMapKToV` shadows the class a `@duplicates preserve` construct mints under exactly
 /// that name. Parallel to the NonEmpty/reject siblings (per-kind detectors with distinct pinned
