@@ -2784,7 +2784,12 @@ decoding the rust twin's bytes with a loud skip of the ctor differential. A wrap
 extern / raw-bytes ctor args (and the same-class wrapper-entry ctor differential), and the whole module under any
 `--wasm-*-macro` flag (those replace the wrapper method surface) — each an `eprintln!`. (Optional-nullable
 flatten points need no skip: optional fields are not ctor args, so no mint constructs a present-null
-state — the three-state surface is covered by the hand-written `tests/nullable-wasm/` fixture.) Mutation-verified
+state — the three-state surface is covered by the hand-written `tests/nullable-wasm/` fixture.) The
+macro-mode skip is a **decided posture, not a gap** (2026-08-03): those flags replace the wrapper
+method surface with user-supplied macro definitions, so an emitted assertion there would judge the
+fixture's macro bodies rather than the generator's output — the compile verdict is the honest floor,
+and the observable that would reopen it is a consumer-reported behavioral defect in a macro-mode wasm
+surface that the compile verdict passed. Mutation-verified
 red-first (three `generation/` wasm-boundary mutations each turned exactly the intended assertion class
 red; see the `src/emit_tests_wasm.rs` header).
 
