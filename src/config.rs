@@ -1077,6 +1077,10 @@ impl Config {
             }
         }
 
+        // Reuses the label map the duplicate check just built, which is what makes "targets a
+        // same-config crate" the SAME resolution the committed-state verdict performs.
+        self.validate_same_config_edges_are_deps(&by_lib)?;
+
         self.validate_runtime()?;
         // Separate from `validate_runtime` because it must run when there is no `[runtime]` table at
         // all: `export-static-crate` is an ordinary `Settings` key, so `[defaults]` alone reaches
@@ -1119,6 +1123,130 @@ impl Config {
                      the second would emit the same registrar call again — which \
                      `--json-schema-dep` rejects as one label under two mappings."
                 ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Inside one config, an edge onto a crate the SAME config generates is `deps` — and this is
+    /// where that standing rule stops being prose.
+    ///
+    /// # What goes wrong without it
+    ///
+    /// A crate that hand-spells a cross-crate path at a same-config crate, with no `deps` edge
+    /// behind it, is outside every convergence instrument at once and each for its own reason:
+    /// [`Convergence`] watches request SIDECARS and this crate neither reads nor writes one, the
+    /// convergence pass re-runs only the crates `Convergence` named, and [`Self::committed_verdict`]
+    /// walks `deps` edges and there is no edge. So the run exits 0 while the value it read was the
+    /// dependency's output MID-RUN: with an `extern-wrapper-index` at an index the dependency has
+    /// not populated yet, the consumer mints a wrapper class the dependency ends the same run
+    /// hosting too, and run 2 — reading the now-populated index — defers and writes different bytes.
+    /// `run twice = run once` is the property the convergence pass exists to make true, and this is
+    /// the one shape that reaches around all of it.
+    ///
+    /// Refused rather than repaired by inferring the edge: an inferred edge would put generation
+    /// ORDER and convergence membership under something the user never wrote, so the config's
+    /// declared graph would stop matching its effective one. Refused rather than warned because a
+    /// warning leaves the broken property reachable — exit 0, different bytes on run 2.
+    ///
+    /// # Which sub-tables, and why not the others
+    ///
+    /// The rule covers exactly the entries whose value is a PATH INTO ANOTHER CRATE'S OUTPUT — the
+    /// forward reads (`extern-import`, `component-extern-wit`, `extern-wrapper-index`) and the
+    /// reverse sidecar reads (`wrapper-requests`, `key-requests`). Those are the cross-crate reads a
+    /// same-config crate's own run can move underneath, which is the whole hazard above.
+    ///
+    /// The two NAME-valued sub-tables are deliberately NOT covered. `extern-wasm-crate` names a
+    /// cargo crate and `json-schema-dep` a rust module path emitted verbatim into generated code
+    /// (the split [`argv_fragments`] already draws, since neither is path-resolved): nothing of ours
+    /// moves underneath either, no index or sidecar is read, so no run of this config can make run 2
+    /// differ from run 1 through them. They also have a legitimate same-config population — a crate
+    /// whose spec carries a HAND-WRITTEN `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` stub for a type
+    /// another crate in this config happens to generate, which needs the wasm face named without an
+    /// extern-interface import; there `deps` is not merely unnecessary but refused, since the
+    /// `--extern-import` it derives collides with the stub
+    /// ([`validate_extern_import_stubs`]). The duplicate-wrapper exposure that population does carry
+    /// has its own remedy in the spec's own vocabulary (`@wasm_extern_companions`).
+    ///
+    /// The four cargo-manifest tables (`json-gen-dep`, `wasm-dep`, `rust-dep`, `component-dep`) are
+    /// out of scope for a different reason: they are keyed by cargo PACKAGE name rather than by a
+    /// library label, so they resolve through no label map, and a hand path-dep onto a same-config
+    /// crate's generated crate is an ordinary manifest fact that creates no cross-crate read.
+    ///
+    /// Also out of scope, and stated so a reader does not mistake it for an oversight: an entry
+    /// keyed by an out-of-config name whose VALUE path happens to point into a same-config crate's
+    /// output. Resolution here is by LABEL, exactly as the committed-state verdict resolves `deps`;
+    /// a mislabeled path entry is a different defect, and it announces itself in the generated `use`
+    /// lines, which carry the wrong crate name.
+    ///
+    /// Over MERGED settings, so a `[defaults]` or profile entry is judged against every crate it
+    /// reaches: the misconfiguration is per merged crate, not per layer. Pure input-side — the
+    /// config text and its own crate list — so nothing in the determinism contract is touched.
+    fn validate_same_config_edges_are_deps(
+        &self,
+        by_lib: &BTreeMap<String, &String>,
+    ) -> Result<(), String> {
+        for (name, entry) in &self.crates {
+            let settings = self.merged_settings(entry);
+            for (key, table) in [
+                ("extern-import", &settings.extern_import),
+                ("component-extern-wit", &settings.component_extern_wit),
+                ("extern-wrapper-index", &settings.extern_wrapper_index),
+            ] {
+                for label in table.keys() {
+                    // An out-of-config label is what these sub-tables are FOR, so it is the common
+                    // case and the one that walks past this check.
+                    let Some(target) = by_lib.get(label.as_str()) else {
+                        continue;
+                    };
+                    // The override population: a hand entry for a key a `deps` edge also derives is
+                    // the documented way to point one half of an edge somewhere else (a vendored
+                    // copy of a dependency's export). The edge exists, so the instruments see it.
+                    if entry.deps.iter().any(|dep| dep == *target) {
+                        continue;
+                    }
+                    return Err(format!(
+                        "[crates.{name}].{key} names `{label}`, which is `[crates.{target}]` in \
+                         this config. Inside one config an edge onto a crate the config itself \
+                         generates is `deps`: declare `deps = [\"{target}\"]` in `[crates.{name}]` \
+                         and drop the hand-spelled `{key}` entry — the config derives that value \
+                         from `{target}`'s own `output` and `lib-name`, and the edge becomes one \
+                         the convergence checks can see. Hand-spelled, it is invisible to them: the \
+                         path is read while `{target}` is still mid-run, so the run exits 0 and the \
+                         next one over the unchanged tree writes different bytes. A hand-spelled \
+                         `{key}` is for a dependency this config does NOT generate, whose committed \
+                         output cannot move underneath a run."
+                    ));
+                }
+            }
+
+            // The reverse direction: the key names a CONSUMER of this crate, so the edge that must
+            // exist is the consumer's, and the remedy is written in the consumer's table.
+            for (key, table) in [
+                ("wrapper-requests", &settings.wrapper_requests),
+                ("key-requests", &settings.key_requests),
+            ] {
+                for label in table.keys() {
+                    let Some(target) = by_lib.get(label.as_str()) else {
+                        continue;
+                    };
+                    if self.crates[*target].deps.iter().any(|dep| dep == name) {
+                        continue;
+                    }
+                    return Err(format!(
+                        "[crates.{name}].{key} names `{label}`, which is `[crates.{target}]` in \
+                         this config. Inside one config an edge onto a crate the config itself \
+                         generates is `deps`, and this edge belongs to the consumer: declare \
+                         `deps = [\"{name}\"]` in `[crates.{target}]` and drop the hand-spelled \
+                         `{key}` entry — the config derives that value from `{target}`'s own \
+                         `output`, and the edge becomes one the convergence checks can see. \
+                         Hand-spelled, it is invisible to them: the sidecar is read while \
+                         `{target}` is still mid-run, so the run exits 0 and the next one over the \
+                         unchanged tree writes different bytes. A hand-spelled `{key}` is for a \
+                         consumer this config does NOT generate, whose committed sidecar cannot \
+                         move underneath a run."
+                    ));
+                }
             }
         }
         Ok(())

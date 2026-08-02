@@ -2951,33 +2951,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   bracketing the run, so it has no before/after comparison for this to reach, and a spurious warning
   cannot become a spurious build failure.
 
-- **A crate whose `extern-wrapper-index` entry is HAND-WRITTEN, with no `deps` edge behind it, is
-  outside every convergence mechanism the config run has** — so a cold run leaves it a pass behind,
-  exits 0, and the next run over the unchanged tree produces different bytes. Reproduced, not
-  reasoned: three crates in one config — `core`; `ledger` with `deps = ["core"]`; and `observer`
-  spelling `extern-import` / `extern-wasm-crate` / `extern-wrapper-index` for `core` by hand and
-  declaring NO `deps`. On run 1 `core`'s index is still empty when `observer` consults it, so
-  `observer` mints `CoreThingList` locally; the convergence pass then re-runs `core` (triggered by
-  `ledger`'s sidecar) and `core` ends the run hosting `CoreThingList` too — two definitions of one
-  wasm class across the tree. Run 2 sees the populated index, `observer` defers, and
-  `gen/observer/wasm/src/generated/collections.rs` changes: *run twice ≠ run once*, which is the
-  property the convergence pass exists to make true. All three config-level instruments are blind by
-  construction and each for its own reason: `Convergence` watches request SIDECARS and `observer`
-  neither reads nor writes one; the convergence pass re-runs only crates `Convergence` named;
-  `Config::committed_verdict` walks `deps` edges, and there is no edge. Without `deps` there is also
-  no `--workspace-dep`, which is what would have made the deferral unconditional and index-independent.
-  The tool is not silent about the underlying fact — `try_defer_wrapper`'s local-mint warning fires on
-  run 1 and predicts exactly this ("a dep that later adds it would duplicate-symbol at link time") —
-  but nothing connects it to the run's exit or to the pass. Deliberately not fixed here: the fix is a
-  behavior change to which crates a config run treats as graph members, and it needs its own red-first
-  cell rather than a drive-by. Standing rule meanwhile: inside one config, an edge onto another crate
-  in the SAME config is declared with `deps`; the hand-written `extern-*` spelling is for a dependency
-  the config does not generate, where no index of ours can move underneath it. Reopening signal
-  (measurable by whoever has the problem, on the axis the cost sits on): a second `--config` run over
-  an unchanged tree leaves a non-empty `git diff` — the run-twice-equals-run-once property failing is
-  the observable, it needs no knowledge of any of this to notice, and the duplicate-symbol wasm link
-  error is its downstream form.
-
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates
   against a dep's committed `extern-interface/<dep>/**`, its dialect (header line, marker rows,
   `@rust_name` pins, `; unexported:` records) is cross-crate API: any change to what the emitter

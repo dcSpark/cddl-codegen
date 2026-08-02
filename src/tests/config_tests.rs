@@ -2797,6 +2797,141 @@ fn a_hand_written_entry_wins_over_the_derived_one() {
     );
 }
 
+/// A cross-crate PATH hand-spelled at a crate this same config generates, with no `deps` edge
+/// behind it, is refused at parse time — naming the crate, the key, and the `deps` remedy.
+///
+/// The shape is the one that reaches around every convergence instrument at once: no sidecar for
+/// `Convergence` to watch, no crate for the convergence pass to re-run, no edge for
+/// `committed_verdict` to walk. So the consumer reads the dependency's index while the dependency is
+/// still mid-run, mints a wrapper class the dependency ends the same run hosting too, and run 2 —
+/// reading the settled index — writes different bytes. `run twice = run once` is what the
+/// convergence pass exists to make true, and this is the only shape that gets underneath it.
+#[test]
+fn a_hand_spelled_edge_onto_a_same_config_crate_is_refused() {
+    let err = error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\n\
+         [crates.ledger.extern-wrapper-index]\ncore = \"gen/core/wasm/src/generated/collections.rs\"\n",
+    );
+    assert!(
+        err.contains("[crates.ledger].extern-wrapper-index"),
+        "the refusal must name the crate and the key the user wrote, got: {err}"
+    );
+    assert!(
+        err.contains("`[crates.core]`"),
+        "and the same-config crate the entry resolves to, got: {err}"
+    );
+    assert!(
+        err.contains("deps = [\"core\"]"),
+        "and carry the remedy as a line the user can paste, got: {err}"
+    );
+}
+
+/// The same refusal on a forward sibling and on a reverse key, so the rule is the family's rather
+/// than one key's — and the reverse remedy is INVERTED, because that edge belongs to the consumer.
+#[test]
+fn the_same_config_refusal_covers_both_edge_directions() {
+    let forward = error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\n\
+         [crates.ledger.extern-import]\ncore = \"gen/core/extern-interface/core\"\n",
+    );
+    assert!(
+        forward.contains("[crates.ledger].extern-import")
+            && forward.contains("deps = [\"core\"]")
+            && forward.contains("`[crates.ledger]`"),
+        "a forward edge is declared in the crate that HAS it, got: {forward}"
+    );
+
+    // The dependency hand-spelling the sidecar its consumer emits: the same illegal edge, seen from
+    // the other end, so the remedy names the CONSUMER's table.
+    let reverse = error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\n\
+         [crates.core.wrapper-requests]\nledger = \"gen/ledger/wasm/src/generated/borrowed_collections.rs\"\n",
+    );
+    assert!(
+        reverse.contains("[crates.core].wrapper-requests"),
+        "the refusal names the crate that wrote the key, got: {reverse}"
+    );
+    assert!(
+        reverse.contains("deps = [\"core\"]") && reverse.contains("`[crates.ledger]`"),
+        "but the remedy is the CONSUMER's edge, in the consumer's table, got: {reverse}"
+    );
+}
+
+/// A crate naming ITSELF is the same refusal rather than a special case: `deps` cannot hold a
+/// self-edge either (a crate's own types are already in its spec), so there is no legal edge for the
+/// entry to be an override of.
+#[test]
+fn a_sub_table_entry_naming_its_own_crate_is_refused() {
+    let err = error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\n\
+         [crates.core.extern-import]\ncore = \"gen/core/extern-interface/core\"\n",
+    );
+    assert!(
+        err.contains("[crates.core].extern-import") && err.contains("`[crates.core]`"),
+        "a self-targeting entry is refused naming the one crate twice, got: {err}"
+    );
+}
+
+/// A `[defaults]` entry is judged against every crate it MERGES INTO, not against the layer that
+/// wrote it: the misconfiguration is per merged crate. Attribution is deliberate — crates are walked
+/// in name order, so the first one whose merged settings carry the entry is the one reported, even
+/// though it never mentioned the key itself.
+#[test]
+fn a_defaults_layer_entry_is_refused_against_the_crate_it_reaches() {
+    let err = error(
+        "[defaults.extern-wrapper-index]\nledger = \"gen/ledger/wasm/src/generated/collections.rs\"\n\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n",
+    );
+    assert!(
+        err.contains("[crates.core].extern-wrapper-index"),
+        "the entry is reported against the merged crate, which is where it means something — and \
+         `core` is the first in name order, got: {err}"
+    );
+}
+
+/// The three populations the refusal must leave alone, each for its own reason.
+#[test]
+fn the_same_config_refusal_leaves_every_legal_spelling_alone() {
+    // 1. The override: a hand entry for a key a `deps` edge ALSO derives. The edge exists, so the
+    //    convergence instruments see it; the entry only redirects one half of it (a vendored copy of
+    //    the dependency's export). Its own pin is `a_hand_written_entry_wins_over_the_derived_one`.
+    parse(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n\n\
+         [crates.ledger.extern-import]\ncore = \"vendor/core-export\"\n\
+         [crates.core.wrapper-requests]\nledger = \"vendor/ledger-requests.rs\"\n",
+    );
+
+    // 2. An out-of-config label — what these sub-tables are FOR. `vendor_core` is nobody's
+    //    `lib-name` here, so nothing this config generates can move underneath the path.
+    parse(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\n\
+         [crates.core.extern-import]\nvendor_core = \"../vendor/extern-interface/vendor_core\"\n",
+    );
+
+    // 3. The two NAME-valued sub-tables, which are excluded by design: neither reads a file, so
+    //    neither can be read mid-run, and a crate whose spec carries a hand-written
+    //    `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/` stub for a type another crate here happens to generate
+    //    needs exactly this spelling — `deps` would derive an `--extern-import` that collides with
+    //    the stub. Non-vacuous: both keys really do resolve to `[crates.core]`'s label.
+    let by_name = expand_all(
+        "[defaults]\njson-schema-export = true\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\n\
+         [crates.ledger.extern-wasm-crate]\ncore = \"core_wasm\"\n\
+         [crates.ledger.json-schema-dep]\ncore = \"core_json_schema_gen\"\n",
+    );
+    assert_eq!(by_name["ledger"].extern_wasm_crate, vec!["core=core_wasm"]);
+    assert_eq!(
+        by_name["ledger"].json_schema_dep,
+        vec!["core=core_json_schema_gen"]
+    );
+}
+
 /// Generation order is a topological sort over `deps` with ties broken by crate name.
 ///
 /// The fixture discriminates on both halves at once: `alpha` must come after `zeta` despite sorting
@@ -3311,9 +3446,15 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
     );
 
     // A hand-written sub-table entry is the same conflict, attributed to the key that user typed.
+    // The edge is declared BOTH ways here on purpose: `core` is a crate this config generates, so a
+    // hand entry naming it without `deps` is refused by
+    // `a_hand_spelled_edge_onto_a_same_config_crate_is_refused` before this conflict is ever
+    // reached. With the edge declared, the hand entry is the documented override — it wins, and the
+    // stub conflict is what remains to be reported.
     let hand = write_config(
         "hand.toml",
-        "\n[crates.ledger.extern-import]\ncore = \"gen/core/extern-interface/core\"\n",
+        "deps = [\"core\"]\n\n[crates.ledger.extern-import]\ncore = \
+         \"gen/core/extern-interface/core\"\n",
     );
     let err = config::generate(&hand, &[], None, None)
         .expect_err("the same conflict declared by hand must be refused")
@@ -3321,6 +3462,13 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
     assert!(
         err.contains("[crates.ledger].extern-import"),
         "a hand-written entry is attributed to the flag-named key, got:\n{err}"
+    );
+    // Pinned so the assertion above cannot be satisfied by a DIFFERENT refusal that happens to name
+    // the same key: this test is about the stub collision, and only the stub collision names the
+    // directory it collides with.
+    assert!(
+        err.contains("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/core"),
+        "and it must be the stub conflict, not another refusal naming the same key, got:\n{err}"
     );
     assert!(
         !dir.join("gen").exists(),
