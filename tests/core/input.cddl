@@ -118,7 +118,9 @@ tagged_foo_bytes = #6.20(bytes .cbor foo)
 ; --- Every leaf under a `bytes .cbor <X>` overload reads the PAYLOAD's cursor ---
 ; The payload's decode runs against an `inner_de` built over the byte string's contents, so a leaf
 ; that names the outer reader instead consumes the next OUTER item and mis-frames everything after
-; it. Three leaf kinds did exactly that (`float64`/`float32`/`bool`, emitted as `<T>::deserialize`),
+; it. Three leaf kinds did exactly that (`float64`/`float32`/`bool`, emitted then as
+; `<T>::deserialize`; the two float leaves now read through `read_float_width`, whose reader
+; argument is the same mis-nameable slot),
 ; as did the indefinite-length break probe and the INLINED c-style-enum variant sweep — a c-style
 ; enum has no `Deserialize` impl of its own, so its try-each-variant sequence is emitted at the use
 ; site and its position save/restore plus each variant closure's argument must name the payload
@@ -476,11 +478,12 @@ nem_wire = { m: {+ uint => uint} }
 ; (f8 xx) are 2 and f16/f32/f64 are 3/5/9, so the emitted peek saves/restores the reader position
 ; around `special()` instead of rewinding a fixed width.
 nullable_bool = bool / null
-; --- the six float prelude names are six WIRE-ACCEPTANCE classes (RFC 8610 App. D over RFC 8949
-; §3.3) ---
-; Each name declares which float heads it admits; a head outside the set is a decode error, and a
-; fresh value is written at the declared width (narrowest admissible lossless one for the two union
-; names). Carriers: `f32` where every admitted head fits it, `f64` otherwise.
+; --- the six float prelude names are six VALUE classes (RFC 8610 §2.2.3: the `#7.x` notation is
+; about a set of values, not a serialization variant) ---
+; The names partition the float values by shortest lossless form, so a read accepts any head and
+; refuses a VALUE the class excludes, and a write emits the value's shortest form — which for a
+; member IS the declared width. Carriers: `f32` where every value in the class fits it, `f64`
+; otherwise.
 float_heads = [h: float16, u: float16-32, w: float32-64, s: float32, d: float64, f: float]
 
 nullable_float = float / null
