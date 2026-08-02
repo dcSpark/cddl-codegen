@@ -770,6 +770,15 @@ A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into th
 *wasm* crate and `cargo test`ed there (host target — the wasm-bindgen wrapper types are plain Rust,
 so no node/wasm-pack is needed).
 
+A hand fragment compiled under BOTH profiles (any `tests.rs` in a fixture that has default and
+preserve export crates) must bind union enum variants profile-invariantly: payload-carrying
+variants are tuple variants under the default profile and STRUCT variants under
+`--preserve-encodings` (per-variant encoding state), so tuple destructuring is E0164 in exactly one
+of the two crates. Use `matches!(v, Foo::Bar { .. })` plus emitted-byte assertions — see
+`tests/recursive-collection-ref/tests.rs`'s union-rooted vectors for the worked example, and
+[Output format](../docs/docs/output_format.mdx) § "Union (type-choice) enum variants change shape
+with the profile" for the user-facing statement.
+
 The spliced hand files (each dir's `tests.rs`/`tests_wasm.rs` and shared fragments like
 `tests/custom_serialization{,_preserve}`) are CONSUMER-shaped code: they compile against the
 generated crate's own dependency features, so they must model the post-reshape world (a dependency

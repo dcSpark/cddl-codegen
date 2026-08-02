@@ -32,6 +32,17 @@ The consuming set of a file is not "every descendant" but the descendants an unb
 
 So the tag / fixed-value encoding for these is emitted at each use site. A consequence worth knowing: a type of one of these kinds that is a root rule **referenced by nothing else** has no standalone (de)serialization, and can only be (de)serialized as part of a containing type.
 
+**Union (type-choice) enum variants change *shape* with the profile.** Under the default profile a
+payload-carrying variant is a **tuple** variant (`Md::Map(PairMap<Md, Md>)`); under
+`--preserve-encodings` every payload-carrying variant additionally holds its per-variant encoding
+state, so the same variant is a **struct** variant (`Md::Map { map, map_encoding, .. }`). Code
+written to compile against a generated crate in *either* profile (a downstream consumer supporting
+both, or hand-written test fragments spliced into both export crates) should therefore bind
+variants profile-invariantly: match with braced patterns (`matches!(v, Md::Map { .. })`) or go
+through the emitted methods/serialized bytes, never tuple-destructure
+(`Md::Map(m)` compiles in one profile and is E0164 in the other). Variant *names* and their wire
+behavior are identical across profiles — only the binding shape differs.
+
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
 
 ## Type spelling at member positions
