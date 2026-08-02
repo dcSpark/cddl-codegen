@@ -1381,9 +1381,31 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   only in `--wrapper-requests`/`--workspace-dep` output (the requested-collections sidecar) reaches
   consumers before any gate — a detector-coverage cousin of the input-poverty sub-class ledgered in
   the flag-powerset entry (there the swept input lacks the shape; here the scanning gate lacks the
-  flag). Named layer: apply the same unused-import/variable stderr scan to the nested `cargo check`
-  output the workspace-requests/extern-deps e2e gates already capture — near-zero added cost, and
-  it closes that family's blind spot without new cells. Proven instance of exactly that blind spot
+  flag). That family is now scanned where the crate under cargo is 100% generated:
+  `assert_no_unused_generated_warnings` runs both scans over the nested cargo stderr the
+  workspace-requests gates already capture — `workspace_requests_hosts_cross_scope_elements`
+  (facet-1 wasm check), `workspace_requests_cohosted_keys_list_no_self_import` (wasm check) and
+  `workspace_requests_hosts_borrowed_wrappers` (both wasm32 builds) — at no added cargo cost.
+  Wiring the REMAINING capture sites (the `extern_deps` family, which reaches cargo through
+  `run_test`) is blocked behind two things, in order. First an EMISSION defect the wiring probe
+  proved: a generated root `src/generated/mod.rs` emits `use serialization::*;` that rustc reports
+  unused — verbatim `warning: unused import: `serialization::*``, at
+  `tests/extern-deps/export/rust/src/generated/mod.rs:81`,
+  `tests/extern-deps-non-preserve/…:55`, `tests/extern-deps-wasm/…:63` and, decisively, plain
+  `tests/multifile/export/rust/src/generated/mod.rs:59`, so the class is MULTIFILE-shaped rather
+  than cross-crate-flag-specific. It reproduces at both capture sites of each fixture (the rust
+  `cargo test` and the wasm `cargo build`/`test`) and is committed in the fixture export trees, so
+  it is greppable without running anything. This is consumer-visible build noise, not an internal
+  fixture wart: every consumer of a multifile-shaped spec gets the same `unused import` warning on
+  every build of their regenerated crate. Probed against the 13 enumerated
+  workspace-requests/extern-deps gates' capture sites; NOT probed against consumer regens or
+  against other multifile fixtures. Two things in the same stderr are NOT this finding: the
+  documented `Serialize` trait residue (already exempted by the scan) and the warnings from
+  `tests/extern-dep-crate/src/*`, which is hand-written stand-in code rather than generator output.
+  Second, once the emission is fixed, the `run_test` sites need a generated-files-only restriction
+  before the scan can be wired there at all — those crates carry hand-appended `tests.rs`/
+  `deser_test` modules and path deps on hand-written crates, whose warnings the raw line scan
+  cannot tell from the generator's. Proven instance of exactly the blind spot the scanning covers
   (2026-07-22, consumer-reported, fixed class-level): the used-ident scan counted `::`-path-tail
   segments (`cml_chain::assets::Coin` counting `assets`), which collide with the parent's `pub mod`
   defs, so `super_glob_needed` conservatively kept the sidecar's dead `use super::*;`; the

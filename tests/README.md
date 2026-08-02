@@ -2590,6 +2590,15 @@ warning-severity under-prune (or unused-binding emission) the compile-error gate
 over-prune only) cannot see. The scan is versioned into the gate-cache key via a
 `lint=unused-imports-v3` marker so a change to its verdict re-runs every cached cell.
 
+The corpus cells never generate under the cross-crate workspace flags, so the same two scans also
+run — through `assert_no_unused_generated_warnings` — over the nested cargo stderr the
+workspace-requests gates already capture: `workspace_requests_hosts_cross_scope_elements`,
+`workspace_requests_cohosted_keys_list_no_self_import` and
+`workspace_requests_hosts_borrowed_wrappers`. That is where the requested-collections sidecar's own
+imports are first observable. The call shape is restricted to crates that are 100% generated; the
+`run_test` fixture crates carry hand-appended test modules and hand-written path deps, so the raw
+line scan cannot attribute their warnings and is deliberately not wired there.
+
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
 
