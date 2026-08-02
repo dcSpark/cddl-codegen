@@ -3904,7 +3904,12 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   hand → pin as a matrix row if the matrix can express the cell, else a `tests/robustness/*.cddl`
   fixture → ledger it in `cddl-matrix/ROADMAP.md` § findings → add the ledger entry citing the
   pin). Every ledger entry cites a committed pin AND is asserted actually observed (stale-pin
-  guard), and key SHAPE is floor-gated (`ledger_key_shape_floor`, always-on): panic-ledger keys must
+  guard). The CITATION is guarded too, by `known_panic_classes_cite_fixtures_that_produce_them`
+  (always-on, same tier): it generates each `tests/**/*.cddl` fixture an entry cites and requires at
+  least one to produce that entry's substring, so a citation that resolves while naming the wrong
+  site — the shape no citation lint can see — is a red test rather than a mislead during triage. An
+  entry citing no runnable fixture fails there as well, since prose alone leaves the claim
+  uncheckable. Key SHAPE is floor-gated (`ledger_key_shape_floor`, always-on): panic-ledger keys must
   lead with message text — a file/function-only key would silently absorb every future distinct
   panic class at that site — and layer-2 known-bad keys must carry a desc-axis label so a generic
   word cannot absorb unrelated compositions. Graceful rejections are the designed boundary, tallied
