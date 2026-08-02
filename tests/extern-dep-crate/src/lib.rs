@@ -2,10 +2,21 @@ use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 use cbor_encodings::ExternCrateFooEncoding;
 
+// `alloc` is what the SHIPPED runtime files below spell (the generated crate is no_std-capable),
+// so the two `static/` copies are carried VERBATIM rather than re-pathed to `std::` — one less
+// hand transformation to keep in sync when the runtime changes.
+extern crate alloc;
+
 pub mod cbor_encodings;
 pub mod error;
 pub mod non_empty;
+// The restricted-map and reject-set runtime twins, carried for the same reason `non_empty` is:
+// a consumer pointing `--common-import-override` at a dependency resolves EVERY runtime type
+// through it, so a dependency that hosts wrappers over `{+ k => v}` / `@duplicates reject`
+// shapes must publish these modules exactly as a generated dependency crate would.
+pub mod non_empty_map;
 pub mod ordered_hash_map;
+pub mod ordered_set;
 pub mod serialization;
 pub mod sub;
 

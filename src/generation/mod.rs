@@ -836,6 +836,10 @@ impl GenerationScope {
                                 cli,
                             );
                         } else if cli.wasm && !anon {
+                            // A rule-declared LOOSE table never reaches `try_defer_wrapper` (both
+                            // mints below are `exists_in_rust` paths), so the one thing the defer
+                            // seam would have said about a dep-indexed name has to be said here.
+                            self.warn_rule_declared_table_shadows_index(rust_ident);
                             let map_ident = ConceptualRustType::name_for_wasm_map(
                                 domain,
                                 range,

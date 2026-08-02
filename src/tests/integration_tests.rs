@@ -12011,6 +12011,272 @@ fn extern_wrapper_index_defers_to_dep() {
     );
 }
 
+/// Generate `tests/extern-deps-index-named/<inputs>` into `export_<label>` under the
+/// `--extern-wrapper-index` flag family, wire the committed wasm-clean dep pair into both generated
+/// manifests, and return `(export dir, generation stderr)`. Shared by the two named-reference cells
+/// below so the flag list and the manifest wiring cannot drift between them.
+///
+/// `extra` carries the per-cell profile. The named-reference cell generates at the DEFAULT profile —
+/// the one the defect was found under — while the deferred-source cell adds
+/// `--preserve-encodings=true`, because a cross-crate MAP conversion resolves against the hand dep
+/// pair's `From<MapU64ToIdxFoo> for OrderedHashMap<..>` contract, i.e. the preserve flavor (the same
+/// reason `extern_wrapper_index_defers_to_dep` generates preserve).
+fn generate_index_named_fixture(
+    inputs: &str,
+    label: &str,
+    extra: &[&str],
+) -> (std::path::PathBuf, String) {
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests/extern-deps-index-named").unwrap();
+    // gitignored (tests/*/export*/); regenerated each run.
+    let export = test_path.join(format!("export_{label}"));
+    let _ = std::fs::remove_dir_all(&export);
+    let generate = codegen_cmd()
+        .arg(format!("--input=tests/extern-deps-index-named/{inputs}"))
+        .arg(format!("--output={}", export.display()))
+        .arg("--wasm=true")
+        .args(extra)
+        .arg("--common-import-override=index_dep_crate")
+        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+        .arg("--extern-wrapper-index=index_dep_crate=tests/index-dep-crate-wasm/src/collections.rs")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&generate.stderr).into_owned();
+    if !generate.status.success() {
+        eprintln!("generate stderr:\n{stderr}");
+    }
+    assert!(generate.status.success());
+    append_manifest_deps(
+        &export.join("rust/Cargo.toml"),
+        &["index-dep-crate = { path = \"../../../index-dep-crate\" }"],
+    );
+    append_manifest_deps(
+        &export.join("wasm/Cargo.toml"),
+        &[
+            "index-dep-crate = { path = \"../../../index-dep-crate\" }",
+            "index-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }",
+        ],
+    );
+    (export, stderr)
+}
+
+/// The compile floor shared by the two named-reference cells: `cargo check` of the generated
+/// CONSUMER wasm crate with the dep pair linked in, memoized per generated-crate content hash so a
+/// re-run after an unrelated change costs a cache lookup. This is the failure class the cells exist
+/// for — a wrapper reference whose import was never routed is E0425 here and nowhere else.
+fn index_named_wasm_check(gate: &str, export: &std::path::Path) {
+    use std::path::PathBuf;
+    let mut failure = None;
+    let outcome = gate_cache::run_cached(
+        gate,
+        "consumer-wasm-check",
+        export,
+        &[
+            PathBuf::from("rust/Cargo.toml"),
+            PathBuf::from("wasm/Cargo.toml"),
+        ],
+        &["cargo".to_owned(), "check".to_owned()],
+        || {
+            let check = tool_cmd("cargo")
+                .arg("check")
+                .current_dir(export.join("wasm"))
+                .output()
+                .unwrap();
+            if !check.status.success() {
+                failure = Some(String::from_utf8_lossy(&check.stderr).into_owned());
+            }
+            check.status.success()
+        },
+    );
+    assert!(
+        outcome.success(),
+        "the consumer wasm crate must compile\n{}",
+        failure.unwrap_or_default()
+    );
+}
+
+/// The NAMED-RULE reference position under `--extern-wrapper-index` — the position every inline pin
+/// misses, and the one the two reference paths used to disagree on. A user rule whose ident
+/// COINCIDES with a structural wrapper name the dep's index lists, referenced from a record field by
+/// RULE NAME only, took a walk arm (`mark_refs`' transparent-alias arm plus `set_ref`) that never
+/// consulted the deferred map: the mint side suppressed the class, no import was routed, and the run
+/// exited 0 with empty stderr over a wasm crate that failed `cargo check` with E0425 — exit-0 with a
+/// non-compiling crate, the class the honesty invariants exist to make loud.
+///
+/// The shipped resolution makes the two positions AGREE (the named path consults `deferred` exactly
+/// as the structural Array/Map arms do) and says so on stderr, which is what this cell pins, one
+/// assertion per flavor:
+///
+/// * ARRAY flavor (`idx_foo_list = [* idx_foo]`) — the rule reaches `try_defer_wrapper`, which keeps
+///   deferring it, so no local class exists and the by-name reference must import the dep's. The
+///   UNIFICATION is the user-visible consequence (their rule name now resolves to the dependency's
+///   class on the wasm surface), so it is warned rather than performed silently.
+/// * TABLE flavor (`map_u64_to_idx_foo = {* uint => idx_foo}`) — a rule-declared loose table never
+///   reaches `try_defer_wrapper` at all (the `exists_in_rust` screen), so the consumer's own class is
+///   minted and re-exported under a name the dep's index also lists. That behavior is unchanged and
+///   asserted deliberately here; what is new is the stderr warning, because the configuration is a
+///   duplicate `#[wasm_bindgen]` symbol whenever both crates are linked into one cdylib. The link
+///   failure itself is already demonstrated by `extern_wrapper_index_defers_to_dep`'s RED leg, so
+///   this cell spends no wasm32 build on it — the warning assertion is its teeth.
+///
+/// Bespoke harness (not `run_test`) for the same reason as its `--extern-wrapper-index` sibling: the
+/// stderr texts are half the contract.
+#[test]
+fn extern_wrapper_index_named_rule_reference_unifies_with_dep() {
+    let (export, gen_stderr) = generate_index_named_fixture("inputs_named", "named", &[]);
+
+    // ARRAY flavor: the unification warning names the rule's type, the dependency, and the remedy.
+    assert!(
+        gen_stderr.contains(
+            "warning: rule-declared type IdxFooList names the collection wrapper dependency \
+             \"index_dep_crate\" lists in its --extern-wrapper-index"
+        ),
+        "expected the unification warning for IdxFooList, got stderr:\n{gen_stderr}"
+    );
+    assert!(
+        gen_stderr.contains("every reference to the rule resolves to index_dep_crate's IdxFooList"),
+        "the unification warning must say which class the rule now resolves to:\n{gen_stderr}"
+    );
+    // TABLE flavor: the local-mint warning names the duplicate-symbol consequence and the remedy.
+    assert!(
+        gen_stderr.contains(
+            "warning: rule-declared table MapU64ToIdxFoo is minted locally, but dependency \
+             \"index_dep_crate\" also lists MapU64ToIdxFoo in its --extern-wrapper-index"
+        ),
+        "expected the local-mint warning for MapU64ToIdxFoo, got stderr:\n{gen_stderr}"
+    );
+    assert!(
+        gen_stderr.contains("duplicate-symbol when linked into one cdylib"),
+        "the local-mint warning must state the duplicate-symbol consequence:\n{gen_stderr}"
+    );
+
+    let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
+    let wasm_index =
+        std::fs::read_to_string(export.join("wasm/src/generated/collections.rs")).unwrap();
+    // ARRAY flavor: no local class, and the by-name reference routes the dep import into the
+    // module holding the referencing struct (root here — the class lives nowhere locally, so the
+    // same-scope no-op that `set_ref` applies to a local ident must not apply).
+    assert!(
+        !wasm_mod.contains("pub struct IdxFooList"),
+        "a rule-declared wrapper the dep's index lists must stay deferred (no local class):\n{wasm_mod}"
+    );
+    assert!(
+        wasm_mod.contains("use index_dep_crate_wasm::collections::IdxFooList;"),
+        "the NAMED-rule reference must route the deferred wrapper's import (E0425 otherwise):\n{wasm_mod}"
+    );
+    assert!(
+        !wasm_index.contains("IdxFooList"),
+        "a deferred wrapper must be excluded from the consumer's own collections.rs (R3e)"
+    );
+    // TABLE flavor: local class + own-index row, i.e. the configuration the warning describes.
+    assert!(
+        wasm_mod.contains("pub struct MapU64ToIdxFoo"),
+        "a rule-declared loose table keeps the consumer's own class:\n{wasm_mod}"
+    );
+    assert!(
+        wasm_index.contains("MapU64ToIdxFoo"),
+        "the locally-minted table must appear in the consumer's own collections.rs index"
+    );
+
+    index_named_wasm_check(
+        "extern_wrapper_index_named_rule_reference_unifies_with_dep",
+        &export,
+    );
+}
+
+/// The two deferred-`try_from`-SOURCE cells the named-reference fixture cannot hold, batched into
+/// one generated crate (one compile floor for both) because they need the SAME thing of it: no local
+/// owner for the loose `MapU64ToIdxFoo` / `IdxFooList` the dep's index lists.
+///
+/// * MAP-side deferred source (`nb_foo_map = {+ uint => idx_foo}`): the restricted wrapper's ident
+///   differs from the structural name, so it is the consumer's own class and is minted locally,
+///   while its `try_from` source is the LOOSE `MapU64ToIdxFoo` — dep-indexed, so the source mint
+///   defers and the conversion borrows the dep's class. The list flavor of this seam has two cells
+///   in `extern_wrapper_index_defers_to_dep`; the MAP flavor had none in any mode, because no
+///   committed mode fixture spelled a `{+ k => v}` at all.
+/// * The SOLE-OWNER-SCREENED variant of the same seam (`text_table` / `nb_text_table`): the loose
+///   `MapU64ToText` shape has a sole table-rule owner, so the `try_from` source is that owner's local
+///   `pub type MapU64ToText = TextTable;` alias and is NEVER deferred — even though the dep's index
+///   lists MapU64ToText too. The screen inside `register_deferred_non_empty_map_source` is what
+///   keeps a dep import out of this case; without it the alias and the import contend for one name.
+/// * REJECT set over dep-owned elements (`reject_foos = [* idx_foo] ; @duplicates reject`): the
+///   participation fact, asserted rather than assumed — a reject wrapper can never defer (its
+///   emitter reaches no defer seam), so it is minted locally AND recorded in this crate's own
+///   collection index, while its loose `IdxFooList` source IS deferred and its import routed at the
+///   rule's own emission scope (nothing else in the spec spells a loose `[* idx_foo]`, so that
+///   routing is the only thing that can produce the `use`).
+#[test]
+fn extern_wrapper_index_deferred_try_from_sources() {
+    let (export, gen_stderr) =
+        generate_index_named_fixture("inputs_sources", "sources", &["--preserve-encodings=true"]);
+    // No rule here claims a name the dep's index lists, so neither named-reference warning fires.
+    assert!(
+        !gen_stderr.contains("rule-declared"),
+        "no rule in this fixture claims a dep-indexed name; got stderr:\n{gen_stderr}"
+    );
+
+    let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
+    let wasm_index =
+        std::fs::read_to_string(export.join("wasm/src/generated/collections.rs")).unwrap();
+
+    // MAP-side deferred source: local restricted class, deferred loose source, routed import.
+    assert!(wasm_mod.contains("pub struct NbFooMap"));
+    assert!(
+        !wasm_mod.contains("pub struct MapU64ToIdxFoo"),
+        "the deferred map source must NOT be re-minted locally:\n{wasm_mod}"
+    );
+    assert!(
+        wasm_mod.contains("pub fn try_from(map: &MapU64ToIdxFoo)"),
+        "NbFooMap::try_from must take the dep's deferred MapU64ToIdxFoo:\n{wasm_mod}"
+    );
+    assert!(
+        wasm_mod.contains("use index_dep_crate_wasm::collections::")
+            && wasm_mod.contains("MapU64ToIdxFoo"),
+        "the deferred map source's import must be routed at the restricted wrapper's scope"
+    );
+    assert!(
+        !wasm_index.contains("MapU64ToIdxFoo"),
+        "a deferred source must be excluded from the consumer's own collections.rs"
+    );
+
+    // Sole-owner-screened variant: the source is the local alias, never a dep import.
+    assert!(
+        wasm_mod.contains("pub type MapU64ToText = TextTable;"),
+        "the sole owner of the loose shape must expose it as a local alias:\n{wasm_mod}"
+    );
+    assert!(
+        wasm_mod.contains("pub fn try_from(map: &MapU64ToText)"),
+        "NbTextTable::try_from must take the sole owner's local alias:\n{wasm_mod}"
+    );
+    assert!(
+        !wasm_mod.contains("collections::MapU64ToText")
+            && !wasm_mod.contains("MapU64ToText};")
+            && !wasm_mod.contains("MapU64ToText,"),
+        "a sole-owned loose shape must never import the dep's class of the same name:\n{wasm_mod}"
+    );
+
+    // Reject set: local wrapper + own-index row (it can never defer), deferred loose source.
+    assert!(wasm_mod.contains("pub struct RejectFoos"));
+    assert!(
+        wasm_index.contains("RejectFoos"),
+        "a reject set can never defer, so it is always recorded in this crate's own index"
+    );
+    assert!(
+        !wasm_mod.contains("pub struct IdxFooList"),
+        "the reject set's loose try_from source must NOT be re-minted locally:\n{wasm_mod}"
+    );
+    assert!(
+        wasm_mod.contains("pub fn try_from(list: &IdxFooList)"),
+        "RejectFoos::try_from must take the dep's deferred IdxFooList:\n{wasm_mod}"
+    );
+    assert!(
+        wasm_mod.contains("IdxFooList"),
+        "the deferred loose source's import must be routed at the reject rule's scope"
+    );
+
+    index_named_wasm_check("extern_wrapper_index_deferred_try_from_sources", &export);
+}
+
 /// The not-in-index warning's rule line is documented as the exact PASTE-ABLE manual override, and a
 /// FLAVORED shape is where that contract earns its keep: a `@duplicates preserve` table's structural
 /// wasm name encodes its container (`PairMapKToV`), so a rule declared in the dep WITHOUT the

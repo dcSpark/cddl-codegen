@@ -6,7 +6,9 @@
 // `--common-import-override=index_dep_crate` at it) and defines one plain extern type `IdxFoo`,
 // serialized as a bare uint and Hash+Ord so it works as an `OrderedHashMap` KEY as well as a value.
 // Its wasm wrapper and the collection wrappers live in `index-dep-crate-wasm`.
-pub use extern_dep_crate::{error, non_empty, ordered_hash_map, serialization};
+pub use extern_dep_crate::{
+    error, non_empty, non_empty_map, ordered_hash_map, ordered_set, serialization,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IdxFoo {

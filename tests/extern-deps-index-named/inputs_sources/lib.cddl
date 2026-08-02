@@ -1,0 +1,29 @@
+; Consumer spec for the two deferred-`try_from`-SOURCE cells the named-reference fixture cannot
+; hold: `map_u64_to_idx_foo` is deliberately NOT declared here, so the loose `MapU64ToIdxFoo` has no
+; local owner and stays a defer candidate.
+;
+; (1) MAP-side deferred source. The rule ident differs from the restricted structural name
+;     (`NbFooMap` vs `NonEmptyMapU64ToIdxFoo`), so the restricted class is the consumer's own and is
+;     minted locally — while its `try_from` source is the LOOSE `MapU64ToIdxFoo`, which the dep's
+;     index lists, so the source mint DEFERS and the conversion resolves against the dep's class.
+;     The `try_from(&MapU64ToIdxFoo)` reference is conversion-internal (invisible to the field
+;     walk), so its `use` can come ONLY from the emission-scope routing.
+nb_foo_map = { + uint => idx_foo }
+
+; (2) The SOLE-OWNER-SCREENED variant of the same seam. `text_table` is the sole table rule of the
+;     `{* uint => text}` shape, so the loose builder is ITS class exposed as a `pub type
+;     MapU64ToText = TextTable;` alias — never a deferred class, even though the dep's index also
+;     lists MapU64ToText. `nb_text_table`'s `try_from` source must therefore be the LOCAL alias with
+;     no dep import: the screen in `register_deferred_non_empty_map_source` is what keeps it so.
+text_table = { * uint => tstr }
+
+nb_text_table = { + uint => tstr }
+
+; (3) REJECT set over dep-owned elements. A `@duplicates reject` wrapper can never defer (its
+;     emitter consults no defer seam), so `RejectFoos` is minted locally and recorded in this
+;     crate's own collection index — while its loose `try_from` source IS the dep-indexed
+;     `IdxFooList`, which defers. No other rule here spells a loose `[* idx_foo]`, so the source's
+;     `use` can come ONLY from the reject rule's own emission-scope routing.
+reject_foos = [* idx_foo] ; @duplicates reject
+
+holder = [a: nb_foo_map, b: text_table, c: nb_text_table, d: reject_foos]
