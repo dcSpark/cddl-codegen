@@ -2778,11 +2778,18 @@ it fallible) plus an inner-value getter (`get`, or the `@newtype <name>` rename)
 is built through that public `new` — its minted inner rendered by the same ctor-arg machinery and (for a
 primitive inner) read back through the getter against the minted literal. A wrapper CTOR ARG is instead
 built via its `From<cddl_lib::Native>` impl (a convenience — the wrapper's own `new` is covered by its
-top-level entry test); if the inner is unmintable (extern/raw-bytes) the entry type falls back to
+top-level entry test); if the inner has no wasm build the entry type falls back to
 decoding the rust twin's bytes with a loud skip of the ctor differential. A wrapper COLLECTION arg
 (`FooList`/`FooMap`/`&Nums`) is a `new`/`add`/`insert` block expression. **Loud skips (never silent):**
-extern / raw-bytes ctor args (and the same-class wrapper-entry ctor differential), and the whole module under any
-`--wasm-*-macro` flag (those replace the wrapper method surface) — each an `eprintln!`. (Optional-nullable
+a ctor arg with no wasm build (a name-erased wrapper collection, a `Fixed`/`Alias`/`any` inner) and
+the same-class wrapper-entry ctor differential, plus the whole module under any
+`--wasm-*-macro` flag (those replace the wrapper method surface) — each a `crate::warn!` to stderr.
+**Extern / raw-bytes never reach this renderer at all**, so their skip is the RUST half's, not this
+one's: the shared minter (`emit_tests::mint_struct`) produces no `MintValue` for
+`RustStructType::Extern` (other than the reserved `Int`) or `RustStructType::RawBytesType`, so a type
+with such a ctor arg — or a wrapper around one — fails to mint upstream and is dropped with the rust
+half's own loud "not cheaply mintable" warn. The extern/raw-bytes arms in `emit_tests_wasm.rs` are
+defensive backstops, unreachable at HEAD. (Optional-nullable
 flatten points need no skip: optional fields are not ctor args, so no mint constructs a present-null
 state — the three-state surface is covered by the hand-written `tests/nullable-wasm/` fixture.) The
 macro-mode skip is a **decided posture, not a gap** (2026-08-03): those flags replace the wrapper

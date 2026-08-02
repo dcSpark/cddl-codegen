@@ -38,9 +38,19 @@
 //!
 //! **Loud skips (never silent):** every shape this renderer can't faithfully express emits a
 //! `crate::warn!("cddl-codegen --emit-tests: ...")` — stderr, visible at the default verbosity — and
-//! is dropped: extern / raw-bytes ctor args
-//! (user-supplied types with no generated conversion) and the macro-API flag configurations (whole
-//! module). Optional-nullable flatten points need no skip: optional fields are not ctor args, so no
+//! is dropped: a ctor arg with no wasm build (a wrapper collection past a name-erasing point, a
+//! `Fixed`/`Alias`/`any` inner) and the macro-API flag configurations (whole module).
+//!
+//! **Where the extern / raw-bytes skip actually lives: the RUST half, not here.** The SHARED minter
+//! (`emit_tests::mint_struct`) returns `None` for `RustStructType::Extern` (other than the reserved
+//! `Int`) and `RustStructType::RawBytesType`, and `materialize_at` mints no `Rust(ident)` at all, so
+//! NO `MintValue` for those classes exists anywhere. A type with an extern/raw-bytes ctor arg — or a
+//! wrapper around one — therefore fails to mint upstream and is dropped with the rust half's own
+//! loud warn ("… not cheaply mintable") before this renderer is reached. The extern/raw-bytes arms
+//! below are defensive backstops that fire only if the minter ever learns those classes; they are
+//! unreachable at HEAD, so nothing in this module observes an extern value today.
+//!
+//! Optional-nullable flatten points need no skip: optional fields are not ctor args, so no
 //! mint ever constructs a present-null state (the three-state write/read surface is covered by the
 //! hand-written `tests/nullable-wasm/` fixture instead). The hand-written `tests/<dir>/tests_wasm.rs`
 //! covers the collection/wrapper shapes as a plausibility cross-check.
@@ -406,7 +416,10 @@ fn wasm_named(
         | RustStructType::Array { .. } => {
             Some(format!("{name}::from({})", rust_scoped(mv, scoped)))
         }
-        // extern / raw-bytes reference user-supplied types with no generated conversion to lean on
+        // extern / raw-bytes reference user-supplied types with no generated conversion to lean on.
+        // Defensive backstop, unreachable at HEAD: the shared minter never produces a `MintValue`
+        // for these classes (see the module header), so the enclosing type is dropped rust-side —
+        // loudly — before any `mv` can arrive here.
         RustStructType::Extern | RustStructType::RawBytesType => {
             crate::warn!(
                 "cddl-codegen --emit-tests: no wasm build for {name} ctor arg (extern/raw-bytes — user-supplied type)"
@@ -784,8 +797,11 @@ fn wasm_wrapper_roundtrip(
 
     // Build the inner value through the SAME ctor-arg machinery the wrapper's `new(inner)` param uses
     // (`wasm_arg` applies the by-ref/`&` boundary of `for_wasm_param`). When the inner has no faithful
-    // wasm build (extern / raw-bytes class), fall back to decoding the rust twin's bytes with a loud
-    // skip of the ctor differential — the wire round-trip still runs.
+    // wasm build, fall back to decoding the rust twin's bytes with a loud skip of the ctor
+    // differential — the wire round-trip still runs. Reachable for a name-erased wrapper collection
+    // or a `Fixed`/`Alias`/`any` inner; NOT for the extern/raw-bytes class the message names, which
+    // fails the shared mint upstream and never reaches here (see the module header). The message
+    // keeps its wording as the backstop's, since it is what a future extern-minting change would hit.
     let Some(inner_expr) = wasm_arg(types, inner, wrapped, scoped, cli) else {
         crate::warn!(
             "cddl-codegen --emit-tests: no wasm ctor build for {name} (inner is extern/raw-bytes); building via from_cbor_bytes, ctor differential skipped"

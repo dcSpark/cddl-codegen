@@ -985,10 +985,20 @@ composition-space cross-check that complements this matrix's curated per-shape g
   the leg's axis refinements live in that entry.
 - **Mint the extern / raw-bytes ctor-arg wasm-surface class (or declare it permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) fall back to the compile
-  verdict with loud skips today (the list: `tests/README.md` § "wasm-crate test module"). Minting
-  them means extending the def-splice the compile gate already does for `rawbytes` cells
-  (`append_raw_bytes_defs`) to ctor-arg minting. Either close the class or record compile-verdict
-  fallback as the permanent posture and prune this item.
+  verdict today, with the loud skip on the RUST side of the emitted-test surface (`tests/README.md`
+  § "wasm-crate test module" states where it lives and why). The cost is **not** the def-splice the
+  compile gate does for `rawbytes` cells (`append_raw_bytes_defs`): that appends user definitions
+  into the generated crate AFTER generation so it COMPILES, while the mint decision is taken during
+  generation off the IR struct variant — `emit_tests::mint_struct` yields no `MintValue` for
+  `RustStructType::Extern` (other than the reserved `Int`) or `RustStructType::RawBytesType`, so no
+  splice can change the answer. Minting therefore means teaching the shared minter to construct a
+  user-supplied type, which needs a user-supplied hint: the raw-bytes class has a generator-knowable
+  door (`RawBytesEncoding::from_raw_bytes`) but no generator-knowable accepted LENGTH (the in-repo
+  `PubKey` fixture takes exactly 32 bytes and rejects everything else), and the extern class has no
+  contract at all. That is a feature (a mint-hint directive, its own red-first vectors, a
+  `docs/docs/` note), not test infrastructure. Either fund that or record compile-verdict fallback as
+  the permanent posture — on the same reasoning as the macro modes, that the assertion would judge a
+  hand-written fixture type rather than the generator — and prune this item.
 
 ## Explicitly out of scope (decided, not overlooked)
 
