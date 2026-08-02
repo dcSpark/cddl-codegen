@@ -22,6 +22,12 @@
  *   --refresh-fuzz  re-run fuzz/generate.sh before the fuzz compile-rot check even if generated/ exists.
  *   --cache-transparency  enable the flag-gated `verify_cache_transparency` full-tier gate (two verify
  *                   runs — cached vs GATE_CACHE=0 — asserted byte-identical; otherwise SKIPPED).
+ *   --only <a,b>    run ONLY these gates, in registry order, among the named tier's in-tier set
+ *                   (`--only a,b` or `--only=a,b`). A selected run is NEVER a tier run: the full
+ *                   registry still prints with the deselected gates as `NOT RUN (--only)`, the
+ *                   SUMMARY header says PARTIAL, the self-log is `check-only-<stamp>.log` (outside
+ *                   every tier median), and the last line is a receipt, not the tier verdict. Cite
+ *                   it as "gates X, Y ran green" — never as a tier verdict. See "GATE SELECTION".
  *
  * CONCURRENCY: gates run one at a time UNLESS the registry says otherwise. A gate may declare a
  * `concurrent` group; gates in the same group, contiguous in the registry, run as one batch with at
@@ -41,7 +47,8 @@
  * mid-run. `CHECK_SKIP_PREFLIGHT=1` bypasses both floors; `fast` (CI) is untouched.
  *
  * LOGGING: every run tees its FULL output to a timestamped `draft/logs/check-<tier>-<stamp>.log`
- * (path printed at start and end) — evidence preservation is the tool's job, not a piping habit.
+ * (`check-only-<stamp>.log` for a `--only` run — a name outside the tier regex on purpose, see
+ * "GATE SELECTION"; path printed at start and end) — evidence preservation is the tool's job, not a piping habit.
  * Never pipe a run through `tail`/`grep` as its only capture; cite the printed log path instead.
  *
  * NETWORK: local/full runs start with a retried `cargo fetch` warm-up (workspace + fuzz +
@@ -51,14 +58,18 @@
  * CHECK_ONLINE=1 skips the offline forcing; a pre-set CARGO_NET_OFFLINE=true skips the fetch.
  * The fast tier (CI) is untouched.
  *
- * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs three meta-checks
+ * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs five meta-checks
  * so a new gate that nobody registers fails the run rather than silently not existing:
  *   1. ignored-test classification — every `#[ignore]` test must be registered here as either a
  *      manual gate (run it) or a known-failing stub (never run it, shown as STUB).
  *   2. matrix-script coverage    — every `cddl-matrix/*.ts` (minus lib.ts) must be wired to a gate.
  *   3. CI-is-fast-tier invariant — build.yml must invoke `bun run check.ts fast` and must contain
  *      NO other run step (all CI work flows through the registry's fast tier, so growing CI is an
- *      explicit, reviewed registry edit — not a workflow edit agents make in passing).
+ *      explicit, reviewed registry edit — not a workflow edit agents make in passing). It says
+ *      nothing about the workflow's `paths:` trigger filter, which is not a run step: covering the
+ *      trees a fast gate READS is a filter edit, and the promoted doc scanners depend on one.
+ *   4. concurrency declarations are well-formed (`cmd`-only, group members contiguous).
+ *   5. `requires:` edges are well-formed — the `--only` dependency fence's only enforcement.
  *
  * Meta-checks mutation-verified red-first at landing (repo idiom):
  *   - adding a throwaway `#[ignore]` test           -> meta-check 1 FAILED (unclassified ignore)
@@ -90,8 +101,55 @@ const TIERS = ["fast", "local", "full"] as const;
 export type Tier = (typeof TIERS)[number];
 const rank = (t: Tier) => TIERS.indexOf(t);
 
+// ---- argv ------------------------------------------------------------------------------------------
+export interface ParsedArgv { flags: Set<string>; positional: string[]; only: string[] | null }
+
+/**
+ * argv -> (flags, positional, `--only` selection).
+ *
+ * argv is WALKED rather than partitioned by a `startsWith("--")` filter because `--only` is the one
+ * flag that takes a value: in the space spelling (`--only a,b`) that value is not a flag, and the
+ * filter would hand it to the tier positional — a selection would silently become "unknown tier".
+ * Both spellings are accepted (`--only a,b` and `--only=a,b`), and ids may also be split across
+ * repeated flags. Every argv consumer in this file goes through here, including the two `fn` gates
+ * that read the tier off argv themselves, so there is exactly one place that knows this shape.
+ */
+export function parseArgv(argv: string[]): ParsedArgv {
+  const flags = new Set<string>();
+  const positional: string[] = [];
+  let only: string[] | null = null;
+  const add = (v: string): void => {
+    only = [...(only ?? []), ...v.split(",").map(s => s.trim()).filter(Boolean)];
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--only") {
+      flags.add("--only");
+      const v = argv[i + 1];
+      // A valueless `--only` yields an EMPTY selection rather than swallowing the next flag; the
+      // resolver rejects it by name, which is a better message than "unknown flag".
+      if (v !== undefined && !v.startsWith("--")) { add(v); i++; } else only ??= [];
+      continue;
+    }
+    if (a.startsWith("--only=")) { flags.add("--only"); add(a.slice("--only=".length)); continue; }
+    if (a.startsWith("--")) { flags.add(a); continue; }
+    positional.push(a);
+  }
+  return { flags, positional, only };
+}
+
+/** The tier a run is at, read off argv the way `main` reads it. */
+export function tierFromArgv(argv: string[]): Tier {
+  const p = parseArgv(argv).positional[0];
+  return TIERS.includes(p as Tier) ? (p as Tier) : "local";
+}
+
 // ---- gate model ----------------------------------------------------------------------------------
-type Status = "PASS" | "FAIL" | "SKIPPED" | "STUB" | "NOT_IN_TIER";
+// A FOURTH not-run flavour beside `NOT_IN_TIER`, `SKIPPED (earlier failure; fail-fast)` and
+// `SKIPPED (reason)`: a gate the run's `--only` selection deliberately left out. Never a reuse of
+// SKIPPED — a deliberate omission must not read as an incidental one — and never `not-in-tier`,
+// which says the opposite (this gate WOULD have run in a complete run of this tier).
+type Status = "PASS" | "FAIL" | "SKIPPED" | "STUB" | "NOT_IN_TIER" | "NOT_RUN_ONLY";
 interface Outcome { status: Status; reason?: string }
 interface Opts { skipMissing: boolean; refreshFuzz: boolean; cacheTransparency: boolean }
 export interface Gate {
@@ -118,6 +176,21 @@ export interface Gate {
    * meta-check 4 exists to make impossible.
    */
   concurrent?: string;
+  /**
+   * Gates this one READS THE OUTPUT OF, and therefore cannot be selected without (`--only`).
+   *
+   * The registry encodes execution ORDER and concurrency; a tier run masks data dependencies by
+   * always running whole prefixes, so nothing had to state them until selection existed. A split
+   * pair does not fail loudly — `coverage_md_diff` alone passes vacuously against a stale-but-
+   * committed COVERAGE.md — which is why the refusal is hard (v1: refuse, never auto-include) and
+   * why the `why` is carried here rather than in the error site: the message has to say what the
+   * split would silently have asserted.
+   *
+   * Established by enumerating the registry, not by grep: the pairs are exactly the gates whose
+   * verdict depends on a file or cache another gate WRITES in the same run. Everything else either
+   * reads only committed files or owns its scratch root. Meta-check 5 keeps the field honest.
+   */
+  requires?: { gate: string; why: string }[];
 }
 
 // ---- process helpers -----------------------------------------------------------------------------
@@ -784,6 +857,25 @@ function runSelfChecks(): Outcome {
     }
   }
 
+  // 5. `requires:` declarations are well-formed — the field only bites under `--only`, so nothing
+  //    else would ever notice a stale one. Each prerequisite must exist, must be runnable, must sit
+  //    EARLIER in the registry (a later one could not have produced what this gate reads), and must
+  //    be in a tier no deeper than the dependent's, or the pair would be unselectable at the tier
+  //    that offers the dependent.
+  {
+    const pos = new Map(REGISTRY.map((g, i) => [g.id, i]));
+    for (const g of REGISTRY)
+      for (const r of g.requires ?? []) {
+        const dep = REGISTRY.find(x => x.id === r.gate);
+        if (!dep || dep.kind === "stub")
+          problems.push(`meta-5: gate '${g.id}' requires '${r.gate}', which is not a runnable registry gate`);
+        else if (pos.get(dep.id)! > pos.get(g.id)!)
+          problems.push(`meta-5: gate '${g.id}' requires '${r.gate}', which runs AFTER it in registry order — a prerequisite cannot follow its dependent`);
+        else if (rank(dep.tier) > rank(g.tier))
+          problems.push(`meta-5: gate '${g.id}' (${g.tier}) requires '${r.gate}' (${dep.tier}) — the pair would be unselectable at the '${g.tier}' tier`);
+      }
+  }
+
   for (const w of warnings) console.log("  WARN " + w);
   if (problems.length) {
     for (const p of problems) console.log("  FAIL " + p);
@@ -793,7 +885,8 @@ function runSelfChecks(): Outcome {
   console.log(
     `  OK — ${ignored.size} #[ignore] test(s) classified (${manual.size} manual gate(s), ${stubs.size} stub(s)), ` +
       `${scripts.length} matrix script(s) covered, CI runs the fast tier only, ` +
-      `${groups.size} concurrency group(s) well-formed`,
+      `${groups.size} concurrency group(s) well-formed, ` +
+      `${REGISTRY.reduce((n, g) => n + (g.requires?.length ?? 0), 0)} requires-edge(s) well-formed`,
   );
   return { status: "PASS" };
 }
@@ -878,12 +971,13 @@ function runFuzz(o: Opts): Outcome {
 // ---- no-std drift gate: fresh-generate the profiles, thumb-check each emitted shim ---------------
 // A `fn` gate for two reasons. (1) The absent-target outcome is TIER-DEPENDENT — a loud SKIPPED in
 // `local`, a hard FAIL in `full` — and `Opts` carries no tier, so the gate reads it the way `main()`
-// does: the first non-`--` argv token (the self-log re-exec preserves argv verbatim). (2) A SKIPPED
+// does: through `tierFromArgv`, the shared argv parser (the self-log re-exec preserves argv
+// verbatim, and going through the parser is what keeps a `--only` VALUE from reading as a tier).
+// (2) A SKIPPED
 // shows in the registry SUMMARY table rather than only in the scrollback, the same honest-visible-skip
 // reason `gate_cache_closure_audit` is a `fn` gate.
 function runNoStdCheck(): Outcome {
-  const tier = process.argv.slice(2).find(a => !a.startsWith("--")) ?? "local";
-  return runNoStdCheckGate(tier);
+  return runNoStdCheckGate(tierFromArgv(process.argv.slice(2)));
 }
 
 // ---- component JS-host gate: transpile with jco and drive the result from node --------------------
@@ -894,8 +988,7 @@ function runNoStdCheck(): Outcome {
 // test reads to turn its loud skip into a panic; passing it through the env (rather than adding an
 // `env` field to `Gate`) keeps the registry's shape — and its meta-checks — unchanged.
 function runJcoCheck(): Outcome {
-  const tier = process.argv.slice(2).find(a => !a.startsWith("--")) ?? "local";
-  const env = tier === "full" ? { CDDL_JCO_REQUIRED: "1" } : undefined;
+  const env = tierFromArgv(process.argv.slice(2)) === "full" ? { CDDL_JCO_REQUIRED: "1" } : undefined;
   const exit = sh(["cargo", "test", "--bin", "cddl-codegen", "component_jco"], ROOT, env);
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cargo test component_jco exit ${exit}` };
 }
@@ -961,6 +1054,7 @@ export const REGISTRY: Gate[] = [
   { id: "project_corpus", tier: "fast", kind: "cmd", cmd: ["bun", "run", "project_corpus.ts"], cwd: MATRIX,
     script: "project_corpus.ts", desc: "corpus overlay validator + COVERAGE.md rewrite" },
   { id: "coverage_md_diff", tier: "fast", kind: "cmd", cmd: ["git", "diff", "--exit-code", "tests/corpus/COVERAGE.md"], cwd: ROOT,
+    requires: [{ gate: "project_corpus", why: "it diffs the COVERAGE.md that gate rewrites; alone it passes vacuously against the committed file" }],
     desc: "tests/corpus/COVERAGE.md is up to date" },
 
   // --- local tier (default): the heavy correctness gates, NOT run in CI (cost policy) ---
@@ -1218,6 +1312,7 @@ export const REGISTRY: Gate[] = [
   // Registered AFTER `verify` so a `full --cache-transparency` run warms the cache via `verify` first,
   // making this gate's cached run A genuinely hit-heavy (registry execution is sequential).
   { id: "verify_cache_transparency", tier: "full", kind: "fn", run: runCacheTransparency, script: "cache_transparency.ts",
+    requires: [{ gate: "verify", why: "it audits a cache that gate warms in the same run; alone it fails its >=1-hit vacuity floor, or passes against a stale cache" }],
     desc: "gate-cache OUTPUT-side soundness: verify.ts annotations + report byte-identical cached vs GATE_CACHE=0 (flag-gated --cache-transparency)" },
   { id: "gate_cache_closure_audit", tier: "full", kind: "fn", run: runClosureAudit, script: "audit_gate_cache_closure.ts",
     desc: "gate-cache KEY-side soundness: strace input-closure audit of a cached gate (default multifile_matrix_compiles, CLOSURE_AUDIT_GATE overrides; SKIPPED if strace absent)" },
@@ -1230,6 +1325,64 @@ export const REGISTRY: Gate[] = [
   // (none — the float-under-preserve IOU was delivered; `preserve_encodings_supports_floats` is now
   // an ordinary always-on test.)
 ];
+
+// ==================================================================================================
+// GATE SELECTION (`--only`) — and the fence that keeps a partial run from reading as a tier run
+// ==================================================================================================
+// The case it serves is structural: the two longest gates in the registry are BARRIERS at the end of
+// the `full` tier (one order-constrained, one trace-purity-constrained), so a run that dies or
+// fail-fasts leaves exactly them unrun, and covering them costs a whole tier again.
+//
+// What makes it shippable is that the falsified-claim class ("tier green" manufactured from a partial
+// run) is UNREPRESENTABLE in the output rather than policed by discipline. Five closures, each
+// against a way a partial run could pass for a whole one:
+//   1. the full registry still prints, with deselected in-tier gates in their OWN status word;
+//   2. the SUMMARY header itself carries the partiality, so a quoted table cannot lose it;
+//   3. the self-log is `check-only-<stamp>.log` — outside `check-(fast|local|full)-`, so the run is
+//      excluded BY CONSTRUCTION from tier medians, `--backfill` tier attribution and per-tier
+//      retention (per-GATE rows are still emitted: those remain legitimate measurements);
+//   4. dependency-splitting selections are refused, naming the prerequisite (`requires`);
+//   5. the final line is a paste-able receipt that cannot state a verdict without stating the
+//      omission — `RESULT: PASS — all in-tier gates green` stays reserved for complete tiers.
+export type SelectionResult = { ok: true; ids: Set<string> } | { ok: false; message: string };
+
+/**
+ * Resolve a `--only` selection against a tier, or refuse with the message to print.
+ *
+ * Selection is among the gates OF THE RUN'S TIER (v1 scope): `full --only verify` selects within
+ * full's in-tier set, and naming a gate outside it is a refusal that says which tier to run instead.
+ * That keeps one meaning for "in-tier", which every other part of the summary is written against.
+ */
+export function resolveSelection(only: string[], tier: Tier, registry: Gate[] = REGISTRY): SelectionResult {
+  const runnable = registry.filter(g => g.kind !== "stub");
+  const known = new Map(runnable.map(g => [g.id, g]));
+  if (only.length === 0)
+    return { ok: false, message: `check.ts: --only needs at least one gate id (known: ${runnable.map(g => g.id).join(", ")})` };
+  const ids = new Set<string>();
+  for (const id of only) {
+    const g = known.get(id);
+    if (!g)
+      return { ok: false, message: `check.ts: --only: unknown gate '${id}' (known: ${runnable.map(x => x.id).join(", ")})` };
+    if (rank(g.tier) > rank(tier))
+      return {
+        ok: false,
+        message: `check.ts: --only: gate '${id}' is not in the '${tier}' tier — it is a '${g.tier}'-tier gate. ` +
+          `Run \`bun run check.ts ${g.tier} --only ${only.join(",")}\`.`,
+      };
+    ids.add(id);
+  }
+  for (const id of ids) {
+    for (const req of known.get(id)!.requires ?? []) {
+      if (ids.has(req.gate)) continue;
+      return {
+        ok: false,
+        message: `check.ts: --only: gate '${id}' requires '${req.gate}' in the same run — ${req.why}. ` +
+          `Select both (\`--only ${[...ids, req.gate].join(",")}\`) or drop '${id}'.`,
+      };
+    }
+  }
+  return { ok: true, ids };
+}
 
 // ==================================================================================================
 // RUN
@@ -1249,6 +1402,7 @@ function statusCell(o: Outcome): string {
     case "SKIPPED": return "SKIPPED" + (o.reason ? ` (${o.reason})` : "");
     case "STUB": return "STUB (tracked failing)";
     case "NOT_IN_TIER": return "not-in-tier";
+    case "NOT_RUN_ONLY": return "NOT RUN (--only)";
   }
 }
 
@@ -1570,14 +1724,18 @@ export interface Retention {
 }
 
 /**
- * Keep the last `keepPerTier` `check-<tier>-*.log` per tier; delete the rest. Bounded and
+ * Keep the last `keepPerTier` `check-<class>-*.log` per class; delete the rest. Bounded and
  * predictable, which a time window is not: a quiet fortnight followed by a busy day should not
  * change how much history survives.
  *
- * Scope is deliberately narrow — only names matching `check-(fast|local|full)-*.log`. `draft/logs/`
- * also holds hand-written ad-hoc logs, some of which begin with `check-` but do not name a real tier
- * (`check-optional_fixed_float-crates-….log`); they were written under other conventions and are
- * left alone.
+ * Scope is deliberately narrow — only names matching `check-(fast|local|full|only)-*.log`.
+ * `draft/logs/` also holds hand-written ad-hoc logs, some of which begin with `check-` but name
+ * neither a tier nor a selection (`check-optional_fixed_float-crates-….log`); they were written
+ * under other conventions and are left alone.
+ *
+ * `only` is a FOURTH keep-N class, not a tier: a `--only` run's log is deliberately named outside
+ * the tier regex so no tier median can absorb it, and the flip side of that exclusion is that
+ * nothing would ever delete it. One class per name shape keeps both properties.
  *
  * Two fail-closed interlocks, in the order that keeps the quiet case quiet: expiry candidates are
  * computed FIRST, and a run with nothing to expire (CI, a fresh checkout) returns silently without
@@ -1615,20 +1773,20 @@ export function retainLogs(o: {
     ({ status: "skipped", reason, deleted: [], bytes: 0, kept: 0, citedKept: [], unscrapedKept: [] });
   if (!existsSync(o.logsDir)) return { status: "ran", deleted: [], bytes: 0, kept: 0, citedKept: [], unscrapedKept: [] };
 
-  const RE = /^check-(fast|local|full)-.+\.log$/;
-  const byTier = new Map<Tier, { f: string; mtime: number; size: number }[]>();
+  const RE = /^check-(fast|local|full|only)-.+\.log$/;
+  const byClass = new Map<string, { f: string; mtime: number; size: number }[]>();
   for (const f of readdirSync(o.logsDir)) {
     const m = RE.exec(f);
     if (!m) continue;
     const st = statSync(join(o.logsDir, f));
-    const list = byTier.get(m[1] as Tier) ?? [];
+    const list = byClass.get(m[1]!) ?? [];
     list.push({ f, mtime: st.mtimeMs, size: st.size });
-    byTier.set(m[1] as Tier, list);
+    byClass.set(m[1]!, list);
   }
 
   let kept = 0;
   const expired: { f: string; size: number }[] = [];
-  for (const list of byTier.values()) {
+  for (const list of byClass.values()) {
     // mtime order, filename as a stable tiebreak: 21 of the logs on disk are hand-named and carry
     // no parseable stamp, so ordering by filename alone would rank them arbitrarily against the rest.
     list.sort((a, b) => a.mtime - b.mtime || (a.f < b.f ? -1 : 1));
@@ -1698,7 +1856,7 @@ function printRetention(): void {
       `— run \`bun run project_timings.ts --backfill\` in cddl-matrix/ to release them`,
     );
   if (r.deleted.length)
-    console.log(`  retention: deleted ${r.deleted.length} check-*.log (${fmtBytes(r.bytes)} reclaimed), kept ${r.kept} (last ${KEEP_LOGS_PER_TIER} per tier)`);
+    console.log(`  retention: deleted ${r.deleted.length} check-*.log (${fmtBytes(r.bytes)} reclaimed), kept ${r.kept} (last ${KEEP_LOGS_PER_TIER} per tier, and per --only class)`);
 }
 
 // ---- structured emission ------------------------------------------------------------------------
@@ -1841,11 +1999,17 @@ function emit(rows: Row[]): void {
 function finalizeRun(
   c: RunContext, wallMs: number, verdict: "pass" | "fail",
   gates: { gate: string; status: "pass" | "fail" | "skipped"; ms: number }[],
+  emitRunRow = true,
 ): void {
   try {
     const counts = cellCountsFor(readCells(CELLS), c.log);
     const merged = upsert(readLedger(LEDGER), [
-      runRow(c, { wall_ms: wallMs, verdict }),
+      // A `--only` run emits NO run row: a run-level wall is a tier's wall, and a partial run has
+      // none to give. Its per-GATE rows stay — those measure the same work a tier run measures, and
+      // `windowFor` buckets them by (gate, cache class), never by tier. Everything the ledger and
+      // retention key on is the log basename, which the gate rows carry, so a run row's absence
+      // costs nothing but the number that would have been a lie.
+      ...(emitRunRow ? [runRow(c, { wall_ms: wallMs, verdict })] : []),
       // Re-emitting every gate row the run already appended: same `(log, gate)` key, so each lands on
       // its own earlier row and gains the counts. A killed run keeps the count-less rows it appended.
       ...gates.map(g => gateRow(c, g.gate, g.status, g.ms, counts.get(g.gate))),
@@ -1863,14 +2027,17 @@ function finalizeRun(
 
 async function main() {
   const argv = process.argv.slice(2);
-  const flags = new Set(argv.filter(a => a.startsWith("--")));
-  const positional = argv.filter(a => !a.startsWith("--"));
-  const KNOWN = new Set(["--keep-going", "--skip-missing", "--refresh-fuzz", "--cache-transparency", "--help"]);
+  const { flags, positional, only } = parseArgv(argv);
+  const KNOWN = new Set(["--keep-going", "--skip-missing", "--refresh-fuzz", "--cache-transparency", "--only", "--help"]);
   for (const f of flags)
     if (!KNOWN.has(f)) { console.error(`check.ts: unknown flag '${f}' (known: ${[...KNOWN].join(", ")})`); process.exit(2); }
   if (flags.has("--help")) {
-    console.log("usage: bun run check.ts [fast|local|full] [--keep-going] [--skip-missing] [--refresh-fuzz] [--cache-transparency]");
+    console.log("usage: bun run check.ts [fast|local|full] [--keep-going] [--skip-missing] [--refresh-fuzz] [--cache-transparency] [--only <gate>[,<gate>]]");
     console.log("  bare invocation runs the `local` tier; CI runs `fast`. See the header of check.ts for details.");
+    console.log("  --only runs a SUBSET of the tier's gates and is never a tier verdict: the full registry still");
+    console.log("         prints (deselected gates as `NOT RUN (--only)`), the summary says PARTIAL, the log is");
+    console.log("         draft/logs/check-only-<stamp>.log, and the last line is a receipt. Cite such a run as");
+    console.log("         \"gates X, Y ran green\", never as a tier verdict.");
     console.log(`  env: CHECK_JOBS=<n>  gates in flight within a concurrency batch (default ${DEFAULT_JOBS}; 1 = fully sequential)`);
     console.log("       CHECK_CARGO_JOBS=<n>  CARGO_BUILD_JOBS given to each BATCHED gate (default: memory-derived, see check.ts)");
     console.log(`       CHECK_SKIP_PREFLIGHT=1  skip the memory (${MEM_DEGRADE_FLOOR_GIB}/${MEM_REFUSE_FLOOR_GIB} GiB) and disk (${DISK_FLOOR_GIB} GiB) floors`);
@@ -1885,6 +2052,14 @@ async function main() {
     }
     tier = positional[0] as Tier;
   }
+  // Refusals BEFORE anything expensive, and before the ETA/retention chatter: a mistyped selection
+  // must cost nothing and must say what the legal spellings are.
+  let selected: Set<string> | null = null;
+  if (only) {
+    const r = resolveSelection(only, tier);
+    if (!r.ok) { console.error(r.message); process.exit(2); }
+    selected = r.ids;
+  }
   const keepGoing = flags.has("--keep-going");
   const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz"), cacheTransparency: flags.has("--cache-transparency") };
   const { jobs: requestedJobs, warning: jobsWarning } = parseJobs(process.env.CHECK_JOBS);
@@ -1896,12 +2071,14 @@ async function main() {
   // discover a memory cap mid-run.
   const jobs = resourcePreflight(tier, requestedJobs);
 
-  console.log(`\ncheck.ts — tier=${tier}  jobs=${jobs}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}`);
+  console.log(`\ncheck.ts — tier=${tier}  jobs=${jobs}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}${selected ? ` --only ${only!.join(",")}` : ""}`);
 
   // Both of these run BEFORE the warm-up fetch, and that ordering is the point of the ETA: the
   // warm-up can hang on a bad network for minutes and is the most likely place a run is interrupted,
   // so an estimate printed after it is an estimate the interrupted agent never saw.
-  printEta(tier);
+  // A selected run gets NO tier ETA: the tier's median wall is the duration of a run this one is not.
+  if (selected) console.log(`  --only: ${selected.size} selected gate(s) — no tier ETA, because a selected run is not a tier run`);
+  else printEta(tier);
   printRetention();
 
   // Deliberately AFTER retention. Emission creates the ledger if it is absent, and retention's global
@@ -1911,7 +2088,9 @@ async function main() {
   // likely to be interrupted.
   const ctx = runContext(tier);
   if (ctx) {
-    emit([runRow(ctx)]);
+    // No run row for a selected run, in either write (see `finalizeRun`): the row exists to give a
+    // tier its wall, and a partial run has no tier wall to give.
+    if (!selected) emit([runRow(ctx)]);
     // Cell rows: the drill-down under a gate row. Plumbed by env var because the Rust side emits
     // from inside libtest, where a printed marker is captured and discarded (see
     // `src/tests/timing_cells.rs`). Set only when this run is already emitting, so a suite run by
@@ -1933,9 +2112,17 @@ async function main() {
   const wall0 = performance.now();
 
   const inTier: Gate[] = [];
+  let deselected = 0;
   for (const g of REGISTRY) {
     if (g.kind === "stub") { results.set(g.id, { out: { status: "STUB" }, ms: 0 }); continue; }
     if (rank(g.tier) > rank(tier)) { results.set(g.id, { out: { status: "NOT_IN_TIER" }, ms: 0 }); continue; }
+    // In the tier, left out by the selection — its OWN status word, so the table cannot present a
+    // deliberate omission as an incidental skip or as a gate this tier never asks for.
+    if (selected && !selected.has(g.id)) {
+      results.set(g.id, { out: { status: "NOT_RUN_ONLY" }, ms: 0 });
+      deselected++;
+      continue;
+    }
     inTier.push(g);
   }
 
@@ -1962,7 +2149,12 @@ async function main() {
   const tierW = 5;
   const line = "-".repeat(idW + tierW + 10 + 40);
   console.log("\n" + line);
-  console.log(`SUMMARY — tier=${tier}  wall=${fmtDur(wall)}`);
+  // The partiality rides in the HEADER, not only in the trailing lines: summary tables get pasted
+  // without what follows them, and a selected run's PASS rows are otherwise indistinguishable from a
+  // tier run's.
+  console.log(selected
+    ? `SUMMARY (PARTIAL — --only ${only!.join(",")}) — tier=${tier}  wall=${fmtDur(wall)}`
+    : `SUMMARY — tier=${tier}  wall=${fmtDur(wall)}`);
   console.log(line);
   console.log(`${"GATE".padEnd(idW)}  ${"TIER".padEnd(tierW)}  ${"TIME".padEnd(8)}  STATUS`);
   console.log(line);
@@ -1978,7 +2170,7 @@ async function main() {
 
   // Before the digest refresh, never after: `--update` reads the ledger, and this run's own wall is
   // the newest point in the tier window it is about to take a median over.
-  if (ctx) finalizeRun(ctx, wall, fails.length ? "fail" : "pass", emitted);
+  if (ctx) finalizeRun(ctx, wall, fails.length ? "fail" : "pass", emitted, !selected);
 
   // ---- refresh the measured-duration digest, and the spans DERIVED from it ---------------------
   // Runs on EVERY invocation, including a failing one: the rule is a median over a few thousand
@@ -2008,6 +2200,28 @@ async function main() {
         "tier run fail-fasts on the `project_status_headers` gate (non-fatal here — durations are never a gate)");
   }
 
+  // A SELECTED run's last line is the paste-able receipt, and it replaces the verdict rather than
+  // merely omitting it: counts and names are fused, so the sentence cannot state what ran without
+  // stating what did not. `RESULT: PASS — all in-tier gates green` stays reserved for complete
+  // tiers — it is the string AGENTS.md and the timings parser both read as a tier verdict.
+  if (selected) {
+    const sel = inTier.map(g => ({ id: g.id, status: results.get(g.id)!.out.status }));
+    const passed = sel.filter(s => s.status === "PASS").map(s => s.id);
+    const failed = sel.filter(s => s.status === "FAIL").map(s => s.id);
+    const skipped = sel.filter(s => s.status !== "PASS" && s.status !== "FAIL").map(s => s.id);
+    const notes = [
+      ...(failed.length ? [`${failed.length} FAILED: ${failed.join(", ")}`] : []),
+      ...(skipped.length ? [`${skipped.length} SKIPPED: ${skipped.join(", ")}`] : []),
+    ];
+    const g = gitFacts();
+    const at = g.commit ? `${g.commit}${g.dirty ? "-dirty" : ""}` : "unknown-commit";
+    console.log(
+      `check.ts --only ${only!.join(",")} @ ${at}: ${passed.length}/${sel.length} selected PASS` +
+      `${notes.length ? ` (${notes.join("; ")})` : ""}; ${deselected} in-tier gates NOT RUN — no tier verdict`,
+    );
+    process.exit(fails.length ? 1 : 0);
+  }
+
   if (fails.length) {
     console.log(`RESULT: FAIL — ${fails.length} gate(s) failed: ${fails.join(", ")}`);
     process.exit(1);
@@ -2026,8 +2240,14 @@ async function runSelfLogged(): Promise<never> {
   const { mkdirSync, openSync, writeSync, closeSync } = await import("node:fs");
   const logsDir = join(ROOT, "draft", "logs");
   mkdirSync(logsDir, { recursive: true });
-  const tierArg = process.argv.slice(2).find(a => !a.startsWith("--"));
-  const tier = TIERS.includes(tierArg as Tier) ? tierArg : "local";
+  const argv = process.argv.slice(2);
+  // A SELECTED run is named `check-only-…`, never `check-<tier>-…`, and that is the fence's
+  // measurement half rather than a cosmetic choice: `splitLogName` derives a row's tier from this
+  // filename, so a 14-minute `--only` run logged as `check-full-…` would enter the full tier's
+  // median wall and corrupt the ETA every future full run prints. A name outside the tier regex is
+  // excluded from tier medians, from `--backfill`'s tier attribution and from per-tier retention by
+  // construction — no consumer has to remember to filter it out.
+  const tier = parseArgv(argv).only ? "only" : tierFromArgv(argv);
   const stamp = new Date().toISOString().replace(/\.\d+Z$/, "Z").replace(/:/g, "-");
   const logPath = join(logsDir, `check-${tier}-${stamp}.log`);
   console.log(`check.ts: full log → ${logPath}`);

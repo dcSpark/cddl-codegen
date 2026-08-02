@@ -63,12 +63,49 @@ missing (`integration_tests::recursive_collection_ref` / `recursive_collection_r
 `full` additionally runs the
 manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 15 `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check, plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
-`SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
+`SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
+didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
 every in-tier gate first). Every run also tees its FULL output to a timestamped
 `draft/logs/check-<tier>-<stamp>.log` (path printed at start and end) — evidence preservation is
 the tool's job, so never pipe a run through `tail`/`grep` as its only capture; cite the printed
 path.
+
+### Running a SUBSET: `--only <gate>[,<gate>]`
+
+`bun run check.ts full --only verify,corpus_detect` runs exactly those gates, in registry order,
+among the named tier's in-tier set (`--only a,b` and `--only=a,b` are both accepted). The case it
+serves is the tier SUFFIX: the two longest gates sit at the end of `full` (one order-constrained,
+one trace-purity-constrained), so a run that dies or fail-fasts leaves exactly them unrun, and
+covering them otherwise costs a whole tier again.
+
+**A `--only` run is not a tier run, and the output makes that unrepresentable rather than a matter
+of discipline:**
+
+- the **full registry still prints**, with the deselected in-tier gates under their own status word,
+  `NOT RUN (--only)` — never `SKIPPED` (a deliberate omission must not read as an incidental one)
+  and never `not-in-tier` (which says the opposite);
+- the **summary header itself** carries the partiality — `SUMMARY (PARTIAL — --only …)` — so a
+  quoted table cannot shed it;
+- the **self-log is `draft/logs/check-only-<stamp>.log`**, deliberately outside the
+  `check-(fast|local|full)-` shape: `splitLogName` derives a row's tier from the filename, so this
+  is what keeps a 14-minute partial run out of the `full` tier's median wall, out of `--backfill`'s
+  tier attribution and out of the per-tier retention window. Per-**gate** timing rows are still
+  emitted (they measure the same work a tier run measures); the run-level tier row is not, because a
+  partial run has no tier wall to give. Retention keeps the last 10 `check-only-*` logs as their own
+  class;
+- **dependency-splitting selections are refused**, naming the prerequisite (registry field
+  `requires:`, checked by `self_checks` meta-check 5). Two pairs today: `coverage_md_diff` requires
+  `project_corpus` (it diffs the COVERAGE.md that gate rewrites — alone it passes vacuously against
+  the committed file) and `verify_cache_transparency` requires `verify` (it audits a cache that gate
+  warms). Unknown gate ids and out-of-tier selections are refused the same way, exit 2;
+- **the last line is a receipt, never the tier verdict**:
+  `check.ts --only <gates> @ <commit>: N/N selected PASS; M in-tier gates NOT RUN — no tier verdict`.
+  `RESULT: PASS — all in-tier gates green` stays reserved for a complete tier.
+
+**Reporting rule:** a `--only` run is citable only as "gates X, Y ran green" — never as a tier
+verdict, in a commit message, a doc, or a report. That is the same rule AGENTS.md states for
+fail-fast partial runs, and the receipt is written so it can be pasted verbatim.
 
 ### Sharded sweeps (inside the `test` gate)
 
