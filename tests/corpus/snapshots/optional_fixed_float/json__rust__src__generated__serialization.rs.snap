@@ -21,7 +21,7 @@ impl cbor_event::se::Serialize for OptFixedFloatArray {
         serializer.write_array(cbor_event::Len::Len(2 + if self.f { 1 } else { 0 }))?;
         serializer.write_unsigned_integer(self.x)?;
         if self.f {
-            serializer.write_special(cbor_event::Special::Float(2.5))?;
+            write_float(serializer, 2.5)?;
         }
         serializer.write_text(&self.label)?;
         Ok(serializer)
@@ -86,11 +86,11 @@ impl cbor_event::se::Serialize for OptFixedFloatMap {
         serializer.write_unsigned_integer(self.x)?;
         if self.rate {
             serializer.write_text("rate")?;
-            serializer.write_special(cbor_event::Special::Float(2.5))?;
+            write_float(serializer, 2.5)?;
         }
         if self.amount {
             serializer.write_text("amount")?;
-            serializer.write_special(cbor_event::Special::Float(1.5))?;
+            write_float(serializer, 1.5)?;
         }
         Ok(serializer)
     }

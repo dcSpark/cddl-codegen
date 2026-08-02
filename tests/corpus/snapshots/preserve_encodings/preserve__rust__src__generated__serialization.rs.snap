@@ -4171,7 +4171,7 @@ impl cbor_event::se::Serialize for FloatHeads {
         )?;
         write_float_width(
             serializer,
-            widen_f32(self.h),
+            cbor_event::se::f32_to_f64_exact(self.h),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.h_encoding)
@@ -4181,7 +4181,7 @@ impl cbor_event::se::Serialize for FloatHeads {
         )?;
         write_float_width(
             serializer,
-            widen_f32(self.u),
+            cbor_event::se::f32_to_f64_exact(self.u),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.u_encoding)
@@ -4201,7 +4201,7 @@ impl cbor_event::se::Serialize for FloatHeads {
         )?;
         write_float_width(
             serializer,
-            widen_f32(self.s),
+            cbor_event::se::f32_to_f64_exact(self.s),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.s_encoding)

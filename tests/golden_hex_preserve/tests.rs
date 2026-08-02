@@ -948,29 +948,48 @@ mod golden_hex_preserve {
         }
     );
 
-    // ---- head-CONSTRAINED float names: the width is the TYPE's, not the input's ----
-    // `float_widths = [h: float16, s: float32, d: float64]`. Where `Floats` above pins "the recorded
-    // width is data", these pin its complement: a name that declares one head has no width left to
-    // record, so the only in-set input round-trips byte-exactly and every other head is refused.
-    // §A: 1.0 -> f9 3c00 / fa 3f800000 / fb 3ff0000000000000.
+    // ---- the narrower float names: the CLASS is the type's, the WIDTH is still the input's ----
+    // `float_widths = [h: float16, s: float32, d: float64]`. A CDDL float name is a set of VALUES,
+    // not of encodings (RFC 8610 §2.2.3): the names partition the floats by shortest lossless form,
+    // so `1.0` is a `float16` and `100000.0` a `float32`, whatever head either arrives under. Reads
+    // therefore accept any head and judge the value — which leaves the width as data here exactly
+    // as it is for the unconstrained `float` above, and a preserve round-trip must replay it.
+    // §A: 1.0 -> f9 3c00; 100000.0 -> fa 47c35000; 1.1 -> fb 3ff199999999999a.
     kat_preserve!(
-        float_widths_declared_heads,
+        float_widths_shortest_forms,
         FloatWidths,
         &[
-            0x83, 0xf9, 0x3c, 0x00, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xfb, 0x3f, 0xf0, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00
+            0x83, 0xf9, 0x3c, 0x00, 0xfa, 0x47, 0xc3, 0x50, 0x00, 0xfb, 0x3f, 0xf1, 0x99, 0x99,
+            0x99, 0x99, 0x99, 0x9a
         ],
         |d: &FloatWidths| {
-            assert_eq!((d.h, d.s), (1.0f32, 1.0f32));
-            assert_eq!(d.d, 1.0f64);
+            assert_eq!((d.h, d.s), (1.0f32, 100000.0f32));
+            assert_eq!(d.d, 1.1f64);
+        }
+    );
+
+    // The same values at WIDER heads than their shortest form: every one is still a member of its
+    // member's class, so the row decodes — and the recorded width replays byte-exactly. This is the
+    // vector a head-strict reader fails, and the one every conforming encoder is free to produce.
+    kat_preserve!(
+        float_widths_replay_a_wider_head,
+        FloatWidths,
+        &[
+            0x83, 0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfb, 0x40, 0xf8, 0x6a,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a
+        ],
+        |d: &FloatWidths| {
+            assert_eq!((d.h, d.s), (1.0f32, 100000.0f32));
+            assert_eq!(d.d, 1.1f64);
         }
     );
 
     #[test]
-    fn float_widths_refuse_every_out_of_set_head() {
-        let f9: &[u8] = &[0xf9, 0x3c, 0x00];
-        let fa: &[u8] = &[0xfa, 0x3f, 0x80, 0x00, 0x00];
-        let fb: &[u8] = &[0xfb, 0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    fn float_widths_refuse_a_value_outside_the_members_class() {
+        let f9_1: &[u8] = &[0xf9, 0x3c, 0x00];
+        let fa_1: &[u8] = &[0xfa, 0x3f, 0x80, 0x00, 0x00];
+        let fa_100k: &[u8] = &[0xfa, 0x47, 0xc3, 0x50, 0x00];
+        let fb_1_1: &[u8] = &[0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a];
         let build = |items: [&[u8]; 3]| {
             let mut v = vec![0x83u8];
             for i in items {
@@ -978,32 +997,43 @@ mod golden_hex_preserve {
             }
             v
         };
-        FloatWidths::from_cbor_bytes(&build([f9, fa, fb])).unwrap();
-        for bad in [
-            [fa, fa, fb],
-            [fb, fa, fb],
-            [f9, f9, fb],
-            [f9, fb, fb],
-            [f9, fa, f9],
-            [f9, fa, fa],
+        FloatWidths::from_cbor_bytes(&build([f9_1, fa_100k, fb_1_1])).unwrap();
+        for (bad, why) in [
+            ([fa_100k, fa_100k, fb_1_1], "100000.0 is a float32, not a float16"),
+            ([fb_1_1, fa_100k, fb_1_1], "1.1 is a float64, not a float16"),
+            ([f9_1, fa_1, fb_1_1], "an fa-headed 1.0 is still a float16, not a float32"),
+            ([f9_1, fb_1_1, fb_1_1], "1.1 is a float64, not a float32"),
+            ([f9_1, fa_100k, f9_1], "1.0 is a float16, not a float64"),
+            ([f9_1, fa_100k, fa_100k], "100000.0 is a float32, not a float64"),
         ] {
             assert!(
                 FloatWidths::from_cbor_bytes(&build(bad)).is_err(),
-                "a head outside the member's declared set must be a decode error"
+                "a value outside the member's class must be a decode error: {why}"
             );
         }
     }
 
     #[test]
-    fn float_widths_write_the_declared_head_for_a_fresh_value() {
-        // 1.0's narrowest lossless head is f9; `s`/`d` write theirs anyway.
-        let v = FloatWidths::new(1.0, 1.0, 1.0);
+    fn float_widths_write_the_shortest_form_for_a_fresh_value() {
+        // A fresh value has no recorded width, so it writes its shortest lossless form — which for
+        // a member of one of these classes IS the declared width, with no rule saying so.
+        let v = FloatWidths::new(1.0, 100000.0, 1.1);
         assert_eq!(
             v.to_cbor_bytes(),
             &[
-                0x83, 0xf9, 0x3c, 0x00, 0xfa, 0x3f, 0x80, 0x00, 0x00, 0xfb, 0x3f, 0xf0, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00
+                0x83, 0xf9, 0x3c, 0x00, 0xfa, 0x47, 0xc3, 0x50, 0x00, 0xfb, 0x3f, 0xf1, 0x99, 0x99,
+                0x99, 0x99, 0x99, 0x9a
             ]
         );
+    }
+
+    #[test]
+    fn float_widths_non_member_fails_serialize_loudly() {
+        // 1.0 is a `float16` value, so it is not a `float32` one. There is no head at which writing
+        // it into `s` would be right, so the write FAILS rather than emitting bytes this crate's
+        // own reader refuses for that member.
+        let v = FloatWidths::new(1.0, 1.0, 1.1);
+        let mut buf = cbor_event::se::Serializer::new_vec();
+        assert!(cbor_event::se::Serialize::serialize(&v, &mut buf).is_err());
     }
 }

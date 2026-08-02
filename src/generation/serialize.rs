@@ -893,8 +893,11 @@ impl GenerationScope {
                                 cli,
                             );
                         } else {
+                            // Smallest value-preserving head (RFC 8949 §4.1), like every other
+                            // float write. A fixed literal is read back by VALUE comparison at any
+                            // head, so the width is free to be the preferred one.
                             body.line(&format!(
-                                "{serializer_use}.write_special(cbor_event::Special::Float({lit})){line_ender}"
+                                "write_float({serializer_pass}, {lit}){line_ender}"
                             ));
                         }
                     }
@@ -925,31 +928,32 @@ impl GenerationScope {
                         | Primitive::F16To32
                         | Primitive::F32To64) => {
                             // The CBOR float domain is f64, so an f32-CARRIED class (`float16`,
-                            // `float32`, `float16-32`) widens here. In software: an `as` cast may
-                            // quiet a signaling NaN or drop its payload depending on the platform,
-                            // and a declared-width float round-trips byte-exactly, payload included.
+                            // `float32`, `float16-32`) widens here. Through the crate's exact
+                            // widening, never `as`/`From`: those may quiet a signaling NaN or drop
+                            // its payload, and LLVM const-folds the conversion to a canonical quiet
+                            // NaN, so `as` can differ between the const-evaluated and runtime paths
+                            // of one binary. A float round-trips byte-exactly, payload included.
                             let value = if p.float_carrier_is_f32() {
-                                Cow::Owned(format!("widen_f32({expr_deref})"))
+                                Cow::Owned(format!(
+                                    "cbor_event::se::f32_to_f64_exact({expr_deref})"
+                                ))
                             } else {
                                 Cow::Borrowed(expr_deref.as_str())
                             };
-                            // Width-unconstrained `float` (`float = float16-32 / float64`) admits
-                            // every head, so nothing here constrains its width: the default profile
-                            // keeps `Special::Float`'s `#7.27` and preserve keeps `write_float`'s
-                            // narrowest-lossless. Every other class DECLARES its head set, and the
-                            // write is pinned to it — that is the whole of the wire change.
+                            // Every class writes the smallest head that preserves the value (RFC
+                            // 8949 §4.1), uniformly in both profiles — the same rule the integer
+                            // writes follow. For a MEMBER of a constrained class that head IS its
+                            // declared width, because membership means the value's shortest lossless
+                            // form lands in the class's window; a non-member fails loudly inside the
+                            // helper rather than being written at a head the class admits.
                             //
-                            // `float64` needs no head-set write in the DEFAULT profile either:
-                            // `Special::Float` writes `#7.27` and nothing else, which IS its
-                            // declared width. (Under preserve it does need one — `write_float`
-                            // would pick the narrowest LOSSLESS head for a fresh value.)
-                            let width_pinned = *p != Primitive::Float
-                                && (cli.preserve_encodings || *p != Primitive::F64);
-                            let head_set = width_pinned.then(|| {
-                                let (min, max) = p.float_head_set().unwrap();
+                            // Width-unconstrained `float` admits every value, so it needs no window
+                            // and no membership check — only the smallest-head rule.
+                            let class_window = (*p != Primitive::Float).then(|| {
+                                let (min, max) = p.float_class_window().unwrap();
                                 format!("cbor_event::Sz::{min}, cbor_event::Sz::{max}")
                             });
-                            match (cli.preserve_encodings, head_set) {
+                            match (cli.preserve_encodings, class_window) {
                                 (true, None) => write_float(
                                     body,
                                     &serializer_pass,
@@ -958,20 +962,20 @@ impl GenerationScope {
                                     &encoding_var_deref,
                                     cli,
                                 ),
-                                (true, Some(head_set)) => {
+                                (true, Some(class_window)) => {
                                     body.line(&format!(
-                                        "write_float_width({serializer_pass}, {value}, {encoding_var_deref}, {head_set}{}){line_ender}",
+                                        "write_float_width({serializer_pass}, {value}, {encoding_var_deref}, {class_window}{}){line_ender}",
                                         canonical_param(cli)
                                     ));
                                 }
                                 (false, None) => {
                                     body.line(&format!(
-                                        "{serializer_use}.write_special(cbor_event::Special::Float({value})){line_ender}"
+                                        "write_float({serializer_pass}, {value}){line_ender}"
                                     ));
                                 }
-                                (false, Some(head_set)) => {
+                                (false, Some(class_window)) => {
                                     body.line(&format!(
-                                        "write_float_width({serializer_pass}, {value}, {head_set}){line_ender}"
+                                        "write_float_width({serializer_pass}, {value}, {class_window}){line_ender}"
                                     ));
                                 }
                             }

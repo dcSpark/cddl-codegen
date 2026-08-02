@@ -119,7 +119,7 @@ impl cbor_event::se::Serialize for ArrayOptFields {
                 + if self.z { 1 } else { 0 },
         ))?;
         if self.x {
-            serializer.write_special(cbor_event::Special::Float(1.010101))?;
+            write_float(serializer, 1.010101)?;
         }
         if let Some(field) = &self.a {
             serializer.write_unsigned_integer(*field)?;
@@ -132,12 +132,12 @@ impl cbor_event::se::Serialize for ArrayOptFields {
         if let Some(field) = &self.d {
             serializer.write_text(field)?;
         }
-        serializer.write_special(cbor_event::Special::Float(3.14159265))?;
+        write_float(serializer, 3.14159265)?;
         if let Some(field) = &self.e {
             field.serialize(serializer)?;
         }
         if self.z {
-            serializer.write_special(cbor_event::Special::Float(2.71828))?;
+            write_float(serializer, 2.71828)?;
         }
         Ok(serializer)
     }
@@ -317,7 +317,12 @@ impl cbor_event::se::Serialize for Bar {
         serializer.write_text("five")?;
         serializer.write_unsigned_integer(5u64)?;
         serializer.write_text("float")?;
-        serializer.write_special(cbor_event::Special::Float(self.float))?;
+        write_float_width(
+            serializer,
+            self.float,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
         Ok(serializer)
     }
 }
@@ -443,7 +448,7 @@ impl Deserialize for Bar {
                                 .into());
                             }
                             float = Some(
-                                f64::deserialize(raw)
+                                read_float_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
                                     .map_err(|e: DeserializeError| e.annotate("float"))?,
                             );
                         }
@@ -1392,27 +1397,36 @@ impl cbor_event::se::Serialize for CborPayloadLeaves {
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(7))?;
         let mut f64_payload_inner_se = Serializer::new_vec();
-        f64_payload_inner_se.write_special(cbor_event::Special::Float(self.f64_payload))?;
+        write_float_width(
+            &mut f64_payload_inner_se,
+            self.f64_payload,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
         let f64_payload_bytes = f64_payload_inner_se.finalize();
         serializer.write_bytes(&f64_payload_bytes)?;
         let mut f32_payload_inner_se = Serializer::new_vec();
         write_float_width(
             &mut f32_payload_inner_se,
-            widen_f32(self.f32_payload),
+            cbor_event::se::f32_to_f64_exact(self.f32_payload),
             cbor_event::Sz::Four,
             cbor_event::Sz::Four,
         )?;
         let f32_payload_bytes = f32_payload_inner_se.finalize();
         serializer.write_bytes(&f32_payload_bytes)?;
         let mut bounded64_payload_inner_se = Serializer::new_vec();
-        bounded64_payload_inner_se
-            .write_special(cbor_event::Special::Float(self.bounded64_payload))?;
+        write_float_width(
+            &mut bounded64_payload_inner_se,
+            self.bounded64_payload,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
         let bounded64_payload_bytes = bounded64_payload_inner_se.finalize();
         serializer.write_bytes(&bounded64_payload_bytes)?;
         let mut bounded32_payload_inner_se = Serializer::new_vec();
         write_float_width(
             &mut bounded32_payload_inner_se,
-            widen_f32(self.bounded32_payload),
+            cbor_event::se::f32_to_f64_exact(self.bounded32_payload),
             cbor_event::Sz::Four,
             cbor_event::Sz::Four,
         )?;
@@ -1445,51 +1459,56 @@ impl Deserialize for CborPayloadLeaves {
             let f64_payload = (|| -> Result<_, DeserializeError> {
                 let f64_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(f64_payload_bytes);
-                f64::deserialize(inner_de)
+                read_float_width(inner_de, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
             })()
             .map_err(|e| e.annotate("f64_payload"))?;
             let f32_payload = (|| -> Result<_, DeserializeError> {
                 let f32_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(f32_payload_bytes);
-                f32::deserialize(inner_de)
+                read_float_width(inner_de, cbor_event::Sz::Four, cbor_event::Sz::Four)
+                    .map(narrow_f32)
             })()
             .map_err(|e| e.annotate("f32_payload"))?;
             let bounded64_payload = (|| -> Result<_, DeserializeError> {
                 let bounded64_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(bounded64_payload_bytes);
-                f64::deserialize(inner_de).and_then(|x| {
-                    if !(x <= 10.5f64) {
-                        Err(DeserializeFailure::RangeCheckFloat {
-                            found: x as f64,
-                            min: None,
-                            max: Some(10.5f64),
-                            min_inclusive: false,
-                            max_inclusive: true,
+                read_float_width(inner_de, cbor_event::Sz::Eight, cbor_event::Sz::Eight).and_then(
+                    |x| {
+                        if !(x <= 10.5f64) {
+                            Err(DeserializeFailure::RangeCheckFloat {
+                                found: x as f64,
+                                min: None,
+                                max: Some(10.5f64),
+                                min_inclusive: false,
+                                max_inclusive: true,
+                            }
+                            .into())
+                        } else {
+                            Ok(x)
                         }
-                        .into())
-                    } else {
-                        Ok(x)
-                    }
-                })
+                    },
+                )
             })()
             .map_err(|e| e.annotate("bounded64_payload"))?;
             let bounded32_payload = (|| -> Result<_, DeserializeError> {
                 let bounded32_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(bounded32_payload_bytes);
-                f32::deserialize(inner_de).and_then(|x| {
-                    if !((x as f64) <= 10.5f64) {
-                        Err(DeserializeFailure::RangeCheckFloat {
-                            found: x as f64,
-                            min: None,
-                            max: Some(10.5f64),
-                            min_inclusive: false,
-                            max_inclusive: true,
+                read_float_width(inner_de, cbor_event::Sz::Four, cbor_event::Sz::Four)
+                    .map(narrow_f32)
+                    .and_then(|x| {
+                        if !((x as f64) <= 10.5f64) {
+                            Err(DeserializeFailure::RangeCheckFloat {
+                                found: x as f64,
+                                min: None,
+                                max: Some(10.5f64),
+                                min_inclusive: false,
+                                max_inclusive: true,
+                            }
+                            .into())
+                        } else {
+                            Ok(x)
                         }
-                        .into())
-                    } else {
-                        Ok(x)
-                    }
-                })
+                    })
             })()
             .map_err(|e| e.annotate("bounded32_payload"))?;
             let bool_payload = (|| -> Result<_, DeserializeError> {
@@ -2662,14 +2681,29 @@ impl cbor_event::se::Serialize for FloatBounds {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(6))?;
-        serializer.write_special(cbor_event::Special::Float(self.incl))?;
-        serializer.write_special(cbor_event::Special::Float(self.excl))?;
-        serializer.write_special(cbor_event::Special::Float(self.lt))?;
-        serializer.write_special(cbor_event::Special::Float(self.ge))?;
-        serializer.write_special(cbor_event::Special::Float(self.eq))?;
+        write_float(serializer, self.incl)?;
+        write_float(serializer, self.excl)?;
         write_float_width(
             serializer,
-            widen_f32(self.f32le),
+            self.lt,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
+        write_float_width(
+            serializer,
+            self.ge,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
+        write_float_width(
+            serializer,
+            self.eq,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
+        write_float_width(
+            serializer,
+            cbor_event::se::f32_to_f64_exact(self.f32le),
             cbor_event::Sz::Four,
             cbor_event::Sz::Four,
         )?;
@@ -2684,7 +2718,7 @@ impl Deserialize for FloatBounds {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(6)?;
             read_len.finish()?;
-            let incl = read_float_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Eight)
+            let incl = f64::deserialize(raw)
                 .and_then(|x| {
                     if !(x >= 0.5f64 && x <= 10.5f64) {
                         Err(DeserializeFailure::RangeCheckFloat {
@@ -2700,7 +2734,7 @@ impl Deserialize for FloatBounds {
                     }
                 })
                 .map_err(|e: DeserializeError| e.annotate("incl"))?;
-            let excl = read_float_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Eight)
+            let excl = f64::deserialize(raw)
                 .and_then(|x| {
                     if !(x >= 0.5f64 && x < 10.5f64) {
                         Err(DeserializeFailure::RangeCheckFloat {
@@ -2716,7 +2750,7 @@ impl Deserialize for FloatBounds {
                     }
                 })
                 .map_err(|e: DeserializeError| e.annotate("excl"))?;
-            let lt = f64::deserialize(raw)
+            let lt = read_float_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
                 .and_then(|x| {
                     if !(x < 10.5f64) {
                         Err(DeserializeFailure::RangeCheckFloat {
@@ -2732,7 +2766,7 @@ impl Deserialize for FloatBounds {
                     }
                 })
                 .map_err(|e: DeserializeError| e.annotate("lt"))?;
-            let ge = f64::deserialize(raw)
+            let ge = read_float_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
                 .and_then(|x| {
                     if !(x >= 0.5f64) {
                         Err(DeserializeFailure::RangeCheckFloat {
@@ -2748,13 +2782,13 @@ impl Deserialize for FloatBounds {
                     }
                 })
                 .map_err(|e: DeserializeError| e.annotate("ge"))?;
-            let eq = f64::deserialize(raw)
+            let eq = read_float_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
                 .and_then(|x| {
-                    if !(x >= 3.5f64 && x <= 3.5f64) {
+                    if !(x >= 3.3f64 && x <= 3.3f64) {
                         Err(DeserializeFailure::RangeCheckFloat {
                             found: x as f64,
-                            min: Some(3.5f64),
-                            max: Some(3.5f64),
+                            min: Some(3.3f64),
+                            max: Some(3.3f64),
                             min_inclusive: true,
                             max_inclusive: true,
                         }
@@ -2764,7 +2798,8 @@ impl Deserialize for FloatBounds {
                     }
                 })
                 .map_err(|e: DeserializeError| e.annotate("eq"))?;
-            let f32le = f32::deserialize(raw)
+            let f32le = read_float_width(raw, cbor_event::Sz::Four, cbor_event::Sz::Four)
+                .map(narrow_f32)
                 .and_then(|x| {
                     if !((x as f64) <= 10.5f64) {
                         Err(DeserializeFailure::RangeCheckFloat {
@@ -2806,9 +2841,9 @@ impl cbor_event::se::Serialize for FloatFixedWhole {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(3))?;
-        serializer.write_special(cbor_event::Special::Float(3.0))?;
-        serializer.write_special(cbor_event::Special::Float(3.0))?;
-        serializer.write_special(cbor_event::Special::Float(3.5))?;
+        write_float(serializer, 3.0)?;
+        write_float(serializer, 3.0)?;
+        write_float(serializer, 3.5)?;
         Ok(serializer)
     }
 }
@@ -2877,13 +2912,13 @@ impl cbor_event::se::Serialize for FloatHeads {
         serializer.write_array(cbor_event::Len::Len(6))?;
         write_float_width(
             serializer,
-            widen_f32(self.h),
+            cbor_event::se::f32_to_f64_exact(self.h),
             cbor_event::Sz::Two,
             cbor_event::Sz::Two,
         )?;
         write_float_width(
             serializer,
-            widen_f32(self.u),
+            cbor_event::se::f32_to_f64_exact(self.u),
             cbor_event::Sz::Two,
             cbor_event::Sz::Four,
         )?;
@@ -2895,12 +2930,17 @@ impl cbor_event::se::Serialize for FloatHeads {
         )?;
         write_float_width(
             serializer,
-            widen_f32(self.s),
+            cbor_event::se::f32_to_f64_exact(self.s),
             cbor_event::Sz::Four,
             cbor_event::Sz::Four,
         )?;
-        serializer.write_special(cbor_event::Special::Float(self.d))?;
-        serializer.write_special(cbor_event::Special::Float(self.f))?;
+        write_float_width(
+            serializer,
+            self.d,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
+        write_float(serializer, self.f)?;
         Ok(serializer)
     }
 }
@@ -2920,10 +2960,12 @@ impl Deserialize for FloatHeads {
                 .map_err(|e: DeserializeError| e.annotate("u"))?;
             let w = read_float_width(raw, cbor_event::Sz::Four, cbor_event::Sz::Eight)
                 .map_err(|e: DeserializeError| e.annotate("w"))?;
-            let s = f32::deserialize(raw).map_err(|e: DeserializeError| e.annotate("s"))?;
-            let d = f64::deserialize(raw).map_err(|e: DeserializeError| e.annotate("d"))?;
-            let f = read_float_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Eight)
-                .map_err(|e: DeserializeError| e.annotate("f"))?;
+            let s = read_float_width(raw, cbor_event::Sz::Four, cbor_event::Sz::Four)
+                .map(narrow_f32)
+                .map_err(|e: DeserializeError| e.annotate("s"))?;
+            let d = read_float_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
+                .map_err(|e: DeserializeError| e.annotate("d"))?;
+            let f = f64::deserialize(raw).map_err(|e: DeserializeError| e.annotate("f"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -2942,14 +2984,14 @@ impl cbor_event::se::Serialize for FloatRange {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_special(cbor_event::Special::Float(self.0))
+        write_float(serializer, self.0)
     }
 }
 
 impl Deserialize for FloatRange {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let inner = read_float_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Eight)?;
+            let inner = f64::deserialize(raw)?;
             if !(inner >= 0.5f64 && inner <= 10.5f64) {
                 return Err(DeserializeFailure::RangeCheckFloat {
                     found: inner as f64,
@@ -2971,14 +3013,14 @@ impl cbor_event::se::Serialize for FloatRangeExcl {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_special(cbor_event::Special::Float(self.0))
+        write_float(serializer, self.0)
     }
 }
 
 impl Deserialize for FloatRangeExcl {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let inner = read_float_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Eight)?;
+            let inner = f64::deserialize(raw)?;
             if !(inner >= 0.5f64 && inner < 10.5f64) {
                 return Err(DeserializeFailure::RangeCheckFloat {
                     found: inner as f64,
@@ -5450,7 +5492,7 @@ impl cbor_event::se::Serialize for NullableSpecials {
         };
         match &self.f {
             Some(x) => {
-                serializer.write_special(cbor_event::Special::Float(*x))?;
+                write_float(serializer, *x)?;
             }
             None => {
                 serializer.write_special(cbor_event::Special::Null)?;
@@ -5505,11 +5547,7 @@ impl Deserialize for NullableSpecials {
                     _ => true,
                 };
                 Ok(match f_is_some {
-                    true => Some(read_float_width(
-                        raw,
-                        cbor_event::Sz::Two,
-                        cbor_event::Sz::Eight,
-                    )?),
+                    true => Some(f64::deserialize(raw)?),
                     false => {
                         if raw.special()? != cbor_event::Special::Null {
                             return Err(DeserializeFailure::ExpectedNull.into());
@@ -5601,7 +5639,7 @@ impl cbor_event::se::Serialize for OptFixedArrFloat {
         serializer.write_array(cbor_event::Len::Len(2 + if self.ffix { 1 } else { 0 }))?;
         serializer.write_unsigned_integer(self.a)?;
         if self.ffix {
-            serializer.write_special(cbor_event::Special::Float(2.5))?;
+            write_float(serializer, 2.5)?;
         }
         serializer.write_text(&self.b)?;
         Ok(serializer)
@@ -5992,7 +6030,7 @@ impl cbor_event::se::Serialize for OptFixedMapFloat {
         serializer.write_unsigned_integer(self.a)?;
         if self.m_float {
             serializer.write_text("m_float")?;
-            serializer.write_special(cbor_event::Special::Float(2.5))?;
+            write_float(serializer, 2.5)?;
         }
         Ok(serializer)
     }
@@ -8177,7 +8215,7 @@ impl cbor_event::se::Serialize for TaggedFloatRange {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(5u64)?;
-        serializer.write_special(cbor_event::Special::Float(self.0))
+        write_float(serializer, self.0)
     }
 }
 
@@ -8185,7 +8223,7 @@ impl Deserialize for TaggedFloatRange {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let inner = match raw.tag()? {
-                5 => read_float_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Eight)?,
+                5 => f64::deserialize(raw)?,
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {
                         found: tag,

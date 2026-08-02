@@ -61,18 +61,27 @@ pub trait DeserializeEmbeddedGroup {
     ) -> Result<Self, DeserializeError> where Self: Sized;
 }
 
-/// Write a float whose CDDL type declares the head widths `min_width..=max_width`, at the narrowest
-/// admitted head that encodes `value` losslessly (RFC 8949 §4.2.2 preferred serialization
-/// restricted to the type's own set). A single-width class writes exactly that head.
+/// Write a float at the smallest head that preserves its value exactly — RFC 8949 §4.1 preferred
+/// serialization, uniformly, the same rule the integer writes follow. The
+/// `--preserve-encodings` twin of this name additionally replays a recorded wire width; without that
+/// flag there is none to replay, so the smallest form is the whole rule.
+pub fn write_float(serializer: &mut Serializer, value: f64) -> cbor_event::Result<&mut Serializer> {
+    serializer.write_float_sz(value, cbor_event::se::smallest_float_sz(value))
+}
+
+/// Write a float belonging to a CDDL class spanning the widths `min_width..=max_width`, at the
+/// smallest head that preserves its value (RFC 8949 §4.1) — which for a member of the class IS its
+/// declared width, since membership means the value's shortest lossless form lands in the window.
 ///
-/// Fails (`InvalidLenPassed`, through `write_float_sz`) when NO admitted head represents the value
-/// exactly — a `float16` member holding a value that is not f16-exact is the reachable case. Loud
-/// by design: rounding to fit the declared width would be a silent value mutation.
+/// A NON-member — `1.5` assigned to a `float32` field — fails LOUDLY in `float_class_width` rather
+/// than being written at a head the class admits: those bytes would decode to a value this crate's
+/// own reader rejects for that field. See [`float_class_width`] for the value-set semantics.
 pub fn write_float_width(
     serializer: &mut Serializer,
     value: f64,
     min_width: cbor_event::Sz,
     max_width: cbor_event::Sz,
 ) -> cbor_event::Result<&mut Serializer> {
-    serializer.write_float_sz(value, float_head_width(value, min_width, max_width))
+    let width = float_class_width(value, min_width, max_width)?;
+    serializer.write_float_sz(value, width)
 }

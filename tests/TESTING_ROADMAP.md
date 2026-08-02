@@ -562,7 +562,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       found by hand, so the signal is not already met by its own body.
 
 14. **A refusal recorded at one name-resolution seam does not bind the others — sweep the
-    refused-name × resolution-context product.** Proven by the head-constrained float delivery
+    refused-name × resolution-context product.** Proven by the narrower-float-name delivery
     needing TWO seams in one cycle: the refusal shipped at `new_type`'s unresolved-reserved
     fallback, and `x = float16 .size 4` still generated an `f32`-backed codec at exit 0 because a
     control operator resolves the ident through `ident_to_primitive` and never calls `new_type`
@@ -574,7 +574,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     generalizing those sweeps rather than duplicating them:
     - **Derive the refused-name axis from the refusal inventory itself** — the names the
       `new_type` interception arms enumerate (`undefined`, the four `any`-content tags, the three
-      head-constrained float names today), kept lockstep with a test so a new refusal arm demands
+      narrower float prelude names today), kept lockstep with a test so a new refusal arm demands
       sweep membership the way `KNOWN_RULE_METADATA_TAGS` demands directive classification.
     - **Enumerate the context axis from the resolution seams, as a registry not a keyword grep**:
       the callers of `new_type` and of `ident_to_primitive` are the two mechanisms today (listed,

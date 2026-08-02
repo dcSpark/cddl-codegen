@@ -202,14 +202,15 @@ mod tests {
     }
 
     // Optional fixed FLOAT member: identical `bool` presence model, but the constant is a Special
-    // float — written `write_special(Special::Float(2.5))` (canonical `fb` + 8 bytes) and verified
-    // `raw.float()? != 2.5` -> FixedValueMismatch. Default profile only (floats are unimplemented
+    // float — written at the smallest head that preserves it (RFC 8949 §4.1) and verified
+    // `raw.float()? != 2.5` -> FixedValueMismatch. The read is a VALUE comparison at any head, so
+    // the write is free to take the preferred width. Default profile only (floats are unimplemented
     // under --preserve-encodings). Present/absent byte round-trip + wrong-value reject, array + map.
     #[test]
     fn opt_fixed_member_float() {
-        // 2.5 = fb 40 04 00 00 00 00 00 00 (canonical double); 1.5 = fb 3f f8 ...
-        let fb_2_5 = [0xfbu8, 0x40, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        let fb_1_5 = [0xfbu8, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        // 2.5 = f9 41 00 (its shortest form); 1.5 = f9 3e 00
+        let fb_2_5 = [0xf9u8, 0x41, 0x00];
+        let fb_1_5 = [0xf9u8, 0x3e, 0x00];
 
         // array: absent -> [a, b] (no float element)
         let absent = OptFixedArrFloat::new(5, String::from("hi"));
@@ -699,11 +700,14 @@ mod tests {
     // cannot catch this class at all, since text blessed while the bug was live stays green forever.
     #[test]
     fn cbor_payload_leaves() {
+        // Each payload value must be a MEMBER of its own float class (the six CDDL float names
+        // partition the values by shortest lossless form), so the `float64` slots take values that
+        // need all eight bytes and the `float32` slots values that need exactly four.
         let orig = CborPayloadLeaves::new(
-            1.5,
-            2.5,
-            3.5,
-            4.5,
+            1.1,
+            1.1f32,
+            3.3,
+            3.3f32,
             true,
             CEnum::I4,
             String::from("framing"),
@@ -711,10 +715,10 @@ mod tests {
         .unwrap();
         deser_test(&orig);
         let deser = CborPayloadLeaves::from_cbor_bytes(&orig.to_cbor_bytes()).unwrap();
-        assert_eq!(deser.f64_payload, 1.5);
-        assert_eq!(deser.f32_payload, 2.5);
-        assert_eq!(deser.bounded64_payload, 3.5);
-        assert_eq!(deser.bounded32_payload, 4.5);
+        assert_eq!(deser.f64_payload, 1.1);
+        assert_eq!(deser.f32_payload, 1.1f32);
+        assert_eq!(deser.bounded64_payload, 3.3);
+        assert_eq!(deser.bounded32_payload, 3.3f32);
         assert!(deser.bool_payload);
         assert!(matches!(deser.enum_payload, CEnum::I4));
         // the member AFTER the last payload: proves nothing upstream over-read the outer buffer
@@ -1384,23 +1388,27 @@ mod tests {
     #[test]
     fn float_bounds() {
         // `FloatBounds` fields (in order): incl 0.5..10.5, excl 0.5...10.5 (excludes 10.5),
-        // lt float64 .lt 10.5, ge float64 .ge 0.5, eq float64 .eq 3.5, f32le float32 .le 10.5.
+        // lt float64 .lt 10.5, ge float64 .ge 0.5, eq float64 .eq 3.3, f32le float32 .le 10.5.
         // Every emitted check is NaN-safe accept-form (`!(x >= min && x <= max)`), so NaN — for
         // which every comparison is false — is rejected on every field.
-        let base: [f64; 6] = [5.5, 5.5, 5.0, 5.0, 3.5, 5.0];
-        // The last field is a `float32`, which admits the 4-byte `#7.26` head and nothing else;
-        // every other field is `float64` (`#7.27`). A window is checked on the value, never on the
-        // head, so the widths here are about acceptance, not about the bound.
+        //
+        // Two constraints compose on the last four fields, and the vectors keep them apart. The
+        // BOUND is what these cases vary. The CLASS is a standing requirement: a CDDL float name is
+        // a set of VALUES partitioned by shortest lossless form, so a `float64` field admits only
+        // values that need all eight bytes and a `float32` field only values that need exactly
+        // four. `5.5` is a `float16` and belongs to neither, which is why the values here are
+        // deliberately un-round. The first two fields are bare literal ranges, which name no class
+        // (they parse as the unconstrained `float`), so they keep the round numbers.
+        let base: [f64; 6] = [5.5, 5.5, 5.1, 5.1, 3.3, f64::from(5.1f32)];
         let make = |idx: usize, v: f64| {
             let mut vals = base;
             vals[idx] = v;
             let mut cbor = arr_def(6);
             for (i, x) in vals.iter().enumerate() {
                 cbor.extend(if i == 5 {
-                    // narrowed first: a `#7.26` head can only carry an f32-exact value, and these
-                    // vectors are about the WINDOW, so the just-outside case (10.6) has to be the
-                    // f32 one (10.600000381…) rather than the f64 literal
-                    cbor_float_sz(f64::from(*x as f32), cbor_event::Sz::Four)
+                    // narrowed first: the `float32` field's carrier is an f32, and these vectors are
+                    // about the WINDOW, so each case has to be the f32 image of its literal
+                    cbor_float(f64::from(*x as f32))
                 } else {
                     cbor_float(*x)
                 });
@@ -1408,7 +1416,8 @@ mod tests {
             FloatBounds::from_cbor_bytes(&cbor)
         };
         // baseline round-trips through both ctor and deserializer
-        let baseline = FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 5.0).unwrap();
+        let baseline =
+            FloatBounds::new(5.5, 5.5, 5.1, 5.1, 3.3, 5.1f32).unwrap();
         deser_test(&baseline);
         make(0, 5.5).unwrap();
 
@@ -1418,10 +1427,10 @@ mod tests {
         assert!(make(0, 0.4).is_err());
         assert!(make(0, 10.6).is_err());
         assert!(make(0, f64::NAN).is_err());
-        assert!(FloatBounds::new(f64::NAN, 5.5, 5.0, 5.0, 3.5, 5.0).is_err());
-        FloatBounds::new(0.5, 5.5, 5.0, 5.0, 3.5, 5.0).unwrap();
-        FloatBounds::new(10.5, 5.5, 5.0, 5.0, 3.5, 5.0).unwrap();
-        assert!(FloatBounds::new(10.6, 5.5, 5.0, 5.0, 3.5, 5.0).is_err());
+        assert!(FloatBounds::new(f64::NAN, 5.5, 5.1, 5.1, 3.3, 5.1f32).is_err());
+        FloatBounds::new(0.5, 5.5, 5.1, 5.1, 3.3, 5.1f32).unwrap();
+        FloatBounds::new(10.5, 5.5, 5.1, 5.1, 3.3, 5.1f32).unwrap();
+        assert!(FloatBounds::new(10.6, 5.5, 5.1, 5.1, 3.3, 5.1f32).is_err());
 
         // excl (0.5...10.5): the exclusive upper endpoint 10.5 is REJECTED; the min stays inclusive.
         make(1, 0.5).unwrap();
@@ -1430,30 +1439,37 @@ mod tests {
         assert!(make(1, f64::NAN).is_err());
 
         // lt (float64 .lt 10.5): one-sided exclusive max; no lower bound.
-        make(2, -100.0).unwrap();
+        make(2, -100.1).unwrap();
         make(2, 10.4).unwrap();
-        assert!(make(2, 10.5).is_err());
+        assert!(make(2, 10.500000000000002).is_err());
         assert!(make(2, f64::NAN).is_err());
 
         // ge (float64 .ge 0.5): one-sided inclusive min; no upper bound.
-        make(3, 0.5).unwrap();
-        make(3, 1000.0).unwrap();
+        make(3, 0.5000000000000001).unwrap();
+        make(3, 1000.1).unwrap();
         assert!(make(3, 0.4).is_err());
         assert!(make(3, f64::NAN).is_err());
 
-        // eq (float64 .eq 3.5): only 3.5 accepted.
-        make(4, 3.5).unwrap();
+        // eq (float64 .eq 3.3): only 3.3 accepted.
+        make(4, 3.3).unwrap();
+        assert!(make(4, 3.2).is_err());
         assert!(make(4, 3.4).is_err());
-        assert!(make(4, 3.6).is_err());
         assert!(make(4, f64::NAN).is_err());
 
-        // f32le (float32 .le 10.5): f32 value compared as f64 so 10.5 (exact in f32) is the boundary.
-        make(5, 10.5).unwrap();
+        // f32le (float32 .le 10.5): the f32 carrier's value is compared as f64.
+        make(5, 10.4).unwrap();
         assert!(make(5, 10.6).is_err());
-        make(5, -5.0).unwrap();
+        make(5, -5.1).unwrap();
         assert!(make(5, f64::NAN).is_err());
-        FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 10.5).unwrap();
-        assert!(FloatBounds::new(5.5, 5.5, 5.0, 5.0, 3.5, 10.6).is_err());
+        FloatBounds::new(5.5, 5.5, 5.1, 5.1, 3.3, 10.4f32).unwrap();
+        assert!(FloatBounds::new(5.5, 5.5, 5.1, 5.1, 3.3, 10.6f32).is_err());
+
+        // The class is enforced independently of the bound, in the same direction on both sides:
+        // `10.5` is inside every one of these windows and is still refused by the `float64` and
+        // `float32` fields, because its shortest lossless form is `f9` — it is a `float16` value.
+        assert!(make(2, 10.5).is_err(), "10.5 is a float16, not a float64");
+        assert!(make(3, 10.5).is_err(), "10.5 is a float16, not a float64");
+        assert!(make(5, 10.5).is_err(), "10.5 is a float16, not a float32");
     }
 
     #[test]
@@ -2127,8 +2143,12 @@ mod tests {
         let d = NullableSpecials::from_cbor_bytes(&good).unwrap();
         assert_eq!(d.b, Some(true));
         assert_eq!(d.f, Some(1.5));
-        // fb is also the canonical float emission, so this vector round-trips byte-identically
-        assert_eq!(d.to_cbor_bytes(), good);
+        // `f` is the unconstrained `float`, and every float write is the value's shortest form
+        // (RFC 8949 §4.1), so the fb-headed 1.5 comes back out as f9
+        assert_eq!(
+            d.to_cbor_bytes(),
+            [arr_def(2), vec![0xf5], vec![0xf9, 0x3e, 0x00]].concat()
+        );
         // [null, null]
         let nulls: Vec<u8> = [arr_def(2), vec![0xf6, 0xf6]].concat();
         let d = NullableSpecials::from_cbor_bytes(&nulls).unwrap();
@@ -2190,15 +2210,27 @@ mod tests {
         assert!(TopLevelArray::from_cbor_bytes(&[0x83, 0x00]).is_err());
     }
 
-    // ---- the six float prelude names: six wire-acceptance classes ------------------------------
+    // ---- the six float prelude names: six VALUE classes -----------------------------------------
     // `float_heads = [h: float16, u: float16-32, w: float32-64, s: float32, d: float64, f: float]`.
-    // Each name declares which CBOR float heads it admits (RFC 8610 App. D `#7.25`/`#7.26`/`#7.27`
-    // over RFC 8949 §3.3). These vectors are the boundary itself: acceptance is per-name, a head
-    // outside a name's set is a decode ERROR (never a silent narrowing/widening), and the DEFAULT
-    // profile writes the declared width rather than the 8-byte head every float once got.
+    // A CDDL float name is a set of VALUES, not of encodings: RFC 8610 §2.2.3 says the `#7.x`
+    // notation "is about a set of values at the data model level … it does not mandate that these
+    // values also do have to be serialized as half-precision floats". The six names PARTITION the
+    // floats by shortest lossless form, so `1.5` is a `float16` and NOT a `float32`, whatever head
+    // it arrived under, and the classes are disjoint.
+    //
+    // These vectors are that boundary in both directions: a read accepts ANY head and judges the
+    // decoded value, and a write emits the value's shortest form (RFC 8949 §4.1) — which for a
+    // member IS its declared width, so the two rules meet without a special case.
+
+    // 1.5 — shortest form `f9`, so a `float16` value.
     const F9_1_5: &[u8] = &[0xf9, 0x3e, 0x00];
     const FA_1_5: &[u8] = &[0xfa, 0x3f, 0xc0, 0x00, 0x00];
     const FB_1_5: &[u8] = &[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    // 1e10 — binary32-exact but far outside binary16's range, so shortest form `fa`: a `float32`.
+    const FA_1E10: &[u8] = &[0xfa, 0x50, 0x15, 0x02, 0xf9];
+    const FB_1E10: &[u8] = &[0xfb, 0x42, 0x02, 0xa0, 0x5f, 0x20, 0x00, 0x00, 0x00];
+    // 1.1 — needs the full binary64 mantissa, so shortest form `fb`: a `float64`.
+    const FB_1_1: &[u8] = &[0xfb, 0x3f, 0xf1, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9a];
 
     fn float_heads_bytes(items: &[&[u8]]) -> Vec<u8> {
         let mut v = arr_def(6);
@@ -2208,70 +2240,79 @@ mod tests {
         v
     }
 
+    /// The shortest form of each member's value — what every write produces.
+    fn float_heads_shortest() -> Vec<u8> {
+        float_heads_bytes(&[F9_1_5, F9_1_5, FA_1E10, FA_1E10, FB_1_1, F9_1_5])
+    }
+
     #[test]
-    fn float_heads_accept_every_in_set_head() {
-        // Each member is fed every head its own type admits, in every combination that varies the
-        // multi-head names; the value is 1.5 throughout, which is exact at all three widths.
-        for (uh, wh, fh) in [
-            (F9_1_5, FA_1_5, F9_1_5),
-            (FA_1_5, FB_1_5, FA_1_5),
-            (F9_1_5, FA_1_5, FB_1_5),
+    fn float_heads_accept_any_head_and_judge_the_value() {
+        // Each member is fed a value ITS OWN class admits, at every head that can carry it — an
+        // `fb`-headed 1.5 is a perfectly good `float16`, which is the half that a head-strict
+        // reader gets wrong (it would reject the output of every conforming preferred-serialization
+        // encoder).
+        for (h, u, w, sfa, f) in [
+            (F9_1_5, F9_1_5, FA_1E10, FA_1E10, F9_1_5),
+            (FA_1_5, FA_1_5, FB_1E10, FB_1E10, FA_1_5),
+            (FB_1_5, FB_1_5, FB_1E10, FA_1E10, FB_1_5),
         ] {
-            let bytes = float_heads_bytes(&[F9_1_5, uh, wh, FA_1_5, FB_1_5, fh]);
+            let bytes = float_heads_bytes(&[h, u, w, sfa, FB_1_1, f]);
             let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
-            assert_eq!((d.h, d.u, d.s), (1.5f32, 1.5f32, 1.5f32));
-            assert_eq!((d.w, d.d, d.f), (1.5f64, 1.5f64, 1.5f64));
-            // and the re-encode is the DECLARED width, not the head that was read — the default
-            // profile carries no recorded width, so this is the whole write rule in one assertion.
-            assert_eq!(
-                d.to_cbor_bytes(),
-                float_heads_bytes(&[F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, FB_1_5])
-            );
+            assert_eq!((d.h, d.u, d.s), (1.5f32, 1.5f32, 1e10f32));
+            assert_eq!((d.w, d.d, d.f), (1e10f64, 1.1f64, 1.5f64));
+            // and the re-encode is the value's SHORTEST form, not the head that was read — the
+            // default profile carries no recorded width, so this is the whole write rule at once.
+            assert_eq!(d.to_cbor_bytes(), float_heads_shortest());
         }
     }
 
     #[test]
-    fn float_heads_reject_every_out_of_set_head() {
-        let in_set: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, FB_1_5];
-        FloatHeads::from_cbor_bytes(&float_heads_bytes(&in_set)).unwrap();
-        // (member index, a head that member's type does NOT admit). `f` (`float`) has none.
-        for (idx, bad) in [
-            (0, FA_1_5),
-            (0, FB_1_5),
-            (1, FB_1_5),
-            (2, F9_1_5),
-            (3, F9_1_5),
-            (3, FB_1_5),
-            (4, F9_1_5),
-            (4, FA_1_5),
+    fn float_heads_reject_values_outside_their_class() {
+        FloatHeads::from_cbor_bytes(&float_heads_shortest()).unwrap();
+        // (member index, a value that member's class does NOT contain, at some head). `f`
+        // (`float`) is every float value, so it has none.
+        for (idx, bad, why) in [
+            (0usize, FA_1E10, "1e10 is a float32, not a float16"),
+            (0, FB_1_1, "1.1 is a float64, not a float16"),
+            (1, FB_1_1, "1.1 is a float64, not a float16-32"),
+            (2, F9_1_5, "1.5 is a float16, not a float32-64"),
+            (2, FB_1_5, "an fb-headed 1.5 is still a float16"),
+            (3, FA_1_5, "an fa-headed 1.5 is still a float16, not a float32"),
+            (3, FB_1_1, "1.1 is a float64, not a float32"),
+            (4, FB_1_5, "an fb-headed 1.5 is still a float16, not a float64"),
+            (4, FA_1E10, "1e10 is a float32, not a float64"),
         ] {
-            let mut items = in_set.clone();
+            let mut items: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1E10, FA_1E10, FB_1_1, F9_1_5];
             items[idx] = bad;
             assert!(
                 FloatHeads::from_cbor_bytes(&float_heads_bytes(&items)).is_err(),
-                "member {idx} must reject a head outside its declared set"
+                "member {idx}: {why}"
             );
         }
     }
 
     #[test]
-    fn float_heads_union_names_write_the_narrowest_admissible_head() {
-        // A union name has no single declared width, so it writes the narrowest head IN ITS SET that
-        // still represents the value exactly (RFC 8949 §4.2.2 restricted to the type's own set).
-        // 1.1 is neither f16- nor f32-exact; 100000.0 is f32-exact but not f16-exact.
-        let b = FloatHeads::new(1.5, 1.5, 1.1, 1.5, 1.5, 1.5).to_cbor_bytes();
-        assert_eq!(&b[4..7], F9_1_5, "float16-32, f16-exact -> #7.25");
-        assert_eq!(b[7], 0xfb, "float32-64, not f32-exact -> #7.27");
-        let b = FloatHeads::new(1.5, 100000.0, 100000.0, 1.5, 1.5, 1.5).to_cbor_bytes();
-        assert_eq!(b[4], 0xfa, "float16-32, f32-exact only -> #7.26");
-        assert_eq!(b[9], 0xfa, "float32-64, f32-exact -> #7.26");
+    fn float_heads_union_names_write_the_shortest_form() {
+        // A union name spans two widths, and writes whichever one its value's shortest form needs.
+        // 1.5 is f16-exact; 1e10 is f32-exact but not f16-exact; 1.1 is neither.
+        let b = FloatHeads::new(1.5, 1.5, 1.1, 1e10, 1.1, 1.5).to_cbor_bytes();
+        assert_eq!(&b[4..7], F9_1_5, "float16-32 holding a float16 value -> f9");
+        assert_eq!(b[7], 0xfb, "float32-64 holding a float64 value -> fb");
+        let b = FloatHeads::new(1.5, 100000.0, 1e10, 1e10, 1.1, 1.5).to_cbor_bytes();
+        assert_eq!(b[4], 0xfa, "float16-32 holding a float32 value -> fa");
+        assert_eq!(b[9], 0xfa, "float32-64 holding a float32 value -> fa");
     }
 
     #[test]
-    fn float_heads_inexact_float16_fails_serialize_loudly() {
-        // `float16` admits one head, and 1.1 is not representable at it. Rounding to fit would be
-        // exactly the silent value mutation a declared width exists to prevent, so the write FAILS.
-        let value = FloatHeads::new(1.1, 1.5, 1.5, 1.5, 1.5, 1.5);
+    fn float_heads_non_member_fails_serialize_loudly() {
+        // `float16` is the values whose shortest form is `f9`, and 1.1 is not one of them. There is
+        // no head at which writing it would be right: a wider one emits bytes this crate's own
+        // reader rejects for that member, a narrower one rounds the value. So the write FAILS.
+        let value = FloatHeads::new(1.1, 1.5, 1e10, 1e10, 1.1, 1.5);
+        let mut buf = cbor_event::se::Serializer::new_vec();
+        assert!(cbor_event::se::Serialize::serialize(&value, &mut buf).is_err());
+        // the same in the other direction: 1.5 is a float16, so it is not a `float32` value
+        let value = FloatHeads::new(1.5, 1.5, 1e10, 1.5, 1.1, 1.5);
         let mut buf = cbor_event::se::Serializer::new_vec();
         assert!(cbor_event::se::Serialize::serialize(&value, &mut buf).is_err());
     }

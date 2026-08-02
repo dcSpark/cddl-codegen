@@ -34,11 +34,13 @@ impl<T: cbor_event::de::Deserialize> Deserialize for T {
     }
 }
 
-/// Rank of a CBOR float head in WIDTH order (`#7.25` < `#7.26` < `#7.27`, RFC 8949 §3.3). The
-/// float-invalid `Sz::Inline`/`Sz::One` — which no `float_sz()` read produces, but a hand-built
-/// encoding struct can hold — sort with the widest head, so they can never pass a head-set check
-/// that the widest head itself would not.
-fn float_head_rank(sz: cbor_event::Sz) -> u8 {
+/// Rank of a CBOR float WIDTH in width order (2 < 4 < 8 bytes, RFC 8949 §3.3). It ranks the width
+/// of a VALUE's shortest lossless form against the window a CDDL float class spans — never the head
+/// a value happened to arrive under. The float-invalid `Sz::Inline`/`Sz::One` — which neither
+/// `smallest_float_sz` nor a `float_sz()` read produces, but a hand-built encoding struct can hold —
+/// sort with the widest width, so they can never pass a window check the widest width itself would
+/// not.
+fn float_width_rank(sz: cbor_event::Sz) -> u8 {
     match sz {
         cbor_event::Sz::Two => 0,
         cbor_event::Sz::Four => 1,
@@ -46,73 +48,84 @@ fn float_head_rank(sz: cbor_event::Sz) -> u8 {
     }
 }
 
-/// The narrowest CBOR float head in `min_width..=max_width` that encodes `value` with no loss —
-/// RFC 8949 §4.2.2 preferred serialization restricted to the head set the CDDL type DECLARES.
+/// Whether `value` belongs to a CDDL float class spanning the widths `min_width..=max_width`, and
+/// therefore the width it writes at — the two are one question.
 ///
-/// When no head in the set is lossless (only reachable for a single-width class, e.g. a `float16`
-/// member holding a value that is not f16-exact) this returns the widest admitted head, and the
-/// write then FAILS loudly with `InvalidLenPassed` instead of rounding the value. That is the whole
-/// point of a declared width: silently writing a different value is exactly the mutation a
-/// head-strict type exists to prevent.
-pub fn float_head_width(
+/// The CDDL float prelude names constrain VALUES, not encodings: RFC 8610 §2.2.3 says the `#7.x`
+/// notation "is about a set of values at the data model level … it does not mandate that these
+/// values also do have to be serialized as half-precision floats: CDDL does not provide any language
+/// means to restrict the choice of serialization variants", and §3.3 defines `float32` as "a number
+/// representable as a single-precision float". The six names PARTITION the float values by their
+/// shortest lossless form: `float16` is the values whose shortest form is `#7.25`, `float32` `#7.26`,
+/// `float64` `#7.27`, with `float16-32`/`float32-64` spanning two and `float` all three. So
+/// membership is `smallest_float_sz(value)` landing inside the class's window, and the classes are
+/// DISJOINT — `1.5` is a `float16` and not a `float32`, whatever head it arrived under.
+///
+/// The width a MEMBER writes at is exactly that shortest form (RFC 8949 §4.1 preferred
+/// serialization), which is its declared width by construction: membership IS "shortest form lands
+/// in the window". A NON-member — `1.5` assigned to a `float32` field, say — has no width to write
+/// at and fails LOUDLY here rather than being encoded, because a wider head would emit bytes this
+/// crate's own decoder rejects and a narrower one would round the value.
+///
+/// The failure is `cbor_event::Error::InvalidLenPassed` carrying the width the value REQUIRES, which
+/// is the actionable fact and the one the class does not admit. That error rather than a
+/// message-carrying `CustomError`: this is a `core`-only path (a `String` would pull in `alloc`), and
+/// it is the same error identity the lossy-narrowing case has always failed with.
+pub fn float_class_width(
     value: f64,
     min_width: cbor_event::Sz,
     max_width: cbor_event::Sz,
-) -> cbor_event::Sz {
+) -> cbor_event::Result<cbor_event::Sz> {
     let smallest = cbor_event::se::smallest_float_sz(value);
-    if float_head_rank(smallest) < float_head_rank(min_width) {
-        min_width
-    } else if float_head_rank(smallest) > float_head_rank(max_width) {
-        max_width
-    } else {
-        smallest
+    if float_width_rank(smallest) < float_width_rank(min_width)
+        || float_width_rank(smallest) > float_width_rank(max_width)
+    {
+        return Err(cbor_event::Error::InvalidLenPassed(smallest));
     }
+    Ok(smallest)
 }
 
-/// Exact `f32` -> `f64` widening, NaN payloads included.
+/// Exact `f64` -> `f32` narrowing for a value a class-membership check has ALREADY proven fits:
+/// every value an `f32`-carried CDDL float class admits has a shortest lossless form of `#7.25` or
+/// `#7.26` and is therefore f32-exact by construction, so the miss arm is unreachable. It panics
+/// rather than erroring because reaching it would mean the membership check above it is wrong — a
+/// generator bug, not malformed input.
 ///
-/// The NaN case is done in software because a hardware widening (`value as f64` / `f64::from`) may
-/// quiet a signaling NaN or drop its payload depending on the platform — and a declared-width float
-/// round-trips byte-exactly, payload included. Every other value widens exactly under `f64::from`.
-/// This restates cbor_event's own inbound widening, which is not public.
-pub fn widen_f32(value: f32) -> f64 {
-    if value.is_nan() {
-        let bits = value.to_bits();
-        f64::from_bits(
-            u64::from(bits >> 31) << 63
-                | 0x7ff0_0000_0000_0000
-                | u64::from(bits & 0x007f_ffff) << 29,
-        )
-    } else {
-        f64::from(value)
-    }
-}
-
-/// Exact `f64` -> `f32` narrowing for a value a head-set check has ALREADY proven fits: every head
-/// an `f32`-carried CDDL float class admits (`#7.25`, `#7.26`) is f32-exact by construction, so the
-/// miss arm is unreachable. It panics rather than erroring because reaching it would mean the head
-/// check above it is wrong — a generator bug, not malformed input. Never an `as` cast: that rounds
-/// silently and its NaN-payload behaviour is platform-dependent.
+/// Never an `as` cast: that rounds silently, and its NaN-payload behaviour is not merely
+/// platform-dependent — LLVM const-folds the conversion to a canonical quiet NaN, so `as` can differ
+/// between the const-evaluated and runtime paths of ONE binary. The widening direction goes through
+/// `cbor_event::se::f32_to_f64_exact` for the same reason.
 pub fn narrow_f32(value: f64) -> f32 {
     cbor_event::se::f64_to_f32_exact(value)
-        .expect("a float head an f32-carried CDDL type admits is f32-exact by construction")
+        .expect("a value an f32-carried CDDL float class admits is f32-exact by construction")
 }
 
-/// Read a float whose CDDL type admits only the head widths `min_width..=max_width` (`float32` is
-/// `#7.26` alone; `float16-32` is `#7.25`/`#7.26`; `float` admits all three). A head outside the set
-/// is a decode ERROR — never a silent widening or narrowing of the value, which would make a
-/// `float32` member's decoded value depend on bytes its own type forbids.
+/// Read a float belonging to a CDDL class spanning the widths `min_width..=max_width` (`float32` is
+/// `#7.26` alone; `float16-32` is `#7.25`/`#7.26`; `float` spans all three).
+///
+/// ANY float head is accepted — `f9`, `fa` and `fb` alike — and the decoded VALUE is then tested for
+/// membership (see [`float_class_width`]). Acceptance cannot key on the head: a CDDL float name is a
+/// set of values, and RFC 8949 §4.1 preferred serialization lets any conforming encoder write `1.5`
+/// as `f9 3e00`, so a head-strict reader would reject its own class's canonical bytes. The returned
+/// `sz` is the real WIRE width, which is what `--preserve-encodings` replays; it is deliberately not
+/// constrained to the window, since an `fb`-headed `1.5` is a `float16` whose byte-exact round-trip
+/// needs the `fb` back.
+///
+/// A non-member is a decode ERROR reporting the width the VALUE requires — never a silent widening
+/// or narrowing, which would make a `float32` member's decoded value depend on a value its own type
+/// excludes.
 pub fn read_float_sz_width(
     raw: &mut Deserializer,
     min_width: cbor_event::Sz,
     max_width: cbor_event::Sz,
 ) -> Result<(f64, cbor_event::Sz), DeserializeError> {
     let (value, sz) = raw.float_sz()?;
-    if float_head_rank(sz) < float_head_rank(min_width)
-        || float_head_rank(sz) > float_head_rank(max_width)
+    let smallest = cbor_event::se::smallest_float_sz(value);
+    if float_width_rank(smallest) < float_width_rank(min_width)
+        || float_width_rank(smallest) > float_width_rank(max_width)
     {
         return Err(DeserializeFailure::FloatWidth {
-            found: sz,
+            found: smallest,
             min: min_width,
             max: max_width,
         }
@@ -121,8 +134,8 @@ pub fn read_float_sz_width(
     Ok((value, sz))
 }
 
-/// [`read_float_sz_width`] dropping the head width — the non-`--preserve-encodings` form, where the
-/// width is checked but not recorded.
+/// [`read_float_sz_width`] dropping the wire width — the non-`--preserve-encodings` form, where the
+/// value's class membership is checked but no width is recorded.
 pub fn read_float_width(
     raw: &mut Deserializer,
     min_width: cbor_event::Sz,
@@ -193,20 +206,29 @@ pub trait DeserializeEmbeddedGroup {
     ) -> Result<Self, DeserializeError> where Self: Sized;
 }
 
-/// Write a float whose CDDL type declares the head widths `min_width..=max_width`, at the narrowest
-/// admitted head that encodes `value` losslessly (RFC 8949 §4.2.2 preferred serialization
-/// restricted to the type's own set). A single-width class writes exactly that head.
+/// Write a float at the smallest head that preserves its value exactly — RFC 8949 §4.1 preferred
+/// serialization, uniformly, the same rule the integer writes follow. The
+/// `--preserve-encodings` twin of this name additionally replays a recorded wire width; without that
+/// flag there is none to replay, so the smallest form is the whole rule.
+pub fn write_float(serializer: &mut Serializer, value: f64) -> cbor_event::Result<&mut Serializer> {
+    serializer.write_float_sz(value, cbor_event::se::smallest_float_sz(value))
+}
+
+/// Write a float belonging to a CDDL class spanning the widths `min_width..=max_width`, at the
+/// smallest head that preserves its value (RFC 8949 §4.1) — which for a member of the class IS its
+/// declared width, since membership means the value's shortest lossless form lands in the window.
 ///
-/// Fails (`InvalidLenPassed`, through `write_float_sz`) when NO admitted head represents the value
-/// exactly — a `float16` member holding a value that is not f16-exact is the reachable case. Loud
-/// by design: rounding to fit the declared width would be a silent value mutation.
+/// A NON-member — `1.5` assigned to a `float32` field — fails LOUDLY in `float_class_width` rather
+/// than being written at a head the class admits: those bytes would decode to a value this crate's
+/// own reader rejects for that field. See [`float_class_width`] for the value-set semantics.
 pub fn write_float_width(
     serializer: &mut Serializer,
     value: f64,
     min_width: cbor_event::Sz,
     max_width: cbor_event::Sz,
 ) -> cbor_event::Result<&mut Serializer> {
-    serializer.write_float_sz(value, float_head_width(value, min_width, max_width))
+    let width = float_class_width(value, min_width, max_width)?;
+    serializer.write_float_sz(value, width)
 }
 pub trait SerializeEmbeddedGroup {
     fn serialize_as_embedded_group<'a>(

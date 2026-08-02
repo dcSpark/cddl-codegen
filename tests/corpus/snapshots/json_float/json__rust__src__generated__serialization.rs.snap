@@ -16,7 +16,12 @@ impl cbor_event::se::Serialize for FloatHolder {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(1))?;
-        serializer.write_special(cbor_event::Special::Float(self.f))?;
+        write_float_width(
+            serializer,
+            self.f,
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
         Ok(serializer)
     }
 }
@@ -28,7 +33,8 @@ impl Deserialize for FloatHolder {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
             read_len.finish()?;
-            let f = f64::deserialize(raw).map_err(|e: DeserializeError| e.annotate("f"))?;
+            let f = read_float_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
+                .map_err(|e: DeserializeError| e.annotate("f"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {

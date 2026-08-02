@@ -16429,7 +16429,7 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
 include!("../../static/emit_tests_encoding_fidelity.rs");
 
 /// Harness-side companion to the shipped mutator's `encoding_mutator_self_check`: confirm a major-7
-/// FLOAT head (`fa`/`fb`) rides through the NON-`widen_float` classes (here `widen_step` and
+/// FLOAT head (`fa`/`fb`) rides through the classes that do NOT widen floats (here `widen_step` and
 /// `indef_containers`) byte-for-byte. Those classes leave `cfg.widen_float` off, so the `Item::Other`
 /// arm copies the whole head+argument verbatim (`read_arg` sizes info 26/27 = 4/8 bytes) while
 /// surrounding structure mutates. (The dedicated `widen_float` class DOES rewrite these heads — that
@@ -16505,71 +16505,6 @@ struct ReplayRow {
     type_name: String,
     mode: String,
     vectors: Vec<ReplayVector>,
-}
-
-/// Does this catalog row's spec DECLARE a float head set — i.e. name one of the head-constrained
-/// float prelude types, whose admitted CBOR heads are fixed by the type rather than free?
-///
-/// It decides which mutator entry point the replay legs use. `widen_float` re-encodes a major-7
-/// float head one IEEE width wider, which is value-preserving and therefore a legitimate spec-equal
-/// re-encoding — but only for a member whose type admits the wider head. For a `float32` member the
-/// widened bytes are not an irregular encoding of the same value, they are a value the type does not
-/// admit, so the decoder SHOULD reject them and the fidelity premise has nothing to say. The mutator
-/// works on bytes and cannot tell which head belongs to which member (`variants_no_float_widen`'s own
-/// doc comment says the caller must), and a catalog row's spec is exactly that knowledge.
-///
-/// Deliberately conservative in one direction: a spec mixing a `float` member with a `float32` one
-/// suppresses the class for BOTH, losing coverage rather than risking a false finding. Comments are
-/// stripped first — a corpus row's spec carries its fixture's prose, and matching a type name inside
-/// a comment would suppress the class on rows that hold no float at all.
-fn spec_declares_float_head_set(spec: &str) -> bool {
-    const HEAD_CONSTRAINED: [&str; 5] =
-        ["float16-32", "float32-64", "float16", "float32", "float64"];
-    let is_name_byte = |c: char| {
-        c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '$' || c == '@'
-    };
-    for line in spec.lines() {
-        let code = line.split(';').next().unwrap_or("");
-        for name in HEAD_CONSTRAINED {
-            let mut from = 0usize;
-            while let Some(rel) = code[from..].find(name) {
-                let at = from + rel;
-                let before_ok = code[..at]
-                    .chars()
-                    .next_back()
-                    .is_none_or(|c| !is_name_byte(c));
-                let after_ok = code[at + name.len()..]
-                    .chars()
-                    .next()
-                    .is_none_or(|c| !is_name_byte(c));
-                if before_ok && after_ok {
-                    return true;
-                }
-                from = at + name.len();
-            }
-        }
-    }
-    false
-}
-
-#[test]
-fn spec_declares_float_head_set_reads_code_not_comments() {
-    assert!(spec_declares_float_head_set(
-        "__probe_holder = [0, x]\nx = float32"
-    ));
-    assert!(spec_declares_float_head_set("floats = [* float64]"));
-    assert!(spec_declares_float_head_set("x = float16-32"));
-    // width-unconstrained `float` admits every head, so the class stays live
-    assert!(!spec_declares_float_head_set(
-        "__probe_holder = [0, x]\nx = float"
-    ));
-    // a longer name that merely CONTAINS one is not a match
-    assert!(!spec_declares_float_head_set("x = my_float32_thing"));
-    assert!(!spec_declares_float_head_set("x = bigfloat"));
-    // prose naming the type suppresses nothing
-    assert!(!spec_declares_float_head_set(
-        "bools = [* bool]\n; unlike floats = [* float64]"
-    ));
 }
 
 /// The `cddl_encoding_fidelity::variants` labels whose transform REORDERS MAP ENTRIES — the only
@@ -18976,15 +18911,11 @@ fn decode_conformance_replay() {
                 continue;
             }
             let bytes = hex_to_bytes(&vector.hex);
-            // A row whose spec declares a float head set skips the `widen_float` class — widening
-            // such a head yields bytes the TYPE forbids, not a spec-equal re-encoding of the value.
-            let widen_floats = !spec_declares_float_head_set(&row.spec);
+            // The `widen_float` class applies to every row. A CDDL float name is a set of VALUES,
+            // not of encodings (RFC 8610 §2.2.3), so a widened float head is a spec-equal
+            // re-encoding of the same value whatever name the member carries.
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if widen_floats {
-                    cddl_encoding_fidelity::variants(&bytes)
-                } else {
-                    cddl_encoding_fidelity::variants_no_float_widen(&bytes)
-                }
+                cddl_encoding_fidelity::variants(&bytes)
             })) {
                 Ok(list) => {
                     for (label, var_bytes) in list {
@@ -20035,15 +19966,11 @@ fn corpus_decode_replay() {
                 continue;
             }
             let bytes = hex_to_bytes(&vector.hex);
-            // A row whose spec declares a float head set skips the `widen_float` class — widening
-            // such a head yields bytes the TYPE forbids, not a spec-equal re-encoding of the value.
-            let widen_floats = !spec_declares_float_head_set(&row.spec);
+            // The `widen_float` class applies to every row. A CDDL float name is a set of VALUES,
+            // not of encodings (RFC 8610 §2.2.3), so a widened float head is a spec-equal
+            // re-encoding of the same value whatever name the member carries.
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if widen_floats {
-                    cddl_encoding_fidelity::variants(&bytes)
-                } else {
-                    cddl_encoding_fidelity::variants_no_float_widen(&bytes)
-                }
+                cddl_encoding_fidelity::variants(&bytes)
             })) {
                 Ok(list) => {
                     for (label, var_bytes) in list {

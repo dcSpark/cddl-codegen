@@ -72,7 +72,12 @@ impl cbor_event::se::Serialize for FloatHolder {
         serializer.write_array(cbor_event::Len::Len(1))?;
         serializer.write_array(cbor_event::Len::Len(self.f.len() as u64))?;
         for element in self.f.iter() {
-            serializer.write_special(cbor_event::Special::Float(*element))?;
+            write_float_width(
+                serializer,
+                *element,
+                cbor_event::Sz::Eight,
+                cbor_event::Sz::Eight,
+            )?;
         }
         Ok(serializer)
     }
@@ -98,7 +103,11 @@ impl Deserialize for FloatHolder {
                     {
                         break;
                     }
-                    f_arr.push(f64::deserialize(raw)?);
+                    f_arr.push(read_float_width(
+                        raw,
+                        cbor_event::Sz::Eight,
+                        cbor_event::Sz::Eight,
+                    )?);
                 }
                 Ok(f_arr)
             })()

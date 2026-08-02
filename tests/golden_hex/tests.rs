@@ -238,24 +238,41 @@ mod golden_hex {
         OneFloat::new(-4.1),
         &[0x81, 0xfb, 0xc0, 0x10, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66]
     );
-    // f64 specials — byte-compared (NaN != NaN, but the encodings are fixed bit patterns).
+    // Float specials — byte-compared (NaN != NaN, but the encodings are fixed bit patterns). RFC
+    // 8949 Appendix A lists each of these at all three widths; a float write is the shortest form
+    // that preserves the value (§4.1 preferred serialization), which for all three is the half.
     kat!(
         float_infinity,
         OneFloat,
         OneFloat::new(f64::INFINITY),
-        &[0x81, 0xfb, 0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        &[0x81, 0xf9, 0x7c, 0x00]
     );
     kat!(
         float_neg_infinity,
         OneFloat,
         OneFloat::new(f64::NEG_INFINITY),
-        &[0x81, 0xfb, 0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        &[0x81, 0xf9, 0xfc, 0x00]
     );
     kat!(
         float_nan,
         OneFloat,
         OneFloat::new(f64::NAN),
-        &[0x81, 0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        &[0x81, 0xf9, 0x7e, 0x00]
+    );
+    // A half-precision value the shortest-form rule reaches from the other direction: 1.5 is
+    // f16-exact, so an `f9`-headed instance both decodes and re-encodes as itself.
+    kat!(
+        float_half,
+        OneFloat,
+        OneFloat::new(1.5),
+        &[0x81, 0xf9, 0x3e, 0x00]
+    );
+    // …and a single-precision one: 100000.0 is f32-exact but outside binary16's range.
+    kat!(
+        float_single,
+        OneFloat,
+        OneFloat::new(100000.0),
+        &[0x81, 0xfa, 0x47, 0xc3, 0x50, 0x00]
     );
 
     // ---- open struct-map (loose CBOR "rest row"), default flags ----

@@ -35,7 +35,9 @@ fn tests_wasm_hook_is_wired() {
 #[test]
 fn wasm_map_struct_optional_and_nullable_fields() {
     let foo = Foo::new(9, String::from("f"), vec![1, 2]);
-    let mut bar = Bar::new(&foo, Some(4), 1.5);
+    // `bar.float` is a CDDL `float64` — the values whose shortest lossless form is `fb`. 1.5 is a
+    // `float16` and would fail the write.
+    let mut bar = Bar::new(&foo, Some(4), 1.1);
     bar.set_derp(77);
     bar.set_key_5(String::from("five"));
     let back = Bar::from_cbor_bytes(&bar.to_cbor_bytes())
@@ -47,17 +49,17 @@ fn wasm_map_struct_optional_and_nullable_fields() {
     assert_eq!(back.derp(), Some(77));
     assert_eq!(back.one(), Some(4));
     assert_eq!(back.key_5(), Some(String::from("five")));
-    assert_eq!(back.float(), 1.5);
+    assert_eq!(back.float(), 1.1);
 
     // optionals absent + nullable null: every getter must answer None, not garbage
-    let bare = Bar::new(&foo, None, 0.5);
+    let bare = Bar::new(&foo, None, 0.1);
     let back = Bar::from_cbor_bytes(&bare.to_cbor_bytes())
         .ok()
         .expect("Bar round-trip (absent optionals)");
     assert_eq!(back.derp(), None);
     assert_eq!(back.one(), None);
     assert_eq!(back.key_5(), None);
-    assert_eq!(back.float(), 0.5);
+    assert_eq!(back.float(), 0.1);
 }
 
 // shapes: coll (FooList, a Vec-backed wrapper struct) + collmap (MapTextToText) in the roles

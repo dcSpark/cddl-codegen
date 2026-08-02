@@ -29,14 +29,14 @@ primitive encoding regardless of the `0x81` framing.
 
 ## Summary
 
-- Appendix A vectors: **82** — ✅ 38 covered · ✅* 16 redundant · ➖ 28 N/A · ➕ 0 unexplained
-- Legal **leaf** cells: **45** — 18 covered, 27 unexercised:
-  - 8 **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)
+- Appendix A vectors: **82** — ✅ 40 covered · ✅* 24 redundant · ➖ 18 N/A · ➕ 0 unexplained
+- Legal **leaf** cells: **45** — 20 covered, 25 unexercised:
+  - 6 **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)
   - 19 **emittable but no Appendix A vector lands here** (e.g. wide-argument length/count heads) — not a generator gap, just outside the App-A example set
-- Golden tests: 45 default-flags · sibling sets: 62 preserve + 30 canonical (below)
+- Golden tests: 47 default-flags · sibling sets: 63 preserve + 30 canonical (below)
 
 **Sibling golden sets (not in this grid):** the encodings the default-flags set can never
-exercise — the ➖ `.indef` cells, the ➖ `.float16`/`.float32` heads, and non-minimal header arguments — have their own spec-anchored
+exercise — the ➖ `.indef` cells, the non-minimal float spellings of a value whose shortest form is narrower, and non-minimal header arguments — have their own spec-anchored
 KATs: `tests/golden_hex_preserve/tests.rs` (irregular RFC 8949 §3 encodings must re-encode
 byte-identically under `--preserve-encodings`) and `tests/golden_hex_canonical/tests.rs` (the
 same irregular inputs must re-encode to hand-derived §4.2 minimal bytes under `--canonical-form`).
@@ -143,28 +143,28 @@ redundant or has no canonical RFC vector.
 | `f7` | undefined | ➖ | cddl-codegen has no `undefined` construct; the simple-value immediate cell is otherwise covered by false/true/null |
 | `f818` | simple(24) | ➖ | extended simple values are not a CDDL construct the generator emits |
 | `f8ff` | simple(255) | ➖ | extended simple values are not a CDDL construct the generator emits |
-| `f90000` | 0.0 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f90001` | 5.960464477539063e-08 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f90400` | 6.103515625e-05 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f93c00` | 1.0 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f93e00` | 1.5 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f97bff` | 65504.0 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f97c00` | Infinity | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f97e00` | NaN | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f98000` | -0.0 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f9c400` | -4.0 | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `f9fc00` | -Infinity | ➖ | under default flags a width-UNCONSTRAINED `float` writes as a double (`write_special(Special::Float(..))`), and this suite's spec declares only that; the f16 head IS emitted under default flags by a `float16` / `float16-32` member (`write_float_width`, the declared head width), and under --preserve-encodings (a recorded head width replays) and --canonical-form (the shortest lossless width), all covered by the sibling preserve/canonical KATs (tests/golden_hex_preserve `float_widths`, tests/golden_hex_canonical)  [`Special::Float`] |
-| `fa47c35000` | 100000.0 | ➖ | under default flags a width-unconstrained `float` never emits single-precision (same reason as float16); the f32 head is what a `float32` member emits at every profile, and is covered by the sibling KATs and by tests/core's `float_heads` vectors  [`Special::Float`] |
-| `fa7f7fffff` | 3.4028234663852886e+38 | ➖ | under default flags a width-unconstrained `float` never emits single-precision (same reason as float16); the f32 head is what a `float32` member emits at every profile, and is covered by the sibling KATs and by tests/core's `float_heads` vectors  [`Special::Float`] |
-| `fa7f800000` | Infinity | ➖ | under default flags a width-unconstrained `float` never emits single-precision (same reason as float16); the f32 head is what a `float32` member emits at every profile, and is covered by the sibling KATs and by tests/core's `float_heads` vectors  [`Special::Float`] |
-| `fa7fc00000` | NaN | ➖ | under default flags a width-unconstrained `float` never emits single-precision (same reason as float16); the f32 head is what a `float32` member emits at every profile, and is covered by the sibling KATs and by tests/core's `float_heads` vectors  [`Special::Float`] |
-| `faff800000` | -Infinity | ➖ | under default flags a width-unconstrained `float` never emits single-precision (same reason as float16); the f32 head is what a `float32` member emits at every profile, and is covered by the sibling KATs and by tests/core's `float_heads` vectors  [`Special::Float`] |
+| `f90000` | 0.0 | ✅* | same f16 path (head 0xf9) as 1.5, covered by float_half |
+| `f90001` | 5.960464477539063e-08 | ✅* | same f16 path as 1.5; a subnormal payload is not a distinct generator path |
+| `f90400` | 6.103515625e-05 | ✅* | same f16 path as 1.5, covered by float_half |
+| `f93c00` | 1.0 | ✅* | same f16 path as 1.5, covered by float_half |
+| `f93e00` | 1.5 | ✅ | `float_half` |
+| `f97bff` | 65504.0 | ✅* | same f16 path as 1.5, covered by float_half |
+| `f97c00` | Infinity | ✅ | `float_infinity` |
+| `f97e00` | NaN | ✅ | `float_nan` |
+| `f98000` | -0.0 | ✅* | same f16 path as 1.5; the sign bit is not a distinct generator path |
+| `f9c400` | -4.0 | ✅* | same f16 path as 1.5, covered by float_half |
+| `f9fc00` | -Infinity | ✅ | `float_neg_infinity` |
+| `fa47c35000` | 100000.0 | ✅ | `float_single` |
+| `fa7f7fffff` | 3.4028234663852886e+38 | ✅* | same f32 path (head 0xfa) as 100000.0, covered by float_single |
+| `fa7f800000` | Infinity | ➖ | Infinity's shortest lossless form is the half `f97c00` (covered by float_infinity), so a write never selects the single-precision spelling; reads accept it  [`smallest_float_sz`] |
+| `fa7fc00000` | NaN | ➖ | the canonical quiet NaN's shortest lossless form is the half `f97e00` (covered by float_nan), so a write never selects the single-precision spelling; reads accept it  [`smallest_float_sz`] |
+| `faff800000` | -Infinity | ➖ | -Infinity's shortest lossless form is the half `f9fc00` (covered by float_neg_infinity), so a write never selects the single-precision spelling; reads accept it  [`smallest_float_sz`] |
 | `fb3ff199999999999a` | 1.1 | ✅ | `float_double` |
 | `fb7e37e43c8800759c` | 1.0e+300 | ✅* | same f64/double path (head 0xfb) as 1.1, covered by float_double |
-| `fb7ff0000000000000` | Infinity | ✅ | `float_infinity` |
-| `fb7ff8000000000000` | NaN | ✅ | `float_nan` |
+| `fb7ff0000000000000` | Infinity | ➖ | same as the single-precision Infinity spelling: the shortest lossless form is `f97c00`, so a write never selects the double  [`smallest_float_sz`] |
+| `fb7ff8000000000000` | NaN | ➖ | same as the single-precision NaN spelling: the shortest lossless form is `f97e00`, so a write never selects the double  [`smallest_float_sz`] |
 | `fbc010666666666666` | -4.1 | ✅ | `float_negative` |
-| `fbfff0000000000000` | -Infinity | ✅ | `float_neg_infinity` |
+| `fbfff0000000000000` | -Infinity | ➖ | same as the single-precision -Infinity spelling: the shortest lossless form is `f9fc00`, so a write never selects the double  [`smallest_float_sz`] |
 
 ## Per-construct legal encodings
 
@@ -200,8 +200,8 @@ value where the head argument follows the value: a `uint` reaches `enc.major0.ai
 plain aliases (`bytes = bstr`, `text = tstr`, `null = nil`, derived from the pinned prelude): the
 fixture writing `tstr` credits `prelude.text` too, because they are one construct under two
 spellings. What is NOT corrected is a construct the fixture reaches by writing a **wider type that
-the generator narrows at emission**: `one_float = [v: float]` asserts `fb…` doubles, so
-`prelude.float64`'s cell is exercised in fact, yet no rule names `float64` and it reads ✗. That is a
+the generator narrows at emission**: `one_float = [v: float]` asserts each value at its shortest
+form, so `prelude.float16`'s cell is exercised in fact, yet no rule names `float16` and it reads ✗. That is a
 claim about what cddl-codegen picks when it emits a union, not about spec structure — not derivable
 from the prelude, and deliberately not guessed. For those rows read ✗ as *no golden rule names this
 construct*, which is the honest fact, not as *nothing resembling it is asserted anywhere*.
@@ -218,7 +218,7 @@ agreeing exactly — that was an artifact of crediting every construct for every
 vectors, and restoring the agreement would mean restoring the over-credit.
 
 - Exercised by `input.cddl`: **16** of 48 (✗ rows below have their full legal set untested)
-- Constructs with at least one untested-and-emittable cell: **38** of 48
+- Constructs with at least one untested-and-emittable cell: **41** of 48
 - Both counts are **conservative in one known direction**: a construct the fixture reaches only
   through a wider type the generator narrows at emission (`float` → the `float64` cell) counts as
   ✗ here, so *exercised* is a floor and *with gaps* is a ceiling. Cited alone, they overstate the
@@ -242,11 +242,11 @@ vectors, and restoring the agreement would mean restoring the over-credit.
 | `prelude.eb64url` | ✗ | 1 | 0 | 0 | `enc.major6.imm` |
 | `prelude.encoded-cbor` | ✗ | 1 | 0 | 0 | `enc.major6.ai24` |
 | `prelude.false` | ✗ | 1 | 0 | 0 | `enc.major7.simple_imm` |
-| `prelude.float` | ✓ | 3 | 1 | 2 | — |
-| `prelude.float16` | ✗ | 1 | 0 | 1 | — |
-| `prelude.float16-32` | ✗ | 2 | 0 | 2 | — |
-| `prelude.float32` | ✗ | 1 | 0 | 1 | — |
-| `prelude.float32-64` | ✗ | 2 | 0 | 1 | `enc.major7.float64` |
+| `prelude.float` | ✓ | 3 | 3 | 0 | — |
+| `prelude.float16` | ✗ | 1 | 0 | 0 | `enc.major7.float16` |
+| `prelude.float16-32` | ✗ | 2 | 0 | 0 | `enc.major7.float16`, `enc.major7.float32` |
+| `prelude.float32` | ✗ | 1 | 0 | 0 | `enc.major7.float32` |
+| `prelude.float32-64` | ✗ | 2 | 0 | 0 | `enc.major7.float32`, `enc.major7.float64` |
 | `prelude.float64` | ✗ | 1 | 0 | 0 | `enc.major7.float64` |
 | `prelude.int` | ✗ | 10 | 0 | 0 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm` |
 | `prelude.integer` | ✗ | 15 | 0 | 0 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm`, `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm` |
@@ -254,7 +254,7 @@ vectors, and restoring the agreement would mean restoring the over-credit.
 | `prelude.nil` | ✓ | 1 | 1 | 0 | — |
 | `prelude.nint` | ✓ | 5 | 4 | 0 | `enc.major1.ai26` |
 | `prelude.null` | ✓ | 1 | 1 | 0 | — |
-| `prelude.number` | ✗ | 13 | 0 | 2 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm`, `enc.major7.float64` |
+| `prelude.number` | ✗ | 13 | 0 | 0 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm`, `enc.major7.float16`, `enc.major7.float32`, `enc.major7.float64` |
 | `prelude.regexp` | ✗ | 1 | 0 | 0 | `enc.major6.ai24` |
 | `prelude.tdate` | ✗ | 1 | 0 | 0 | `enc.major6.imm` |
 | `prelude.text` | ✓ | 6 | 1 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27` |
@@ -266,13 +266,13 @@ vectors, and restoring the agreement would mean restoring the over-credit.
 | `prelude.unsigned` | ✗ | 10 | 0 | 0 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm` |
 | `prelude.uri` | ✗ | 1 | 0 | 0 | `enc.major6.ai24` |
 | `type2.array` | ✓ | 6 | 2 | 1 | `enc.major4.ai25`, `enc.major4.ai26`, `enc.major4.ai27` |
-| `type2.major` | ✗ | 45 | 0 | 8 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm`, `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27`, `enc.major2.imm`, `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27`, `enc.major3.imm`, `enc.major4.ai24`, `enc.major4.ai25`, `enc.major4.ai26`, `enc.major4.ai27`, `enc.major4.imm`, `enc.major5.ai24`, `enc.major5.ai25`, `enc.major5.ai26`, `enc.major5.ai27`, `enc.major5.imm`, `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm`, `enc.major7.float64`, `enc.major7.simple_imm` |
-| `type2.major7` | ✗ | 6 | 0 | 4 | `enc.major7.float64`, `enc.major7.simple_imm` |
+| `type2.major` | ✗ | 45 | 0 | 6 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm`, `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27`, `enc.major2.imm`, `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27`, `enc.major3.imm`, `enc.major4.ai24`, `enc.major4.ai25`, `enc.major4.ai26`, `enc.major4.ai27`, `enc.major4.imm`, `enc.major5.ai24`, `enc.major5.ai25`, `enc.major5.ai26`, `enc.major5.ai27`, `enc.major5.imm`, `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm`, `enc.major7.float16`, `enc.major7.float32`, `enc.major7.float64`, `enc.major7.simple_imm` |
+| `type2.major7` | ✗ | 6 | 0 | 2 | `enc.major7.float16`, `enc.major7.float32`, `enc.major7.float64`, `enc.major7.simple_imm` |
 | `type2.map` | ✓ | 6 | 1 | 1 | `enc.major5.ai24`, `enc.major5.ai25`, `enc.major5.ai26`, `enc.major5.ai27` |
 | `type2.tag` | ✓ | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
 | `type2.tag_head_type` | ✗ | 5 | 0 | 0 | `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm` |
 | `value.bytes` | ✗ | 6 | 0 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27`, `enc.major2.imm` |
-| `value.number` | ✓ | 13 | 10 | 2 | `enc.major1.ai26` |
+| `value.number` | ✓ | 13 | 12 | 0 | `enc.major1.ai26` |
 | `value.text` | ✗ | 6 | 0 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27`, `enc.major3.imm` |
 
 ## Consistency (join drift check)

@@ -397,7 +397,6 @@ pub fn emit_generated_tests(
             value_eq: !cli.preserve_encodings,
             preserve: cli.preserve_encodings && !uses_custom,
             canonical: cli.canonical_form && !uses_custom,
-            widen_floats: !contains_declared_width_float(types, ident),
         };
         let roundtrip = match rust_struct.variant() {
             RustStructType::Record(record) => {
@@ -706,27 +705,6 @@ struct RtEmit {
     value_eq: bool,
     preserve: bool,
     canonical: bool,
-    /// Whether the encoding-fidelity mutator may widen this type's float heads. False as soon as the
-    /// type reaches a float whose CDDL name DECLARES its head set: widening such a head produces
-    /// bytes the type does not admit, so the decode SHOULD fail and the fidelity assertion (decode,
-    /// then re-encode byte-identically) is not a statement about it. Only the width-unconstrained
-    /// `float` admits every head, which is exactly what that mutation class assumes.
-    widen_floats: bool,
-}
-
-/// Whether `ident`'s type tree reaches a float class other than the width-unconstrained `float`.
-/// Walks referenced structs (cycle-guarded), so a record whose float sits three types down counts.
-fn contains_declared_width_float(types: &IntermediateTypes, ident: &RustIdent) -> bool {
-    let mut found = false;
-    ConceptualRustType::Rust(ident.clone()).visit_types(types, &mut |t| {
-        if let ConceptualRustType::Primitive(p) = t
-            && p.is_float()
-            && *p != Primitive::Float
-        {
-            found = true;
-        }
-    });
-    found
 }
 
 /// The shared wire-cycle emission for a list of `(value_expr, label)` cases. `conf` is the source
@@ -760,13 +738,7 @@ fn roundtrip_body(
         value_eq,
         preserve,
         canonical,
-        widen_floats,
     } = rt;
-    let variants_fn = if widen_floats {
-        "variants"
-    } else {
-        "variants_no_float_widen"
-    };
     let conf_line = conf
         .map(|rule| format!("        cddl_conformance::validate(&bytes, \"{rule}\");\n"))
         .unwrap_or_default();
@@ -817,7 +789,7 @@ fn roundtrip_body(
                 };
                 format!(
                     "{canon_hoist}
-        for (mut_label, mutated) in cddl_encoding_fidelity::{variants_fn}(&bytes) {{
+        for (mut_label, mutated) in cddl_encoding_fidelity::variants(&bytes) {{
             let back = {name}::from_cbor_bytes(&mutated).unwrap_or_else(|e| panic!(\"{name} ({label})/{{mut_label}}: irregular encoding must deserialize: {{e:?}}\"));
             assert_eq!(back.to_cbor_bytes(), mutated, \"{name} ({label})/{{mut_label}}: preserve-encodings must re-encode irregular input byte-identically\");{canon_assert}
         }}"
@@ -1143,7 +1115,7 @@ fn wrapper_roundtrip(
         }),
         None => match float_min_max {
             Some(window) => Some(MintValue::FloatLit {
-                value: valid_float_in_window(&window),
+                value: valid_float_in_window_of_class(&window, float_class_of(wrapped)),
                 is_f32: float_is_f32(wrapped),
             }),
             None => match min_max {
@@ -1252,7 +1224,11 @@ fn record_deser_reject(
         // reject exercises the accept-form (NaN-safe) check that a reject-form check would let slip.
         let (cases, failure) = if let Some(window) = &target.rust_type.config.float_bounds {
             (
-                float_bound_cases(window, float_is_f32(&target.rust_type)),
+                float_bound_cases(
+                    window,
+                    float_is_f32(&target.rust_type),
+                    float_class_of(&target.rust_type)?,
+                ),
                 "RangeCheckFloat",
             )
         } else {
@@ -1330,7 +1306,7 @@ fn choice_construct_reject(
         for (i, (arg_ty, _)) in arg_fields.iter().enumerate() {
             let (cases, failure) = if let Some(window) = &arg_ty.config.float_bounds {
                 (
-                    float_bound_cases(window, float_is_f32(arg_ty)),
+                    float_bound_cases(window, float_is_f32(arg_ty), float_class_of(arg_ty)?),
                     "RangeCheckFloat",
                 )
             } else {
@@ -1443,7 +1419,7 @@ fn wrapper_construct_reject_float(
     wrapped: &RustType,
     window: &crate::intermediate::FloatWindow,
 ) -> Option<String> {
-    let cases = float_bound_cases(window, float_is_f32(wrapped));
+    let cases = float_bound_cases(window, float_is_f32(wrapped), float_class_of(wrapped)?);
     let lines: Vec<String> = cases
         .into_iter()
         .map(|(expr, accept, label)| {
@@ -1542,22 +1518,143 @@ fn valid_float_in_window(window: &crate::intermediate::FloatWindow) -> f64 {
     }
 }
 
+/// Rank of a float class-window endpoint (`float_class_window`'s `cbor_event::Sz` spelling) in width
+/// order. Derived from that one table rather than restating it, so the six classes have a single
+/// definition here as they do in the runtime.
+fn float_width_rank(name: &str) -> u8 {
+    match name {
+        "Two" => 0,
+        "Four" => 1,
+        _ => 2,
+    }
+}
+
+/// Whether `value` is a MEMBER of the CDDL float class `p` names. The six names partition the float
+/// values by shortest lossless form, so membership is `smallest_float_sz(value)` landing inside the
+/// class's window — the same predicate the emitted code enforces on both sides
+/// (`static/serialization.rs`, `float_class_width`). A mint MUST satisfy it: serializing a
+/// non-member fails loudly by design, so a non-member baseline would make every generated
+/// round-trip for that type fail.
+fn float_class_admits(p: Primitive, value: f64) -> bool {
+    let Some((min, max)) = p.float_class_window() else {
+        return false;
+    };
+    let smallest = match cbor_event::se::smallest_float_sz(value) {
+        cbor_event::Sz::Two => 0,
+        cbor_event::Sz::Four => 1,
+        _ => 2,
+    };
+    smallest >= float_width_rank(min) && smallest <= float_width_rank(max)
+}
+
+/// A member of `p`'s float class near `base`, in preference order: `base` itself, then the nearest
+/// values above and below it that a wider class needs. A class whose narrowest admitted width is
+/// `fa`/`fb` excludes every value a narrower head represents, so an arbitrary decimal (a window
+/// midpoint, `0.0`) is typically NOT a member of it; perturbing the lowest mantissa bit of the f32
+/// (resp. f64) image of `base` lands on a value that needs exactly that width and sits as close to
+/// `base` as the format allows — close enough to stay inside any non-degenerate bounds window.
+///
+/// Both directions are offered because the bounds window may be one-sided: a `.le`-bounded class
+/// needs the candidate below `base`, a `.ge`-bounded one above it.
+fn float_class_candidates(p: Primitive, base: f64) -> Vec<f64> {
+    let mut out = vec![base];
+    // f32-exact neighbours: an f32 whose lowest mantissa bit differs from `base`'s image needs the
+    // full binary32 mantissa, so its shortest form is `fa` (never `f9`).
+    let b32 = (base as f32).to_bits();
+    for bits in [b32.wrapping_sub(1), b32.wrapping_add(1)] {
+        out.push(cbor_event::se::f32_to_f64_exact(f32::from_bits(bits)));
+    }
+    // f64-exact neighbours: same argument one width up — the lowest binary64 mantissa bit set means
+    // no narrower head represents the value, so the shortest form is `fb`.
+    let b64 = base.to_bits();
+    for bits in [b64.wrapping_sub(1), b64.wrapping_add(1)] {
+        out.push(f64::from_bits(bits));
+    }
+    // Last resort when `base` is degenerate (0.0, an infinity): one known member per width.
+    out.extend_from_slice(&[0.0, 1e10, 1.1]);
+    out.retain(|v| v.is_finite() && float_class_admits(p, *v));
+    out
+}
+
+/// The unbounded baseline for a float of class `p`: one readable literal per width, the narrowest
+/// the class admits. `float16`/`float16-32`/`float` all admit `0.0` (its shortest form is `f9`);
+/// `float32`/`float32-64` take `1e10` (binary32-exact, far outside binary16's range, so `fa`); and
+/// `float64` takes `1.1` (it needs the full binary64 mantissa, so `fb`).
+fn float_class_baseline(p: Primitive) -> Option<f64> {
+    [0.0, 1e10, 1.1]
+        .into_iter()
+        .find(|v| float_class_admits(p, *v))
+}
+
+/// [`valid_float_in_window`] narrowed to a MEMBER of `p`'s float class — the two constraints a
+/// bounded declared-width float must satisfy at once. Falls back to the plain interior point when no
+/// candidate satisfies both, which means the CDDL type is uninhabited (`float64 .eq 3.5`: the only
+/// value the bound admits has shortest form `f9`, so no `float64` value satisfies it) and the
+/// emitted round-trip is expected to say so loudly rather than silently mint something else.
+fn valid_float_in_window_of_class(
+    window: &crate::intermediate::FloatWindow,
+    class: Option<Primitive>,
+) -> f64 {
+    let base = valid_float_in_window(window);
+    let Some(p) = class else { return base };
+    let in_window = |v: f64| {
+        window
+            .0
+            .is_none_or(|(lo, excl)| if excl { v > lo } else { v >= lo })
+            && window
+                .1
+                .is_none_or(|(hi, excl)| if excl { v < hi } else { v <= hi })
+    };
+    float_class_candidates(p, base)
+        .into_iter()
+        .find(|v| in_window(*v))
+        .unwrap_or(base)
+}
+
+/// The float class a type names, or `None` when it is not a float.
+fn float_class_of(ty: &RustType) -> Option<Primitive> {
+    match ty.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(p) if p.is_float() => Some(*p),
+        _ => None,
+    }
+}
+
 /// Accept/reject boundary cases for a float window: `(value, accept, label)`. Always includes the
 /// out-of-window rejects (below min / above max with a unit of margin) and a NaN reject, plus an
 /// interior accept. For an f64 window (exact representation) it also pins each endpoint — included
 /// endpoints accept, excluded endpoints reject. f32 windows skip the exact-endpoint cases (an f32
 /// value cast back to f64 need not equal the authored decimal), keeping only the margin/NaN cases.
+///
+/// Every case is also a MEMBER of the field's float CLASS, because the reject cases are asserted
+/// through the WIRE (mint the out-of-bounds value, serialize, expect the decode to reject it) and a
+/// non-member cannot be serialized at all. The margin cases are therefore taken near the margin
+/// rather than exactly a unit past it, and a case whose value the class excludes outright — an
+/// endpoint the class cannot represent, or NaN for any class narrower than `float16` — is DROPPED:
+/// a `float64` field has no NaN, since the canonical quiet NaN's shortest lossless form is `f9`.
 fn float_bound_cases(
     window: &crate::intermediate::FloatWindow,
     is_f32: bool,
+    class: Primitive,
 ) -> Vec<(MintValue, bool, &'static str)> {
     let lit = |v: f64| MintValue::FloatLit { value: v, is_f32 };
+    // a member of `class` near `base` that still satisfies what the case is testing
+    let member = |base: f64, pred: &dyn Fn(f64) -> bool| {
+        float_class_candidates(class, base)
+            .into_iter()
+            .find(|v| pred(*v))
+    };
     let mut out = Vec::new();
     // interior accept
-    out.push((lit(valid_float_in_window(window)), true, "in-window"));
+    out.push((
+        lit(valid_float_in_window_of_class(window, Some(class))),
+        true,
+        "in-window",
+    ));
     if let Some((lo, exclusive)) = window.0 {
-        out.push((lit(lo - 1.0), false, "below min"));
-        if !is_f32 {
+        if let Some(v) = member(lo - 1.0, &|v| v < lo) {
+            out.push((lit(v), false, "below min"));
+        }
+        if !is_f32 && float_class_admits(class, lo) {
             out.push((
                 lit(lo),
                 !exclusive,
@@ -1570,8 +1667,10 @@ fn float_bound_cases(
         }
     }
     if let Some((hi, exclusive)) = window.1 {
-        out.push((lit(hi + 1.0), false, "above max"));
-        if !is_f32 {
+        if let Some(v) = member(hi + 1.0, &|v| v > hi) {
+            out.push((lit(v), false, "above max"));
+        }
+        if !is_f32 && float_class_admits(class, hi) {
             out.push((
                 lit(hi),
                 !exclusive,
@@ -1583,8 +1682,10 @@ fn float_bound_cases(
             ));
         }
     }
-    // NaN must always be rejected by the NaN-safe accept-form check
-    out.push((lit(f64::NAN), false, "NaN"));
+    // NaN must always be rejected by the NaN-safe accept-form check — where the class has one
+    if float_class_admits(class, f64::NAN) {
+        out.push((lit(f64::NAN), false, "NaN"));
+    }
     out
 }
 
@@ -1693,15 +1794,20 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Optional(_) => Some(MintValue::None),
         ConceptualRustType::Primitive(Primitive::Bool) => Some(MintValue::Bool),
-        // a bounded float must mint IN-WINDOW (a default 0.0 may sit outside the window and fail the
-        // ctor / round-trip); an unbounded float keeps the 0.0 baseline.
-        ConceptualRustType::Primitive(p) if p.is_float() => Some(match &ty.config.float_bounds {
-            Some(window) => MintValue::FloatLit {
-                value: valid_float_in_window(window),
+        // A minted float must be a MEMBER of its CDDL class (serializing a non-member fails loudly
+        // by design) and, when bounded, must also sit IN-WINDOW — a default `0.0` satisfies neither
+        // in general. `float` alone admits every value, so it keeps the `0.0` baseline.
+        ConceptualRustType::Primitive(p) if p.is_float() => match &ty.config.float_bounds {
+            Some(window) => Some(MintValue::FloatLit {
+                value: valid_float_in_window_of_class(window, Some(*p)),
                 is_f32: float_is_f32(ty),
-            },
-            None => MintValue::Float,
-        }),
+            }),
+            None if *p == Primitive::Float => Some(MintValue::Float),
+            None => Some(MintValue::FloatLit {
+                value: float_class_baseline(*p)?,
+                is_f32: float_is_f32(ty),
+            }),
+        },
         // nint can't be an OOB *target* (stored/wire direction is inverted), but a valid baseline
         // value is mintable: new()'s check uses the nint-transformed bounds, so the transformed
         // min (or 0 when unbounded) is in range.
@@ -1832,9 +1938,10 @@ pub(crate) fn mint_struct(
                     content: content.to_owned(),
                 },
                 None => match float_min_max {
-                    // a bounded float wrapper mints an in-window inner (0.0 may be outside the window)
+                    // a bounded float wrapper mints an inner that is both in-window and a member of
+                    // its float class (`0.0` is generally neither)
                     Some(window) => MintValue::FloatLit {
-                        value: valid_float_in_window(window),
+                        value: valid_float_in_window_of_class(window, float_class_of(wrapped)),
                         is_f32: float_is_f32(wrapped),
                     },
                     None => match min_max {
@@ -2008,13 +2115,17 @@ fn materialize_at(
             | Primitive::F32
             | Primitive::F64
             | Primitive::F16To32
-            | Primitive::F32To64 => Some(match &ty.config.float_bounds {
-                Some(window) => MintValue::FloatLit {
-                    value: valid_float_in_window(window),
+            | Primitive::F32To64 => match &ty.config.float_bounds {
+                Some(window) => Some(MintValue::FloatLit {
+                    value: valid_float_in_window_of_class(window, Some(*p)),
                     is_f32: p.float_carrier_is_f32(),
-                },
-                None => MintValue::Float,
-            }),
+                }),
+                None if *p == Primitive::Float => Some(MintValue::Float),
+                None => Some(MintValue::FloatLit {
+                    value: float_class_baseline(*p)?,
+                    is_f32: p.float_carrier_is_f32(),
+                }),
+            },
         },
         ConceptualRustType::Array(elem) => {
             let e = valid_value_at(types, elem, depth)?;

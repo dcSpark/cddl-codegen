@@ -30,7 +30,7 @@ pub fn fit_sz(len: u64, sz: Option<cbor_event::Sz>, force_canonical: bool) -> cb
 /// NaN the zero-payload quiet NaN `f9 7e00`), and the width must then be derived from the NORMALIZED
 /// value — `smallest_float_sz` of the payload-carrying value is `Sz::Eight`, which would write the
 /// canonical NaN in a non-canonical width. Otherwise the canonical width IS `smallest_float_sz`: RFC
-/// 8949 §4.2.1 preferred serialization for a float is the shortest form that preserves the value.
+/// 8949 §4.1 preferred serialization for a float is the shortest form that preserves the value.
 ///
 /// LOCKSTEP: `AnyCbor`'s float serializer (`static/any_cbor_preserve.rs`, `serialize_special`)
 /// restates this rule rather than calling it — that workhorse is shared by both canonical
@@ -133,17 +133,24 @@ pub trait SerializeEmbeddedGroup {
     ) -> cbor_event::Result<&'a mut Serializer>;
 }
 
-/// The declared-width twin of `write_float`: the same recorded-width fit rule and the same canonical
-/// NaN normalization, restricted to the head set the CDDL type DECLARES (`min_width..=max_width`).
+/// The class-constrained twin of `write_float`: the same recorded-width fit rule and the same
+/// canonical NaN normalization, over a value the CDDL class spanning `min_width..=max_width` must
+/// ADMIT.
 ///
-/// A recorded head replays exactly when it is both in the set and still lossless for the value —
-/// strict decode guarantees the first for any value that was READ, and the second can fail only
-/// after the value was replaced, exactly as for `write_float`. A canonical write ignores the
-/// recorded width entirely: a declared-width member's canonical form IS its declared width (RFC 8949
-/// §4.2.2 preferred serialization has nothing narrower to offer inside a set of one), and for a
-/// multi-width class it is the narrowest admitted lossless head. A value that NO admitted head
-/// represents exactly fails loudly in `write_float_sz` rather than being rounded — see
-/// `float_head_width`.
+/// Membership is decided first and a non-member fails loudly (`float_class_width`); the recorded
+/// width is then honored on exactly the rule `write_float` uses — whenever it still represents the
+/// value — and anything else falls back to the value's shortest form, which for a member is the
+/// class's declared width. A canonical write ignores the recorded width entirely and takes that
+/// shortest form (RFC 8949 §4.1).
+///
+/// Membership is judged on the NORMALIZED value, after the canonical NaN rule has replaced any
+/// payload: the bytes a canonical write emits must be bytes this crate reads back as a member, and
+/// the canonical NaN `f9 7e00` is a `float16` value.
+///
+/// The recorded width is deliberately NOT required to lie inside the class window. Reads accept any
+/// head and judge the VALUE, so an `fb`-headed `1.5` is a perfectly good `float16` and records
+/// `Sz::Eight`; clamping that back into the window on write would break the byte-exact round-trip
+/// this flag exists for.
 pub fn write_float_width(
     serializer: &mut Serializer,
     value: f64,
@@ -157,16 +164,10 @@ pub fn write_float_width(
     } else {
         value
     };
+    let smallest = float_class_width(value, min_width, max_width)?;
     let width = match sz {
-        Some(sz)
-            if !force_canonical
-                && float_head_rank(sz) >= float_head_rank(min_width)
-                && float_head_rank(sz) <= float_head_rank(max_width)
-                && float_head_rank(sz) >= float_head_rank(cbor_event::se::smallest_float_sz(value)) =>
-        {
-            sz
-        }
-        _ => float_head_width(value, min_width, max_width),
+        Some(sz) if !force_canonical && sz_max(sz) >= sz_max(smallest) => sz,
+        _ => smallest,
     };
     serializer.write_float_sz(value, width)
 }
