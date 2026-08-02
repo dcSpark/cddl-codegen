@@ -9,7 +9,7 @@ use crate::intermediate::{
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
     ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow, RestSemantics,
     RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
-    head_constrained_float_rejection, nested_cbor_payload_rejection, reserved_pin_rejection,
+    nested_cbor_payload_rejection, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -1445,8 +1445,13 @@ fn ident_to_primitive(ident: &CDDLIdent) -> Option<Primitive> {
         "int" => Some(Primitive::I64),
         "uint" => Some(Primitive::U64),
         "nint" => Some(Primitive::N64),
-        "float16" | "float32" => Some(Primitive::F32),
+        // One primitive per float prelude name: each declares a different CBOR head set.
+        "float16" => Some(Primitive::F16),
+        "float32" => Some(Primitive::F32),
         "float64" => Some(Primitive::F64),
+        "float16-32" => Some(Primitive::F16To32),
+        "float32-64" => Some(Primitive::F32To64),
+        "float" => Some(Primitive::Float),
         _other => None,
     }
 }
@@ -1504,7 +1509,7 @@ fn head_numeric(type2: &Type2) -> HeadNumeric {
     match type2 {
         Type2::Typename { ident, .. } => {
             match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
-                Some(Primitive::F32) | Some(Primitive::F64) => HeadNumeric::Float,
+                Some(p) if p.is_float() => HeadNumeric::Float,
                 Some(Primitive::U64) | Some(Primitive::N64) | Some(Primitive::I64) => {
                     HeadNumeric::NamedInt
                 }
@@ -1517,9 +1522,10 @@ fn head_numeric(type2: &Type2) -> HeadNumeric {
     }
 }
 
-/// Message naming the offending rule for a graceful float-constraint rejection. `None` (member
-/// position) omits the rule name; the op + remedy still make the message actionable.
-fn float_reject_rule_prefix(rule_name: Option<&RustIdent>) -> String {
+/// Message naming the offending rule for a graceful rejection on the rule-position control-operator
+/// path — float windows, `.ne`, nested `.cbor`. `None` (member position) omits the rule name; the op
+/// + remedy still make the message actionable.
+fn reject_rule_prefix(rule_name: Option<&RustIdent>) -> String {
     match rule_name {
         Some(r) => format!("rule `{r}`: "),
         None => String::new(),
@@ -1561,7 +1567,7 @@ fn try_float_or_reject(
                     // representable numeric partner — reject gracefully instead of panicking.
                     types.record_rejection(format!(
                         "{}decimal float bound in a range against a non-numeric-literal head is unsupported — use a float head (float64) or integer bounds",
-                        float_reject_rule_prefix(rule_name)
+                        reject_rule_prefix(rule_name)
                     ));
                     Some(ControlOperator::Range((None, None)))
                 }
@@ -1583,7 +1589,7 @@ fn try_float_or_reject(
                     // ±1 hack is meaningless in dense float space) — reject gracefully.
                     types.record_rejection(format!(
                         "{}`.ne` on a float value is unsupported — single-value float exclusion has no representable window; use a range or remove the constraint",
-                        float_reject_rule_prefix(rule_name)
+                        reject_rule_prefix(rule_name)
                     ));
                     return Some(ControlOperator::Range((None, None)));
                 }
@@ -1603,7 +1609,7 @@ fn try_float_or_reject(
             if type2_is_decimal_float(operand) {
                 types.record_rejection(format!(
                     "{}decimal float bound `{}` on an integer-typed head is unsupported — use an integer bound or a float head (float64)",
-                    float_reject_rule_prefix(rule_name),
+                    reject_rule_prefix(rule_name),
                     match operand {
                         Type2::FloatValue { value, .. } => *value,
                         _ => 0.0,
@@ -1687,7 +1693,7 @@ fn parse_control_operator(
                 // graceful `Err` by finalize before generation ever runs.
                 types.record_rejection(format!(
                     "{}the `{ctrl}` control operator is unsupported",
-                    float_reject_rule_prefix(rule_name)
+                    reject_rule_prefix(rule_name)
                 ));
                 ControlOperator::Range((None, None))
             }
@@ -1821,7 +1827,7 @@ fn parse_control_operator(
                         // (ledgered in cddl-matrix/ROADMAP.md).
                         types.record_rejection(format!(
                             "{}`.size` on a signed `int` is unsupported — its spec meaning is the `uint .size` window (cbor-wg/cddl#32), which the signed reading mis-enforces; use `uint .size N`, or an explicit range for an N-byte signed int",
-                            float_reject_rule_prefix(rule_name)
+                            reject_rule_prefix(rule_name)
                         ));
                         ControlOperator::Range((None, None))
                     }
@@ -2492,24 +2498,6 @@ fn parse_type(
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve
                 // and there's no Type2::BooleanValue
                 let cddl_ident = CDDLIdent::new(ident.to_string());
-                // The head-constrained float prelude names never reach `new_type` on THIS path: a
-                // control operator routes the ident through `ident_to_primitive` instead, so a
-                // constraint was a side door around the refusal recorded at that fallback —
-                // `x = float16 .size 4` generated an `f32`-backed codec at exit 0 (the exact
-                // wrong-head-width class the refusal exists to stop), while `float16-32 .size 4`
-                // aborted at a bare unwrap. Checked BEFORE the operator is parsed so the type is
-                // refused once, rather than alongside a second complaint about the constraint on a
-                // type that is not supported anyway. Same message, prefixed with the rule name the
-                // way every other constraint rejection on this path is.
-                if type1.operator.is_some()
-                    && let Some(msg) = head_constrained_float_rejection(&cddl_ident.to_string())
-                {
-                    types.record_rejection(format!(
-                        "{}{msg}",
-                        float_reject_rule_prefix(Some(type_name))
-                    ));
-                    return;
-                }
                 let control = type1.operator.as_ref().map(|op| {
                     parse_control_operator(
                         types,
@@ -2640,7 +2628,7 @@ fn parse_type(
                                     if nested {
                                         types.record_rejection(format!(
                                             "{}{}",
-                                            float_reject_rule_prefix(Some(type_name)),
+                                            reject_rule_prefix(Some(type_name)),
                                             nested_cbor_payload_rejection()
                                         ));
                                     }
@@ -2973,7 +2961,7 @@ fn parse_type(
                         types,
                         parent_visitor,
                         type_name,
-                        float_range_to_primitive(window, Primitive::F64),
+                        float_range_to_primitive(window, Primitive::Float),
                         window,
                         outer_tag,
                         rule_metadata,
@@ -3025,7 +3013,7 @@ fn parse_type(
                         types,
                         parent_visitor,
                         type_name,
-                        float_range_to_primitive(window, Primitive::F64),
+                        float_range_to_primitive(window, Primitive::Float),
                         window,
                         outer_tag,
                         rule_metadata,
@@ -3080,7 +3068,7 @@ fn parse_type(
                         types,
                         parent_visitor,
                         type_name,
-                        float_range_to_primitive(window, Primitive::F64),
+                        float_range_to_primitive(window, Primitive::Float),
                         window,
                         outer_tag,
                         rule_metadata,
@@ -3091,7 +3079,7 @@ fn parse_type(
                 // head always takes the RangeFloat path above; keep the alias fallback for the bare
                 // constant (no operator) case.
                 Some(ControlOperator::Range(min_max)) => {
-                    let base_type = range_to_primitive(min_max.0, min_max.1, Primitive::F64);
+                    let base_type = range_to_primitive(min_max.0, min_max.1, Primitive::Float);
                     types.register_type_alias(
                         type_name.clone(),
                         AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
@@ -4047,7 +4035,7 @@ fn rust_type_from_type1(
             // literal-headed member range promoted to float by a decimal endpoint (`[f: 0.5..10.5]`,
             // `[f: 0..10.5]`) — the base value is a Fixed constant, so use an f64 primitive.
             Type2::IntValue { .. } | Type2::UintValue { .. } | Type2::FloatValue { .. } => {
-                float_range_to_primitive(window, Primitive::F64)
+                float_range_to_primitive(window, Primitive::Float)
             }
             _ => base_type.with_float_bounds(window),
         },

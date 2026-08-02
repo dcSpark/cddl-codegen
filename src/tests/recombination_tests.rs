@@ -864,23 +864,20 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // replaced the panic-catalog ones. The `panic!` arm in `cddl_prelude` is deliberately LEFT
     // IN PLACE — it is the guard that would catch a future position routed around `new_type`,
     // and reaching it re-earns this entry rather than being papered over.
-    // (retired when the three head-constrained float prelude names became graceful rejections)
+    // (retired when the head-constrained float prelude names became REGISTRATIONS)
     // The `"should be handled by the alias system instead"` class held `float16` (`#7.25`),
     // `float16-32` (`#7.25 / #7.26`) and `float32-64` (`#7.26 / #7.27`) — the float names that
-    // admit only SOME of CBOR's three head widths. They are now refused at `new_type`'s
-    // unresolved-reserved fallback, alongside `undefined` and the `any`-content tags. The
-    // refusal, rather than the `insert_alias` registrations the gap invited, is what the
-    // measurements support: neither profile writes a float at its declared width (the default
-    // one always writes the 8-byte `#7.27` head; `--preserve-encodings` writes an
-    // unrecorded-width value at its narrowest lossless head), so a registration would have
-    // swapped a loud panic for silently out-of-set bytes. `float` / `float32` / `float64` stay
-    // registered and never reach the arm — `float` because its prelude definition admits all
-    // three heads, the other two as the pre-existing exposure this delivery does not widen.
-    // Message identity is pinned by
-    // `head_constrained_float_prelude_names_reject_gracefully_in_every_position` and the outcome
-    // category by the three `tests/matrix_reject/prelude.float*.cddl` rows that replaced the
-    // panic-catalog ones. The `unreachable!` arm in `cddl_prelude` is deliberately LEFT IN PLACE
-    // for both groups — reaching it re-earns this entry rather than being papered over.
+    // admit only SOME of CBOR's three head widths. Each is now its own registered primitive, and
+    // both directions carry the declared width: decode refuses a head outside the name's set,
+    // and a fresh write emits the declared one (the narrowest admissible lossless head for the
+    // two union names). `float` keeps the width-unconstrained behaviour it always had, which is
+    // why it needed a separate identity from `float64` — same `f64` carrier, different head set.
+    // Registration is pinned by `every_float_prelude_name_generates_with_its_own_carrier` and
+    // `control_operator_path_maps_every_float_name_and_refuses_unmapped_heads`; the wire contract
+    // by the `float_heads` vectors in tests/core and tests/preserve-encodings and the
+    // `float_widths` KATs in tests/golden_hex_preserve. The `unreachable!` arm in `cddl_prelude`
+    // is deliberately LEFT IN PLACE for both groups — reaching it re-earns this entry rather than
+    // being papered over.
     // (retired when the member-side type2 catch-all became graceful rejections) An unsupported
     // `type2` in MEMBER / ELEMENT position — a byte-string literal (`h'…'` / `'…'`), an unwrap
     // (`~name`), a bare major-type constraint (`#N` / `#N.M`), the `any` sigil (`#`), a
@@ -1016,6 +1013,11 @@ fn recombination_generation_sweep() {
     // the parse-seam conversions beside them (the four unsupported generic-definition bodies, the
     // control-operator path's own copy of the float refusal, and its unmapped-head sibling). The
     // split between the two was not measured.
+    //
+    // The `graceful` column also moves the OTHER way when a refusal becomes support, and that is
+    // the only thing that moves `ok` without an ingredient change: 29 compositions migrated
+    // graceful -> ok (634/892 -> 605/921) when the three head-constrained float prelude names
+    // became registrations.
     //
     // Earlier panic -> ok movements, kept because each names the fixture that owns the shape:
     // generic INSTANTIATION in bare member position, when the `TypeGroupname` group-entry arm was
@@ -1575,8 +1577,8 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when native floats gained preserve support) a float in member / element / tag /
     // choice-arm position under --preserve-encodings no longer panics: the head width (`0xf9`/
     // `0xfa`/`0xfb`) is now an `Option<cbor_event::Sz>` encoding variable read by `float_sz()` and
-    // written by the `write_float` runtime helper, so those compositions batch into the preserve
-    // gate like any other primitive. Pinned by `preserve_encodings_supports_floats` and the
+    // written by the `write_float` runtime helper (`write_float_width` for a name that declares its
+    // head set), so those compositions batch into the preserve gate like any other primitive. Pinned by `preserve_encodings_supports_floats` and the
     // golden_hex_preserve / golden_hex_canonical float KATs.
     // (retired when the tagged anonymous choice gained a graceful refusal) a CBOR tag over a
     // type-choice / group-choice rule (`#6.11(int / tstr)`, the group-choice spellings, and the

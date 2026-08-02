@@ -397,6 +397,7 @@ pub fn emit_generated_tests(
             value_eq: !cli.preserve_encodings,
             preserve: cli.preserve_encodings && !uses_custom,
             canonical: cli.canonical_form && !uses_custom,
+            widen_floats: !contains_declared_width_float(types, ident),
         };
         let roundtrip = match rust_struct.variant() {
             RustStructType::Record(record) => {
@@ -705,6 +706,27 @@ struct RtEmit {
     value_eq: bool,
     preserve: bool,
     canonical: bool,
+    /// Whether the encoding-fidelity mutator may widen this type's float heads. False as soon as the
+    /// type reaches a float whose CDDL name DECLARES its head set: widening such a head produces
+    /// bytes the type does not admit, so the decode SHOULD fail and the fidelity assertion (decode,
+    /// then re-encode byte-identically) is not a statement about it. Only the width-unconstrained
+    /// `float` admits every head, which is exactly what that mutation class assumes.
+    widen_floats: bool,
+}
+
+/// Whether `ident`'s type tree reaches a float class other than the width-unconstrained `float`.
+/// Walks referenced structs (cycle-guarded), so a record whose float sits three types down counts.
+fn contains_declared_width_float(types: &IntermediateTypes, ident: &RustIdent) -> bool {
+    let mut found = false;
+    ConceptualRustType::Rust(ident.clone()).visit_types(types, &mut |t| {
+        if let ConceptualRustType::Primitive(p) = t
+            && p.is_float()
+            && *p != Primitive::Float
+        {
+            found = true;
+        }
+    });
+    found
 }
 
 /// The shared wire-cycle emission for a list of `(value_expr, label)` cases. `conf` is the source
@@ -738,7 +760,13 @@ fn roundtrip_body(
         value_eq,
         preserve,
         canonical,
+        widen_floats,
     } = rt;
+    let variants_fn = if widen_floats {
+        "variants"
+    } else {
+        "variants_no_float_widen"
+    };
     let conf_line = conf
         .map(|rule| format!("        cddl_conformance::validate(&bytes, \"{rule}\");\n"))
         .unwrap_or_default();
@@ -789,7 +817,7 @@ fn roundtrip_body(
                 };
                 format!(
                     "{canon_hoist}
-        for (mut_label, mutated) in cddl_encoding_fidelity::variants(&bytes) {{
+        for (mut_label, mutated) in cddl_encoding_fidelity::{variants_fn}(&bytes) {{
             let back = {name}::from_cbor_bytes(&mutated).unwrap_or_else(|e| panic!(\"{name} ({label})/{{mut_label}}: irregular encoding must deserialize: {{e:?}}\"));
             assert_eq!(back.to_cbor_bytes(), mutated, \"{name} ({label})/{{mut_label}}: preserve-encodings must re-encode irregular input byte-identically\");{canon_assert}
         }}"
@@ -1453,7 +1481,14 @@ pub(crate) fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
             | Primitive::I32
             | Primitive::I64 => Some(MeasureKind::Value),
             // nint: stored/wire direction is inverted; bool/float: bounds don't apply meaningfully
-            Primitive::N64 | Primitive::Bool | Primitive::F32 | Primitive::F64 => None,
+            Primitive::N64
+            | Primitive::Bool
+            | Primitive::Float
+            | Primitive::F16
+            | Primitive::F32
+            | Primitive::F64
+            | Primitive::F16To32
+            | Primitive::F32To64 => None,
         },
         ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _) => Some(MeasureKind::Len),
         _ => None,
@@ -1557,7 +1592,7 @@ fn float_bound_cases(
 fn float_is_f32(ty: &RustType) -> bool {
     matches!(
         ty.resolve_alias_shallow(),
-        ConceptualRustType::Primitive(Primitive::F32)
+        ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
     )
 }
 
@@ -1600,8 +1635,12 @@ fn prim_range(p: &Primitive) -> (i128, i128) {
         // not an integer primitive with a fixed signed/unsigned width
         Primitive::N64
         | Primitive::Bool
+        | Primitive::Float
+        | Primitive::F16
         | Primitive::F32
         | Primitive::F64
+        | Primitive::F16To32
+        | Primitive::F32To64
         | Primitive::Str
         | Primitive::Bytes => (i128::MIN, i128::MAX),
     }
@@ -1656,15 +1695,13 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
         ConceptualRustType::Primitive(Primitive::Bool) => Some(MintValue::Bool),
         // a bounded float must mint IN-WINDOW (a default 0.0 may sit outside the window and fail the
         // ctor / round-trip); an unbounded float keeps the 0.0 baseline.
-        ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64) => {
-            Some(match &ty.config.float_bounds {
-                Some(window) => MintValue::FloatLit {
-                    value: valid_float_in_window(window),
-                    is_f32: float_is_f32(ty),
-                },
-                None => MintValue::Float,
-            })
-        }
+        ConceptualRustType::Primitive(p) if p.is_float() => Some(match &ty.config.float_bounds {
+            Some(window) => MintValue::FloatLit {
+                value: valid_float_in_window(window),
+                is_f32: float_is_f32(ty),
+            },
+            None => MintValue::Float,
+        }),
         // nint can't be an OOB *target* (stored/wire direction is inverted), but a valid baseline
         // value is mintable: new()'s check uses the nint-transformed bounds, so the transformed
         // min (or 0 when unbounded) is in range.
@@ -1966,10 +2003,15 @@ fn materialize_at(
             Primitive::Str => Some(MintValue::Str { len: measure }),
             Primitive::Bytes => Some(MintValue::Bytes { len: measure }),
             Primitive::Bool => Some(MintValue::Bool),
-            Primitive::F32 | Primitive::F64 => Some(match &ty.config.float_bounds {
+            Primitive::Float
+            | Primitive::F16
+            | Primitive::F32
+            | Primitive::F64
+            | Primitive::F16To32
+            | Primitive::F32To64 => Some(match &ty.config.float_bounds {
                 Some(window) => MintValue::FloatLit {
                     value: valid_float_in_window(window),
-                    is_f32: matches!(p, Primitive::F32),
+                    is_f32: p.float_carrier_is_f32(),
                 },
                 None => MintValue::Float,
             }),

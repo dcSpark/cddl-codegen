@@ -2008,10 +2008,12 @@ impl<'a> IntermediateTypes<'a> {
             "false",
             ConceptualRustType::Fixed(FixedValue::Bool(false)).into(),
         );
-        // Note: defaulting to float64 for "float" (so without precision).
+        // `float` is width-UNCONSTRAINED (`float = float16-32 / float64`, RFC 8610 App. D): it is
+        // its own wire-acceptance class, NOT an alias of `float64`. Sharing one identity with
+        // `float64` is what made a `float64` member accept an `f9`/`fa` head.
         insert_alias(
             "float",
-            ConceptualRustType::Primitive(Primitive::F64).into(),
+            ConceptualRustType::Primitive(Primitive::Float).into(),
         );
         insert_alias(
             "float64",
@@ -2020,6 +2022,20 @@ impl<'a> IntermediateTypes<'a> {
         insert_alias(
             "float32",
             ConceptualRustType::Primitive(Primitive::F32).into(),
+        );
+        // The head-CONSTRAINED names. `float16`'s carrier is `f32` (every `#7.25` value widens into
+        // it exactly); the two union names carry the widest of their members'.
+        insert_alias(
+            "float16",
+            ConceptualRustType::Primitive(Primitive::F16).into(),
+        );
+        insert_alias(
+            "float16-32",
+            ConceptualRustType::Primitive(Primitive::F16To32).into(),
+        );
+        insert_alias(
+            "float32-64",
+            ConceptualRustType::Primitive(Primitive::F32To64).into(),
         );
         // What about bingint/other stuff in the standard prelude?
         aliases
@@ -2087,17 +2103,6 @@ impl<'a> IntermediateTypes<'a> {
                          `undefined` is not supported."
                             .to_string(),
                     );
-                    ConceptualRustType::Fixed(FixedValue::Null).into()
-                }
-                // The three head-CONSTRAINED float prelude names (`float16`, `float16-32`,
-                // `float32-64`) — see `head_constrained_float_rejection` for why each is refused
-                // rather than registered, and which seams share the message. Intercepted at this
-                // fallback for the same three reasons as the arms below, with the same role-neutral
-                // consequence and the same inert `Fixed(FixedValue::Null)` placeholder.
-                AliasIdent::Reserved(reserved)
-                    if let Some(msg) = head_constrained_float_rejection(reserved) =>
-                {
-                    self.record_rejection(msg);
                     ConceptualRustType::Fixed(FixedValue::Null).into()
                 }
                 // The four `any`-content prelude tags: `cbor-any` (#6.55799), `eb64url` (#6.21),
@@ -3293,7 +3298,7 @@ impl<'a> IntermediateTypes<'a> {
             ty.visit_types(types, &mut |t| {
                 if matches!(
                     t,
-                    ConceptualRustType::Primitive(Primitive::F32 | Primitive::F64)
+                    ConceptualRustType::Primitive(p) if p.is_float()
                 ) {
                     found = true;
                 }
@@ -5548,49 +5553,6 @@ fn rewrite_inline_sets_in_record(
 
 mod rust_type;
 pub use rust_type::*;
-
-/// The refusal for a head-CONSTRAINED float prelude name — `float16` (`#7.25`), `float16-32`
-/// (`#7.25 / #7.26`), `float32-64` (`#7.26 / #7.27`) — or `None` for every other ident. Each admits
-/// only SOME of CBOR's three float head widths while generated code does not write a float at the
-/// width its type declares (the default profile hands every native float to `Special::Float`, which
-/// always writes the 8-byte `#7.27` head; `--preserve-encodings` writes a value with no recorded
-/// width at its NARROWEST lossless one), so registering any of them onto an `f32`/`f64` primitive
-/// would emit heads outside the type's own value set — silently spec-divergent bytes. `float` is
-/// exempt and stays registered because its prelude definition (`float = float16-32 / float64`, RFC
-/// 8610 App. D) admits ALL three heads; the same holds for nothing else, `float32` and `float64`
-/// included, which ride the pre-existing exposure rather than being widened. These refusals become
-/// registrations when float encoding is made head-faithful (`tests/TESTING_ROADMAP.md` § "A
-/// `float32` member accepts every float head and silently narrows the value").
-///
-/// A FUNCTION rather than an arm because two seams must speak with one voice: `new_type`'s
-/// unresolved-reserved fallback (every ordinary position funnels through it) and the rule-position
-/// CONTROL-OPERATOR path in `parsing.rs`, which resolves an ident through `ident_to_primitive`
-/// directly and never calls `new_type` — so `x = float16 .size 4` walked straight past the refusal
-/// and generated an `f32`-backed codec at exit 0. The message is role-NEUTRAL: this seam knows the
-/// name, never the position it was written in; callers that HAVE a rule name prefix it.
-pub fn head_constrained_float_rejection(ident: &str) -> Option<String> {
-    let heads = match ident {
-        "float16" => "#7.25",
-        "float16-32" => "#7.25 / #7.26",
-        "float32-64" => "#7.26 / #7.27",
-        _ => return None,
-    };
-    // The wrapping here is load-bearing: `cddl-matrix`'s corpus nuance notes for these three names
-    // carry a `code_anchor` naming the head-width clause, and the anchor check text-searches `src/`,
-    // so the clause has to stay CONTIGUOUS on one source line (a `\` continuation through the middle
-    // of it reads as a renamed/removed anchor and fails `project_corpus`).
-    Some(format!(
-        "the CDDL prelude type `{ident}` ({heads}) is unsupported — generated \
-         code does not yet write a float at the head width its type declares. The \
-         default profile writes every float as an 8-byte `#7.27` head, and \
-         `--preserve-encodings` writes a freshly-built value at its narrowest \
-         lossless head, so a value of this type would be encoded with a head \
-         outside the type's own set. `float` is the supported spelling that admits \
-         every head the generator emits (`float = float16-32 / float64`); the \
-         width ruling that would let the narrower names encode faithfully is \
-         pending."
-    ))
-}
 
 /// The refusal for a `.cbor` payload applied to a type whose own encoding chain ALREADY carries a
 /// `CBORBytes` operation — `bytes .cbor (bytes .cbor uint)` and the alias-flattened spelling

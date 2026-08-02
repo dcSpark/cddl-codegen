@@ -124,6 +124,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::FloatBounds>();
     _assert_serialize::<crate::generated::FloatFixedWhole>();
     _assert_deserialize::<crate::generated::FloatFixedWhole>();
+    _assert_serialize::<crate::generated::FloatHeads>();
+    _assert_deserialize::<crate::generated::FloatHeads>();
     _assert_serialize::<crate::generated::FloatRange>();
     _assert_deserialize::<crate::generated::FloatRange>();
     _assert_serialize::<crate::generated::FloatRangeExcl>();

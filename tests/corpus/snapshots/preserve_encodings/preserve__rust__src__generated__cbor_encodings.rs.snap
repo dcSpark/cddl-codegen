@@ -192,6 +192,17 @@ pub struct FirstEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct FloatHeadsEncoding {
+    pub len_encoding: LenEncoding,
+    pub h_encoding: Option<cbor_event::Sz>,
+    pub u_encoding: Option<cbor_event::Sz>,
+    pub w_encoding: Option<cbor_event::Sz>,
+    pub s_encoding: Option<cbor_event::Sz>,
+    pub d_encoding: Option<cbor_event::Sz>,
+    pub f_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct FooEncoding {
     pub len_encoding: LenEncoding,
     pub tag_encoding: Option<cbor_event::Sz>,

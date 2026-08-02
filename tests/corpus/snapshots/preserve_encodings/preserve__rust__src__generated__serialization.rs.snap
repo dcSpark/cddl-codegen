@@ -4160,6 +4160,146 @@ impl Deserialize for FixedSpecialTypeChoice {
     }
 }
 
+impl cbor_event::se::Serialize for FloatHeads {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(6),
+        )?;
+        write_float_width(
+            serializer,
+            widen_f32(self.h),
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.h_encoding)
+                .unwrap_or_default(),
+            cbor_event::Sz::Two,
+            cbor_event::Sz::Two,
+        )?;
+        write_float_width(
+            serializer,
+            widen_f32(self.u),
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.u_encoding)
+                .unwrap_or_default(),
+            cbor_event::Sz::Two,
+            cbor_event::Sz::Four,
+        )?;
+        write_float_width(
+            serializer,
+            self.w,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.w_encoding)
+                .unwrap_or_default(),
+            cbor_event::Sz::Four,
+            cbor_event::Sz::Eight,
+        )?;
+        write_float_width(
+            serializer,
+            widen_f32(self.s),
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.s_encoding)
+                .unwrap_or_default(),
+            cbor_event::Sz::Four,
+            cbor_event::Sz::Four,
+        )?;
+        write_float_width(
+            serializer,
+            self.d,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.d_encoding)
+                .unwrap_or_default(),
+            cbor_event::Sz::Eight,
+            cbor_event::Sz::Eight,
+        )?;
+        write_float(
+            serializer,
+            self.f,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.f_encoding)
+                .unwrap_or_default(),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for FloatHeads {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(6)?;
+            read_len.finish()?;
+            let (h, h_encoding) =
+                read_float_sz_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Two)
+                    .map(|(x, enc)| (narrow_f32(x), Some(enc)))
+                    .map_err(|e: DeserializeError| e.annotate("h"))?;
+            let (u, u_encoding) =
+                read_float_sz_width(raw, cbor_event::Sz::Two, cbor_event::Sz::Four)
+                    .map(|(x, enc)| (narrow_f32(x), Some(enc)))
+                    .map_err(|e: DeserializeError| e.annotate("u"))?;
+            let (w, w_encoding) =
+                read_float_sz_width(raw, cbor_event::Sz::Four, cbor_event::Sz::Eight)
+                    .map(|(x, enc)| (x, Some(enc)))
+                    .map_err(|e: DeserializeError| e.annotate("w"))?;
+            let (s, s_encoding) =
+                read_float_sz_width(raw, cbor_event::Sz::Four, cbor_event::Sz::Four)
+                    .map(|(x, enc)| (narrow_f32(x), Some(enc)))
+                    .map_err(|e: DeserializeError| e.annotate("s"))?;
+            let (d, d_encoding) =
+                read_float_sz_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
+                    .map(|(x, enc)| (x, Some(enc)))
+                    .map_err(|e: DeserializeError| e.annotate("d"))?;
+            let (f, f_encoding) = raw
+                .float_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(FloatHeads {
+                h,
+                u,
+                w,
+                s,
+                d,
+                f,
+                encodings: Some(FloatHeadsEncoding {
+                    len_encoding,
+                    h_encoding,
+                    u_encoding,
+                    w_encoding,
+                    s_encoding,
+                    d_encoding,
+                    f_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("FloatHeads"))
+    }
+}
+
 impl cbor_event::se::Serialize for Foo {
     fn serialize<'se>(
         &self,

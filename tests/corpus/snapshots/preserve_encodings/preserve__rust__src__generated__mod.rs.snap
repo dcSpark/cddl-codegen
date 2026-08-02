@@ -91,8 +91,8 @@ use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
     CborNestedPayloadsEncoding, CustomFieldHolderEncoding, CustomTablePositionsEncoding,
-    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
-    HashEncoding, MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding,
+    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FloatHeadsEncoding,
+    FooEncoding, HashEncoding, MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding,
     NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
     OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding,
     PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
@@ -744,6 +744,31 @@ impl FixedSpecialTypeChoice {
         Self::Text {
             text,
             text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FloatHeads {
+    pub h: f32,
+    pub u: f32,
+    pub w: f64,
+    pub s: f32,
+    pub d: f64,
+    pub f: f64,
+    pub encodings: Option<FloatHeadsEncoding>,
+}
+
+impl FloatHeads {
+    pub fn new(h: f32, u: f32, w: f64, s: f32, d: f64, f: f64) -> Self {
+        Self {
+            h,
+            u,
+            w,
+            s,
+            d,
+            f,
+            encodings: None,
         }
     }
 }

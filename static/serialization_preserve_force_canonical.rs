@@ -132,3 +132,41 @@ pub trait SerializeEmbeddedGroup {
         force_canonical: bool,
     ) -> cbor_event::Result<&'a mut Serializer>;
 }
+
+/// The declared-width twin of `write_float`: the same recorded-width fit rule and the same canonical
+/// NaN normalization, restricted to the head set the CDDL type DECLARES (`min_width..=max_width`).
+///
+/// A recorded head replays exactly when it is both in the set and still lossless for the value —
+/// strict decode guarantees the first for any value that was READ, and the second can fail only
+/// after the value was replaced, exactly as for `write_float`. A canonical write ignores the
+/// recorded width entirely: a declared-width member's canonical form IS its declared width (RFC 8949
+/// §4.2.2 preferred serialization has nothing narrower to offer inside a set of one), and for a
+/// multi-width class it is the narrowest admitted lossless head. A value that NO admitted head
+/// represents exactly fails loudly in `write_float_sz` rather than being rounded — see
+/// `float_head_width`.
+pub fn write_float_width(
+    serializer: &mut Serializer,
+    value: f64,
+    sz: Option<cbor_event::Sz>,
+    min_width: cbor_event::Sz,
+    max_width: cbor_event::Sz,
+    force_canonical: bool,
+) -> cbor_event::Result<&mut Serializer> {
+    let value = if force_canonical && value.is_nan() {
+        f64::NAN
+    } else {
+        value
+    };
+    let width = match sz {
+        Some(sz)
+            if !force_canonical
+                && float_head_rank(sz) >= float_head_rank(min_width)
+                && float_head_rank(sz) <= float_head_rank(max_width)
+                && float_head_rank(sz) >= float_head_rank(cbor_event::se::smallest_float_sz(value)) =>
+        {
+            sz
+        }
+        _ => float_head_width(value, min_width, max_width),
+    };
+    serializer.write_float_sz(value, width)
+}

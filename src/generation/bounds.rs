@@ -3,8 +3,12 @@ use super::*;
 pub(super) fn bounds_check_expr(p: Primitive, e: &str) -> String {
     match p {
         Primitive::Bool
+        | Primitive::Float
+        | Primitive::F16
         | Primitive::F32
         | Primitive::F64
+        | Primitive::F16To32
+        | Primitive::F32To64
         | Primitive::I8
         | Primitive::I16
         | Primitive::I32
@@ -57,8 +61,12 @@ pub(super) fn primitive_non_negative(p: Primitive) -> bool {
         | Primitive::I32
         | Primitive::I64
         | Primitive::N64
+        | Primitive::Float
+        | Primitive::F16
         | Primitive::F32
-        | Primitive::F64 => false,
+        | Primitive::F64
+        | Primitive::F16To32
+        | Primitive::F32To64 => false,
     }
 }
 
@@ -246,7 +254,7 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     if let Some(window) = &ty.config.float_bounds {
         let cast_f64 = matches!(
             ty.resolve_alias_shallow(),
-            ConceptualRustType::Primitive(Primitive::F32)
+            ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
         );
         return Some(bounds_check_if_block_float(
             window, cast_f64, e, return_err, None,
@@ -309,7 +317,7 @@ pub(super) fn component_bounds_check_line(ty: &RustType, e: &str, runtime: &str)
     if let Some(window) = &ty.config.float_bounds {
         let cast_f64 = matches!(
             ty.resolve_alias_shallow(),
-            ConceptualRustType::Primitive(Primitive::F32)
+            ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
         );
         let opt = |side: Option<(f64, bool)>| match side {
             Some((v, _)) => format!("Some({})", float_literal(v)),

@@ -1388,12 +1388,22 @@ mod tests {
         // Every emitted check is NaN-safe accept-form (`!(x >= min && x <= max)`), so NaN — for
         // which every comparison is false — is rejected on every field.
         let base: [f64; 6] = [5.5, 5.5, 5.0, 5.0, 3.5, 5.0];
+        // The last field is a `float32`, which admits the 4-byte `#7.26` head and nothing else;
+        // every other field is `float64` (`#7.27`). A window is checked on the value, never on the
+        // head, so the widths here are about acceptance, not about the bound.
         let make = |idx: usize, v: f64| {
             let mut vals = base;
             vals[idx] = v;
             let mut cbor = arr_def(6);
-            for x in vals.iter() {
-                cbor.extend(cbor_float(*x));
+            for (i, x) in vals.iter().enumerate() {
+                cbor.extend(if i == 5 {
+                    // narrowed first: a `#7.26` head can only carry an f32-exact value, and these
+                    // vectors are about the WINDOW, so the just-outside case (10.6) has to be the
+                    // f32 one (10.600000381…) rather than the f64 literal
+                    cbor_float_sz(f64::from(*x as f32), cbor_event::Sz::Four)
+                } else {
+                    cbor_float(*x)
+                });
             }
             FloatBounds::from_cbor_bytes(&cbor)
         };
@@ -2178,5 +2188,105 @@ mod tests {
         assert!(TopLevelArray::from_cbor_bytes(&[0x9f, 0xfc, 0xff]).is_err());
         // truncated definite element list
         assert!(TopLevelArray::from_cbor_bytes(&[0x83, 0x00]).is_err());
+    }
+
+    // ---- the six float prelude names: six wire-acceptance classes ------------------------------
+    // `float_heads = [h: float16, u: float16-32, w: float32-64, s: float32, d: float64, f: float]`.
+    // Each name declares which CBOR float heads it admits (RFC 8610 App. D `#7.25`/`#7.26`/`#7.27`
+    // over RFC 8949 §3.3). These vectors are the boundary itself: acceptance is per-name, a head
+    // outside a name's set is a decode ERROR (never a silent narrowing/widening), and the DEFAULT
+    // profile writes the declared width rather than the 8-byte head every float once got.
+    const F9_1_5: &[u8] = &[0xf9, 0x3e, 0x00];
+    const FA_1_5: &[u8] = &[0xfa, 0x3f, 0xc0, 0x00, 0x00];
+    const FB_1_5: &[u8] = &[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+    fn float_heads_bytes(items: &[&[u8]]) -> Vec<u8> {
+        let mut v = arr_def(6);
+        for i in items {
+            v.extend_from_slice(i);
+        }
+        v
+    }
+
+    #[test]
+    fn float_heads_accept_every_in_set_head() {
+        // Each member is fed every head its own type admits, in every combination that varies the
+        // multi-head names; the value is 1.5 throughout, which is exact at all three widths.
+        for (uh, wh, fh) in [
+            (F9_1_5, FA_1_5, F9_1_5),
+            (FA_1_5, FB_1_5, FA_1_5),
+            (F9_1_5, FA_1_5, FB_1_5),
+        ] {
+            let bytes = float_heads_bytes(&[F9_1_5, uh, wh, FA_1_5, FB_1_5, fh]);
+            let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
+            assert_eq!((d.h, d.u, d.s), (1.5f32, 1.5f32, 1.5f32));
+            assert_eq!((d.w, d.d, d.f), (1.5f64, 1.5f64, 1.5f64));
+            // and the re-encode is the DECLARED width, not the head that was read — the default
+            // profile carries no recorded width, so this is the whole write rule in one assertion.
+            assert_eq!(
+                d.to_cbor_bytes(),
+                float_heads_bytes(&[F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, FB_1_5])
+            );
+        }
+    }
+
+    #[test]
+    fn float_heads_reject_every_out_of_set_head() {
+        let in_set: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1_5, FA_1_5, FB_1_5, FB_1_5];
+        FloatHeads::from_cbor_bytes(&float_heads_bytes(&in_set)).unwrap();
+        // (member index, a head that member's type does NOT admit). `f` (`float`) has none.
+        for (idx, bad) in [
+            (0, FA_1_5),
+            (0, FB_1_5),
+            (1, FB_1_5),
+            (2, F9_1_5),
+            (3, F9_1_5),
+            (3, FB_1_5),
+            (4, F9_1_5),
+            (4, FA_1_5),
+        ] {
+            let mut items = in_set.clone();
+            items[idx] = bad;
+            assert!(
+                FloatHeads::from_cbor_bytes(&float_heads_bytes(&items)).is_err(),
+                "member {idx} must reject a head outside its declared set"
+            );
+        }
+    }
+
+    #[test]
+    fn float_heads_union_names_write_the_narrowest_admissible_head() {
+        // A union name has no single declared width, so it writes the narrowest head IN ITS SET that
+        // still represents the value exactly (RFC 8949 §4.2.2 restricted to the type's own set).
+        // 1.1 is neither f16- nor f32-exact; 100000.0 is f32-exact but not f16-exact.
+        let b = FloatHeads::new(1.5, 1.5, 1.1, 1.5, 1.5, 1.5).to_cbor_bytes();
+        assert_eq!(&b[4..7], F9_1_5, "float16-32, f16-exact -> #7.25");
+        assert_eq!(b[7], 0xfb, "float32-64, not f32-exact -> #7.27");
+        let b = FloatHeads::new(1.5, 100000.0, 100000.0, 1.5, 1.5, 1.5).to_cbor_bytes();
+        assert_eq!(b[4], 0xfa, "float16-32, f32-exact only -> #7.26");
+        assert_eq!(b[9], 0xfa, "float32-64, f32-exact -> #7.26");
+    }
+
+    #[test]
+    fn float_heads_inexact_float16_fails_serialize_loudly() {
+        // `float16` admits one head, and 1.1 is not representable at it. Rounding to fit would be
+        // exactly the silent value mutation a declared width exists to prevent, so the write FAILS.
+        let value = FloatHeads::new(1.1, 1.5, 1.5, 1.5, 1.5, 1.5);
+        let mut buf = cbor_event::se::Serializer::new_vec();
+        assert!(cbor_event::se::Serialize::serialize(&value, &mut buf).is_err());
+    }
+
+    #[test]
+    fn float_heads_preserve_nan_payloads_at_every_width() {
+        // A NaN PAYLOAD is data: it survives the read, the f32 carriers' narrowing, and the write.
+        // (Both conversions are done in software — a hardware cast may quiet a signaling NaN.)
+        let f9_nan: &[u8] = &[0xf9, 0x7e, 0x01];
+        let fa_nan: &[u8] = &[0xfa, 0x7f, 0xc0, 0x00, 0x01];
+        let fb_nan: &[u8] = &[0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01];
+        let bytes = float_heads_bytes(&[f9_nan, f9_nan, fa_nan, fa_nan, fb_nan, fb_nan]);
+        let d = FloatHeads::from_cbor_bytes(&bytes).unwrap();
+        assert!(d.h.is_nan() && d.u.is_nan() && d.s.is_nan());
+        assert!(d.w.is_nan() && d.d.is_nan() && d.f.is_nan());
+        assert_eq!(d.to_cbor_bytes(), bytes);
     }
 }

@@ -120,7 +120,13 @@ impl cbor_event::se::Serialize for FloatHolder {
                 .and_then(|encs| encs.f_elem_encodings.get(i))
                 .cloned()
                 .unwrap_or_default();
-            write_float(serializer, *element, f_elem_encoding)?;
+            write_float_width(
+                serializer,
+                *element,
+                f_elem_encoding,
+                cbor_event::Sz::Eight,
+                cbor_event::Sz::Eight,
+            )?;
         }
         self.encodings
             .as_ref()
@@ -159,7 +165,8 @@ impl Deserialize for FloatHolder {
                         break;
                     }
                     let (f_elem, f_elem_encoding) =
-                        raw.float_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        read_float_sz_width(raw, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
+                            .map(|(x, enc)| (x, Some(enc)))?;
                     f_arr.push(f_elem);
                     f_elem_encodings.push(f_elem_encoding);
                 }

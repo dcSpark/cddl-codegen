@@ -127,11 +127,28 @@ pub fn escape_rust_str(s: &str) -> String {
     s.escape_default().to_string()
 }
 
+/// The CDDL float prelude names are SIX distinct wire-acceptance classes, not two carrier widths.
+/// Each name declares which CBOR float heads (`#7.25`/`#7.26`/`#7.27` — RFC 8610 App. D over RFC
+/// 8949 §3.3) its values may take, and a head outside that set is a decode error rather than a
+/// silent narrowing/widening. The Rust CARRIER is a function of the set (`f32` when every admitted
+/// head fits it), so two classes can share a carrier and still be distinct types — which is why
+/// `float` and `float64` cannot share one identity: both carry `f64`, but `float` admits all three
+/// heads and `float64` admits only `#7.27`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Primitive {
     Bool,
+    /// CDDL `float` — width-UNCONSTRAINED (`float = float16-32 / float64`): all three heads.
+    Float,
+    /// CDDL `float64` — `#7.27` (`fb`) only.
     F64,
+    /// CDDL `float32` — `#7.26` (`fa`) only.
     F32,
+    /// CDDL `float16` — `#7.25` (`f9`) only. Carried as `f32`: every f16 widens into it exactly.
+    F16,
+    /// CDDL `float16-32` — `#7.25` / `#7.26`.
+    F16To32,
+    /// CDDL `float32-64` — `#7.26` / `#7.27`.
+    F32To64,
     // u8 in our cddl
     U8,
     // i8 in our cddl
@@ -161,8 +178,8 @@ impl std::fmt::Display for Primitive {
             "{}",
             match self {
                 Primitive::Bool => "bool",
-                Primitive::F32 => "f32",
-                Primitive::F64 => "f64",
+                Primitive::F16 | Primitive::F32 | Primitive::F16To32 => "f32",
+                Primitive::F64 | Primitive::F32To64 | Primitive::Float => "f64",
                 Primitive::U8 => "u8",
                 Primitive::I8 => "i8",
                 Primitive::U16 => "u16",
@@ -180,11 +197,47 @@ impl std::fmt::Display for Primitive {
 }
 // TODO: impl display or fmt or whatever rust uses
 impl Primitive {
+    /// The CBOR float heads this primitive's CDDL type admits, as the `cbor_event::Sz` spellings of
+    /// the NARROWEST and WIDEST admitted head — or `None` when it is not a float. The set is always
+    /// contiguous in width order (`Two` < `Four` < `Eight`), which is what lets both directions
+    /// express it as a pair of bounds: decode rejects a head outside them, and a fresh write picks
+    /// the narrowest LOSSLESS head within them (RFC 8949 §4.2.2 preferred serialization restricted
+    /// to the type's own head set).
+    pub fn float_head_set(self) -> Option<(&'static str, &'static str)> {
+        Some(match self {
+            Primitive::F16 => ("Two", "Two"),
+            Primitive::F32 => ("Four", "Four"),
+            Primitive::F64 => ("Eight", "Eight"),
+            Primitive::F16To32 => ("Two", "Four"),
+            Primitive::F32To64 => ("Four", "Eight"),
+            Primitive::Float => ("Two", "Eight"),
+            _ => return None,
+        })
+    }
+
+    /// Whether this is one of the six float classes.
+    pub fn is_float(self) -> bool {
+        self.float_head_set().is_some()
+    }
+
+    /// Whether a float class's Rust carrier is `f32` — true exactly when every head it admits fits
+    /// an `f32` exactly (`float16`, `float32`, `float16-32`). The wire domain is `f64` either way,
+    /// so an `f32`-carried class narrows after a read and widens before a write; both conversions
+    /// are exact by construction and go through the runtime's `narrow_f32`/`widen_f32` (never an
+    /// `as` cast, whose NaN-payload behavior is platform-dependent).
+    pub fn float_carrier_is_f32(self) -> bool {
+        matches!(self, Primitive::F16 | Primitive::F32 | Primitive::F16To32)
+    }
+
     pub fn to_variant(self) -> VariantIdent {
         VariantIdent::new_custom(match self {
             Primitive::Bool => "Bool",
+            Primitive::Float => "Float",
+            Primitive::F16 => "F16",
             Primitive::F32 => "F32",
             Primitive::F64 => "F64",
+            Primitive::F16To32 => "F16To32",
+            Primitive::F32To64 => "F32To64",
             Primitive::U8 => "U8",
             Primitive::I8 => "I8",
             Primitive::U16 => "U16",
@@ -203,8 +256,14 @@ impl Primitive {
     pub fn cbor_types(&self) -> Vec<CBORType> {
         match self {
             Primitive::Bool => vec![CBORType::Special],
-            Primitive::F32 => vec![CBORType::Special],
-            Primitive::F64 => vec![CBORType::Special],
+            // Every float class is major type 7 regardless of which HEADS it admits — the head set
+            // is checked after the type dispatch, not by it.
+            Primitive::Float
+            | Primitive::F16
+            | Primitive::F32
+            | Primitive::F64
+            | Primitive::F16To32
+            | Primitive::F32To64 => vec![CBORType::Special],
             Primitive::U8 => vec![CBORType::UnsignedInteger],
             Primitive::I8 => vec![CBORType::UnsignedInteger, CBORType::NegativeInteger],
             Primitive::U16 => vec![CBORType::UnsignedInteger],
@@ -327,7 +386,7 @@ impl RustType {
                 FixedValue::Bool(_) => *p == Primitive::Bool,
                 FixedValue::Nint(_) => p.cbor_types().contains(&CBORType::NegativeInteger),
                 FixedValue::Uint(_) => p.cbor_types().contains(&CBORType::UnsignedInteger),
-                FixedValue::Float(_) => *p == Primitive::F64 || *p == Primitive::F32,
+                FixedValue::Float(_) => p.is_float(),
                 FixedValue::Null => false,
                 FixedValue::Text(_) => *p == Primitive::Str,
             }
@@ -1206,8 +1265,12 @@ impl ConceptualRustType {
                 match inner {
                     Self::Primitive(p) => match p {
                         // converts to js number which is supported as Vec<T>
-                        Primitive::F32
+                        Primitive::Float
+                        | Primitive::F16
+                        | Primitive::F32
                         | Primitive::F64
+                        | Primitive::F16To32
+                        | Primitive::F32To64
                         | Primitive::I8
                         | Primitive::U8
                         | Primitive::I16
@@ -1795,8 +1858,12 @@ impl ConceptualRustType {
             Self::Fixed(_f) => unreachable!(),
             Self::Primitive(p) => match p {
                 Primitive::Bool
+                | Primitive::Float
+                | Primitive::F16
                 | Primitive::F32
                 | Primitive::F64
+                | Primitive::F16To32
+                | Primitive::F32To64
                 | Primitive::I8
                 | Primitive::I16
                 | Primitive::I32

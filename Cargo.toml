@@ -24,7 +24,7 @@ which-rustfmt = ["which"]
 # wires the AnyCbor files into generated crates — ruled 2026-07-23: A2 git-deps the templates at
 # this same fork rev as an interim measure (upstreaming to primetype/cbor_event is expected; move
 # every pin back to a crates.io version once released).
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
+cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc2503374ce53e1dca1cf74ae0e476" }
 # dcSpark fork pinned to fixes not yet in a crates.io release. Parser (feeds our AST): upstream
 # discards all comments (breaking our @name/@newtype/@doc DSL), mis-parses a colon member key `b:`
 # as an arrow/type key when a `=>` appears anywhere in the entry, and mis-lexes the RFC 8610 radix

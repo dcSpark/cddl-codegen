@@ -33,6 +33,103 @@ impl<T: cbor_event::de::Deserialize> Deserialize for T {
         T::deserialize(raw).map_err(DeserializeError::from)
     }
 }
+
+/// Rank of a CBOR float head in WIDTH order (`#7.25` < `#7.26` < `#7.27`, RFC 8949 §3.3). The
+/// float-invalid `Sz::Inline`/`Sz::One` — which no `float_sz()` read produces, but a hand-built
+/// encoding struct can hold — sort with the widest head, so they can never pass a head-set check
+/// that the widest head itself would not.
+fn float_head_rank(sz: cbor_event::Sz) -> u8 {
+    match sz {
+        cbor_event::Sz::Two => 0,
+        cbor_event::Sz::Four => 1,
+        _ => 2,
+    }
+}
+
+/// The narrowest CBOR float head in `min_width..=max_width` that encodes `value` with no loss —
+/// RFC 8949 §4.2.2 preferred serialization restricted to the head set the CDDL type DECLARES.
+///
+/// When no head in the set is lossless (only reachable for a single-width class, e.g. a `float16`
+/// member holding a value that is not f16-exact) this returns the widest admitted head, and the
+/// write then FAILS loudly with `InvalidLenPassed` instead of rounding the value. That is the whole
+/// point of a declared width: silently writing a different value is exactly the mutation a
+/// head-strict type exists to prevent.
+pub fn float_head_width(
+    value: f64,
+    min_width: cbor_event::Sz,
+    max_width: cbor_event::Sz,
+) -> cbor_event::Sz {
+    let smallest = cbor_event::se::smallest_float_sz(value);
+    if float_head_rank(smallest) < float_head_rank(min_width) {
+        min_width
+    } else if float_head_rank(smallest) > float_head_rank(max_width) {
+        max_width
+    } else {
+        smallest
+    }
+}
+
+/// Exact `f32` -> `f64` widening, NaN payloads included.
+///
+/// The NaN case is done in software because a hardware widening (`value as f64` / `f64::from`) may
+/// quiet a signaling NaN or drop its payload depending on the platform — and a declared-width float
+/// round-trips byte-exactly, payload included. Every other value widens exactly under `f64::from`.
+/// This restates cbor_event's own inbound widening, which is not public.
+pub fn widen_f32(value: f32) -> f64 {
+    if value.is_nan() {
+        let bits = value.to_bits();
+        f64::from_bits(
+            u64::from(bits >> 31) << 63
+                | 0x7ff0_0000_0000_0000
+                | u64::from(bits & 0x007f_ffff) << 29,
+        )
+    } else {
+        f64::from(value)
+    }
+}
+
+/// Exact `f64` -> `f32` narrowing for a value a head-set check has ALREADY proven fits: every head
+/// an `f32`-carried CDDL float class admits (`#7.25`, `#7.26`) is f32-exact by construction, so the
+/// miss arm is unreachable. It panics rather than erroring because reaching it would mean the head
+/// check above it is wrong — a generator bug, not malformed input. Never an `as` cast: that rounds
+/// silently and its NaN-payload behaviour is platform-dependent.
+pub fn narrow_f32(value: f64) -> f32 {
+    cbor_event::se::f64_to_f32_exact(value)
+        .expect("a float head an f32-carried CDDL type admits is f32-exact by construction")
+}
+
+/// Read a float whose CDDL type admits only the head widths `min_width..=max_width` (`float32` is
+/// `#7.26` alone; `float16-32` is `#7.25`/`#7.26`; `float` admits all three). A head outside the set
+/// is a decode ERROR — never a silent widening or narrowing of the value, which would make a
+/// `float32` member's decoded value depend on bytes its own type forbids.
+pub fn read_float_sz_width(
+    raw: &mut Deserializer,
+    min_width: cbor_event::Sz,
+    max_width: cbor_event::Sz,
+) -> Result<(f64, cbor_event::Sz), DeserializeError> {
+    let (value, sz) = raw.float_sz()?;
+    if float_head_rank(sz) < float_head_rank(min_width)
+        || float_head_rank(sz) > float_head_rank(max_width)
+    {
+        return Err(DeserializeFailure::FloatWidth {
+            found: sz,
+            min: min_width,
+            max: max_width,
+        }
+        .into());
+    }
+    Ok((value, sz))
+}
+
+/// [`read_float_sz_width`] dropping the head width — the non-`--preserve-encodings` form, where the
+/// width is checked but not recorded.
+pub fn read_float_width(
+    raw: &mut Deserializer,
+    min_width: cbor_event::Sz,
+    max_width: cbor_event::Sz,
+) -> Result<f64, DeserializeError> {
+    read_float_sz_width(raw, min_width, max_width).map(|(value, _)| value)
+}
 pub struct CBORReadLen {
     deser_len: cbor_event::Len,
     read: u64,
@@ -94,6 +191,22 @@ pub trait DeserializeEmbeddedGroup {
         read_len: &mut CBORReadLen,
         len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> where Self: Sized;
+}
+
+/// Write a float whose CDDL type declares the head widths `min_width..=max_width`, at the narrowest
+/// admitted head that encodes `value` losslessly (RFC 8949 §4.2.2 preferred serialization
+/// restricted to the type's own set). A single-width class writes exactly that head.
+///
+/// Fails (`InvalidLenPassed`, through `write_float_sz`) when NO admitted head represents the value
+/// exactly — a `float16` member holding a value that is not f16-exact is the reachable case. Loud
+/// by design: rounding to fit the declared width would be a silent value mutation.
+pub fn write_float_width(
+    serializer: &mut Serializer,
+    value: f64,
+    min_width: cbor_event::Sz,
+    max_width: cbor_event::Sz,
+) -> cbor_event::Result<&mut Serializer> {
+    serializer.write_float_sz(value, float_head_width(value, min_width, max_width))
 }
 pub trait SerializeEmbeddedGroup {
     fn serialize_as_embedded_group<'a>(

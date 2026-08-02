@@ -60,3 +60,19 @@ pub trait DeserializeEmbeddedGroup {
         len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> where Self: Sized;
 }
+
+/// Write a float whose CDDL type declares the head widths `min_width..=max_width`, at the narrowest
+/// admitted head that encodes `value` losslessly (RFC 8949 §4.2.2 preferred serialization
+/// restricted to the type's own set). A single-width class writes exactly that head.
+///
+/// Fails (`InvalidLenPassed`, through `write_float_sz`) when NO admitted head represents the value
+/// exactly — a `float16` member holding a value that is not f16-exact is the reachable case. Loud
+/// by design: rounding to fit the declared width would be a silent value mutation.
+pub fn write_float_width(
+    serializer: &mut Serializer,
+    value: f64,
+    min_width: cbor_event::Sz,
+    max_width: cbor_event::Sz,
+) -> cbor_event::Result<&mut Serializer> {
+    serializer.write_float_sz(value, float_head_width(value, min_width, max_width))
+}

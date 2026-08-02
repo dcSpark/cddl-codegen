@@ -1530,6 +1530,69 @@ pub enum FixedSpecialTypeChoiceKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct FloatHeads(pub(crate) cddl_lib::FloatHeads);
+
+#[wasm_bindgen]
+impl FloatHeads {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FloatHeads, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn h(&self) -> f32 {
+        self.0.h
+    }
+
+    pub fn u(&self) -> f32 {
+        self.0.u
+    }
+
+    pub fn w(&self) -> f64 {
+        self.0.w
+    }
+
+    pub fn s(&self) -> f32 {
+        self.0.s
+    }
+
+    pub fn d(&self) -> f64 {
+        self.0.d
+    }
+
+    pub fn f(&self) -> f64 {
+        self.0.f
+    }
+
+    pub fn new(h: f32, u: f32, w: f64, s: f32, d: f64, f: f64) -> Self {
+        Self(cddl_lib::FloatHeads::new(h, u, w, s, d, f))
+    }
+}
+
+impl From<cddl_lib::FloatHeads> for FloatHeads {
+    fn from(native: cddl_lib::FloatHeads) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FloatHeads> for cddl_lib::FloatHeads {
+    fn from(wasm: FloatHeads) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FloatHeads> for FloatHeads {
+    fn as_ref(&self) -> &cddl_lib::FloatHeads {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Foo(pub(crate) cddl_lib::Foo);
 
 #[wasm_bindgen]

@@ -281,8 +281,12 @@ impl EncodingVarIsCopy for ConceptualRustType {
             Self::Primitive(p) => match p {
                 // bool has no encoding var
                 Primitive::Bool
-                | Primitive::F64
+                | Primitive::Float
+                | Primitive::F16
                 | Primitive::F32
+                | Primitive::F64
+                | Primitive::F16To32
+                | Primitive::F32To64
                 | Primitive::I8
                 | Primitive::I16
                 | Primitive::I32
@@ -914,29 +918,62 @@ impl GenerationScope {
                                 "{serializer_use}.write_special(cbor_event::Special::Bool({expr_deref})){line_ender}"
                             ));
                         }
-                        Primitive::F32 | Primitive::F64 => {
-                            // Both widths go over the wire as f64 (the CBOR float domain is f64;
-                            // `float32` narrows only the Rust MEMBER type), so an f32 member widens
-                            // here — always exact — and the head width is chosen from the widened
-                            // value.
-                            let value = if *primitive == Primitive::F32 {
-                                Cow::Owned(format!("{expr_deref} as f64"))
+                        p @ (Primitive::Float
+                        | Primitive::F16
+                        | Primitive::F32
+                        | Primitive::F64
+                        | Primitive::F16To32
+                        | Primitive::F32To64) => {
+                            // The CBOR float domain is f64, so an f32-CARRIED class (`float16`,
+                            // `float32`, `float16-32`) widens here. In software: an `as` cast may
+                            // quiet a signaling NaN or drop its payload depending on the platform,
+                            // and a declared-width float round-trips byte-exactly, payload included.
+                            let value = if p.float_carrier_is_f32() {
+                                Cow::Owned(format!("widen_f32({expr_deref})"))
                             } else {
                                 Cow::Borrowed(expr_deref.as_str())
                             };
-                            if cli.preserve_encodings {
-                                write_float(
+                            // Width-unconstrained `float` (`float = float16-32 / float64`) admits
+                            // every head, so nothing here constrains its width: the default profile
+                            // keeps `Special::Float`'s `#7.27` and preserve keeps `write_float`'s
+                            // narrowest-lossless. Every other class DECLARES its head set, and the
+                            // write is pinned to it — that is the whole of the wire change.
+                            //
+                            // `float64` needs no head-set write in the DEFAULT profile either:
+                            // `Special::Float` writes `#7.27` and nothing else, which IS its
+                            // declared width. (Under preserve it does need one — `write_float`
+                            // would pick the narrowest LOSSLESS head for a fresh value.)
+                            let width_pinned = *p != Primitive::Float
+                                && (cli.preserve_encodings || *p != Primitive::F64);
+                            let head_set = width_pinned.then(|| {
+                                let (min, max) = p.float_head_set().unwrap();
+                                format!("cbor_event::Sz::{min}, cbor_event::Sz::{max}")
+                            });
+                            match (cli.preserve_encodings, head_set) {
+                                (true, None) => write_float(
                                     body,
                                     &serializer_pass,
                                     &value,
                                     line_ender,
                                     &encoding_var_deref,
                                     cli,
-                                );
-                            } else {
-                                body.line(&format!(
-                                    "{serializer_use}.write_special(cbor_event::Special::Float({value})){line_ender}"
-                                ));
+                                ),
+                                (true, Some(head_set)) => {
+                                    body.line(&format!(
+                                        "write_float_width({serializer_pass}, {value}, {encoding_var_deref}, {head_set}{}){line_ender}",
+                                        canonical_param(cli)
+                                    ));
+                                }
+                                (false, None) => {
+                                    body.line(&format!(
+                                        "{serializer_use}.write_special(cbor_event::Special::Float({value})){line_ender}"
+                                    ));
+                                }
+                                (false, Some(head_set)) => {
+                                    body.line(&format!(
+                                        "write_float_width({serializer_pass}, {value}, {head_set}){line_ender}"
+                                    ));
+                                }
                             }
                         }
                         Primitive::Bytes => {

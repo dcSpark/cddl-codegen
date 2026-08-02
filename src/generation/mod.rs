@@ -3058,8 +3058,12 @@ fn encoding_fields_impl(
             | Primitive::U16
             | Primitive::U32
             | Primitive::U64
+            | Primitive::Float
+            | Primitive::F16
             | Primitive::F32
-            | Primitive::F64 => vec![EncodingField {
+            | Primitive::F64
+            | Primitive::F16To32
+            | Primitive::F32To64 => vec![EncodingField {
                 field_name: format!("{name}_encoding"),
                 type_name: "Option<cbor_event::Sz>".to_owned(),
                 default_expr: "None",
@@ -3094,7 +3098,7 @@ fn encoding_fields_impl(
             FixedValue::Float(_) => encoding_fields_impl(
                 types,
                 name,
-                (&ConceptualRustType::Primitive(Primitive::F64)).into(),
+                (&ConceptualRustType::Primitive(Primitive::Float)).into(),
                 cli,
                 tag_depth,
                 decls,

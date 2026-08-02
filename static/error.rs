@@ -60,6 +60,16 @@ pub enum DeserializeFailure {
         min_inclusive: bool,
         max_inclusive: bool,
     },
+    /// A CBOR float head outside the set the CDDL type declares (`float32` is `#7.26` alone,
+    /// `float16-32` is `#7.25`/`#7.26`, `float` admits all three). Separate from
+    /// `CBOR(cbor_event::Error::ExpectedFloatWidth)` — which the single-width classes raise through
+    /// cbor_event's own head-strict `f32`/`f64` impls — because a multi-width class admits a RANGE
+    /// of heads and has no single required width to report.
+    FloatWidth{
+        found: cbor_event::Sz,
+        min: cbor_event::Sz,
+        max: cbor_event::Sz,
+    },
     TagMismatch{
         found: u64,
         expected: u64,
@@ -149,6 +159,18 @@ impl DeserializeError {
                     None => "+inf".to_owned(),
                 };
                 write!(f, "{} not in float range ({}, {})", found, lo, hi)
+            },
+            DeserializeFailure::FloatWidth{ found, min, max } => {
+                let head = |sz: &cbor_event::Sz| match sz {
+                    cbor_event::Sz::Two => "#7.25",
+                    cbor_event::Sz::Four => "#7.26",
+                    _ => "#7.27",
+                };
+                if min == max {
+                    write!(f, "Expected float head {}, found {}", head(min), head(found))
+                } else {
+                    write!(f, "Expected float head {} - {}, found {}", head(min), head(max), head(found))
+                }
             },
             DeserializeFailure::TagMismatch{ found, expected } => write!(f, "Expected tag {}, found {}", expected, found),
             DeserializeFailure::UnknownKey(key) => write!(f, "Found unexpected key {}", key),
