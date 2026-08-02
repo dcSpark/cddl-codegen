@@ -412,7 +412,13 @@ works for a **self-referential** union too (`md = md_map / [* md] / …` with
 `md_map = { * md => md } ; @duplicates preserve`, the transaction-metadatum shape) — in either rule
 order, whether the cycle is written starting from the union or from the map.
 
-The row-entry slot honors `@duplicates` and nothing else. Every other directive written there is a
+**Exactly one spelling per shape, in both directions.** A NAMED table's row is *not* a second place to
+write the policy: `tbl = { * k => v ; @duplicates preserve` is a **loud rejection** pointing at the
+rule slot. The asymmetry is the point — an anonymous table has no rule slot, so its row is the only
+place the policy can live; a named table has one, so a second honored spelling would only let the two
+drift apart.
+
+The row-entry slot of an *anonymous inline* table honors `@duplicates` and nothing else. Every other directive written there is a
 **loud rejection** naming the spelling that works — a row entry declares no rule, field or type of its
 own, so `@name`, `@doc`, `@ignore`, the `@custom_serialize`/`@custom_deserialize` pair and its
 `@custom_encodings`/`@custom_wire_major` declarations have nothing to attach to. `@name` on a union's
@@ -1108,7 +1114,7 @@ Under `--canonical-form=true` a table's keys are additionally serialized into a 
 The pair parses in the positions below but cannot be honored there, so each one is a graceful generation error naming the spelling that works. The common cause is that the pair is a **type-level** override: it replaces the codec of the rust type the rule resolves to. Each of these positions either deletes the node the override is keyed on, or mints a type whose generated impls the override does not displace.
 
 * **On a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule.** Either marker names a type this crate does not define, so that type owns its own (de)serialization impls and there is nothing here for the pair to displace. Two spellings work instead, and which one you want depends on whether the Rust type is to change: give the rule a real CDDL body and put the pair there (that also keeps the wire type stated in the spec), or keep this rule as the marker and put the pair on an **alias** of it (`policy_id_v1 = policy_id ; @custom_serialize …`), which keeps the marker's Rust type and overrides only how it is written — see [Overriding the wire of a type this crate does not define](#overriding-the-wire-of-a-type-this-crate-does-not-define).
-* **On a table row, an open-map rest row, or an open-array rest tail entry** — a trailing comment on the `* k => v` / `* t` row itself. That slot carries `@name`, `@duplicates` and `@ignore`, all of which are row-scoped; the pair names a type the row does not declare. Put it on the row's key, value, or element rule instead.
+* **On a table row, an open-map rest row, or an open-array rest tail entry** — a trailing comment on the `* k => v` / `* t` row itself. What a row slot carries is row-scoped (an open-map rest row takes `@name`, `@duplicates` and `@ignore`; an anonymous inline table's row takes `@duplicates`; a NAMED table's row takes nothing — its policy lives at the rule slot), and the pair names a type the row does not declare. Put it on the row's key, value, or element rule instead.
 * **Together with `@no_alias`.** `@no_alias` removes the alias node the override is keyed on, so the pair would go with it and both directions would fall back to the default wire format.
 * **Together with `@newtype`.** A `@newtype` wrapper writes through its own generated `Serialize` impl while the deserialize call sites do route through the custom reader, so the pair would make the wrapper read one wire format and write another. Use the plain alias spelling, or declare the type `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write it in full.
 * **On a rule that mints a TAGGED wrapper without the directive** — a tag-head rule (`foo = #6.42(uint)`) and the tag-258 set idiom (`foo = #6.258([* uint]) / [* uint]`, which nominalizes into a set wrapper). Structurally the `@newtype` case above, minus the directive: the same generated-`Serialize`/custom-reader asymmetry, so either half is refused. Declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the type, or give it a body that resolves to a transparent alias and write the wire framing (the tag included) in your own codec.
