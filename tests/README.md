@@ -1180,30 +1180,37 @@ path. `--canonical-form=true` requires `--preserve-encodings` (on its own it emi
 crate); that combination is rejected in `api::with_types` and pinned by
 `flag_value_rejects_canonical_without_preserve`.
 
-`generated_code_clippy_clean` runs `cargo clippy` over the generated rust and wasm crates for two
-representative profiles (default flags, and `--preserve-encodings --canonical-form`), generated from
-the same rich extern-free input as `flag_value_smoke` into its own temp dir (so it can't race the
-fixtures' reused `tests/<dir>/export` outputs). A third case swaps the input for a minimal spec the
+`generated_code_clippy_clean` runs `cargo clippy` over every generated crate a case mints, for four
+cases. Two run the rich extern-free input `flag_value_smoke` uses, under default flags and under
+`--preserve-encodings --canonical-form`, generated into the gate's own temp dir (so it can't race
+the fixtures' reused `tests/<dir>/export` outputs). A third swaps the input for a minimal spec the
 gate writes into that same temp dir, under `--preserve-encodings --annotate-fields=false`: verify-only
 fixed bool/null in member position and in all three arm positions (map-rep, array-rep, type-choice).
 Those shapes are the gate's own coverage floor — the rich fixture spells none of them, and
 `--annotate-fields=false` is what makes the member position emit its unbound value, so one case
-covers all four emission sites. What it proves: emitted source is lint-clean for
+covers all four emission sites. The fourth runs the rich input under `--json-serde-derives
+--json-schema-export`, the flag pair `ALL_PROFILES` spells for its `json` row, and lints the THIRD
+generated crate: `wasm/json-gen`, whose emitted `add_schemas`/`export_schemas` bodies and
+registration rows no other lint gate reaches (it is an independent nested crate, not a dependency of
+`wasm/`, so linting `wasm/` never compiles it). A case whose crate is missing fails rather than
+skipping. What it proves: emitted source is lint-clean for
 the covered profiles, modulo the permanent input-dependent allow described below — the
 emission-quality class that snapshots and round-trip suites are blind to (they pin bytes and
 behavior, not idiomatic-ness; a degenerate `();` statement compiles and round-trips green but
 degrades every consumer's `cargo clippy`). What it can't prove: semantic correctness — a
 wrong-but-idiomatic deserializer passes.
 
-Both generated crates are denied under `clippy::all` with an empty emission-quality burn-down; the
-only allow is permanent and input-dependent: `clippy::disallowed_names` (the fixture's own
+All three generated crates are denied under `clippy::all` with an empty emission-quality burn-down;
+the only allow is permanent and input-dependent: `clippy::disallowed_names` (the fixture's own
 `foo`/`bar` rule names become generated parameter names — not a generator defect). The gate also
-denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`) that
-catches redundant emitted grouping/allocation without denying `unused_imports` — that class keeps
+denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`,
+`unused_variables`) that catches redundant emitted grouping/allocation and dead emitted bindings
+without denying `unused_imports`. That asymmetry is deliberate: `unused_imports` keeps
 the one residue the usage-derived import prune (`import_prune::prune_generated_files`)
-deliberately leaves: trait imports (`cbor_event::se::Serialize`), exercised via method calls whose
-ident never appears, so name-scanning cannot prove them unused. `unused_variables` is also not
-denied here, but has NO legitimate residue — its zero-tolerance owner is `feature_corpus_compiles`'
+deliberately leaves — trait imports (`cbor_event::se::Serialize`), exercised via method calls whose
+ident never appears, so name-scanning cannot prove them unused — while `unused_variables` has NO
+legitimate residue, so an emitted binding nothing reads is a generator defect every time. The
+corpus-wide owner of that same class is `feature_corpus_compiles`'
 `unused_generated_variable_lines` scan. Everything else — the concrete
 collection/encoding idents, the `super::*`/`error::*` globs (pruned against enumerable
 universes), cross-scope type imports, wasm macro/prelude imports, and every private import of a

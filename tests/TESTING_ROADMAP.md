@@ -1332,22 +1332,8 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   in `generated_code_clippy_clean`'s input). The wasm-boundary clone-of-owned flavor above stays
   ledgered with unchanged disposition, mirroring the curated rustc style-deny precedent
   (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
-  deny only if it is currently green-able on both profiles (nursery lints carry known false
-  positives). Act on a second instance or a consumer report, not before.
-- **The json-gen crate's own emitted bodies are linted by nobody.** `generated_code_clippy_clean`
-  denies `clippy::all` over the generated **rust** and **wasm** crates for two profiles, neither of
-  which passes `--json-schema-export` — so the third generated crate is outside every lint gate.
-  What remains in scope is what the generator EMITS into it: the `add_schemas` and `export_schemas`
-  bodies, plus the registration rows. (The helper machinery those bodies call is no longer part of
-  this: it is `static/json_schema_gen.rs`, compiled and linted as real workspace code by the
-  fast-tier `clippy` gate through the `json_schema_gen_tests` shim — the durable shape that closes
-  a whole class here, since a toolchain-sensitive lint in hand-authored helper Rust now fails a
-  local `cargo clippy` rather than a consumer's regen gate.) The remedy is one nested cargo cell:
-  add a `--json-schema-export` profile to `generated_code_clippy_clean` and lint its `json-gen`
-  crate with the same deny/allow set the other two legs use — no new contract, since denying
-  `clippy::all` over generated output is already the shipped policy for the other two crates.
-  Reopening signal: a lint fires on emitted `add_schemas`/`export_schemas`/row code in a consumer's
-  regen gate before it fires in ours.
+  deny only if it is currently green-able on every one of the gate's cases (nursery lints carry
+  known false positives). Act on a second instance or a consumer report, not before.
 - **`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
   reach.** The rustc-warning DETECTOR is live and BROAD — the generated-code unused-import scan
   (`unused_generated_import_lines`) inside `feature_corpus_compiles` fails on ANY `unused import`
@@ -1356,11 +1342,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   marker (current state in `tests/README.md`'s description of that gate). The variables half was
   added on a consumer-reported instance (the constant count-arm `Some(x) => 1` binding): the corpus
   held the provoking shape all along (33 committed-snapshot instances), so the escape mechanism was
-  a missing ASSERTED CLASS, not input poverty — `generated_code_clippy_clean` deliberately kept
+  a missing ASSERTED CLASS, not input poverty — `generated_code_clippy_clean` had kept
   `unused_variables` at warn, lumping it with `unused_imports`, whose stay-warn rationale (the
-  legitimate trait residue below) has no variables analogue. Follow-up on the next touch of that
-  gate: add `-D unused_variables` to its rustc deny set (imports stay warn there — the trait
-  residue is real); until then the corpus scan is the class owner. A second known DETECTOR blind
+  legitimate trait residue below) has no variables analogue. That gate now denies
+  `-D unused_variables` across all four of its cases and all three generated crates, so the class
+  has two owners; `unused_imports` stays at warn there, because the trait residue is real. A second known DETECTOR blind
   spot, proven by the path-tail instance below: the scan lives only in `feature_corpus_compiles`
   cells, which never generate under the cross-crate workspace flags, so prune imprecision visible
   only in `--wrapper-requests`/`--workspace-dep` output (the requested-collections sidecar) reaches
