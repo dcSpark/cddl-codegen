@@ -6888,6 +6888,122 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "prelude.float16"
+axis = "feature"
+example = "x = float16"
+spec = "__probe_holder = [0, x]\nx = float16"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f9013a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f92f44"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f96cd9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f98056"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f99855"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f9b156"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f9b6fe"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f9bb2c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f9bba0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f9cda5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "prelude.float16-32"
+axis = "feature"
+example = "x = float16-32"
+spec = "__probe_holder = [0, x]\nx = float16-32"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f909d9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f91b00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f91eaf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f92119"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f93a91"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f952f2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fa1c5be6f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fa7e941459"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200faa33e64c3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200faace8c7a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "prelude.float32"
 axis = "feature"
 example = "x = float32"
@@ -6942,6 +7058,64 @@ expect = "accept"
 
 [[row.vector]]
 hex = "8200fae1770547"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "prelude.float32-64"
+axis = "feature"
+example = "x = float32-64"
+spec = "__probe_holder = [0, x]\nx = float32-64"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200fa12039ece"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fa5d215f06"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fa68c68730"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fabf8d5faf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fb0d9d0aaef068bd5c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fb54e04073fa8ddb98"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fb720a0159cbc69e05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fbca8364e0c5940a00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fbd31eb98223a814cc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fbd94ea9cab3dc8f7a"
 source = "ruby-generate"
 expect = "accept"
 

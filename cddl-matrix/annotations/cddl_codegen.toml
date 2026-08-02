@@ -638,12 +638,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.float16"
 status = "supported"
-evidence = "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line."
+evidence = "hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`); accepts 10 foreign spec-derived vector(s); wasm/json/preserve emission and oracle columns not re-run"
 
 [[support]]
 id = "prelude.float16-32"
 status = "supported"
-evidence = "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line."
+evidence = "hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`); accepts 10 foreign spec-derived vector(s); wasm/json/preserve emission and oracle columns not re-run"
 
 [[support]]
 id = "prelude.float32"
@@ -657,7 +657,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.float32-64"
 status = "supported"
-evidence = "pending verify.ts re-probe (T1-01 float head-strictness): cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`). Oracle columns not re-run — the next verify.ts pass replaces this line."
+evidence = "hand-recorded (T1-01 float head-strictness), pending a verify.ts re-probe that replaces this line: cddl-codegen exit 0 in member, element and rule-body position under default and --preserve-encodings; compiles and round-trips byte-exactly at every head the name admits, and refuses every other head (tests/core `float_heads`, tests/preserve-encodings `float_heads`, tests/golden_hex_preserve `float_widths`); accepts 10 foreign spec-derived vector(s); wasm/json/preserve emission and oracle columns not re-run"
 
 [[support]]
 id = "prelude.float64"
