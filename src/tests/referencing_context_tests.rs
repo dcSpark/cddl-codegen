@@ -460,8 +460,9 @@ const BASES: &[BaseShape] = &[
     //
     // The honored counterpart is not left to the reader: `custom_wire_major_is_honored_through_the
     // _typed_row_reference` below reaches the same base through a two-row open table and asserts the
-    // declared major drives the dispatch arm, so these ten refusals are attributable to the contexts
-    // having no consumer rather than to the declaration being unreachable through a reference.
+    // declared major drives the dispatch arm, so this row's per-context refusals are attributable to
+    // the contexts having no consumer rather than to the declaration being unreachable through a
+    // reference.
     BaseShape {
         directive: "@custom_wire_major",
         covers: &["@custom_wire_major"],
@@ -822,11 +823,11 @@ fn every_base_row_is_live() {
     }
 }
 
-/// The honored counterpart to the `@custom_wire_major` row's ten refusals: the SAME base, reached
-/// through the one reference that consumes a declared major — an open table whose typed-row dispatch
-/// must know the major before any deserializer runs.
+/// The honored counterpart to the `@custom_wire_major` row's per-context refusals: the SAME base,
+/// reached through the one reference that consumes a declared major — an open table whose typed-row
+/// dispatch must know the major before any deserializer runs.
 ///
-/// Without this, those ten refusals would be indistinguishable from "the declaration cannot be
+/// Without this, that row's refusals would be indistinguishable from "the declaration cannot be
 /// reached through a reference at all". With it, they are attributable to the contexts having no
 /// consumer: one reference over, the same declaration crosses and drives the dispatch arm.
 #[test]
