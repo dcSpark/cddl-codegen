@@ -518,34 +518,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       (`tests/robustness/recursive_collection_holder.cddl`) no longer aborts — the recursive-type
       boundary repairs it — so the signal is not met by the catalog's own contents.
 
-14. **Three control-operator arms ABORT where every sibling refuses — and one of them destroys a
-    refusal that was already recorded.** Found by the refused-name × resolution-context closure
-    sweep (`src/tests/refused_name_closure_tests.rs`), each pinned as a `PANIC` row of the
-    input-robustness catalog:
-    - `x = <name> .default 1` — `RustType::default` asserts the head resolved to a rust primitive
-      matching the default's value class, and `panic!`s when it did not. For a REFUSED prelude
-      name the head is the refusal's inert `Fixed(Null)` placeholder, so the graceful rejection
-      `new_type` recorded is destroyed by the abort one step later; the closure sweep pins all ten
-      such cells (five refused names × the rule and member positions) in `KNOWN_CLOSURE_BREACH`.
-      The abort is NOT exclusive to refused names — `tdate`, a supported prelude name with no rust
-      primitive, aborts identically — so the fix is a refusal at the `.default` application, not
-      one line at an existing name seam. Fixture:
-      `tests/robustness/ctl_default_unmapped_head.cddl`.
-    - `x = uint..10` — a TYPENAME as a range bound. The range arm reads both bounds as literal
-      values and panics on anything else, before any name is resolved. Fixture:
-      `tests/robustness/rangeop_typename_start.cddl`.
-    - `x = uint .cbor uint` — `.cbor` on a non-`bytes` head. RFC 8610 does restrict `.cbor` to byte
-      strings, so refusing the shape is right; refusing it with a `panic!` is not. Fixture:
-      `tests/robustness/ctl_cbor_non_bytes_head.cddl`.
-    The last two are name-INDEPENDENT (the same abort fires for every head, supported names
-    included), which is why they are the recorded reason the closure sweep marks those columns
-    `Attribution::ContextOwned` rather than sweeping them — and that exclusion is re-checked
-    against the control head every run, so it goes stale loudly the day an arm is fixed. Each fix
-    is the conversion this burndown has already run many times (`record_rejection` + an inert
-    placeholder, drained by `finalize`), and the `.default` one additionally needs the message to
-    say which head it could not lower onto.
-
-15. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
+14. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
     serialize error into a panic.** A `float16` member's carrier is `f32`, and a carrier value that
     is not f16-exact cannot be written at the one head the type declares — so `Serialize` returns
     `Err` (`InvalidLenPassed`, the declared-width refusal working as designed: rounding to fit

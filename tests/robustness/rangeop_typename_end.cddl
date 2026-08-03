@@ -1,0 +1,5 @@
+; A TYPENAME as the range END bound (`0..uint`) — the sibling of
+; `tests/robustness/rangeop_typename_start.cddl`, and its own row because the two bounds are read by
+; two separate arms of the range walk (they once failed differently: one `panic!`, one
+; `unimplemented!`). Both refuse gracefully now, each naming the bound it could not read.
+x = 0..uint

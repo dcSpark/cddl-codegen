@@ -1,7 +1,8 @@
-; A TYPENAME as a range bound (`uint..10`) aborts: the range arm reads both bounds as literal
-; values and panics on anything else, before the head name is resolved at all. Name-INDEPENDENT —
-; the same abort fires for every head, supported names included — so it is a defect on the SHAPE
-; axis, not on the refused-name one; it is the recorded reason the refused-name closure sweep
-; (`refused_name_closure_tests`) excludes this column instead of sweeping it, and that exclusion
-; goes stale loudly when this row flips.
+; A TYPENAME as the range START bound (`uint..10`): both bounds are read as literal VALUES, before
+; the head name is resolved at all, so a named bound has no value to lower onto the backing
+; primitive. Refused gracefully, naming the bound. Name-INDEPENDENT — the same refusal fires for
+; every head, supported names included — so it is a SHAPE-axis row, which is why the refused-name
+; closure sweep (`refused_name_closure_tests`) keeps this column `ContextOwned` with a `Refuses`
+; verdict rather than sweeping it. The END bound is its sibling row
+; (`tests/robustness/rangeop_typename_end.cddl`), so the class and not the instance is pinned.
 x = uint..10

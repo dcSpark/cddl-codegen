@@ -1,0 +1,5 @@
+; The MEMBER route to the non-`bytes` `.cbor` head check — a second arm (`rust_type_from_type1`,
+; where the rule-position sibling is in `parse_type`), which is exactly the kind of second route a
+; shape refusal has to cover to be a refusal about the SHAPE. It asserted where the rule position
+; panicked; both refuse gracefully now, naming the head.
+a = [v: uint .cbor uint, x: uint]

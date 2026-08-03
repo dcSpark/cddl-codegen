@@ -388,7 +388,22 @@ impl RustType {
         self
     }
 
-    pub fn default(mut self, default_value: FixedValue) -> Self {
+    /// Apply a `.default` value, or hand the type BACK undefaulted when the value cannot be lowered
+    /// onto it.
+    ///
+    /// A default substitutes for an absent value at deserialization, so it is written into the
+    /// primitive that backs the constrained type — a head that is not such a primitive (a named type
+    /// with no rust primitive behind it, or the inert placeholder a name refusal already left behind)
+    /// has nothing to write it into. Fallible rather than asserting because BOTH `.default`
+    /// application sites are reached from ordinary user CDDL, where an unmappable head is an input to
+    /// refuse gracefully and not a tool bug; the `Err` payload is the untouched type, which the
+    /// caller keeps walking over while `finalize` drains the recorded rejection.
+    // The `Err` payload is the whole `RustType` on purpose — it is the caller's inert placeholder,
+    // and handing it back is what makes "you cannot apply a default without handling the refusal" a
+    // type-level property rather than a convention. `clippy::result_large_err` is about hot returns;
+    // this one runs once per written `.default` at parse time.
+    #[allow(clippy::result_large_err)]
+    pub fn try_default(mut self, default_value: FixedValue) -> Result<Self, Self> {
         assert!(self.config.default.is_none());
         let matches = if let ConceptualRustType::Primitive(p) =
             self.conceptual_type.resolve_alias_shallow()
@@ -405,13 +420,10 @@ impl RustType {
             false
         };
         if !matches {
-            panic!(
-                ".default {:?} invalid for type {:?}",
-                default_value, self.conceptual_type
-            );
+            return Err(self);
         }
         self.config.default = Some(default_value);
-        self
+        Ok(self)
     }
 
     #[allow(clippy::wrong_self_convention)]

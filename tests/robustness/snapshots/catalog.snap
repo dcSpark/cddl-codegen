@@ -23,8 +23,10 @@ choice_fixed_null_collapse_member error (graceful)
 choice_group_array_arm     ok
 choice_last_any_arm        ok
 collection_rule_cycle_entry ok
-ctl_cbor_non_bytes_head    PANIC
-ctl_default_unmapped_head  PANIC
+ctl_cbor_non_bytes_head    error (graceful)
+ctl_cbor_non_bytes_head_member error (graceful)
+ctl_default_supported_head error (graceful)
+ctl_default_unmapped_head  error (graceful)
 duplicate_rule             error (graceful)
 eb64url_member             error (graceful)
 empty                      ok
@@ -58,7 +60,8 @@ non_empty_map_wrapper_name_collision error (graceful)
 non_empty_wrapper_collision_array_element error (graceful)
 non_empty_wrapper_name_collision error (graceful)
 prelude_biguint            ok
-rangeop_typename_start     PANIC
+rangeop_typename_end       error (graceful)
+rangeop_typename_start     error (graceful)
 recursive_alias_hop        ok
 recursive_alias_hop_collection_entry PANIC
 recursive_collection_holder ok

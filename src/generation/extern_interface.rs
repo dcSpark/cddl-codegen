@@ -1979,7 +1979,9 @@ mod tests {
                 field("credential", rust_ref("Credential"), false, None),
                 field(
                     "count",
-                    prim(Primitive::U64).default(FixedValue::Uint(0)),
+                    prim(Primitive::U64)
+                        .try_default(FixedValue::Uint(0))
+                        .expect("u64 accepts a uint default"),
                     true,
                     None,
                 ),

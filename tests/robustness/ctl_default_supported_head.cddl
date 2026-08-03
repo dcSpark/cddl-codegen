@@ -1,0 +1,7 @@
+; The SUPPORTED-name half of the `.default` head check: `tdate` is a supported prelude name with no
+; rust primitive behind it, so a default has nothing to be written into and the shape is refused —
+; with no name refusal anywhere in the run to piggyback on. This is what pins the check at the
+; `.default` APPLICATION rather than at a name seam: the sibling fixture
+; (`tests/robustness/ctl_default_unmapped_head.cddl`) would still refuse if the check lived at the
+; refused-name seam, and this one would not.
+x = tdate .default 1
