@@ -1,0 +1,6 @@
+; A named self-referential collection with no holder: `pub type Foos = Vec<Foos>;`. A transparent
+; `pub type` alias cannot take part in a type cycle — rustc expands aliases structurally, so heap
+; indirection inside the alias body does not break the cycle (E0391, "cycle detected when expanding
+; type alias"). Generation itself terminates here (no holder inlines the alias into a member), which
+; is why this row is the ALIAS-CYCLE half of the boundary and its holder sibling is the abort half.
+foos = [* foos]

@@ -1,0 +1,5 @@
+; The `+`-occurrence flavor of the self-referential named collection. The occurrence marker changes
+; the emitted container (`NonEmptyVec` vs `Vec`) and nothing about the alias cycle, so it belongs to
+; the same class as `recursive_collection_self.cddl` — recorded as its own row because occurrence
+; markers reach a different parse arm.
+foos = [+ foos]

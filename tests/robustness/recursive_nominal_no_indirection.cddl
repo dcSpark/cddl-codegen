@@ -1,0 +1,7 @@
+; The E0072 class: a cycle between two NOMINAL records whose recursive occurrence sits directly in a
+; field, with no heap indirection anywhere on the cycle. Boxing the member is what rustc suggests and
+; what this generator cannot do — it emits no `Box` in any type position and there is no directive
+; that asks for one — so the boundary refuses the shape. Contrast `tests/corpus/recursive.cddl`,
+; whose cycle passes through the same kind of nominal node but crosses a `Vec`, and compiles.
+a = [b]
+b = [a]

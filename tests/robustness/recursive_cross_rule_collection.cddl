@@ -1,0 +1,5 @@
+; An alias cycle with TWO collection-backed members and no nominal node anywhere: a table whose range
+; is an array of the table. Both members are collection-backed, so the whole cycle is nominalized
+; rather than one arbitrarily-chosen member of it.
+m = {* text => a}
+a = [* m]

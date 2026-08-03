@@ -1,0 +1,7 @@
+; An alias cycle that closes through a PLAIN typename hop rather than directly: `pub type X = Vec<Y>;`
+; with `pub type Y = X;`. The collection-backed member of the cycle is `x` alone — `y` names no
+; container of its own — so this fixture is what proves the nominalization set is chosen by a
+; property of the cycle (every collection-backed alias in it) rather than by which rule the spec
+; happens to list first.
+y = x
+x = [* y]

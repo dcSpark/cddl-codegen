@@ -1,0 +1,7 @@
+; An alias cycle with NO collection-backed member: two plain typename rules naming each other. Every
+; node of the cycle is a bare `pub type` hop, so there is nothing in it to nominalize — a wrapper
+; struct needs a body to wrap, and neither rule has one that is not the other rule. This is the
+; alias-class shape with no fix in reach, and the boundary refuses it rather than emitting a crate
+; that fails `cargo check` (E0391).
+x = y
+y = x

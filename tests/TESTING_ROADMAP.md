@@ -517,15 +517,15 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       entered AT a collection rule, and `tests/corpus/recursive.cddl` is recursion mediated by an
       INLINE `[* tree]` inside a record. The uncovered spelling is a NAMED collection rule whose
       element is the rule itself.
-    - **The family cannot host the fixture as it stands, which is the missing system.**
-      `input_robustness_catalog` drives `api::generated_strings` in-process inside `catch_unwind`,
-      and a stack overflow is an abort rather than an unwind — the fixture would take the test binary
-      down instead of recording a row. What is missing is an out-of-process outcome lane for the
-      catalog: run the generator as a subprocess for the shapes that can abort, and classify a fourth
-      outcome (`ABORTED (signal)`) beside `ok` / `error (graceful)` / `PANIC`, so a non-unwinding
-      crash becomes a snapshot-able outcome instead of a gate that dies. The catalog's existing
-      flip-is-a-fix convention then does the rest: the row moves to `error (graceful)` the day the
-      refusal lands.
+    - **The catalog now hosts the fixture: the out-of-process outcome lane is built.**
+      `input_robustness_catalog` still drives `api::generated_strings` in-process inside
+      `catch_unwind` for every input except the ones `ABORT_PRONE_INPUTS` names; those run in a
+      process of their own (the test binary self-spawns through
+      `robustness_out_of_process_generation_helper`) and their outcome is read off the exit status,
+      so a death by signal is the fourth label `ABORTED (signal <n>)` beside
+      `ok` / `error (graceful)` / `PANIC`. `tests/robustness/recursive_collection_holder.cddl` is
+      the shape, and its row reads `ABORTED (signal 6)` today. The catalog's flip-is-a-fix
+      convention owns the rest: the row moves to `error (graceful)` the day the refusal lands.
     - **The generator-side decision belongs to the fix, not here.** A named collection whose element
       resolves to itself has no terminating rust type, and the diagnostic's own suggested remedy
       cannot apply — the collection IS the indirection — so a hard refusal naming the rule, in the
