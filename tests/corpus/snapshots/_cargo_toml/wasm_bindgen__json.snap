@@ -14,7 +14,7 @@ generated-with = "0.1.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }
+cbor_event = "3.3.0"
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1.0.57", default-features = false, features = ["alloc", "float_roundtrip"] }
 schemars = { version = "1.2.1", default-features = false, features = ["derive"] }

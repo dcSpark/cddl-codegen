@@ -18,11 +18,10 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-# The generated crates now git-dep cbor_event (dcSpark fork, `float-round-trip` head — same rev the
-# workspace pins), so this warm-up mirrors that spec to satisfy `warmup_manifest_covers_registry_dep_universe`
-# (it compares the emitted dep spec) and to pre-fetch the git rev for offline nested-cargo cells.
-# The workspace's own `cargo fetch` already caches this rev, so this line is belt-and-suspenders.
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }
+# The generated crates declare cbor_event at the version the workspace pins, so this warm-up mirrors
+# that spec to satisfy `warmup_manifest_covers_registry_dep_universe` (it compares the emitted dep
+# spec) and to pre-fetch the crate for offline nested-cargo cells.
+cbor_event = "3.3.0"
 hashlink = "0.12.1"
 derivative = { version = "2.2.0", features = ["use_core"] }
 # These four are emitted with `default-features = false` (the generated rust crate runs its JSON and

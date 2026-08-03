@@ -4771,21 +4771,30 @@ fn cargo_manifest_disk_round_trip() {
     );
 
     // Hand-edit: bump the seeded version, tamper the stamp, add a user dep with an inline comment,
-    // prepend a top-of-file comment, and reshape the tool-owned `cbor_event` dep (a git table since
-    // the fork pin) by adding a user-only `optional = false` field. All but the stamp must survive
-    // (the reshape exercises the field-level dep merge on a real disk round trip); the stamp must be
-    // restored.
+    // prepend a top-of-file comment, and reshape the tool-owned `cbor_event` dep (a plain version
+    // string) into a table carrying a user-only `optional = false` field. All but the stamp must
+    // survive (the reshape exercises the field-level dep merge on a real disk round trip); the stamp
+    // must be restored.
+    let fresh_cbor = first
+        .lines()
+        .find(|l| l.trim_start().starts_with("cbor_event = "))
+        .expect("cbor_event dep missing")
+        .to_owned();
     assert!(
-        first.contains("cbor_event = { git = "),
-        "expected the git-table cbor_event dep to reshape:\n{first}"
+        fresh_cbor.starts_with("cbor_event = \""),
+        "expected a plain-string cbor_event dep to reshape:\n{fresh_cbor}"
     );
+    let cbor_version = fresh_cbor
+        .trim_start_matches("cbor_event = ")
+        .trim()
+        .to_owned();
     let edited = format!(
         "# hand-written top comment\n{}\nanyhow = \"1\" # user pin\n",
         first
             .replace("version = \"0.1.0\"", "version = \"9.9.9\"")
             .replace(
-                "cbor_event = { git = ",
-                "cbor_event = { optional = false, git = "
+                &fresh_cbor,
+                &format!("cbor_event = {{ optional = false, version = {cbor_version} }}"),
             )
             .replace(
                 &format!("generated-with = \"{tool_version}\""),
@@ -4832,10 +4841,8 @@ fn cargo_manifest_disk_round_trip() {
         .find(|l| l.trim_start().starts_with("cbor_event = "))
         .expect("cbor_event dep missing");
     assert!(
-        cbor_line.contains("git = ")
-            && cbor_line.contains("rev = ")
-            && !cbor_line.contains("version"),
-        "the merged git dep must stay version-free:\n{cbor_line}"
+        cbor_line.contains(&format!("version = {cbor_version}")),
+        "the tool's version must survive the reshape:\n{cbor_line}"
     );
 
     // Third run: byte-identical fixed point.
@@ -4844,6 +4851,68 @@ fn cargo_manifest_disk_round_trip() {
     assert_eq!(
         second, third,
         "regeneration must reach a byte-identical fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// The source-assertion contract on real disk: an output directory written by an older release
+/// carries `cbor_event = { git = …, rev = … }`, and ONE regeneration must migrate it to the
+/// registry entry — byte-identical to what a fresh generation writes into the same file.
+///
+/// This is the half `run_test`'s committed `export*/` trees structurally cannot cover: those
+/// manifests are deleted and rebuilt from scratch each run, so they only ever show the fresh shape.
+/// Without the assertion the merge floors a version-only `set` and the git source survives forever,
+/// which is exactly the silent failure this pins.
+#[test]
+fn cargo_manifest_disk_migrates_a_git_source_to_the_asserted_registry_version() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_manifest_resource_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let manifest = out.join("rust/Cargo.toml");
+
+    // A fresh generation: the reference bytes the migration has to land on.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let fresh = std::fs::read_to_string(&manifest).unwrap();
+    let fresh_cbor = fresh
+        .lines()
+        .find(|l| l.trim_start().starts_with("cbor_event = "))
+        .expect("cbor_event dep missing")
+        .to_owned();
+
+    // Rewind that one entry to the git pin an older release wrote there.
+    let stale = fresh.replace(
+        &fresh_cbor,
+        "cbor_event = { git = \"https://github.com/dcSpark/cbor_event\", rev = \"28514916e97240e1d2b01ba8f804d45c221fbdcd\" }",
+    );
+    assert_ne!(stale, fresh, "the rewind must actually change the manifest");
+    std::fs::write(&manifest, &stale).unwrap();
+
+    crate::api::generate_to_disk(&cli).unwrap();
+    let migrated = std::fs::read_to_string(&manifest).unwrap();
+    assert!(
+        !migrated.contains("git =") && !migrated.contains("rev ="),
+        "one regeneration must clear the superseded git source:\n{migrated}"
+    );
+    assert_eq!(
+        migrated, fresh,
+        "a migrated manifest must be byte-identical to a freshly generated one"
     );
 
     let _ = std::fs::remove_dir_all(&scratch);
@@ -21358,7 +21427,7 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     );
 
     // (d) An existing hand-owned Cargo.toml is MERGED: identity + hand deps survive, the stale
-    // cbor_event pin is superseded by the git source the exported source requires, a satisfying
+    // cbor_event pin is superseded by the version the exported source requires, a satisfying
     // hand serde pin is kept. This is the regression test for the manifest-skew class the
     // crate-shaped flag exists to close (exported source targeting a new cbor_event beside a
     // manifest still pinning the old).
@@ -21396,11 +21465,11 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         .find(|l| l.trim_start().starts_with("cbor_event = "))
         .expect("cbor_event dep missing from the merged hand manifest");
     assert!(
-        hand_cbor_line.contains("git = ")
-            && hand_cbor_line.contains("rev = ")
+        !hand_cbor_line.contains("git = ")
+            && !hand_cbor_line.contains("rev = ")
             && !hand_manifest.contains("2.4.0"),
-        "the stale cbor_event pin must be superseded by the git source the exported source \
-         requires (no stale version beside it):\n{hand_manifest}"
+        "the stale cbor_event pin must be superseded by the version the exported source \
+         requires, on the source the tool asserts:\n{hand_manifest}"
     );
     assert!(
         hand_manifest.contains("1.0.152"),

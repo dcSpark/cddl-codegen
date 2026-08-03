@@ -15,7 +15,7 @@ sidebar_position: 4
 - Every crate's generated code lives under a tool-owned `src/generated/` subtree (`rust/src/generated/mod.rs` holds the structs, `rust/src/generated/serialization.rs` their (de)serialization implementations/corresponding types, plus the runtime modules `error.rs`/`ordered_hash_map.rs`; a crate with any [`@used_as_key`](./comment_dsl)-tagged rule also carries `key_demand_assertions.rs`, the private compile-time record of which tag demanded which comparison/hash traits). The crate root `src/lib.rs` is a thin, user-owned wrapper (`mod generated; pub use generated::*;`) — see [Generated crate roots](#generated-crate-roots-thin-root-seed-once) below.
 - The `wasm/` directory is full of wasm_bindgen-annotated wrappers (under `wasm/src/generated/`) for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh). Every wasm crate also carries a `wasm/src/generated/collections.rs` index: one `pub use crate::…::<Wrapper>;` re-export per collection wrapper class the crate defines (the `FooList` / `MapKToV` and `NonEmpty…` wrappers minted from `[* T]` / `{* K => V}` shapes), sorted, with no glob. Because it is compiled as part of the crate, a line naming a removed wrapper fails the crate's own build, so the index can never silently drift from the classes it inventories.
 
-**Toolchain floor.** Generated crates depend on `cbor_event` 3.x, whose manifest declares `rust-version = "1.81"` — building a generated crate needs at least that toolchain.
+**Toolchain floor.** Generated crates depend on `cbor_event` 3.3, whose manifest declares `rust-version = "1.96.1"` — building a generated crate needs at least that toolchain.
 
 **Unused imports are pruned.** A usage-derived post-pass reads the rendered source and drops imports a generated file's module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes three things. **(1) Concrete-type names** — the collection helpers (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`, `OrderedSet`, `NonEmptyOrderedSet`) and, under `--preserve-encodings`, the encoding enums (`LenEncoding`, `StringEncoding`, `TagPresenceEncoding`); the wasm prelude names (`JsError`, `JsValue`, and the `wasm_bindgen` attribute macro, kept only where a `#[wasm_bindgen]` attribute appears); the `--wasm-*-macro` leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The two `OrderedSet` twins ride the spec-global `@duplicates reject` gate — see [Reject-duplicates containers](#reject-duplicates-containers-uniqueness-twins) — so a scope with a reject-set rule pushes them into *every* scope's `mod.rs`, and this pass keeps the scopes that never name them warning-free.) **(2) `use super::*;`** — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. `BTreeMap<Ikey, StringEncoding>`, since it reaches `Ikey` through the glob). **(3) `use <common>::error::*;`** — dropped from a `mod.rs` whose family names no error export (kept where a bounds-carrying wrapper's `TryFrom`/`new` names `DeserializeError`).
 
@@ -1545,8 +1545,8 @@ while a crate with none of those gets `std = []`. The list VARIES because the de
 the tool's dependencies are flag- and type-conditional, and a feature naming a dependency this flag
 set did not emit is a manifest cargo rejects. That is exactly why it is computed by the run that
 writes the manifest, which knows every dependency it wrote, rather than fixed in advance.
-`hashlink` and the pinned `cbor_event` fork never appear: neither declares a `std` feature (the fork
-is unconditionally `#![no_std]`), so there is nothing to forward to. An entry names the
+`hashlink` and `cbor_event` never appear: neither declares a `std` feature (cbor_event is
+unconditionally `#![no_std]`), so there is nothing to forward to. An entry names the
 `[dependencies]` **key**, which is what cargo resolves it against — `hex/std` reaches the `std`
 feature of `const-hex`, the package that key takes (see the merge rules below).
 
@@ -1906,13 +1906,24 @@ Every key falls into one of three categories:
   whose it is rather than reading as if that comment scoped it. A manifest the tool writes from
   scratch is wholly tool-owned and gets no markers, and an entry you wrote yourself is merged into
   and gets none either.
-  One exception to field preservation: a tool spec that pins a **git source** — as the interim
-  `cbor_event` fork pin currently does — asserts the dep's *source axis*, so source-axis keys the
-  tool spec does not itself re-specify (`version`, `rev`, `branch`, `tag`, `path`, `registry`) are
-  **dropped** from your entry rather than preserved: a stale version requirement would constrain
-  against the wrong source (`^2.4.0` can never match a 3.x git checkout), and a leftover ref
-  selector would form pairs cargo rejects outright (`branch` + `rev`). Version-only tool specs keep
-  the floor semantics above — your own `git`/`path` source survives them. A
+  One exception to field preservation: a tool spec may assert the dep's *source axis* outright, and
+  then source-axis keys the spec does not itself re-specify are **dropped** from your entry rather
+  than preserved. Two specs assert it, in both directions:
+  - a spec pinning a **git source** asserts it implicitly (nothing else a git spec could mean), and
+    drops `version`, `rev`, `branch`, `tag`, `path`, `registry`. A stale version requirement would
+    constrain against the wrong source (`^2.4.0` can never match a 3.x git checkout), and a leftover
+    ref selector would form pairs cargo rejects outright (`branch` + `rev`).
+  - a spec pinning a **registry version** asserts it explicitly, when the tool's changeset says so
+    (a crates.io version has no cargo key that could carry the intent). It drops `git`, `rev`,
+    `branch`, `tag`, `path`, `registry`, keeping the version floor rules above. This is what
+    migrates an already-written manifest *off* a source the tool no longer uses: `cbor_event` is
+    asserted this way, so regenerating over an output directory written by an older release replaces
+    its `{ git = "…dcSpark/cbor_event", rev = "…" }` entry with `cbor_event = "3.3.0"` — the same
+    bytes a fresh generation writes. Fields outside the source axis (`optional`, your features, a
+    version pin that already satisfies ours) survive it untouched.
+
+  Every **other** version-only tool spec keeps the floor semantics above — your own `git`/`path`
+  source survives it. A
   conditional dep is emitted when its flag/type condition holds and *removed* when it doesn't, so
   flipping a flag off (e.g. dropping `--preserve-encodings`) also drops the deps it pulled in, rather
   than stranding them — note the removal deletes the whole entry, including any fields you added to it.

@@ -13,21 +13,17 @@ default = ["which-rustfmt"]
 which-rustfmt = ["which"]
 
 [dependencies]
-# dcSpark fork pinned to the current `float-round-trip` branch head ("Fix handling of float heads"),
-# not yet in a crates.io release: adds `Deserializer::float_sz() -> (f64, Sz)` /
-# `Serializer::write_float_sz(f64, Sz)` — a width-preserving float API with software
+# 3.3.0 is the first release carrying the width-preserving float API the runtime is built on:
+# `Deserializer::float_sz() -> (f64, Sz)` / `Serializer::write_float_sz(f64, Sz)`, with software
 # NaN-payload-preserving widening/narrowing, so `(f64, Sz)` is a complete lossless wire-float
 # representation. It also rejects the reserved simple values `0xfc-0xfe` at read
-# (`InvalidSimpleValue`), and exports the value-width helpers the float runtime is built on:
-# `se::smallest_float_sz(f64) -> Sz`, `se::f64_to_f32_exact(f64) -> Option<f32>` and
-# `se::f32_to_f64_exact(f32) -> f64`. Needed by the `AnyCbor` runtime type (loose CBOR parsing)
-# whose float slot is `Float(f64, Option<Sz>)`. The generated-crate templates
-# (`static/manifest_changes/*.toml`, viewable as `static/Cargo_*.toml`) pin this SAME rev — the
-# generated crates pass `Serializer`/`Deserializer` values across their boundaries, so a skew is a
-# type mismatch. A rev is only a usable pin while it is reachable from a remote branch; this one is
-# the published branch head. Interim measure: every pin moves back to a crates.io version once the
-# fork upstreams to primetype/cbor_event and releases.
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }
+# (`InvalidSimpleValue`), and exports the value-width helpers: `se::smallest_float_sz(f64) -> Sz`,
+# `se::f64_to_f32_exact(f64) -> Option<f32>` and `se::f32_to_f64_exact(f32) -> f64`. Needed by the
+# `AnyCbor` runtime type (loose CBOR parsing) whose float slot is `Float(f64, Option<Sz>)`. The
+# generated-crate templates (`static/manifest_changes/*.toml`, viewable as `static/Cargo_*.toml`)
+# name this SAME version — the generated crates pass `Serializer`/`Deserializer` values across their
+# boundaries, so a skew is a type mismatch.
+cbor_event = "3.3.0"
 # dcSpark fork pinned to fixes not yet in a crates.io release. Parser (feeds our AST): upstream
 # discards all comments (breaking our @name/@newtype/@doc DSL), mis-parses a colon member key `b:`
 # as an arrow/type key when a `=>` appears anywhere in the entry, and mis-lexes the RFC 8610 radix
