@@ -3378,7 +3378,7 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > `every_context_row_is_live` requires each context to carry at least one directive's effect and
 > `every_base_row_is_live` requires each base shape to be honored through at least one reference —
 > which is the cell definition's "base shape it is honored on" made mechanical, and it is what stops a
-> mis-authored row from being recorded as nine findings. The pin list is currently EMPTY: no directive
+> mis-authored row from being recorded as a whole row of findings. The pin list is currently EMPTY: no directive
 > is dropped at any of the ten contexts.
 
 ### Synthesized-name interaction sweep + duplicate-ident backstop
