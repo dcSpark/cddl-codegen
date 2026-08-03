@@ -1875,34 +1875,24 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   in a multi-line group spelling their generator cannot reformat, or the fork is bumped for another
   reason anyway (at which point the additive constraint above is the whole design).
 
-- **A directive honored at a rule's own position can be silently dropped at a REFERENCING context
-  of that rule — an axis the directive×rule-shape sweep is structurally blind to. BUILD THIS: the
-  reopening signal FIRED on 2026-08-03, and each hand fix since has been found by hand.** Three
-  instances of one class are now fixed and pinned by hand — the custom codec pair on a scalar alias
-  (the pair's flagship honored shape) reached through a **tag head**, through a **`.cbor` payload**,
-  and through a **transparent re-alias** of the annotated rule — while the same pair was already
-  honored through an array element, a map value, a map key, a type-choice arm, a generic argument
-  and an optional record member. That every one of them was found by a hand probe rather than by a
-  gate is the argument: the sweep's cells place the toggled directive on the rule under test, and no
-  cell annotates a rule the tested rule references, so the class is invisible to it by construction
-  and the remaining contexts are unmeasured. Layer to build, reusing the sweep's
-  scratch-dir/byte-compare machinery: a referencing-context sweep whose cells are (directive, base
-  shape it is HONORED on, wrapping context), the context axis enumerated from the member-position
-  boundary list the `@name` door already records (tag-head payload, `.cbor` payload, transparent
-  re-alias, generic argument, map key/value, array element), with the verdict rule that a
-  base-honored directive must take effect through the wrapping context or refuse loudly — never
-  inert-silent. Design note that must survive into the build: the verdict is PER-CONTEXT, not the
-  shape sweep's best-of-embeddings rule — context is the cell's variable, so an effect in one
-  context must not absorb a drop in another. Cost is the same order as the shape product (honored
-  cells × contexts, generation-only). The hand-built precedents to generalize are
-  `dsl_position_tests`' `tag-head-wrapping-alias` and `cbor-payload-wrapping-alias` cells and their
-  per-impl siblings `tag_head_wrapper_and_member_agree_on_the_wrapped_aliass_custom_pair`,
-  `cbor_payload_and_member_agree_on_the_wrapped_aliass_custom_pair`,
-  `transparent_realias_and_member_agree_on_the_aliass_custom_pair` and
-  `rule_body_cbor_alias_and_member_agree_on_the_wrapped_aliass_custom_pair`, which assert the two
-  reaching paths AGREE rather than that either one works. A directive OTHER than the custom-codec
-  pair is the untested half: every instance so far is that one family, so nothing yet says whether
-  the class is the pair's or the seam's.
+- **The referencing-context axis is measured one wrapping DEEP and at one honored base shape per
+  directive; stacked wrappings and second base shapes are not.** The sweep that closed the
+  directive-through-a-reference class — `src/tests/referencing_context_tests.rs`'s
+  `directive_referencing_context_sweep` — crosses every `KNOWN_RULE_METADATA_TAGS` member with ten
+  single-level wrapping contexts and found no drop at any of them (current state and design rules
+  are in `tests/README.md`, in the third sibling block of the docs-contract sweep's
+  description). What it does not reach is a reference TWO
+  contexts deep — a tag head over a rule-body `.cbor` alias, a generic argument whose argument is
+  itself a re-alias — and a directive's OTHER honored base shapes: the custom pair alone is honored
+  on a scalar alias and on a self-carrying extern alias, and the sweep measures one per row. Both are
+  crosses of axes that already exist rather than new mechanisms (`CONTEXTS × CONTEXTS` for the first,
+  a second `BASES` row per directive for the second), and both are deferred on the same evidence:
+  every fixed instance of this class was a REGISTRATION seam that all of a directive's base shapes
+  reach and that one level of wrapping already exposes, so the product buys repetition of a seam the
+  sweep already covers.
+  Reopening signal for building either cross: another referencing-context drop fixed BY HAND — the
+  same observable whose firing built the sweep, and one the sweep's own clean result puts at zero
+  today, so the entry cannot already meet it.
 
 - **The arm-position axis's classifier is a compile-time forcing function, and losing it is the
   regression to watch for.** The axis itself is now enumerated: `no_silent_directive` sweeps a

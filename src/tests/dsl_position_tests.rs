@@ -1622,7 +1622,9 @@ const GRID: &[Cell] = &[
 /// concatenated generated source only) but a cell can opt into `--wasm=true` — `generated_strings`
 /// emits the wasm files as strings too, so the wasm-side anchors (`@used_as_elem`'s loose-list
 /// wrapper) are reachable without a static dir.
-fn generate(
+/// `pub(super)` for the sibling `referencing_context_tests` sweep, which drives the same
+/// string-emit generation over its own cell type rather than duplicating this helper.
+pub(super) fn generate(
     spec: &str,
     flags: &[&str],
     wasm: bool,

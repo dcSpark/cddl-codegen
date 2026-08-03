@@ -11,7 +11,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~32s<!-- /gen:sh:tests-tier-fast --> |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~41s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~5 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~33 min<!-- /gen:sh:tests-tier-full --> |
 
@@ -3353,6 +3353,33 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > position where the directive works, isolating *position* as the variable. The pin list is
 > currently EMPTY: every cell meets its docs-claimed expectation, by honoring the directive or by
 > refusing it with a message naming the spelling that works, so a new entry is a new finding.
+
+> Third sibling, and the axis the one above is structurally blind to:
+> `src/tests/referencing_context_tests.rs` writes the directive on a **BASE rule** and makes its
+> assertion through a **REFERENCE** to that rule. Every cell of the position grid places the toggled
+> directive ON the rule under test, so a directive honored at a rule's own position and dropped at a
+> wrapping context of it is invisible there by construction — a class whose every known instance (the
+> custom codec pair reached through a tag head, a `.cbor` payload, a transparent re-alias and a
+> rule-body `.cbor` alias) had to be found by a hand probe. A cell is
+> `(directive, base shape it is HONORED on, wrapping context)`: `BASES` carries one row per directive
+> family, `CONTEXTS` ten wrapping contexts (tag-head payload, `.cbor` payload, rule-body `.cbor`
+> alias, transparent re-alias, generic argument, map value, map key, array element, type-choice arm,
+> optional record member), and the sweep runs their product — **one generation per cell and a verdict
+> PER-CONTEXT, never best-of-embeddings**, since context is the cell's variable and an effect in one
+> embedding must not absorb a drop in another. A cell passes on the directive's effect **or a loud
+> refusal** crossing the reference; silence is the failure. The directive axis is LOCKSTEP with
+> `comment_ast::KNOWN_RULE_METADATA_TAGS` (`every_directive_is_swept_or_excluded`): a tag has a cell
+> in every context or an entry in the `EXCLUSIONS` registry whose reason must be STRUCTURAL — the
+> directive has no base shape a reference observes, or the context IS the directive's effect so no
+> anchor can attribute it — so a NEW directive fails the module until its author classifies it.
+> Findings are pinned in `KNOWN_REFERENCE_DROP` on the sibling sweep's terms (asserted to STILL be
+> dropped; a pin is a finding to report, never a license to fix opportunistically or to re-author the
+> expectation). Its vacuity hazard is answered structurally rather than by care alone:
+> `every_context_row_is_live` requires each context to carry at least one directive's effect and
+> `every_base_row_is_live` requires each base shape to be honored through at least one reference —
+> which is the cell definition's "base shape it is honored on" made mechanical, and it is what stops a
+> mis-authored row from being recorded as nine findings. The pin list is currently EMPTY: no directive
+> is dropped at any of the ten contexts.
 
 ### Synthesized-name interaction sweep + duplicate-ident backstop
 

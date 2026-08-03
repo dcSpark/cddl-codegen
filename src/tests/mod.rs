@@ -33,6 +33,7 @@ pub(crate) mod optional_tag_set_tests;
 pub(crate) mod ordered_set_runtime_tests;
 pub(crate) mod preserve_fixture_tests;
 pub(crate) mod recombination_tests;
+pub(crate) mod referencing_context_tests;
 pub(crate) mod robustness_tests;
 pub(crate) mod rust_name_tests;
 pub(crate) mod snapshot_tests;
