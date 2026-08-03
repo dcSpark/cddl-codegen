@@ -4157,6 +4157,84 @@ impl Deserialize for FixedSpecialTypeChoice {
     }
 }
 
+impl cbor_event::se::Serialize for FixedSpecialTypeChoiceBrute {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            FixedSpecialTypeChoiceBrute::True => {
+                serializer.write_special(cbor_event::Special::Bool(true))
+            }
+            FixedSpecialTypeChoiceBrute::Null => {
+                serializer.write_special(cbor_event::Special::Null)
+            }
+            FixedSpecialTypeChoiceBrute::Text {
+                text,
+                text_encoding,
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
+        }
+    }
+}
+
+impl Deserialize for FixedSpecialTypeChoiceBrute {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let true_value = raw.bool()?;
+                if !true_value {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bool(true_value),
+                        expected: Key::Bool(true),
+                    }
+                    .into());
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(FixedSpecialTypeChoiceBrute::True),
+                Err(e) => {
+                    errs.push(e.annotate("True"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                if raw.special()? != cbor_event::Special::Null {
+                    return Err(DeserializeFailure::ExpectedNull.into());
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(FixedSpecialTypeChoiceBrute::Null),
+                Err(e) => {
+                    errs.push(e.annotate("Null"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant: Result<_, DeserializeError> = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)));
+            match deser_variant {
+                Ok((text, text_encoding)) => {
+                    return Ok(Self::Text {
+                        text,
+                        text_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("Text"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("FixedSpecialTypeChoiceBrute"))
+    }
+}
+
 impl cbor_event::se::Serialize for FloatHeads {
     fn serialize<'se>(
         &self,

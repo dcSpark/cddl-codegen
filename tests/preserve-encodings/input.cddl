@@ -356,10 +356,18 @@ reject_set_preserve = [ s: oset_p_u64 ]
 ;   fixed_special_type_choice  — a bare type choice (`rep = None`) through the generic
 ;                                `EnumVariantData::RustType` site, where the bool arm is genuinely
 ;                                field-less under every profile.
+;   fixed_special_type_choice_brute — TWO fixed specials in one type choice. bool and null share
+;                                CBOR major type 7, so the arms cannot be told apart by a
+;                                type-match dispatch and the enum falls back to the BRUTE-FORCE
+;                                try-each-arm emission (a per-arm probe closure whose `Ok` value is
+;                                matched to pick the variant) — a third emission site the two-arm
+;                                spellings above never reach, and the one that emitted an
+;                                unterminated `()` ahead of the appended `Ok(())` until `7d66993a`.
 ; The array-rep arm flavor and the default/json profiles of all of these live in
 ; tests/corpus/group_choice_fixed_special.cddl; this fixture is the preserve-only execution half.
 fixed_special_group_choice = { flag: true // absent: null // label: tstr }
 fixed_special_type_choice = true / tstr
+fixed_special_type_choice_brute = true / null / tstr
 
 ; --- a c-style enum under an encoding-carrying wrapper, under --preserve-encodings ---
 ; A c-style enum is inlined at every use site (no `Deserialize` impl of its own — a fieldless Copy
