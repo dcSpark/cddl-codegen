@@ -352,12 +352,13 @@ const CONTEXTS: &[Context] = &[
         seam: "ident_to_primitive",
         cddl: "x = %N%..10\n",
         attribution: Attribution::ContextOwned {
-            control: ControlVerdict::Aborts("Number expected as range start"),
-            reason: "a TYPENAME as a range bound aborts for every head, `uint` included — the range \
-                     arm reads its bounds as literal values and panics on anything else, before any \
-                     name is resolved. Name-INDEPENDENT, so no cell here is attributable to the \
-                     name; it is a finding on the SHAPE axis, pinned as a PANIC row by \
-                     tests/robustness/rangeop_typename_start.cddl.",
+            control: ControlVerdict::Refuses("the range start bound"),
+            reason: "a TYPENAME as a range bound is refused for every head, `uint` included — the \
+                     range arm reads its bounds as literal VALUES, before any name is resolved, so \
+                     the refusal is the BOUND's and never the head's. Same shape as `.within` below: \
+                     a refused name's `Err` here would be the context's, not the name's. Pinned by \
+                     tests/robustness/rangeop_typename_start.cddl (and its end-bound sibling \
+                     tests/robustness/rangeop_typename_end.cddl).",
         },
     },
     Context {
@@ -365,10 +366,12 @@ const CONTEXTS: &[Context] = &[
         seam: "ident_to_primitive",
         cddl: "x = %N% .cbor uint\n",
         attribution: Attribution::ContextOwned {
-            control: ControlVerdict::Aborts(".cbor is only allowed on bytes"),
-            reason: "`.cbor` on a non-`bytes` head aborts for every head, `uint` included. \
-                     Name-INDEPENDENT; pinned as a PANIC row by \
-                     tests/robustness/ctl_cbor_non_bytes_head.cddl.",
+            control: ControlVerdict::Refuses("`.cbor` is only allowed on a byte string"),
+            reason: "`.cbor` on a non-`bytes` head is refused for every head, `uint` included (RFC \
+                     8610 §3.8.4 restricts the operator to byte strings). Name-INDEPENDENT, so the \
+                     `Err` a refused name gets here is the context's own. Pinned by \
+                     tests/robustness/ctl_cbor_non_bytes_head.cddl (and its member-route sibling \
+                     tests/robustness/ctl_cbor_non_bytes_head_member.cddl).",
         },
     },
     Context {
@@ -432,94 +435,17 @@ enum Breach {
 /// breach, in the recorded KIND, with the recorded evidence present, so the pin flips loudly the day
 /// a fix lands and cannot hold vacuously through a different failure.
 ///
+/// EMPTY today: the product below holds for every cell. The list stays because it is the shape that
+/// makes a NEW breach reportable rather than fixable-in-passing — a cell that starts breaching fails
+/// the sweep with instructions to pin it here.
+///
 /// AUTHORING RULE (the discipline `dsl_position_tests::KNOWN_SILENT_DROP` set): a new entry is a NEW
 /// finding — pin it with its reason and REPORT it; never re-author a context to dodge it, and never
 /// fix it opportunistically in the same delivery unless the fix is one obviously-correct line at an
 /// EXISTING refusal seam. Every entry names where the finding is ledgered.
 ///
 /// `(name, context, kind, evidence substring, reason)`.
-const KNOWN_CLOSURE_BREACH: &[(&str, &str, Breach, &str, &str)] = &[
-    // The `.default` arm applies the operator to whatever the head resolved to, and
-    // `RustType::default` panics when that is not a Primitive matching the default's value class.
-    // For a REFUSED name the head resolved to the refusal's inert `Fixed(Null)` placeholder — so the
-    // rejection is recorded and then destroyed by an abort one step later, which is precisely the
-    // side door this module exists to find. The abort is not exclusive to refused names (`tdate`, a
-    // SUPPORTED prelude name with no rust primitive, aborts identically), so the fix is a new
-    // refusal at the `.default` application rather than one line at an existing seam — out of this
-    // delivery's scope by its own rule. Ledgered in draft/burndown2/ and pinned as a PANIC catalog
-    // row by tests/robustness/ctl_default_unmapped_head.cddl.
-    (
-        "undefined",
-        "rule-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "the refusal's inert placeholder reaches `RustType::default`, which aborts before \
-         `finalize` can drain the recorded rejection",
-    ),
-    (
-        "undefined",
-        "member-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site, reached through `rust_type_from_type1` instead of `parse_type`",
-    ),
-    (
-        "cbor-any",
-        "rule-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site as `undefined`'s — the four `any`-content tags share the placeholder",
-    ),
-    (
-        "cbor-any",
-        "member-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site, member route",
-    ),
-    (
-        "eb64url",
-        "rule-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site as `undefined`'s",
-    ),
-    (
-        "eb64url",
-        "member-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site, member route",
-    ),
-    (
-        "eb64legacy",
-        "rule-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site as `undefined`'s",
-    ),
-    (
-        "eb64legacy",
-        "member-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site, member route",
-    ),
-    (
-        "eb16",
-        "rule-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site as `undefined`'s",
-    ),
-    (
-        "eb16",
-        "member-ctl-default",
-        Breach::Panic,
-        ".default Uint(1) invalid for type Fixed(Null)",
-        "same site, member route",
-    ),
-];
+const KNOWN_CLOSURE_BREACH: &[(&str, &str, Breach, &str, &str)] = &[];
 
 // ---- the machinery -------------------------------------------------------------------------------
 

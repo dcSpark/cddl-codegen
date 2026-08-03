@@ -1,11 +1,10 @@
-; `.default` on a head that resolved to something other than a matching rust PRIMITIVE aborts, at
-; `RustType::default`'s validity assertion, instead of rejecting. The head here is a REFUSED prelude
-; name, which makes this the closure-breach shape: `new_type` has already recorded the graceful
-; refusal for `undefined` and returned its inert `Fixed(Null)` placeholder, and the `.default`
-; application then panics one step later — destroying a rejection `finalize` would have reported.
-; The abort is not exclusive to refused names (a SUPPORTED prelude name with no rust primitive,
-; e.g. `tdate`, aborts identically), so the fix is a refusal at the `.default` application rather
-; than at any existing name seam. Every cell of the class is pinned by
-; `refused_name_closure_tests::KNOWN_CLOSURE_BREACH` (rule and member positions, all five refused
-; names); this fixture is its outcome-category row.
+; `.default` on a head that is not a rust PRIMITIVE the default's value class fits is refused at the
+; `.default` APPLICATION — both parsing routes — instead of aborting inside `RustType::default`. The
+; head here is a REFUSED prelude name, which makes this the closure-breach shape: `new_type` has
+; already recorded the graceful refusal for `undefined` and returned its inert `Fixed(Null)`
+; placeholder, so an abort one step later would DESTROY a rejection `finalize` was going to report.
+; Both refusals now reach the drain, which is why this row is `error (graceful)`.
+; The refusal is not exclusive to refused names — a SUPPORTED prelude name with no rust primitive
+; refuses identically (`tests/robustness/ctl_default_supported_head.cddl`), which is the reason the
+; check sits at the application and not at any name seam.
 x = undefined .default 1

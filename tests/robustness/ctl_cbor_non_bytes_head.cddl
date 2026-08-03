@@ -1,6 +1,8 @@
-; `.cbor` applied to a head that is not `bytes` aborts rather than rejecting. RFC 8610 does restrict
-; `.cbor` to byte strings, so refusing the shape is right — refusing it with a `panic!` is not.
-; Name-INDEPENDENT (the same abort fires for every non-bytes head, supported names included), so
-; like `rangeop_typename_start` it is a SHAPE-axis defect, and it is the recorded reason the
-; refused-name closure sweep (`refused_name_closure_tests`) excludes this column.
+; `.cbor` applied to a head that is not `bytes`. RFC 8610 §3.8.4 restricts `.cbor` to byte strings —
+; its payload IS the content of those bytes — so refusing the shape is right; refusing it with a
+; `panic!` was not, and it now refuses gracefully naming the head. Name-INDEPENDENT (the same
+; refusal fires for every non-bytes head, supported names included), so like `rangeop_typename_start`
+; it is a SHAPE-axis row and the refused-name closure sweep (`refused_name_closure_tests`) keeps this
+; column `ContextOwned` with a `Refuses` verdict. The MEMBER route is its sibling row
+; (`tests/robustness/ctl_cbor_non_bytes_head_member.cddl`).
 x = uint .cbor uint

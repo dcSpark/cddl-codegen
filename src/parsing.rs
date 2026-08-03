@@ -993,6 +993,79 @@ fn unmapped_control_head_rejection(type_name: &RustIdent, cddl_ident: &CDDLIdent
     )
 }
 
+/// A `.default` whose value cannot be lowered onto the head it was written on.
+///
+/// The default substitutes for an ABSENT value at deserialization, so it is written into the rust
+/// primitive backing the constrained type: a head with no such primitive (a named type like `tdate`,
+/// or the inert placeholder a refused prelude name already left behind) has nowhere to put it, and a
+/// primitive of the wrong CBOR class would encode a value the head cannot hold. Recorded at the
+/// APPLICATION — both the rule-position and member-position routes — so the refusal a name seam
+/// already made survives to be reported instead of being destroyed by an abort one step later.
+///
+/// `head` is the head as WRITTEN, so the message points at the CDDL the user has in front of them.
+fn unmappable_default_head_rejection(
+    rule_name: Option<&RustIdent>,
+    head: &Type2,
+    default_value: &FixedValue,
+) -> String {
+    format!(
+        "{}`.default {}` cannot be applied to `{head}` — a default substitutes for an absent value \
+         and is written into the rust primitive backing the constrained type, which `{head}` either \
+         has none of or cannot hold a value of this kind. Apply the default to a concrete type of \
+         the value's own kind (`uint`, `int`, `float64`, `tstr`, `bool`), or remove it.",
+        reject_rule_prefix(rule_name),
+        fixed_value_as_written(default_value)
+    )
+}
+
+/// A `.default` value rendered the way it was WRITTEN in the CDDL, for the message above (the `Debug`
+/// spelling would print the IR's `Uint(1)` at a user who wrote `1`).
+fn fixed_value_as_written(value: &FixedValue) -> String {
+    match value {
+        FixedValue::Null => "null".to_owned(),
+        FixedValue::Bool(b) => b.to_string(),
+        FixedValue::Nint(i) => i.to_string(),
+        FixedValue::Uint(u) => u.to_string(),
+        FixedValue::Float(f) => f.to_string(),
+        FixedValue::Text(t) => format!("\"{t}\""),
+    }
+}
+
+/// A range bound (`a..b` / `a...b`) that is not a numeric LITERAL.
+///
+/// A range lowers a `(min, max)` pair of VALUES onto the rust primitive backing the constrained
+/// type, so a bound that is a named type or an expression has no value to lower — the bound is read
+/// before any name is resolved, which is why this is a shape refusal and never a name one. Both
+/// bounds route here, so `x = foo..10` and `x = 0..foo` refuse identically instead of one panicking
+/// and the other `unimplemented!`ing.
+fn non_literal_range_bound_rejection(
+    rule_name: Option<&RustIdent>,
+    which: &str,
+    bound: &Type2,
+) -> String {
+    format!(
+        "{}the range {which} bound `{bound}` is not a numeric literal — a range lowers a (min, max) \
+         pair of values onto the rust primitive backing the constrained type, so a named type or \
+         expression as a bound has no value to lower. Write numeric literal bounds (`0..255`), or \
+         remove the range.",
+        reject_rule_prefix(rule_name)
+    )
+}
+
+/// `.cbor` written on a head that is not `bytes`.
+///
+/// RFC 8610 §3.8.4 restricts `.cbor` to byte strings — the payload IS the bytes' content — so
+/// refusing the shape is right; refusing it by aborting is not, and the abort is name-independent
+/// (`uint .cbor uint` aborts exactly as a refused prelude name does).
+fn non_bytes_cbor_head_rejection(rule_name: Option<&RustIdent>, head: &str) -> String {
+    format!(
+        "{}`.cbor` is only allowed on a byte string (RFC 8610 §3.8.4) — its payload is the content \
+         of those bytes — and `{head}` is not one. Write the head as `bytes` (`bytes .cbor \
+         <payload>`), or remove the control operator.",
+        reject_rule_prefix(rule_name)
+    )
+}
+
 /// The generic-definition body shapes the generator CAN monomorphize, named in every rejection that
 /// refuses one it cannot, so each message carries the remedy and not only the diagnosis. Generic
 /// support works by substituting the instance's arguments into a registered `RustStruct`, so a body
@@ -1717,17 +1790,33 @@ fn parse_control_operator(
     // (rangeop / ctlop) S type2
     match operator.operator {
         RangeCtlOp::RangeOp { is_inclusive, .. } => {
+            // Both bounds are read as VALUES here, before any name in them resolves, so a
+            // non-literal bound is refused on the SHAPE axis: `record_rejection` + the inert
+            // full-range placeholder every other graceful arm of this function returns, drained
+            // into a graceful `Err` by finalize before generation runs.
             let range_start = match type2 {
                 Type2::UintValue { value, .. } => *value as i128,
                 Type2::IntValue { value, .. } => *value as i128,
                 Type2::FloatValue { value, .. } => *value as i128,
-                _ => panic!("Number expected as range start. Found {:?}", type2),
+                _ => {
+                    types.record_rejection(non_literal_range_bound_rejection(
+                        rule_name, "start", type2,
+                    ));
+                    return ControlOperator::Range((None, None));
+                }
             };
             let range_end = match operator.type2 {
                 Type2::UintValue { value, .. } => value as i128,
                 Type2::IntValue { value, .. } => value as i128,
                 Type2::FloatValue { value, .. } => value as i128,
-                _ => unimplemented!("unsupported type in range control operator: {:?}", operator),
+                _ => {
+                    types.record_rejection(non_literal_range_bound_rejection(
+                        rule_name,
+                        "end",
+                        &operator.type2,
+                    ));
+                    return ControlOperator::Range((None, None));
+                }
             };
             ControlOperator::Range((
                 Some(range_start),
@@ -2759,7 +2848,15 @@ fn parse_type(
                                         );
                                     }
                                 }
-                                _ => panic!(".cbor is only allowed on bytes as per CDDL spec"),
+                                // Not a byte-string head: refuse the shape (RFC 8610 restricts
+                                // `.cbor` to byte strings) rather than aborting, and register
+                                // nothing — the same return-early shape the unmapped-head guards
+                                // above use, with `finalize` draining the rejection before any
+                                // reference to the unregistered rule can be emitted.
+                                _ => types.record_rejection(non_bytes_cbor_head_rejection(
+                                    Some(type_name),
+                                    &cddl_ident.to_string(),
+                                )),
                             },
                             ControlOperator::Default(default_value) => {
                                 let inner_type =
@@ -2785,10 +2882,31 @@ fn parse_type(
                                         cli,
                                     );
                                 } else {
+                                    // The head may be one the default cannot be lowered onto — a
+                                    // named type with no rust primitive (`tdate`), or the inert
+                                    // placeholder a refused prelude name already left behind. Refuse
+                                    // at the APPLICATION, and register the rule as the UNDEFAULTED
+                                    // type it would otherwise have been, so later references still
+                                    // resolve while `finalize` drains both this rejection and any
+                                    // the head's own seam recorded first.
+                                    let aliased =
+                                        match inner_type.try_default(default_value.clone()) {
+                                            Ok(defaulted) => defaulted,
+                                            Err(undefaulted) => {
+                                                types.record_rejection(
+                                                    unmappable_default_head_rejection(
+                                                        Some(type_name),
+                                                        &type1.type2,
+                                                        &default_value,
+                                                    ),
+                                                );
+                                                undefaulted
+                                            }
+                                        };
                                     types.register_type_alias(
                                         type_name.clone(),
                                         AliasInfo::new_from_metadata(
-                                            inner_type.default(default_value).tag_if(outer_tag),
+                                            aliased.tag_if(outer_tag),
                                             rule_metadata,
                                         ),
                                     );
@@ -4110,10 +4228,22 @@ fn rust_type_from_type1(
     // println!("type1: {:#?}", type1);
     match control {
         Some(ControlOperator::CBOR(ty)) => {
-            assert!(matches!(
+            // The MEMBER route to the rule-position `.cbor` head check in `parse_type`: RFC 8610
+            // restricts `.cbor` to byte strings, and a head that is not one is refused rather than
+            // asserted. The already-parsed payload `ty` is the inert placeholder — it is the type a
+            // `bytes .cbor <payload>` member would have carried, so the walk continues over a shape
+            // every later step already handles, and `finalize` drains the rejection before any of it
+            // is emitted.
+            if !matches!(
                 base_type.conceptual_type.resolve_alias_shallow(),
                 ConceptualRustType::Primitive(Primitive::Bytes)
-            ));
+            ) {
+                types.record_rejection(non_bytes_cbor_head_rejection(
+                    None,
+                    &type1.type2.to_string(),
+                ));
+                return ty;
+            }
             // A second `CBORBytes` in ONE chain emits a crate that cannot build — see
             // `nested_cbor_payload_rejection`. This seam has no rule name to prefix (it serves
             // every member / element / choice-arm position), so the message stands alone. The
@@ -4156,7 +4286,23 @@ fn rust_type_from_type1(
             }
             _ => base_type.with_float_bounds(window),
         },
-        Some(ControlOperator::Default(default_value)) => base_type.default(default_value),
+        // The member route to the same `.default` application as the rule-position arm in
+        // `parse_type` — refused identically, with the UNDEFAULTED type as the inert placeholder the
+        // walk continues over. This seam has no rule name to prefix (it serves every member /
+        // element / choice-arm position), so the message stands alone.
+        Some(ControlOperator::Default(default_value)) => {
+            match base_type.try_default(default_value.clone()) {
+                Ok(defaulted) => defaulted,
+                Err(undefaulted) => {
+                    types.record_rejection(unmappable_default_head_rejection(
+                        None,
+                        &type1.type2,
+                        &default_value,
+                    ));
+                    undefaulted
+                }
+            }
+        }
         None => base_type,
     }
 }
