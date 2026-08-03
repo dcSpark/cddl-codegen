@@ -192,6 +192,12 @@ pub struct IntermediateTypes<'a> {
     // `used_as_key`, there is NO transitive expansion — the tag names the element directly, and the
     // wrapper's identity is fully determined by that one element type.
     used_as_elem: BTreeSet<RustIdent>,
+    /// The rules `crate::recursion_boundary` asked to be emitted as `@newtype` wrapper structs
+    /// rather than transparent `pub type` aliases, because they are the collection-backed members of
+    /// an alias-expansion cycle (rustc E0391). Seeded before parsing by `api::with_types`'s second
+    /// build pass; empty on every spec with no such cycle, so byte-identical output is untouched.
+    /// Determinism: `BTreeSet`, and the set itself is a canonical property of the cycle.
+    auto_newtype_rules: BTreeSet<RustIdent>,
     // Structural `<Elem>List` idents whose keys-list mint OVERWROTE an incompatible authored rule of
     // the same ident, mapped to the element the list wraps. `create_and_register_array_type`'s
     // `register_rust_struct` is last-wins, so once it has run the authored rule is GONE from
@@ -342,6 +348,7 @@ impl<'a> IntermediateTypes<'a> {
             key_demand: BTreeMap::new(),
             key_demand_roots: BTreeMap::new(),
             used_as_elem: BTreeSet::new(),
+            auto_newtype_rules: BTreeSet::new(),
             swallowed_structural_list_claims: BTreeMap::new(),
             copy_externs: BTreeSet::new(),
             extern_companions: BTreeMap::new(),
@@ -383,6 +390,24 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, AliasInfo> {
         &self.type_aliases
+    }
+
+    /// Seed the rules `crate::recursion_boundary` decided to auto-`@newtype`, before any parsing.
+    ///
+    /// The repair is applied by RE-RUNNING the IR build with these marked rather than by rewriting
+    /// a finalized `IntermediateTypes`: the whole point is that an auto-nominalized rule goes
+    /// through the same machinery a spec-side `; @newtype` does, so its wasm wrapper, its
+    /// preserve-encodings sidecars and its emit-tests minting exist without a second implementation
+    /// — and so the emitted API is what the same spec with the directive written by hand produces.
+    pub fn set_auto_newtype_rules(&mut self, rules: BTreeSet<RustIdent>) {
+        self.auto_newtype_rules = rules;
+    }
+
+    /// Whether the recursive-type boundary asked for `ident` to be emitted as a wrapper struct
+    /// rather than a transparent `pub type` alias. Read at the one seam a rule's directives are
+    /// merged (`parsing::parse_type`).
+    pub fn is_auto_newtype_rule(&self, ident: &RustIdent) -> bool {
+        self.auto_newtype_rules.contains(ident)
     }
 
     /// Whether ANY generated type uses the `[+ T]` NonEmptyVec shape, so `export`/import wiring can

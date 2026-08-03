@@ -502,45 +502,21 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       counterpart they can point at), and the count of silently-missing members is the dimension
       along which a hand-listed vocabulary stops being maintainable.
 
-13. **A self-referential named collection aborts the tool, and the panic catalog structurally cannot
-    observe an abort.** `foos = [* foos]` plus a rule holding it ends generation with
-    `thread 'main' has overflowed its stack` / `fatal runtime error: stack overflow, aborting`
-    (SIGABRT, exit 134). Reproduced at master `781e6b8a` under `--wasm=false`, no `--component`. The
-    recursion is DETECTED before the crash — the tool prints its
-    `Recursive type: 'foos' / 'foos'` diagnostic and then overflows — so the generator already holds
-    the fact it needs and lacks only the decision to stop.
-    - **The owning family is the input panic-robustness catalog** over `tests/robustness/*.cddl`,
-      whose whole subject is that a malformed or edge-case spec must produce a clean error rather
-      than a crash, and whose per-input outcome is tracked by `input_robustness_catalog`.
-      Its neighbours bracket the gap without covering it: `self_recursive.cddl` is a
-      self-referential RECORD (`foo = [foo]`), `collection_rule_cycle_entry.cddl` is a rule cycle
-      entered AT a collection rule, and `tests/corpus/recursive.cddl` is recursion mediated by an
-      INLINE `[* tree]` inside a record. The uncovered spelling is a NAMED collection rule whose
-      element is the rule itself.
-    - **The catalog now hosts the fixture: the out-of-process outcome lane is built.**
-      `input_robustness_catalog` still drives `api::generated_strings` in-process inside
-      `catch_unwind` for every input except the ones `ABORT_PRONE_INPUTS` names; those run in a
-      process of their own (the test binary self-spawns through
-      `robustness_out_of_process_generation_helper`) and their outcome is read off the exit status,
-      so a death by signal is the fourth label `ABORTED (signal <n>)` beside
-      `ok` / `error (graceful)` / `PANIC`. `tests/robustness/recursive_collection_holder.cddl` is
-      the shape, and its row reads `ABORTED (signal 6)` today. The catalog's flip-is-a-fix
-      convention owns the rest: the row moves to `error (graceful)` the day the refusal lands.
-    - **The generator-side decision belongs to the fix, not here.** A named collection whose element
-      resolves to itself has no terminating rust type, and the diagnostic's own suggested remedy
-      cannot apply — the collection IS the indirection — so a hard refusal naming the rule, in the
-      parallel-sibling detector family with its own pinned message, is the likely shipping behavior.
-    - **Not probed**: the map flavor (`foos = {* text => foos}`), the `[+ foos]` occurrence, whether
-      the same shape reached through an alias or across scopes aborts identically, and whether any
-      posture flag changes the outcome.
-    - **Reopening signal, for the breadth this entry deliberately does NOT propose** — running the
-      whole 55-input catalog out of process, a spawn per input on the `local` tier, rather than only
-      the shapes a listed abort-prone set names: a second aborting input found by any route OTHER
-      than that list, i.e. a user or a fuzz run reporting exit 134 with no diagnostic from a spec the
-      list does not contain. The exit code is the observable and it belongs to whoever ran the tool,
-      and the count of abort shapes a hand-list misses is the dimension along which the
-      subset-versus-everything choice actually costs. This entry records exactly one such shape,
-      found by hand, so the signal is not already met by its own body.
+13. **Run the WHOLE input-robustness catalog out of process, not only a listed abort-prone subset.**
+    Today `input_robustness_catalog` spawns a process per input named in `ABORT_PRONE_INPUTS` and
+    runs every other input in-process inside `catch_unwind`. That list is hand-maintained, so an
+    input whose generation newly starts to abort — a non-unwinding crash `catch_unwind` cannot see —
+    takes the test binary down instead of recording an `ABORTED (signal <n>)` row, and the failure
+    reads as an unexplained harness death rather than as the catalog's own finding. The breadth is
+    not built because a spawn per input costs a process launch each across the whole catalog, on the
+    `local` tier, to cover a class that has produced exactly one member.
+    - **Reopening signal**: a second aborting input found by any route OTHER than that list — a user
+      or a fuzz run reporting exit 134 with no diagnostic, from a spec the list does not contain.
+      The exit code is the observable and it belongs to whoever ran the tool, and the count of abort
+      shapes a hand-list misses is the dimension along which the subset-versus-everything choice
+      actually costs. The one shape that motivated the lane
+      (`tests/robustness/recursive_collection_holder.cddl`) no longer aborts — the recursive-type
+      boundary repairs it — so the signal is not met by the catalog's own contents.
 
 14. **A refusal recorded at one name-resolution seam does not bind the others — sweep the
     refused-name × resolution-context product.** Proven by the narrower-float-name delivery

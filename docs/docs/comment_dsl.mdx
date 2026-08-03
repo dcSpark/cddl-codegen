@@ -155,6 +155,8 @@ impl Foo {
 
 **Exception — nominal set rules (`#6.258` sets).** A named non-generic tag-258 set rule is itself a nominal wrapper owning its encodings (see [current capacities](current_capacities#transparent-tag-set-idiom-6n-a--a)), so `@newtype` on it is about the getter only. A **bare** `@newtype` on such a rule emits **no** inherent `get()` — a 0-argument `get(&self)` would shadow the inner collection's `get(index)` reached through `Deref` (a compile error at every indexed read), so it is deliberately suppressed; inner access goes through `Deref`/`DerefMut` and `IntoIterator` instead. A **custom** `@newtype <name>` getter (`; @newtype entries`) IS emitted (a custom name does not shadow `get(index)`). So on a set nominal, bare `@newtype` is a documented no-op and `@newtype <name>` adds a named accessor.
 
+`@newtype` is **applied for you on a recursive collection rule**. A named collection whose cycle contains no nominal type cannot be emitted as a `pub type` alias at all (rustc E0391), so the generator marks every collection-backed rule of such a cycle `@newtype` itself and says so on stderr — see [recursive types](current_capacities#recursive-types). Writing the directive yourself produces byte-identical output and silences the notice.
+
 `@newtype` is **redundant on a top-level single-type tag rule** (`foo = #6.42(text)`): those already auto-wrap into the tag-writing wrapper so their standalone `to/from_cbor_bytes` API does not drop the tag (see [current capacities](current_capacities#type-aliases-and-tagged-rules)). Adding `; @newtype` there produces the same wrapper, not a double wrapper — since the wrapper already has a default `get`, its only remaining use on such a rule is to **rename** that getter.
 
 ## @no_alias

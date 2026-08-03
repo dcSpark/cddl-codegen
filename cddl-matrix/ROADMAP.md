@@ -357,34 +357,23 @@ ledgered here (that's what the probe/gate error messages point at).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-- **Give a recursive type whose emitted Rust cannot compile a boundary instead of an advisory
-  notice.** Recursion compiles when the emitted cycle passes through a NOMINAL type (a generated
-  struct/enum, not a `pub type` alias) AND crosses heap indirection (a collection) — the
-  user-facing statement of that predicate is `current_capacities.mdx` § "Recursive types".
-  Terminability of the CDDL is neither necessary nor sufficient (`x = [* x]` terminates and still
-  fails). A cycle missing one condition generates at exit 0 and then fails `cargo check`, in two
-  rustc classes with different remedies: ALIAS-ONLY cycles fail E0391 (`x = [* x]`,
-  `mdmap = { * text => mdmap }` → `pub type Mdmap = BTreeMap<String, Mdmap>`; boxing cannot help —
-  alias expansion is structural — while the spec-side `; @newtype` remedy works today and
-  survives regeneration), and NOMINAL cycles without indirection fail E0072 (`md = mdrec / int`
-  with `mdrec = { a: md }`; an `Option` member does not help — not heap indirection — and no
-  "box this member" directive exists: the generator emits no `Box` in type positions at all).
-  What is missing is not detection but a boundary — with one design constraint learned by
-  probing: dep_graph's `Recursive type: …` stderr notice CANNOT be promoted to the rejection,
-  because it fires on supported cycles too (`tree = [value: uint, children: [* tree]]` prints it
-  and compiles), is rule-granular (member attribution is lost), and its reported back edge is
-  traversal-order dependent while output is promised entry-order invariant. A real boundary needs
-  its own classifier, post-`finalize` where struct kinds and member shapes are known (SCC over
-  the ident graph; per-SCC, check for a nominal node behind indirection), feeding either a
-  rejection naming the cycle and its closing member(s) or the per-class auto-fix: auto-`@newtype`
-  for the E0391 alias (breaks nothing that builds today), auto-`Box` for E0072 — the expensive
-  half, since `Box` would be a new emitted-type concept threaded through fields, ctors, wasm and
-  emit-tests, and the boxed-member choice must be a canonical property of the cycle, never the
-  DFS back edge, or byte-identical output breaks across rule orderings. Reopening signal, on the
-  magnitude axis: a consumer's committed spec contains one such cycle — i.e. the count of rules
-  its owner must `@newtype`-annotate or restructure (E0391), or hand-`Box` after each
-  regeneration (E0072, where no spec-side remedy exists), reaches 1. Today that count is 0 in
-  every consumer spec; the repros above are synthetic probes.
+- **A wasm-face alias-hop cycle ENTERED at the plain-typename rule panics.** `hop_alias = hop_arr`
+  with `hop_arr = [* hop_alias]` aborts generation under `--wasm=true` at `is_enum`'s
+  registered-or-generic assertion (`intermediate/mod.rs`); with `--wasm=false` the same spec
+  generates and compiles. Rule ORDERING is the ingredient, not the shape: spelling the same cycle so
+  the collection sorts first (`x = [* y]` with `y = x`) generates on both faces, because the
+  collection's element reference then resolves through the alias table instead of staying a nominal
+  `Rust(ident)` naming an `Array` struct. That is the same ingredient
+  `tests/robustness/collection_rule_cycle_entry.cddl` isolates on the TABLE side, where the three
+  generation sites that dispatch on such a reference were taught to recurse into the collection's
+  structural type — the wasm NAME derivation is a fourth site the same fix never reached. Pinned as
+  a tracked-known `PANIC` row by `tests/robustness/recursive_alias_hop_collection_entry.cddl`;
+  flipping that row to `ok` is the fix, and it is independent of the recursive-type boundary (it
+  reproduces identically with `; @newtype` written by hand, and reproduced before the boundary
+  existed). **Reopening signal**, on the magnitude axis: a consumer's committed spec contains ≥1
+  alias-hop cycle whose plain-typename rule sorts first — i.e. the count of rules its owner must
+  reorder or rename to generate a wasm face reaches 1. Today that count is 0 in every consumer spec;
+  the repro is a synthetic probe.
 - **A choice whose bool and null arms share the CBOR Special major type routes through the
   brute-force try-each-arm dispatch, which still emits invalid Rust under `--preserve-encodings`.**
   `t = true / null / tstr` fails generation at exit 1 (rustfmt: `expected pattern, found '='`-class
