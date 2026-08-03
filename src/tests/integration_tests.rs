@@ -22849,8 +22849,13 @@ fn verbosity_fixture(dir: &std::path::Path) -> std::path::PathBuf {
     let input = dir.join("input.cddl");
     std::fs::write(
         &input,
+        // `rec` recurses through a `[* rec]` collection on a nominal node — the SUPPORTED shape.
+        // It has to be: the `Recursive type:` notice this fixture needs is printed by every cycle,
+        // but a cycle whose emitted Rust could not compile is refused by
+        // `crate::recursion_boundary` before any level could print anything, and verbosity must
+        // never decide whether a run succeeds.
         "my_ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
-         rec = [a: uint, ? next: rec]\n\
+         rec = [a: uint, next: [* rec]]\n\
          holder = [r: rec, e: my_ext]\n\
          setty = #6.258([* uint])\n",
     )
