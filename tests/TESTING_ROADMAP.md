@@ -1895,30 +1895,33 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   differently (correctly) after it. Build a LOCAL workaround only if a consumer spec cannot use the
   single-line form — a pre-parse source scan attributing a trailing comment to the group rule by line
   position would be a second, drift-prone comment parser, so it needs a real consumer to justify it.
+  Reopening signal for taking the upstream bump now: a consumer reports a directive silently dropped
+  in a multi-line group spelling their generator cannot reformat, or the fork is bumped for another
+  reason anyway (at which point the additive constraint above is the whole design).
 
 - **A directive honored at a rule's own position can be silently dropped at a REFERENCING context
-  of that rule — an axis the directive×rule-shape sweep is structurally blind to.** Proven
-  instance (found by remedy-probing during delivery 4's refusal work, not by any gate; ledgered in
-  `cddl-matrix/ROADMAP.md` § Findings): the custom codec pair on a scalar alias — the pair's
-  flagship honored shape — does not reach the codec of a tag-head rule that WRAPS the alias
-  (`foo = #6.42(inner)` emits neither half through `foo`). The sweep cannot see the class because
-  its cells place the toggled directive on the rule under test; no cell annotates a rule the
-  tested rule references. Layer to build, reusing the sweep's scratch-dir/byte-compare machinery:
-  a referencing-context sweep whose cells are (directive, base shape it is HONORED on, wrapping
-  context), the context axis enumerated from the member-position boundary list the `@name` door
-  already records (tag-head payload, `.cbor` payload, generic argument, map key/value, array
+  of that rule — an axis the directive×rule-shape sweep is structurally blind to. BUILD THIS: the
+  reopening signal below FIRED on 2026-08-03.** The signal was a second inert-under-wrapping
+  instance, and the context sweep run while fixing the first one found it: the custom codec pair on
+  a scalar alias — the pair's flagship honored shape — does not reach a **`.cbor` payload** over
+  that alias (`h = [f: bytes .cbor inner]` emits the built-in uint codec both directions), while
+  the same pair IS honored through an array element, a map value, a map key, a type-choice arm, a
+  generic argument, an optional record member, and (as of that fix) a tag-head wrapper. Both
+  instances are one strip of the `Alias` node the emitter lifts the pair from, at two seams; the
+  `.cbor` one is ledgered in `cddl-matrix/ROADMAP.md` § Findings. The sweep cannot see the class
+  because its cells place the toggled directive on the rule under test; no cell annotates a rule
+  the tested rule references. Layer to build, reusing the sweep's scratch-dir/byte-compare
+  machinery: a referencing-context sweep whose cells are (directive, base shape it is HONORED on,
+  wrapping context), the context axis enumerated from the member-position boundary list the `@name`
+  door already records (tag-head payload, `.cbor` payload, generic argument, map key/value, array
   element), with the verdict rule that a base-honored directive must take effect through the
   wrapping context or refuse loudly — never inert-silent. Design note that must survive into the
   build: the verdict is PER-CONTEXT, not the shape sweep's best-of-embeddings rule — context is
   the cell's variable, so an effect in one context must not absorb a drop in another. Cost is the
-  same order as the shape product (honored cells × contexts, generation-only). Reopening signal
-  for building it (measurable by a party who already has the problem, on the dimension the cost
-  grows along — the number of wrapped annotated spellings in real specs): a SECOND directive
-  found inert under a wrapping spelling — the ledgered instance is the first — or a consumer
-  reporting byte-identical output for an annotated rule that another of their rules wraps.
-  Reopening signal for taking the upstream bump now: a consumer reports a directive silently dropped
-  in a multi-line group spelling their generator cannot reformat, or the fork is bumped for another
-  reason anyway (at which point the additive constraint above is the whole design).
+  same order as the shape product (honored cells × contexts, generation-only). The hand-built
+  precedent to generalize is `dsl_position_tests`' `tag-head-wrapping-alias` cell and its
+  per-impl sibling `tag_head_wrapper_and_member_agree_on_the_wrapped_aliass_custom_pair`, which
+  assert the two reaching paths AGREE rather than that either one works.
 
 - **The arm-position axis's classifier is a compile-time forcing function, and losing it is the
   regression to watch for.** The axis itself is now enumerated: `no_silent_directive` sweeps a
