@@ -11,6 +11,33 @@ This document covers the `wasm-bindgen` face (`wasm/`). The component-model face
 (`component/`, under `--component=true`) has its own sibling document with the same
 charter: [Component (WIT) differences](component_differences).
 
+## The boundary door: CBOR and JSON methods
+
+`wasm_bindgen` cannot export traits, so the runtime trait methods a rust consumer would call through
+`Serialize` / `ToCBORBytes` / `Deserialize` (and the serde derives) are re-exported on each generated
+wasm class as **inherent** methods. Six of them are flag-conditional, and each one is emitted exactly
+where the generated runtime declares its backing:
+
+| Method | Emitted when |
+| --- | --- |
+| `to_cbor_bytes() -> Vec<u8>` | `--to-from-bytes-methods` (on by default) |
+| `from_cbor_bytes(bytes: &[u8]) -> Result<T, JsError>` | `--to-from-bytes-methods`, and the type got a generated deserializer |
+| `to_canonical_cbor_bytes() -> Vec<u8>` | `--to-from-bytes-methods` **and** `--preserve-encodings --canonical-form` |
+| `to_json() -> Result<String, JsError>` | `--json-serde-derives` |
+| `to_json_value() -> Result<JsValue, JsError>` | `--json-serde-derives` |
+| `from_json(json: &str) -> Result<T, JsError>` | `--json-serde-derives` |
+
+`to_canonical_cbor_bytes` is the one gated on a flag *pair*, because the method is declared on the
+`Serialize` trait the runtime composes only under `--preserve-encodings --canonical-form`; every
+other posture composes a `ToCBORBytes` declaring `to_cbor_bytes` alone.
+
+The door belongs to classes that wrap a rust type. A **collection wrapper class** (`FooList`,
+`MapTextToFoo`, …) carries its collection API (`new`/`add`/`get`/`len`/`insert`/`keys`) and no door
+member in any posture — cross the boundary through the owning type instead.
+
+Under `--wasm-cbor-json-api-macro` the generator emits your macro invocation in place of all six, so
+the door's contents there are the macro's contract rather than the generator's.
+
 ## Heterogeneous Arrays
 
 Any array of non-primitives such as `[foo]` will generate another type called `FooList` which supports all basic array operations.

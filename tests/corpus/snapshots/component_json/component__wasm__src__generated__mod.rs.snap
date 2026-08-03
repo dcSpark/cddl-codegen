@@ -28,6 +28,10 @@ impl AnyCbor {
         cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
     }
 
+    pub fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_canonical_cbor_bytes(&self.0)
+    }
+
     pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<AnyCbor, JsError> {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
@@ -259,6 +263,10 @@ impl Hash {
         cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
     }
 
+    pub fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_canonical_cbor_bytes(&self.0)
+    }
+
     pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Hash, JsError> {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
@@ -317,6 +325,10 @@ pub struct Int(pub(crate) cddl_lib::Int);
 impl Int {
     pub fn to_cbor_bytes(&self) -> Vec<u8> {
         cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_canonical_cbor_bytes(&self.0)
     }
 
     pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Int, JsError> {
@@ -452,6 +464,10 @@ impl Node {
         cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
     }
 
+    pub fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_canonical_cbor_bytes(&self.0)
+    }
+
     pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Node, JsError> {
         cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
@@ -553,6 +569,10 @@ pub struct Record(pub(crate) cddl_lib::Record);
 impl Record {
     pub fn to_cbor_bytes(&self) -> Vec<u8> {
         cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_canonical_cbor_bytes(&self.0)
     }
 
     pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Record, JsError> {
