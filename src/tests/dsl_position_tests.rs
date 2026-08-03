@@ -2079,3 +2079,63 @@ fn rule_body_cbor_alias_and_member_agree_on_the_wrapped_aliass_custom_pair() {
         "the plain-member path must route through the same pair:\n{direct_deser}"
     );
 }
+
+/// The `@custom_wire_major` half of wire-metadata inheritance, in both directions the
+/// no-silent-directive checks could get wrong — delivered by the same fix as the re-alias test
+/// above (`AliasInfo::wire_metadata_inherited_from`), and pinned here because both halves were
+/// verified only by hand probes when they shipped.
+///
+/// EXEMPTION half: an entry that INHERITED the declaration carries a copy nobody wrote there, so a
+/// re-alias sitting at an ordinary field must not be refused for "nothing consumes the declared
+/// major" while the AUTHOR's own declaration is consumed by a direct-keyed table. Before the
+/// provenance field, exactly this spec was refused (exit 1).
+///
+/// CONSUMPTION half: a table keyed THROUGH the re-alias counts as consuming the declaration at the
+/// rule that WROTE it — the dispatch reads the declared major through the inheritor, and the
+/// author's rule must not be refused as inert for a declaration a dispatch is demonstrably reading.
+#[test]
+fn inherited_wire_major_is_exempt_unconsumed_and_consumable_through_the_inheritor() {
+    // Exemption: `base`'s declaration is consumed by the direct-keyed table; `re` inherits a copy
+    // and sits at an ordinary field, consuming nothing.
+    const EXEMPTION_SPEC: &str = "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n\
+         base = rb ; @custom_serialize ser_base @custom_deserialize deser_base @custom_wire_major text\n\
+         re = base\n\
+         tbl = { * base => bool, * uint => bool }\n\
+         holder = [f: tbl, x: re]\n";
+    let src = generate(EXEMPTION_SPEC, &[], false, "wire_major_inherit_exempt")
+        .expect(
+            "a re-alias's INHERITED @custom_wire_major copy must be exempt from the unconsumed \
+             check — refusing this spec is the regression the provenance field exists to prevent",
+        )
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        src.contains("cbor_event::Type::Text =>"),
+        "the author's own declaration must still drive the direct-keyed table's dispatch:\n{src}"
+    );
+
+    // Consumption: ONLY the re-alias keys the table, so the author's declaration is consumed
+    // exclusively through the inheritor.
+    const CONSUMPTION_SPEC: &str = "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n\
+         base = rb ; @custom_serialize ser_base @custom_deserialize deser_base @custom_wire_major text\n\
+         re = base\n\
+         tbl = { * re => bool, * uint => bool }\n\
+         holder = [f: tbl]\n";
+    let src = generate(CONSUMPTION_SPEC, &[], false, "wire_major_inherit_consume")
+        .expect(
+            "a table keyed THROUGH a re-alias must consume the declaration at the rule that wrote \
+             it — refusing the author's rule as inert here means the consumed-marking hop is lost",
+        )
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        src.contains("cbor_event::Type::Text =>"),
+        "the DECLARED major must drive the dispatch arm reached through the inheritor:\n{src}"
+    );
+    assert!(
+        src.contains("deser_base("),
+        "the dispatch arm must route to the author's @custom_deserialize:\n{src}"
+    );
+}
