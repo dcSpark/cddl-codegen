@@ -1609,21 +1609,57 @@ export async function selfTests(): Promise<TestResult[]> {
     // machine.
     {
       // Derived from MEMORY, never cores: the same core count against half the RAM must halve it.
-      const at = (gib: number, gates: number) => cargoJobsForBatch({ gatesInFlight: gates, memTotalGiB: gib }).jobs;
+      // The basis is AVAILABLE memory — `at` feeds it as `memAvailGiB`, which is what a real batch
+      // passes; `memTotalGiB` survives only as the fallback for a machine that cannot report avail.
+      const at = (gib: number, gates: number) => cargoJobsForBatch({ gatesInFlight: gates, memAvailGiB: gib }).jobs;
       ok("cargo_jobs_derive_from_memory_and_shrink_as_gates_overlap",
-        at(32, 4) === 2 && at(32, 1) === 8 && at(32, 8) === 1 && at(16, 4) === 1 && at(128, 4) === 8,
+        at(32, 4) === 1 && at(32, 1) === 4 && at(32, 8) === 1 && at(16, 4) === 1 && at(128, 4) === 4,
         JSON.stringify({ g32x4: at(32, 4), g32x1: at(32, 1), g32x8: at(32, 8), g16x4: at(16, 4), g128x4: at(128, 4) }));
+
+      // The basis is what is FREE, not what the machine has. A busy 32 GiB box with 8 GiB available
+      // must budget like an 8 GiB box — this is the bound that two whole-machine freezes went
+      // through, because a MemTotal basis reads a loaded machine as an idle one.
+      const busy = cargoJobsForBatch({ gatesInFlight: 1, memTotalGiB: 32, memAvailGiB: 8 });
+      const idle = cargoJobsForBatch({ gatesInFlight: 1, memTotalGiB: 32, memAvailGiB: 30 });
+      ok("the_budget_follows_available_memory_not_machine_size",
+        busy.jobs === 1 && idle.jobs === 3 && busy.why.includes("MemAvailable"),
+        JSON.stringify({ busy: busy.jobs, idle: idle.jobs, why: busy.why }));
+
+      // MemTotal is the FALLBACK, used only when avail is unreadable — never preferred over it.
+      const fellBack = cargoJobsForBatch({ gatesInFlight: 1, memTotalGiB: 32 });
+      ok("mem_total_is_only_the_fallback_basis",
+        fellBack.jobs === 4 && fellBack.why.includes("MemTotal") && !fellBack.why.includes("MemAvailable"),
+        JSON.stringify(fellBack));
+
+      // Floored, never rounded: a 3.5-slot budget is 3. Rounding up spends the headroom the
+      // fraction exists to reserve, which is the wrong direction to be wrong in.
+      ok("a_fractional_budget_floors_rather_than_rounding_up",
+        cargoJobsForBatch({ gatesInFlight: 1, memAvailGiB: 28 }).jobs === 3,
+        JSON.stringify(cargoJobsForBatch({ gatesInFlight: 1, memAvailGiB: 28 })));
 
       // The product is the invariant, so assert it directly rather than trusting the divisions above.
       // Above `gatesInFlight = budget` the floor of one job per gate takes over — a gate handed
       // `-j0` would build nothing — so the bound there is the gate count itself, which `CHECK_JOBS`
       // already governs. What must never happen is the product tracking `nproc`.
       const productAt = (gib: number, gates: number) => at(gib, gates) * gates;
+      // Stated as the INVARIANT rather than as numbers, so it keeps meaning what it means when the
+      // budget constants move: the budget for a machine is what one gate alone may spend, and the
+      // crossover to "one job per gate" sits exactly there. Hardcoding either side re-pins the
+      // arithmetic to today's constants and has to be rewritten every time they change — which is
+      // how a bound gets loosened by whoever is updating the test to make it pass.
+      const budgetAt = (gib: number) => at(gib, 1);
+      const holds = (gib: number) => {
+        const b = budgetAt(gib);
+        const under = [1, 2, 3, 4, 8, 16, 32].filter(g => g <= b).every(g => productAt(gib, g) <= b);
+        const over = [1, 2, 3, 4, 8, 16, 32].filter(g => g > b).every(g => productAt(gib, g) === g);
+        return under && over;
+      };
       ok("the_bounded_product_never_exceeds_the_memory_budget",
-        [1, 2, 3, 4, 8].every(g => productAt(32, g) <= 8) &&
-        [1, 2, 4, 8, 16].every(g => productAt(64, g) <= 16) &&
-        [16, 32].every(g => productAt(32, g) === g),
-        JSON.stringify([1, 2, 3, 4, 8, 16, 32].map(g => productAt(32, g))));
+        holds(16) && holds(32) && holds(64) && holds(128),
+        JSON.stringify({
+          budgets: [16, 32, 64, 128].map(budgetAt),
+          at32: [1, 2, 3, 4, 8, 16, 32].map(g => productAt(32, g)),
+        }));
 
       // A tiny machine still runs: floor of 1, never 0, or the batch would spawn a cargo that
       // refuses to build.
@@ -1634,16 +1670,16 @@ export async function selfTests(): Promise<TestResult[]> {
       // raise it); an inherited `CARGO_BUILD_JOBS` can only hold the derived value DOWN — someone
       // being gentle to their machine said something the runner must not undo, while someone who
       // exported 32 for an unrelated reason never knew about the batch.
-      const ov = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, override: "12" });
-      const low = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, inherited: "1" });
-      const high = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, inherited: "32" });
-      const bad = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, override: "nope" });
+      const ov = cargoJobsForBatch({ gatesInFlight: 4, memAvailGiB: 32, override: "12" });
+      const low = cargoJobsForBatch({ gatesInFlight: 4, memAvailGiB: 32, inherited: "1" });
+      const high = cargoJobsForBatch({ gatesInFlight: 4, memAvailGiB: 32, inherited: "32" });
+      const bad = cargoJobsForBatch({ gatesInFlight: 4, memAvailGiB: 32, override: "nope" });
       ok("explicit_override_wins_and_an_inherited_setting_only_holds_it_down",
-        ov.jobs === 12 && low.jobs === 1 && high.jobs === 2 && bad.jobs === 2 && bad.warning !== undefined,
+        ov.jobs === 12 && low.jobs === 1 && high.jobs === 1 && bad.jobs === 1 && bad.warning !== undefined,
         JSON.stringify({ ov: ov.jobs, low: low.jobs, high: high.jobs, bad }));
 
       // An unreadable MemTotal must not mean "unbounded" — that is exactly the pre-fix behaviour.
-      const blind = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: undefined });
+      const blind = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: undefined, memAvailGiB: undefined });
       ok("an_unmeasurable_machine_still_gets_a_bound", blind.jobs === 2, JSON.stringify(blind));
 
       // And the real reading is sane on whatever box this runs on (or absent on a non-Linux one).

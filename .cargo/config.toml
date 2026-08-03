@@ -1,0 +1,21 @@
+# Repo-wide cargo job cap.
+#
+# WHY THIS EXISTS: `cargo`'s default is `-j $(nproc)`, and on a 32-core developer box that is 32
+# concurrent `rustc`/link jobs. Linking in particular is memory-hungry, and this workspace's
+# emitted-test crates are large, so an ordinary `cargo test` at the default has driven a 32 GiB
+# machine into swap and left it thrashing for over an hour — twice, on separate days. The failure
+# mode is not a failed build: the machine stops responding, so nothing in the test harness ever
+# observes it, and every other session on the box goes down with it.
+#
+# `check.ts` derives its OWN per-gate `CARGO_BUILD_JOBS` from available memory and exports it, and an
+# environment variable beats this file — so the runner still tunes its batches, and this is the floor
+# under everything it does not run: a developer's or an agent's bare `cargo test`, `cargo build`,
+# `cargo clippy`. Those are the majority of cargo invocations in this repo and were entirely
+# unbounded before this file existed.
+#
+# The number is deliberately not `nproc`-derived. What must stay bounded is the product of concurrent
+# compiler processes and their peak resident set, and core count says nothing about memory. Raise it
+# only with the machine's memory in view, and prefer `CARGO_BUILD_JOBS=<n> cargo …` for a one-off on
+# a big machine over editing this line.
+[build]
+jobs = 4
