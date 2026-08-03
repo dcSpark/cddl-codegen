@@ -2894,52 +2894,54 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
   destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
 - **A tier's PEAK MEMORY is bounded by arithmetic, not by observation — nothing measures the real
-  peak.** The sibling of the disk entry above, and the sharper class: a full disk fails a gate,
-  an overcommitted memory cap takes the whole machine (a 32-core / 32 GiB WSL2 box went unresponsive
-  for ~10 minutes under a full tier and was power-cycled, destroying the run). The bound that ships
-  is a memory-derived `CARGO_BUILD_JOBS` per *batched* gate plus an up-front memory/disk preflight
-  (`tests/README.md` § "Gate-level concurrency (registry-declared, opt-in)"), pinned by the pure
-  helpers `cargoJobsForBatch` and `preflightDecision` in the `timings_digest_check` gate. What those
-  pins CANNOT see is the quantity that actually matters: no gate samples concurrent `rustc` or
-  MemAvailable during a real run, so a future gate that spawns cargo by a path the batched child
-  environment does not reach would regress the bound silently. The missing system is a sampler the
-  runner owns — peak concurrent `rustc`, peak Σ RSS and the MemAvailable floor recorded per run
-  beside the durations, reported and never asserted (durations and peaks are both nondeterministic;
-  a gate that fails on a number would be flaky by construction). Two unestablished premises it would
-  also settle, both currently assumptions: the assumed 2 GiB worst-case per-`rustc` footprint carries
-  a ~4× margin over the 455 MiB largest ever *observed*, but the full tier's heaviest emitted-test
-  crates were never sampled; and the incident itself was never reproduced — the environment that
-  produced it also had a 95 %-full disk and 34 GB of `/tmp` scratch, so how much of the lockup was
-  memory and how much was writeback against a full volume is unknown.
-- **A tier's DISK BANDWIDTH is unbounded by anything — the concurrency design bounds memory and
-  preflights capacity, and the device saturates below both floors.** The third sibling of the two
-  entries above, and it has the memory entry's exact shape: gate-level concurrency bounds one
-  factor of the peak while another stays unbounded, and the unbounded one takes the whole machine.
-  Each *batched* gate gets a memory-derived `CARGO_BUILD_JOBS` and the preflight floors
-  MemAvailable and free scratch — but the scratch floor is a CAPACITY check and nothing measures
-  or bounds the write RATE. Up to `CHECK_JOBS` gates each drive a nested cargo against its own
-  target dir: separate directories, one device. On 2026-08-04 this box hung for ~1 hour under
-  ~3 GB/s sustained IO with the memory preflight green the whole time. Two facts load-bearing for
-  any future fix: the failure is a WHOLE-MACHINE stall, never a gate failure, so **no gate can
-  observe it even in principle — the signal is external** (a human at a dead terminal), which is
-  why this is a watch and not a buildable test system; and it is an ENVIRONMENT property the tier
-  does not measure — WSL2 mounts `/` and `/tmp` on one virtual disk whose sustained-write ceiling
-  sits far below bare metal's, so a tier that is safe on the metal stalls the VM. What ships is
-  operational, not code (maintainer ruling, 2026-08-04): every heavy run on this box is
-  `CHECK_JOBS=2 bun run check.ts <tier>` — peak 2 gates × `-j2` = 4 concurrent `rustc` — at an
-  accepted ~50 m warm / ~80 m cold full tier; do not optimize it back. Candidate mitigations,
-  recorded with costs rather than built (the real fix is non-trivial: no portable measurement of
-  a device's sustained-write ceiling exists, and a fixed cap is exactly what `CHECK_JOBS` already
-  is): (1) an environment-derived default — detect WSL2 (kernel release contains `microsoft`) and
-  default `CHECK_JOBS` to 2 there; cost is an environment sniff in the runner and a second
-  documented default, benefit is a safe default on exactly the environment class with the lowest
-  ceiling, and it does nothing for the next low-ceiling environment that is not WSL2; (2) an IO
-  axis on the sibling memory entry's unbuilt sampler — per-run `/proc/diskstats` write-rate
-  deltas recorded beside the durations, reported and never asserted — which would give the NEXT
-  incident the attribution this one and the memory one both lack. Build signal: a second
-  whole-machine stall UNDER `CHECK_JOBS=2` (the fixed cap proving insufficient — that buys both
-  candidates at once), or a maintainer ruling that the accepted wall cost has become the binding
-  constraint.
+  peak.** The sibling of the disk entry above, and the proven class: a full disk fails a gate, an
+  overcommitted memory cap takes the whole machine — three times now (a ~10-minute freeze that
+  produced the first bound, then two ~1–1.5 h freezes at 100 % memory and swap, 2026-08-04, that
+  went through every check the first fix installed). The second incident's root-cause (`d5d43bba`)
+  closed three budget holes the arithmetic had: the basis was MemTotal where the question is
+  MemAvailable (now re-measured per batch), the sequential gate path set no bound at all (so
+  `CHECK_JOBS=1` — the cautious setting — routed everything through the unbounded path), and bare
+  `cargo test`/`build` invocations outside the runner had no bound anywhere (now floored at
+  `[build] jobs = 4` by the repo `.cargo/config.toml`, with an exported `CARGO_BUILD_JOBS` still
+  winning so scratch-dir nested cargo stays covered). It also settled one of this entry's two
+  recorded assumptions the hard way: the old 2 GiB per-slot footprint was a comfortable margin
+  over the wrong quantity — a slot compiles and then RUNS what it built, no gate samples a test
+  process's footprint, and 8 × 455 MiB cannot take down a 31 GiB box — so the constant is 4 GiB
+  now, deliberately pessimistic UNTIL a slot's true peak is measured. Which is this entry's
+  surviving system: the bound is still arithmetic over an assumed constant, pinned by the pure
+  helpers `cargoJobsForBatch` and `preflightDecision` in the `timings_digest_check` gate, and no
+  gate samples concurrent `rustc`, Σ RSS, test-process footprints or the MemAvailable floor
+  during a real run — so a future spawn path outside both the runner's env and cargo config
+  discovery would regress the bound silently, and the 4 GiB constant cannot be replaced by a
+  measurement that does not exist. The missing system is unchanged: a sampler the runner owns —
+  peak concurrent `rustc`, peak Σ RSS (test processes included) and the MemAvailable floor
+  recorded per run beside the durations, reported and never asserted (durations and peaks are
+  both nondeterministic; a gate that fails on a number would be flaky by construction).
+- **A tier's DISK BANDWIDTH is unmeasured by anything — the scratch floor is a capacity check,
+  not a rate one, and no incident has ever been attributable either way.** The third sibling of
+  the two entries above, narrower than both: it names a candidate factor, not a proven one. Up to
+  `CHECK_JOBS` gates each drive a nested cargo against its own target dir — separate directories,
+  one device — and nothing measures or bounds the write RATE; the device's sustained ceiling is
+  an ENVIRONMENT property the tier does not observe, lowest on virtual-disk hosts (WSL2 mounts
+  `/` and `/tmp` on one virtual device, far below bare metal). This entry first shipped
+  (2026-08-04) reading a whole-machine freeze under ~3 GB/s sustained IO as a bandwidth
+  saturation; the same day's root-cause landed the attribution elsewhere — the freezes were
+  MEMORY (swap thrashing; three concrete budget holes, closed by `d5d43bba`), with the disk
+  traffic as their symptom — so what survives here is exactly the unmeasured-factor claim, plus
+  the two facts any future incident inherits: a saturated device is a WHOLE-MACHINE stall, never
+  a gate failure, so no gate can observe it even in principle (the signal is external — a human
+  at a dead terminal), and the post-`d5d43bba` budget logs its memory basis per batch, so the
+  NEXT stall can at least be split into "memory bound was wrong again" vs "memory healthy,
+  something else saturated". Candidate instruments if that second reading ever occurs, recorded
+  with costs rather than built (no portable measurement of a device's sustained-write ceiling
+  exists, and a fixed cap is what `CHECK_JOBS` already is): an IO axis on the sibling memory
+  entry's unbuilt sampler — per-run `/proc/diskstats` write-rate deltas recorded beside the
+  durations, reported and never asserted — which is what would turn the next incident's
+  attribution from forensics into a lookup; and only downstream of such an attribution, a
+  rate-aware degrade (an environment-derived `CHECK_JOBS` default for virtual-disk hosts).
+  Build signal: a whole-machine stall with the memory budget demonstrably healthy (its per-batch
+  basis lines green in the run's own log) — the first bandwidth-attributed incident there has
+  ever been, which buys the sampler's IO axis at minimum.
 - **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
   `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
   `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
