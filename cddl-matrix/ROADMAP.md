@@ -294,10 +294,11 @@ ledgered here (that's what the probe/gate error messages point at).
   `occurrence_on_array_record_field_rejects_gracefully`. The rejection avoids the silent
   exactly-once narrowing that makes a generated decoder reject spec-valid repetition counts —
   invisible to round-trip tests, surfaced only by spec-derived decode vectors. Real support for the
-  middle-position case is one decode-disambiguation design shared with the non-final-`?` overlap
-  family in the layer-2 findings entry below: the emitter already peeks major types for optional
-  fields; the missing signal is the remaining definite-length COUNT (repeats = len − fixed), plus
-  the shared residue/indefinite-length policy decisions that entry spells out.
+  middle-position case is one decode-disambiguation design shared with the findings entry
+  "Decode-disambiguate a non-final `?` optional array-record field whose CBOR major types OVERLAP a
+  later field's": the emitter already peeks major types for optional fields; the missing signal is
+  the remaining definite-length COUNT (repeats = len − fixed), plus the shared
+  residue/indefinite-length policy decisions that entry spells out.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
   marker on a single non-literal arrow map entry no longer silently widens to an unbounded `*` table
   (the removed bug: the table-detection arm ignored the entry occurrence and `HomogenousMap` — unlike
@@ -506,38 +507,28 @@ ledgered here (that's what the probe/gate error messages point at).
   fuzzer is what found the shape, which is exactly the coverage hole the "Intra-alternative variation
   rows" rule above exists to close. Rows here cost one cell each and make a permanent boundary
   legible as a verdict instead of as prose.
-- **Three compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
+- **Decode-disambiguate a non-final `?` optional array-record field whose CBOR major types OVERLAP
+  a later field's.** `a = [ ? f0: uint, f1: uint ]` generates at exit 0 and the crate builds, but
+  `f0` gets no decoder: the refusal is recorded (`dont_generate_deserialize`, loud
+  `Not generating A::deserialize()`) and propagates honestly through every consumer — containing
+  enums of both flavors lose their own `Deserialize` transitively, and both `--emit-tests` minters
+  skip the type with a named line. Position per se is NOT the gap: the emitter peek-disambiguates
+  optional array-record fields against every reachable follower's `cbor_types`, so a type-disjoint
+  non-final `?` (`[ ? f0: uint, f1: tstr ]`) works today. Real support shares ONE design with the
+  middle-position `*` occurrence entry above: add the remaining definite-length COUNT to the
+  existing PEEK signal (repeats = len − fixed), decide the genuinely ambiguous residue (count+peek
+  admitting ≥2 assignments — the same information-the-wire-does-not-carry loss as the
+  wire-ambiguity family below, so the two policies should be decided once), and decide the
+  indefinite-length story (no count signal there; peek-only makes acceptance encoding-dependent).
+  **Reopening signal:** a spec author reports a rule they cannot decode at all — i.e. the refusal
+  reaches a type they need on the wire, not merely a shape a fuzzer composed.
+- **One compile/round-trip-class family remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
-  under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
+  under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so the
   class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed; NB the vacuity guard
   fires only when a composition stops REACHING layer 2 — a class fixed AT layer 2 stays silently
   excluded, so a fixing commit must delete its ledger entries itself, in the same commit) with
-  THIS entry as its pin; each is a candidate cddl-codegen fix:
-  - **A non-final `?` optional field in an array record whose CBOR major types OVERLAP a later
-    field's fails under `--emit-tests`** (E0599: `from_cbor_bytes` trait bounds unsatisfied):
-    `a = [ ? f0: uint, f1: uint ]`. The gap is NOT position per se — the emitter already
-    peek-disambiguates optional array-record fields against every reachable follower's
-    `cbor_types`, so a type-disjoint non-final `?` (`[ ? f0: uint, f1: tstr ]`) works today; on
-    overlap it records `dont_generate_deserialize` (notice + exit 0). The crate compiles
-    standalone; the break is an INTEGRITY gap in a consumer of that refusal: `--emit-tests` mints
-    `from_cbor_bytes` round-trips unconditionally (`emit_generated_tests` never sees the
-    no-deserialize set — the wasm surface has exactly the needed gate at its analogous emission
-    site). Real support for the overlap case shares ONE design with the middle-position `*`
-    occurrence entry above: add the remaining definite-length COUNT to the existing PEEK signal,
-    decide the genuinely ambiguous residue (count+peek admitting ≥2 assignments — the same
-    information-the-wire-does-not-carry loss as the wire-ambiguity family below, so the two
-    policies should be decided once), and decide the indefinite-length story (no count signal
-    there; peek-only makes acceptance encoding-dependent).
-  - **An array-rep group-choice arm containing an overlap-refused `?` member breaks plain
-    compilation** (E0599): `t = [ ? f0: uint, f1: uint // tstr ]` — the same refusal, but the
-    choice enum's `Deserialize` impl IS emitted and calls the arm struct's never-emitted
-    `deserialize_as_embedded_group`, so the crate itself fails `cargo check`: an emitted crate
-    that cannot build, the posture the same-chain `.cbor` entry above names. The cheap integrity
-    fixes for this family pair (propagate arm-struct no-deser to the containing enum, mirroring
-    the wasm gate; thread the no-deser set into emit-tests and skip loudly) are independent of
-    any disambiguation feature — with one trap: after them the ledgered compositions PASS layer
-    2, and the vacuity guard fires only on compositions that stop REACHING layer 2, so the stale
-    ledger entries must be deleted in the same commit.
+  THIS entry as its pin; it is a candidate cddl-codegen fix:
   - **Wire-ambiguous type-choice arms cannot round-trip variant identity — a property of the
     wire, not a decoder bug.** RFC 8610 defines a choice as matching when ANY arm matches; arm
     identity does not exist on the wire and neither oracle emits one, so first-match decoding is

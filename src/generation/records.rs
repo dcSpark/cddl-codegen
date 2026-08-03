@@ -208,10 +208,111 @@ pub(super) struct ArrayStructDeserializeCode {
 //    ii) if Some, all vars/exprs that need to be put inside of an *Encodings struct's constructor
 // so you will need to construct the constructor expression from these
 #[allow(clippy::too_many_arguments)]
+/// Every deserialize refusal an ARRAY-representation record earns from its own shape, derived
+/// PURELY from the finalized IR — no emission, no `GenerationScope`, no dependence on when it runs.
+///
+/// This has to be a pure predicate rather than something the deserialize emitter records as it
+/// goes, because the emission walk visits `rust_structs()` in IDENT order (a `BTreeMap`) and that
+/// order bears no relation to reference order: for `ch = foo / tstr` the enum `Ch` is emitted
+/// before the arm `Foo`, for `gc = [... // tstr]` the enum `Gc` before its arm `Gc0`. A containing
+/// type that must consult "does this arm have a deserialize?" therefore cannot wait for the arm to
+/// be emitted — the verdict is seeded for the whole IR up front (`seed_no_deserialize_verdicts`).
+///
+/// Callers: the record's own struct, and an INLINED group-choice arm record (whose refusals are
+/// attributed to the enum that inlines it, since that is the type whose deserialize would break).
+///
+/// We can support optional fields, but only when they're immediately non-ambiguous, i.e. when the
+/// next type (possibly skipping subsequent optional fields) is different from the current type.
+/// Supporting the general case 100% is extremely complicated without a combinatorial backtrack but
+/// for most sane real-world cases this wouldn't be necessary. Think purposefully written
+/// edge-cases with multiple optional fields, possibly nested in other structs, and with many of
+/// the same types, e.g. `[ ? uint, uint, ? (uint, text), ? text]`.
+pub(super) fn array_record_deser_refusals(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    for (field_index, field) in record.fields.iter().enumerate() {
+        if !field.optional {
+            continue;
+        }
+        let field_cbor_types = field.rust_type.cbor_types(types);
+        // Whether this optional field is adjacent to the open rest tail (no mandatory declared
+        // field sits between it and the tail). The tail joins the ambiguity analysis as a virtual
+        // "field after every field": if the tail is reachable right after this optional and their
+        // CBOR types overlap (`* any` overlaps EVERYTHING), a peek cannot tell "this optional field"
+        // from "the first tail element", so the same refusal fires.
+        let mut reaches_tail = true;
+        for i in (field_index + 1)..record.fields.len() {
+            if record.fields[i]
+                .rust_type
+                .cbor_types(types)
+                .iter()
+                .any(|ct| field_cbor_types.contains(ct))
+            {
+                reasons.push(format!(
+                    "Array struct with potentially-ambiguous optional field {}: {:?}",
+                    field.name, field.rust_type,
+                ));
+            }
+            if !record.fields[i].optional {
+                reaches_tail = false;
+                break;
+            }
+        }
+        if reaches_tail
+            && let Some(rest) = &record.rest
+            && rest
+                .element()
+                .cbor_types(types)
+                .iter()
+                .any(|ct| field_cbor_types.contains(ct))
+        {
+            reasons.push(format!(
+                "Array struct optional field {} is ambiguous with the open rest tail element \
+                 (overlapping CBOR types): a peek cannot distinguish the optional field from \
+                 the first tail element. Make their types distinct, drop the optional, or drop \
+                 the tail.",
+                field.name,
+            ));
+        }
+    }
+    reasons
+}
+
+/// The MAP-representation twin of `array_record_deser_refusals`, same purity contract.
+///
+/// To support maps with plain groups inside is very difficult as we cannot guarantee the order of
+/// fields — `foo = {a, b, bar}, bar = (c, d)` could have the order be `{a, d, c, b}`, `{c, a, b,
+/// d}`, etc, which doesn't fit with the nature of `deserialize_as_embedded_group`. A possible
+/// solution would be to take all fields into one big map, either in generation to begin with, or
+/// just for deserialization then constructing at the end with locals like `a`, `b`, `bar_c`,
+/// `bar_d`.
+pub(super) fn map_record_deser_refusals(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    cli: &Cli,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    for (_field_index, field) in record.canonical_ordering() {
+        if let ConceptualRustType::Rust(ident) = &field.rust_type.conceptual_type
+            && types.is_plain_group(ident)
+        {
+            reasons.push(format!(
+                "Map with plain group field {}: {}",
+                field.name,
+                field.rust_type.for_rust_member(types, false, cli)
+            ));
+        }
+    }
+    reasons
+}
+
+/// (No `name` parameter: this emitter no longer records deserialize refusals — the verdict for
+/// every ident is seeded from the IR before emission, see `array_record_deser_refusals`.)
 pub(super) fn generate_array_struct_deserialization(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
-    name: &RustIdent,
     record: &RustRecord,
     tag: Option<usize>,
     in_embedded: bool,
@@ -269,63 +370,18 @@ pub(super) fn generate_array_struct_deserialization(
             (Cow::from(format!("let {} = ", field.name)), Cow::from(";"))
         };
         if field.optional {
-            // we can support optional fields, but only when they're immediately non-ambiguous
-            // i.e. when the next type (possibly skipping subsequent optional fields)
-            // is different from the current type.
-            // Supporting the general case 100% is extremely complicated without a combinatorial
-            // backtrack but for most sane real-world cases this wouldn't be necessary.
-            // Think purposefully written edge-cases with multiple optional fields, possibly nested
-            // in other structs, and with many of the same types.
-            // e.g. [ ? uint, uint, ? (uint, text), ? text]
+            // The ambiguity refusals themselves live in `array_record_deser_refusals` (a pure
+            // predicate over the IR, seeded before emission) — what stays here is only the codegen
+            // this branch needs.
             let field_cbor_types = field.rust_type.cbor_types(types);
             let mut possibly_last_field = true;
-            // Whether this optional field is adjacent to the open rest tail (no mandatory declared
-            // field sits between it and the tail). The tail joins the ambiguity analysis as a virtual
-            // "field after every field": if the tail is reachable right after this optional and their
-            // CBOR types overlap (`* any` overlaps EVERYTHING), a peek cannot tell "this optional field"
-            // from "the first tail element", so the same `dont_generate_deserialize` refusal fires.
-            let mut reaches_tail = true;
             for i in (field_index + 1)..record.fields.len() {
-                if record.fields[i]
-                    .rust_type
-                    .cbor_types(types)
-                    .iter()
-                    .any(|ct| field_cbor_types.contains(ct))
-                {
-                    gen_scope.dont_generate_deserialize(
-                        name,
-                        format!(
-                            "Array struct with potentially-ambiguous optional field {}: {:?}",
-                            field.name, field.rust_type,
-                        ),
-                    );
-                }
                 if !record.fields[i].optional {
-                    reaches_tail = false;
                     if i < record.fields.len() - 1 {
                         possibly_last_field = false;
                     }
                     break;
                 }
-            }
-            if reaches_tail
-                && let Some(rest) = &record.rest
-                && rest
-                    .element()
-                    .cbor_types(types)
-                    .iter()
-                    .any(|ct| field_cbor_types.contains(ct))
-            {
-                gen_scope.dont_generate_deserialize(
-                    name,
-                    format!(
-                        "Array struct optional field {} is ambiguous with the open rest tail element \
-                         (overlapping CBOR types): a peek cannot distinguish the optional field from \
-                         the first tail element. Make their types distinct, drop the optional, or drop \
-                         the tail.",
-                        field.name,
-                    ),
-                );
             }
             // we also need to be careful if we're possibly the last field in the CBOR
             // buffer to avoid raw.cbor_type()? throwing an error for CBOR(NotEnough(0, 0))
@@ -2649,16 +2705,9 @@ pub(super) fn codegen_struct(
     // for clippy we generate a Default impl if new has no args
     let mut new_arg_count = 0;
     for field in &record.fields {
-        if !gen_scope.deserialize_generated_for_type(types, &field.rust_type.conceptual_type) {
-            gen_scope.dont_generate_deserialize(
-                name,
-                format!(
-                    "field {}: {} couldn't generate deserialize",
-                    field.name,
-                    field.rust_type.for_rust_member(types, false, cli)
-                ),
-            );
-        }
+        // (a field whose type has no deserialize refuses this record's too — recorded ahead of the
+        // emission walk by `seed_no_deserialize_verdicts`, which is where the reason text lives)
+        //
         // Fixed values only exist in (de)serialization code (outside of preserve-encodings=true)
         if !field.rust_type.is_fixed_value() {
             let mut codegen_field = if let Some(default_value) = &field.rust_type.config.default {
@@ -3035,7 +3084,6 @@ pub(super) fn codegen_struct(
                 let code = generate_array_struct_deserialization(
                     gen_scope,
                     types,
-                    name,
                     record,
                     tag,
                     in_embedded,
@@ -3081,23 +3129,9 @@ pub(super) fn codegen_struct(
                 // keep in mind this is always overwritten if you have cli.preserve_encodings enabled AND there was
                 // a deserialized encoding, otherwise we still use this by default.
                 for (field_index, field) in record.canonical_ordering() {
-                    // to support maps with plain groups inside is very difficult as we cannot guarantee
-                    // the order of fields so foo = {a, b, bar}, bar = (c, d) could have the order be
-                    // {a, d, c, b}, {c, a, b, d}, etc which doesn't fit with the nature of deserialize_as_embedded_group
-                    // A possible solution would be to take all fields into one big map, either in generation to begin with,
-                    // or just for deserialization then constructing at the end with locals like a, b, bar_c, bar_d.
-                    if let ConceptualRustType::Rust(ident) = &field.rust_type.conceptual_type
-                        && types.is_plain_group(ident)
-                    {
-                        gen_scope.dont_generate_deserialize(
-                            name,
-                            format!(
-                                "Map with plain group field {}: {}",
-                                field.name,
-                                field.rust_type.for_rust_member(types, false, cli)
-                            ),
-                        );
-                    }
+                    // (a plain-group field refuses this map record's deserialize — recorded ahead
+                    // of the emission walk by `map_record_deser_refusals`, which is where the
+                    // reason text and the why live)
                     // declare variables for deser loop
                     if cli.preserve_encodings {
                         for field_enc in field_encoding_fields(

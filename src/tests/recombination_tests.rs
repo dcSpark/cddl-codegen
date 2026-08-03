@@ -1264,25 +1264,24 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // (retired when `any` gained runtime support) `any` no longer "generates but does not compile" —
     // it lowers to the `AnyCbor` static-runtime type and the generated crate compiles across plain
     // / preserve / preserve+canonical. The former `filler=prelude.any` known-bad class is gone.
-    // -- non-final `?` optional field in an array record: Deserialize impl not emitted (E0599) ----
-    // (optional-LAST array fields compile and round-trip; the gap is the position.)
-    (
-        "shape=arr_record members=[optional,",
-        "non-final `?` optional array-record field breaks compilation (E0599 from_cbor_bytes); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "shape=arr_record members=[fixed_null,optional,optional]",
-        "non-final `?` optional array-record field breaks compilation (E0599 from_cbor_bytes); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    // -- array-rep group-choice arm with a `?` optional member (E0599 deserialize_as_embedded_group)
-    (
-        "shape=gchoice_arr members=[optional,",
-        "array-rep group-choice arm with `?` optional member breaks compilation (E0599 deserialize_as_embedded_group); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "shape=gchoice_arr members=[fixed_null,optional,optional]",
-        "array-rep group-choice arm with `?` optional member breaks compilation (E0599 deserialize_as_embedded_group); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
+    // (retired with the no-deserialize propagation) The four E0599 entries that rode here — two
+    // `shape=arr_record members=[optional,…` and two `shape=gchoice_arr …` — were both halves of ONE
+    // defect: a refused `Deserialize` that did not propagate. A non-final `?` optional array-record
+    // field has always been refused loudly (`Not generating Foo::deserialize()`), but the refusal
+    // stopped at the struct: `--emit-tests` still minted `from_cbor_bytes` round-trip/reject tests
+    // for it (E0599 `from_cbor_bytes`), and a containing enum still emitted its own Deserialize
+    // calling the arm's never-emitted fn (E0599 `deserialize_as_embedded_group` for the group-choice
+    // flavor, `deserialize` for the type-choice one). The refusal now propagates through both enum
+    // flavors transitively and both emit-tests minters skip a type with no decoder, so the shapes
+    // compile and their emitted tests pass — the DISAMBIGUATION of a non-final optional remains
+    // unbuilt and the field remains undeserializable, which is the honest state, not a defect.
+    // Pinned by `integration_tests::deserialize_refusal_propagates_through_enums_and_emitted_tests`.
+    // NOTE for whoever runs the full tier: like the fixed-value group-choice retirement below, this
+    // was NOT confirmed by `recombination_crates_execute` itself (a full-tier `#[ignore]`d gate). If
+    // a class survives, the gate now reports it as an unledgered layer-2 failure naming the
+    // composition — the loud direction; the entry staying would instead have silently excluded a
+    // passing class forever, since the vacuity guard only fires on an entry matching ZERO ok
+    // compositions.
     // Float-family table key domains are now a GRACEFUL generation-time rejection (floats have no
     // total order → no valid map key; pinned by tests/robustness/float_table_key.cddl and
     // float_table_key_composite.cddl), so those compositions never reach layer 2 — no entry needed.

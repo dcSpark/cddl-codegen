@@ -4621,6 +4621,147 @@ type_choice_special_brute = true / null / tstr
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
+/// A deserialize the generator REFUSES must be refused all the way out: the containing enum loses
+/// its own `Deserialize` (both flavors, transitively), and `--emit-tests` mints no decode test for
+/// what has no decoder. The invariant is honesty, not capability — whatever deserialize surface the
+/// crate actually exposes, the crate and its emitted tests must build and pass.
+///
+/// Each leg was RED before the propagation landed, at plain `cargo check` / `cargo test`:
+/// - `foo = [? f0: uint, f1: uint]` + `--emit-tests`: E0599 `from_cbor_bytes` ×2 (the round-trip and
+///   reject mints both decode).
+/// - `gc = [ f0: uint, ? f1: uint, f2: uint // tstr ]`: E0599 `deserialize_as_embedded_group` for
+///   `Gc0` — the group-choice enum's own Deserialize called its arm's never-emitted embedded fn.
+/// - `ch = foo / tstr`: E0599 `deserialize` for `Foo` from the type-choice brute-force dispatch.
+///   BOTH enum flavors were defective, and the transitive `ch2 = ch / bytes` with them.
+///
+/// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
+/// only `fast`. This gate will not be seen by CI.
+#[test]
+fn deserialize_refusal_propagates_through_enums_and_emitted_tests() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_no_deser_propagation_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    // ONE shared target dir across both legs (same shape as the clippy gate) — the two generated
+    // crates share every dependency, so the second leg is a cache hit.
+    let target_dir = scratch.join("target");
+
+    // ---- leg 1: the refused record + --emit-tests -------------------------------------------
+    // `bar` is the control: a type WITH a deserialize must still get its mints, or a skip that
+    // swallowed the whole module would pass vacuously.
+    let emit_input = scratch.join("emit.cddl");
+    std::fs::write(
+        &emit_input,
+        "foo = [? f0: uint, f1: uint]\nbar = [a: uint, b: tstr]\n",
+    )
+    .unwrap();
+    let emit_out = scratch.join("emit");
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={}", emit_input.to_str().unwrap()))
+        .arg(format!("--output={}", emit_out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "emit-tests generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let gen_stderr = String::from_utf8_lossy(&gen_out.stderr).to_string();
+    // The skip is LOUD and names the type — a silent skip reads as a passing test surface that
+    // does not exist.
+    assert!(
+        gen_stderr.contains(
+            "cddl-codegen --emit-tests: Foo skipped (no Deserialize impl was generated for it)"
+        ),
+        "--emit-tests must announce the skipped type, got stderr:\n{gen_stderr}"
+    );
+    assert!(
+        !gen_stderr.contains("Bar skipped"),
+        "the deserializable control type must still be minted, got stderr:\n{gen_stderr}"
+    );
+    let emit_test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(emit_out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    let emit_test_out = format!(
+        "--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&emit_test.stdout),
+        String::from_utf8_lossy(&emit_test.stderr)
+    );
+    assert!(
+        emit_test.status.success(),
+        "the emitted test crate must build and pass:\n{emit_test_out}"
+    );
+    assert!(
+        emit_test_out.contains("roundtrip_bar"),
+        "the control type's round-trip must still have been minted and run:\n{emit_test_out}"
+    );
+
+    // ---- leg 2: both enum flavors over a refused arm, plus transitivity ----------------------
+    let enum_input = scratch.join("enums.cddl");
+    std::fs::write(
+        &enum_input,
+        "foo = [? f0: uint, f1: uint]\n\
+         gc = [ f0: uint, ? f1: uint, f2: uint // tstr ]\n\
+         ch = foo / tstr\n\
+         ch2 = ch / bytes\n",
+    )
+    .unwrap();
+    let enum_out = scratch.join("enums");
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={}", enum_input.to_str().unwrap()))
+        .arg(format!("--output={}", enum_out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "enum generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let enum_stderr = String::from_utf8_lossy(&gen_out.stderr).to_string();
+    // The enum's own refusal reason NAMES the arm that caused it, so the existing loud
+    // `Not generating X::deserialize()` warning is actionable.
+    for (ty, arm) in [
+        // type choice over the refused record
+        ("Ch", "variant Foo: Foo couldn't generate deserialize"),
+        // group choice over the refused inlined-arm struct
+        ("Gc", "variant Gc0: Gc0 couldn't generate deserialize"),
+        // transitivity: an enum over an enum over the refused record
+        ("Ch2", "variant Ch: Ch couldn't generate deserialize"),
+    ] {
+        assert!(
+            enum_stderr.contains(&format!("Not generating {ty}::deserialize()")),
+            "{ty} must lose its deserialize, got stderr:\n{enum_stderr}"
+        );
+        assert!(
+            enum_stderr.contains(arm),
+            "{ty}'s refusal must name the arm that caused it ({arm}), got stderr:\n{enum_stderr}"
+        );
+    }
+    let enum_check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(enum_out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        enum_check.status.success(),
+        "the enum crate must `cargo check` clean:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&enum_check.stdout),
+        String::from_utf8_lossy(&enum_check.stderr)
+    );
+}
+
 /// `--canonical-form=true` without `--preserve-encodings` must be rejected (it otherwise emits a
 /// non-compiling crate — see `api::with_types`). Pins the rejection *and* its message so the guard
 /// can't silently become a no-op, and confirms the same input with both flags is accepted — so the

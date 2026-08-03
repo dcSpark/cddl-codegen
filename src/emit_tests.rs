@@ -332,6 +332,7 @@ pub fn emit_generated_tests(
     types: &IntermediateTypes,
     cli: &Cli,
     submodules: &[String],
+    no_deserialize: &std::collections::BTreeSet<RustIdent>,
 ) -> Option<String> {
     if !cli.to_from_bytes_methods {
         // both halves need to_cbor_bytes/from_cbor_bytes
@@ -344,6 +345,17 @@ pub fn emit_generated_tests(
     let mut fns: Vec<String> = Vec::new();
     for (ident, rust_struct) in types.rust_structs() {
         let name = ident.to_string();
+        // BOTH halves decode: the round-trip asserts `from_cbor_bytes(to_cbor_bytes(v))` and the
+        // reject half asserts `from_cbor_bytes` REJECTS out-of-bounds wire bytes. Neither exists
+        // for a type the generator declined to give a `Deserialize` (the loud
+        // `Not generating {name}::deserialize()` warning says why), so minting either would emit a
+        // test crate that does not build.
+        if no_deserialize.contains(ident) {
+            crate::warn!(
+                "cddl-codegen --emit-tests: {name} skipped (no Deserialize impl was generated for it)"
+            );
+            continue;
+        }
         let reject = match rust_struct.variant() {
             RustStructType::Record(record) => {
                 record_deser_reject(types, &name, record, !cli.preserve_encodings)

@@ -745,15 +745,13 @@ fn surround_in_len_checks(
 fn make_inline_deser_code(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
-    name: &RustIdent,
     tag: Option<usize>,
     record: &RustRecord,
     enum_gen_info: &EnumVariantInRust,
     cli: &Cli,
 ) -> DeserializationCode {
-    let mut variant_deser_code = generate_array_struct_deserialization(
-        gen_scope, types, name, record, tag, false, false, cli,
-    );
+    let mut variant_deser_code =
+        generate_array_struct_deserialization(gen_scope, types, record, tag, false, false, cli);
     // generate_constructor zips the expressions with the names in the enum_gen_info
     // so just make sure we're in the same order as returned above
     assert_eq!(
@@ -1516,15 +1514,9 @@ fn generate_enum(
                         }
                         variant_deser_code
                     }
-                    EnumVariantData::Inlined(record) => make_inline_deser_code(
-                        gen_scope,
-                        types,
-                        name,
-                        tag,
-                        record,
-                        &enum_gen_info,
-                        cli,
-                    ),
+                    EnumVariantData::Inlined(record) => {
+                        make_inline_deser_code(gen_scope, types, tag, record, &enum_gen_info, cli)
+                    }
                 };
                 let cbor_types_str = variant
                     .cbor_types_inner(types, rep)
@@ -1618,7 +1610,6 @@ fn generate_enum(
                         let variant_deser_code = make_inline_deser_code(
                             gen_scope,
                             types,
-                            name,
                             tag,
                             record,
                             &enum_gen_info,
@@ -1682,8 +1673,13 @@ fn generate_enum(
     // TODO: should we stick this in another scope somewhere or not? it's not exposed to wasm
     // however, clients expanding upon the generated lib might find it of use to change.
     gen_scope.rust(types, name).push_enum(e).push_impl(e_impl);
-    gen_scope
-        .rust_serialize(types, name)
-        .push_impl(ser_impl)
-        .push_impl(deser_impl);
+    gen_scope.rust_serialize(types, name).push_impl(ser_impl);
+    // An enum over an arm whose deserialize was refused gets none of its own: the dispatch above
+    // calls `Arm::deserialize` / `Arm::deserialize_as_embedded_group` unconditionally, so emitting
+    // it would emit a call to a function that does not exist. The verdict is complete before any
+    // emission (`seed_no_deserialize_verdicts`), so this consult cannot depend on whether the arm
+    // happened to be walked first.
+    if gen_scope.deserialize_generated(name) {
+        gen_scope.rust_serialize(types, name).push_impl(deser_impl);
+    }
 }
