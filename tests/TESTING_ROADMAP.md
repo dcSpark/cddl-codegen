@@ -479,47 +479,28 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       reserved name used in a shape outside its declared scope — the compile error names the
       binding, so the report arrives pre-diagnosed and says exactly which row to widen.
 
-12. **The wasm face's fixed re-export vocabulary is asserted by nothing, and one member of it is
-    absent in the posture that owes it.** `to_canonical_cbor_bytes` is a default method on the
-    generated `Serialize` trait (declared in `static/serialization_preserve_force_canonical.rs`), and
-    the wasm face's job for that whole family is to re-export trait methods as inherent fns because
-    `wasm_bindgen` cannot export traits. Under `--wasm --preserve-encodings --canonical-form`
-    `create_base_wasm_struct` builds the `codegen::Function` for it and never pushes it onto the
-    impl, so the rust crate has the method and the wasm boundary does not: measured at master
-    `781e6b8a` on a two-rule spec, the emitted `wasm/` tree carries zero occurrences of
-    `to_canonical_cbor_bytes` against four of `to_cbor_bytes`. `--component` is not involved in
-    either the bug or its reproduction.
-    - **Why the parity gate cannot see it, and why that is the interesting half.** `wasm_api_parity`
-      exists to report "a rust member with no wasm counterpart", but its rust-side walk reads
-      INHERENT impls only (`syn::Item::Impl(im) if im.trait_.is_none()`) and documents the exclusion
-      of trait impls as a deliberate structural exemption. A trait method therefore contributes no
-      rust-side row, so nothing can be reported missing. The exemption is right for `From`/`AsRef`
-      and wrong for exactly this family, whose members exist ONLY as trait methods on the rust side
-      and ONLY as inherent fns on the wasm side.
-    - **The missing system is a posture-conditioned vocabulary assertion**, not a one-line fix. Six
-      members ride flag-conditional emitter branches — `to_cbor_bytes`, `from_cbor_bytes`,
-      `to_canonical_cbor_bytes`, `to_json`, `to_json_value`, `from_json` — and every one of them is
-      invisible to the parity gate by the same structural exemption, so any of the six can go missing
-      the same way. The assertion has to run in BOTH directions (a member emitted in a posture whose
-      runtime does not declare it is a compile error in the generated crate, not a harmless extra),
-      and on the component face that exact shape is already gated by
-      `component_wit_carries_the_canonical_seam_only_where_the_runtime_composes_it`. The wasm face
-      wants its sibling.
-    - **The fix half is not one line either.** The unpushed builder spells its body
-      `Serialize::to_canonical_cbor_bytes(&self.0)` where its sibling spells the fully-qualified
-      `<common-import>::serialization::Serialize::to_cbor_bytes`, so pushing the function as written
-      may not compile under `--common-import-override`. Land the assertion first and let it name what
-      the emitter owes.
-    - **Not probed**: whether the same omission reaches `--wasm-cbor-json-api-macro` (the macro branch
-      is a different emission path), or any posture other than
-      `--preserve-encodings --canonical-form`.
-    - **Reopening signal, for the generalization this entry deliberately does NOT propose** — a
-      mechanical differential over every rust trait method the wasm face promises to mirror, rather
-      than the hand-listed six: a consumer reporting a SECOND wasm member absent that the rust crate
-      has. That reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose
-      rust counterpart they can point at), and the count of silently-missing members is the dimension
-      along which a hand-listed vocabulary stops being maintainable. This entry records one such
-      member, so the signal is not already met by its own body.
+12. **The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust
+    surface it mirrors.** `wasm_door_vocabulary_matches_the_posture_that_owes_it`
+    (`src/tests/wasm_parity_tests.rs`) pins the six flag-conditional door members —
+    `to_cbor_bytes`, `from_cbor_bytes`, `to_canonical_cbor_bytes`, `to_json`, `to_json_value`,
+    `from_json` — per posture and in both directions, against a table it carries in source. A
+    SEVENTH member, added to the emitter and not to that table, is caught by nothing: the table is
+    the vocabulary, and it is written by hand.
+    - **Why the parity gate cannot host the generalization.** `wasm_api_parity` exists to report
+      "a rust member with no wasm counterpart", but its rust-side walk reads INHERENT impls only
+      (`syn::Item::Impl(im) if im.trait_.is_none()`) and documents the exclusion of trait impls as a
+      deliberate structural exemption. Every door member's rust-side home is outside that walk —
+      three are trait methods on the generated runtime's `ToCBORBytes`/`Serialize`/`Deserialize`,
+      three are backed by serde derives — so each contributes no rust-side row and none can be
+      reported missing there. The exemption is right for `From`/`AsRef` and wrong for exactly this
+      family, whose members exist ONLY as trait methods on the rust side and ONLY as inherent fns on
+      the wasm side. Widening the walk to trait impls would drown the differential in the
+      `From`/`AsRef` noise the exemption exists to remove; the generalization wants its own
+      mechanism, keyed on the trait set the wasm face promises to mirror.
+    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
+      reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
+      counterpart they can point at), and the count of silently-missing members is the dimension
+      along which a hand-listed vocabulary stops being maintainable.
 
 13. **A self-referential named collection aborts the tool, and the panic catalog structurally cannot
     observe an abort.** `foos = [* foos]` plus a rule holding it ends generation with

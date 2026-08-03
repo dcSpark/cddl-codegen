@@ -2571,18 +2571,30 @@ fn create_base_wasm_struct<'a>(
                 if cli.to_from_bytes_methods {
                     let mut to_bytes = codegen::Function::new("to_cbor_bytes");
                     to_bytes.ret("Vec<u8>").arg_ref_self().vis("pub");
+                    // The canonical half of the bytes door, owed only where the runtime composes the
+                    // `Serialize` trait that DECLARES it
+                    // (`static/serialization_preserve_force_canonical.rs`). Pushed after
+                    // `to_cbor_bytes` below so the two halves of the door emit in reading order.
+                    let mut to_canonical_bytes = None;
                     if cli.preserve_encodings && cli.canonical_form {
                         to_bytes.line(format!(
                             "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
                             cli.common_import_wasm()
                         ));
-                        let mut to_canonical_bytes =
-                            codegen::Function::new("to_canonical_cbor_bytes");
-                        to_canonical_bytes
-                            .ret("Vec<u8>")
+                        let mut f = codegen::Function::new("to_canonical_cbor_bytes");
+                        f.ret("Vec<u8>")
                             .arg_ref_self()
                             .vis("pub")
-                            .line("Serialize::to_canonical_cbor_bytes(&self.0)");
+                            // Fully qualified through the same `common_import_wasm()` prefix as its
+                            // sibling above: a bare `Serialize::to_canonical_cbor_bytes` resolves
+                            // only while the trait happens to be in scope, which
+                            // `--common-import-override` (a separate runtime crate) does not
+                            // guarantee.
+                            .line(format!(
+                                "{}::serialization::Serialize::to_canonical_cbor_bytes(&self.0)",
+                                cli.common_import_wasm()
+                            ));
+                        to_canonical_bytes = Some(f);
                     } else {
                         to_bytes.line(format!(
                             "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
@@ -2590,6 +2602,9 @@ fn create_base_wasm_struct<'a>(
                         ));
                     }
                     s_impl.push_fn(to_bytes);
+                    if let Some(f) = to_canonical_bytes {
+                        s_impl.push_fn(f);
+                    }
                     if gen_scope.deserialize_generated(ident) {
                         s_impl
                             .new_fn("from_cbor_bytes")
