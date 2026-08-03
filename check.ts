@@ -274,14 +274,36 @@ export function parseJobs(raw: string | undefined): { jobs: number; warning?: st
 // batch and a whole `local` tier — was **455 MiB**, so bounding COUNT alone would still admit a very
 // different peak if a gate ever compiles one large crate instead of many small ones.
 /**
- * Assumed worst-case resident set of ONE `rustc`, in GiB.
+ * Assumed worst-case resident set of ONE concurrency slot, in GiB.
  *
- * Deliberately ~4× the 455 MiB largest actually observed. The margin is the point: the full tier's
- * emitted-test crates (thousands of `#[test]` functions each) were NOT sampled, and a single large
- * rustc is exactly the shape a count-based bound cannot see coming.
+ * Named for `rustc` because that is what `CARGO_BUILD_JOBS` divides, but what it must actually cover
+ * is the peak of everything one slot holds at once — and compilation is only the first half of that.
+ * A nested-cargo gate compiles, then RUNS the binaries it built: the full tier's emitted-test crates
+ * carry thousands of `#[test]` functions each, and a test process's own resident set is not sampled
+ * anywhere in this file. Treating the constant as "one rustc" measured the cheaper half and budgeted
+ * as though it were the whole.
+ *
+ * Raised from 2 after two whole-machine freezes (~1 h and ~1.5 h, 100% memory and swap, sustained
+ * thrashing) under full tiers that every memory check passed — the largest single rustc ever observed
+ * here is 455 MiB, so 8 of those is ~3.6 GiB and cannot explain a 31 GiB box going down. The old
+ * value was not a small margin over the wrong quantity; it was a comfortable margin over a quantity
+ * that was never the binding one. Until a slot's true peak is measured (see `tests/TESTING_ROADMAP.md`),
+ * this is deliberately pessimistic: the cost of being too low is a slower tier, and the cost of being
+ * too high is a machine that stops responding for an hour and takes every other session with it.
  */
-const ASSUMED_PEAK_RUSTC_GIB = 2;
-/** Fraction of MemTotal the batch may commit to concurrent `rustc`; the rest is the headroom above. */
+const ASSUMED_PEAK_RUSTC_GIB = 4;
+/**
+ * Fraction of AVAILABLE memory the batch may commit to concurrent `rustc`; the rest is headroom.
+ *
+ * Of AVAILABLE, not MemTotal — the distinction is the whole point. MemTotal answers "how big is this
+ * machine", which is not the question: the batch cannot use memory another process already holds. A
+ * developer box runs an editor's language servers, other agent sessions, and whatever else, so a
+ * budget struck against MemTotal silently assumes it owns a half of the machine that is already
+ * spoken for. Committing that half anyway is how a tier drives the box into swap, and a thrashing
+ * machine does not fail a gate — it stops responding, so nothing in this runner ever observes it.
+ * Budgeting against `MemAvailable` makes the bound shrink exactly when the machine is busy, which is
+ * when it must.
+ */
 const RUSTC_MEM_FRACTION = 0.5;
 /** Product used when MemTotal is unreadable (non-Linux): the value this machine's memory derives. */
 const FALLBACK_RUSTC_PRODUCT = 8;
@@ -311,6 +333,12 @@ export function memTotalGiB(meminfo?: string): number | undefined {
 export function cargoJobsForBatch(o: {
   gatesInFlight: number;
   memTotalGiB?: number;
+  /**
+   * `MemAvailable` at the moment this batch starts — the preferred basis, and measured PER BATCH
+   * rather than once at startup, because a tier's later batches begin under whatever the earlier
+   * ones (and every other process on the box) left behind.
+   */
+  memAvailGiB?: number;
   override?: string;   // CHECK_CARGO_JOBS
   inherited?: string;  // CARGO_BUILD_JOBS already present in the environment
 }): { jobs: number; why: string; warning?: string } {
@@ -326,13 +354,18 @@ export function cargoJobsForBatch(o: {
   if (override !== undefined)
     return { jobs: override, why: `CHECK_CARGO_JOBS=${override} (operator override)`, ...(warning ? { warning } : {}) };
 
-  const product = o.memTotalGiB === undefined
+  // `MemAvailable` first, `MemTotal` only as a fallback for a machine that cannot report it. Both
+  // are floored, never rounded: `Math.round` rounds a 3.5-slot budget UP to 4, spending headroom the
+  // fraction exists to reserve, and it is the wrong direction to be wrong in.
+  const basisGiB = o.memAvailGiB ?? o.memTotalGiB;
+  const basisName = o.memAvailGiB !== undefined ? "MemAvailable" : "MemTotal";
+  const product = basisGiB === undefined
     ? FALLBACK_RUSTC_PRODUCT
-    : Math.max(1, Math.round((o.memTotalGiB * RUSTC_MEM_FRACTION) / ASSUMED_PEAK_RUSTC_GIB));
+    : Math.max(1, Math.floor((basisGiB * RUSTC_MEM_FRACTION) / ASSUMED_PEAK_RUSTC_GIB));
   const derived = Math.max(1, Math.floor(product / Math.max(1, o.gatesInFlight)));
-  const memWhy = o.memTotalGiB === undefined
-    ? `MemTotal unreadable — fallback product ${product}`
-    : `${o.memTotalGiB.toFixed(1)} GiB MemTotal × ${RUSTC_MEM_FRACTION} ÷ ${ASSUMED_PEAK_RUSTC_GIB} GiB/rustc = ${product} rustc`;
+  const memWhy = basisGiB === undefined
+    ? `memory unreadable — fallback product ${product}`
+    : `${basisGiB.toFixed(1)} GiB ${basisName} × ${RUSTC_MEM_FRACTION} ÷ ${ASSUMED_PEAK_RUSTC_GIB} GiB/slot = ${product} slot(s)`;
 
   const inherited = asPositiveInt(o.inherited, "CARGO_BUILD_JOBS");
   if (inherited !== undefined && inherited < derived)
@@ -1427,6 +1460,23 @@ export interface GateOutcome { gate: string; out: Outcome; ms: number }
  */
 function runGateSequential(g: Gate, opts: Opts, timingCells: boolean): GateOutcome {
   console.log(`\n=== [${g.tier}] ${g.id} — ${g.desc} ===`);
+  // A sequential gate needs the memory bound just as much as a batched one — arguably more, since
+  // `CHECK_JOBS=1` routes EVERY gate through here. Without this the nested cargo a gate spawns runs
+  // at cargo's `-j $(nproc)` default, so the "safest" setting was the least bounded one: the batch
+  // path capped its children while the sequential path handed each gate the whole machine. The repo
+  // `.cargo/config.toml` floor does not reach these, because a gate's nested cargo runs in a scratch
+  // directory outside the repo and cargo discovers config by walking up from the CWD; an exported
+  // environment variable is what crosses that boundary.
+  //
+  // `gatesInFlight: 1` because that is the truth here — one gate alone may spend the whole budget.
+  const solo = cargoJobsForBatch({
+    gatesInFlight: 1,
+    memTotalGiB: memTotalGiB(),
+    memAvailGiB: availGiB("mem"),
+    override: process.env.CHECK_CARGO_JOBS,
+    inherited: process.env.CARGO_BUILD_JOBS,
+  });
+  process.env.CARGO_BUILD_JOBS = String(solo.jobs);
   // The REGISTRY gate a cell belongs to — knowable only here. The emitter labels the Rust side
   // has (`feature_corpus_compiles`, …) are three-quarters cell names inside the `test` gate, so a
   // cell row must not present one as a gate id; it carries both, and this is the half that is true.
@@ -1562,6 +1612,10 @@ export async function runGates(o: {
     const cargo = cargoJobsForBatch({
       gatesInFlight: jobs,
       memTotalGiB: memTotalGiB(),
+      // Re-measured HERE, not carried from the startup preflight: a full tier's last batch can begin
+      // an hour after its first, on a machine whose free memory has moved since — and the startup
+      // reading being stale in the optimistic direction is precisely the case that hurts.
+      memAvailGiB: availGiB("mem"),
       override: process.env.CHECK_CARGO_JOBS,
       inherited: process.env.CARGO_BUILD_JOBS,
     });
