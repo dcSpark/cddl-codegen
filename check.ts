@@ -562,6 +562,7 @@ export const SCRATCH_PREFIXES: readonly string[] = [
   "gate_cache_audit_",   // cddl-matrix/audit_gate_cache_closure.ts (scratch + forced-miss cache dir)
   "cache_transparency_", // cddl-matrix/cache_transparency.ts
   "no-silent-dir-",      // cddl-matrix/no_silent_directive.ts
+  "cddl-pin-cold-fetch-",// cddl-matrix/pin_cold_fetch.ts (scratch bare repo for the SHA probes)
 ];
 
 /** 24 h: >40× the longest measured tier, so no live run's scratch can reach it. */
@@ -1318,6 +1319,16 @@ export const REGISTRY: Gate[] = [
     desc: "gate-cache KEY-side soundness: strace input-closure audit of a cached gate (default multifile_matrix_compiles, CLOSURE_AUDIT_GATE overrides; SKIPPED if strace absent)" },
   { id: "corpus_detect", tier: "full", kind: "cmd", cmd: ["bun", "run", "corpus_detect.ts"], cwd: MATRIX,
     script: "corpus_detect.ts", desc: "corpus_detect featuresIn/rolesIn self-checks" },
+  // The tier's ONE deliberately-online gate (warm-up→offline covers every other gate): the whole
+  // question is "does the REMOTE serve this rev", which a warm local cargo/git DB answers wrongly
+  // and confidently — exactly how the 2026-08 phantom pin passed three cycles of green gates.
+  // No gate cache on purpose: its verdict can change with zero tree change (deleted/force-pushed
+  // branch). Environment failures exit 2 with text that says "not a pin defect"; see the script
+  // header for the two-step probe that keeps the failure classes structurally separate.
+  { id: "pin_cold_fetch", tier: "full", kind: "cmd",
+    cmd: ["bun", "run", "pin_cold_fetch.ts"], cwd: MATRIX,
+    script: "pin_cold_fetch.ts",
+    desc: "every git rev asserted by a committed pin-carrying file resolves from its REMOTE (deliberately online; the phantom-pin class)" },
   { id: "fuzz_compile_rot", tier: "full", kind: "fn", run: runFuzz,
     desc: "fuzz crate compile-rot check (generate.sh iff needed, then cargo check)" },
 

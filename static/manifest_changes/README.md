@@ -48,6 +48,15 @@ is substituted with `--lib-name` at runtime.
 - **Remove a key** → append a `remove = true` entry. Do *not* delete the original addition —
   deleting history would strand the stale key in existing user manifests, since unmentioned keys
   are deliberately never touched.
+- **Exception — correcting a never-valid value.** A recorded value that was never resolvable
+  anywhere (e.g. a git `rev` reachable from no remote) is corrected **in place**, not shadowed by
+  an append. The append-only rule exists so user manifests CONVERGE, and convergence is a property
+  of PATHS: an in-place `set` on the same path still overwrites every already-written manifest, so
+  nothing is stranded. Keeping the bad value alive instead makes correctness order-dependent —
+  delete or reorder the shadowing entry and a pin nothing can fetch silently returns. Note the
+  correction in the entry's comment. This is *not* license to rewrite legitimate value history —
+  only values that were defects the day they were written (the `pin_cold_fetch` gate is what
+  proves a mentioned rev against its remote).
 
 ## Regenerating the derived views
 
