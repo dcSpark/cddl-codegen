@@ -198,6 +198,15 @@ the largest single `rustc` resident set observed across that batch and a whole `
 one big crate rather than many small ones. Hence the memory derivation, with a deliberate ~4× margin
 over what was measured.
 
+**What stays unbounded: disk bandwidth.** The preflight below floors free scratch, which is a
+capacity check, not a rate one — `CHECK_JOBS` gates writing in parallel to their own target dirs
+still share one device, and a device saturated by sustained nested-cargo writes is a whole-machine
+stall that no floor sees and no gate can observe (the memory preflight passes throughout). The
+ceiling is an environment property the tier does not measure, lowest on virtual-disk hosts (WSL2
+mounts `/` and `/tmp` on one virtual device). Standing ruling for this box: heavy tiers run as
+`CHECK_JOBS=2 bun run check.ts <tier>`. The watch entry — incident, candidate mitigations with
+costs, and the build signal — is in `tests/TESTING_ROADMAP.md` § Operational watches.
+
 **Run-start scratch sweep (every tier).** Nested-cargo gates and the in-process suites mint per-run
 scratch under the system temp dir and rely on end-of-run cleanup that a killed or crashed run never
 reaches, so debris accumulates across sessions until a disk fills — measured once at 3316 leaked
