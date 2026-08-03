@@ -2,16 +2,16 @@
 ; single-level siblings cover (tests/robustness/choice_cbor_ref_arm.cddl,
 ; tests/robustness/cbor_ref_rule_body.cddl) — this row is the DEPTH axis those two do not have.
 ;
-; Both of those fixtures pin a chain of length one (`bar = uint`), and the parse-side half of the
-; fix that makes them work strips exactly ONE `Alias` wrapper off the control operator's target
-; (`parse_control_operator`, the `ControlOperator::CBOR` arm). One strip is enough at any depth
-; because of an invariant held elsewhere: `register_type_alias` refuses an already-`Alias`-wrapped
-; base, so the alias table never stores a nested alias, so `resolve_alias`/`new_type` never hand
-; back one. Each link in a chain is therefore flattened as it registers — the rule-body registration
-; site does its own single strip for the same reason — and by the time a `.cbor` target resolves,
-; a four-link chain and a one-link chain are the identical `RustType`. Without this row, that
-; invariant is load-bearing for a shape nothing exercises, and a future change that lets a nested
-; alias into the table would only surface at depth.
+; Both of those fixtures pin a chain of length one (`bar = uint`), and DEPTH is not a variable at
+; any of the three seams, because of an invariant held elsewhere: `register_type_alias` refuses an
+; already-`Alias`-wrapped base, so the alias table never stores a nested alias, so
+; `resolve_alias`/`new_type` never hand back more than one level. Each link flattens as it
+; registers — `parsing::strip_alias_for_registration` is the single site that does it, and it
+; carries the link's wire facts across the strip so a depth-N chain answers the emitter's lookup at
+; every position a depth-1 chain does. A `.cbor` target therefore arrives here as one `Alias` level
+; whatever the chain behind it, and a four-link chain and a one-link chain are the identical
+; `RustType`. Without this row, that invariant is load-bearing for a shape nothing exercises, and a
+; future change that lets a nested alias into the table would only surface at depth.
 ;
 ; The rule NAMES are deliberately sorted so the chain links do NOT sort before their users
 ; (`aaa_a` uses `bbb_b` uses `mmm_c` uses `zzz_d`): the rule-graph edge, not name order, is what has

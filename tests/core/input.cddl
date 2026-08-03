@@ -115,6 +115,20 @@ cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint, tagged_foo_bytes]
 
 tagged_foo_bytes = #6.20(bytes .cbor foo)
 
+; --- A NAMED ALIAS reached through a wrapping context, in both wrapping spellings ---
+; The two positions that WRAP a rule rather than referencing it plainly: a tag head, and a `.cbor`
+; payload. Both spell the wrapped type as declared — `TaggedScalarAlias(ScalarAlias)`, and
+; `pub payload: ScalarAlias` — which `docs/docs/output_format.mdx` § "Type spelling at member
+; positions" states as the rule for every member position. The alias here is deliberately PAIRLESS
+; (no `@custom_serialize`/`@custom_deserialize`), because that is the half the corpus can carry: an
+; annotated alias needs hand-written codec fns the emitted crate has no home for, so its two-paths
+; agreement is pinned in-process by `dsl_position_tests`. What this fixture adds is the SPELLING and
+; the round trip through both wrappings — the blessed bytes are what make a re-resolution at either
+; wrapping seam a visible diff rather than an invisible one.
+scalar_alias = uint
+tagged_scalar_alias = #6.7(scalar_alias)
+scalar_alias_holder = [payload: bytes .cbor scalar_alias]
+
 ; --- Every leaf under a `bytes .cbor <X>` overload reads the PAYLOAD's cursor ---
 ; The payload's decode runs against an `inner_de` built over the byte string's contents, so a leaf
 ; that names the outer reader instead consumes the next OUTER item and mis-frames everything after

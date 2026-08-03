@@ -1022,6 +1022,12 @@ pub(super) fn declared_wire_major_on_alias_chain(
 /// no-silent-directive check can tell a CONSUMED declaration from an inert one. Walks the whole
 /// chain (not just to the first hit): an inner alias's declaration is equally consumed by the
 /// dispatch that reads through it.
+///
+/// A declaration reached through an alias that INHERITED it (a re-alias, or a rule-body `.cbor`,
+/// whose registration could not keep the `Alias` node the facts rode on) counts as consuming the
+/// rule that WROTE it — so `AliasInfo::wire_metadata_inherited_from` is marked alongside. Without
+/// that hop the author's own rule reads as inert and is rejected for a declaration a dispatch is
+/// demonstrably reading.
 pub(super) fn mark_wire_major_consumed(
     ty: &ConceptualRustType,
     types: &IntermediateTypes,
@@ -1034,6 +1040,9 @@ pub(super) fn mark_wire_major_consumed(
             && rmd.custom_wire_major.is_some()
         {
             consumed.insert(alias_ident.clone());
+            if let Some(origin) = info.wire_metadata_inherited_from.as_ref() {
+                consumed.insert(origin.clone());
+            }
         }
         cur = inner;
     }

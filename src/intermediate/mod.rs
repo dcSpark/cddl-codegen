@@ -78,6 +78,18 @@ pub struct AliasInfo {
     /// Array/Table registration arms and therefore CANNOT be told apart by `rule_metadata` (both are
     /// `None`). Gates `--no-synthesized-rust-collection-aliases`: rule-declared names always survive.
     pub synthesized_collection: bool,
+    /// The rule this entry's WIRE-CODEC metadata (the `@custom_serialize`/`@custom_deserialize` pair
+    /// and the `@custom_encodings`/`@custom_wire_major` declarations written beside it) was INHERITED
+    /// from, when it was not written on this rule. `None` = the metadata is this rule's own.
+    ///
+    /// A registration seam cannot store the `Alias` node the emitter lifts a pair from (see
+    /// `parsing::strip_alias_for_registration`), so the facts travel instead of the node. The
+    /// provenance is what keeps the no-silent-directive checks honest across that travel: an
+    /// inherited `@custom_wire_major` is not a directive anyone wrote HERE, so it is neither required
+    /// to be consumed here nor counted as unconsumed, and consuming it through this entry counts as
+    /// consuming the declaration at the rule that wrote it. Chains carry the ORIGIN rather than the
+    /// previous link, so one hop always reaches the author.
+    pub wire_metadata_inherited_from: Option<AliasIdent>,
 }
 
 impl AliasInfo {
@@ -89,6 +101,7 @@ impl AliasInfo {
             rule_metadata: None,
             wasm_alias_target: None,
             synthesized_collection: false,
+            wire_metadata_inherited_from: None,
         }
     }
 
@@ -102,7 +115,15 @@ impl AliasInfo {
             rule_metadata: Some(rule_metadata),
             wasm_alias_target: None,
             synthesized_collection: false,
+            wire_metadata_inherited_from: None,
         }
+    }
+
+    /// Record that this entry's wire-codec metadata came from `origin` rather than from the rule's
+    /// own comment. `None` leaves it as the rule's own (the constructors' default).
+    pub fn with_inherited_wire_metadata(mut self, origin: Option<AliasIdent>) -> Self {
+        self.wire_metadata_inherited_from = origin;
+        self
     }
 
     pub fn with_wasm_alias_target(mut self, target: Option<RustIdent>) -> Self {
@@ -3133,7 +3154,18 @@ impl<'a> IntermediateTypes<'a> {
         // no-silent-directive: a `@custom_wire_major` nobody consumed declares a fact about a wire
         // no dispatch reads. Consumed SOMEWHERE is enough — one alias may key an open table's typed
         // row and also appear at an ordinary field.
+        //
+        // Only an AUTHORED declaration is checked. An entry that inherited its wire facts across a
+        // registration strip (`wire_metadata_inherited_from`) carries a copy nobody wrote there, so
+        // "nobody consumes it" says nothing about anyone's spec — the copy exists precisely so a
+        // member declared through the re-alias reaches the right codec, and demanding that every
+        // re-alias of a table key also key a table would refuse specs that are correct today. The
+        // author's own rule is still checked, and a dispatch reading through an inheritor marks it
+        // consumed (`mark_wire_major_consumed`).
         for (alias_ident, info) in self.type_aliases.iter() {
+            if info.wire_metadata_inherited_from.is_some() {
+                continue;
+            }
             if info
                 .rule_metadata
                 .as_ref()
@@ -5608,9 +5640,12 @@ pub use rust_type::*;
 
 /// The refusal for a `.cbor` payload applied to a type whose own encoding chain ALREADY carries a
 /// `CBORBytes` operation — `bytes .cbor (bytes .cbor uint)` and the alias-flattened spelling
-/// (`inner = bytes .cbor uint` + `bytes .cbor inner`), which are the SAME `RustType` by the time the
-/// operator is applied because a `.cbor` target is alias-resolved when the control operator is
-/// parsed (`parse_control_operator`'s `ControlOperator::CBOR` arm).
+/// (`inner = bytes .cbor uint` + `bytes .cbor inner`), which carry the SAME encoding chain by the
+/// time the operator is applied. An alias rule's own `.cbor` lives in its `RustType`'s ENCODING
+/// list, and resolving a reference to that rule copies the type whole (`resolve_alias`), so naming
+/// the rule instead of spelling it inline introduces no boundary: the second `.as_bytes()` lands on
+/// a chain that already has one. This is independent of the conceptual `Alias` node, which the
+/// member/arm seam keeps (see `parse_control_operator`'s `ControlOperator::CBOR` arm).
 ///
 /// Both spellings generated at exit 0 and emitted a crate that cannot build: the serialize walk
 /// names the payload buffer `<var>_inner_se` from the OWNING variable, so every depth in one chain
@@ -5633,7 +5668,8 @@ pub fn nested_cbor_payload_rejection() -> String {
      generated serializer names one payload buffer per owning value, so both depths would share \
      it. The inline spelling (`bytes .cbor (bytes .cbor T)`) and the alias-flattened one \
      (`inner = bytes .cbor T` referenced as `bytes .cbor inner`) are the same encoding chain here, \
-     because a `.cbor` target is alias-resolved. Give the inner payload its own type to nest \
+     because the target rule's own `.cbor` rides on the type a reference to it copies — naming the \
+     rule adds no boundary. Give the inner payload its own type to nest \
      through — `inner = bytes .cbor T ; @newtype`, referenced as `bytes .cbor inner`, emits the \
      same nested wire shape — or nest it inside a collection (`bytes .cbor [* bytes .cbor T]`), \
      which is also supported. Depth-threading the payload buffer so the flat spelling generates is \

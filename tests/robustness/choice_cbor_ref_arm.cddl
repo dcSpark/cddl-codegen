@@ -11,9 +11,10 @@
 ; (`a = [f: bytes .cbor bar]`) both went through that one hole, and one edge covers both.
 ;
 ; The target being an ALIAS (`bar = uint`, a transparent `pub type Bar = u64;`) is deliberately part
-; of the shape: it is the case where the resolved type is NOT a struct, so it exercises exactly the
-; lookups the missing edge used to break. The inline-target form (`bytes .cbor uint`) never needed
-; an edge and has always generated. The sibling spelling puts such a target under a top-level rule
+; of the shape: it is the case where the target's structural type is NOT a struct, so it exercises
+; exactly the lookups the missing edge used to break. The arm keeps the `Alias` node the target
+; resolves to, so the variant is typed `Bar` and an annotated target's codec routes through it.
+; The inline-target form (`bytes .cbor uint`) never needed an edge and has always generated. The sibling spelling puts such a target under a top-level rule
 ; BODY (tests/robustness/cbor_ref_rule_body.cddl); it also generates, but reaches its failure
 ; through a different site and needs the parse-side half of the fix as well as this edge — so it
 ; keeps its own row rather than folding into this one. Chain DEPTH is covered by

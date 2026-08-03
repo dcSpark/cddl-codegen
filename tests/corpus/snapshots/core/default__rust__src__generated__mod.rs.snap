@@ -1664,6 +1664,25 @@ impl From<RejectUintSet> for OrderedSet<u64> {
     }
 }
 
+pub type ScalarAlias = u64;
+
+impl From<TaggedScalarAlias> for ScalarAlias {
+    fn from(wrapper: TaggedScalarAlias) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ScalarAliasHolder {
+    pub payload: ScalarAlias,
+}
+
+impl ScalarAliasHolder {
+    pub fn new(payload: ScalarAlias) -> Self {
+        Self { payload }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Second {
     pub y: String,
@@ -1960,6 +1979,25 @@ impl TaggedFooBytes {
 impl From<Foo> for TaggedFooBytes {
     fn from(inner: Foo) -> Self {
         TaggedFooBytes::new(inner)
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct TaggedScalarAlias(pub(crate) ScalarAlias);
+
+impl TaggedScalarAlias {
+    pub fn get(&self) -> ScalarAlias {
+        self.0
+    }
+
+    pub fn new(inner: ScalarAlias) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<ScalarAlias> for TaggedScalarAlias {
+    fn from(inner: ScalarAlias) -> Self {
+        TaggedScalarAlias::new(inner)
     }
 }
 

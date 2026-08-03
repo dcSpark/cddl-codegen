@@ -408,6 +408,65 @@ fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent)
     ));
 }
 
+/// Strip the `Alias` node a TRANSPARENT-ALIAS REGISTRATION cannot store, carrying the stripped
+/// rule's wire-codec metadata across the strip. Returns the stripped base and the rule the metadata
+/// was inherited from (`None` when nothing was inherited).
+///
+/// The strip is mandatory at a registration seam and nowhere else: `resolve_alias` re-wraps an
+/// entry's `base_type` in `Alias(<this rule>, …)` on the way out, so a stored `Alias` would
+/// double-wrap, and `register_type_alias` refuses one for that reason. The member/arm and WRAPPER
+/// seams keep their node instead, because the node is the ONLY thing
+/// `generate_serialize`/`generate_deserialize`'s `Alias` arms lift an aliased rule's
+/// `@custom_serialize`/`@custom_deserialize` pair from: a stripped node silently re-derives the
+/// built-in wire, and one CDDL type ends up with two wire forms in one crate depending on which name
+/// reached it. Where the node cannot survive, the FACTS travel instead — the registering rule's own
+/// metadata answers the emitter's ident lookup exactly as the stripped rule's would have.
+///
+/// The wire-facts family moves as ONE declaration or not at all. `@custom_encodings` and
+/// `@custom_wire_major` are legal only beside the pair, so a rule that writes its own pair also
+/// writes (or deliberately omits) its own framing facts and inherits nothing — outer wins, whole.
+/// Naming, doc and structural directives never travel: they describe the rule they are written on.
+///
+/// Chains cascade because each link inherits at its OWN registration and the rule graph registers a
+/// rule after everything it references (`dep_graph::topological_rule_order` pushes in DFS post-order,
+/// so source order is irrelevant), which is what
+/// `dsl_position_tests::transparent_realias_and_member_agree_on_the_aliass_custom_pair` pins with a
+/// deliberately adversarial declaration order.
+fn strip_alias_for_registration(
+    types: &IntermediateTypes,
+    mut base_type: RustType,
+    rule_metadata: &mut RuleMetadata,
+) -> (RustType, Option<AliasIdent>) {
+    let ConceptualRustType::Alias(stripped_ident, inner) = base_type.conceptual_type else {
+        return (base_type, None);
+    };
+    base_type.conceptual_type = *inner;
+    // Outer wins: a rule with its own pair describes its own wire completely.
+    if rule_metadata.custom_serialize.is_some() || rule_metadata.custom_deserialize.is_some() {
+        return (base_type, None);
+    }
+    let Some(source) = types.type_aliases().get(&stripped_ident) else {
+        return (base_type, None);
+    };
+    let Some(source_metadata) = source.rule_metadata.as_ref() else {
+        return (base_type, None);
+    };
+    if source_metadata.custom_serialize.is_none() && source_metadata.custom_deserialize.is_none() {
+        return (base_type, None);
+    }
+    rule_metadata.custom_serialize = source_metadata.custom_serialize.clone();
+    rule_metadata.custom_deserialize = source_metadata.custom_deserialize.clone();
+    rule_metadata.custom_encodings = source_metadata.custom_encodings.clone();
+    rule_metadata.custom_wire_major = source_metadata.custom_wire_major;
+    // The ORIGIN, not the previous link: the author's rule is what a no-silent-directive check has
+    // to be able to reach in one hop.
+    let origin = source
+        .wire_metadata_inherited_from
+        .clone()
+        .unwrap_or(stripped_ident);
+    (base_type, Some(origin))
+}
+
 /// The `@custom_serialize` / `@custom_deserialize` directive names present in `metadata`, in a
 /// stable order. Every placement rejection for the pair reports it one directive at a time, so the
 /// message names exactly the spelling the author wrote (and both fire when both are present).
@@ -1700,39 +1759,41 @@ fn parse_control_operator(
             token::ControlOperator::DEFAULT => {
                 ControlOperator::Default(type2_to_fixed_value(&operator.type2))
             }
-            // The `.cbor` TARGET is alias-resolved here, so `bytes .cbor bar` (with `bar = uint`)
-            // lowers exactly as `bytes .cbor uint` does. Both consumers of this type need that.
-            // A rule BODY registers it as a transparent alias, and `register_type_alias`'s first
-            // assertion forbids an already-`Alias`-wrapped base — the shape would abort there.
-            // A MEMBER or type-choice arm keeps it as the field/variant type, where an alias ident
-            // naming no registered struct panics every lookup that assumes one. A CDDL alias rule
-            // over a primitive generates a TRANSPARENT `pub type`, so the alias and its target are
-            // the SAME Rust type — the spelling in the emitted source is one thing resolving costs.
-            // The other is measured and NOT free: the `Alias` node is what
-            // `generate_serialize`/`generate_deserialize` lift an aliased rule's
-            // `@custom_serialize`/`@custom_deserialize` pair from, so a `.cbor` payload over an
-            // annotated alias silently keeps the generated wire form. Both are the drop class
-            // `tests/TESTING_ROADMAP.md` records as "A directive honored at a rule's own position can
-            // be silently dropped at a REFERENCING context of that rule"; the tag-head sibling of this
-            // strip was removed for exactly that reason — see the rule-body registration site's alias
-            // branch (`parse_type`). Aliases are the only case that needs
-            // this; a target naming a real struct/collection is already a `Rust` ident and passes
-            // through untouched.
+            // The `.cbor` TARGET is handed on WHOLE — an `Alias` node included. This seam serves
+            // every position the operator can be written at, and the two of them want opposite
+            // things from a strip, so neither is done here:
             //
-            // ONE strip is enough at ANY chain depth (`a = b`, `b = c`, `c = uint`), and that is an
-            // invariant rather than a coincidence of the shapes tested: `register_type_alias`
-            // refuses an already-`Alias`-wrapped base, so the alias table never stores a nested
-            // alias and `resolve_alias`/`new_type` can never hand one back. Each link flattens as
-            // it registers — the rule-body registration site strips a single level for the same
-            // reason — so a four-link chain and a one-link chain resolve to the identical
-            // `RustType` here. Pinned by tests/robustness/cbor_ref_alias_chain.cddl.
-            token::ControlOperator::CBOR => {
-                let mut target = rust_type_from_type2(types, parent_visitor, &operator.type2, cli);
-                if let ConceptualRustType::Alias(_, inner) = target.conceptual_type {
-                    target.conceptual_type = *inner;
-                }
-                ControlOperator::CBOR(target)
-            }
+            // * a MEMBER or type-choice arm keeps the node as the field/variant type. The node is
+            //   the ONLY thing `generate_serialize`/`generate_deserialize`'s `Alias` arms lift an
+            //   aliased rule's `@custom_serialize`/`@custom_deserialize` pair (and its
+            //   `@custom_encodings`) from, so stripping it silently re-derives the built-in wire
+            //   while a plain member of the same alias routes through the pair — one CDDL type, two
+            //   wire forms in one crate. It also decides the field's SPELLING: the `.cbor` here is
+            //   the MEMBER expression's, so the alias still denotes the value read inside the byte
+            //   string and `output_format.mdx` § "Type spelling at member positions" says the field
+            //   is typed by the alias.
+            // * a rule BODY registering a transparent alias must strip, because
+            //   `register_type_alias` refuses an already-`Alias`-wrapped base — and it does so at
+            //   its own seam, through `strip_alias_for_registration`, which carries the wire facts
+            //   across the strip so the payload's codec survives the flattening. The rule-body
+            //   WRAPPER spelling (`@newtype`, or a tag head) keeps the node, exactly as the
+            //   member/arm positions do.
+            //
+            // Aliases are the only shape this distinction is about; a target naming a real
+            // struct/collection is already a `Rust` ident and was never touched.
+            //
+            // Chain DEPTH is not a variable at either seam (`a = b`, `b = c`, `c = uint`): the alias
+            // table never stores a nested alias — `register_type_alias` refuses one — so
+            // `resolve_alias`/`new_type` can never hand back more than a single level, and each link
+            // flattens (facts and all) as it registers. A four-link chain and a one-link chain reach
+            // this seam as the identical `RustType`. Pinned by
+            // tests/robustness/cbor_ref_alias_chain.cddl.
+            token::ControlOperator::CBOR => ControlOperator::CBOR(rust_type_from_type2(
+                types,
+                parent_visitor,
+                &operator.type2,
+                cli,
+            )),
             token::ControlOperator::EQ => ControlOperator::Range((
                 Some(type2_to_number_literal(&operator.type2)),
                 Some(type2_to_number_literal(&operator.type2)),
@@ -2675,12 +2736,26 @@ fn parse_type(
                                             cli,
                                         );
                                     } else {
+                                        // The TRANSPARENT spelling registers an alias, which cannot
+                                        // hold the `Alias` node the payload's target may still be
+                                        // (`register_type_alias` refuses one) — so the strip happens
+                                        // here, carrying the target rule's wire facts with it. The
+                                        // WRAPPER branch above keeps the node, exactly as a member or
+                                        // arm does.
+                                        let mut alias_metadata = rule_metadata.clone();
+                                        let (cbor_bytes_type, inherited_from) =
+                                            strip_alias_for_registration(
+                                                types,
+                                                cbor_bytes_type,
+                                                &mut alias_metadata,
+                                            );
                                         types.register_type_alias(
                                             type_name.clone(),
                                             AliasInfo::new_from_metadata(
                                                 cbor_bytes_type,
-                                                rule_metadata,
-                                            ),
+                                                alias_metadata,
+                                            )
+                                            .with_inherited_wire_metadata(inherited_from),
                                         );
                                     }
                                 }
@@ -2722,7 +2797,7 @@ fn parse_type(
                         }
                     }
                     None => {
-                        let mut concrete_type = types.new_type(&cddl_ident, cli).tag_if(outer_tag);
+                        let concrete_type = types.new_type(&cddl_ident, cli).tag_if(outer_tag);
                         // Remember the aliased ident so the WASM alias can point at its wrapper struct
                         // if it has one (resolved at emission via `has_wasm_wrapper`, so forward
                         // references work) — otherwise `for_wasm_member` on the stripped bare
@@ -2870,19 +2945,26 @@ fn parse_type(
                                             // `@custom_encodings` declaration) into the emitted codec, so
                                             // a stripped wrapper silently re-derives the built-in wire and
                                             // `x = #6.n(annotated_alias)` disagrees with a plain member of
-                                            // the same alias about one type's wire form.
-                                            if let ConceptualRustType::Alias(_, ty) =
-                                                concrete_type.conceptual_type
-                                            {
-                                                concrete_type.conceptual_type = *ty;
-                                            }
+                                            // the same alias about one type's wire form. Where the node
+                                            // cannot be kept, the FACTS travel instead — that is what
+                                            // makes `re = annotated_alias` agree with the alias it
+                                            // re-names rather than silently re-deriving the built-in
+                                            // wire for every member declared through it.
+                                            let mut alias_metadata = rule_metadata.clone();
+                                            let (concrete_type, inherited_from) =
+                                                strip_alias_for_registration(
+                                                    types,
+                                                    concrete_type,
+                                                    &mut alias_metadata,
+                                                );
                                             types.register_type_alias(
                                                 type_name.clone(),
                                                 AliasInfo::new_from_metadata(
                                                     concrete_type,
-                                                    rule_metadata,
+                                                    alias_metadata,
                                                 )
-                                                .with_wasm_alias_target(wasm_alias_target),
+                                                .with_wasm_alias_target(wasm_alias_target)
+                                                .with_inherited_wire_metadata(inherited_from),
                                             );
                                         }
                                     }

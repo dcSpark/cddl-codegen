@@ -61,6 +61,8 @@ use crate::generated::ParenSize as _;
 #[allow(unused_imports)]
 use crate::generated::PreserveUintMap as _;
 #[allow(unused_imports)]
+use crate::generated::ScalarAlias as _;
+#[allow(unused_imports)]
 use crate::generated::StandaloneTable as _;
 #[allow(unused_imports)]
 use crate::generated::StandaloneText as _;
@@ -222,6 +224,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::RejectSetHolder>();
     _assert_serialize::<crate::generated::RejectUintSet>();
     _assert_deserialize::<crate::generated::RejectUintSet>();
+    _assert_serialize::<crate::generated::ScalarAliasHolder>();
+    _assert_deserialize::<crate::generated::ScalarAliasHolder>();
     _assert_serialize::<crate::generated::SignBounds>();
     _assert_deserialize::<crate::generated::SignBounds>();
     _assert_serialize::<crate::generated::SignedInts>();
@@ -238,6 +242,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::TaggedFloatRange>();
     _assert_serialize::<crate::generated::TaggedFooBytes>();
     _assert_deserialize::<crate::generated::TaggedFooBytes>();
+    _assert_serialize::<crate::generated::TaggedScalarAlias>();
+    _assert_deserialize::<crate::generated::TaggedScalarAlias>();
     _assert_serialize::<crate::generated::TaggedText>();
     _assert_deserialize::<crate::generated::TaggedText>();
     _assert_serialize::<crate::generated::TaggedTypeChoice>();
