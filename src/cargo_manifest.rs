@@ -17,7 +17,11 @@
 //!   - `["dependencies", <name>]` merges FIELD-LEVEL ([`merge_dep_spec`]), so a user's
 //!     `optional`/`default-features`/extra features and a compatible version pin survive a regen
 //!     while the tool still owns the version floor, its required features, and any field it sets
-//!     (e.g. `path`). See [`merge_dep_spec`] for the exact merge contract. A merged entry is the one
+//!     (e.g. `path`). The one axis a merge can be told to OWN outright is the dep's SOURCE: a spec
+//!     carrying `git` asserts it implicitly, and a registry-version spec asserts it by carrying
+//!     `assert_source` (a crates.io version has no cargo key that could express the intent), which
+//!     clears a stale `git`/`rev`/`path`/… off an already-written entry instead of flooring against
+//!     it. See [`merge_dep_spec`] for the exact merge contract. A merged entry is the one
 //!     place the byte-for-byte claim above is qualified, in two bounded ways: its inline table's
 //!     whitespace is re-normalized ([`normalize_inline_decor`] — the merge moves fields between
 //!     positions, so their old spacing is stale by construction), and a dependency the tool ADDS to
@@ -53,13 +57,14 @@
 //! **The unconditional ops come from an append-only change LOG**, one per manifest
 //! (`static/manifest_changes/{rust,wasm,json_gen,static_runtime}.toml`) — the single source of truth. Each log is
 //! an ordered list of entries, each an `id` + dotted `path` + exactly one of `set` / `seed` /
-//! `remove`. [`fold_log`] folds them per-path last-write-wins (final `set` → [`ManifestOp::Set`],
+//! `remove`, plus the optional `assert_source = true` modifier (`set` on a `dependencies.*` path
+//! only). [`fold_log`] folds them per-path last-write-wins (final `set` → [`ManifestOp::Set`],
 //! final `seed` → [`ManifestOp::SeedOnce`], final `remove` → [`ManifestOp::Remove`], i.e. a dropped
 //! key is auto-tombstoned) and emits the folded ops in first-mention order of each path. Editing is
 //! append-only: to change a key you append another entry, to drop one you append a `remove` — so the
 //! log records the full history and a key the tool ever managed can never be silently unmentioned
-//! (the property the old separate ledger enforced is now structural). Contiguous ids, and one-of
-//! per entry, are hard errors naming the log file. The `static/Cargo_{rust,wasm,json_gen,static_runtime}.toml`
+//! (the property the old separate ledger enforced is now structural). Contiguous ids, one-of per
+//! entry, and a misplaced `assert_source` are hard errors naming the log file. The `static/Cargo_{rust,wasm,json_gen,static_runtime}.toml`
 //! files are *derived* from the log ([`render_derived_template`]) as a human-readable snapshot of
 //! the current live keys — generated, never read at runtime, kept in sync by a drift gate.
 //!
@@ -90,7 +95,16 @@ pub enum ManifestOp {
     /// Tool-owned key: written every run, overwriting whatever value is there — EXCEPT a
     /// `["dependencies", <name>]` path, which merges field-level into an existing entry
     /// ([`merge_dep_spec`]) so a user's dep-spec shape survives regeneration.
-    Set(Item),
+    Set {
+        value: Item,
+        /// Whether this spec OWNS the dependency's SOURCE axis — `["dependencies", <name>]` paths
+        /// only. `true` makes the assertion a git-carrying spec already makes implicitly: source-axis
+        /// keys the spec does not itself name (`git`, `rev`, `branch`, `tag`, `path`, `registry`) are
+        /// cleared off the existing entry. A crates.io version has no cargo key that could carry that
+        /// intent, so the changeset entry says it out-of-band (`assert_source = true`). See
+        /// [`merge_dep_spec`].
+        assert_source: bool,
+    },
     /// Written only if the key is absent (existence check only — never reads the existing value).
     SeedOnce(Item),
     /// Tombstone: delete the key if present, then garbage-collect any now-empty parent tables.
@@ -133,13 +147,18 @@ pub fn apply(
     let dep_table_preexisted = doc.as_table().get("dependencies").is_some();
     for (path, op) in ops {
         match op {
-            ManifestOp::Set(item) => {
+            ManifestOp::Set {
+                value: item,
+                assert_source,
+            } => {
                 // Two Set paths merge into what is already there rather than replacing it: a
                 // `[dependencies].<name>` entry (field-level, keeping the user's dep-spec shape) and
                 // `features.default` (union, keeping the user's default-feature list). Every other
                 // Set path hard-replaces.
                 let value = match item_at(doc.as_table(), path) {
-                    Some(existing) if is_dependency_entry(path) => merge_dep_spec(existing, item),
+                    Some(existing) if is_dependency_entry(path) => {
+                        merge_dep_spec(existing, item, *assert_source)
+                    }
                     Some(existing) if is_default_feature_list(path) => {
                         merge_default_features(existing, item)
                     }
@@ -535,16 +554,26 @@ fn parse_padded_version(s: &str) -> Option<semver::Version> {
 ///   not already present appended. A tool spec with no features leaves the user's untouched.
 /// * **every other field the tool sets** (e.g. `path`) overwrites field-wise; **every user-only
 ///   field** (`optional`, `default-features`, a `version` beside our `path`, anything else) survives.
-/// * **source assertion** — a tool spec carrying `git` asserts the dep's SOURCE, not a version
-///   floor: source-axis keys the tool spec does not itself re-specify (`version`, `rev`, `branch`,
-///   `tag`, `path`, `registry`) are dropped from the existing entry. A stale version requirement
-///   would constrain against the wrong source (`^2.4.0` beside a 3.x git checkout fails
-///   resolution), and a leftover ref selector forms pairs cargo rejects outright (`branch` +
-///   `rev`). Version-only tool specs keep floor semantics — a user's own `git`/`path` source
-///   survives them, per the field-survival bullet above.
-/// * **shape** — if the merge leaves only a `version` field and the user's entry was a plain string,
-///   emit a plain string (no spurious table-ification); otherwise a table on the user's existing shape.
-fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
+/// * **source assertion** — a tool spec that OWNS the dep's source axis clears the source-axis keys
+///   it does not itself re-specify off the existing entry, instead of merging onto them. Two specs
+///   own it, and each clears the keys it cannot have meant to keep:
+///   - a spec carrying `git` asserts it IMPLICITLY (nothing else a git spec could mean): `version`,
+///     `rev`, `branch`, `tag`, `path`, `registry` go. A stale version requirement would constrain
+///     against the wrong source (`^2.4.0` beside a 3.x git checkout fails resolution), and a
+///     leftover ref selector forms pairs cargo rejects outright (`branch` + `rev`).
+///   - a spec whose op carries `assert_source` asserts it EXPLICITLY: `git`, `rev`, `branch`, `tag`,
+///     `path`, `registry` go, and `version` keeps its floor semantics below. A crates.io version has
+///     no cargo key that could carry the intent — without the out-of-band assertion, a version-only
+///     spec is a floor and an already-written `{ git, rev }` entry would survive it forever.
+///
+///   Every OTHER version-only tool spec keeps pure floor semantics: a user's own `git`/`path` source
+///   survives it, per the field-survival bullet above.
+/// * **shape** — if the merge leaves only a `version` field, emit a plain string (no spurious
+///   table-ification) when the user's entry was a plain string OR the source was explicitly
+///   asserted; otherwise a table on the user's existing shape. The asserted case is what makes a
+///   re-sourced entry byte-identical to a freshly generated one rather than a `{ version = … }`
+///   table nothing else would ever write.
+fn merge_dep_spec(existing: &Item, tool: &Item, assert_source: bool) -> Item {
     let user_was_string = existing.as_str().is_some();
 
     // Working base: the user's own table-like entry, or a fresh inline table seeded with the user's
@@ -575,13 +604,20 @@ fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
         .as_table_like_mut()
         .expect("merge base is always a table-like item");
 
-    // Source assertion (see the doc contract): a git-carrying tool spec owns the source axis, so
-    // stale source-axis keys it does not re-specify are dropped before the field-wise overwrite.
-    if let Some(tool_table) = tool.as_table_like()
-        && tool_table.contains_key("git")
-    {
-        for key in ["version", "rev", "branch", "tag", "path", "registry"] {
-            if !tool_table.contains_key(key) {
+    // Source assertion (see the doc contract): a spec that owns the source axis drops the stale
+    // source-axis keys it does not re-specify, before the field-wise overwrite. The implicit
+    // (git-carrying) form owns `version` too; the explicit form leaves it to the floor rule below,
+    // since a registry version IS the thing being asserted.
+    let tool_table = tool.as_table_like();
+    let implicit = tool_table.is_some_and(|t| t.contains_key("git"));
+    if implicit || assert_source {
+        let owned: &[&str] = if implicit {
+            &["version", "rev", "branch", "tag", "path", "registry"]
+        } else {
+            &["git", "rev", "branch", "tag", "path", "registry"]
+        };
+        for key in owned {
+            if !tool_table.is_some_and(|t| t.contains_key(key)) {
                 table.remove(key);
             }
         }
@@ -625,8 +661,10 @@ fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
 
     normalize_inline_decor(&mut base);
 
-    // shape: a plain-string user entry stays a plain string iff the merge left only `version`.
-    if user_was_string {
+    // shape: a plain-string user entry stays a plain string iff the merge left only `version` — and
+    // an EXPLICITLY asserted entry collapses the same way whatever shape it had, so a re-sourced
+    // manifest converges on the freshly-generated bytes.
+    if user_was_string || assert_source {
         let table = base.as_table_like().unwrap();
         if table.len() == 1
             && let Some(v) = table.get("version").and_then(Item::as_str)
@@ -727,7 +765,10 @@ fn key_path(segments: &[&str]) -> KeyPath {
 fn dep(name: &str, spec: &str, enabled: bool) -> (KeyPath, ManifestOp) {
     let path = key_path(&["dependencies", name]);
     let op = if enabled {
-        ManifestOp::Set(val(spec))
+        ManifestOp::Set {
+            value: val(spec),
+            assert_source: false,
+        }
     } else {
         ManifestOp::Remove
     };
@@ -739,14 +780,18 @@ fn dep(name: &str, spec: &str, enabled: bool) -> (KeyPath, ManifestOp) {
 fn version_stamp() -> (KeyPath, ManifestOp) {
     (
         key_path(&["package", "metadata", "cddl-codegen", "generated-with"]),
-        ManifestOp::Set(val(&format!("\"{}\"", env!("CARGO_PKG_VERSION")))),
+        ManifestOp::Set {
+            value: val(&format!("\"{}\"", env!("CARGO_PKG_VERSION"))),
+            assert_source: false,
+        },
     )
 }
 
 /// The folded outcome of all log entries for one key path (last write wins). Held internally while
 /// folding so the last `set`/`seed`/`remove` seen for a path is the one that becomes its op.
 enum FoldedAction {
-    Set(Item),
+    /// The bool is the entry's `assert_source` modifier (see [`ManifestOp::Set`]).
+    Set(Item, bool),
     Seed(Item),
     Remove,
 }
@@ -756,6 +801,10 @@ enum FoldedAction {
 /// `set = "<snippet>"` / `seed = "<snippet>"` / `remove = true`. Entries fold per-path last-write-wins;
 /// the emitted ops are in first-mention order of each path (deterministic). `file_name` names the log
 /// in any error. A gap in ids, a missing/duplicated action, or an unparseable snippet is a hard error.
+///
+/// One OPTIONAL modifier: `assert_source = true`, valid only beside `set` on a `dependencies.*` path,
+/// declaring the spec the owner of the dep's source axis ([`merge_dep_spec`]). Either misuse is a hard
+/// error naming the log, in the same style as the contiguous-id and one-of validation.
 fn fold_log(raw: &str, file_name: &str) -> Result<Vec<(KeyPath, ManifestOp)>, ManifestError> {
     let err = |message: String| ManifestError {
         file: file_name.to_owned(),
@@ -801,12 +850,38 @@ fn fold_log(raw: &str, file_name: &str) -> Result<Vec<(KeyPath, ManifestOp)>, Ma
                 ))
             })
         };
+        // The one optional modifier. Rejected outside its two preconditions rather than ignored: it
+        // changes what a merge does to an ALREADY-WRITTEN manifest, so a silently-inert spelling
+        // would strand consumers on the old source with nothing to see.
+        let assert_source = if entry.contains_key("assert_source") {
+            if entry.get("assert_source").and_then(Item::as_bool) != Some(true) {
+                return Err(err(format!(
+                    "change id {id} `assert_source` must be `true`"
+                )));
+            }
+            if !entry.contains_key("set") {
+                return Err(err(format!(
+                    "change id {id} `assert_source` is valid only beside `set` (it asserts what a \
+                     dependency's source is, which `seed`/`remove` do not write)"
+                )));
+            }
+            if !is_dependency_entry(&path) {
+                return Err(err(format!(
+                    "change id {id} `assert_source` is valid only on a `dependencies.<name>` path, \
+                     not `{path_str}`"
+                )));
+            }
+            true
+        } else {
+            false
+        };
+
         let action = match (
             entry.contains_key("set"),
             entry.contains_key("seed"),
             entry.contains_key("remove"),
         ) {
-            (true, false, false) => FoldedAction::Set(snippet_val("set")?),
+            (true, false, false) => FoldedAction::Set(snippet_val("set")?, assert_source),
             (false, true, false) => FoldedAction::Seed(snippet_val("seed")?),
             (false, false, true) => {
                 if entry.get("remove").and_then(Item::as_bool) != Some(true) {
@@ -830,7 +905,10 @@ fn fold_log(raw: &str, file_name: &str) -> Result<Vec<(KeyPath, ManifestOp)>, Ma
         .into_iter()
         .map(|(path, action)| {
             let op = match action {
-                FoldedAction::Set(item) => ManifestOp::Set(item),
+                FoldedAction::Set(item, assert_source) => ManifestOp::Set {
+                    value: item,
+                    assert_source,
+                },
                 FoldedAction::Seed(item) => ManifestOp::SeedOnce(item),
                 FoldedAction::Remove => ManifestOp::Remove,
             };
@@ -1064,7 +1142,10 @@ pub fn ops_for_rust(
         } else {
             "[]"
         };
-        ManifestOp::Set(val(list))
+        ManifestOp::Set {
+            value: val(list),
+            assert_source: false,
+        }
     } else {
         ManifestOp::Remove
     };
@@ -1104,10 +1185,13 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     // our feature is appended to whatever `../rust` path dep the wasm.toml log already declared.
     ops.push((
         key_path(&["dependencies", cli.lib_name.as_str()]),
-        ManifestOp::Set(val(&format!(
-            "{{ path = \"../rust\", features = [\"{}\"] }}",
-            cli.rust_wasm_feature
-        ))),
+        ManifestOp::Set {
+            value: val(&format!(
+                "{{ path = \"../rust\", features = [\"{}\"] }}",
+                cli.rust_wasm_feature
+            )),
+            assert_source: false,
+        },
     ));
 
     // `--wasm-dep=<package>=<path>`: the manifest half of the cross-crate references this crate's
@@ -1202,7 +1286,10 @@ fn manifest_dep_ops(
             }
             (
                 key_path(&["dependencies", name.as_str()]),
-                ManifestOp::Set(Item::Value(Value::InlineTable(spec))),
+                ManifestOp::Set {
+                    value: Item::Value(Value::InlineTable(spec)),
+                    assert_source: false,
+                },
             )
         })
         .collect()
@@ -1229,7 +1316,10 @@ fn std_feature_op(entries: Vec<String>) -> (KeyPath, ManifestOp) {
     }
     (
         key_path(&["features", "std"]),
-        ManifestOp::Set(Item::Value(Value::Array(list))),
+        ManifestOp::Set {
+            value: Item::Value(Value::Array(list)),
+            assert_source: false,
+        },
     )
 }
 
@@ -1361,7 +1451,13 @@ mod tests {
     use super::*;
 
     fn set(path: &[&str], v: &str) -> (KeyPath, ManifestOp) {
-        (key_path(path), ManifestOp::Set(val(v)))
+        (
+            key_path(path),
+            ManifestOp::Set {
+                value: val(v),
+                assert_source: false,
+            },
+        )
     }
     fn seed(path: &[&str], v: &str) -> (KeyPath, ManifestOp) {
         (key_path(path), ManifestOp::SeedOnce(val(v)))
@@ -1708,6 +1804,139 @@ linked-hash-map = \"0.5.6\"
         assert!(!line.contains("3.2.0"), "stale version survived: {line}");
     }
 
+    /// The fork pin the generated manifests carried while cbor_event's float surface was
+    /// unpublished — the concrete entry every already-written consumer manifest holds.
+    const FORK_PIN: &str = "{ git = \"https://github.com/dcSpark/cbor_event\", rev = \"28514916e97240e1d2b01ba8f804d45c221fbdcd\" }";
+
+    /// [`merged_dep`] for a spec that asserts the dependency's SOURCE (`assert_source = true`).
+    fn asserted_dep(existing: &str, name: &str, tool_spec: &str) -> String {
+        let ops = vec![(
+            key_path(&["dependencies", name]),
+            ManifestOp::Set {
+                value: val(tool_spec),
+                assert_source: true,
+            },
+        )];
+        let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+        out.parse::<DocumentMut>().unwrap(); // stays valid TOML
+        out.lines()
+            .find(|l| l.trim_start().starts_with(&format!("{name} = ")))
+            .unwrap_or_else(|| panic!("dep `{name}` missing from merge output:\n{out}"))
+            .to_owned()
+    }
+
+    #[test]
+    fn merge_unasserted_version_floors_and_keeps_a_git_source() {
+        // The contract an explicit assertion exists to opt OUT of, pinned so the opt-out stays
+        // meaningful: a plain version `set` is a FLOOR, so a source the user (or an older tool
+        // version) put there outlives it. This is exactly why the crates.io flip could not be a
+        // bare `set` — every already-written manifest would have stayed on the fork silently.
+        let line = merged_dep(
+            &format!("[dependencies]\ncbor_event = {FORK_PIN}\n"),
+            "cbor_event",
+            "\"3.3.0\"",
+        );
+        assert!(
+            line.contains("git = ") && line.contains("rev = \"28514916"),
+            "an unasserted version set must not touch the source axis: {line}"
+        );
+    }
+
+    #[test]
+    fn merge_asserted_source_replaces_a_git_pin_with_the_registry_version() {
+        // THE trap, asserted away: the tool spec owns the source, so the fork's `git`/`rev` are
+        // cleared and the entry converges on exactly what a fresh generation writes.
+        let line = asserted_dep(
+            &format!("[dependencies]\ncbor_event = {FORK_PIN}\n"),
+            "cbor_event",
+            "\"3.3.0\"",
+        );
+        assert_eq!(
+            line.trim(),
+            "cbor_event = \"3.3.0\"",
+            "an asserted registry version must replace the git pin outright"
+        );
+    }
+
+    #[test]
+    fn merge_asserted_source_preserves_user_only_fields() {
+        // The assertion owns the SOURCE axis only — a user's `optional` survives it, and the entry
+        // stays a table because the merge left more than `version`.
+        let line = asserted_dep(
+            "[dependencies]\ncbor_event = { git = \"https://github.com/dcSpark/cbor_event\", rev = \"28514916e97240e1d2b01ba8f804d45c221fbdcd\", optional = true }\n",
+            "cbor_event",
+            "\"3.3.0\"",
+        );
+        assert!(
+            line.contains("optional = true"),
+            "user-only field dropped: {line}"
+        );
+        assert!(
+            line.contains("version = \"3.3.0\""),
+            "asserted version not written: {line}"
+        );
+        assert!(
+            !line.contains("git") && !line.contains("rev"),
+            "source-axis keys survived the assertion: {line}"
+        );
+    }
+
+    #[test]
+    fn merge_asserted_source_bumps_a_version_the_tool_outgrew() {
+        // Version keeps FLOOR semantics under the assertion: 3.2.0 does not satisfy ^3.3.0, so the
+        // tool's wins — beside the now-cleared source.
+        let line = asserted_dep(
+            "[dependencies]\ncbor_event = { git = \"https://github.com/dcSpark/cbor_event\", rev = \"28514916e97240e1d2b01ba8f804d45c221fbdcd\", version = \"3.2.0\" }\n",
+            "cbor_event",
+            "\"3.3.0\"",
+        );
+        assert_eq!(line.trim(), "cbor_event = \"3.3.0\"");
+    }
+
+    #[test]
+    fn merge_asserted_source_keeps_a_satisfying_user_pin() {
+        // …and the floor is still only a floor: a user who pinned ahead of us keeps their pin, even
+        // as the assertion re-sources the entry around it.
+        let line = asserted_dep(
+            "[dependencies]\ncbor_event = { git = \"https://github.com/dcSpark/cbor_event\", rev = \"28514916e97240e1d2b01ba8f804d45c221fbdcd\", version = \"3.4.0\" }\n",
+            "cbor_event",
+            "\"3.3.0\"",
+        );
+        assert_eq!(line.trim(), "cbor_event = \"3.4.0\"");
+    }
+
+    #[test]
+    fn merge_asserted_source_converges_in_one_apply_and_stays() {
+        // The property the shape collapse exists for: a re-sourced entry is byte-identical to the
+        // freshly-generated one, so the SECOND apply has nothing left to do.
+        let once = apply(
+            &[(
+                key_path(&["dependencies", "cbor_event"]),
+                ManifestOp::Set {
+                    value: val("\"3.3.0\""),
+                    assert_source: true,
+                },
+            )],
+            Some(&format!("[dependencies]\ncbor_event = {FORK_PIN}\n")),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert_eq!(once, "[dependencies]\ncbor_event = \"3.3.0\"\n");
+        let twice = apply(
+            &[(
+                key_path(&["dependencies", "cbor_event"]),
+                ManifestOp::Set {
+                    value: val("\"3.3.0\""),
+                    assert_source: true,
+                },
+            )],
+            Some(&once),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert_eq!(once, twice, "the asserted merge must be a fixed point");
+    }
+
     #[test]
     fn merge_unparseable_user_version_takes_tool() {
         // a wildcard the user wrote can't be parsed as a concrete version → tool's floor wins.
@@ -1875,7 +2104,7 @@ linked-hash-map = \"0.5.6\"
         let op = op_at(&ops, &["dependencies", name])
             .unwrap_or_else(|| panic!("`{name}` is not in the rust changeset"));
         match op {
-            ManifestOp::Set(item) => item.to_string().trim().to_owned(),
+            ManifestOp::Set { value, .. } => value.to_string().trim().to_owned(),
             other => panic!("`{name}` is {other:?}, expected a Set"),
         }
     }
@@ -2568,7 +2797,7 @@ std = [\"fraction/std\", \"gone/std\", \"gone?/std\", \"extras\"]
         ));
         assert!(matches!(
             op_at(&ops, &["package", "name"]),
-            Some(ManifestOp::Set(_))
+            Some(ManifestOp::Set { .. })
         ));
     }
 
@@ -2612,7 +2841,7 @@ std = [\"fraction/std\", \"gone/std\", \"gone?/std\", \"extras\"]
         let ops = fold_log(&raw, "log.toml").unwrap();
         assert!(matches!(
             op_at(&ops, &["dependencies", "dep"]),
-            Some(ManifestOp::Set(_))
+            Some(ManifestOp::Set { .. })
         ));
     }
 
@@ -2680,6 +2909,67 @@ set = 'not = valid = toml'
         assert!(
             err.to_string().contains("not a valid TOML value"),
             "a bad value snippet must be rejected: {err}"
+        );
+    }
+
+    /// The whole chain the crates.io flip rides on: a log whose LAST entry for the path re-sources
+    /// the dep, folded and applied to a manifest already carrying the superseded git pin.
+    #[test]
+    fn fold_assert_source_re_sources_an_already_written_manifest() {
+        let raw = log(&[
+            ("dependencies.cbor_event", &format!("set = '{FORK_PIN}'")),
+            (
+                "dependencies.cbor_event",
+                "set = '\"3.3.0\"'\nassert_source = true",
+            ),
+        ]);
+        let ops = fold_log(&raw, "log.toml").unwrap();
+        let out = apply(
+            &ops,
+            Some(&format!("[dependencies]\ncbor_event = {FORK_PIN}\n")),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert!(
+            out.contains("cbor_event = \"3.3.0\"") && !out.contains("git ="),
+            "the asserted entry must migrate the written manifest off the fork:\n{out}"
+        );
+    }
+
+    #[test]
+    fn fold_assert_source_beside_seed_is_an_error() {
+        // The modifier states what a dep's source IS, which only a `set` writes. Beside `seed` (or
+        // `remove`) it would read as meaningful and do nothing.
+        let raw = log(&[("dependencies.dep", "seed = '\"1.0\"'\nassert_source = true")]);
+        let err = fold_log(&raw, "manifest_changes/rust.toml").unwrap_err();
+        assert_eq!(err.file, "manifest_changes/rust.toml");
+        assert!(
+            err.to_string().contains("assert_source") && err.to_string().contains("only beside"),
+            "assert_source beside seed must be rejected, naming the log: {err}"
+        );
+    }
+
+    #[test]
+    fn fold_assert_source_off_a_dependency_path_is_an_error() {
+        // Only a `dependencies.<name>` value HAS a source axis; anywhere else the modifier is inert.
+        let raw = log(&[("package.name", "set = '\"my-lib\"'\nassert_source = true")]);
+        let err = fold_log(&raw, "manifest_changes/rust.toml").unwrap_err();
+        assert!(
+            err.to_string().contains("assert_source")
+                && err.to_string().contains("dependencies.<name>"),
+            "assert_source off a dependency path must be rejected: {err}"
+        );
+    }
+
+    #[test]
+    fn fold_assert_source_must_be_literally_true() {
+        // Mirrors `remove`'s validation: a modifier spelled with any other value is a mistake, not a
+        // request to disable the assertion (the absent key already means that).
+        let raw = log(&[("dependencies.dep", "set = '\"1.0\"'\nassert_source = false")]);
+        let err = fold_log(&raw, "log.toml").unwrap_err();
+        assert!(
+            err.to_string().contains("`assert_source` must be `true`"),
+            "a non-true assert_source must be rejected: {err}"
         );
     }
 
@@ -3076,7 +3366,9 @@ used_from_wasm = [\"wasm-bindgen\"]
             .expect("warmup manifest has a [dependencies] table");
 
         for (path, op) in &ops {
-            let ManifestOp::Set(spec) = op else { continue };
+            let ManifestOp::Set { value: spec, .. } = op else {
+                continue;
+            };
             if !is_dependency_entry(path) {
                 continue;
             }

@@ -54,15 +54,15 @@
       "history": [
         {
           "date": "2026-08-02",
-          "warm_ms": 6000
+          "warm_ms": 183
         },
         {
-          "date": "2026-08-02",
+          "date": "2026-08-03",
           "warm_ms": 3000
         },
         {
-          "date": "2026-08-02",
-          "warm_ms": 183
+          "date": "2026-08-03",
+          "warm_ms": 7000
         },
         {
           "date": "2026-08-03",
@@ -491,7 +491,17 @@
       ]
     },
     {
-      "gate": "pin_cold_fetch"
+      "gate": "pin_cold_fetch",
+      "warm_ms": 3000,
+      "n": 3,
+      "measured": "2026-08-03",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-03",
+          "warm_ms": 3000
+        }
+      ]
     },
     {
       "gate": "project_corpus",

@@ -40,6 +40,34 @@ Values are TOML value literals inside a string, so inline tables work:
 `set = '{ version = "1.0", features = ["derive"] }'`. The literal name `cddl-lib` anywhere in a log
 is substituted with `--lib-name` at runtime.
 
+### The `assert_source` modifier
+
+One optional extra field, valid **only beside `set` on a `dependencies.<name>` path** (either misuse
+is a hard error naming the log):
+
+```toml
+[[change]]
+id = 10
+path = "dependencies.cbor_event"
+set = '"3.3.0"'
+assert_source = true
+```
+
+It declares the spec the owner of that dependency's **source axis**: `git`, `rev`, `branch`, `tag`,
+`path` and `registry` keys the spec does not itself name are cleared off the user's existing entry
+before the field-level merge, and a merge that ends up version-only renders as a plain string, so a
+converged manifest is byte-identical to a freshly generated one. The version keeps its normal floor
+semantics (a satisfying hand pin survives), and non-source fields (`optional`, extra features) are
+untouched.
+
+Reach for it when a `set` **changes where a dependency comes from**. A spec carrying `git` asserts
+the source implicitly — nothing else a git spec could mean — so the modifier is only needed going the
+other way, back to a registry version: a crates.io version has no cargo key that could carry the
+intent, and without the assertion `merge_dep_spec` reads a version-only `set` as a floor and
+*preserves* the `{ git, rev }` entry already written into every user manifest. The flip would then
+land on fresh output only, which is precisely the failure the log's append-only convergence
+guarantee exists to prevent.
+
 ## Editing rules (append-only)
 
 - **NEVER edit, delete, or renumber an existing entry.** The log is history; ids must stay
