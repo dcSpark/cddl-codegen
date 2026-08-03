@@ -32,18 +32,23 @@ id = 6
 path = "dependencies.cbor_event"
 set = '"3.2.0"'
 
-# dcSpark fork pinned to the `float-round-trip` branch head (same rev the MAIN crate's Cargo.toml
-# pins): adds the width-preserving `float_sz`/`write_float_sz` API and rejects reserved simple
-# values `0xfc-0xfe` at read. Generated crates need it once they carry the `AnyCbor` runtime type
-# (loose CBOR parsing), whose float slot is `Float(f64, Option<Sz>)`. Interim measure — move this
-# back to a crates.io version `set` once the fork upstreams to primetype/cbor_event + releases.
+# dcSpark fork pinned to the `float-round-trip` branch head ("Fix handling of float heads", same
+# rev the MAIN crate's Cargo.toml pins): adds the width-preserving `float_sz`/`write_float_sz` API,
+# rejects reserved simple values `0xfc-0xfe` at read, and carries the float surface the runtime
+# reads against — `se::smallest_float_sz`, `se::f64_to_f32_exact`, `se::f32_to_f64_exact`.
+# Generated crates need it once they carry the `AnyCbor` runtime type (loose CBOR parsing), whose
+# float slot is `Float(f64, Option<Sz>)`. Interim measure — move this back to a crates.io version
+# `set` once the fork upstreams to primetype/cbor_event + releases.
 # NOTE for that flip: merge_dep_spec treats a version-only `set` as a floor that PRESERVES an
 # existing git source on already-written manifests — the flip must also clear `git`/`rev` (see
 # the source-assertion contract in src/cargo_manifest.rs).
+# (Corrected in place 2026-08-03: the rev this entry originally set was never reachable from any
+# remote — a fresh checkout could not resolve it. See README "Correcting a never-valid value";
+# the `pin_cold_fetch` gate now proves every mentioned rev against its remote.)
 [[change]]
 id = 7
 path = "dependencies.cbor_event"
-set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc2503374ce53e1dca1cf74ae0e476" }'
+set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }'
 
 # The generated crate's `std` feature: default-ON and emitted UNCONDITIONALLY, so every crate this
 # tool writes has the same manifest shape and a plain `cargo build` is unchanged. It gates the few
@@ -74,16 +79,3 @@ set = '["std"]'
 id = 9
 path = "features.std"
 set = '[]'
-
-# Re-pin to the current `float-round-trip` branch head. A rev is only a usable pin while it is
-# reachable from a remote branch: entry 7's rev was never on the remote, so a fresh checkout of a
-# manifest carrying it cannot resolve the dep at all. This rev ("Fix handling of float heads") is
-# the published branch head and carries the float surface the runtime reads against —
-# `se::smallest_float_sz`, `se::f64_to_f32_exact`, `se::f32_to_f64_exact`, `float_sz`/
-# `write_float_sz`. Same interim posture as entry 7: back to a crates.io version `set` (clearing
-# `git`/`rev`, per the source-assertion contract in `src/cargo_manifest.rs`) once the fork
-# upstreams to primetype/cbor_event and releases.
-[[change]]
-id = 10
-path = "dependencies.cbor_event"
-set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }'

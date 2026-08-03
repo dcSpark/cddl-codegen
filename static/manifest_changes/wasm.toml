@@ -47,18 +47,24 @@ id = 9
 path = "dependencies.cbor_event"
 set = '"3.2.0"'
 
-# dcSpark fork pinned to the `float-round-trip` branch head (same rev the MAIN crate's Cargo.toml
-# pins): adds the width-preserving `float_sz`/`write_float_sz` API and rejects reserved simple
-# values `0xfc-0xfe` at read. Generated crates need it once they carry the `AnyCbor` runtime type
-# (loose CBOR parsing), whose float slot is `Float(f64, Option<Sz>)`. Interim measure — move this
-# back to a crates.io version `set` once the fork upstreams to primetype/cbor_event + releases.
+# dcSpark fork pinned to the `float-round-trip` branch head ("Fix handling of float heads", same
+# rev the MAIN crate's Cargo.toml pins): adds the width-preserving `float_sz`/`write_float_sz` API
+# and rejects reserved simple values `0xfc-0xfe` at read. Generated crates need it once they carry
+# the `AnyCbor` runtime type (loose CBOR parsing), whose float slot is `Float(f64, Option<Sz>)`.
+# Every manifest this tool writes must name ONE cbor_event rev: the generated crates pass
+# `Serializer`/`Deserializer` values across their boundaries, so a skew between the rust and wasm
+# pins is a type mismatch. Interim measure — move this back to a crates.io version `set` once the
+# fork upstreams to primetype/cbor_event + releases.
 # NOTE for that flip: merge_dep_spec treats a version-only `set` as a floor that PRESERVES an
 # existing git source on already-written manifests — the flip must also clear `git`/`rev` (see
 # the source-assertion contract in src/cargo_manifest.rs).
+# (Corrected in place 2026-08-03: the rev this entry originally set was never reachable from any
+# remote — a fresh checkout could not resolve it. See README "Correcting a never-valid value";
+# the `pin_cold_fetch` gate now proves every mentioned rev against its remote.)
 [[change]]
 id = 10
 path = "dependencies.cbor_event"
-set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc2503374ce53e1dca1cf74ae0e476" }'
+set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }'
 
 # No wasm source has ever named this crate: the wasm crate reaches tables only through the rust
 # crate's re-exported `OrderedHashMap`, so entry 8 was already vestigial. The rust crate's backing
@@ -68,13 +74,3 @@ set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "fda6d75585cc25033
 id = 11
 path = "dependencies.linked-hash-map"
 remove = true
-
-# Re-pin to the current `float-round-trip` branch head — same rev and same rationale as the rust
-# log's entry 10 (entry 10 here pinned a rev that was never reachable from a remote branch, so a
-# fresh checkout could not resolve the dep). Every manifest this tool writes must name ONE
-# cbor_event rev: the generated crates pass `Serializer`/`Deserializer` values across their
-# boundaries, so a skew between the rust and wasm pins is a type mismatch.
-[[change]]
-id = 12
-path = "dependencies.cbor_event"
-set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }'

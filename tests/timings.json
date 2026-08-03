@@ -491,6 +491,9 @@
       ]
     },
     {
+      "gate": "pin_cold_fetch"
+    },
+    {
       "gate": "project_corpus",
       "warm_ms": 194,
       "n": 20,
