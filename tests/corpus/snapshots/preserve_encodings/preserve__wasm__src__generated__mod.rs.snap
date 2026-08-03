@@ -1522,6 +1522,77 @@ impl AsRef<cddl_lib::FixedSpecialTypeChoice> for FixedSpecialTypeChoice {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FixedSpecialTypeChoiceBrute(pub(crate) cddl_lib::FixedSpecialTypeChoiceBrute);
+
+#[wasm_bindgen]
+impl FixedSpecialTypeChoiceBrute {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FixedSpecialTypeChoiceBrute, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_true() -> Self {
+        Self(cddl_lib::FixedSpecialTypeChoiceBrute::new_true())
+    }
+
+    pub fn new_null() -> Self {
+        Self(cddl_lib::FixedSpecialTypeChoiceBrute::new_null())
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::FixedSpecialTypeChoiceBrute::new_text(text))
+    }
+
+    pub fn kind(&self) -> FixedSpecialTypeChoiceBruteKind {
+        match &self.0 {
+            cddl_lib::FixedSpecialTypeChoiceBrute::True => FixedSpecialTypeChoiceBruteKind::True,
+            cddl_lib::FixedSpecialTypeChoiceBrute::Null => FixedSpecialTypeChoiceBruteKind::Null,
+            cddl_lib::FixedSpecialTypeChoiceBrute::Text { .. } => {
+                FixedSpecialTypeChoiceBruteKind::Text
+            }
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::FixedSpecialTypeChoiceBrute::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::FixedSpecialTypeChoiceBrute> for FixedSpecialTypeChoiceBrute {
+    fn from(native: cddl_lib::FixedSpecialTypeChoiceBrute) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FixedSpecialTypeChoiceBrute> for cddl_lib::FixedSpecialTypeChoiceBrute {
+    fn from(wasm: FixedSpecialTypeChoiceBrute) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FixedSpecialTypeChoiceBrute> for FixedSpecialTypeChoiceBrute {
+    fn as_ref(&self) -> &cddl_lib::FixedSpecialTypeChoiceBrute {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum FixedSpecialTypeChoiceBruteKind {
+    True,
+    Null,
+    Text,
+}
+
 #[wasm_bindgen]
 pub enum FixedSpecialTypeChoiceKind {
     True,

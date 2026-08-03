@@ -2487,4 +2487,74 @@ mod tests {
         assert!(d.h.is_nan() && d.u.is_nan() && d.s.is_nan());
         assert_eq!(d.to_cbor_bytes(), bytes);
     }
+
+    // `fixed_special_type_choice_brute = true / null / tstr` — two fixed specials in one choice.
+    // bool and null share CBOR major type 7, so no type-match dispatch can separate the arms and
+    // the enum is emitted through the BRUTE-FORCE try-each-arm path instead: one probe closure per
+    // arm, whose `Ok` value the emitter matches to pick the variant. A fixed bool/null arm binds
+    // NOTHING there (no value, no encoding sidecar), and the empty binding used to emit an
+    // unterminated `()` ahead of the appended `Ok(())` — invalid Rust, so the whole spec failed
+    // generation at rustfmt with zero files written. That third emission site is guarded now;
+    // these are the EXECUTION assertions the compile-only fix never made, one per arm in both
+    // directions plus the no-variant-matched floor.
+    #[test]
+    fn fixed_special_brute_force_arms_round_trip_both_directions() {
+        // encode: each arm writes exactly its own wire form and nothing else.
+        assert_eq!(
+            FixedSpecialTypeChoiceBrute::new_true().to_cbor_bytes(),
+            vec![0xf5],
+        );
+        assert_eq!(
+            FixedSpecialTypeChoiceBrute::new_null().to_cbor_bytes(),
+            vec![0xf6],
+        );
+        assert_eq!(
+            FixedSpecialTypeChoiceBrute::new_text(String::from("hi")).to_cbor_bytes(),
+            cbor_string("hi"),
+        );
+        // decode: each wire form picks its own variant. The bool and null bytes differ only in the
+        // low 5 bits of one major-7 head, which is precisely what the brute-force dispatch must
+        // resolve by TRYING the arms rather than by classifying the major type.
+        assert!(matches!(
+            FixedSpecialTypeChoiceBrute::from_cbor_bytes(&[0xf5]).unwrap(),
+            FixedSpecialTypeChoiceBrute::True,
+        ));
+        assert!(matches!(
+            FixedSpecialTypeChoiceBrute::from_cbor_bytes(&[0xf6]).unwrap(),
+            FixedSpecialTypeChoiceBrute::Null,
+        ));
+        match FixedSpecialTypeChoiceBrute::from_cbor_bytes(&cbor_string("hi")).unwrap() {
+            FixedSpecialTypeChoiceBrute::Text { text, .. } => assert_eq!(text, "hi"),
+            other => panic!("a text arm decoded as {other:?}"),
+        }
+        // full round trips through the shared helper (byte-identity + full consumption).
+        deser_test(&FixedSpecialTypeChoiceBrute::new_true());
+        deser_test(&FixedSpecialTypeChoiceBrute::new_null());
+        deser_test(&FixedSpecialTypeChoiceBrute::new_text(String::from("hi")));
+        // preserve contract: the two fixed arms carry no encoding state, but the text arm's
+        // `StringEncoding` still must survive the brute-force probe closure — an irregular head
+        // replays byte-identically rather than being normalized away by the retry machinery.
+        for sz in [
+            StringLenSz::Len(Sz::Inline),
+            StringLenSz::Len(Sz::Eight),
+            StringLenSz::Indefinite(vec![(1, Sz::Inline), (1, Sz::Four)]),
+        ] {
+            let bytes = cbor_str_sz("hi", sz);
+            let d = FixedSpecialTypeChoiceBrute::from_cbor_bytes(&bytes).unwrap();
+            assert_eq!(d.to_cbor_bytes(), bytes);
+        }
+        // no variant matched: `false` is the sharp one — it is a bool, so an arm that merely read
+        // a bool instead of VERIFYING the constant would accept it as `True`.
+        for bad in [
+            &[0xf4u8][..],  // false: bool-typed, wrong constant
+            &[0x00],        // uint
+            &[0x40],        // empty bytes
+            &[0xf9, 0x3c, 0x00], // a float — major 7 like the two fixed arms, but neither of them
+        ] {
+            assert!(
+                FixedSpecialTypeChoiceBrute::from_cbor_bytes(bad).is_err(),
+                "{bad:?} matched a variant it must not",
+            );
+        }
+    }
 }

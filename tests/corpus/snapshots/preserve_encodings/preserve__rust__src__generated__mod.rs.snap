@@ -749,6 +749,33 @@ impl FixedSpecialTypeChoice {
 }
 
 #[derive(Clone, Debug)]
+pub enum FixedSpecialTypeChoiceBrute {
+    True,
+    Null,
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl FixedSpecialTypeChoiceBrute {
+    pub fn new_true() -> Self {
+        Self::True
+    }
+
+    pub fn new_null() -> Self {
+        Self::Null
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct FloatHeads {
     pub h: f32,
     pub u: f32,

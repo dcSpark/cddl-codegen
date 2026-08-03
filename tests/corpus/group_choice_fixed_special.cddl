@@ -27,10 +27,12 @@
 ;   `t = null / tstr` — a two-arm type choice with `null` never becomes a fixed-value arm at all;
 ;     it lowers to `Option<String>`, so it exercises nothing of this class.
 ;   `t = true / null / tstr` — a THREE-arm type choice whose bool and null arms share the CBOR
-;     Special type routes through the brute-force try-each-arm dispatch, which still emits an
-;     unterminated `()` before its appended `Ok(())` (a distinct site from the two above, and
-;     equally broken before and after this fixture's fix). Adding it here would make the whole
-;     fixture ungeneratable; it belongs with whatever pins that site.
+;     Special type routes through the brute-force try-each-arm dispatch, a distinct site from the
+;     two above (it emitted an unterminated `()` before its appended `Ok(())` until `7d66993a`
+;     suppressed the discarded value). It is pinned where its EXECUTION can be asserted, under the
+;     flag that reaches the site: `fixed_special_type_choice_brute` in
+;     `tests/preserve-encodings/input.cddl`, plus `type_choice_special_brute` in
+;     `generated_code_clippy_clean`'s `FIXED_SPECIAL_SPEC` for the lint floor.
 ; Fixed specials in ordinary MEMBER position (not arm position) live in `fixed_bool_member.cddl`;
 ; the general map-rep group-choice dispatch/key-verification coverage lives in
 ; `group_choice_map.cddl`.

@@ -385,21 +385,6 @@ ledgered here (that's what the probe/gate error messages point at).
   alias-hop cycle whose plain-typename rule sorts first — i.e. the count of rules its owner must
   reorder or rename to generate a wasm face reaches 1. Today that count is 0 in every consumer spec;
   the repro is a synthetic probe.
-- **A choice whose bool and null arms share the CBOR Special major type routes through the
-  brute-force try-each-arm dispatch, which still emits invalid Rust under `--preserve-encodings`.**
-  `t = true / null / tstr` fails generation at exit 1 (rustfmt: `expected pattern, found '='`-class
-  malformed emission — an unterminated `()` value expression ahead of the dispatch's appended
-  `Ok(())`), zero files written. This is the surviving THIRD site of the empty-binding class whose
-  two type-match-dispatch siblings are fixed and pinned (a fixed bool/null arm binds no value and
-  no encoding sidecar; the guard is binding-emptiness — see `tests/corpus/group_choice_fixed_special.cddl`,
-  whose header records this neighbour): same-major-type arms force the brute-force path, a separate
-  emission site the two-arm spellings never reach. Verified equally red before and after the
-  two-site fix, so it is mechanism-independent of that change. Candidate fix: the same
-  empty-binding guard, applied at the brute-force variant-probe emission. **Reopening signal**, on
-  the magnitude axis: a consumer who needs `--preserve-encodings` holds a spec with ≥1 type choice
-  carrying two-or-more Special-typed literal arms beside data arms — a `grep` over a spec and a
-  flag they already have, and the count of such choices is the hand-maintained surface they would
-  keep beside the generated crate. Today the evidence is one synthetic probe.
 - **A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member
   REPRESENTATION, so a spec that pins one arm of a nullable to a constant must be hand-rewritten.**
   A two-arm choice with a null arm never becomes an enum: the collapse lowers it to an `Option<T>`

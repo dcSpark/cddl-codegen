@@ -4500,10 +4500,10 @@ fn generated_code_clippy_clean() {
     // input, so a shape addition lands a blessed diff across consumers with no stake in this lint.
     // Written into the gate's own scratch dir (same shape as
     // `wasm_collections_index_lists_every_minted_wrapper`), so it carries no fixture-registry or
-    // snapshot obligations. `--annotate-fields=false` is what makes ONE case cover all four
+    // snapshot obligations. `--annotate-fields=false` is what makes ONE case cover all five
     // emission positions: the member path (records.rs `generate_array_struct_deserialization`) plus
-    // the map-rep / array-rep / type-choice arm paths (enums.rs), which emit their unbound value
-    // under either annotate setting.
+    // the map-rep / array-rep / type-choice arm paths and the BRUTE-FORCE type-choice dispatch
+    // (enums.rs), which emit their unbound value under either annotate setting.
     const FIXED_SPECIAL_SPEC: &str = "\
 ; Fixed bool/null in MEMBER position: mandatory (zero-information, binds nothing) and optional
 ; (a `bool` presence field). Under --preserve-encodings the fixed-value deserialize used to end in
@@ -4518,6 +4518,10 @@ map_null_arm = { absent: null // label: tstr }
 arr_bool_arm = [ flag: true // label: tstr ]
 arr_null_arm = [ absent: null // label: tstr ]
 type_choice_bool = true / tstr
+; Two fixed specials in ONE choice: bool and null share CBOR major type 7, so no type-match
+; dispatch can separate the arms and the enum takes the BRUTE-FORCE try-each-arm emission instead
+; — a fifth site, which the single-Special spellings above never reach.
+type_choice_special_brute = true / null / tstr
 ";
     let cases: &[(&str, &[&str], Option<&str>)] = &[
         ("default", &[][..], None),
