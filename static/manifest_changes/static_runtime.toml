@@ -109,3 +109,18 @@ set = '{ version = "0.4.3", default-features = false, features = ["alloc"] }'
 id = 10
 path = "dependencies.hex"
 set = '{ package = "const-hex", version = "1.19.1", default-features = false, features = ["alloc", "core-error"] }'
+
+# Back to a crates.io version, which is what entry 6 called an interim measure: `cbor_event 3.3.0`
+# (released 2026-08-03) publishes the fork's `float-round-trip` head — its `src/` is byte-identical
+# to rev `28514916…` — so this crate's pin moves with the generated crates' as entry 6 requires, and
+# 3.3.0 still declares no features, so the computed `features.std` list has nothing to forward here.
+# `assert_source` is load-bearing, not decoration: a version-only `set` is a FLOOR, so without it
+# `merge_dep_spec` would preserve the `{ git, rev }` entry already written into every consumer
+# manifest and the flip would land only on fresh output. See the source-assertion contract in
+# src/cargo_manifest.rs. (Co-owned manifest: an assert may UPDATE a spec, as this does — it may
+# never remove one, and this one does not: the dep stays, its source changes.)
+[[change]]
+id = 11
+path = "dependencies.cbor_event"
+set = '"3.3.0"'
+assert_source = true

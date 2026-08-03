@@ -8,7 +8,6 @@ crate-type = ["rlib"]
 
 [dependencies]
 extern-dep-crate = { path = "../extern-dep-crate" }
-# dcSpark fork (same rev the generated crates pin): shares a dependency tree + cbor_event types with
-# the generated crate and extern-dep-crate, so all sides must resolve the SAME cbor_event. Interim
-# measure — back to a crates.io version once the fork upstreams + releases.
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d2b01ba8f804d45c221fbdcd" }
+# The same version the generated crates declare: shares a dependency tree + cbor_event types with
+# the generated crate and extern-dep-crate, so all sides must resolve the SAME cbor_event.
+cbor_event = "3.3.0"

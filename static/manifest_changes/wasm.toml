@@ -74,3 +74,18 @@ set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "28514916e97240e1d
 id = 11
 path = "dependencies.linked-hash-map"
 remove = true
+
+# Back to a crates.io version, which is what entry 10 called an interim measure: `cbor_event 3.3.0`
+# (released 2026-08-03) publishes the fork's `float-round-trip` head — its `src/` is byte-identical
+# to rev `28514916…`. The one-rev rule entry 10 states is unchanged and now trivially met: rust,
+# wasm and the static runtime all name the same registry version, so the `Serializer`/`Deserializer`
+# values crossing their boundaries stay one type.
+# `assert_source` is load-bearing, not decoration: a version-only `set` is a FLOOR, so without it
+# `merge_dep_spec` would preserve the `{ git, rev }` entry already written into every consumer
+# manifest and the flip would land only on fresh output. See the source-assertion contract in
+# src/cargo_manifest.rs.
+[[change]]
+id = 12
+path = "dependencies.cbor_event"
+set = '"3.3.0"'
+assert_source = true

@@ -2521,7 +2521,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   need their own std-usage sweep (collections, error impls). The mechanical layer when a consumer
   asks: a no_std cross-compile gate over one generated crate.
 - **Dependency version-RANGE resolution is untested: generated crates float on semver
-  `cbor_event = "3.2.0"`, and nothing gates what that range actually resolves to over time.** In
+  `cbor_event = "3.3.0"`, and nothing gates what that range actually resolves to over time.** In
   check.ts runs the nested-cargo cells now resolve OFFLINE from the cargo cache (the
   registry-transient watch below), so the float enters one step removed — through the warm-up
   fetch, which pulls the newest semver-compatible releases into the cache — but the exposure is

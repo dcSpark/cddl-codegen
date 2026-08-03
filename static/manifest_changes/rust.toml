@@ -79,3 +79,19 @@ set = '["std"]'
 id = 9
 path = "features.std"
 set = '[]'
+
+# Back to a crates.io version, which is what entry 7 called an interim measure: `cbor_event 3.3.0`
+# (released 2026-08-03) publishes the fork's `float-round-trip` head — its `src/` is byte-identical
+# to rev `28514916…` — so the float surface the runtime reads against (`se::smallest_float_sz`,
+# `se::f64_to_f32_exact`, `se::f32_to_f64_exact`, `write_float_sz`) and the `0xfc-0xfe` rejection
+# now come from the registry. `rust-version` is `1.96.1` on both sides, and 3.3.0 declares no
+# features at all, so the computed `features.std` list still has nothing to forward here.
+# `assert_source` is load-bearing, not decoration: a version-only `set` is a FLOOR, so without it
+# `merge_dep_spec` would preserve the `{ git, rev }` entry already written into every consumer
+# manifest and the flip would land only on fresh output. See the source-assertion contract in
+# src/cargo_manifest.rs.
+[[change]]
+id = 10
+path = "dependencies.cbor_event"
+set = '"3.3.0"'
+assert_source = true
