@@ -175,11 +175,22 @@ overlap; it says nothing about how many `rustc` each one spawns, and a nested ca
 
 and its second factor must never scale with core count, because core count is unrelated to the
 machine's memory — a 32-core box with a 32 GiB cap went unresponsive for ~10 minutes under a full
-tier and had to be power-cycled. So each **batched** gate is handed a memory-derived
-`CARGO_BUILD_JOBS`: `round(MemTotal × 0.5 ÷ 2 GiB per rustc) ÷ gates in flight`, which is `-j2` at
-the default 4 gates on a 32 GiB machine. `CHECK_CARGO_JOBS=<n>` overrides it (a bigger machine should
-raise it); an inherited `CARGO_BUILD_JOBS` can only hold it *down*. The **sequential path is
-untouched** — one cargo at `-j nproc` is the historical shape and is not what overcommitted anything.
+tier and had to be power-cycled, and two later whole-machine freezes (~1 h and ~1.5 h at 100 %
+memory and swap) went through every check the first incident's fix installed. So **every** gate the
+runner starts — batched or sequential — is handed a memory-derived `CARGO_BUILD_JOBS`:
+`floor(MemAvailable × 0.5 ÷ 4 GiB per slot) ÷ gates in flight`, re-measured **per batch** so later
+batches see the machine as it is, with MemTotal only a fallback where MemAvailable is unreadable.
+Available, not total: a budget struck against MemTotal assumes the tier owns half a machine that
+other processes already partly hold, which is how the two later freezes got through. The slot
+constant is 4 GiB because a slot's peak is not one `rustc`: a nested-cargo gate compiles and then
+RUNS what it built, and no gate samples a test process's footprint — the old 2 GiB carried a
+comfortable margin over the wrong (never-binding) quantity. `CHECK_CARGO_JOBS=<n>` overrides the
+derivation (a bigger machine should raise it); an inherited `CARGO_BUILD_JOBS` can only hold it
+*down*. And because the runner's own invocations are a minority of this repo's cargo runs, a repo
+`.cargo/config.toml` floors everything else (`[build] jobs = 4`) — bare `cargo test`/`build`/
+`clippy` from a shell or an agent was the one path with no bound at all, and an exported
+`CARGO_BUILD_JOBS` still beats the file, which keeps nested cargo in scratch dirs (outside config
+discovery, which walks up from the CWD) covered by the env var.
 
 The bound is close to free, measured on a 4-gate batch in one warm regime, sampled at 1 s:
 
@@ -195,17 +206,19 @@ Only a gate that is a single large crate compile pays (`rust_oracle_fingerprint`
 and it is not the batch's tail. Process count is in any case the wrong thing to reason about alone:
 the largest single `rustc` resident set observed across that batch and a whole `local` tier was
 **455 MiB**, so a count-based bound would still admit a very different peak from a gate that compiles
-one big crate rather than many small ones. Hence the memory derivation, with a deliberate ~4× margin
-over what was measured.
+one big crate rather than many small ones. Hence the memory derivation — and hence deriving it from
+a deliberately pessimistic per-slot peak rather than from that measurement, which sampled only the
+compile half of what a slot holds.
 
-**What stays unbounded: disk bandwidth.** The preflight below floors free scratch, which is a
+**What stays unmeasured: disk bandwidth.** The preflight below floors free scratch, which is a
 capacity check, not a rate one — `CHECK_JOBS` gates writing in parallel to their own target dirs
-still share one device, and a device saturated by sustained nested-cargo writes is a whole-machine
-stall that no floor sees and no gate can observe (the memory preflight passes throughout). The
-ceiling is an environment property the tier does not measure, lowest on virtual-disk hosts (WSL2
-mounts `/` and `/tmp` on one virtual device). Standing ruling for this box: heavy tiers run as
-`CHECK_JOBS=2 bun run check.ts <tier>`. The watch entry — incident, candidate mitigations with
-costs, and the build signal — is in `tests/TESTING_ROADMAP.md` § Operational watches.
+still share one device, and the device's sustained-write ceiling is an environment property the
+tier does not measure, lowest on virtual-disk hosts (WSL2 mounts `/` and `/tmp` on one virtual
+device). No incident is attributed to bandwidth alone — the freezes that motivated this section's
+bounds were memory (swap thrashing), with disk saturation as their symptom — but a
+bandwidth-driven stall would share their signature: whole-machine, observable by no gate. The
+watch entry, with candidate mitigations and what would make it buildable, is in
+`tests/TESTING_ROADMAP.md` § Operational watches.
 
 **Run-start scratch sweep (every tier).** Nested-cargo gates and the in-process suites mint per-run
 scratch under the system temp dir and rely on end-of-run cleanup that a killed or crashed run never
