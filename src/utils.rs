@@ -181,51 +181,64 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
     }
 }
 
+/// Every reserved (CDDL prelude) identifier, supported or not — the universe
+/// [`is_identifier_reserved`] answers over, spelled as a LIST rather than as `match` arms so it can
+/// be ENUMERATED as well as queried.
+///
+/// The enumerable form is what lets the refused-name closure sweep
+/// (`tests::refused_name_closure_tests`) derive its name axis by probing the whole universe instead
+/// of transcribing a list from prose: the names that refuse ARE the refusal inventory, and a new
+/// refusal arm for any of these fails that derivation until the inventory
+/// (`IntermediateTypes::REFUSED_PRELUDE_NAMES`) is updated to match.
+///
+/// `any` is deliberately NOT here — it is not reserved (it classes as `AliasIdent::Rust`, so a user
+/// rule named `any` shadows it), and `new_type` intercepts it one arm earlier. The sweep adds it to
+/// its probe universe by name for exactly that reason.
 #[rustfmt::skip]
+pub const RESERVED_IDENTS: &[&str] = &[
+    "uint",
+    "int",
+    "nint",
+    "text",
+    "tstr",
+    "bytes",
+    "bstr",
+    "bool",
+    "float",
+    "float16",
+    "float32",
+    "float64",
+    "float16-32",
+    "float32-64",
+    "tdate",
+    "time",
+    "number",
+    "biguint",
+    "bignint",
+    "bigint",
+    "integer",
+    "unsigned",
+    "decfrac",
+    "bigfloat",
+    "eb64url",
+    "eb64legacy",
+    "eb16",
+    "encoded-cbor",
+    "uri",
+    "b64url",
+    "b64legacy",
+    "regexp",
+    "mime-message",
+    "cbor-any",
+    "null",
+    "nil",
+    "undefined",
+    "true",
+    "false",
+];
+
 pub fn is_identifier_reserved(name: &str) -> bool {
-    match name {
-        // These are all possible reserved identifiers, even if we don't support them
-        "uint"       |
-        "int"        |
-        "nint"       |
-        "text"       |
-        "tstr"       |
-        "bytes"      |
-        "bstr"       |
-        "bool"       |
-        "float"      |
-        "float16"    |
-        "float32"    |
-        "float64"    |
-        "float16-32" |
-        "float32-64" |
-        "tdate"      |
-        "time"       |
-        "number"     |
-        "biguint"    |
-        "bignint"    |
-        "bigint"     | 
-        "integer"    |
-        "unsigned"   |
-        "decfrac"    |
-        "bigfloat"   |
-        "eb64url"    |
-        "eb64legacy" |
-        "eb16"       |
-        "encoded-cbor" |
-        "uri"        |
-        "b64url"     |
-        "b64legacy"  |
-        "regexp"     |
-        "mime-message" |
-        "cbor-any"   |
-        "null"       |
-        "nil"        |
-        "undefined"  |
-        "true"       |
-        "false" => true,
-        _ => false,
-    }
+    RESERVED_IDENTS.contains(&name)
 }
 
 pub fn is_identifier_user_defined(name: &str) -> bool {

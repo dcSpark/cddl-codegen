@@ -3381,6 +3381,44 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > mis-authored row from being recorded as a whole row of findings. The pin list is currently EMPTY: no directive
 > is dropped at any of the ten contexts.
 
+> Fourth sibling, and the one whose axis is NAMES rather than directives:
+> `src/tests/refused_name_closure_tests.rs` is the closure gate for the **side-door** class — a name
+> refused at ONE name-resolution seam still reaching generation through ANOTHER. Its worked example
+> is the narrower-float delivery: the refusal shipped at `IntermediateTypes::new_type`'s
+> unresolved-reserved fallback, and `x = float16 .size 4` still generated at exit 0 because a control
+> operator resolves its head through `parsing::ident_to_primitive` and never calls `new_type`. The
+> per-name position sweeps (`undefined_prelude_rejects_gracefully_in_every_position` and siblings)
+> vary the POSITION and hold the resolution MECHANISM constant, so a second path is invisible to them
+> by construction; those sweeps stay as the WORDING pins and this module owns only the closure
+> property, which keeps its cells cheap (one-rule specs, generation-only, one profile — a refusal
+> short-circuits `finalize` before any emission, so no flag can rescue a name). A cell is
+> `(refused name, syntactic context)` and its verdict must be a **graceful refusal NAMING the type,
+> or a loud rejection** — never exit-0 generation, never a panic.
+> **Both axes are DERIVED at HEAD rather than transcribed**, because the recorded inventories go
+> stale by design (the three narrower float names were on the roadmap's refused list and are
+> registrations now). The name axis is `IntermediateTypes::REFUSED_PRELUDE_NAMES`, a constant the
+> interception ARMS themselves read, and `the_refused_name_axis_is_the_refusal_inventory` re-derives
+> it empirically — probing every member of the enumerable `utils::RESERVED_IDENTS` (plus `any`, which
+> is not reserved but is intercepted one arm earlier) at the canonical member position and requiring
+> the names that refuse to BE that constant. A new refusal arm therefore fails the derivation until
+> the inventory names it, and naming it demands a cell in every context: the forcing shape
+> `KNOWN_RULE_METADATA_TAGS` uses for directives. The context axis is a `SEAMS` registry whose
+> members' CALLER CLASSES are listed rather than grepped (`new_type`, `ident_to_primitive`, the
+> field-name family, and `extern_narrow::scan_consumer` — an input-assembly posture rather than a
+> position, so it has its own test with an imported-rule positive control), and every context row
+> names the seam it reaches (`every_seam_row_is_reached`).
+> **Attribution is mechanical.** A column is swept only if a CONTROL head (`uint`) generates in it
+> (`every_swept_context_is_live`) — that is what makes a refused name's verdict the NAME's doing and
+> not the context's, and it is also how "the `cddl` crate refuses the text" is kept apart from "our
+> walk refuses the shape". Columns where even a supported head does not generate are
+> `Attribution::ContextOwned`, excluded with the control's own verdict RECORDED and re-checked every
+> run (`every_context_owned_exclusion_is_still_context_owned`), so an exclusion goes stale loudly the
+> day its underlying defect is fixed. Findings are pinned in `KNOWN_CLOSURE_BREACH` with their KIND
+> (exit-0 or panic) and an evidence substring, on the sibling sweeps' terms. The pin list is NOT
+> empty: the ten `<refused name> .default 1` cells abort at `RustType::default`, destroying a refusal
+> `new_type` had already recorded — that plus two name-independent control-operator aborts the
+> context enumeration turned up are pinned as `PANIC` rows of the input-robustness catalog.
+
 ### Synthesized-name interaction sweep + duplicate-ident backstop
 
 The generator mints structural wasm-boundary classes whose names derive from user type names — the
