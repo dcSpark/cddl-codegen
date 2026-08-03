@@ -567,6 +567,43 @@ exercised as a gate for only two files"; "A "no gate demands this" premise probe
 is not evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
 `check.ts` itself); and "`--extern-wrapper-index` deferral-boundaries".
 
+- **A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of
+  gates disagrees with the registry — no mechanism ties the two.** Two instances, so the trigger has
+  fired on the count half and is one short on the catalogue half. *Instance 1 (count):* the
+  concurrency section read "the thirteen `#[ignore]`d manual-only heavy gates" while the runner
+  printed `parallel batch: 15 gate(s) in group 'manual_heavy'` — and the SAME file two paragraphs
+  earlier carries the correct 15 inside a `<!-- gen:sh:tests-ignored-gates -->` generated block, so
+  the doc disagreed with itself across a generated/hand boundary. Fixed by deleting the derived count
+  rather than correcting it, the remedy this repo already chose for the identical class in prose
+  refusal counts. *Instance 2 (catalogue):* `pin_cold_fetch` shipped as a `full`-tier gate and was
+  described in `check.ts` and `static/manifest_changes/README.md` but never in `tests/README.md`,
+  where its siblings are catalogued; added by hand on discovery. **Owner meanwhile:** review, plus
+  the existing `project_status_headers.ts` generated roll-call, which covers only the `#[ignore]`d
+  RUST gates — the script-shaped gates (`verify.ts`, `corpus_detect.ts`, the fuzz compile-rot check,
+  `pin_cold_fetch`, the two gate-cache gates) are prose and unguarded, which is exactly where the miss
+  landed. **The layer, when built:** a fast-tier lint asserting (a) every registry gate id appears in
+  `tests/README.md`, and (b) no prose integer adjacent to a gate-group name disagrees with the
+  registry's own membership — or, simpler and preferred on the (b) half, that no such integer is
+  written at all. Cheap, no cargo. **Trigger:** a third instance, OR the next gate added to the
+  registry by anyone who is not also editing `tests/README.md` in the same commit.
+
+- **`lint_doc_citations` accepts "a docs section by heading" as a durable citation, but a section
+  citation only proves the SECTION still exists — not that the claim cited from it does.** One
+  instance, self-inflicted and caught in the same session that caused it. `current_capacities.mdx`
+  cited a findings SECTION for the claim that `t = true / null / tstr` fails under
+  `--preserve-encodings`; the delivery that fixed that defect deleted the ENTRY inside the section
+  while the section itself survived, so the citation kept resolving, the lint stayed green, and a
+  user-facing doc asserted a defect that no longer existed. The entry-title form the lint prefers
+  would have dangled loudly on the same edit. Note this is NOT the positional-citation class the lint
+  already bans (`item <N>`, which silently retargets): this one is an ACCEPTED durable form whose
+  granularity is coarser than the fact it carries. **Owner meanwhile:** review, and the working rule
+  that a citation should name the narrowest stable referent that dies with the claim — an entry
+  title, a test/gate name, a pin — never the section enclosing it. **The layer, when built:** extend
+  the lint so a citation into a doc that has entry-level headings must name one, rather than the
+  enclosing section; a section citation stays legal only where the section IS the referent (a
+  whole-mechanism reference). **Trigger:** a second instance, or any delivery that prunes entries
+  from a section other docs cite into.
+
 - **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
   extern-interface projection — the cross-crate skew class, invisible to every single-crate
   gate.** Proven instance (orchestrator code-read, not any gate): `@duplicates preserve` on

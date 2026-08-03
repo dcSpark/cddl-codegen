@@ -62,7 +62,7 @@ fix that exists ONLY under `--preserve-encodings`, and every other profile was g
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
 manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 15 `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
-the fuzz-crate compile-rot check, plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
+the fuzz-crate compile-rot check, `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
 didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -146,8 +146,12 @@ that declares nothing is a **barrier**, so registry order still means what it sa
 `fmt → clippy → build → test` chain stays strictly ordered, and `verify` still finishes before
 `verify_cache_transparency` observes the cache it warmed.
 
-Exactly one group exists: the thirteen `#[ignore]`d manual-only heavy gates, which are `cmd`-shaped
-and each own a `temp_dir()` scratch root nothing else touches. `gate_cache_closure_audit` is
+Exactly one group exists: the `#[ignore]`d manual-only heavy gates, which are `cmd`-shaped
+and each own a `temp_dir()` scratch root nothing else touches. (The membership is the registry's
+`concurrent: "manual_heavy"` declarations and the run prints its own size — `parallel batch: N
+gate(s) in group 'manual_heavy'`. A count stated here instead would be a second source of truth that
+drifts silently every time a gate joins the group, which is exactly what it did: this sentence read
+"thirteen" while the runner reported fifteen.) `gate_cache_closure_audit` is
 deliberately outside it — it is an strace input-closure audit, and ambient concurrent file activity is
 precisely what it must not observe. `self_checks`' meta-check 4 rejects a group declared on an `fn`
 gate (their output would interleave and their cell rows would be mislabelled) and a group whose
