@@ -1117,7 +1117,7 @@ The pair parses in the positions below but cannot be honored there, so each one 
 * **On a table row, an open-map rest row, or an open-array rest tail entry** — a trailing comment on the `* k => v` / `* t` row itself. What a row slot carries is row-scoped (an open-map rest row takes `@name`, `@duplicates` and `@ignore`; an anonymous inline table's row takes `@duplicates`; a NAMED table's row takes nothing — its policy lives at the rule slot), and the pair names a type the row does not declare. Put it on the row's key, value, or element rule instead.
 * **Together with `@no_alias`.** `@no_alias` removes the alias node the override is keyed on, so the pair would go with it and both directions would fall back to the default wire format.
 * **Together with `@newtype`.** A `@newtype` wrapper writes through its own generated `Serialize` impl while the deserialize call sites do route through the custom reader, so the pair would make the wrapper read one wire format and write another. Use the plain alias spelling, or declare the type `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write it in full.
-* **On a rule that mints a TAGGED wrapper without the directive** — a tag-head rule (`foo = #6.42(uint)`) and the tag-258 set idiom (`foo = #6.258([* uint]) / [* uint]`, which nominalizes into a set wrapper). Structurally the `@newtype` case above, minus the directive: the same generated-`Serialize`/custom-reader asymmetry, so either half is refused. Declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the type, or give it a body that resolves to a transparent alias and write the wire framing (the tag included) in your own codec.
+* **On a rule that mints a TAGGED wrapper without the directive** — a tag-head rule (`foo = #6.42(uint)`) and the tag-258 set idiom (`foo = #6.258([* uint]) / [* uint]`, which nominalizes into a set wrapper). Structurally the `@newtype` case above, minus the directive: the same generated-`Serialize`/custom-reader asymmetry, so either half is refused. Put the pair on the **alias the tag rule wraps** (`inner = uint ; @custom_serialize …` beside `foo = #6.42(inner)`), which keeps the tag framing generated and overrides only the payload — see [Wrapping an annotated alias](#wrapping-an-annotated-alias) below. Or, to own the whole wire yourself, declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the type, or give it a body that resolves to a transparent alias and write the wire framing (the tag included) in your own codec.
 * **On a rule that binds a generic instantiation** — `foo = base<uint>`, and the named-binding-to-a-set-nominal form of the same shape. The type is built during generic resolution from the **definition's** config, so a pair written on the binding never reaches generation and both directions keep the definition's generated codec. Moving it to the definition does not work either (a generic definition names no concrete type and is refused for that reason): give the rule a CDDL body of its own, or declare it `_CDDL_CODEGEN_EXTERN_TYPE_`.
 * **On an enum rule** — a type choice (`a / b`), a group choice (`{ … } // { … }`), or a fixed-value C-style enum (`0 / 1`) — in *every* spelling, one half or both. The enum's serialize side is generated unconditionally while the deserialize call sites do route through the custom reader: the same read-one-format/write-another asymmetry as `@newtype`. Put the pair on the rule of the variant type that needs the custom format.
 * **A single half on a named record rule.** `@custom_serialize` alone emits no `Serialize` impl and never calls the named function, so the generated crate does not compile; `@custom_deserialize` alone keeps the type's own generated `Deserialize` impl while rewriting every embed site, so `Foo::from_cbor_bytes` and a field of type `Foo` decode the same bytes differently — a divergence that also travels to consumers, since such a rule projects opaquely across the [extern-interface](integration-other.mdx) seam. Move the pair to the field, or to the type rule of the member that needs it.
@@ -1131,14 +1131,19 @@ The `@custom_encodings` declaration is refused in three further places, each bec
 
 `@custom_wire_major` is refused in the same three places, plus one of its own: **on a rule nothing consumes it from** — the declared major is read only where a rule keys an [open table](#open-tables)'s typed row, so a declaration no such row reaches states a fact about a wire no dispatch reads.
 
-Known limitation: a tag-head rule **wrapping** an annotated alias does not route through the pair —
+### Wrapping an annotated alias
+
+A rule that **wraps** an annotated alias — a tag head, or `@newtype` — routes through the pair in both directions, owning only the framing it declares:
 
 ```cddl
 inner = uint ; @custom_serialize my_ser @custom_deserialize my_deser
 foo = #6.42(inner)
+direct = [d: inner]
 ```
 
-`foo`'s generated codec calls neither function on that path, which is why the tagged-wrapper rejection above does not advertise this spelling as a remedy. Until this is fixed, hand-own the wrapping rule (`_CDDL_CODEGEN_EXTERN_TYPE_`), or give the wrapping rule a transparent-alias body and put the tag framing inside the pair itself.
+`Foo` writes tag 42 and then calls `my_ser`; it reads tag 42 and then calls `my_deser`. `direct.d` calls the same pair without a tag. So `inner` has one wire form however it is reached, and the wrapper adds exactly the tag its own rule declares — which is why the [tagged-wrapper rejection](#positions-that-are-rejected) above names this spelling as the remedy for putting the pair on the tag rule itself.
+
+Under `--preserve-encodings` the split follows the same line: the tag's own `Sz` stays a generated-code-owned slot on the wrapper's encoding struct, and the payload's encoding variables are the ones that cross the call — [declared](#declaring-the-wires-encoding-variables-custom_encodings) by the alias's `@custom_encodings` if it carries one, inferred from the aliased type otherwise.
 
 ### Positions that are still silent
 
