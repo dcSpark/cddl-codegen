@@ -829,126 +829,172 @@ pub fn with_types<R>(
         Err(e) => return Err(e.into()),
     };
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
-    let mut types = IntermediateTypes::new();
+    // The IR build runs in a LOOP because one of its inputs is decided from its own OUTPUT: the
+    // recursive-type boundary (`crate::recursion_boundary`) classifies the finalized IR's cycles,
+    // and the repair it can offer — emitting the collection-backed rules of an alias-expansion cycle
+    // as `@newtype` wrapper structs rather than transparent `pub type` aliases — has to be applied
+    // where a rule's directives are read, which is the parse walk that has already happened. Re-running
+    // with the set marked is what makes an auto-nominalized rule identical to one the spec wrote
+    // `; @newtype` on, rather than a second implementation of the wrapper that would have to grow its
+    // own wasm/preserve/emit-tests surfaces. It terminates because the forced set only grows and is
+    // bounded by the rule count, and a pass that adds nothing to it is the last one; in practice a
+    // spec with such a cycle takes exactly two passes and every other spec takes one.
+    //
+    // Passes after the first are SILENCED: they re-derive facts the first pass already reported (the
+    // `Recursive type: …` notice above all), and printing them twice would make the notice count
+    // depend on whether a repair happened. The announcement of the repair itself is printed once,
+    // after the loop, outside the guard.
+    let mut auto_newtype_rules: std::collections::BTreeSet<RustIdent> =
+        std::collections::BTreeSet::new();
+    let mut boundary_announcements: Vec<String> = Vec::new();
+    let mut ir_pass = 0usize;
+    let types = loop {
+        let _quiet_repass = (ir_pass > 0).then(|| crate::log::scoped(crate::log::Verbosity::Error));
+        let mut types = IntermediateTypes::new();
+        types.set_auto_newtype_rules(auto_newtype_rules.clone());
 
-    // Reserved-name pre-scan — runs BEFORE any `rule_ident` / `RustIdent::new` call (which start
-    // in the scope filter just below and recur through the whole IR build). A rule/plain-group
-    // whose camel-cased name collides with a reserved Rust type (`option` → `Option`, `box` →
-    // `Box`) or is a CDDL keyword (`true` / `false`) hits an `assert!` in `RustIdent::new` — a
-    // panic on otherwise-valid CDDL. `RustIdent::new` has no `IntermediateTypes` handle, so it
-    // can't record a graceful rejection itself; we catch those user-chosen names here at the seam
-    // where they enter and abort through the normal rejection channel. Because a reserved name can
-    // also be REFERENCED by another rule (a reference reaches `RustIdent::new` too), we surface the
-    // rejection immediately rather than after IR build — nothing may proceed to the assert.
-    // Track identifiers already seen in source order so a `/=`/`//=` rule that EXTENDS an
-    // already-defined identifier can be rejected loudly. Source-order iteration makes the "already
-    // defined" test (and thus determinism) inherent; the FIRST definition of a name via `/=` is
-    // valid CDDL (the shelley precedent) and must pass through, so we only reject on a repeat.
-    let mut seen_idents = std::collections::BTreeSet::new();
-    for cddl_rule in cddl.rules.iter() {
-        if rule_is_scope_marker(cddl_rule).is_some() {
-            continue;
-        }
-        if let Some(msg) = crate::intermediate::reserved_ident_rejection(&cddl_rule.name()) {
-            types.record_rejection(msg);
-        }
-        // A dotted rule name (e.g. from cddlc `as`-namespacing, `cose.label`) passes through
-        // `convert_to_camel_case` unchanged into invalid Rust; reject it here, at the same seam.
-        if let Some(msg) = crate::intermediate::dotted_ident_rejection(&cddl_rule.name()) {
-            types.record_rejection(msg);
-        }
-        // Rule-position `@name` is a directive drop (silent on type rules, mis-applied on plain
-        // groups): `@name` renames fields/variants/arms, never the rule identifier itself. Reject
-        // it here, alongside the reserved-name pre-scan, rather than emit a surprising type name.
-        if let Some(msg) = parsing::rule_position_name_rejection(cddl_rule) {
-            types.record_rejection(msg);
-        }
-        // A generic definition whose body is a plain group (`set<a> = (* a)`, and the bare-paren
-        // group-choice spelling that the AST also gives us as a group rule). Refused HERE because
-        // every site that would otherwise reach it is an `assert_eq!` abort with no rejection
-        // channel — `dep_graph::find_references` (rule ordering, which runs pre-IR) and `parsing`'s
-        // own `Rule::Group` arm. Both stay as re-earning guards. The one reach that precedes this
-        // loop, `extern_narrow::scan_consumer` (input assembly, before the checked parse), skips
-        // the rule by consulting the same predicate.
-        if let Some(msg) = parsing::generic_plain_group_def_rejection(cddl_rule) {
-            types.record_rejection(msg);
-        }
-        // Incremental choice extension (`a /= tstr`, `g //= (...)`): `parse_rule` re-registers the
-        // identifier on each statement, so the LAST definition wins and every earlier arm is
-        // silently dropped. Reject the EXTENSION (identifier already seen) loudly; the initial
-        // definition via `/=`/`//=` (identifier not yet seen) is valid CDDL and passes through.
-        if !seen_idents.insert(cddl_rule.name())
-            && let Some(msg) = parsing::incremental_choice_extension_rejection(cddl_rule)
-        {
-            types.record_rejection(msg);
-        }
-    }
-    if types.has_rejections() {
-        return Err(types.rejections_error());
-    }
-
-    // mark scope and filter scope markers
-    let mut scope = ROOT_SCOPE.clone();
-    let cddl_rules = cddl
-        .rules
-        .iter()
-        .filter(|cddl_rule| {
-            // We inserted string constants with specific prefixes earlier to mark scope
-            if let Some(new_scope) = rule_is_scope_marker(cddl_rule) {
-                crate::info!("Switching from scope '{scope}' to '{new_scope}'");
-                scope = new_scope;
-                false
-            } else {
-                let ident = rule_ident(cddl_rule);
-                types.mark_scope(ident.clone(), scope.clone());
-                // Preserve the source spelling (`-` vs `_`, acronym casing) before `RustIdent`
-                // camel-cases it away — the conformance oracle needs the provable source rule name.
-                types.mark_source_rule_name(ident, cddl_rule.name());
-                true
+        // Reserved-name pre-scan — runs BEFORE any `rule_ident` / `RustIdent::new` call (which start
+        // in the scope filter just below and recur through the whole IR build). A rule/plain-group
+        // whose camel-cased name collides with a reserved Rust type (`option` → `Option`, `box` →
+        // `Box`) or is a CDDL keyword (`true` / `false`) hits an `assert!` in `RustIdent::new` — a
+        // panic on otherwise-valid CDDL. `RustIdent::new` has no `IntermediateTypes` handle, so it
+        // can't record a graceful rejection itself; we catch those user-chosen names here at the seam
+        // where they enter and abort through the normal rejection channel. Because a reserved name can
+        // also be REFERENCED by another rule (a reference reaches `RustIdent::new` too), we surface the
+        // rejection immediately rather than after IR build — nothing may proceed to the assert.
+        // Track identifiers already seen in source order so a `/=`/`//=` rule that EXTENDS an
+        // already-defined identifier can be rejected loudly. Source-order iteration makes the "already
+        // defined" test (and thus determinism) inherent; the FIRST definition of a name via `/=` is
+        // valid CDDL (the shelley precedent) and must pass through, so we only reject on a repeat.
+        let mut seen_idents = std::collections::BTreeSet::new();
+        for cddl_rule in cddl.rules.iter() {
+            if rule_is_scope_marker(cddl_rule).is_some() {
+                continue;
             }
-        })
-        .collect::<Vec<_>>();
-    // We need to know beforehand which are plain groups so we can serialize them properly
-    // e.g. x = (3, 4), y = [1, x, 2] should be [1, 3, 4, 2] instead of [1, [3, 4], 2]
-    for cddl_rule in cddl_rules.iter() {
-        if let cddl::ast::Rule::Group { rule, .. } = cddl_rule {
-            // Freely defined group - no need to generate anything outside of group module
-            match &rule.entry {
-                cddl::ast::GroupEntry::InlineGroup {
-                    group,
-                    comments_after_group,
-                    ..
-                } => {
-                    assert_eq!(group.group_choices.len(), 1);
-                    let rule_metadata = RuleMetadata::from(comments_after_group.as_ref());
-                    types.mark_plain_group(
-                        RustIdent::new(CDDLIdent::new(rule.name.to_string())),
-                        PlainGroupInfo::new(Some(group.clone()), rule_metadata),
-                    );
+            if let Some(msg) = crate::intermediate::reserved_ident_rejection(&cddl_rule.name()) {
+                types.record_rejection(msg);
+            }
+            // A dotted rule name (e.g. from cddlc `as`-namespacing, `cose.label`) passes through
+            // `convert_to_camel_case` unchanged into invalid Rust; reject it here, at the same seam.
+            if let Some(msg) = crate::intermediate::dotted_ident_rejection(&cddl_rule.name()) {
+                types.record_rejection(msg);
+            }
+            // Rule-position `@name` is a directive drop (silent on type rules, mis-applied on plain
+            // groups): `@name` renames fields/variants/arms, never the rule identifier itself. Reject
+            // it here, alongside the reserved-name pre-scan, rather than emit a surprising type name.
+            if let Some(msg) = parsing::rule_position_name_rejection(cddl_rule) {
+                types.record_rejection(msg);
+            }
+            // A generic definition whose body is a plain group (`set<a> = (* a)`, and the bare-paren
+            // group-choice spelling that the AST also gives us as a group rule). Refused HERE because
+            // every site that would otherwise reach it is an `assert_eq!` abort with no rejection
+            // channel — `dep_graph::find_references` (rule ordering, which runs pre-IR) and `parsing`'s
+            // own `Rule::Group` arm. Both stay as re-earning guards. The one reach that precedes this
+            // loop, `extern_narrow::scan_consumer` (input assembly, before the checked parse), skips
+            // the rule by consulting the same predicate.
+            if let Some(msg) = parsing::generic_plain_group_def_rejection(cddl_rule) {
+                types.record_rejection(msg);
+            }
+            // Incremental choice extension (`a /= tstr`, `g //= (...)`): `parse_rule` re-registers the
+            // identifier on each statement, so the LAST definition wins and every earlier arm is
+            // silently dropped. Reject the EXTENSION (identifier already seen) loudly; the initial
+            // definition via `/=`/`//=` (identifier not yet seen) is valid CDDL and passes through.
+            if !seen_idents.insert(cddl_rule.name())
+                && let Some(msg) = parsing::incremental_choice_extension_rejection(cddl_rule)
+            {
+                types.record_rejection(msg);
+            }
+        }
+        if types.has_rejections() {
+            return Err(types.rejections_error());
+        }
+
+        // mark scope and filter scope markers
+        let mut scope = ROOT_SCOPE.clone();
+        let cddl_rules = cddl
+            .rules
+            .iter()
+            .filter(|cddl_rule| {
+                // We inserted string constants with specific prefixes earlier to mark scope
+                if let Some(new_scope) = rule_is_scope_marker(cddl_rule) {
+                    crate::info!("Switching from scope '{scope}' to '{new_scope}'");
+                    scope = new_scope;
+                    false
+                } else {
+                    let ident = rule_ident(cddl_rule);
+                    types.mark_scope(ident.clone(), scope.clone());
+                    // Preserve the source spelling (`-` vs `_`, acronym casing) before `RustIdent`
+                    // camel-cases it away — the conformance oracle needs the provable source rule name.
+                    types.mark_source_rule_name(ident, cddl_rule.name());
+                    true
                 }
-                x => panic!("Group rule with non-inline group? {:?}", x),
+            })
+            .collect::<Vec<_>>();
+        // We need to know beforehand which are plain groups so we can serialize them properly
+        // e.g. x = (3, 4), y = [1, x, 2] should be [1, 3, 4, 2] instead of [1, [3, 4], 2]
+        for cddl_rule in cddl_rules.iter() {
+            if let cddl::ast::Rule::Group { rule, .. } = cddl_rule {
+                // Freely defined group - no need to generate anything outside of group module
+                match &rule.entry {
+                    cddl::ast::GroupEntry::InlineGroup {
+                        group,
+                        comments_after_group,
+                        ..
+                    } => {
+                        assert_eq!(group.group_choices.len(), 1);
+                        let rule_metadata = RuleMetadata::from(comments_after_group.as_ref());
+                        types.mark_plain_group(
+                            RustIdent::new(CDDLIdent::new(rule.name.to_string())),
+                            PlainGroupInfo::new(Some(group.clone()), rule_metadata),
+                        );
+                    }
+                    x => panic!("Group rule with non-inline group? {:?}", x),
+                }
             }
         }
-    }
 
-    // Creating intermediate form from the CDDL
-    for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
-        crate::debug!(
-            "\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------",
-            scope,
-            cddl_rule.name()
-        );
-        parse_rule(&mut types, &pv, cddl_rule, cli);
+        // Creating intermediate form from the CDDL
+        for cddl_rule in dep_graph::topological_rule_order(&cddl_rules) {
+            crate::debug!(
+                "\n\n------------------------------------------\n- Handling rule: {}:{}\n------------------------------------",
+                scope,
+                cddl_rule.name()
+            );
+            parse_rule(&mut types, &pv, cddl_rule, cli);
+        }
+        // Pre-finalize seeding of `used_as_key` from cross-crate requests (parsing is complete here, so
+        // idents resolve; finalize's closure then expands the seeds transitively through private fields).
+        // Both are no-ops — byte-identical output — when their flags are absent:
+        //   - map KEYS of `--wrapper-requests` shapes addressed to this dep (lenient: an unparseable
+        //     sidecar seeds nothing, leaving strict diagnosis to `emit_requested_collections`);
+        //   - the `--key-requests` sidecar rows (strict: an unknown ident is a hard error).
+        crate::wrapper_requests::seed_used_as_key_from_wrapper_requests(&mut types, cli);
+        crate::wrapper_requests::seed_used_as_key_from_key_requests(&mut types, cli);
+        types.finalize(&pv, cli)?;
+        let verdict = crate::recursion_boundary::classify(&types, &auto_newtype_rules);
+        if verdict
+            .auto_newtype
+            .iter()
+            .all(|ident| auto_newtype_rules.contains(ident))
+        {
+            // No repair left to apply. Whatever the boundary refuses goes out through the ordinary
+            // rejection channel — recorded and immediately drained, so nothing reaches the emission
+            // seam's drain assertion with a pending rejection.
+            for msg in verdict.refusals {
+                types.record_rejection(msg);
+            }
+            if types.has_rejections() {
+                return Err(types.rejections_error());
+            }
+            break types;
+        }
+        boundary_announcements = verdict.announcements;
+        auto_newtype_rules.extend(verdict.auto_newtype);
+        ir_pass += 1;
+    };
+    for announcement in boundary_announcements {
+        crate::warn!("{announcement}");
     }
-    // Pre-finalize seeding of `used_as_key` from cross-crate requests (parsing is complete here, so
-    // idents resolve; finalize's closure then expands the seeds transitively through private fields).
-    // Both are no-ops — byte-identical output — when their flags are absent:
-    //   - map KEYS of `--wrapper-requests` shapes addressed to this dep (lenient: an unparseable
-    //     sidecar seeds nothing, leaving strict diagnosis to `emit_requested_collections`);
-    //   - the `--key-requests` sidecar rows (strict: an unknown ident is a hard error).
-    crate::wrapper_requests::seed_used_as_key_from_wrapper_requests(&mut types, cli);
-    crate::wrapper_requests::seed_used_as_key_from_key_requests(&mut types, cli);
-    types.finalize(&pv, cli)?;
 
     // A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type is a full-surface
     // citizen: rust ser/deser, the JSON serde/schemars impls, and the wasm wrapper class

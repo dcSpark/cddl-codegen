@@ -23339,3 +23339,147 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
         );
     }
 }
+
+/// The recursive-type boundary's auto-`@newtype` repair ANNOUNCES itself, on stderr, at the default
+/// verbosity — because it changes the emitted Rust and wasm API shape of rules the author did not
+/// annotate. Level and stream follow the tag-set collapse's `defaulted` precedent: a `warn!`,
+/// which is a diagnostic (stderr) rather than run output, for a behaviour the run chose unasked.
+///
+/// Spawned rather than driven in-process: the message is a property of what a USER sees on stderr,
+/// and `api::generated_strings` returns a file map with no stream to read. The text is load-bearing
+/// — it is the only place a reader learns why `X` is a wrapper struct and how to make that explicit
+/// — so it is pinned by content, not merely by presence.
+#[test]
+fn recursive_alias_cycle_auto_newtype_announces_itself_on_stderr() {
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_recursion_announce_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    // Two collection-backed rules in one cycle: the announcement names BOTH, which is what makes it
+    // a statement about the cycle rather than about whichever rule a traversal reached first.
+    std::fs::write(&input, "m = {* text => a}\na = [* m]\n").unwrap();
+    let out = scratch.join("crate");
+    let result = codegen_cmd()
+        .args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--wasm=false",
+        ])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "a repairable alias cycle must generate; stderr:\n{stderr}"
+    );
+    for needle in [
+        "recursive rule cycle over `a`, `m`",
+        "auto-`@newtype` applied to `a`, `m`",
+        "E0391",
+        "changes those types' Rust and wasm API shape",
+        "Write `; @newtype` on those rules",
+    ] {
+        assert!(
+            stderr.contains(needle),
+            "the auto-`@newtype` announcement must carry {needle:?}; stderr:\n{stderr}"
+        );
+    }
+    assert!(
+        !String::from_utf8_lossy(&result.stdout).contains("recursive rule cycle"),
+        "the announcement is a diagnostic and belongs on stderr, not in run output"
+    );
+    // And the repair is real: the rules are wrapper structs, not `pub type` aliases.
+    let generated = std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap();
+    for (wrapper, alias) in [
+        ("pub struct A(", "pub type A ="),
+        ("pub struct M(", "pub type M ="),
+    ] {
+        assert!(
+            generated.contains(wrapper) && !generated.contains(alias),
+            "the repaired cycle must emit `{wrapper}…)` rather than `{alias} …`:\n{generated}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// The compile floor for the recursive-type boundary: every shape the boundary lets through must
+/// actually build, on the rust AND the wasm face.
+///
+/// This is the guarantee no generate-only layer can give. `input_robustness_catalog` records that a
+/// recursive spec exits 0; the whole point of the boundary is that exiting 0 is not enough, because
+/// the defect it fixes was an exit-0 crate that failed `cargo check` (E0391 / E0072). So each class
+/// is represented here: the alias cycles the boundary auto-`@newtype`s (self-referential array, its
+/// holder — the shape that used to abort the tool — the `+` occurrence, the map flavor, the alias
+/// hop, and a two-collection cycle), and the SUPPORTED cycles it must leave alone (`tree`, and the
+/// nominal-reference cycle entered at a collection rule).
+///
+/// One spec and one crate rather than one per shape: the boundary is a whole-spec analysis, so
+/// putting every class in one input also asserts they do not interfere, and it pays for two nested
+/// `cargo check`s instead of sixteen.
+#[test]
+fn recursive_type_boundary_shapes_compile() {
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_recursion_floor_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "\
+; auto-`@newtype`d alias cycles
+selfarr = [* selfarr]
+selfarr_holder = [a: selfarr]
+plusarr = [+ plusarr]
+selfmap = {* text => selfmap}
+hop_b = hop_a
+hop_a = [* hop_b]
+cross_map = {* text => cross_arr}
+cross_arr = [* cross_map]
+; supported cycles the boundary must leave alone
+tree = [value: uint, children: [* tree]]
+nom_holder = [nom_map]
+nom_val = nom_map / int
+nom_map = { * text => nom_val }
+",
+    )
+    .unwrap();
+    let out = scratch.join("crate");
+    let generated = codegen_cmd()
+        .args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--wasm=true",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "the boundary's supported+repaired shapes must generate; stderr:\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    let target_dir = scratch.join("target");
+    for face in ["rust", "wasm"] {
+        let check = tool_cmd("cargo")
+            .args(["check"])
+            .current_dir(out.join(face))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "the generated {face} crate must build — an exit-0 crate that fails `cargo check` is \
+             exactly the defect the boundary exists to remove; stderr:\n{}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}

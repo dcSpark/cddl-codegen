@@ -4896,6 +4896,188 @@ fn input_robustness_catalog() {
     settings.bind(|| insta::assert_snapshot!("catalog", catalog));
 }
 
+/// Generate `spec` in-process and return the file map, asserting the run succeeded.
+fn expect_generates(
+    tag: &str,
+    spec: &str,
+    extra: &[&str],
+) -> std::collections::BTreeMap<String, String> {
+    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    std::fs::write(&path, spec).unwrap();
+    let mut argv = vec![
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "recursion_boundary_unused",
+    ];
+    argv.extend_from_slice(extra);
+    let result = crate::api::generated_strings(&Cli::parse_from(argv));
+    std::fs::remove_file(&path).ok();
+    result.unwrap_or_else(|e| panic!("{tag}: spec must generate, got: {e}\n{spec}"))
+}
+
+/// The recursive-type boundary's REFUSAL half: a cycle whose emitted Rust cannot compile, and for
+/// which no repair is in reach, is a graceful `Err` naming the cycle — never an exit-0 crate that
+/// fails `cargo check`, and never a signal death.
+///
+/// Two classes, with different rustc errors and different honest remedies (see
+/// `crate::recursion_boundary`): NOMINAL types containing one another with no heap indirection
+/// (E0072 — including the `Option` spelling, which is exactly the remedy the docs used to
+/// recommend), and an ALIAS cycle with no named collection in it to nominalize (E0391).
+///
+/// Every vector is asserted under BOTH rule orderings: the cycle's identity is a canonical property
+/// of the SCC, so permuting the spec's rules must not change one byte of the message. That is the
+/// property `dep_graph`'s traversal-order-dependent back edge could never have provided, and it is
+/// why the boundary is its own classifier rather than a promotion of that notice.
+#[test]
+fn recursive_type_boundary_refuses_uncompilable_cycles() {
+    // (tag, spec, permuted spec, substrings the message must carry)
+    let vectors: &[(&str, &str, &str, &[&str])] = &[
+        (
+            "nominal_pair",
+            "a = [b]\nb = [a]\n",
+            "b = [a]\na = [b]\n",
+            &[
+                "recursive rule cycle over `a`, `b`",
+                "E0072",
+                "`a` field `b` (type `b`)",
+                "`b` field `a` (type `a`)",
+                "no directive boxes a member",
+            ],
+        ),
+        (
+            "self_record",
+            "foo = [foo]\n",
+            "foo = [foo]\n",
+            &[
+                "recursive rule cycle over `foo`",
+                "E0072",
+                "`foo` field `foo`",
+            ],
+        ),
+        (
+            "optional_member",
+            "a = { ? next: a }\n",
+            "a = { ? next: a }\n",
+            &[
+                "E0072",
+                "`a` field `next`",
+                // the falsified docs remedy, stated in the message so it cannot be re-derived
+                "an `Option` stores its payload inline",
+            ],
+        ),
+        (
+            "pure_alias",
+            "x = y\ny = x\n",
+            "y = x\nx = y\n",
+            &[
+                "E0391",
+                "transparent `pub type` alias",
+                "No rule in this cycle names a collection",
+            ],
+        ),
+    ];
+    for (tag, spec, permuted, expected) in vectors {
+        let msg = expect_graceful_rejection(&format!("recursion_refuse_{tag}"), spec, &[]);
+        for needle in *expected {
+            assert!(
+                msg.contains(needle),
+                "{tag}: refusal must carry {needle:?}, got: {msg}"
+            );
+        }
+        let permuted_msg =
+            expect_graceful_rejection(&format!("recursion_refuse_{tag}_permuted"), permuted, &[]);
+        assert_eq!(
+            msg, permuted_msg,
+            "{tag}: the refusal must be identical under a permuted rule order — the cycle's \
+             identity is the SCC, not a DFS back edge"
+        );
+    }
+}
+
+/// The recursive-type boundary's REPAIR half: an alias-expansion cycle with a named collection in it
+/// is auto-`@newtype`d, and the result is BYTE-IDENTICAL to what the same spec with the directive
+/// written by hand produces.
+///
+/// Byte identity is the strongest available statement that the repair reuses the directive's
+/// machinery rather than reimplementing it — every downstream surface (wasm classes, encoding
+/// sidecars, emit-tests minting) is whatever `; @newtype` already gives, because it IS `; @newtype`.
+/// Asserted under both wasm modes, since the wasm face is where a second implementation would most
+/// visibly diverge.
+#[test]
+fn recursive_alias_cycle_auto_newtype_matches_the_hand_written_directive() {
+    // (tag, auto spec, the same spec with the directive spelled out)
+    let vectors = [
+        // the shape that used to ABORT the tool: a self-referential named collection plus a holder
+        (
+            "holder",
+            "x = [* x]\nhold = [a: x]\n",
+            "x = [* x] ; @newtype\nhold = [a: x]\n",
+        ),
+        (
+            "standalone",
+            "foos = [* foos]\n",
+            "foos = [* foos] ; @newtype\n",
+        ),
+        ("plus", "foos = [+ foos]\n", "foos = [+ foos] ; @newtype\n"),
+        (
+            "map",
+            "mdmap = {* text => mdmap}\n",
+            "mdmap = {* text => mdmap} ; @newtype\n",
+        ),
+        // the alias HOP: only `x` names a collection, so only `x` is nominalized
+        (
+            "alias_hop",
+            "y = x\nx = [* y]\n",
+            "y = x\nx = [* y] ; @newtype\n",
+        ),
+        // two collection-backed members: BOTH are nominalized, because the repair set is a property
+        // of the cycle rather than of whichever member a traversal reached first
+        (
+            "cross_rule",
+            "m = {* text => a}\na = [* m]\n",
+            "m = {* text => a} ; @newtype\na = [* m] ; @newtype\n",
+        ),
+    ];
+    for wasm in ["--wasm=false", "--wasm=true"] {
+        for (tag, auto, hand) in vectors {
+            let auto_files = expect_generates(&format!("recursion_auto_{tag}"), auto, &[wasm]);
+            let hand_files = expect_generates(&format!("recursion_hand_{tag}"), hand, &[wasm]);
+            assert_eq!(
+                auto_files, hand_files,
+                "{tag} ({wasm}): the auto-`@newtype` repair must emit exactly what the hand-written \
+                 directive emits"
+            );
+        }
+    }
+    // Accept side: the SUPPORTED class must not be swept in. A cycle through a nominal node that
+    // crosses heap indirection compiles today, so the boundary must leave it a transparent alias /
+    // plain record — no wrapper minted, no refusal.
+    for (tag, spec) in [
+        ("tree", "tree = [value: uint, children: [* tree]]\n"),
+        (
+            "cycle_entry",
+            "h = [mdmap]\nmd = mdmap / int\nmdmap = { * text => md }\n",
+        ),
+        (
+            "union_keyed",
+            "u_holder = [u_val]\nu_val = u_map / int / bytes / text\nu_map = { * u_val => u_val }\n",
+        ),
+    ] {
+        let files = expect_generates(
+            &format!("recursion_supported_{tag}"),
+            spec,
+            &["--wasm=false"],
+        );
+        let src = files.into_values().collect::<Vec<_>>().join("\n");
+        assert!(
+            !src.contains("pub struct Tree(") && !src.contains("pub struct Mdmap("),
+            "{tag}: a supported cycle must be left alone by the boundary"
+        );
+    }
+}
+
 /// Message-identity pin for the DIRECT-claim leg of the loose `<Elem>List` family, from the plain
 /// `[* bar]` side. The catalog above only records the `error (graceful)` LABEL; this asserts the
 /// message is the per-kind one — it names the claimed ident, the plain use that mints the class, and

@@ -1,1 +1,7 @@
+; A self-referential RECORD: the rule's own single field is the rule. The generated `struct Foo { foo:
+; Foo }` has infinite size (rustc E0072), and no directive boxes a member — this generator emits no
+; `Box` in any type position — so the recursive-type boundary refuses the shape rather than exiting 0
+; with a crate that cannot build. Its neighbours mark the two sides of the line: `tests/corpus/recursive.cddl`
+; is the same nominal recursion with a `[* tree]` between the two occurrences and compiles, and
+; `recursive_collection_self.cddl` is the ALIAS half of the same boundary, which has a repair.
 foo = [foo]

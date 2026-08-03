@@ -20,6 +20,7 @@ pub mod import_prune;
 pub mod intermediate;
 pub mod log;
 pub mod parsing;
+pub mod recursion_boundary;
 pub mod rust_reserved;
 pub mod utils;
 pub mod wrapper_requests;

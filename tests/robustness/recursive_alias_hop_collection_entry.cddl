@@ -1,0 +1,17 @@
+; TRACKED-KNOWN PANIC — pre-existing, and independent of the recursive-type boundary: it reproduces
+; identically with the `; @newtype` directive written by hand, and it reproduced before the boundary
+; existed.
+;
+; An alias-hop cycle whose ENTRY POINT is the plain-typename rule rather than the collection rule.
+; Rule ordering decides that: `hop_alias` sorts before `hop_arr`, so the collection's element
+; reference to `hop_alias` never resolves through the alias table and stays nominal — the same
+; ingredient `collection_rule_cycle_entry.cddl` isolates on the TABLE side, where it is fixed. Here
+; the wasm-side name derivation walks that nominal reference and trips `is_enum`'s
+; registered-or-generic assertion. Spelling the same cycle so the collection sorts first
+; (`recursive_alias_hop.cddl`, `y = x` / `x = [* y]`) generates fine, which is what identifies rule
+; ordering rather than the shape as the ingredient.
+;
+; The catalog runs default (wasm) flags, so this row is the panic; with `--wasm=false` the same spec
+; generates. Flipping the row to `ok` is the fix.
+hop_alias = hop_arr
+hop_arr = [* hop_alias]

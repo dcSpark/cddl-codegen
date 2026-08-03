@@ -2167,13 +2167,25 @@ fn parse_type(
     cli: &Cli,
 ) {
     let type1 = &type_choice.type1;
-    let rule_metadata = merge_metadata(
+    let mut rule_metadata = merge_metadata(
         &merge_metadata(
             inherited_metadata,
             &RuleMetadata::from(type1.comments_after_type.as_ref()),
         ),
         &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
     );
+    // The recursive-type boundary's auto-`@newtype` repair enters HERE, at the one seam where a
+    // rule's directives are settled, so an auto-nominalized collection is indistinguishable from
+    // one the spec spelled `; @newtype` on — same wrapper struct, same wasm class, same encoding
+    // sidecars, same emit-tests minting. The set is decided by `crate::recursion_boundary` from a
+    // FINALIZED IR and seeded before this pass runs (see `IntermediateTypes::set_auto_newtype_rules`);
+    // it is empty for every spec with no alias-expansion cycle, so this is inert there. A rule that
+    // already carries the directive is left exactly as written — the boundary never overrides a
+    // custom getter name the author chose.
+    if rule_metadata.newtype.is_none() && types.is_auto_newtype_rule(type_name) {
+        rule_metadata.newtype = Some(None);
+    }
+    let rule_metadata = rule_metadata;
     if let Some(demand) = rule_metadata.key_demand {
         types.mark_key_demand(type_name.clone(), demand);
     }

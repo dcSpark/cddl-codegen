@@ -58,16 +58,17 @@ non_empty_wrapper_collision_array_element error (graceful)
 non_empty_wrapper_name_collision error (graceful)
 prelude_biguint            ok
 recursive_alias_hop        ok
-recursive_collection_holder ABORTED (signal 6)
+recursive_alias_hop_collection_entry PANIC
+recursive_collection_holder ok
 recursive_collection_plus  ok
 recursive_collection_self  ok
 recursive_cross_rule_collection ok
 recursive_map_self         ok
-recursive_nominal_no_indirection ok
-recursive_optional_member  ok
-recursive_pure_alias       ok
+recursive_nominal_no_indirection error (graceful)
+recursive_optional_member  error (graceful)
+recursive_pure_alias       error (graceful)
 recursive_union_keyed_table_nominal ok
-self_recursive             ok
+self_recursive             error (graceful)
 single_bareword_map_field  ok
 tagged_literal             error (graceful)
 tagged_prelude_constant    error (graceful)
