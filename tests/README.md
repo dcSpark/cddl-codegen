@@ -4487,11 +4487,17 @@ emit semantically identical code), and `encoding_var_is_copy -> false` only adds
 three impls). Expect that equivalent-style class among survivors; the sweep's value is the
 survivors that *aren't* in it.
 
-## Known gap
+## Coverage note: `number`/`time` in the prelude fixture
 
 The CDDL standard prelude (`biguint`, `tdate`, `uri`, …) is covered by `tests/corpus/prelude.cddl`.
-The float-bearing prelude types (`number`, `time`) are omitted from it because floats don't support
-`--preserve-encodings` (a pre-existing `unimplemented!` in `generation/deserialize.rs`), which the corpus
-exercises for every entry.
+The float-bearing choice types (`number`, `time`) generate and round-trip under **every** profile —
+floats support `--preserve-encodings`, and each prelude float name is its own wire-acceptance class
+(the `float_heads`/`float_widths` suites) — but they are deliberately omitted from that fixture on
+coverage economy, as its own header records: their generated shape (a type-choice enum) is already
+covered by other members, and their float arm gets real wire vectors where that is cheap (the matrix
+decode-conformance `prelude.number`/`prelude.time` rows, `homogeneous_array.cddl`'s `float_holder`,
+and `optional_fixed_float.cddl`). An earlier revision of this section called the omission a gap
+blocked by preserve-mode floats; that blocker no longer exists, and the omission that remains is a
+coverage decision, not a residue of it.
 
 [`insta`]: https://insta.rs
