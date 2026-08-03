@@ -5491,6 +5491,51 @@ impl AsRef<cddl_lib::RejectUintSet> for RejectUintSet {
     }
 }
 
+pub type ScalarAlias = u64;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ScalarAliasHolder(pub(crate) cddl_lib::ScalarAliasHolder);
+
+#[wasm_bindgen]
+impl ScalarAliasHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ScalarAliasHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn payload(&self) -> ScalarAlias {
+        self.0.payload
+    }
+
+    pub fn new(payload: ScalarAlias) -> Self {
+        Self(cddl_lib::ScalarAliasHolder::new(payload))
+    }
+}
+
+impl From<cddl_lib::ScalarAliasHolder> for ScalarAliasHolder {
+    fn from(native: cddl_lib::ScalarAliasHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ScalarAliasHolder> for cddl_lib::ScalarAliasHolder {
+    fn from(wasm: ScalarAliasHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ScalarAliasHolder> for ScalarAliasHolder {
+    fn as_ref(&self) -> &cddl_lib::ScalarAliasHolder {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct Second(pub(crate) cddl_lib::Second);
@@ -6152,6 +6197,49 @@ impl From<TaggedFooBytes> for cddl_lib::TaggedFooBytes {
 
 impl AsRef<cddl_lib::TaggedFooBytes> for TaggedFooBytes {
     fn as_ref(&self) -> &cddl_lib::TaggedFooBytes {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedScalarAlias(pub(crate) cddl_lib::TaggedScalarAlias);
+
+#[wasm_bindgen]
+impl TaggedScalarAlias {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedScalarAlias, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: ScalarAlias) -> Self {
+        Self(cddl_lib::TaggedScalarAlias::new(inner))
+    }
+
+    pub fn get(&self) -> ScalarAlias {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::TaggedScalarAlias> for TaggedScalarAlias {
+    fn from(native: cddl_lib::TaggedScalarAlias) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedScalarAlias> for cddl_lib::TaggedScalarAlias {
+    fn from(wasm: TaggedScalarAlias) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedScalarAlias> for TaggedScalarAlias {
+    fn as_ref(&self) -> &cddl_lib::TaggedScalarAlias {
         &self.0
     }
 }

@@ -830,6 +830,33 @@ const GRID: &[Cell] = &[
             must_not: &["write_unsigned_integer", "raw.unsigned_integer()"],
         },
     },
+    // 23h-iii. The pair on an alias a `.cbor` PAYLOAD wraps, honored in both directions through the
+    //      payload. The sibling REFERENCING context of 23h-ii, at the other seam that reaches an
+    //      aliased rule through an enclosing type expression: `bytes .cbor inner` frames the alias's
+    //      value as a CBOR byte string, and the framing is the only thing generated code owns there.
+    //      The four `must` anchors are the two paths in both directions — `&mut f_inner_se` /
+    //      `inner_de` name the PAYLOAD's own serializer/deserializer (the framing), `serializer` /
+    //      `raw` the plain member's — so the cell is a two-paths-AGREE assertion. `pub f: Inner,` is
+    //      the declared-spelling half (`output_format.mdx` § "Type spelling at member positions": the
+    //      `.cbor` is the MEMBER expression's, so the alias still denotes the value read there).
+    //      The `must_not` pair is the built-in uint codec the payload used to emit instead.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "cbor-payload-wrapping-alias",
+        spec: "inner = uint ; @custom_serialize ser_inner @custom_deserialize deser_inner\nh = [f: bytes .cbor inner]\ndirect = [d: inner]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "pub f: Inner,",
+                "ser_inner(&mut f_inner_se, &self.f)",
+                "ser_inner(serializer, &self.d)",
+                "deser_inner(inner_de)",
+                "deser_inner(raw)",
+            ],
+            must_not: &["write_unsigned_integer", "unsigned_integer()"],
+        },
+    },
     // 23i-23n: the placements whose rejection keys on the MINTED STRUCT's kind rather than on the
     // parse shape, so they fire from `finalize` (which is also what lets them see a generic
     // instance's struct). 23o is the standing accepted-control beside them.
@@ -1800,6 +1827,248 @@ fn tag_head_wrapper_and_member_agree_on_the_wrapped_aliass_custom_pair() {
     let direct_ser = impl_block(&src, "cbor_event::se::Serialize for Direct");
     assert!(
         direct_ser.contains("ser_inner(serializer"),
+        "the plain-member path must route through the same pair:\n{direct_ser}"
+    );
+    let direct_deser = impl_block(&src, "Deserialize for Direct");
+    assert!(
+        direct_deser.contains("deser_inner(raw)"),
+        "the plain-member path must route through the same pair:\n{direct_deser}"
+    );
+}
+
+/// The `.cbor` PAYLOAD sibling of the test above: a member expression that frames an annotated
+/// alias's value as a CBOR byte string routes through the alias's custom pair in BOTH directions,
+/// exactly as a plain member of that alias does — generated code owning only the byte-string
+/// framing.
+///
+/// The framing anchors are load-bearing in both directions, not decoration. Serialize writes the
+/// payload into a fresh `Serializer::new_vec()` and then `write_bytes` its `finalize()`d buffer;
+/// deserialize reads `raw.bytes()` and builds an `inner_de` over the contents. Those four lines are
+/// what makes the position a `.cbor` payload at all, so a "fix" that routed the pair while dropping
+/// the framing would emit a bare uint where the spec says byte string — the same silent wire
+/// divergence in the other direction. Asserting the pair call takes the PAYLOAD's serializer/
+/// deserializer (`&mut f_inner_se` / `inner_de`, never `serializer` / `raw`) is what pins that the
+/// codec writes INSIDE the framing rather than instead of it.
+///
+/// The member's own spelling (`pub f: Inner`) is the declared-spelling half of the same seam:
+/// `output_format.mdx` § "Type spelling at member positions" makes ownership of the encoding
+/// operation the test, and here the `.cbor` belongs to the MEMBER's type expression, so the alias
+/// ident still denotes exactly the value read there.
+#[test]
+fn cbor_payload_and_member_agree_on_the_wrapped_aliass_custom_pair() {
+    const SPEC: &str = "inner = uint ; @custom_serialize ser_inner @custom_deserialize deser_inner\n\
+                        h = [f: bytes .cbor inner]\n\
+                        direct = [d: inner]\n";
+    let src = generate(SPEC, &[], false, "cbor_payload_custom_pair")
+        .expect("generation of the .cbor-payload-over-annotated-alias spec must succeed")
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        src.contains("pub f: Inner,"),
+        "the `.cbor` member must spell its type as declared — the encoding operation is the \
+         MEMBER expression's, so the alias denotes the value read there:\n{src}"
+    );
+
+    let h_ser = impl_block(&src, "cbor_event::se::Serialize for H");
+    assert!(
+        h_ser.contains("Serializer::new_vec()") && h_ser.contains("write_bytes(&f_bytes)"),
+        "the byte-string framing around the payload stays generated-code-owned:\n{h_ser}"
+    );
+    assert!(
+        h_ser.contains("ser_inner(&mut f_inner_se, &self.f)"),
+        "the payload must be written by the wrapped alias's @custom_serialize, into the PAYLOAD's \
+         own serializer (inside the framing, not instead of it):\n{h_ser}"
+    );
+    assert!(
+        !h_ser.contains("write_unsigned_integer"),
+        "the payload must not ALSO emit the built-in uint codec it replaces:\n{h_ser}"
+    );
+
+    let h_deser = impl_block(&src, "Deserialize for H");
+    assert!(
+        h_deser.contains("raw.bytes()") && h_deser.contains("Deserializer::from(f_bytes)"),
+        "the byte-string framing around the payload stays generated-code-owned:\n{h_deser}"
+    );
+    assert!(
+        h_deser.contains("deser_inner(inner_de)"),
+        "the payload must be read by the wrapped alias's @custom_deserialize, from the PAYLOAD's \
+         own deserializer (honoring only the write half is the read-one/write-another \
+         asymmetry):\n{h_deser}"
+    );
+    assert!(
+        !h_deser.contains("unsigned_integer()"),
+        "the payload must not ALSO emit the built-in uint codec it replaces:\n{h_deser}"
+    );
+
+    // The other path to the same alias, in the same crate — the agreement half of the property.
+    let direct_ser = impl_block(&src, "cbor_event::se::Serialize for Direct");
+    assert!(
+        direct_ser.contains("ser_inner(serializer, &self.d)"),
+        "the plain-member path must route through the same pair:\n{direct_ser}"
+    );
+    let direct_deser = impl_block(&src, "Deserialize for Direct");
+    assert!(
+        direct_deser.contains("deser_inner(raw)"),
+        "the plain-member path must route through the same pair:\n{direct_deser}"
+    );
+
+    // The same split under `--preserve-encodings`, which is where the framing/payload boundary
+    // becomes observable as data: the byte string's own `Sz` stays a generated-code-owned slot on
+    // the owner's encoding struct (`f_bytes_encoding` … `to_str_len_sz`), while the PAYLOAD's
+    // encoding variable is an argument crossing the pair call. Honoring the pair by handing it the
+    // whole framing — or by keeping the payload's variable out of it — would each show here.
+    let preserve = generate(
+        SPEC,
+        &["--preserve-encodings=true"],
+        false,
+        "cbor_payload_custom_pair_preserve",
+    )
+    .expect("generation under --preserve-encodings must succeed")
+    .into_values()
+    .collect::<Vec<_>>()
+    .join("\n");
+    let h_ser_preserve = impl_block(&preserve, "cbor_event::se::Serialize for H");
+    assert!(
+        h_ser_preserve.contains("encs.f_bytes_encoding")
+            && h_ser_preserve.contains("to_str_len_sz(f_bytes.len() as u64)"),
+        "the byte string's own length encoding stays generated-code-owned:\n{h_ser_preserve}"
+    );
+    assert!(
+        h_ser_preserve.contains("&mut f_inner_se,") && h_ser_preserve.contains("encs.f_encoding"),
+        "the PAYLOAD's encoding variable must cross the pair call — the codec owns that \
+         wire:\n{h_ser_preserve}"
+    );
+}
+
+/// A TRANSPARENT RE-ALIAS of an annotated alias (`foo = inner`) keeps the wrapped alias's custom
+/// pair, in both directions, for every member declared through the re-alias.
+///
+/// This is the seam where the `Alias` node CANNOT be kept: `register_type_alias` refuses an
+/// already-`Alias`-wrapped base, so the re-aliasing rule's table entry stores the flattened target
+/// and the emitter's ident lookup lands on `foo`, not on `inner`. What survives the flattening is
+/// the wire-codec metadata itself, inherited at registration — so `foo` and `inner` are one wire
+/// form reached by two names, which is the property this test states.
+///
+/// The chain is two links deep and its rules are declared in an ADVERSARIAL order (each rule before
+/// the one it references), because inheritance-at-registration is only sound if the referenced rule
+/// registers first. That ordering is the rule-graph's job (`dep_graph::topological_rule_order`
+/// pushes a rule after its references), never source order, and this fixture is what says so.
+#[test]
+fn transparent_realias_and_member_agree_on_the_aliass_custom_pair() {
+    const SPEC: &str = "use_bar = [y: bar]\n\
+                        bar = foo\n\
+                        foo = inner\n\
+                        inner = uint ; @custom_serialize ser_inner @custom_deserialize deser_inner\n\
+                        direct = [d: inner]\n";
+    let src = generate(SPEC, &[], false, "realias_custom_pair")
+        .expect("generation of the transparent-re-alias spec must succeed")
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        src.contains("pub y: Bar,"),
+        "fixture premise: the member must be declared through the re-alias, or the assertions \
+         below are vacuous:\n{src}"
+    );
+
+    let ser = impl_block(&src, "cbor_event::se::Serialize for UseBar");
+    assert!(
+        ser.contains("ser_inner(serializer, &self.y)"),
+        "a member declared through a re-alias must route through the re-aliased rule's \
+         @custom_serialize:\n{ser}"
+    );
+    assert!(
+        !ser.contains("write_unsigned_integer"),
+        "the re-alias must not emit the built-in uint codec the pair replaces:\n{ser}"
+    );
+
+    let deser = impl_block(&src, "Deserialize for UseBar");
+    assert!(
+        deser.contains("deser_inner(raw)"),
+        "a member declared through a re-alias must route through the re-aliased rule's \
+         @custom_deserialize (honoring only the write half is the read-one/write-another \
+         asymmetry):\n{deser}"
+    );
+    assert!(
+        !deser.contains("raw.unsigned_integer()"),
+        "the re-alias must not emit the built-in uint codec the pair replaces:\n{deser}"
+    );
+
+    // The other path to the same alias, in the same crate — the agreement half of the property.
+    let direct_ser = impl_block(&src, "cbor_event::se::Serialize for Direct");
+    assert!(
+        direct_ser.contains("ser_inner(serializer, &self.d)"),
+        "the plain-member path must route through the same pair:\n{direct_ser}"
+    );
+    let direct_deser = impl_block(&src, "Deserialize for Direct");
+    assert!(
+        direct_deser.contains("deser_inner(raw)"),
+        "the plain-member path must route through the same pair:\n{direct_deser}"
+    );
+}
+
+/// A RULE-BODY `.cbor` over an annotated alias (`plainbody = bytes .cbor inner`) keeps the wrapped
+/// alias's custom pair for every member declared through it, in both directions.
+///
+/// Same flattening seam as the re-alias test above — this rule registers as a transparent alias too,
+/// so its `Alias` node cannot survive `register_type_alias` — with the byte-string framing stacked
+/// on top. The framing is the rule's own (`plainbody` IS the bytes-wrapped form), so the pair call
+/// must sit INSIDE it, taking the payload's serializer/deserializer.
+#[test]
+fn rule_body_cbor_alias_and_member_agree_on_the_wrapped_aliass_custom_pair() {
+    const SPEC: &str = "inner = uint ; @custom_serialize ser_inner @custom_deserialize deser_inner\n\
+                        plainbody = bytes .cbor inner\n\
+                        holder = [p: plainbody]\n\
+                        direct = [d: inner]\n";
+    let src = generate(SPEC, &[], false, "rule_body_cbor_custom_pair")
+        .expect("generation of the rule-body-.cbor-over-annotated-alias spec must succeed")
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        src.contains("pub p: Plainbody,"),
+        "fixture premise: the member must be declared through the `.cbor` alias rule, or the \
+         assertions below are vacuous:\n{src}"
+    );
+
+    let ser = impl_block(&src, "cbor_event::se::Serialize for Holder");
+    assert!(
+        ser.contains("Serializer::new_vec()") && ser.contains("write_bytes(&p_bytes)"),
+        "the byte-string framing around the payload stays generated-code-owned:\n{ser}"
+    );
+    assert!(
+        ser.contains("ser_inner(&mut p_inner_se, &self.p)"),
+        "the payload must be written by the wrapped alias's @custom_serialize, into the PAYLOAD's \
+         own serializer:\n{ser}"
+    );
+    assert!(
+        !ser.contains("write_unsigned_integer"),
+        "the payload must not ALSO emit the built-in uint codec it replaces:\n{ser}"
+    );
+
+    let deser = impl_block(&src, "Deserialize for Holder");
+    assert!(
+        deser.contains("raw.bytes()") && deser.contains("Deserializer::from(p_bytes)"),
+        "the byte-string framing around the payload stays generated-code-owned:\n{deser}"
+    );
+    assert!(
+        deser.contains("deser_inner(inner_de)"),
+        "the payload must be read by the wrapped alias's @custom_deserialize, from the PAYLOAD's \
+         own deserializer:\n{deser}"
+    );
+    assert!(
+        !deser.contains("unsigned_integer()"),
+        "the payload must not ALSO emit the built-in uint codec it replaces:\n{deser}"
+    );
+
+    // The other path to the same alias, in the same crate — the agreement half of the property.
+    let direct_ser = impl_block(&src, "cbor_event::se::Serialize for Direct");
+    assert!(
+        direct_ser.contains("ser_inner(serializer, &self.d)"),
         "the plain-member path must route through the same pair:\n{direct_ser}"
     );
     let direct_deser = impl_block(&src, "Deserialize for Direct");

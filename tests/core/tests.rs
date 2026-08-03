@@ -692,6 +692,24 @@ mod tests {
         deser_test(&CborInCbor::new(foo.clone(), 9, foo.into()))
     }
 
+    // The two WRAPPING contexts over a named alias — a tag head and a `.cbor` payload — round-trip,
+    // and each is constructed through the alias's own declared spelling. The `new` signatures are
+    // themselves the assertion the corpus cannot make from bytes alone: a wrapping seam that
+    // re-resolved the alias would still round-trip identically, and would still compile, because
+    // the alias is transparent — so what this executes is the round trip and what the blessed
+    // snapshot beside it pins is the spelling.
+    #[test]
+    fn scalar_alias_wrappings() {
+        let tagged: TaggedScalarAlias = TaggedScalarAlias::new(41);
+        deser_test(&tagged);
+        assert_eq!(tagged.to_cbor_bytes(), vec![0xc7, 0x18, 0x29]);
+
+        let holder = ScalarAliasHolder::new(41);
+        deser_test(&holder);
+        // one array element, itself a byte string holding the payload's own encoding
+        assert_eq!(holder.to_cbor_bytes(), vec![0x81, 0x42, 0x18, 0x29]);
+    }
+
     // A `bytes .cbor <X>` payload is decoded from a deserializer built over the byte string's
     // contents. A leaf that names the OUTER reader instead consumes the next outer item, so the
     // damage is invisible in the payload's own value and shows up as the FOLLOWING member decoding

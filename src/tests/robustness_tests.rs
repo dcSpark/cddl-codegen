@@ -8019,8 +8019,9 @@ fn generic_raw_bytes_base_rejects_gracefully() {
 /// A `.cbor` payload applied to a target that is ALREADY a `.cbor` payload — `bytes .cbor (bytes
 /// .cbor uint)` and the alias-flattened `inner = bytes .cbor uint` + `bytes .cbor inner` — used to
 /// generate at exit 0 and emit a crate that cannot build. Both spellings are the SAME encoding
-/// chain by the time the operator applies (a `.cbor` target is alias-resolved when the control
-/// operator is parsed), and the serialize walk names the payload buffer after the OWNING variable,
+/// chain by the time the operator applies (an alias rule's own `.cbor` rides on its `RustType`'s
+/// encoding list, which a reference to the rule copies whole, so naming it adds no boundary), and
+/// the serialize walk names the payload buffer after the OWNING variable,
 /// so every depth in one chain mints `<var>_inner_se` and the outer write borrows what the inner
 /// `finalize()` moved (E0382, once per extra depth). Now a parse-time graceful rejection at both
 /// seams that can apply the operation: the rule-BODY registration (which has a rule name to prefix)
