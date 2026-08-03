@@ -191,22 +191,24 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
-- **A tag-head rule wrapping an annotated alias bypasses the alias's custom codec pair — the
-  wrapped path silently keeps the generated wire form.** Probed during delivery 4's refusal work
-  (the tagged-wrapper rejection was going to advertise this spelling as its remedy; the probe is
-  why it advertises the extern route instead): `inner = uint ; @custom_serialize s
-  @custom_deserialize d` with `foo = #6.42(inner)` generates with NEITHER half reachable through
-  `foo` — probed with `foo` as the only referencer of `inner`; whether a direct use of `inner`
-  elsewhere in the same spec still routes through the pair (making one value serialize two ways in
-  one crate) is unmeasured and is the first thing a fix should pin. The class is wider than the
-  instance: a directive honored at a rule's own position can be dropped at a REFERENCING context
-  of that rule, and the directive×rule-shape sweep is structurally blind there (its cells annotate
-  the rule under test, never a rule the tested rule wraps) — the systematic layer is the
-  referencing-context sweep entry in `tests/TESTING_ROADMAP.md`. Fix shape: route the tag-head
-  wrapper's codec through the wrapped alias's pair (both directions — a one-half application is
-  the read-one-format/write-another asymmetry the delivery-4 refusals exist to prevent), or refuse
-  the combination loudly; the user-doc caveat in `comment_dsl.mdx` § `@custom_serialize` names the
-  interim remedies and comes out in the fixing commit.
+- **A `.cbor` payload over an annotated alias bypasses the alias's custom codec pair — the wrapped
+  path silently keeps the generated wire form.** `inner = uint ; @custom_serialize s
+  @custom_deserialize d` with `h = [f: bytes .cbor inner]` emits `f_inner_se
+  .write_unsigned_integer(self.f)` / `inner_de.unsigned_integer()` — neither half reachable through
+  the payload, while a plain member of `inner` routes through both, so one value type serializes two
+  ways in one crate. Measured 2026-08-03 while fixing the tag-head sibling of the same class (which
+  now routes through the pair, both directions); the tag-head rule's own strip was removed, this one
+  remains at `parsing.rs`'s `ControlOperator::CBOR` arm, where the `.cbor` TARGET is alias-resolved
+  before the member type is built. That strip has a second, already-ledgered cost — the member's
+  DECLARED spelling (`pub j: Credential`, not `StakeCredential`, violating `output_format.mdx`
+  § "Type spelling at member positions") — and this finding is why removing it is a WIRE fix rather
+  than a naming fix. Fix shape: keep the `Alias` node the way the tag-head path now does; the
+  `register_type_alias` assertion that motivates the strip binds only the rule-body registration
+  seam, so the member/choice-arm seam can keep the node. The class is wider than either instance: a
+  directive honored at a rule's own position can be dropped at a REFERENCING context of that rule,
+  and the directive×rule-shape sweep is structurally blind there (its cells annotate the rule under
+  test, never a rule the tested rule wraps) — the systematic layer is the referencing-context sweep
+  entry in `tests/TESTING_ROADMAP.md`, whose second-inert-context trigger this finding fires.
 
 - **`@duplicates reject` on a TABLE rule emits a `--component` guest crate that cannot compile.**
   The generated component glue lowers a WIT `list<tuple<k, v>>` parameter back to the rust member

@@ -63,6 +63,7 @@ the emitted `pid` is `PolicyId`, never `Vec<u8>`; `m`'s encoding sidecar is keye
 The positions this covers:
 
 - **data-struct fields**, and the constructor / getter / setter / wasm signatures built from them;
+- a **wrapper rule's inner value** — the type a tag-head rule (`tagged_sc = #6.9(stake_credential)`) or a `@newtype` rule wraps — and the `new` / getter / `From` signatures built from it;
 - **encoding-struct fields** under `--preserve-encodings`, including the sidecar **index key** of a map-typed member (that one *must* match the data field's key type: serialize looks the sidecar up with a key borrowed straight out of the data map, so the two are one type expressed twice);
 - the same sidecars for an [open struct-map rest row](#open-struct-maps-rest-rows) or [open array rest tail](#open-arrays-rest-tails);
 - a **named collection rule's own alias target** (`nemap = {* epoch => text}` emits `pub type Nemap = OrderedHashMap<Epoch, String>`);

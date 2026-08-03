@@ -805,6 +805,31 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // 23h-ii. The pair on an alias a TAG-HEAD rule WRAPS, honored in both directions through the
+    //      wrapper. The position under test is a REFERENCING context: the directive is written at a
+    //      position cell 22 already proves honored, and what is measured is whether it survives being
+    //      reached through `#6.n(...)`. The wrapper writes the tag itself and delegates only the
+    //      payload, so one CDDL type keeps one wire form however it is reached — the `direct` rule in
+    //      the same spec is the same alias reached through a plain member, and the two `ser_inner`
+    //      anchors below (`&self.0` = the wrapper, `&self.d` = the member) are what makes the cell a
+    //      two-paths-AGREE assertion rather than a one-path one. The `must_not` pair is the built-in
+    //      uint codec the wrapper used to emit instead.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "tag-head-wrapping-alias",
+        spec: "inner = uint ; @custom_serialize ser_inner @custom_deserialize deser_inner\nfoo = #6.42(inner)\ndirect = [d: inner]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "write_tag(42u64)",
+                "ser_inner(serializer, &self.0)",
+                "ser_inner(serializer, &self.d)",
+                "deser_inner(raw)",
+            ],
+            must_not: &["write_unsigned_integer", "raw.unsigned_integer()"],
+        },
+    },
     // 23i-23n: the placements whose rejection keys on the MINTED STRUCT's kind rather than on the
     // parse shape, so they fire from `finalize` (which is also what lets them see a generic
     // instance's struct). 23o is the standing accepted-control beside them.
@@ -1700,5 +1725,86 @@ fn dsl_directive_position_sweep() {
         failures.is_empty(),
         "dsl directive × position sweep failures:\n\n{}",
         failures.join("\n\n")
+    );
+}
+
+/// The `impl` block whose header starts with `header_prefix`, sliced to the next `impl `.
+///
+/// The sweep's substring assertions run over the WHOLE concatenated source, which cannot attribute
+/// an emitted call to the type that emits it — the two-paths test below needs exactly that, so it
+/// slices per-impl and asserts inside each block. The prefix must be followed by a non-ident
+/// character so `for Foo` does not match `for FooBar`.
+fn impl_block<'a>(src: &'a str, header_prefix: &str) -> &'a str {
+    src.split("impl ")
+        .find(|seg| {
+            seg.strip_prefix(header_prefix).is_some_and(|rest| {
+                !rest
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_')
+            })
+        })
+        .unwrap_or_else(|| panic!("no `impl {header_prefix}` block in:\n{src}"))
+}
+
+/// Two paths to one CDDL type agree on its wire form: a tag-head rule WRAPPING an annotated alias
+/// routes through the alias's custom pair in BOTH directions, exactly as a plain member of that
+/// alias does — the wrapper owning only the tag framing.
+///
+/// The sweep cell `@custom_serialize+deserialize @ tag-head-wrapping-alias` covers the same spec at
+/// the docs-contract level; this test is the per-impl attribution the sweep's whole-source substring
+/// match cannot give, and it is what makes the ASYMMETRY visible: honoring one half only would leave
+/// `Foo` writing one form and reading another, which is the read-one/write-another divergence the
+/// pair's placement rejections exist to prevent.
+#[test]
+fn tag_head_wrapper_and_member_agree_on_the_wrapped_aliass_custom_pair() {
+    const SPEC: &str = "inner = uint ; @custom_serialize ser_inner @custom_deserialize deser_inner\n\
+                        foo = #6.42(inner)\n\
+                        direct = [d: inner]\n";
+    let src = generate(SPEC, &[], false, "tag_head_custom_pair")
+        .expect("generation of the tag-head-over-annotated-alias spec must succeed")
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let foo_ser = impl_block(&src, "cbor_event::se::Serialize for Foo");
+    assert!(
+        foo_ser.contains("write_tag(42u64)"),
+        "the wrapper must still write its own tag head:\n{foo_ser}"
+    );
+    assert!(
+        foo_ser.contains("ser_inner(serializer"),
+        "the wrapper must delegate its payload to the wrapped alias's @custom_serialize:\n{foo_ser}"
+    );
+    assert!(
+        !foo_ser.contains("write_unsigned_integer"),
+        "the wrapper must not ALSO emit the built-in uint codec it replaces:\n{foo_ser}"
+    );
+
+    let foo_deser = impl_block(&src, "Deserialize for Foo");
+    assert!(
+        foo_deser.contains("raw.tag()"),
+        "the wrapper must still check its own tag head:\n{foo_deser}"
+    );
+    assert!(
+        foo_deser.contains("deser_inner(raw)"),
+        "the wrapper must delegate its payload to the wrapped alias's @custom_deserialize \
+         (honoring only the write half is the read-one/write-another asymmetry):\n{foo_deser}"
+    );
+    assert!(
+        !foo_deser.contains("raw.unsigned_integer()"),
+        "the wrapper must not ALSO emit the built-in uint codec it replaces:\n{foo_deser}"
+    );
+
+    // The other path to the same alias, in the same crate — the agreement half of the property.
+    let direct_ser = impl_block(&src, "cbor_event::se::Serialize for Direct");
+    assert!(
+        direct_ser.contains("ser_inner(serializer"),
+        "the plain-member path must route through the same pair:\n{direct_ser}"
+    );
+    let direct_deser = impl_block(&src, "Deserialize for Direct");
+    assert!(
+        direct_deser.contains("deser_inner(raw)"),
+        "the plain-member path must route through the same pair:\n{direct_deser}"
     );
 }

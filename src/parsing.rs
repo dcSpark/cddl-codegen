@@ -1705,11 +1705,19 @@ fn parse_control_operator(
             // A rule BODY registers it as a transparent alias, and `register_type_alias`'s first
             // assertion forbids an already-`Alias`-wrapped base — the shape would abort there.
             // A MEMBER or type-choice arm keeps it as the field/variant type, where an alias ident
-            // naming no registered struct panics every lookup that assumes one. Resolving loses
-            // nothing: a CDDL alias rule over a primitive generates a TRANSPARENT `pub type`, so
-            // the alias and its target are the SAME Rust type — only the spelling in the emitted
-            // source differs. Aliases are the only case that needs this; a target naming a real
-            // struct/collection is already a `Rust` ident and passes through untouched.
+            // naming no registered struct panics every lookup that assumes one. A CDDL alias rule
+            // over a primitive generates a TRANSPARENT `pub type`, so the alias and its target are
+            // the SAME Rust type — the spelling in the emitted source is one thing resolving costs.
+            // The other is measured and NOT free: the `Alias` node is what
+            // `generate_serialize`/`generate_deserialize` lift an aliased rule's
+            // `@custom_serialize`/`@custom_deserialize` pair from, so a `.cbor` payload over an
+            // annotated alias silently keeps the generated wire form. Both are the drop class
+            // `tests/TESTING_ROADMAP.md` records as "A directive honored at a rule's own position can
+            // be silently dropped at a REFERENCING context of that rule"; the tag-head sibling of this
+            // strip was removed for exactly that reason — see the rule-body registration site's alias
+            // branch (`parse_type`). Aliases are the only case that needs
+            // this; a target naming a real struct/collection is already a `Rust` ident and passes
+            // through untouched.
             //
             // ONE strip is enough at ANY chain depth (`a = b`, `b = c`, `c = uint`), and that is an
             // invariant rather than a coincidence of the shapes tested: `register_type_alias`
@@ -2703,20 +2711,17 @@ fn parse_type(
                     }
                     None => {
                         let mut concrete_type = types.new_type(&cddl_ident, cli).tag_if(outer_tag);
-                        // Stripping the alias inlines the type for serialization (the rust side stays a
-                        // transparent `pub type`). Remember the aliased ident so the WASM alias can point
-                        // at its wrapper struct if it has one (resolved at emission via `has_wasm_wrapper`,
-                        // so forward references work) — otherwise `for_wasm_member` on the stripped bare
+                        // Remember the aliased ident so the WASM alias can point at its wrapper struct
+                        // if it has one (resolved at emission via `has_wasm_wrapper`, so forward
+                        // references work) — otherwise `for_wasm_member` on the stripped bare
                         // `Map`/`Vec` would emit the inline-only `MapU64To…`/`…List` name (E0425).
+                        // Read-only: the strip itself belongs to the ALIAS branch alone (see there).
                         let mut wasm_alias_target = None;
-                        if let ConceptualRustType::Alias(alias_ident, ty) =
-                            concrete_type.conceptual_type
+                        if let ConceptualRustType::Alias(AliasIdent::Rust(rust_ident), _) =
+                            &concrete_type.conceptual_type
                         {
-                            if let AliasIdent::Rust(rust_ident) = &alias_ident {
-                                wasm_alias_target = Some(rust_ident.clone());
-                            }
-                            concrete_type.conceptual_type = *ty;
-                        };
+                            wasm_alias_target = Some(rust_ident.clone());
+                        }
                         match &generic_params {
                             Some(_params) => {
                                 // A generic def whose body is another NAMED type
@@ -2789,7 +2794,9 @@ fn parse_type(
                                         if rule_metadata.newtype.is_some()
                                             && outer_tag.is_none()
                                             && matches!(
-                                                concrete_type.conceptual_type,
+                                                concrete_type
+                                                    .conceptual_type
+                                                    .resolve_alias_shallow(),
                                                 ConceptualRustType::Any
                                             )
                                         {
@@ -2841,6 +2848,22 @@ fn parse_type(
                                                 cli,
                                             );
                                         } else {
+                                            // Stripping the alias inlines the type for serialization
+                                            // (the rust side stays a transparent `pub type`), and is
+                                            // REQUIRED here: `register_type_alias` refuses a base type
+                                            // already wrapped in `Alias`. The WRAPPER branch above must
+                                            // NOT strip: `generate_serialize`/`generate_deserialize`'s
+                                            // `Alias` arms are what lift the aliased rule's
+                                            // `@custom_serialize`/`@custom_deserialize` pair (and its
+                                            // `@custom_encodings` declaration) into the emitted codec, so
+                                            // a stripped wrapper silently re-derives the built-in wire and
+                                            // `x = #6.n(annotated_alias)` disagrees with a plain member of
+                                            // the same alias about one type's wire form.
+                                            if let ConceptualRustType::Alias(_, ty) =
+                                                concrete_type.conceptual_type
+                                            {
+                                                concrete_type.conceptual_type = *ty;
+                                            }
                                             types.register_type_alias(
                                                 type_name.clone(),
                                                 AliasInfo::new_from_metadata(
