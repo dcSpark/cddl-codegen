@@ -2134,6 +2134,38 @@ impl<'a> IntermediateTypes<'a> {
         })
     }
 
+    /// The four `any`-content prelude tags, read BY the interception arm below rather than
+    /// mirrored beside it — see [`Self::REFUSED_PRELUDE_NAMES`] for why the list is a constant.
+    pub const ANY_CONTENT_PRELUDE_TAGS: &'static [&'static str] =
+        &["cbor-any", "eb16", "eb64legacy", "eb64url"];
+
+    /// The prelude name with no representation AT ALL (major type 7, simple value 23), read BY its
+    /// interception arm below. See [`Self::REFUSED_PRELUDE_NAMES`].
+    pub const UNDEFINED_PRELUDE_NAME: &'static str = "undefined";
+
+    /// **The refusal inventory**: every prelude name [`Self::new_type`]'s interception arms REFUSE
+    /// (`record_rejection` + an inert placeholder), as opposed to resolving to a type. Sorted, so
+    /// the list reads as a set.
+    ///
+    /// This is a constant rather than a shape the arms spell inline because a refusal recorded at
+    /// ONE resolution seam does not bind the others: a name refused at this seam can still reach
+    /// generation through a seam that never calls `new_type` (a control-operator head resolves its
+    /// ident through `parsing::ident_to_primitive` — the narrower-float-name delivery needed a fix
+    /// at each). The closure sweep `tests::refused_name_closure_tests` runs this list against its
+    /// resolution-context registry, and keeps it honest in BOTH directions: it re-derives the
+    /// inventory by probing the whole [`crate::utils::RESERVED_IDENTS`] universe, so a new refusal
+    /// arm fails that derivation until the name is added here, and adding it here demands cells in
+    /// every context. A name refused for its SHAPE (a recursion cycle, an inline composite) is not
+    /// a member — this axis is name-keyed refusals only.
+    ///
+    /// `dead_code`-allowed because its only consumer is `#[cfg(test)]`-gated (the sweep), the same
+    /// shape `wrapper_requests::BORROWED_SHAPES` uses: the constant belongs BESIDE the arms it
+    /// describes, not in the test module that reads it — a list living in the test tree is exactly
+    /// the mirror this design exists to avoid.
+    #[allow(dead_code)]
+    pub const REFUSED_PRELUDE_NAMES: &'static [&'static str] =
+        &["cbor-any", "eb16", "eb64legacy", "eb64url", "undefined"];
+
     // note: this is mut so the unregistered-reserved fallback can mark which reserved idents
     // are in the CDDL prelude so we don't generate code for all of them, potentially
     // bloating generated code a bit
@@ -2167,7 +2199,7 @@ impl<'a> IntermediateTypes<'a> {
                 // The `Fixed(FixedValue::Null)` placeholder is the inert stand-in the sibling
                 // rejections in `rust_type_from_type2` use, so the walk continues and `finalize`
                 // reports this alongside anything else it finds.
-                AliasIdent::Reserved(reserved) if reserved == "undefined" => {
+                AliasIdent::Reserved(reserved) if reserved == Self::UNDEFINED_PRELUDE_NAME => {
                     self.record_rejection(
                         "the CDDL prelude type `undefined` (major type 7, simple value 23) is \
                          unsupported — it has no representation in generated code. A position that \
@@ -2195,10 +2227,7 @@ impl<'a> IntermediateTypes<'a> {
                 // rejections use, so the walk continues and `finalize` reports this alongside
                 // anything else it finds.
                 AliasIdent::Reserved(reserved)
-                    if matches!(
-                        reserved.as_str(),
-                        "cbor-any" | "eb64url" | "eb64legacy" | "eb16"
-                    ) =>
+                    if Self::ANY_CONTENT_PRELUDE_TAGS.contains(&reserved.as_str()) =>
                 {
                     let tag = match reserved.as_str() {
                         "cbor-any" => "#6.55799(any)",

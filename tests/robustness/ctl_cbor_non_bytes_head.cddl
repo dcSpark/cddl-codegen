@@ -1,0 +1,6 @@
+; `.cbor` applied to a head that is not `bytes` aborts rather than rejecting. RFC 8610 does restrict
+; `.cbor` to byte strings, so refusing the shape is right — refusing it with a `panic!` is not.
+; Name-INDEPENDENT (the same abort fires for every non-bytes head, supported names included), so
+; like `rangeop_typename_start` it is a SHAPE-axis defect, and it is the recorded reason the
+; refused-name closure sweep (`refused_name_closure_tests`) excludes this column.
+x = uint .cbor uint

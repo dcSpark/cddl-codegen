@@ -1,0 +1,7 @@
+; A TYPENAME as a range bound (`uint..10`) aborts: the range arm reads both bounds as literal
+; values and panics on anything else, before the head name is resolved at all. Name-INDEPENDENT —
+; the same abort fires for every head, supported names included — so it is a defect on the SHAPE
+; axis, not on the refused-name one; it is the recorded reason the refused-name closure sweep
+; (`refused_name_closure_tests`) excludes this column instead of sweeping it, and that exclusion
+; goes stale loudly when this row flips.
+x = uint..10

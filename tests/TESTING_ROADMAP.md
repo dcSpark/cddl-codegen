@@ -518,35 +518,32 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       (`tests/robustness/recursive_collection_holder.cddl`) no longer aborts — the recursive-type
       boundary repairs it — so the signal is not met by the catalog's own contents.
 
-14. **A refusal recorded at one name-resolution seam does not bind the others — sweep the
-    refused-name × resolution-context product.** Proven by the narrower-float-name delivery
-    needing TWO seams in one cycle: the refusal shipped at `new_type`'s unresolved-reserved
-    fallback, and `x = float16 .size 4` still generated an `f32`-backed codec at exit 0 because a
-    control operator resolves the ident through `ident_to_primitive` and never calls `new_type`
-    (its choice-name siblings aborted at a bare unwrap on the same path). The side door was found
-    by a hand probe after the first seam shipped, not by any run — the per-name position sweeps
-    (`undefined_prelude_rejects_gracefully_in_every_position` and its two siblings) fix the
-    POSITION axis (rule body / element / map value) but hold the RESOLUTION MECHANISM constant,
-    so a second resolution path is invisible to them by construction. The layer to build,
-    generalizing those sweeps rather than duplicating them:
-    - **Derive the refused-name axis from the refusal inventory itself** — the names the
-      `new_type` interception arms enumerate (`undefined`, the four `any`-content tags, the three
-      narrower float prelude names today), kept lockstep with a test so a new refusal arm demands
-      sweep membership the way `KNOWN_RULE_METADATA_TAGS` demands directive classification.
-    - **Enumerate the context axis from the resolution seams, as a registry not a keyword grep**:
-      the callers of `new_type` and of `ident_to_primitive` are the two mechanisms today (listed,
-      not guessed — the float delivery's two-seam architecture is the worked example), and the
-      syntactic contexts that reach them: rule body, member, array element, map key, map value,
-      choice arm, control-operator head (`.size` / range / `.lt` family), generic argument, tag
-      payload, `.cbor` target.
-    - **Verdict per cell ∈ {graceful refusal naming the type, loud rejection} — never exit-0
-      generation, never a panic.** The existing per-name message pins stay as the wording tests;
-      the sweep owns only the closure property, so cells are cheap (generation-only, names ×
-      contexts ≈ dozens of one-rule invocations, `local` tier, `expect_graceful_rejection`
-      scaffolding).
-    This is a work item, not a deferral: its trigger fired the day the second seam was found, and
-    the axis it closes grows every time the burndown converts another panic class into a refusal
-    — seven names joined the inventory in one delivery.
+14. **Three control-operator arms ABORT where every sibling refuses — and one of them destroys a
+    refusal that was already recorded.** Found by the refused-name × resolution-context closure
+    sweep (`src/tests/refused_name_closure_tests.rs`), each pinned as a `PANIC` row of the
+    input-robustness catalog:
+    - `x = <name> .default 1` — `RustType::default` asserts the head resolved to a rust primitive
+      matching the default's value class, and `panic!`s when it did not. For a REFUSED prelude
+      name the head is the refusal's inert `Fixed(Null)` placeholder, so the graceful rejection
+      `new_type` recorded is destroyed by the abort one step later; the closure sweep pins all ten
+      such cells (five refused names × the rule and member positions) in `KNOWN_CLOSURE_BREACH`.
+      The abort is NOT exclusive to refused names — `tdate`, a supported prelude name with no rust
+      primitive, aborts identically — so the fix is a refusal at the `.default` application, not
+      one line at an existing name seam. Fixture:
+      `tests/robustness/ctl_default_unmapped_head.cddl`.
+    - `x = uint..10` — a TYPENAME as a range bound. The range arm reads both bounds as literal
+      values and panics on anything else, before any name is resolved. Fixture:
+      `tests/robustness/rangeop_typename_start.cddl`.
+    - `x = uint .cbor uint` — `.cbor` on a non-`bytes` head. RFC 8610 does restrict `.cbor` to byte
+      strings, so refusing the shape is right; refusing it with a `panic!` is not. Fixture:
+      `tests/robustness/ctl_cbor_non_bytes_head.cddl`.
+    The last two are name-INDEPENDENT (the same abort fires for every head, supported names
+    included), which is why they are the recorded reason the closure sweep marks those columns
+    `Attribution::ContextOwned` rather than sweeping them — and that exclusion is re-checked
+    against the control head every run, so it goes stale loudly the day an arm is fixed. Each fix
+    is the conversion this burndown has already run many times (`record_rejection` + an inert
+    placeholder, drained by `finalize`), and the `.default` one additionally needs the message to
+    say which head it could not lower onto.
 
 15. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
     serialize error into a panic.** A `float16` member's carrier is `f32`, and a carrier value that
