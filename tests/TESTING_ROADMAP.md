@@ -2911,6 +2911,35 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   crates were never sampled; and the incident itself was never reproduced — the environment that
   produced it also had a 95 %-full disk and 34 GB of `/tmp` scratch, so how much of the lockup was
   memory and how much was writeback against a full volume is unknown.
+- **A tier's DISK BANDWIDTH is unbounded by anything — the concurrency design bounds memory and
+  preflights capacity, and the device saturates below both floors.** The third sibling of the two
+  entries above, and it has the memory entry's exact shape: gate-level concurrency bounds one
+  factor of the peak while another stays unbounded, and the unbounded one takes the whole machine.
+  Each *batched* gate gets a memory-derived `CARGO_BUILD_JOBS` and the preflight floors
+  MemAvailable and free scratch — but the scratch floor is a CAPACITY check and nothing measures
+  or bounds the write RATE. Up to `CHECK_JOBS` gates each drive a nested cargo against its own
+  target dir: separate directories, one device. On 2026-08-04 this box hung for ~1 hour under
+  ~3 GB/s sustained IO with the memory preflight green the whole time. Two facts load-bearing for
+  any future fix: the failure is a WHOLE-MACHINE stall, never a gate failure, so **no gate can
+  observe it even in principle — the signal is external** (a human at a dead terminal), which is
+  why this is a watch and not a buildable test system; and it is an ENVIRONMENT property the tier
+  does not measure — WSL2 mounts `/` and `/tmp` on one virtual disk whose sustained-write ceiling
+  sits far below bare metal's, so a tier that is safe on the metal stalls the VM. What ships is
+  operational, not code (maintainer ruling, 2026-08-04): every heavy run on this box is
+  `CHECK_JOBS=2 bun run check.ts <tier>` — peak 2 gates × `-j2` = 4 concurrent `rustc` — at an
+  accepted ~50 m warm / ~80 m cold full tier; do not optimize it back. Candidate mitigations,
+  recorded with costs rather than built (the real fix is non-trivial: no portable measurement of
+  a device's sustained-write ceiling exists, and a fixed cap is exactly what `CHECK_JOBS` already
+  is): (1) an environment-derived default — detect WSL2 (kernel release contains `microsoft`) and
+  default `CHECK_JOBS` to 2 there; cost is an environment sniff in the runner and a second
+  documented default, benefit is a safe default on exactly the environment class with the lowest
+  ceiling, and it does nothing for the next low-ceiling environment that is not WSL2; (2) an IO
+  axis on the sibling memory entry's unbuilt sampler — per-run `/proc/diskstats` write-rate
+  deltas recorded beside the durations, reported and never asserted — which would give the NEXT
+  incident the attribution this one and the memory one both lack. Build signal: a second
+  whole-machine stall UNDER `CHECK_JOBS=2` (the fixed cap proving insufficient — that buys both
+  candidates at once), or a maintainer ruling that the accepted wall cost has become the binding
+  constraint.
 - **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
   `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
   `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
