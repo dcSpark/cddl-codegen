@@ -1,0 +1,14 @@
+; The ABORT shape, and the reason the catalog needed an out-of-process outcome lane at all: a NAMED
+; self-referential collection (`x = [* x]`) that ANOTHER rule holds. The named collection is a
+; transparent `pub type X = Vec<X>;` alias, so a holder's member inlines the element's serialization
+; — which is the alias itself — and `generate_serialize` recurses without a base case until the
+; thread's stack is gone. A stack overflow ABORTS (SIGABRT) rather than unwinding, so this input
+; cannot be run in-process beside the rest of the catalog: it would take the test binary down instead
+; of recording a row. `ABORT_PRONE_INPUTS` routes it through a subprocess, and the fourth outcome
+; label `ABORTED (signal <n>)` is what that lane can see.
+;
+; The standalone shape (`recursive_collection_self.cddl`) does NOT abort — it exits 0 and emits a
+; crate that fails `cargo check` with E0391. The HOLDER is the ingredient that turns the same alias
+; cycle into an emission-time infinite recursion.
+x = [* x]
+hold = [a: x]

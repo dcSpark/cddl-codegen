@@ -1,0 +1,4 @@
+; The MAP flavor of the self-referential named collection: `pub type Mdmap = BTreeMap<String, Mdmap>;`.
+; Same alias-expansion cycle as the array flavor (E0391) reached through the table rule arm rather
+; than the array one.
+mdmap = {* text => mdmap}

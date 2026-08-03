@@ -1,0 +1,5 @@
+; The one-rule E0072 flavor, and the shape that falsified the docs' old "close the cycle through an
+; optional member" remedy: `Option<A>` is not heap indirection, so `struct A { next: Option<A> }` has
+; infinite size exactly as a mandatory member would. Pinned as its own row so the remedy cannot be
+; re-asserted without this fixture flipping.
+a = { ? next: a }
