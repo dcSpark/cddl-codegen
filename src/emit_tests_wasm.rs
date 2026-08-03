@@ -76,10 +76,10 @@ use crate::emit_tests::{
 };
 use crate::generation::rust_crate_struct_from_wasm;
 use crate::intermediate::{
-    ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, RustField, RustRecord,
-    RustStructType, RustType,
+    ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, RustField, RustIdent,
+    RustRecord, RustStructType, RustType,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Map from a generated type's name to its fully-scoped `cddl_lib::` path (for the rust twin).
 type ScopeMap = BTreeMap<String, String>;
@@ -97,6 +97,7 @@ pub fn emit_generated_wasm_tests(
     types: &IntermediateTypes,
     cli: &Cli,
     submodules: &[String],
+    no_deserialize: &BTreeSet<RustIdent>,
 ) -> Option<String> {
     if !cli.to_from_bytes_methods {
         crate::warn!(
@@ -125,7 +126,17 @@ pub fn emit_generated_wasm_tests(
     let mut fns: Vec<String> = Vec::new();
     for (ident, rust_struct) in types.rust_structs() {
         let name = ident.to_string();
+        // The wrapper's `from_cbor_bytes` is emitted only when the rust face gave the inner type a
+        // `Deserialize`, so the round-trip half has nothing to call for a refused type. The BOUNDS
+        // half is a pure constructor test and still mints — the skip is the decode half only.
+        let deserializable = !no_deserialize.contains(ident);
+        if !deserializable {
+            crate::warn!(
+                "cddl-codegen --emit-tests: {name} wasm round-trip skipped (no Deserialize impl was generated for it)"
+            );
+        }
         let roundtrip = match rust_struct.variant() {
+            _ if !deserializable => None,
             RustStructType::Record(record) => {
                 wasm_record_roundtrip(types, ident, &name, record, &scoped, cli)
             }

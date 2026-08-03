@@ -897,8 +897,15 @@ pub(super) fn generate_wrapper_struct(
     }
     gen_scope
         .rust_serialize(types, type_name)
-        .push_impl(ser_impl)
-        .push_impl(deser_impl);
+        .push_impl(ser_impl);
+    // Same rule as an enum over a refused arm: the wrapper's deserialize reads its INNER type, so
+    // a wrapped type with no `Deserialize` leaves the wrapper with none either (verdict seeded
+    // before emission — see `seed_no_deserialize_verdicts`).
+    if gen_scope.deserialize_generated(type_name) {
+        gen_scope
+            .rust_serialize(types, type_name)
+            .push_impl(deser_impl);
+    }
 }
 
 pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli: &Cli) {

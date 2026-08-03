@@ -369,6 +369,12 @@ impl GenerationScope {
         // `--extern-wasm-crate` — a typo that silently disabled deferral would reintroduce the link
         // error. Both parse once, up front, so the data is available at every emitter's mint point.
         self.workspace_deps = load_workspace_deps(types, cli);
+        // Which idents get no `Deserialize`, decided for the whole IR before anything is emitted.
+        // A verdict every face then CONSULTS (`deserialize_generated`) rather than accumulates:
+        // the emission walk's ident order is alphabetical and unrelated to reference order, so a
+        // container asking about a contained type mid-walk would otherwise get an order-dependent
+        // answer. See `seed_no_deserialize_verdicts`.
+        self.seed_no_deserialize_verdicts(types, cli);
         let extern_wrapper_index = load_extern_wrapper_indices(types, cli);
         if cli.wasm {
             self.extern_wrapper_index = extern_wrapper_index;
@@ -2099,11 +2105,18 @@ impl GenerationScope {
                 .map(|scope| scope.components().join("::"))
                 .collect()
         };
+        // Both minters need the no-deserialize verdict: every round-trip they emit goes through
+        // `from_cbor_bytes`, so a type the rust face declined to give a `Deserialize` has no
+        // round-trip to assert and its mint would not compile.
+        let no_deserialize = self.no_deserialize_idents();
         if cli.emit_tests {
             let rust_submodules = submodule_glob_paths(&self.rust_scopes);
-            if let Some(test_mod) =
-                crate::emit_tests::emit_generated_tests(types, cli, &rust_submodules)
-            {
+            if let Some(test_mod) = crate::emit_tests::emit_generated_tests(
+                types,
+                cli,
+                &rust_submodules,
+                &no_deserialize,
+            ) {
                 self.rust_lib().raw(&test_mod);
             }
         }
@@ -2112,9 +2125,12 @@ impl GenerationScope {
         // build/check/wasm-pack — only a `cargo test` of the wasm crate compiles and runs it.
         if cli.wasm && cli.emit_tests {
             let wasm_submodules = submodule_glob_paths(&self.wasm_scopes);
-            if let Some(test_mod) =
-                crate::emit_tests_wasm::emit_generated_wasm_tests(types, cli, &wasm_submodules)
-            {
+            if let Some(test_mod) = crate::emit_tests_wasm::emit_generated_wasm_tests(
+                types,
+                cli,
+                &wasm_submodules,
+                &no_deserialize,
+            ) {
                 self.wasm_lib().raw(&test_mod);
             }
         }
