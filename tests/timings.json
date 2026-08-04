@@ -756,7 +756,17 @@
       ]
     },
     {
-      "gate": "regen_over_prior_output_corpus"
+      "gate": "regen_over_prior_output_corpus",
+      "warm_ms": 55000,
+      "n": 3,
+      "measured": "2026-08-04",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-04",
+          "warm_ms": 55000
+        }
+      ]
     },
     {
       "gate": "regen_over_prior_output_corpus_compiles"
@@ -1010,9 +1020,9 @@
     },
     {
       "tier": "full",
-      "wall_ms": 1984000,
+      "wall_ms": 2443000,
       "n": 16,
-      "measured": "2026-07-28",
+      "measured": "2026-08-04",
       "machine": "86216c55",
       "history": [
         {
@@ -1026,6 +1036,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 1984000
+        },
+        {
+          "date": "2026-08-04",
+          "warm_ms": 2443000
         }
       ]
     }
