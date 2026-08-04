@@ -6641,6 +6641,154 @@ fn stale_generated_file_warning_names_the_orphan() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// The workspace package-name collision warning: a generated crate whose `package.name` an existing
+/// workspace member already claims.
+///
+/// The failure this exists to make visible happens in a DIFFERENT tool, later: cargo adopts
+/// in-workspace path dependencies as members, so a taken name surfaces at the consumer's next
+/// `cargo metadata` as "two packages named X in this workspace" — after generation reported success
+/// with an empty stderr. The tool is the only party that knows, at the moment it decides the name,
+/// that the name is taken.
+///
+/// It is a WARNING and not a refusal because detecting it means reading the surrounding workspace:
+/// legitimate as an INPUT, and only a warning keeps that read structurally incapable of changing an
+/// emitted byte. That in turn sets the accuracy bar — membership resolution is cargo's own, and this
+/// approximates it — which is why the three negative controls below matter as much as the positive
+/// one: an approximation that fires on a tree cargo is happy with is worse than silence.
+///
+/// Captured through a real CLI subprocess because it is stderr on the tool's own process (see
+/// `tests/README.md` § "Design rules").
+#[test]
+fn workspace_package_name_collision_warning_names_both_manifests() {
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_ws_name_collision_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+
+    // A hand-written crate in the umbrella, whose name the generator's default `--lib-name` takes.
+    let hand = scratch.join("hand_written");
+    std::fs::create_dir_all(hand.join("src")).unwrap();
+    std::fs::write(
+        hand.join("Cargo.toml"),
+        "[package]\nname = \"cddl-lib\"\nversion = \"0.1.0\"\nedition = \"2018\"\n",
+    )
+    .unwrap();
+    std::fs::write(hand.join("src/lib.rs"), "").unwrap();
+
+    let write_umbrella = |members: &str| {
+        std::fs::write(
+            scratch.join("Cargo.toml"),
+            format!("[workspace]\nresolver = \"2\"\nmembers = [{members}]\n"),
+        )
+        .unwrap();
+    };
+    let run = |out: &std::path::Path, extra: &[&str]| -> std::process::Output {
+        let mut c = codegen_cmd();
+        c.arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .arg(format!(
+                "--static-dir={}",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/static")
+            ));
+        for a in extra {
+            c.arg(a);
+        }
+        c.output().unwrap()
+    };
+
+    // Negative control 1: no workspace anywhere above the output. The standalone case, and by far
+    // the common one — it must be silent, or the warning is noise for everybody.
+    let lone = scratch.join("lone/gen");
+    let lone_out = run(&lone, &[]);
+    assert!(lone_out.status.success());
+    let lone_stderr = String::from_utf8_lossy(&lone_out.stderr);
+    assert!(
+        !lone_stderr.contains("already a member of the cargo workspace"),
+        "an output with no workspace above it must draw no collision warning, got:\n{lone_stderr}"
+    );
+
+    // Negative control 2: a workspace above, but nobody claims the name.
+    std::fs::write(
+        hand.join("Cargo.toml"),
+        "[package]\nname = \"something-else\"\nversion = \"0.1.0\"\nedition = \"2018\"\n",
+    )
+    .unwrap();
+    write_umbrella("\"hand_written\"");
+    let clear = scratch.join("gen_clear");
+    let clear_out = run(&clear, &[]);
+    assert!(clear_out.status.success());
+    let clear_stderr = String::from_utf8_lossy(&clear_out.stderr);
+    assert!(
+        !clear_stderr.contains("already a member of the cargo workspace"),
+        "a workspace with no name clash must stay silent, got:\n{clear_stderr}"
+    );
+
+    // The vector: the umbrella already holds `cddl-lib`, which is what `--lib-name` defaults to.
+    std::fs::write(
+        hand.join("Cargo.toml"),
+        "[package]\nname = \"cddl-lib\"\nversion = \"0.1.0\"\nedition = \"2018\"\n",
+    )
+    .unwrap();
+    let generated = scratch.join("gen");
+    let hit = run(&generated, &[]);
+    assert!(
+        hit.status.success(),
+        "the collision is a warning, not a refusal — generation still succeeds"
+    );
+    let hit_stderr = String::from_utf8_lossy(&hit.stderr);
+    // LOAD-BEARING MESSAGE (AGENTS.md): both manifest paths and the remedy flag. The cargo error it
+    // predicts quotes neither path, so a warning naming only the name leaves the user hunting for
+    // which of two crates to rename.
+    assert!(
+        hit_stderr.contains("cddl-lib")
+            && hit_stderr.contains("already a member of the cargo workspace")
+            && hit_stderr.contains("hand_written")
+            && hit_stderr.contains(generated.join("rust/Cargo.toml").to_str().unwrap())
+            && hit_stderr.contains("--lib-name"),
+        "the collision warning must name both manifests and the remedy, got:\n{hit_stderr}"
+    );
+
+    // Negative control 3: the colliding member IS the generated crate — the ordinary state of a
+    // workspace that has already adopted this output. Regeneration must not warn about itself.
+    write_umbrella("\"gen/rust\"");
+    std::fs::write(
+        hand.join("Cargo.toml"),
+        "[package]\nname = \"something-else\"\nversion = \"0.1.0\"\nedition = \"2018\"\n",
+    )
+    .unwrap();
+    let again = run(&generated, &[]);
+    assert!(again.status.success());
+    let again_stderr = String::from_utf8_lossy(&again.stderr);
+    assert!(
+        !again_stderr.contains("already a member of the cargo workspace"),
+        "a workspace member that IS this generated crate must not collide with itself, got:\n\
+         {again_stderr}"
+    );
+
+    // Level-gated like its two diagnostic siblings, pinned in both directions for the same reason:
+    // silencing at the default level would otherwise be invisible.
+    write_umbrella("\"hand_written\"");
+    std::fs::write(
+        hand.join("Cargo.toml"),
+        "[package]\nname = \"cddl-lib\"\nversion = \"0.1.0\"\nedition = \"2018\"\n",
+    )
+    .unwrap();
+    let quiet = run(&generated, &["--verbosity=error"]);
+    assert!(quiet.status.success());
+    let quiet_stderr = String::from_utf8_lossy(&quiet.stderr);
+    assert!(
+        !quiet_stderr.contains("already a member of the cargo workspace"),
+        "`--verbosity=error` must silence the collision warning, got:\n{quiet_stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// A regeneration over an UNPARSEABLE existing manifest must be a hard error that names the file —
 /// never a silent clobber (a parse failure is exactly when the user has content we can't preserve).
 #[test]
