@@ -378,9 +378,9 @@
     },
     {
       "gate": "ir_conformance_corpus",
-      "warm_ms": 164000,
+      "warm_ms": 199000,
       "n": 20,
-      "measured": "2026-07-28",
+      "measured": "2026-08-04",
       "machine": "86216c55",
       "history": [
         {
@@ -390,6 +390,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 164000
+        },
+        {
+          "date": "2026-08-04",
+          "warm_ms": 199000
         }
       ]
     },
