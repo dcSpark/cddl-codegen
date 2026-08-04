@@ -209,27 +209,28 @@ ledgered here (that's what the probe/gate error messages point at).
   built-in wire where their spec says the pair's — i.e. someone calling the standalone entry point at
   all, which is what nothing yet says anyone does.
 
-- **A tagged rule body that stays a transparent alias drops the tag from its own standalone codec.**
-  Found 2026-08-04 by the transparent-alias wire-facts assert added with the `.cbor` force-wrap,
-  which enumerated (by generation over every committed spec, plus the test suite's inline specs) the
-  registrations that survive it. Two shapes reach `register_type_alias` with a tag riding the base:
-  a named COLLECTION (`tagged_table = #6.11({* tstr => uint})`, `outer = #6.24([* t])` — the
-  named-array/named-table kind-walk registers the tag on the alias) and a `T / null` collapse
-  (`t = #6.10(uint / null)`). Both emit `pub type TaggedTable = BTreeMap<String, u64>;`, so
-  `TaggedTable::to_cbor_bytes()` writes a BARE map while every embed site of `tagged_table` writes
-  `write_tag(11)` first and every embed site's decoder requires the tag — the exact
-  one-type-two-wire-forms shape T1-02 was for `.cbor`. Not fixed with it: force-wrapping a tagged
-  collection moves the wasm face (a `pub type` becomes a wrapper class), the `--component`/WIT
-  projection and the matrix's tagged-collection cells, which is its own delivery. Ledgered as the
-  ONE narrow carve-out in `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias`
-  (tag operations only, on exactly those two base kinds — any other operation, or a tag on any other
-  base, still fires), so the class is a KNOWN exemption rather than an unknown. `tests/corpus/
-  tagged_table.cddl` and `tests/corpus/double_tag.cddl` carry the shape today, and
-  `tagged_table.cddl`'s own header comment claiming the rust type "owns ALL serialization including
-  the tag" is what the probe falsified. **Reopening signal:** a consumer calling a tagged collection
-  rule's standalone `to_cbor_bytes`/`from_cbor_bytes` and getting the untagged wire — or, cheaper to
-  fire, any new spec in this repo whose tagged collection root is used standalone rather than only
-  from a holder.
+- **A tagged PRESERVE table's standalone codec drops the tag.** The narrowed remnant of the class
+  T1-13 closed (recorded 2026-08-04, narrowed the same day). Every tagged rule body now force-wraps
+  — collections, the optional-tag idiom in both flavors, and `T / null` — so its standalone
+  `to/from_cbor_bytes` write and require the tag exactly as its embed sites do. ONE combination
+  cannot: `t = #6.n({* k => v}) ; @duplicates preserve`, whose inner is the `PairMap` vec-of-pairs
+  twin. A wrapper cannot hold that inner — the register-side duplicates threading is scoped to
+  `Array` deliberately, because the synthesized structural map wasm wrapper class wraps `BTreeMap`
+  (probed: wrapping it fails the wasm crate with E0425 on a missing `PairMapU64ToText`), while a
+  preserve-table ALIAS works under wasm only because the named rule itself becomes the `PairMap`
+  class. Refusing the shape is not available either: it generates and compiles today, so a refusal
+  would be a support regression. So `TaggedPreserveTable::to_cbor_bytes()` still writes a bare map
+  while every embed site writes `write_tag(n)` first — the one-type-two-wire-forms shape, surviving
+  in exactly one spelling. It is carved out of
+  `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias` BY NAME (a tag op on a `Map`
+  base carrying `Preserve`, nothing else), so the exemption cannot silently widen. Wiring the
+  PairMap-aware synthesized wasm wrapper class retires the carve-out, this entry, the
+  `@duplicates`-on-`@newtype`-table parse rejection, and the two test carriers that depend on it
+  (`declared_spelling_tests::encoding_operation_ownership_decides_whether_the_spelling_survives`'s
+  SEAL half and `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated`'s flavor B,
+  both of which say so in place). **Reopening signal:** the wasm per-kind wrapper work landing — or,
+  before it, any spec in this repo that spells a tagged preserve table and uses it standalone rather
+  than only from a holder.
 
 - **Three control-operator arms ABORT (exit 101) where every sibling refuses gracefully.** Found
   2026-08-03 by the refused-name × resolution-context closure sweep

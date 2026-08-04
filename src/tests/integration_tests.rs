@@ -7135,6 +7135,259 @@ mod __cbor_root_wrap_pin {
     }
 }
 
+/// A TAGGED rule body agrees with itself: a tagged collection and a tagged `T / null` root each
+/// write and accept the spec's TAGGED form standalone, reject the bare untagged form, and produce
+/// byte-for-byte what an embed site of the same rule round-trips.
+///
+/// The sibling of `cbor_rule_body_standalone_codec_agrees_with_its_embed_site`, and the same defect
+/// (T1-13, found by that delivery's enumeration of what survived its wire-facts assert): these roots
+/// registered transparent aliases — `pub type TaggedArr = Vec<u64>;` with the tag riding the alias
+/// entry — so `TaggedArr::to_cbor_bytes()` was `Vec<u64>`'s and wrote a BARE array, while every embed
+/// site wrote `write_tag(24)` first and every embed site's decoder REQUIRED it. One CDDL type, two
+/// incompatible wire forms by use-site, silently, in a crate that compiled everywhere.
+///
+/// The `T / null` leg carries a second face: `#6.10(uint / null) ; @newtype` used to exit 0 with
+/// empty stderr and the directive ignored (the `parse_type_choices` `@newtype`-on-`T / null`
+/// rejection is not reached on the tagged path), so the shape was BOTH silently wrong on the wire and
+/// silently deaf to the directive that would have fixed it. Force-wrapping dissolves the second by
+/// construction, which the `@newtype`-parity leg below pins.
+///
+/// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
+/// only `fast`. This gate will not be seen by CI.
+#[test]
+fn tagged_rule_body_standalone_codec_agrees_with_its_embed_site() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_tagged_root_wrap_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let target_dir = scratch.join("target");
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "tagged_arr = #6.24([* uint])\n\
+         tagged_table = #6.11({ * tstr => uint })\n\
+         topt = #6.10(uint / null)\n\
+         holder = [a: tagged_arr, t: tagged_table, o: topt]\n",
+    )
+    .unwrap();
+
+    // Wire forms, hand-derived from RFC 8949 (tag = major 6):
+    //   [1, 2]                        -> 82 01 02          ; #6.24(...) -> d8 18 82 01 02
+    //   {"a": 1}                      -> a1 61 61 01       ; #6.11(...) -> cb a1 61 61 01
+    //   5 / null                      -> 05 / f6           ; #6.10(...) -> ca 05 / ca f6
+    //   holder [arr, table, opt]      -> 83 <arr> <table> <opt>
+    const PIN: &str = r##"
+#[cfg(test)]
+mod __tagged_root_wrap_pin {
+    use super::*;
+    use super::serialization::{Deserialize, ToCBORBytes};
+
+    const ARR_TAGGED: &[u8] = &[0xd8, 0x18, 0x82, 0x01, 0x02];
+    const ARR_BARE: &[u8] = &[0x82, 0x01, 0x02];
+    const TBL_TAGGED: &[u8] = &[0xcb, 0xa1, 0x61, 0x61, 0x01];
+    const TBL_BARE: &[u8] = &[0xa1, 0x61, 0x61, 0x01];
+    const OPT_TAGGED: &[u8] = &[0xca, 0x05];
+    const OPT_TAGGED_NULL: &[u8] = &[0xca, 0xf6];
+    const OPT_BARE: &[u8] = &[0x05];
+    const HOLDER: &[u8] = &[
+        0x83, 0xd8, 0x18, 0x82, 0x01, 0x02, 0xcb, 0xa1, 0x61, 0x61, 0x01, 0xca, 0x05,
+    ];
+
+    fn arr() -> TaggedArr {
+        TaggedArr::new(vec![1, 2])
+    }
+    // Built by `collect` rather than by naming the map type: the inner is `BTreeMap` under the
+    // plain profile and `OrderedHashMap` under preserve, and both are `FromIterator<(K, V)>`.
+    fn tbl() -> TaggedTable {
+        TaggedTable::new([(String::from("a"), 1u64)].into_iter().collect())
+    }
+
+    /// The standalone codec IS the spec's tagged form, in both directions.
+    #[test]
+    fn standalone_codec_writes_and_accepts_the_tagged_form() {
+        assert_eq!(
+            arr().to_cbor_bytes(),
+            ARR_TAGGED,
+            "a tagged collection root must write its tag standalone"
+        );
+        assert_eq!(
+            tbl().to_cbor_bytes(),
+            TBL_TAGGED,
+            "a tagged table root must write its tag standalone"
+        );
+        assert_eq!(
+            Topt::new(Some(5)).to_cbor_bytes(),
+            OPT_TAGGED,
+            "a tagged `T / null` root must write its tag standalone"
+        );
+        assert_eq!(
+            Topt::new(None).to_cbor_bytes(),
+            OPT_TAGGED_NULL,
+            "the null state carries the tag too"
+        );
+        for bytes in [ARR_TAGGED, TBL_TAGGED, OPT_TAGGED, OPT_TAGGED_NULL] {
+            let back = match bytes.len() {
+                5 if bytes[0] == 0xd8 => TaggedArr::from_cbor_bytes(bytes).map(|v| v.to_cbor_bytes()),
+                5 => TaggedTable::from_cbor_bytes(bytes).map(|v| v.to_cbor_bytes()),
+                _ => Topt::from_cbor_bytes(bytes).map(|v| v.to_cbor_bytes()),
+            };
+            assert_eq!(
+                back.expect("the tagged form must decode"),
+                bytes,
+                "re-encode must be byte-identical for {bytes:?}"
+            );
+        }
+    }
+
+    /// And it REJECTS the bare untagged form — the shape the transparent alias used to accept.
+    #[test]
+    fn standalone_codec_rejects_the_bare_untagged_form() {
+        assert!(
+            TaggedArr::from_cbor_bytes(ARR_BARE).is_err(),
+            "the untagged array is not what the spec admits for a `#6.24(...)` root"
+        );
+        assert!(
+            TaggedTable::from_cbor_bytes(TBL_BARE).is_err(),
+            "the untagged map is not what the spec admits for a `#6.11(...)` root"
+        );
+        assert!(
+            Topt::from_cbor_bytes(OPT_BARE).is_err(),
+            "the untagged value is not what the spec admits for a `#6.10(...)` root"
+        );
+    }
+
+    /// Standalone and EMBEDDED agree byte-for-byte: the wrapper writes exactly what the member
+    /// position always wrote, so the breaking API change moved no wire byte.
+    #[test]
+    fn standalone_and_embedded_agree() {
+        let holder = Holder::new(arr(), tbl(), Topt::new(Some(5)));
+        assert_eq!(holder.to_cbor_bytes(), HOLDER);
+        let back = Holder::from_cbor_bytes(HOLDER).expect("the holder vector must decode");
+        assert_eq!(back.to_cbor_bytes(), HOLDER);
+        assert_eq!(back.a.to_cbor_bytes(), ARR_TAGGED);
+        assert_eq!(back.t.to_cbor_bytes(), TBL_TAGGED);
+        assert_eq!(back.o.to_cbor_bytes(), OPT_TAGGED);
+    }
+}
+"##;
+
+    for (leg, extra) in [
+        ("plain", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+    ] {
+        let out = scratch.join(leg);
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false");
+        for arg in extra {
+            cmd.arg(arg);
+        }
+        let gen_out = cmd.output().unwrap();
+        assert!(
+            gen_out.status.success(),
+            "{leg}: generation failed:\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        );
+        let generated_mod = out.join("rust/src/generated/mod.rs");
+        let source = std::fs::read_to_string(&generated_mod).unwrap();
+        // fixture premise: all three roots must really be wrapper STRUCTS, or the pin below is
+        // asserting the payload type's codec under a different name.
+        for name in ["TaggedArr", "TaggedTable", "Topt"] {
+            assert!(
+                source.contains(&format!("pub struct {name}"))
+                    && !source.contains(&format!("pub type {name}")),
+                "{leg}: a tagged rule body must mint a wrapper struct, got no `{name}` struct:\n{source}"
+            );
+        }
+        std::fs::write(&generated_mod, format!("{source}\n{PIN}")).unwrap();
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .arg("__tagged_root_wrap_pin")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{leg}: the tagged-root wire pin must build and pass:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+
+    // The `@newtype` parity leg, which is also the silent-drop pin: `#6.10(uint / null) ; @newtype`
+    // used to exit 0 with the directive IGNORED (no wrapper, empty stderr). Both spellings must now
+    // produce byte-identical output — the directive is redundant-but-honored, exactly as on a
+    // single-type tag rule and a `.cbor` rule body — and the PLAIN (untagged) `T / null` rejection
+    // must still fire, since that collapse really does mint no wrapper.
+    let nt_input = scratch.join("newtype.cddl");
+    std::fs::write(
+        &nt_input,
+        "topt = #6.10(uint / null) ; @newtype\nholder = [o: topt]\n",
+    )
+    .unwrap();
+    let bare_input = scratch.join("bare.cddl");
+    std::fs::write(
+        &bare_input,
+        "topt = #6.10(uint / null)\nholder = [o: topt]\n",
+    )
+    .unwrap();
+    let gen_mod = |src: &std::path::Path, out: &std::path::Path| {
+        let gen_out = codegen_cmd()
+            .arg(format!("--input={}", src.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            gen_out.status.success(),
+            "generation must succeed for {src:?}:\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        );
+        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap()
+    };
+    let with_nt = gen_mod(&nt_input, &scratch.join("nt"));
+    let without_nt = gen_mod(&bare_input, &scratch.join("bare"));
+    assert_eq!(
+        with_nt, without_nt,
+        "a tagged `T / null` rule must wrap identically with and without `@newtype` — the directive \
+         is redundant here, and it used to be a SILENT drop"
+    );
+    assert!(
+        with_nt.contains("pub struct Topt"),
+        "both spellings must mint the wrapper:\n{with_nt}"
+    );
+
+    let plain_nt = scratch.join("plain_newtype.cddl");
+    std::fs::write(
+        &plain_nt,
+        "topt = uint / null ; @newtype\nholder = [o: topt]\n",
+    )
+    .unwrap();
+    let plain_out = codegen_cmd()
+        .arg(format!("--input={}", plain_nt.to_str().unwrap()))
+        .arg(format!(
+            "--output={}",
+            scratch.join("plain_nt").to_str().unwrap()
+        ))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    let plain_err = String::from_utf8_lossy(&plain_out.stderr);
+    assert!(
+        !plain_out.status.success() && plain_err.contains("@newtype on `Topt`"),
+        "the UNTAGGED `T / null` collapse mints no wrapper, so `@newtype` there must still be a \
+         loud rejection; got status {:?} stderr:\n{plain_err}",
+        plain_out.status.code()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Tracked SILENT-WRONG-OUTPUT gaps (compile-green, snapshot-blessed, behaviorally wrong).
 //

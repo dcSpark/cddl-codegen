@@ -25,10 +25,10 @@ interface types {
     from-cbor-bytes: static func(bytes: list<u8>) -> result<heterogeneous-set, string>;
   }
   resource holder {
-    constructor(h: borrow<homogeneous>, s: borrow<heterogeneous>, a: list<borrow<elem-tagged>>);
+    constructor(h: borrow<homogeneous>, s: borrow<heterogeneous>, a: borrow<outer-over-array>);
     h: func() -> homogeneous;
     s: func() -> heterogeneous;
-    a: func() -> list<elem-tagged>;
+    a: func() -> outer-over-array;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
   }
@@ -42,6 +42,12 @@ interface types {
     constructor(inner: list<u64>) -> result<homogeneous-inner, string>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<homogeneous-inner, string>;
+  }
+  resource outer-over-array {
+    constructor(inner: list<borrow<elem-tagged>>);
+    get: func() -> list<elem-tagged>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<outer-over-array, string>;
   }
 }
 

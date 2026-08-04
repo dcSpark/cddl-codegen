@@ -1,11 +1,11 @@
-; A CBOR tag wrapping a homogeneous table (`#6.n({ * k => v })`). The rule lowers to a TRANSPARENT
-; map alias (`pub type TaggedTable = BTreeMap<String, u64>;`) with the tag riding the alias, so every
-; EMBED site owns the tag: `holder`'s serialize writes `write_tag(11)` then the map, and its
-; deserialize rejects a wrong tag with `DeserializeFailure::TagMismatch`. The alias itself mints no
-; codec, so `TaggedTable`'s standalone `to/from_cbor_bytes` are `BTreeMap`'s and drop the tag — the
-; one-type-two-wire-forms class ledgered in cddl-matrix/ROADMAP.md § Findings ("A tagged rule body
-; that stays a transparent alias drops the tag from its own standalone codec"), which this fixture
-; records rather than fixes. Under `--wasm=true` the emitted wasm
+; A CBOR tag wrapping a homogeneous table (`#6.n({ * k => v })`). The rule FORCE-WRAPS into a
+; newtype struct that owns ALL of its serialization including the tag: serialize writes
+; `write_tag(11)` then the map, deserialize rejects a wrong tag with
+; `DeserializeFailure::TagMismatch`, and `TaggedTable::to_cbor_bytes()` therefore writes the same
+; bytes an embed site does. A transparent `pub type TaggedTable = BTreeMap<String, u64>;` could not:
+; the tag rode the alias entry, so every embed site wrote it while the rule's own standalone codec
+; was `BTreeMap`'s and dropped it — one CDDL type with two wire forms, which is what T1-13 closed.
+; Under `--wasm=true` the emitted wasm
 ; wrapper is accessors-only and DELEGATES serialization to that rust type, so it carries no tag logic
 ; of its own — pinning that the wasm wrapper generates and compiles for a tagged table (regression:
 ; `codegen_table_type` used to `assert!(tag.is_none())` and panic on exactly this shape).

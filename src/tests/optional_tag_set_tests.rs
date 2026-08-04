@@ -141,6 +141,10 @@ fn arm_order_is_irrelevant() {
 /// The tag number is taken from the arm, never hardcoded to 258. This also pins the non-258 registry
 /// boundary: tag 42 has no well-known-tag entry, so it keeps the plain `NonEmptyVec` PRESERVE default
 /// (only 258 acquires set semantics — the structural collapse itself stays tag-agnostic).
+///
+/// The rule WRAPS either way (T1-13: a tagged rule body owns its tag, so its standalone codec cannot
+/// drop it); what 258 adds on top is NOMINALIZATION — the set semantics and the `OrderedSet` twin —
+/// which is what this boundary is about, so the assertion is on the INNER representation.
 #[test]
 fn any_tag_number_is_recognized() {
     let src = generate(
@@ -150,7 +154,9 @@ fn any_tag_number_is_recognized() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = NonEmptyVec<u64>;") && !src.contains("pub enum MySet"),
+        src.contains("pub(crate) inner: NonEmptyVec<u64>,")
+            && !src.contains("OrderedSet")
+            && !src.contains("pub enum MySet"),
         "any tag number must collapse; a non-258 tag keeps the plain NonEmptyVec default:\n{src}"
     );
     assert!(
@@ -539,12 +545,17 @@ fn collapsed_set_as_type_choice_variant_discriminates_coherently() {
 // Out-of-scope byte-identity pins (Phase 2.2 nominalizes ONLY named non-generic 258 set rules)
 // ---------------------------------------------------------------------------------------------
 
-/// A NON-258 tag carries no set semantics, so a non-258 tagged collection rule (single-arm or the
-/// two-arm idiom) stays a TRANSPARENT ALIAS — never a nominal wrapper. This pins the scope boundary:
-/// only the 258 registry entry nominalizes; the structural collapse itself stays tag-agnostic and
-/// transparent for every other tag.
+/// A NON-258 tag carries no SET SEMANTICS, so a non-258 tagged collection rule (single-arm or the
+/// two-arm idiom) keeps the plain `Vec` inner and is never a set nominal. This pins the scope
+/// boundary: only the 258 registry entry nominalizes; the structural collapse itself stays
+/// tag-agnostic.
+///
+/// Both spellings WRAP (T1-13 — a tagged rule body owns its tag, so a transparent
+/// `pub type Foo = Vec<u64>;` carrying the tag could not: `Foo::to_cbor_bytes` would have written a
+/// BARE array while every embed site wrote `write_tag(42)` first). Wrapping is therefore NOT what
+/// distinguishes 258 here — the inner representation is, which is what these assert.
 #[test]
-fn non_258_tagged_collections_stay_transparent_aliases() {
+fn non_258_tagged_collections_keep_the_plain_vec_inner() {
     // single-arm non-258 tagged array
     let single = generate(
         "foo = #6.42([* uint])\nholder = [f: foo]\n",
@@ -553,8 +564,8 @@ fn non_258_tagged_collections_stay_transparent_aliases() {
     )
     .expect("must generate");
     assert!(
-        single.contains("pub type Foo = Vec<u64>;") && !single.contains("pub struct Foo"),
-        "a non-258 single-arm tagged array stays a transparent Vec alias:\n{single}"
+        single.contains("pub(crate) inner: Vec<u64>,") && !single.contains("OrderedSet"),
+        "a non-258 single-arm tagged array keeps the plain Vec inner:\n{single}"
     );
     // two-arm non-258 idiom
     let two_arm = generate(
@@ -564,8 +575,8 @@ fn non_258_tagged_collections_stay_transparent_aliases() {
     )
     .expect("must generate");
     assert!(
-        two_arm.contains("pub type Foo = Vec<u64>;") && !two_arm.contains("pub struct Foo"),
-        "a non-258 two-arm idiom stays a transparent Vec alias:\n{two_arm}"
+        two_arm.contains("pub(crate) inner: Vec<u64>,") && !two_arm.contains("OrderedSet"),
+        "a non-258 two-arm idiom keeps the plain Vec inner:\n{two_arm}"
     );
 }
 

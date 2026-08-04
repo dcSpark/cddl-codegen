@@ -9,10 +9,16 @@ package cddl:cddl-lib@0.1.0;
 
 interface types {
   resource holder {
-    constructor(payload: list<tuple<string, u64>>);
-    payload: func() -> list<tuple<string, u64>>;
+    constructor(payload: borrow<tagged-table>);
+    payload: func() -> tagged-table;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource tagged-table {
+    constructor(inner: list<tuple<string, u64>>);
+    get: func() -> list<tuple<string, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<tagged-table, string>;
   }
 }
 

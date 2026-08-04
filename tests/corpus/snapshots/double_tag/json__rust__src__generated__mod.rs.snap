@@ -476,4 +476,60 @@ impl schemars::JsonSchema for HomogeneousInner {
     }
 }
 
-pub type OuterOverArray = Vec<ElemTagged>;
+#[derive(Clone, Debug)]
+pub struct OuterOverArray(pub(crate) Vec<ElemTagged>);
+
+impl OuterOverArray {
+    pub fn get(&self) -> &Vec<ElemTagged> {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<ElemTagged>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<ElemTagged>> for OuterOverArray {
+    fn from(inner: Vec<ElemTagged>) -> Self {
+        OuterOverArray::new(inner)
+    }
+}
+
+impl From<OuterOverArray> for Vec<ElemTagged> {
+    fn from(wrapper: OuterOverArray) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for OuterOverArray {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for OuterOverArray {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <Vec<ElemTagged> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for OuterOverArray {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("OuterOverArray")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Vec<ElemTagged> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <Vec<ElemTagged> as schemars::JsonSchema>::inline_schema()
+    }
+}

@@ -571,8 +571,8 @@ fn aliased_member_leaves_error_strings_and_variant_paths_alone() {
 /// whether the descent crossed one.
 ///
 /// The seal exists because an alias ident can name the WRAPPED form: `tagged_creds =
-/// #6.11([* stake_credential])` means `TaggedCreds` IS the tagged array, so the position that reads
-/// the array body is not what the ident denotes. That is true exactly when the operation belongs to
+/// #6.11({* uint => stake_credential}) ; @duplicates preserve` means `TaggedCreds` IS the tagged
+/// table, so the position that reads the map body is not what the ident denotes. That is true exactly when the operation belongs to
 /// the alias RULE. When the operation comes from the MEMBER's own type expression
 /// (`f: #6.9(stake_credential)`) the alias still denotes precisely the value being read there — and
 /// the field is typed `StakeCredential`, so lifting is what closes the disagreement rather than what
@@ -583,17 +583,21 @@ fn aliased_member_leaves_error_strings_and_variant_paths_alone() {
 /// instance of the reported defect: a field typed `StakeCredential` filled by
 /// `Credential::deserialize`.
 ///
-/// The seal half uses a TAGGED COLLECTION because that is the rule-owned-operation alias class that
-/// still exists: a `bytes .cbor` rule body force-wraps (its ident is a real type, so the question
-/// does not arise — see `cbor_bytes_root_wraps_and_a_member_cbor_lifts_the_payloads_alias`), while
-/// the named-array/named-table kind-walk still registers `#6.n([* t])` as an alias whose `base_type`
-/// carries the tag.
+/// The seal half uses a tagged PRESERVE table because that is the ONLY rule-owned-operation alias
+/// class left: every other tagged rule body — and every `bytes .cbor` one — force-wraps, so its
+/// ident is a real type and the question does not arise (see
+/// `cbor_bytes_root_wraps_and_a_member_cbor_lifts_the_payloads_alias`). A `preserve` policy's
+/// `PairMap` inner is what a wrapper cannot hold, which is why that one combination stays
+/// transparent (`IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias` carves it out
+/// by name). The coupling is deliberate: when the PairMap-aware wasm wrapper lands and the carve-out
+/// retires, the SEAL half loses its last subject and the seal branch becomes dead — retire it with
+/// the carve-out rather than inventing a carrier.
 #[test]
 fn encoding_operation_ownership_decides_whether_the_spelling_survives() {
     let src = generate(
         "credential = [idx: uint]\n\
          stake_credential = credential\n\
-         tagged_creds = #6.11([* stake_credential])\n\
+         tagged_creds = #6.11({* uint => stake_credential}) ; @duplicates preserve\n\
          holder = [f: #6.9(stake_credential), g: tagged_creds, h: stake_credential, i: bytes .cbor stake_credential]\n",
         "op_ownership",
         PRESERVE,
@@ -630,8 +634,8 @@ fn encoding_operation_ownership_decides_whether_the_spelling_survives() {
         "a member-expression `.cbor` over an alias must LIFT at the payload read:\n{src}"
     );
 
-    // SEAL — the tag on `g` is the alias RULE's, so `TaggedCreds` names the tagged array and does
-    // not denote the position that reads the array body; the member is read structurally instead.
+    // SEAL — the tag on `g` is the alias RULE's, so `TaggedCreds` names the tagged table and does
+    // not denote the position that reads the map body; the member is read structurally instead.
     assert!(
         !src.contains("TaggedCreds::deserialize"),
         "a rule-owned encoding alias must never spell its own ident inside the operation it \

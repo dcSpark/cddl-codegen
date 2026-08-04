@@ -2405,32 +2405,37 @@ impl<'a> IntermediateTypes<'a> {
     /// the encoding operations the alias entry carries (`write_bytes` around a `.cbor` payload, a
     /// `write_tag` before a tagged body). One CDDL type then has two incompatible wire forms
     /// depending on which use-site reached it, in a crate that compiles everywhere and says nothing.
-    /// That is the shape T1-02 was: a `bytes .cbor T` rule body registered here with a `CBORBytes`
-    /// operation on its base. It cannot register any more — the `.cbor` rule body force-wraps into a
-    /// real wrapper struct — and this assert is what keeps the class UNREPRESENTABLE rather than
-    /// re-found later: any FUTURE control operator that adds an encoding operation fails here at its
-    /// first registration instead of shipping a second silent wire form.
+    /// That was the shape T1-02 was (a `bytes .cbor T` rule body registering with a `CBORBytes`
+    /// operation on its base) and T1-13 after it (a tagged collection or tagged `T / null` rule body
+    /// registering with a `Tagged`/`OptionallyTagged` one). None of them can register any more —
+    /// every such rule body force-wraps into a real wrapper struct — and this assert is what keeps
+    /// the class UNREPRESENTABLE rather than re-found later: any FUTURE control operator that adds
+    /// an encoding operation fails here at its first registration instead of shipping a second
+    /// silent wire form.
     ///
     /// It is an internal invariant, unreachable from user input, so a panic is the honest posture —
-    /// same class as the already-`Alias`-wrapped-base refusal above. Two carve-outs, both narrow and
-    /// both enumerated by GENERATION over every committed spec rather than by grep:
+    /// same class as the already-`Alias`-wrapped-base refusal above. Two carve-outs remain, each
+    /// enumerated by GENERATION (all committed specs plus the whole `--bin cddl-codegen` suite,
+    /// with the carve-outs removed) rather than by grep:
     ///
     /// 1. A base that is `Fixed`: the rule is refused, by `record_bare_fixed_rule_rejection` in this
     ///    same function (`foo = #6.5(5)`, `tests/robustness/tagged_literal.cddl`). The entry is
     ///    inserted only so a sibling's reference resolves during parse; `finalize` turns the
     ///    rejection into an `Err` before anything is emitted, so no alias — and no surviving tag —
     ///    ever reaches a wire. The invariant is about what EMITS.
-    /// 2. A tag operation (and ONLY a tag operation) on the two bases a tagged rule body still
-    ///    collapses to instead of wrapping: a collection (`#6.n([* t])` / `#6.n({ * k => v })`,
-    ///    registered by the named-array/named-table kind-walk through `AliasInfo::new_manual`) and an
-    ///    `Optional` (`#6.n(T / null)`, the `T / null` collapse). Those roots have the SAME
-    ///    standalone-vs-embed split this invariant describes, they had it before this assert existed,
-    ///    and fixing them is a separate delivery with its own blast radius (the wasm face, the
-    ///    matrix's tagged-collection cells). The class is recorded in `cddl-matrix/ROADMAP.md`
-    ///    § Findings ("A tagged collection / `T / null` rule body's standalone codec drops the tag")
-    ///    so it is a KNOWN exemption rather than an unknown; narrowing the carve-out to tag
-    ///    operations on exactly those bases keeps a future operation — or a tag on any other base —
-    ///    firing.
+    /// 2. A tag operation on a `Map` base carrying `@duplicates preserve` — and ONLY that
+    ///    combination. `t = #6.n({* k => v}) ; @duplicates preserve` (and the optional-tag idiom's
+    ///    map flavor) keeps its transparent alias because a wrapper cannot carry the `PairMap` inner
+    ///    a preserve policy selects: the register-side duplicates threading is scoped to `Array`
+    ///    deliberately, since the synthesized structural map wasm wrapper class wraps `BTreeMap`
+    ///    (probed — wrapping it fails the wasm crate with E0425 on a missing `PairMapU64ToText`),
+    ///    while a preserve-table ALIAS works under wasm because the named rule itself becomes the
+    ///    `PairMap` class. Refusing the shape instead is not available: it generates and compiles
+    ///    today, so a refusal would be a support regression. The combination keeps the
+    ///    standalone-tag-drop it has always had, ledgered in `cddl-matrix/ROADMAP.md` § Findings
+    ///    ("A tagged PRESERVE table's standalone codec drops the tag"); wiring the PairMap-aware
+    ///    wasm wrapper retires both the carve-out and the entry. Keying the carve-out on the
+    ///    POLICY — not on "Map base" — keeps every other tagged map firing.
     fn assert_no_wire_facts_survive_a_transparent_alias(alias: &RustIdent, base_type: &RustType) {
         if base_type.encodings.is_empty() {
             return;
@@ -2438,19 +2443,18 @@ impl<'a> IntermediateTypes<'a> {
         if matches!(base_type.conceptual_type, ConceptualRustType::Fixed(_)) {
             return;
         }
-        let ledgered_tag_base = matches!(
-            base_type.conceptual_type,
-            ConceptualRustType::Array(_)
-                | ConceptualRustType::Map(_, _)
-                | ConceptualRustType::Optional(_)
-        );
+        let preserve_map = matches!(base_type.conceptual_type, ConceptualRustType::Map(_, _))
+            && matches!(
+                base_type.config.duplicates,
+                Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            );
         let only_tags = base_type.encodings.iter().all(|op| {
             matches!(
                 op,
                 CBOREncodingOperation::Tagged(_) | CBOREncodingOperation::OptionallyTagged(_)
             )
         });
-        if ledgered_tag_base && only_tags {
+        if preserve_map && only_tags {
             return;
         }
         panic!(

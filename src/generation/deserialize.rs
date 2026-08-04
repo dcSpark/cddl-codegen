@@ -1848,7 +1848,28 @@ impl GenerationScope {
                     } else {
                         vec![]
                     };
-                    if ty_enc_fields.is_empty() {
+                    // Every tag level already crossed on THIS member name contributed its own
+                    // element to the tuple the child read produces (`(x, tag_enc, inner_enc)` for
+                    // one level), so the `Some`-mapping below has to bind them too and the `None`
+                    // arm has to default them. Deriving the count from `config.tag_depth` — the
+                    // same counter `encoding_fields_impl` and the tag arms use — is what keeps the
+                    // three in lockstep. Before this, `#6.n(T / null)` under `--preserve-encodings`
+                    // emitted a 2-binder pattern against a 3-element tuple and the generated crate
+                    // did not compile (E0308) — exit 0, uncompilable output.
+                    // Only under `--preserve-encodings`: without it no encoding variable exists at
+                    // any level, so the child read yields the bare value and the tuple has one
+                    // element whatever the tag depth.
+                    let crossed_tag_levels = if cli.preserve_encodings {
+                        config.tag_depth
+                    } else {
+                        0
+                    };
+                    let crossed_tag_vars: Vec<String> = (1..=crossed_tag_levels)
+                        .map(|level| {
+                            format!("{}_{}_encoding", config.var_name, tag_encoding_infix(level))
+                        })
+                        .collect();
+                    if ty_enc_fields.is_empty() && crossed_tag_vars.is_empty() {
                         self.generate_deserialize(
                             types,
                             (&**ty).into(),
@@ -1864,9 +1885,14 @@ impl GenerationScope {
                             ("", "".to_owned())
                         } else {
                             // case 2: need to map FIRST element in Some(x)
-                            let enc_vars_str = ty_enc_fields
+                            let enc_vars_str = crossed_tag_vars
                                 .iter()
-                                .map(|enc_field| enc_field.field_name.clone())
+                                .cloned()
+                                .chain(
+                                    ty_enc_fields
+                                        .iter()
+                                        .map(|enc_field| enc_field.field_name.clone()),
+                                )
                                 .collect::<Vec<String>>()
                                 .join(", ");
                             // we need to annotate the Ok's error type since the compiler gets confused otherwise
@@ -1905,6 +1931,9 @@ impl GenerationScope {
                         } else {
                             vec!["None".to_owned()]
                         };
+                        // `None` for each crossed tag level (an `Option<Sz>` / presence var), then
+                        // the inner type's own defaults — same order as the `Some` arm's binders.
+                        none_elems.extend(crossed_tag_vars.iter().map(|_| "None".to_owned()));
                         none_elems.extend(
                             ty_enc_fields
                                 .iter()

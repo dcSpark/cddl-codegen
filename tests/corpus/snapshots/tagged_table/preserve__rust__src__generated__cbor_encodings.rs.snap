@@ -13,8 +13,12 @@ use alloc::string::String;
 #[derive(Clone, Debug, Default)]
 pub struct HolderEncoding {
     pub len_encoding: LenEncoding,
-    pub payload_tag_encoding: Option<cbor_event::Sz>,
-    pub payload_encoding: LenEncoding,
-    pub payload_key_encodings: BTreeMap<String, StringEncoding>,
-    pub payload_value_encodings: BTreeMap<String, Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TaggedTableEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: LenEncoding,
+    pub inner_key_encodings: BTreeMap<String, StringEncoding>,
+    pub inner_value_encodings: BTreeMap<String, Option<cbor_event::Sz>>,
 }

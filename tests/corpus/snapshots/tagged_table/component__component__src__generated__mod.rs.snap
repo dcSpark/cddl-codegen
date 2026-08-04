@@ -18,6 +18,7 @@ struct Component;
 
 impl wit_types::Guest for Component {
     type Holder = WitHolder;
+    type TaggedTable = WitTaggedTable;
 }
 
 export!(Component);
@@ -31,18 +32,15 @@ fn err<E: core::fmt::Display>(e: E) -> String {
 pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
 
 impl wit_types::GuestHolder for WitHolder {
-    fn new(payload: Vec<(String, u64)>) -> Self {
-        let payload = payload.into_iter().collect();
+    fn new(payload: wit_types::TaggedTableBorrow<'_>) -> Self {
+        let payload = payload.get::<WitTaggedTable>().0.borrow().clone();
         let inner = cddl_lib::Holder::new(payload);
         WitHolder(RefCell::new(inner))
     }
 
-    fn payload(&self) -> Vec<(String, u64)> {
+    fn payload(&self) -> wit_types::TaggedTable {
         let me = self.0.borrow();
-        me.payload
-            .iter()
-            .map(|(x0, x1)| (x0.clone(), *x1))
-            .collect()
+        wit_types::TaggedTable::new(WitTaggedTable(RefCell::new(me.payload.clone())))
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {
@@ -52,6 +50,34 @@ impl wit_types::GuestHolder for WitHolder {
     fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
         <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
             .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedTable(pub RefCell<cddl_lib::TaggedTable>);
+
+impl wit_types::GuestTaggedTable for WitTaggedTable {
+    fn new(inner: Vec<(String, u64)>) -> Self {
+        let inner = inner.into_iter().collect();
+        let inner = cddl_lib::TaggedTable::new(inner);
+        WitTaggedTable(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<(String, u64)> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.iter().map(|(x0, x1)| (x0.clone(), *x1)).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedTable as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedTable, String> {
+        <cddl_lib::TaggedTable as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedTable::new(WitTaggedTable(RefCell::new(v))))
             .map_err(err)
     }
 }

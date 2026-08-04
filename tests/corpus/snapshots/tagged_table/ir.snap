@@ -29,46 +29,12 @@ expression: ir
                     RustField {
                         name: "payload",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "TaggedTable",
-                                    ),
-                                ),
-                                Map(
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            Str,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            duplicates: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            U64,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            duplicates: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "TaggedTable",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    11,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -148,10 +114,35 @@ expression: ir
             duplicates: None,
             set_nominal: false,
         },
-        variant: Table {
-            domain: RustType {
-                conceptual_type: Primitive(
-                    Str,
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Map(
+                    RustType {
+                        conceptual_type: Primitive(
+                            Str,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
@@ -162,20 +153,8 @@ expression: ir
                     basic_override: false,
                 },
             },
-            range: RustType {
-                conceptual_type: Primitive(
-                    U64,
-                ),
-                encodings: [],
-                config: RustTypeSerializeConfig {
-                    default: None,
-                    bounds: None,
-                    duplicates: None,
-                    float_bounds: None,
-                    basic_override: false,
-                },
-            },
-            bounds: None,
+            min_max: None,
+            float_min_max: None,
         },
     },
 }
