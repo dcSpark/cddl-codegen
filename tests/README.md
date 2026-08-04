@@ -2908,7 +2908,18 @@ macro-mode skip is a **decided posture, not a gap** (2026-08-03): those flags re
 method surface with user-supplied macro definitions, so an emitted assertion there would judge the
 fixture's macro bodies rather than the generator's output — the compile verdict is the honest floor,
 and the observable that would reopen it is a consumer-reported behavioral defect in a macro-mode wasm
-surface that the compile verdict passed. Mutation-verified
+surface that the compile verdict passed. The extern / raw-bytes non-mint is the **same decided
+posture** (2026-08-04, completing the class): what was decided is whether the AUTO-MINTER learns
+these classes, NOT whether the feature is tested — hand fixtures cover raw-bytes behaviorally on
+both sides (`tests/raw-bytes/tests.rs`, `tests/raw-bytes/tests_wasm.rs`, and the extern-generic
+fixtures round-tripping `from_raw_bytes`). An extern type carries no contract a minter could
+construct against, and raw-bytes has a knowable trait door (`RawBytesEncoding::from_raw_bytes`) but
+no knowable accepted LENGTH, so an emitted mint would be runtime-red against a correct generator;
+the once-considered def-file mint hook is impossible harness-side (the mint decision is taken
+DURING generation off the IR struct variant, before any def splice runs — the falsification
+`6ce3b6e0` records), and the feature-shaped alternative was declined (full record + reopening
+signals: `cddl-matrix/ROADMAP.md` § "Explicitly out of scope (decided, not overlooked)").
+Mutation-verified
 red-first (three `generation/` wasm-boundary mutations each turned exactly the intended assertion class
 red; see the `src/emit_tests_wasm.rs` header).
 

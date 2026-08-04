@@ -983,31 +983,6 @@ composition-space cross-check that complements this matrix's curated per-shape g
   companion-wrapper pair (the named-table workspace keys-list and the co-hosted requested
   keys-list) plus a probed named-reference-position red — details, the participation table, and
   the leg's axis refinements live in that entry.
-- **Extern / raw-bytes ctor args as a behavioral wasm-surface class — PENDING MAINTAINER RE-RULING.**
-  These cells fall back to the compile verdict today, with the loud skip on the RUST side of the
-  emitted-test surface (`tests/README.md` § "wasm-crate test module" states where it lives and why).
-  The cost premise this item was previously written on — that the mint is the def-splice the compile
-  gate already does for `rawbytes` cells (`append_raw_bytes_defs`) extended to ctor args, i.e. shared
-  machinery — is **falsified**: that splice appends user definitions into the generated crate AFTER
-  generation so it COMPILES, while the mint decision is taken DURING generation off the IR struct
-  variant. `emit_tests::mint_struct` yields no `MintValue` for `RustStructType::Extern` (other than
-  the reserved `Int`) or `RustStructType::RawBytesType`, and `materialize_at` mints no `Rust(ident)`
-  at all, so no splice can change the answer and no harness-side design can reach these cells. The
-  two honest branches, for a maintainer call:
-  - **(A) Fund the mint as a feature.** Teaching the shared minter to construct a user-supplied type
-    needs a user-supplied hint — a per-extern mint expression or a raw-bytes payload-length
-    directive — which is new DSL/flag surface with its own red-first vectors, a `docs/docs/` note and
-    a vendor-row registration. Not test infrastructure.
-  - **(B) Declare the class compile-verdict-permanent**, on the same reasoning the `--wasm-*-macro`
-    modes were ruled on: with no generator-knowable constructor, a behavioral assertion judges the
-    fixture's hand-written type rather than the generator's output. Note the asymmetry the branch has
-    to answer: raw-bytes DOES have a knowable trait door (`RawBytesEncoding::from_raw_bytes`) but no
-    knowable accepted LENGTH (the in-repo `PubKey` fixture takes exactly 32 bytes and rejects
-    everything else), so an emitted mint would be runtime-red against a correct generator, while the
-    extern class has no contract at all.
-  Reopening signals if (B) is taken: a consumer asking for minted extern values, or a
-  consumer-reported wasm-boundary defect on an extern/raw-bytes ctor arg that the compile verdict
-  passed.
 
 ## Explicitly out of scope (decided, not overlooked)
 
@@ -1023,6 +998,25 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   plus a loud skip (`tests/README.md` § "wasm-crate test module") is the permanent posture, decided
   2026-08-03. Reopening signal: a consumer-reported behavioral defect in a macro-mode wasm surface
   that the compile verdict passed.
+- **Behavioral emitted-test cells for extern / raw-bytes ctor args** — compile-verdict-permanent,
+  decided 2026-08-04, same class as the macro-mode posture above. This is about whether the
+  AUTO-MINTER (`emit_tests`) learns these classes, NOT about the feature going untested: hand
+  fixtures already cover raw-bytes behaviorally on both sides (`tests/raw-bytes/tests.rs` and
+  `tests/raw-bytes/tests_wasm.rs` round-trip through `RawBytesEncoding`, and the extern-generic
+  fixtures round-trip `from_raw_bytes`) — state that distinction whenever this posture is cited.
+  An extern type has no contract a harness could construct against; raw-bytes has a knowable trait
+  door (`RawBytesEncoding::from_raw_bytes`) but no knowable accepted LENGTH (the in-repo `PubKey`
+  takes exactly 32 bytes), so an emitted mint would be runtime-red against a correct generator.
+  Why an earlier ruling flipped, recorded so this reads as consistent rather than a reversal: the
+  2026-08-03 opt-in-hook ruling rested on a cost premise `6ce3b6e0` falsified — the def-file
+  splice runs AFTER generation while the mint decision is taken DURING generation off the IR
+  struct variant (`emit_tests::mint_struct` yields no `MintValue` for `RustStructType::Extern`
+  beyond the reserved `Int`, nor for `RustStructType::RawBytesType`), so no harness-side hook can
+  exist and what remained was a user-supplied-hint FEATURE (DSL surface, red-first vectors, docs,
+  matrix registration), which the original ruling's own "no test-harness metadata in production
+  specs" reasoning rejects. Reopening signals: a consumer asking for minted extern/raw-bytes
+  values (the request arrives carrying the valid-bytes knowledge the hint needs), or a
+  consumer-reported wasm-boundary defect on such a ctor arg that the compile verdict passed.
 - **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and
   `; unexported:` records that `--extern-import` input files carry beyond the two `ext.*` sentinels
   (strictly parsed at the seam; comments to the grammar). They are tool-interchange rather than
