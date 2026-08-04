@@ -503,7 +503,7 @@ fn print_required_reexports(root_rel_path: &str, required: &std::collections::BT
 /// scan cannot see which names that glob provides, so it suppresses ALL per-name warnings rather than
 /// risk a false positive. The tool's own `pub use generated::*;` (last segment `generated`) does NOT
 /// suppress: the extern is defined OUTSIDE `generated/**`, so that glob provably never provides it.
-pub(super) fn missing_reexports(
+pub(crate) fn missing_reexports(
     lib_text: &str,
     required: &std::collections::BTreeSet<String>,
 ) -> Vec<String> {
