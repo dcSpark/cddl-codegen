@@ -536,7 +536,7 @@ fn warn_new_static_file(is_new: bool, filename: &str) {
 /// the warnings are emitted in). Split out from the warning loop so the "which files count as
 /// orphaned" decision is directly assertable without capturing process stderr — the same reason
 /// [`new_static_file_notice`] is a function rather than a literal at its warn site.
-fn stale_orphans(
+pub(crate) fn stale_orphans(
     rust_dir: &Path,
     written_generated_rs: &BTreeSet<PathBuf>,
 ) -> std::io::Result<Vec<PathBuf>> {
@@ -615,25 +615,13 @@ fn warn_on_workspace_package_name_collisions(
     crate_root: &std::path::Path,
     generated_packages: &[(String, String)],
 ) {
-    if generated_packages.is_empty() {
-        return;
-    }
-    let Some((ws_manifest, ws_doc)) = nearest_workspace_manifest(crate_root) else {
-        return;
-    };
-    let Some(ws_dir) = ws_manifest.parent() else {
-        return;
-    };
-    let members = workspace_member_packages(ws_dir, &ws_doc);
-    for (rel_manifest, name) in generated_packages {
-        let ours = crate_root.join(rel_manifest);
-        let ours_canonical = std::fs::canonicalize(&ours).unwrap_or(ours);
-        let Some(other) = members
-            .iter()
-            .find(|(path, member_name)| member_name == name && *path != ours_canonical)
-        else {
-            continue;
-        };
+    for WorkspaceNameCollision {
+        name,
+        ours_canonical,
+        other,
+        ws_manifest,
+    } in workspace_package_name_collisions(crate_root, generated_packages)
+    {
         // LOAD-BEARING MESSAGE: it must name BOTH manifests (the user has to know which crate to
         // rename) and the flag that renames ours, because the failure it predicts happens in a
         // different tool, later, and quotes neither path.
@@ -645,10 +633,57 @@ fn warn_on_workspace_package_name_collisions(
              itself cannot see that. Remedy: pass --lib-name to give this crate a name the \
              workspace does not already use, or rename the other crate.",
             ours_canonical.display(),
-            other.0.display(),
+            other.display(),
             ws_manifest.display(),
         );
     }
+}
+
+/// One collision the scan above reports: our generated manifest, the workspace member that already
+/// claims the package name, and the workspace root that holds them both.
+pub(crate) struct WorkspaceNameCollision {
+    pub name: String,
+    pub ours_canonical: std::path::PathBuf,
+    pub other: std::path::PathBuf,
+    pub ws_manifest: std::path::PathBuf,
+}
+
+/// The detection half of [`warn_on_workspace_package_name_collisions`], split out for the same
+/// reason [`stale_orphans`] is: the decision is then assertable without capturing process stderr,
+/// which is what lets a test show the diagnostic FIRED while the written tree stayed byte-identical
+/// (the "delete the call and every emitted file is identical" contract).
+pub(crate) fn workspace_package_name_collisions(
+    crate_root: &Path,
+    generated_packages: &[(String, String)],
+) -> Vec<WorkspaceNameCollision> {
+    let mut found = Vec::new();
+    if generated_packages.is_empty() {
+        return found;
+    }
+    let Some((ws_manifest, ws_doc)) = nearest_workspace_manifest(crate_root) else {
+        return found;
+    };
+    let Some(ws_dir) = ws_manifest.parent() else {
+        return found;
+    };
+    let members = workspace_member_packages(ws_dir, &ws_doc);
+    for (rel_manifest, name) in generated_packages {
+        let ours = crate_root.join(rel_manifest);
+        let ours_canonical = std::fs::canonicalize(&ours).unwrap_or(ours);
+        let Some(other) = members
+            .iter()
+            .find(|(path, member_name)| member_name == name && *path != ours_canonical)
+        else {
+            continue;
+        };
+        found.push(WorkspaceNameCollision {
+            name: name.clone(),
+            ours_canonical,
+            other: other.0.clone(),
+            ws_manifest: ws_manifest.clone(),
+        });
+    }
+    found
 }
 
 /// The nearest ancestor `Cargo.toml` (starting at `from` itself) carrying a `[workspace]` table,
