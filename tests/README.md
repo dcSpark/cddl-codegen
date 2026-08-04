@@ -4491,17 +4491,30 @@ emit semantically identical code), and `encoding_var_is_copy -> false` only adds
 three impls). Expect that equivalent-style class among survivors; the sweep's value is the
 survivors that *aren't* in it.
 
-## Coverage note: `number`/`time` in the prelude fixture
+## Known gap: `number`/`time` are missing from the prelude fixture
 
 The CDDL standard prelude (`biguint`, `tdate`, `uri`, …) is covered by `tests/corpus/prelude.cddl`.
-The float-bearing choice types (`number`, `time`) generate and round-trip under **every** profile —
-floats support `--preserve-encodings`, and each prelude float name is its own wire-acceptance class
-(the `float_heads`/`float_widths` suites) — but they are deliberately omitted from that fixture on
-coverage economy, as its own header records: their generated shape (a type-choice enum) is already
-covered by other members, and their float arm gets real wire vectors where that is cheap (the matrix
-decode-conformance `prelude.number`/`prelude.time` rows, `homogeneous_array.cddl`'s `float_holder`,
-and `optional_fixed_float.cddl`). An earlier revision of this section called the omission a gap
-blocked by preserve-mode floats; that blocker no longer exists, and the omission that remains is a
-coverage decision, not a residue of it.
+The float-bearing choice types (`number`, `time`) are **not** — and there is no technical reason for
+it. They generate and round-trip under **every** profile (floats support `--preserve-encodings`, and
+each prelude float name is its own wire-acceptance class — the `float_heads`/`float_widths` suites).
+
+The omission is a leftover, and its stated justifications do not hold up:
+
+- It was originally recorded as blocked by preserve-mode floats. That blocker is gone.
+- It was then re-justified on **coverage economy** — the generated shape (a type-choice enum) being
+  covered by other members, and the float arm getting wire vectors elsewhere (the matrix
+  decode-conformance `prelude.number`/`prelude.time` rows, `homogeneous_array.cddl`'s `float_holder`,
+  `optional_fixed_float.cddl`). That is an argument about corpus size, which is not a scarce
+  resource here: the fixture is a flat list and the addition is two lines.
+
+What the fixture is FOR is the reason economy does not settle it. It is the one place that answers
+"does this tool cover the RFC 8610 Appendix D prelude?", and it currently cannot answer for two of
+the names — the only two that carry a float, immediately after a delivery that changed what every
+float name means. A reader checking prelude coverage does not know that `number` is covered by
+inference from `bigint`'s shape plus a matrix row two directories away; they read the list.
+
+**The work:** add `number` and `time` to `prelude.cddl`, re-bless the corpus, and check whether the
+matrix's `prelude.number`/`prelude.time` decode-conformance rows become redundant or stay as the
+wire-vector half. Small, and unblocked.
 
 [`insta`]: https://insta.rs

@@ -1,9 +1,13 @@
 ; CDDL standard-prelude types (RFC 8610 Appendix D), pulled in as raw CDDL.
-; Each distinct generated shape is covered once. The float-bearing choice types (number/time)
-; generate and round-trip under every profile, but their shape (a type-choice enum) is already
-; covered here by other members, and their float arm is exercised where it is CHEAP to give real
-; wire vectors: the matrix decode-conformance replay's prelude.number/prelude.time rows, and
-; homogeneous_array.cddl's `float_holder` / optional_fixed_float.cddl for the plain float member.
+;
+; INCOMPLETE: `number` and `time` are missing. They generate and round-trip under every profile —
+; nothing blocks them — and their absence is a leftover, not a decision this file should be trusted
+; to have made. It was argued on shape economy (their type-choice-enum shape being covered by other
+; members, their float arm getting vectors in the matrix decode-conformance prelude.number/
+; prelude.time rows and in homogeneous_array.cddl / optional_fixed_float.cddl). But the point of
+; this file is to answer "does the tool cover the Appendix D prelude?", and a reader answers that
+; by reading the list, not by inferring one name's coverage from another name's shape. See
+; tests/README.md § "Known gap: `number`/`time` are missing from the prelude fixture".
 prelude = [
   big_u:    biguint,      ; #6.2(bstr)      — tagged-bytes alias
   uri:      uri,          ; #6.32(tstr)     — tagged-text alias
