@@ -2332,10 +2332,8 @@ emitted test passes fails the gate as a stale pin): a row skipped on one leg sti
 `cddl-matrix/ROADMAP.md` finding, and it also suppresses the wasm `from_json` sub-leg (same serde
 path). Resident classes at HEAD (ledgered in § findings):
 **`@custom_json`** omitting the serde derives the leg's serde_json usage needs (`dsl.custom_json` /
-`dsl_custom.custom_newtype` — can't compile standalone); **non-string map keys** serde_json can't
-serialize (`bytes_map_key.*`, `composite_map_key.holder`, corpus); and the **present-null optional
-field** whose json round-trip preserves the null the direct CBOR re-encode drops
-(`nullable_nested.nullable_optional_field`, corpus). `WASM_SURFACE_SKIP` — rows whose `--wasm`
+`dsl_custom.custom_newtype` — can't compile standalone); and **non-string map keys** serde_json
+can't serialize (`bytes_map_key.*`, `composite_map_key.holder`, corpus). `WASM_SURFACE_SKIP` — rows whose `--wasm`
 generation or wasm-crate compile legitimately fails; also cited; sole resident class at HEAD is the
 same `@custom_json` gap (the wrapper's `to_json`/`from_json` require the omitted derives). Distinct
 from a **mechanical** skip: a type with NO `from_cbor_bytes` wasm wrapper surface (a bare primitive

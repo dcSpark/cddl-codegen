@@ -124,7 +124,7 @@ Each name is refused **uniformly across profiles** — several of them only brea
 ## Type choices
 
 Type choices are handled via enums as well with the name defaulting to `AOrBOrC` for `A / B / C` when inlined as a field/etc, and will take on the type identifier if provided ie `foo = A / B / C` would be `Foo`.
-Any field that is `T / null` is transformed as a special case into `Option<T>` rather than creating a `TOrNull` enum.
+Any field that is `T / null` is transformed as a special case into `Option<T>` rather than creating a `TOrNull` enum. An **optional** member of such a type (`? f: (T / null)`) therefore nests two `Option`s and carries three states — absent, present-null, present-value — which the CBOR and JSON surfaces both keep distinct; see [Optional members whose type is nullable](output_format#optional-members-whose-type-is-nullable).
 
 A special case for this is when all types are fixed values e.g. `foo = 0 / 1 / "hello"`, in which case we generate a special c-style enum in the rust. This will have wasm_bindgen tags so it can be directly used in the wasm crate. Encoding variables (for `--preserve-encodings=true`) are stored where the enum is used like with other primitives.
 

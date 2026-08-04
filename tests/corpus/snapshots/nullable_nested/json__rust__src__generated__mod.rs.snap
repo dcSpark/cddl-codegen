@@ -15,6 +15,7 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
+pub mod double_option;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -72,6 +73,10 @@ pub type NullableMapValue = BTreeMap<u64, MaybeUint>;
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct NullableOptionalField {
     pub pre: u64,
+    #[serde(with = "crate::generated::double_option")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<MaybeUint>")]
     pub field0: Option<MaybeUint>,
 }
 
