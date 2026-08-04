@@ -367,7 +367,6 @@ impl Int {
 
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(string: &str) -> Result<Int, JsError> {
-        // have to redefine so it's visible in WASM
         std::str::FromStr::from_str(string)
             .map(Self)
             .map_err(|e| JsError::new(&format!("Int.from_str({}): {:?}", string, e)))
