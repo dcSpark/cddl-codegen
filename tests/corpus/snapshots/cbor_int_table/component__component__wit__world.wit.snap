@@ -8,11 +8,11 @@ expression: content
 package cddl:cddl-lib@0.1.0;
 
 interface types {
-  resource cbor-int {
-    constructor(inner: int);
-    get: func() -> int;
+  resource cbor-int-table {
+    constructor(inner: list<tuple<string, int>>);
+    get: func() -> list<tuple<string, int>>;
     to-cbor-bytes: func() -> list<u8>;
-    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-int, string>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-int-table, string>;
   }
   variant int {
     uint(u64),

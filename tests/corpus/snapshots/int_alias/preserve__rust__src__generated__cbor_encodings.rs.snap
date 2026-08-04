@@ -5,19 +5,9 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
-extern crate alloc;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
-use alloc::collections::BTreeMap;
-use alloc::string::String;
+use crate::generated::serialization::StringEncoding;
 
 #[derive(Clone, Debug, Default)]
 pub struct CborIntEncoding {
     pub inner_bytes_encoding: StringEncoding,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct CborIntTableEncoding {
-    pub inner_bytes_encoding: StringEncoding,
-    pub inner_encoding: LenEncoding,
-    pub inner_key_encodings: BTreeMap<String, StringEncoding>,
 }

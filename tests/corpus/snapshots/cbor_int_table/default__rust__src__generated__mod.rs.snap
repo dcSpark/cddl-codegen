@@ -11,28 +11,35 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-pub type BareInt = Int;
-
 #[derive(Clone, Debug)]
-pub struct CborInt(pub(crate) Int);
+pub struct CborIntTable(pub(crate) BTreeMap<String, Int>);
 
-impl CborInt {
-    pub fn get(&self) -> &Int {
+impl CborIntTable {
+    pub fn get(&self) -> &BTreeMap<String, Int> {
         &self.0
     }
 
-    pub fn new(inner: Int) -> Self {
+    pub fn new(inner: BTreeMap<String, Int>) -> Self {
         Self(inner)
     }
 }
 
-impl From<Int> for CborInt {
-    fn from(inner: Int) -> Self {
-        CborInt::new(inner)
+impl From<BTreeMap<String, Int>> for CborIntTable {
+    fn from(inner: BTreeMap<String, Int>) -> Self {
+        CborIntTable::new(inner)
+    }
+}
+
+impl From<CborIntTable> for BTreeMap<String, Int> {
+    fn from(wrapper: CborIntTable) -> Self {
+        wrapper.0
     }
 }
 
@@ -80,12 +87,6 @@ impl TryFrom<i128> for Int {
         } else {
             u64::try_from((x + 1).unsigned_abs()).map(Self::Nint)
         }
-    }
-}
-
-impl From<CborInt> for Int {
-    fn from(wrapper: CborInt) -> Self {
-        wrapper.0
     }
 }
 
