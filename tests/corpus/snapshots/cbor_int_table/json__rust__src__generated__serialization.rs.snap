@@ -51,7 +51,11 @@ impl Deserialize for CborIntTable {
                     return Err(DeserializeFailure::DuplicateKey(Key::Str(inner_key)).into());
                 }
             }
-            Ok(Self(inner_table))
+            let inner_payload = inner_table;
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
         })()
         .map_err(|e| e.annotate("CborIntTable"))
     }

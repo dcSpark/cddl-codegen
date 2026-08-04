@@ -88,6 +88,9 @@ impl Deserialize for CborIntTable {
                 inner_encoding,
                 inner_key_encodings,
             );
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
             Ok(Self {
                 inner,
                 encodings: Some(CborIntTableEncoding {

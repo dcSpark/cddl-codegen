@@ -84,6 +84,14 @@ Findings graduate to committed regressions: codegen-owned crashes become a `test
   in cbor_event 3.x (the Vec-backed `Deserializer` bounds-checks claimed lengths against the buffer
   before slicing); the committed regression vector is the ~2 GiB-claim case in
   `tests/core/tests.rs`'s `hostile_inputs_error_not_panic`.
+- The **`bytes .cbor T` trailing-payload-bytes over-acceptance** (a byte string whose embedded CBOR
+  did not consume the whole payload was accepted, and — since nothing held the leftover bytes —
+  re-encoded to the consumed prefix alone) was found by the *fidelity* oracle rather than the crash
+  one: `81 44 82 09 60 00` round-tripped to `81 43 82 09 60`. Both `.cbor` spellings shared the one
+  embed emission, so both were wrong on every profile; the payload is now required to be exhausted
+  and raises the same `cbor_event::Error::TrailingData` the top-level `from_cbor_bytes` does. The
+  committed regressions are the two `bytes .cbor` cases in `tests/core/tests.rs`'s
+  `structural_rejects` (the `foo_bytes` rule body and `cbor_in_cbor`'s `uint_bytes` member).
 - The recursive target's depth guard was **validated against the failure class it defends**: built
   once *without* `--deserialize-depth-limit`, the hostile-deep seed reproduces
   `AddressSanitizer: stack-overflow … ABORTING` (confirming the fuzz process boundary can see the

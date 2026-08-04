@@ -301,6 +301,16 @@ impl<'a> DeserializeBeforeAfter<'a> {
         self.before.is_empty() && !self.expects_result
     }
 
+    /// Whether a value emitted at this position forms a complete STATEMENT — `before`/`after`
+    /// bracket it into `let x = <value>;` or `x = Some(<value>);`, and no caller is waiting on an
+    /// `Ok(..)` wrapper. Then, and only then, may further code be appended AFTER the value: every
+    /// other position is a terminal EXPRESSION (a block's tail, a tuple element, a closure body)
+    /// where a following statement is not Rust. Used by the `.cbor` payload arm, whose
+    /// payload-exhausted check can only run once the payload has been consumed.
+    pub(super) fn is_statement(&self) -> bool {
+        self.after.ends_with(';') && !self.expects_result
+    }
+
     pub(super) fn after_str(&self, is_result: bool) -> String {
         match (self.expects_result, is_result) {
             // Result<T, _> -> T
@@ -2584,14 +2594,66 @@ impl GenerationScope {
                         "let {} = &mut Deserializer::from({}_bytes);",
                         name_overload, config.var_name
                     ));
-                    self.generate_deserialize(
-                        types,
-                        *child,
-                        before_after,
-                        config.overload_deserializer(name_overload),
-                        cli,
-                    )
-                    .add_to_code(&mut deser_code);
+                    // `.cbor` says the byte string IS the payload type's encoding, so bytes left over
+                    // after the payload are not a value this type admits. Without the check below the
+                    // embed accepted them and — since nothing holds them — re-encoded only the
+                    // consumed prefix, so an ACCEPTED input round-tripped to DIFFERENT bytes:
+                    // over-acceptance on every profile, and a `--preserve-encodings` fidelity
+                    // violation on top. Found by the byte fuzzer (`fuzz/README.md` § "Findings
+                    // disposition"); pinned by `structural_rejects` in `tests/core/tests.rs` at both
+                    // `.cbor` spellings (rule body and member expression).
+                    //
+                    // Deliberately the SAME error as the top-level leftover check in
+                    // `static/serialization.rs`'s `from_cbor_bytes` — one fact, one spelling, so a
+                    // consumer matching on trailing data at the top level matches it here too. It
+                    // flows through `DeserializeError`, so the enclosing annotation still names the
+                    // member the leftover bytes were found in.
+                    let trailing_check = || {
+                        let mut block =
+                            Block::new(format!("if !{name_overload}.as_slice().is_empty()"));
+                        block.line(
+                            "return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());",
+                        );
+                        block
+                    };
+                    // The check has to run once the payload IS consumed, so it follows the payload's
+                    // own code — which is only expressible where that code is a complete STATEMENT.
+                    // At a terminal position (a block's tail, a tuple element) the payload value is
+                    // an expression and nothing may follow it, so bind it first and yield the
+                    // binding. Both spellings are emitted rather than always binding, because the
+                    // statement positions are the common ones and a `let x = x_payload;` rebinding
+                    // in every consumer's generated crate is noise that says nothing.
+                    if before_after.is_statement() {
+                        self.generate_deserialize(
+                            types,
+                            *child,
+                            before_after,
+                            config.overload_deserializer(name_overload),
+                            cli,
+                        )
+                        .add_to_code(&mut deser_code);
+                        deser_code.content.push_block(trailing_check());
+                    } else {
+                        let payload_binding = format!("{}_payload", config.var_name);
+                        self.generate_deserialize(
+                            types,
+                            *child,
+                            DeserializeBeforeAfter::new(
+                                &format!("let {payload_binding} = "),
+                                ";",
+                                false,
+                            ),
+                            config.overload_deserializer(name_overload),
+                            cli,
+                        )
+                        .add_to_code(&mut deser_code);
+                        deser_code.content.push_block(trailing_check());
+                        deser_code.content.line(&format!(
+                            "{}{payload_binding}{}",
+                            before_after.before_str(false),
+                            before_after.after_str(false)
+                        ));
+                    }
                     deser_code.throws = true;
                 }
                 SerializingRustType::EncodingOperation(

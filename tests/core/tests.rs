@@ -325,6 +325,38 @@ mod tests {
         // wrong type in the bytes slot (uint where bytes is required)
         assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), cbor_int(7, cbor_event::Sz::Inline)].concat()).is_err());
 
+        // `bytes .cbor T` says the byte string IS T's encoding, so bytes left over after the payload
+        // are not a value the type admits — the same fact the top-level `from_cbor_bytes` check
+        // above states, one level in, and raising the same error. Silently accepting them was worse
+        // than over-acceptance under --preserve-encodings: the value re-encoded WITHOUT the leftover
+        // bytes, so an accepted input round-tripped to different bytes. Found by the byte fuzzer
+        // (`fuzz/README.md` § "Findings disposition").
+        //
+        // Both `.cbor` seams are pinned, because they are separate spellings of the payload:
+        // `foo_bytes = bytes .cbor foo` is a `.cbor` RULE BODY (a wrapper struct of its own), and
+        // `uint_bytes: bytes .cbor uint` inside `cbor_in_cbor` is a `.cbor` MEMBER EXPRESSION.
+        // Each has an accept baseline one byte shorter, so only the leftover byte can reject it.
+        let foo_bytes_ok = [vec![0x40 | foo_ok.len() as u8], foo_ok.clone()].concat();
+        FooBytes::from_cbor_bytes(&foo_bytes_ok).unwrap();
+        let foo_bytes_trailing = [vec![0x40 | (foo_ok.len() + 1) as u8], foo_ok.clone(), vec![0x00]].concat();
+        let foo_bytes_trailing_err = FooBytes::from_cbor_bytes(&foo_bytes_trailing).unwrap_err();
+        assert!(foo_bytes_trailing_err.to_string().contains("trailing data"), "{foo_bytes_trailing_err}");
+
+        // CborInCbor = [foo_bytes, uint_bytes: bytes .cbor uint, tagged_foo_bytes]
+        let cbor_in_cbor = |uint_payload: Vec<u8>| {
+            CborInCbor::from_cbor_bytes(&[
+                arr_def(3),
+                foo_bytes_ok.clone(),
+                [vec![0x40 | uint_payload.len() as u8], uint_payload].concat(),
+                cbor_tag_sz(20, cbor_event::Sz::Inline),
+                foo_bytes_ok.clone(),
+            ].concat())
+        };
+        cbor_in_cbor(cbor_int(9, cbor_event::Sz::Inline)).unwrap();
+        let uint_bytes_trailing_err =
+            cbor_in_cbor([cbor_int(9, cbor_event::Sz::Inline), vec![0x00]].concat()).unwrap_err();
+        assert!(uint_bytes_trailing_err.to_string().contains("trailing data"), "{uint_bytes_trailing_err}");
+
         // Foo2 = #6.23([uint, opt_text]): the tag must be present and correct.
         let foo2 = |tag: Option<u64>| {
             let mut b = Vec::new();

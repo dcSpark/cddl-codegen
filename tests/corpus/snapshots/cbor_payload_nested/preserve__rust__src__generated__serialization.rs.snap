@@ -194,18 +194,27 @@ impl Deserialize for CborPayloadNested {
                             Some(enc),
                         )
                     })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                     elem_payloads_arr.push(elem_payloads_elem);
                     elem_payloads_elem_encodings.push((
                         elem_payloads_elem_bytes_encoding,
                         elem_payloads_elem_encoding,
                     ));
                 }
-                Ok((
+                let elem_payloads_payload = (
                     elem_payloads_arr,
                     StringEncoding::from(elem_payloads_bytes_encoding),
                     elem_payloads_encoding,
                     elem_payloads_elem_encodings,
-                ))
+                );
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(elem_payloads_payload)
             })()
             .map_err(|e| e.annotate("elem_payloads"))?;
             let (
@@ -249,6 +258,11 @@ impl Deserialize for CborPayloadNested {
                             Some(enc),
                         )
                     })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                     if value_payloads_table
                         .insert(value_payloads_key, value_payloads_value)
                         .is_some()
@@ -268,29 +282,37 @@ impl Deserialize for CborPayloadNested {
                         ),
                     );
                 }
-                Ok((
+                let value_payloads_payload = (
                     value_payloads_table,
                     StringEncoding::from(value_payloads_bytes_encoding),
                     value_payloads_encoding,
                     value_payloads_key_encodings,
                     value_payloads_value_encodings,
-                ))
+                );
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(value_payloads_payload)
             })()
             .map_err(|e| e.annotate("value_payloads"))?;
             let (after_payload, after_payload_bytes_encoding, after_payload_encoding) =
                 (|| -> Result<_, DeserializeError> {
                     let (after_payload_bytes, after_payload_bytes_encoding) = raw.bytes_sz()?;
                     let inner_de = &mut Deserializer::from(after_payload_bytes);
-                    inner_de
-                        .unsigned_integer_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(x, enc)| {
+                    let after_payload_payload =
+                        inner_de.unsigned_integer_sz().map(|(x, enc)| {
                             (
                                 x,
                                 StringEncoding::from(after_payload_bytes_encoding),
                                 Some(enc),
                             )
-                        })
+                        })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(after_payload_payload)
                 })()
                 .map_err(|e| e.annotate("after_payload"))?;
             let (tail, tail_encoding) = raw

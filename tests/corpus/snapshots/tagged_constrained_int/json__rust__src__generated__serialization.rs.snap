@@ -31,7 +31,7 @@ impl Deserialize for CborCtlNe {
         (|| -> Result<_, DeserializeError> {
             let inner_bytes = raw.bytes()?;
             let inner_de = &mut Deserializer::from(inner_bytes);
-            Ok(Self(match inner_de.cbor_type()? {
+            let inner_payload = match inner_de.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => inner_de
                     .unsigned_integer()
                     .map_err(Into::<DeserializeError>::into)
@@ -87,7 +87,11 @@ impl Deserialize for CborCtlNe {
                         }
                     })
                     .map(|(x, _enc)| x)? as i64,
-            }))
+            };
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
         })()
         .map_err(|e| e.annotate("CborCtlNe"))
     }

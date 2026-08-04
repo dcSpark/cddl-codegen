@@ -48,7 +48,11 @@ impl Deserialize for WrappedNonempty {
                 inner_arr.push(inner_de.unsigned_integer()?);
             }
             let inner_arr = NonEmptyVec::try_from(inner_arr)?;
-            Ok(Self(inner_arr))
+            let inner_payload = inner_arr;
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
         })()
         .map_err(|e| e.annotate("WrappedNonempty"))
     }
@@ -94,7 +98,11 @@ impl Deserialize for WrappedNonemptyMap {
                 }
             }
             let inner_table = NonEmptyMap::try_from(inner_table)?;
-            Ok(Self(inner_table))
+            let inner_payload = inner_table;
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
         })()
         .map_err(|e| e.annotate("WrappedNonemptyMap"))
     }

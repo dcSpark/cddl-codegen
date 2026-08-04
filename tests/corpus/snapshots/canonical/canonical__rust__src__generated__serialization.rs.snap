@@ -465,16 +465,19 @@ impl Deserialize for CborInCbor {
                 (|| -> Result<_, DeserializeError> {
                     let (uint_bytes_bytes, uint_bytes_bytes_encoding) = raw.bytes_sz()?;
                     let inner_de = &mut Deserializer::from(uint_bytes_bytes);
-                    inner_de
-                        .unsigned_integer_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(x, enc)| {
-                            (
-                                x,
-                                StringEncoding::from(uint_bytes_bytes_encoding),
-                                Some(enc),
-                            )
-                        })
+                    let uint_bytes_payload = inner_de.unsigned_integer_sz().map(|(x, enc)| {
+                        (
+                            x,
+                            StringEncoding::from(uint_bytes_bytes_encoding),
+                            Some(enc),
+                        )
+                    })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(uint_bytes_payload)
                 })()
                 .map_err(|e| e.annotate("uint_bytes"))?;
             match len {
@@ -1431,6 +1434,9 @@ impl Deserialize for FooBytes {
                 Foo::deserialize(inner_de)?,
                 StringEncoding::from(inner_bytes_encoding),
             );
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
             Ok(Self {
                 inner,
                 encodings: Some(FooBytesEncoding {
