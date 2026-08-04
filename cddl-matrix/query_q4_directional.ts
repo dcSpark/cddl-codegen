@@ -447,7 +447,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.array-element.prelude.false", "contain.array-element.prelude.null",
     "contain.array-element.prelude.true", "contain.array-element.type2.value",
     "contain.array-element.type2.value.bare_exactly_once", "contain.array-element.value.number",
-    "contain.array-element.value.text",
+    "contain.array-element.value.number.nint", "contain.array-element.value.text",
     "contain.map-value.prelude.false", "contain.map-value.prelude.null",
     "contain.map-value.prelude.true", "contain.map-value.type2.value",
     "contain.map-value.value.number", "contain.map-value.value.text",
