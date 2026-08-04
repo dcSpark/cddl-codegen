@@ -371,13 +371,13 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
 | `grpent.member` |  |  |  |  |  |  | ✅ | ◐ |  |  |
 | `memberkey.bareword` |  |  |  | · |  |  | ✅ | ➖ |  |  |
-| `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ? |  |  |
+| `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ◐ |  |  |
 | `memberkey.value` |  |  |  | ◐ |  |  | ◐ |  |  |  |
 | `occur.bounded` |  | · |  |  |  |  |  |  |  |  |
 | `occur.one_or_more` |  | · | · |  |  |  |  |  |  |  |
 | `occur.optional` |  | · | · |  |  |  |  |  |  |  |
 | `occur.zero_or_more` |  | · | · |  |  |  |  |  |  |  |
-| `prelude.any` |  |  |  |  |  | ? |  |  |  |  |
+| `prelude.any` |  |  |  |  |  | ◐ |  |  |  |  |
 | `prelude.b64legacy` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.b64url` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.bigfloat` |  | · |  |  |  |  |  |  |  |  |
@@ -399,7 +399,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.regexp` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.tdate` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.text` | · | · | · | · | · | · |  | · |  | · |
-| `prelude.true` |  | ✅ | ✅ |  | · | ? |  | · |  |  |
+| `prelude.true` |  | ✅ | ✅ |  | · | ✅ |  | · |  |  |
 | `prelude.tstr` |  | · | · | · |  | · |  | · |  | · |
 | `prelude.uint` | · | · | · | · | · | · |  | · | · | · |
 | `prelude.undefined` |  | ➖ | ➖ |  |  |  |  |  |  |  |
@@ -413,12 +413,12 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `type2.array` | · | ➖ | ➖ | ➖ | ✅ | ➖ |  | ➖ | ➖ |  |
 | `type2.map` | · | ➖ | ➖ | · | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
 | `type2.parenthesized` | · | · |  |  |  |  |  |  | · |  |
-| `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ? | ? | · | ✅ |  |
+| `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | · | ✅ |  |
 | `type2.typename` | · | · | · | · | · | · |  | · | · | · |
 | `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
-| `type2.value` | · | ✅ | ✅ | · | · | · | ? | ◐ | · | · |
+| `type2.value` | · | ✅ | ✅ | · | · | · | ✅ | ◐ | · | · |
 | `value.bytes` |  | ➖ | ➖ |  |  |  |  |  |  |  |
-| `value.number` | · | ? | ✅ | · | · | · |  | · | · | · |
+| `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
 | `value.text` |  | ✅ | ✅ | · |  |  |  | · |  |  |
 
 - Modelled `(role × feature)` cells: **68** (over 132 shape-granular containment rows).

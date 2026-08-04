@@ -18,7 +18,7 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
 > consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->120 features and 132 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->274 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->286 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -165,7 +165,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->48 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->49 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -176,9 +176,10 @@ rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.
 rows `value.number.{hexfloat,hex,bin}` (wrong-value instances against the fixed 3.0 / 16 / 10,
 rejected as FixedValueMismatch — hex/bin carry hand pins including `[0]`, the silent-zero
 radix-conversion trap from `draft/rust-cddl-radix-int-literal-gap.md` § post-implementation
-findings), and the 15 fixed-value MEMBER cells
+findings), and the 16 fixed-value MEMBER cells
 (`contain.{array-element,map-value,occurrence-target}.…` — the `prelude.{true,false,null}`,
-`type2.value{,.bare_exactly_once}`, `value.{number,text}` and the two optional
+`type2.value{,.bare_exactly_once}`, `value.{number,text}`, the nint sign variation
+`value.number.nint`, and the two optional
 `type2.value.optional_keyed_{array,map}` cells: each carries one wrong-constant instance derived
 from one of its own accepts by mutating ONLY the constant's byte(s), so the constant is the sole
 difference and the row's green tests the CONSTANT rather than just the shape — rejected as
@@ -395,7 +396,15 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    2026-07-30 on `alias_positions`, whose subject makes it maximally exposed: re-minting the fixture
    UNCHANGED demoted `alias_positions.nested` from live vectors to `pinned` for net -37 catalog
    lines, and which rows fall varies per run, so a re-mint of a named-key-heavy fixture is a LOSSY
-   operation rather than an idempotent one while this gap is open), and it is
+   operation rather than an idempotent one while this gap is open). It also claims one MATRIX row
+   outright: `contain.occurrence-target.memberkey.type1.open_struct_named_key` (`* k => any` with
+   `k = uint / text`) minted `pinned_reason`-vectorless on its very first mint — every ruby candidate
+   died `ruby=0 rust=1` — while its inline-key siblings `..._bytes_key` and `..._nint_key` minted
+   real vectors from the identical rest-row shape (`..._nint_key` is the CLEAN half of that control:
+   `..._bytes_key` lost its own zero-rest-entry candidates to the distinct string-key gap #13
+   below). That contrast IS the gap stated as a controlled pair, and it costs the row only its
+   decode-foreign corroboration: its support verdict is
+   execution-gated green, exactly like gap #8's resident `contain.map-key.type2.tag` above. And it is
    why `alias_positions` — the corpus fixture whose whole subject is aliased (i.e. named-rule) map
    keys — rides `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` with its ruby half left judging: its
    maps sit in MEMBER position, where the empty-map instance that spares the three rows above is not
@@ -425,6 +434,23 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     divergence is written up for filing in `upstream-reports/rust-cddl-float-name-blindness.md`,
     whose closing section states what moves if the answer is "the validator is right". No upstream
     issue filed yet.
+
+13. **string-typed rest-row keys in a MIXED map demand an entry — `*` read as `+`** (OPEN at
+    `ac1b98e`, found by the cycle-13 containment-cell decode-foreign mint): in a map
+    mixing DECLARED entries with a `*`-occurrence rest row, a `bytes`- or `tstr`-typed rest KEY
+    domain makes `validate` require at least one rest entry — the spec-valid declared-entries-only
+    instance (`{1: 692}` against `m = { 1: uint, * bytes => any }`) fails
+    `map requires entry key of type bytes`, while the SAME instance passes with `uint`/`nint` rest
+    domains, the rest-entry-bearing instance passes, and the pure table keeps its empty-map pass
+    (ruby accepts throughout; RFC 8610 §3.2 makes `*` zero-or-more). Disjoint differential grid
+    from gap #11 — no named rule, no choice, no tag in the trigger — though plausibly the same
+    member-key matching site; full grid and upstream-report sketch in
+    `draft/rust-cddl-string-key-mixed-map-rest-occurrence-gap.md`. Catalog cost today: the matrix
+    row `contain.occurrence-target.memberkey.type1.open_struct_bytes_key` minted only
+    rest-entry-bearing accept vectors (its two zero-rest-entry candidates died `ruby=0 rust=1` on
+    the two-oracle gate), and it inherits gap #11's lossy-re-mint hazard: a re-mint drawing only
+    zero-rest-entry candidates would pin the row `pinned_reason`-vectorless. No upstream issue
+    filed yet.
 
 ## Gotchas (read before touching the support seam or probe examples)
 

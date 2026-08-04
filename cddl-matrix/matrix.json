@@ -1788,6 +1788,21 @@
           }
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.array-element.value.number.nint",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.array-element.value.text",
         "status": "supported"
       },
@@ -1834,6 +1849,26 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.any.last",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.any.non_last",
+        "status": "unsupported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           },
@@ -1844,6 +1879,21 @@
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.prelude.null",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.true.same_major_brute",
         "status": "supported"
       },
       {
@@ -1869,6 +1919,21 @@
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.type2.tag",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.tag.any_non_last",
         "status": "supported"
       },
       {
@@ -2107,8 +2172,38 @@
             "status": "supported"
           }
         },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.group-choice-arm.type2.tag.fixed_array",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.type2.value.map",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.group-choice-arm.type2.value.nint_array",
         "status": "supported"
       },
       {
@@ -2620,6 +2715,61 @@
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.open_struct",
         "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.occurrence-target.memberkey.type1.open_struct_bytes_key",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "id": "contain.occurrence-target.memberkey.type1.open_struct_float_key",
+        "status": "unsupported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.occurrence-target.memberkey.type1.open_struct_named_key",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.occurrence-target.memberkey.type1.open_struct_nint_key",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "id": "contain.occurrence-target.memberkey.type1.open_struct_null_key",
+        "status": "unsupported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
@@ -3310,7 +3460,7 @@
       "example": "a = #6.10(any) / tstr",
       "feature": "type2.tag",
       "id": "contain.choice-member.type2.tag.any_non_last",
-      "note": "A TAGGED `any` type-choice arm in a NON-LAST position (`a = #6.10(any) / tstr`) — supported in any position, which is the whole point of the cell: the tag head is a discriminant, so `#6.n(any)` is NOT a catch-all even though its payload is. Dispatch path: TYPE-MATCH — the emitted deserialize matches `raw.cbor_type()`, routes major 6 to the tag arm (checking the tag number, `TagMismatch` otherwise) and major 3 to the text arm, with no backtracking anywhere. Contrast its bare siblings `contain.choice-member.prelude.any.{non_last,last}`: the tag is what buys back the position freedom the bare arm loses. Pinned by `tests/robustness/choice_last_any_arm.cddl`. RFC8610 §2.2.2, §2.2.4, §3.6, App. D (any).",
+      "note": "A TAGGED `any` type-choice arm in a NON-LAST position (`a = #6.10(any) / tstr`) — supported in any position, which is the whole point of the cell: the tag head is a discriminant, so `#6.n(any)` is NOT a catch-all even though its payload is. Dispatch path: TYPE-MATCH — the emitted deserialize matches `raw.cbor_type()`, routes major 6 to the tag arm (checking the tag number, `TagMismatch` otherwise) and major 3 to the text arm, with no backtracking anywhere. Contrast its bare siblings `contain.choice-member.prelude.any.{non_last,last}`: the tag is what buys back the position freedom the bare arm loses. NOT pinned by the two bare-arm robustness fixtures — `tests/robustness/choice_any_arm.cddl` (`any / tstr`) and `tests/robustness/choice_last_any_arm.cddl` (`tstr / any`) both spell the BARE arm and mention the tagged form in prose only. The pins that execute THIS spelling are `tagged_any_arm_allowed_in_any_position` (a first-position `#6.5(any) / tstr`, asserting the AnyCbor lowering and that a deserializer is still generated) and the `choice_tagged_any` rule of `tests/any-positions/input.cddl`, which carries it through the whole-program snapshots and the wasm parity axis. RFC8610 §2.2.2, §2.2.4, §3.6, App. D (any).",
       "role": "role.choice-member",
       "spec": "allowed"
     },
