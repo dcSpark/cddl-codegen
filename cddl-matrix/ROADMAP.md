@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->120 features (95 RFC8610 + 1 RFC9682 + 24 `CDDL_CODEGEN` vendor profile), 120 containment cells, and 274 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->120 features (95 RFC8610 + 1 RFC9682 + 24 `CDDL_CODEGEN` vendor profile), 132 containment cells, and 274 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -52,32 +52,17 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   unverified-set pin. Three roles are deliberately outside that classification because their
   rejection story is not value equality: `role.map-key` (a fixed key is looked up; the wrong key
   rejects as a missing required member), and `role.group-choice-arm` / `role.choice-member` (a fixed
-  value selects an alternative, so the rejection is "no arm matched"). Eight supported cells sit in
-  those roles today with no reject vector, and classifying them would assert enforcement evidence
-  nobody has gone and got — the arm half of "Enumerate the remaining fixed-value KINDS, in both the
-  arm and the member position" (§ findings) is what would get it.
+  value selects an alternative, so the rejection is "no arm matched"). The arm cells themselves are
+  now enumerated (`contain.group-choice-arm.type2.value.nint_array`,
+  `contain.group-choice-arm.type2.tag.fixed_array`,
+  `contain.choice-member.prelude.true.same_major_brute`, beside the fixed-key and fixed-member arm
+  cells that predate them), and every one of them carries accept vectors only: enumerating the
+  positions was never the same act as going and getting the rejection evidence, so classifying the
+  two arm roles today would still assert evidence nobody holds.
   - **Reopening signal:** an arm-position reject vector landing in the catalog — the moment one
     exists, the arm rejection HAS a vector class, and leaving the role unclassified would let the
     next arm cell land vectorless with no pin drifting, which is the member-side defect all over
     again.
-- **The open struct-map rest row's KEY-DOMAIN axis is unmodelled.** The generator's support
-  boundary moved (typed key domains on rest rows, delivered 2026-08-01: any deserializable
-  non-float, non-null-admitting `K` — named rules, unions, bytes, nint, sized ints, tagged,
-  extern), but the matrix's only rest-row cells are
-  `contain.occurrence-target.memberkey.type1.open_struct{,_plus}`, both spelling `* uint => any` —
-  so the axis along which the boundary moved is invisible to every projection: the grid renders
-  "rest rows: supported" with no key-domain dimension, and neither the widening nor a future
-  regression of it can flip a cell. Regression defense is NOT the gap — it lives in the
-  generator's own fixtures (`tests/open-struct-map-typed/` five profiles, the `open-struct-map-*`
-  e2e vectors, and the float/null rejection pins in `robustness_tests`) — the gap is
-  model-completeness: a matrix consumer cannot ask the matrix about rest-row key domains. The
-  build, when justified: a supported cell family for typed rest-row keys (named-rule `K`, `bytes`,
-  nint) plus reject rows for the two remaining boundaries (float-containing `K`, null-admitting
-  `K`), mirroring how the float TABLE-key boundary is already cell-pinned. Reopening signal,
-  measurable by a party with the problem: a consumer request or support question about rest-row
-  key domains that the grid answers wrongly or cannot answer — i.e. someone asks for (or reports
-  against) a spelling whose verdict the delivered feature already decided, because no cell
-  states it.
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -457,31 +442,29 @@ ledgered here (that's what the probe/gate error messages point at).
   shape is still uncatalogued as a matrix cell. **Reopening signal**, on the magnitude axis: a spec
   brought to us contains a fixed-value/null two-arm choice, i.e. the count of rules its owner must
   hand-rewrite to keep generating reaches 1; today the evidence is synthetic probes only.
-- **Enumerate the remaining fixed-value KINDS, in both the arm and the member position.** The kind
-  axis and the position axis are separate cells, but they share one blocker and one reason to be
-  enumerated at all, said here once: the result is known to be NON-uniform (probed kinds keep
-  behaving differently from `uint`), so these are rows with a known payoff rather than a
-  speculative sweep. (The FLOAT half of each used to wait on the preserve-mode float stub; that
-  stub is retired — floats preserve their head width in every position — so the float rows are
-  buildable now, with `tests/corpus/optional_fixed_float.cddl` as the member-position precedent.)
+- **Enumerate the FLOAT fixed-value kind, in both the arm and the member position.** The kind axis
+  and the position axis are separate cells, but they share one reason to be enumerated at all: the
+  result is known to be NON-uniform (probed kinds keep behaving differently from `uint`), so these
+  are rows with a known payoff rather than a speculative sweep. Float is the kind left: it used to
+  wait on the preserve-mode float stub, and that stub is retired — floats preserve their head width
+  in every position — so both rows are buildable now, with `tests/corpus/optional_fixed_float.cddl`
+  as the member-position precedent. The remaining kinds are done or deliberately excluded: bool and
+  null are covered arm-side by `tests/corpus/group_choice_fixed_special.cddl`, nint and the
+  tag-wrapped form by `contain.group-choice-arm.type2.value.nint_array` /
+  `contain.group-choice-arm.type2.tag.fixed_array`, the same-major-type pairing by
+  `contain.choice-member.prelude.true.same_major_brute`, and the member position by
+  `contain.array-element.value.number.nint`; `undefined` and the byte-string literal have no member
+  representation at all (their own entries below).
   The kind axis has
   a second dimension the cells must spell deliberately: the DISPATCH PATH. A choice's arms reach
   either the type-match dispatch or (when arms share a CBOR major type) the brute-force
-  try-each-arm path, and the two emit independently — the bool/null arm kinds were fixed on the
-  type-match sites while the brute-force sibling stayed broken (the entry above), so a kind row
-  probed on one path certifies nothing about the other. What is buildable now:
-  - **Group-choice ARM kinds.** The arm is supported in every profile; bool and null are now
-    covered in the map-rep, array-rep, and two-arm type-choice spellings
-    (`tests/corpus/group_choice_fixed_special.cddl`, plus the preserve round-trip members in
-    `tests/preserve-encodings/input.cddl`). Nint constants and the tag-wrapped forms in the ARRAY
-    reps are unprobed in both directions, and the same-major-type (brute-force) pairings remain an
-    open defect (the brute-force `()`-emission entry above).
-  - **The NINT member cell.** Held back only while its message rendering was an open defect that a
-    row would have restated rather than discovered; `Key::Nint` landed and that ledger retired, so
-    the nint kind's member-position verdict is now an ordinary unknown that only a cell can carry.
-    The `n*m` marker on the cardinality boundary is omitted rather than deferred — the refusal
-    message names `*` / `+` / `?` / `n*m` from one site, so a fourth row would model the same code
-    path the three markers already reach.
+  try-each-arm path, and the two emit independently, so a kind row probed on one path certifies
+  nothing about the other. A float arm is a major-7 special, so it shares its major with `true` /
+  `false` / `null`: the arm-side row must be spelled to state which path its example takes rather
+  than inheriting the type-match assumption the integer kinds' rows record.
+  The `n*m` marker on the cardinality boundary is omitted rather than deferred — the refusal
+  message names `*` / `+` / `?` / `n*m` from one site, so a fourth row would model the same code
+  path the three markers already reach.
 - **`undefined` has no member REPRESENTATION, so a spec that constrains a position to it must be
   hand-rewritten.** `undefined` is refused gracefully in every position — `[v: undefined, x: uint]`,
   `{ k: undefined, j: uint }` and the rule body `x = undefined` all exit 1 naming the type, under the
@@ -542,12 +525,6 @@ ledgered here (that's what the probe/gate error messages point at).
   delivery or its docs. Reopening signal on the
   magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the count of members
   its owner must hand-rewrite reaches 1 — today only synthetic probes reach the site.
-- **Enumerate the `any`-arm POSITION variation as containment cells.** The rejection boundary itself
-  is decided and permanent (`README.md` § "Gotchas": non-last bare `any` refused, last-position bare
-  `any` and tagged `#6.n(any)` supported), but the matrix models none of the three positions — the
-  fuzzer is what found the shape, which is exactly the coverage hole the "Intra-alternative variation
-  rows" rule above exists to close. Rows here cost one cell each and make a permanent boundary
-  legible as a verdict instead of as prose.
 - **Decode-disambiguate a non-final `?` optional array-record field whose CBOR major types OVERLAP
   a later field's.** `a = [ ? f0: uint, f1: uint ]` generates at exit 0 and the crate builds, but
   `f0` gets no decoder: the refusal is recorded (`dont_generate_deserialize`, loud

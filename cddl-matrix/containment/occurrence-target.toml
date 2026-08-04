@@ -140,6 +140,57 @@ spec = "allowed"
 note = "The count-permitting boundary of the open struct-map: a `+` (one-or-more) occurrence on the type-domain arrow REST row after fixed keys (`{ 1: uint, + uint => any }`). Spec-legal (RFC8610 §3.2 `+`, §3.5.2 admits a type1 key), but cddl-codegen REJECTS it gracefully — open-struct capture is unbounded-`*`-only, so `+`, `n*m`, and `?` on a rest row are refused with a message naming the supported `* k => v` spelling — making this a reject fixture (tests/matrix_reject/), not a decode-catalog row. Contrast the sibling `contain.occurrence-target.memberkey.type1.plus_table` (`{ + tstr => uint }`, no fixed key), where the SAME `+` marker IS supported as a NonEmptyMap: the composition (a `+` REST row after fixed keys vs a `+` on a lone table) flips the verdict — the (feature x context) distinction this matrix exists to record. Pinned loud by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
 example = "m = { 1: uint, + uint => any }"
 
+# The rest row's KEY-DOMAIN axis. The two cells above vary the occurrence MARKER over one fixed key
+# domain (`uint`); these five vary the DOMAIN at a fixed `*` marker. The axis matters because the
+# generator's boundary sits here and nowhere else: any deserializable key type is accepted, and the
+# two exclusions are type-level properties of `K` (a float anywhere inside it, a `null` arm anywhere
+# inside it) rather than properties of the marker or the composition. Modelled as cells so a matrix
+# consumer can ASK which key domains a rest row admits, mirroring how the float TABLE-key boundary is
+# already cell-pinned (`contain.map-key.memberkey.type1.float_arrow_single` and its siblings).
+# Regression defense lives generator-side (`tests/open-struct-map-typed/`, the `open-struct-map-*` e2e
+# vectors, and the two rejection guards in `open_struct_map_rest_row_front_end`); these rows add
+# model-completeness, not a second defense.
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_named_key"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A rest row whose key domain is a NAMED RULE (`m = { 1: uint, * k => any }`, `k = uint / text`) rather than the bare `uint` of `contain.occurrence-target.memberkey.type1.open_struct`. Supported: a nominal `K` takes the seek path — the loop hoists a `raw.position()` anchor, the declared-key match arms rewind to it when they decline, and `K::deserialize` then reads the key itself, so the write and read halves are the SAME `K` codec by construction rather than a peeked head and a separate writer. A union `K` is the interesting nominal shape because each of its arms must leave the declared keys reachable; declared keys peel first and never reach `K::deserialize`. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+example = "m = { 1: uint, * k => any }\nk = uint / text"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_bytes_key"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A rest row whose key domain is `bytes` (`m = { 1: uint, * bytes => any }`) — supported, capturing into a `BTreeMap<Vec<u8>, _>`. The byte-string domain is the sidecar-bearing member of this family: under `--preserve-encodings` a `bytes` key contributes a `StringEncoding` bound by the key's own deserialize rather than by a peek, which is the concrete reason a rest key's codec has to be symmetric rather than head-peeked. Its JSON face is a pure error surface (a byte string has no member-name image), so the row also marks where the flattened-rest JSON convention stops. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+example = "m = { 1: uint, * bytes => any }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_nint_key"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A rest row whose key domain is `nint` (`m = { 1: uint, * nint => any }`) — supported. The sign axis of the integer key domain: the captured keys land on CBOR major 1 while the map's own declared key `1` sits on major 0, so the row's key dispatch separates them by wire major before any rewind is needed. Named beside the named-rule and `bytes` siblings because the delivered boundary is 'any deserializable non-float, non-null-admitting `K`', and an enumeration that showed only `uint`-shaped domains would understate it. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+example = "m = { 1: uint, * nint => any }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_float_key"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "The FLOAT boundary of the rest row's key domain (`m = { 1: uint, * float => any }`). Spec-legal (RFC8610 §3.5.2 admits any type1 as a member key), but cddl-codegen REJECTS it gracefully, naming the rule and the reason: floats have no total order, so they cannot key the capture container. The guard is transitive — it walks the domain, so a struct or union with a float ANYWHERE inside it (`k = [x: float64, y: uint]`) is refused on the same message — which is why one cell covers the whole float-containing class rather than one per nesting depth. This is a reject fixture (tests/matrix_reject/), not a decode-catalog row. The same boundary in the TABLE-key position is `contain.map-key.memberkey.type1.float_arrow_single` and its siblings; pinned by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+example = "m = { 1: uint, * float => any }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_null_key"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "The NULL-ADMITTING boundary of the rest row's key domain (`m = { 1: uint, * k => any }`, `k = text / null`). Spec-legal, but cddl-codegen REJECTS it gracefully: a `null` key and the `break` that ends an indefinite-length map are both CBOR major-7 specials, so the row's key dispatch cannot tell 'another captured entry keyed null' from 'the map ended' — the refusal names that collision and points at dropping the `null` arm, since an absent entry already means absent. The rejection is about the key domain ADMITTING null, not about it being exactly `null`: the arm is refused wherever it sits in `K`. Distinct from the float boundary next to it (`contain.occurrence-target.memberkey.type1.open_struct_float_key`), whose reason is ordering rather than wire ambiguity — two independent exclusions, hence two cells. Reject fixture (tests/matrix_reject/), not a decode-catalog row; pinned by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+example = "m = { 1: uint, * k => any }\nk = text / null"
+
 [[contain]]
 id = "contain.occurrence-target.memberkey.type1.open_table"
 role = "role.occurrence-target"

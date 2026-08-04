@@ -3126,7 +3126,15 @@
       "example": "a = [v: 5]",
       "feature": "value.number",
       "id": "contain.array-element.value.number",
-      "note": "A numeric literal as a fixed array-element value (`[v: 5]`) — supported as a member; the top-level `version = 5` type is not. RFC8610 §2.1, §3.4.",
+      "note": "A numeric literal as a fixed array-element value (`[v: 5]`) — supported as a member; the top-level `version = 5` type is not. The literal is a decimal UINT, so its negative sibling is a separate cell: `contain.array-element.value.number.nint`. RFC8610 §2.1, §3.4.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [v: -1]",
+      "feature": "value.number",
+      "id": "contain.array-element.value.number.nint",
+      "note": "A NEGATIVE numeric literal as a fixed array-element value (`[v: -1]`) — the sign variation of `contain.array-element.value.number`, whose literal is the uint `5`. The kinds are not interchangeable: a fixed nint encodes on CBOR major 1 rather than major 0 and needs its own mismatch rendering, which is why the cell was held back until `Key::Nint` existed to name the AUTHORED value (`-1`) instead of the `-1-N` wire form a uint-only key would have printed. Member position, not arm position: the constant is verified on deserialize and stored nowhere, so a wrong constant is an enforceable `FixedValueMismatch` on this member rather than an arm-selection miss — the reason this cell classifies as enforcement-bearing (`query_q4_directional.ts`) while its arm-position relatives do not. RFC8610 §2.1, §3.4.",
       "role": "role.array-element",
       "spec": "allowed"
     },
@@ -3283,6 +3291,38 @@
       "spec": "allowed"
     },
     {
+      "example": "a = any / tstr",
+      "feature": "prelude.any",
+      "id": "contain.choice-member.prelude.any.non_last",
+      "note": "A bare `any` type-choice arm in a NON-LAST position (`a = any / tstr`). Spec-legal — RFC 8610 places no ordering constraint on `/` alternatives — but cddl-codegen REFUSES it gracefully (exit 1) because a bare `any` accepts every CBOR item, making every later arm unreachable dead code; the message says so and names the remedy (`move it last`). This unsupported verdict is PERMANENT BY DECISION, not pending work: a green flip here would be a REGRESSION, not progress (`README.md` § \"Gotchas\", the permanent-unsupported bullet, which lists this as the first of its three deliberate boundaries). Pinned by `tests/robustness/choice_any_arm.cddl`. Its supported siblings are `contain.choice-member.prelude.any.last` (the same bare arm, last) and `contain.choice-member.type2.tag.any_non_last` (a tagged `any`, non-last) — position and tagging are the two axes that flip this verdict. RFC8610 §2.2.2, App. D (any).",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = tstr / any",
+      "feature": "prelude.any",
+      "id": "contain.choice-member.prelude.any.last",
+      "note": "A bare `any` type-choice arm in the LAST position (`a = tstr / any`) — supported, the catch-all spelling the non-last refusal points at. Dispatch path: BRUTE-FORCE try-each-arm. A bare `any` claims every CBOR major type, so no type-match discriminant can separate it from any sibling; the emitted deserialize anchors `raw.position()`, tries each arm in source order and rewinds on failure, reaching the `AnyCbor` arm only after every earlier arm has declined. That forced backtracking is exactly why the arm must be last and why the sibling cell `contain.choice-member.prelude.any.non_last` is a permanent refusal. RFC8610 §2.2.2, App. D (any).",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = #6.10(any) / tstr",
+      "feature": "type2.tag",
+      "id": "contain.choice-member.type2.tag.any_non_last",
+      "note": "A TAGGED `any` type-choice arm in a NON-LAST position (`a = #6.10(any) / tstr`) — supported in any position, which is the whole point of the cell: the tag head is a discriminant, so `#6.n(any)` is NOT a catch-all even though its payload is. Dispatch path: TYPE-MATCH — the emitted deserialize matches `raw.cbor_type()`, routes major 6 to the tag arm (checking the tag number, `TagMismatch` otherwise) and major 3 to the text arm, with no backtracking anywhere. Contrast its bare siblings `contain.choice-member.prelude.any.{non_last,last}`: the tag is what buys back the position freedom the bare arm loses. Pinned by `tests/robustness/choice_last_any_arm.cddl`. RFC8610 §2.2.2, §2.2.4, §3.6, App. D (any).",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = true / null / tstr",
+      "feature": "prelude.true",
+      "id": "contain.choice-member.prelude.true.same_major_brute",
+      "note": "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: a null arm in a two-arm choice triggers the `Option<T>` collapse, which refuses a fixed-value inner (see `cddl-matrix/ROADMAP.md` § findings, \"A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member REPRESENTATION…\"). Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
       "example": "foo<a> = [a]\nbar = foo<{x: int, y: uint}>",
       "feature": "type2.map",
       "id": "contain.generic-arg.type2.map",
@@ -3431,6 +3471,22 @@
       "feature": "grpent.inline_group",
       "id": "contain.group-choice-arm.grpent.inline_group.array",
       "note": "Array-representation group-choice arm containing an inline parenthesized group. RFC8610 §2.2.1, §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ v: -1 // label: tstr ]",
+      "feature": "type2.value",
+      "id": "contain.group-choice-arm.type2.value.nint_array",
+      "note": "Array-representation group-choice arm carrying a fixed NEGATIVE integer member value (`[ v: -1 // label: tstr ]`) — the array-rep, nint-kind counterpart of `contain.group-choice-arm.type2.value.map` (`{ a: 0 // b: tstr }`, a fixed uint in the map rep). Dispatch path: TYPE-MATCH — the emitted deserialize reads the array header then matches `raw.cbor_type()`, routing CBOR major 1 (NegativeInteger) to this arm and major 3 (Text) to the sibling; the arm then verifies the constant and stores nothing, reporting a wrong constant as `FixedValueMismatch` with a `Key::Nint` naming the AUTHORED value (`-1`), not the `-1-N` wire form. No backtracking is emitted, so this row measures the type-match site only. RFC8610 §2.1, §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ v: #6.11(true) // label: tstr ]",
+      "feature": "type2.tag",
+      "id": "contain.group-choice-arm.type2.tag.fixed_array",
+      "note": "Array-representation group-choice arm whose member is a TAG-WRAPPED fixed value (`[ v: #6.11(true) // label: tstr ]`) — the arm-position counterpart of the member-position cells `contain.array-element.type2.tag.fixed_null` / `.fixed_bool`. Dispatch path: TYPE-MATCH, two-level — `raw.cbor_type()` routes CBOR major 6 (Tag) here and major 3 (Text) to the sibling, then a second match on `raw.tag()` admits 11 and rejects anything else as `TagMismatch`, after which the wrapped constant is verified as `FixedValueMismatch` and stored nowhere. The tag head is what makes the arm discriminable, so unlike the bare fixed specials this kind never needs the brute-force path. RFC8610 §2.1, §2.2.2, §2.2.4, §3.4, §3.6.",
       "role": "role.group-choice-arm",
       "spec": "allowed"
     },
@@ -3855,6 +3911,46 @@
       "feature": "memberkey.type1",
       "id": "contain.occurrence-target.memberkey.type1.open_struct_plus",
       "note": "The count-permitting boundary of the open struct-map: a `+` (one-or-more) occurrence on the type-domain arrow REST row after fixed keys (`{ 1: uint, + uint => any }`). Spec-legal (RFC8610 §3.2 `+`, §3.5.2 admits a type1 key), but cddl-codegen REJECTS it gracefully — open-struct capture is unbounded-`*`-only, so `+`, `n*m`, and `?` on a rest row are refused with a message naming the supported `* k => v` spelling — making this a reject fixture (tests/matrix_reject/), not a decode-catalog row. Contrast the sibling `contain.occurrence-target.memberkey.type1.plus_table` (`{ + tstr => uint }`, no fixed key), where the SAME `+` marker IS supported as a NonEmptyMap: the composition (a `+` REST row after fixed keys vs a `+` on a lone table) flips the verdict — the (feature x context) distinction this matrix exists to record. Pinned loud by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 1: uint, * k => any }\nk = uint / text",
+      "feature": "memberkey.type1",
+      "id": "contain.occurrence-target.memberkey.type1.open_struct_named_key",
+      "note": "A rest row whose key domain is a NAMED RULE (`m = { 1: uint, * k => any }`, `k = uint / text`) rather than the bare `uint` of `contain.occurrence-target.memberkey.type1.open_struct`. Supported: a nominal `K` takes the seek path — the loop hoists a `raw.position()` anchor, the declared-key match arms rewind to it when they decline, and `K::deserialize` then reads the key itself, so the write and read halves are the SAME `K` codec by construction rather than a peeked head and a separate writer. A union `K` is the interesting nominal shape because each of its arms must leave the declared keys reachable; declared keys peel first and never reach `K::deserialize`. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 1: uint, * bytes => any }",
+      "feature": "memberkey.type1",
+      "id": "contain.occurrence-target.memberkey.type1.open_struct_bytes_key",
+      "note": "A rest row whose key domain is `bytes` (`m = { 1: uint, * bytes => any }`) — supported, capturing into a `BTreeMap<Vec<u8>, _>`. The byte-string domain is the sidecar-bearing member of this family: under `--preserve-encodings` a `bytes` key contributes a `StringEncoding` bound by the key's own deserialize rather than by a peek, which is the concrete reason a rest key's codec has to be symmetric rather than head-peeked. Its JSON face is a pure error surface (a byte string has no member-name image), so the row also marks where the flattened-rest JSON convention stops. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 1: uint, * nint => any }",
+      "feature": "memberkey.type1",
+      "id": "contain.occurrence-target.memberkey.type1.open_struct_nint_key",
+      "note": "A rest row whose key domain is `nint` (`m = { 1: uint, * nint => any }`) — supported. The sign axis of the integer key domain: the captured keys land on CBOR major 1 while the map's own declared key `1` sits on major 0, so the row's key dispatch separates them by wire major before any rewind is needed. Named beside the named-rule and `bytes` siblings because the delivered boundary is 'any deserializable non-float, non-null-admitting `K`', and an enumeration that showed only `uint`-shaped domains would understate it. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 1: uint, * float => any }",
+      "feature": "memberkey.type1",
+      "id": "contain.occurrence-target.memberkey.type1.open_struct_float_key",
+      "note": "The FLOAT boundary of the rest row's key domain (`m = { 1: uint, * float => any }`). Spec-legal (RFC8610 §3.5.2 admits any type1 as a member key), but cddl-codegen REJECTS it gracefully, naming the rule and the reason: floats have no total order, so they cannot key the capture container. The guard is transitive — it walks the domain, so a struct or union with a float ANYWHERE inside it (`k = [x: float64, y: uint]`) is refused on the same message — which is why one cell covers the whole float-containing class rather than one per nesting depth. This is a reject fixture (tests/matrix_reject/), not a decode-catalog row. The same boundary in the TABLE-key position is `contain.map-key.memberkey.type1.float_arrow_single` and its siblings; pinned by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { 1: uint, * k => any }\nk = text / null",
+      "feature": "memberkey.type1",
+      "id": "contain.occurrence-target.memberkey.type1.open_struct_null_key",
+      "note": "The NULL-ADMITTING boundary of the rest row's key domain (`m = { 1: uint, * k => any }`, `k = text / null`). Spec-legal, but cddl-codegen REJECTS it gracefully: a `null` key and the `break` that ends an indefinite-length map are both CBOR major-7 specials, so the row's key dispatch cannot tell 'another captured entry keyed null' from 'the map ended' — the refusal names that collision and points at dropping the `null` arm, since an absent entry already means absent. The rejection is about the key domain ADMITTING null, not about it being exactly `null`: the arm is refused wherever it sits in `K`. Distinct from the float boundary next to it (`contain.occurrence-target.memberkey.type1.open_struct_float_key`), whose reason is ordering rather than wire ambiguity — two independent exclusions, hence two cells. Reject fixture (tests/matrix_reject/), not a decode-catalog row; pinned by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },

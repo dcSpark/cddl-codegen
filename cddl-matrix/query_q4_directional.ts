@@ -237,9 +237,10 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
  *     which is a different vector class and is not evidence about `.size`-style value enforcement.
  *   - `role.group-choice-arm` / `role.choice-member` — a fixed value SELECTS an alternative, so the
  *     rejection is "no arm matched" rather than "this member's value is wrong". The arm position is
- *     its own axis, tracked by cddl-matrix's "Enumerate the remaining fixed-value KINDS, in both the
- *     arm and the member position" work item; classifying it here would assert enforcement evidence
- *     that item exists to go and get.
+ *     its own axis, tracked by cddl-matrix's "The fixed-value ARM position has no enforcement
+ *     classification, and no evidence that would justify one." work item, whose reopening signal is
+ *     the first arm-position reject vector landing in the catalog; classifying it here today would
+ *     assert enforcement evidence nobody holds.
  * Everything else is an INCLUSION by default — a fixed value under a tag head or a `.cbor` payload
  * constrains its own instance exactly as an array element's does, so a cell landing in one of those
  * positions classifies without this predicate being touched, which is the forcing function's point.
