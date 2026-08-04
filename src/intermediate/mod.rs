@@ -395,6 +395,14 @@ impl<'a> IntermediateTypes<'a> {
         self.rejections.push(msg);
     }
 
+    /// How many parse-walk rejections have been recorded so far. Lets a caller tell whether a
+    /// sub-walk it just ran rejected something: a rejected construct yields an INERT PLACEHOLDER
+    /// type (`Fixed(Null)`) rather than the type it spelled, so any structural comparison against
+    /// it compares placeholders — `[int] / [tstr]` would otherwise read as two identical arms.
+    pub fn rejection_count(&self) -> usize {
+        self.rejections.len()
+    }
+
     /// Whether any parse-walk rejection has been recorded. Lets the reserved-name pre-scan in
     /// `api::with_types` abort BEFORE IR construction, since `RustIdent::new`'s reserved-ident
     /// `assert!`s (no `IntermediateTypes` handle, so they can't reject gracefully) would otherwise

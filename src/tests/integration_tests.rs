@@ -5020,6 +5020,184 @@ fn deserialize_refusal_propagates_through_enums_and_emitted_tests() {
     );
 }
 
+/// A type choice's decoder returns the FIRST arm that accepts the bytes, so "which arm produced
+/// this value" is not something the wire carries. Two consequences, one per leg:
+///
+/// - **Literally identical arms are one arm.** `c = tstr / tstr` used to mint `C::Text` plus an
+///   undecodable `C::Text2`, and `--emit-tests` then asserted `Text2` round-trips to itself — a
+///   test no correct decoder can pass. The twin now collapses at the IR, loudly. An explicitly
+///   `@name`d twin is KEPT (naming a variant is a deliberate API request) and announced.
+/// - **Genuinely overlapping arms cannot collapse**, so the emitted round-trip asserts the
+///   first-match property instead of variant identity: decoded index `j <= i` for the minted index
+///   `i`, value identity only when `j == i`, byte-identical re-encode either way.
+///
+/// Both legs were RED at `bd59a2e1`, at `cargo test` on the emitted crate, with the pinned
+/// `"deserialized value must equal the minted original"` assertion:
+/// - dedup class: `roundtrip_c` / `roundtrip_d` / `roundtrip_e` minted `Text2("a")`, decoded
+///   `Text("a")`; `roundtrip_g` (the `@name`d twin) minted `Explicit("a")`, decoded `Text("a")`.
+/// - ambiguity class: `AmbArr` minted `Text("a")`, decoded `Ga(Text("a"))`; `AmbCbor` minted
+///   `Bytes([0])`, decoded `U64(0)`.
+///
+/// The two ambiguity specs are the two `LAYER2_KNOWN_BAD` rows this closed that dedup CANNOT reach,
+/// re-derived from the recombination composer templates rather than transcribed:
+/// `garm_arr(choice_member(rangeop.exclusive.int))` and `cbor_payload(type.choice)`.
+///
+/// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
+/// only `fast`. This gate will not be seen by CI.
+#[test]
+fn wire_ambiguous_type_choice_arms_dedup_and_first_match() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_choice_first_match_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    // ONE shared target dir across the legs — the generated crates share every dependency, so only
+    // the first leg pays for them.
+    let target_dir = scratch.join("target");
+
+    let generate = |name: &str, spec: &str| {
+        let input = scratch.join(format!("{name}.cddl"));
+        std::fs::write(&input, spec).unwrap();
+        let out = scratch.join(name);
+        let gen_out = codegen_cmd()
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .arg("--emit-tests=true")
+            .output()
+            .unwrap();
+        assert!(
+            gen_out.status.success(),
+            "{name} generation failed:\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        );
+        (out, String::from_utf8_lossy(&gen_out.stderr).to_string())
+    };
+    let run_tests = |dir: &std::path::Path, name: &str| {
+        let out = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(dir.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        let text = format!(
+            "--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.status.success(),
+            "{name}: the emitted test crate must build and pass:\n{text}"
+        );
+        text
+    };
+
+    // ---- leg 1: the dedup class -------------------------------------------------------------
+    // `c`/`e`/`d`/`ne` are the four ledgered duplicate-arm compositions (`e` proves two DIFFERENT
+    // prelude spellings of one type dedup; `fx` proves fixed-value arms do). `g` is the `@name`
+    // opt-out, `keep` the control that must not collapse.
+    let (dedup_out, dedup_stderr) = generate(
+        "dedup",
+        "c = tstr / tstr\n\
+         e = text / tstr\n\
+         d = uint / tstr / bytes / tstr\n\
+         ne = int .ne 0 / tstr / tstr\n\
+         fx = 1 / 1\n\
+         g = tstr / tstr ; @name Explicit\n\
+         keep = uint / tstr\n",
+    );
+    for (rule, arm, dropped) in [
+        ("C", "2", "1"),
+        ("E", "2", "1"),
+        ("D", "4", "2"),
+        ("Ne", "3", "2"),
+        ("Fx", "2", "1"),
+    ] {
+        assert!(
+            dedup_stderr.contains(&format!(
+                "Dropping arm {arm} of rule `{rule}`: it has the same representation as arm {dropped}"
+            )),
+            "the collapse must be loud and name the rule and the arm ({rule} arm {arm}), got stderr:\n{dedup_stderr}"
+        );
+    }
+    assert!(
+        !dedup_stderr.contains("of rule `Keep`"),
+        "arms that differ must not collapse, got stderr:\n{dedup_stderr}"
+    );
+    // The `@name`d twin survives, and says so — "constructible but never decoded" is not what the
+    // spelling suggests, so silence would be the wrong shape of honest.
+    assert!(
+        dedup_stderr
+            .contains("Arm 2 of rule `G` (`@name Explicit`) has the same representation as arm 1"),
+        "an explicitly named twin must be kept AND announced, got stderr:\n{dedup_stderr}"
+    );
+    let generated = std::fs::read_to_string(dedup_out.join("rust/src/generated/mod.rs")).unwrap();
+    assert!(
+        !generated.contains("Text2"),
+        "the collapsed arm's junk variant must be gone from the emitted API"
+    );
+    assert!(
+        generated.contains("pub fn new_explicit("),
+        "the explicitly named twin must keep its constructor"
+    );
+    let dedup_tests = run_tests(&dedup_out, "dedup");
+    for f in ["roundtrip_c", "roundtrip_d", "roundtrip_e", "roundtrip_g"] {
+        assert!(
+            dedup_tests.contains(f),
+            "{f} must still be minted and run:\n{dedup_tests}"
+        );
+    }
+
+    // ---- leg 2: the genuine-ambiguity class ---------------------------------------------------
+    let (amb_out, amb_stderr) = generate(
+        "ambiguous",
+        "amb_arr = [ ga: -10...10 / tstr // tstr ]\n\
+         amb_cbor = bytes .cbor uint / tstr / bytes\n",
+    );
+    assert!(
+        !amb_stderr.contains("has the same representation as arm"),
+        "genuinely overlapping arms are NOT identical and must not be collapsed, got stderr:\n{amb_stderr}"
+    );
+    let amb_tests = run_tests(&amb_out, "ambiguous");
+    for f in ["roundtrip_amb_arr", "roundtrip_amb_cbor"] {
+        assert!(
+            amb_tests.contains(f),
+            "{f} must be minted and pass under first-match:\n{amb_tests}"
+        );
+    }
+
+    // ---- leg 3: dedup × a deserialize-refused arm ---------------------------------------------
+    // The two mechanisms compose: `dupref`'s duplicate arm collapses, and because the surviving arm
+    // is a type with no decoder the whole enum is refused and its emitted tests skipped. `ctrl` is
+    // the control that keeps the module non-vacuous.
+    let (refused_out, refused_stderr) = generate(
+        "refused",
+        "foo = [? f0: uint, f1: uint]\n\
+         dupref = foo / foo\n\
+         ctrl = tstr / tstr\n",
+    );
+    assert!(
+        refused_stderr
+            .contains("Dropping arm 2 of rule `Dupref`: it has the same representation as arm 1"),
+        "the collapse must fire on a refused arm's enum too, got stderr:\n{refused_stderr}"
+    );
+    assert!(
+        refused_stderr.contains(
+            "cddl-codegen --emit-tests: Dupref skipped (no Deserialize impl was generated for it)"
+        ),
+        "the collapsed enum over a refused arm must still be skipped by the minter, got stderr:\n{refused_stderr}"
+    );
+    let refused_tests = run_tests(&refused_out, "refused");
+    assert!(
+        refused_tests.contains("roundtrip_ctrl"),
+        "the control type's round-trip must still be minted and run:\n{refused_tests}"
+    );
+}
+
 /// `--canonical-form=true` without `--preserve-encodings` must be rejected (it otherwise emits a
 /// non-compiling crate — see `api::with_types`). Pins the rejection *and* its message so the guard
 /// can't silently become a no-op, and confirms the same input with both flags is accepted — so the

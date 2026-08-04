@@ -719,6 +719,28 @@ struct RtEmit {
     canonical: bool,
 }
 
+/// What an enum's round-trip needs to assert the property the WIRE has, rather than the one the
+/// Rust API suggests.
+///
+/// A choice's decoder tries its arms in declaration order and returns the FIRST that accepts the
+/// bytes. So when two arms overlap on the wire — `[ ga: -10..10 / tstr ]` vs a plain `tstr` arm, a
+/// `bytes .cbor uint` arm vs a plain `bytes` arm, or an explicitly `@name`d duplicate the IR keeps —
+/// a value minted from the LATER arm legitimately decodes back as the EARLIER variant. Asserting
+/// variant identity there is asserting something the wire cannot carry, and produces a false red on
+/// a correct decoder.
+///
+/// So the emitted test asserts the first-match property instead: the decoded variant index `j` must
+/// satisfy `j <= i` for the minted index `i` (`j > i` means an earlier matching arm was skipped —
+/// always a decoder bug), value identity is asserted only when `j == i`, and byte-identity of the
+/// re-encode is asserted in BOTH cases (the fidelity a choice genuinely owes).
+struct FirstMatch {
+    /// The `match &back { … }` arms mapping every variant of the enum to its declaration index.
+    arms: String,
+    /// Minted variant index per emitted case — parallel to `roundtrip_body`'s `cases` (a variant
+    /// that minted no case leaves no entry, so this is not the variant index itself).
+    minted: Vec<usize>,
+}
+
 /// The shared wire-cycle emission for a list of `(value_expr, label)` cases. `conf` is the source
 /// CDDL rule name for the `--emit-tests-conformance` oracle (`None` when off): when set, each case
 /// validates its minted `bytes` against the spec right after computing them.
@@ -736,12 +758,15 @@ struct RtEmit {
 /// additionally hoists a per-case canonical baseline, asserts it's a fixed point, and asserts every
 /// variant canonicalizes to it (the encoding-invariance differential). See
 /// `static/emit_tests_encoding_fidelity.rs`.
+///
+/// `first_match` is the choice flavor's honesty correction — see `FirstMatch`.
 fn roundtrip_body(
     name: &str,
     cases: Vec<(String, String)>,
     conf: Option<&str>,
     dump_rule: Option<&str>,
     rt: RtEmit,
+    first_match: Option<&FirstMatch>,
 ) -> Option<String> {
     if cases.is_empty() {
         return None;
@@ -777,8 +802,36 @@ fn roundtrip_body(
                     "        if let Ok(__dump_dir) = std::env::var(\"CDDL_CODEGEN_DUMP_MINTED\") {{\n            let _ = std::fs::create_dir_all(&__dump_dir);\n            let __dump_path = format!(\"{{__dump_dir}}/{rule}__case{case_idx}.cbor\");\n            if let Err(__e) = std::fs::write(&__dump_path, &bytes) {{\n                eprintln!(\"cddl-codegen: could not dump minted bytes to {{__dump_path}}: {{__e}}\");\n            }}\n        }}\n"
                 ))
                 .unwrap_or_default();
+            // The choice flavor's first-match block: compute which variant came BACK, refuse a
+            // decode that skipped an earlier matching arm, and demote value-identity to the cases
+            // where the decoder did land on the minted arm (see `FirstMatch`).
+            let first_match_line = first_match
+                .map(|fm| {
+                    let minted = fm.minted[case_idx];
+                    format!(
+                        "
+        // The decoder tries the arms in declaration order, so a value minted from a later arm that
+        // an EARLIER arm also accepts comes back as the earlier variant. That is the wire's answer,
+        // not a bug: what a choice can carry is the encoding, not which arm produced it.
+        let minted_variant = {minted}usize;
+        let decoded_variant = match &back {{{arms}
+        }};
+        assert!(decoded_variant <= minted_variant, \"{name} ({label}): decoded as variant #{{decoded_variant}}, later than the minted #{{minted_variant}} — the decoder skipped an earlier arm that matches these bytes\");",
+                        arms = fm.arms
+                    )
+                })
+                .unwrap_or_default();
             let value_eq_line = if value_eq {
-                format!("\n        assert_eq!(format!(\"{{:?}}\", back), format!(\"{{:?}}\", v), \"{name} ({label}): deserialized value must equal the minted original\");")
+                let assertion = format!("assert_eq!(format!(\"{{:?}}\", back), format!(\"{{:?}}\", v), \"{name} ({label}): deserialized value must equal the minted original\");");
+                if first_match.is_some() {
+                    // `decoded_variant < minted_variant` means an earlier arm accepts the same
+                    // encoding, so the minted variant is unreachable by decode and value identity is
+                    // not a property the wire has. Byte-identity below still holds, and is asserted
+                    // unconditionally — that is the fidelity the wire DOES carry.
+                    format!("\n        if decoded_variant == minted_variant {{\n            {assertion}\n        }}")
+                } else {
+                    format!("\n        {assertion}")
+                }
             } else {
                 String::new()
             };
@@ -813,7 +866,7 @@ fn roundtrip_body(
                 "    {{
         let v = {expr};
         let bytes = v.to_cbor_bytes();
-{dump_line}{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{value_eq_line}
+{dump_line}{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{first_match_line}{value_eq_line}
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");{fidelity}
     }}"
             )
@@ -1053,7 +1106,7 @@ fn record_roundtrip(
             "both rows populated".to_owned(),
         ));
     }
-    roundtrip_body(name, cases, conf, dump_rule, rt)
+    roundtrip_body(name, cases, conf, dump_rule, rt, None)
 }
 
 /// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
@@ -1068,7 +1121,8 @@ fn choice_roundtrip(
     rt: RtEmit,
 ) -> Option<String> {
     let mut cases = Vec::new();
-    for variant in variants {
+    let mut minted = Vec::new();
+    for (variant_idx, variant) in variants.iter().enumerate() {
         let ctor = format!("new_{}", variant.name_as_var());
         let Some(arg_fields) = variant_arg_fields(types, variant, group_choice) else {
             crate::warn!(
@@ -1102,8 +1156,24 @@ fn choice_roundtrip(
             }),
             format!("variant {}", variant.name),
         ));
+        minted.push(variant_idx);
     }
-    roundtrip_body(name, cases, conf, dump_rule, rt)
+    // Every variant needs an arm (the match must be exhaustive), including ones that minted no case.
+    // `Variant { .. }` is the one pattern form that covers all three shapes an emitted variant takes
+    // — unit, newtype-tuple, and named-field (the multi-field group-choice arm).
+    let arms = variants
+        .iter()
+        .enumerate()
+        .map(|(i, v)| format!("\n            {name}::{} {{ .. }} => {i}usize,", v.name))
+        .collect::<String>();
+    roundtrip_body(
+        name,
+        cases,
+        conf,
+        dump_rule,
+        rt,
+        Some(&FirstMatch { arms, minted }),
+    )
 }
 
 /// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
@@ -1154,6 +1224,7 @@ fn wrapper_roundtrip(
         conf,
         dump_rule,
         rt,
+        None,
     )
 }
 

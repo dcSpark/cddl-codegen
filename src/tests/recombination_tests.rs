@@ -1310,31 +1310,32 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // the gate now reports it as an unledgered layer-2 failure naming this composition, which is the
     // loud direction — the entry staying would instead have silently excluded a passing class
     // forever, since the vacuity guard only fires on an entry matching ZERO ok compositions.
-    // -- wire-ambiguous type-choice arms: variant identity is unpreservable under first-match ------
-    (
-        "outer=choice_member filler=prelude.text",
-        "wire-ambiguous choice arms (text / tstr) fail emitted variant-identity round-trips; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=choice_member filler=prelude.tstr",
-        "wire-ambiguous choice arms (tstr / tstr) fail emitted variant-identity round-trips; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=choice_member filler=type.choice",
-        "wire-ambiguous choice arms (uint / tstr / bytes / tstr) fail emitted variant-identity round-trips; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=choice_member inner=choice_member filler=ctl.ne.zero",
-        "wire-ambiguous choice arms (int .ne 0 / tstr / tstr) fail emitted variant-identity round-trips; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=garm_arr inner=choice_member filler=rangeop.exclusive.int",
-        "wire-ambiguous group-choice arms ([ ga: -10...10 / tstr // tstr ]) fail emitted variant-identity round-trips; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
-    (
-        "outer=cbor_payload filler=type.choice",
-        "wire-ambiguous choice arms (bytes .cbor uint / tstr / bytes) fail emitted variant-identity round-trips; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
+    // (retired with the identical-arm dedup + the emitted first-match assertion) The six
+    // wire-ambiguous type-choice entries — `outer=choice_member filler=prelude.text` /
+    // `filler=prelude.tstr` / `filler=type.choice`,
+    // `outer=choice_member inner=choice_member filler=ctl.ne.zero`,
+    // `outer=garm_arr inner=choice_member filler=rangeop.exclusive.int`, and
+    // `outer=cbor_payload filler=type.choice` — were ONE defect wearing two faces, and each face got
+    // its own half of the fix. Four of the six composed a LITERALLY duplicated arm (`text / tstr`
+    // builds the same IR as `tstr / tstr`; `uint / tstr / bytes / tstr` and `int .ne 0 / tstr / tstr`
+    // repeat one), which minted a variant no decode could ever produce — those arms now collapse at
+    // the IR (`parsing::create_variants_from_type_choices`), loudly, so the junk variant and its
+    // impossible test are both gone. The other two overlap for real (`[ ga: -10...10 / tstr // tstr ]`
+    // — a `tstr` accepted by both arms; `bytes .cbor uint / tstr / bytes` — a byte string accepted by
+    // arm 1 and arm 3) and CANNOT be deduped: the emitted round-trip now asserts the property the
+    // wire has (first match: decoded variant index <= minted, value identity only when they are
+    // equal, byte-identical re-encode either way) instead of variant identity, which the wire cannot
+    // carry. Verified by generating both ledgered non-dedup compositions from the parent commit
+    // (`AmbArr (variant Text)`: minted `Text("a")`, decoded `Ga(Text("a"))`; `AmbCbor (variant
+    // Bytes)`: minted `Bytes([0])`, decoded `U64(0)` — both the pinned "deserialized value must equal
+    // the minted original" failure) and from the fix (both green), plus the four dedup-class arms red
+    // at the parent and green after. Pinned by
+    // `wire_ambiguous_type_choice_arms_dedup_and_first_match` (`local` tier). NOTE for whoever runs
+    // the full tier: this retirement was NOT confirmed by `recombination_crates_execute` itself (a
+    // full-tier `#[ignore]`d gate). If a class survives, the gate now reports it as an unledgered
+    // layer-2 failure naming the composition, which is the loud direction — the entries staying would
+    // instead have silently excluded passing classes forever, since the vacuity guard only fires on
+    // an entry matching ZERO ok compositions.
     // -- emitted-test minter / baseline decode gaps on nested shapes -------------------------------
     // (The former `outer=generic_arg inner=map_key filler=ctl.ne.zero` entry — the emit-tests minter
     // minting key 0 against an `int .ne 0` table domain — retired when its pinning composition
