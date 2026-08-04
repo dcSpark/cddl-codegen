@@ -187,14 +187,31 @@ batches see the machine as it is, with MemTotal only a fallback where MemAvailab
 Available, not total: a budget struck against MemTotal assumes the tier owns half a machine that
 other processes already partly hold, which is how the two later freezes got through. The slot
 constant is 4 GiB because a slot's peak is not one `rustc`: a nested-cargo gate compiles and then
-RUNS what it built, and no gate samples a test process's footprint — the old 2 GiB carried a
-comfortable margin over the wrong (never-binding) quantity. `CHECK_CARGO_JOBS=<n>` overrides the
+RUNS what it built, and the old 2 GiB carried a comfortable margin over the wrong (never-binding)
+quantity — the constant stays deliberately pessimistic until the per-run sampler's reports (below)
+price a slot's true peak. `CHECK_CARGO_JOBS=<n>` overrides the
 derivation (a bigger machine should raise it); an inherited `CARGO_BUILD_JOBS` can only hold it
 *down*. And because the runner's own invocations are a minority of this repo's cargo runs, a repo
 `.cargo/config.toml` floors everything else (`[build] jobs = 4`) — bare `cargo test`/`build`/
 `clippy` from a shell or an agent was the one path with no bound at all, and an exported
 `CARGO_BUILD_JOBS` still beats the file, which keeps nested cargo in scratch dirs (outside config
 discovery, which walks up from the CWD) covered by the env var.
+
+**The product has a THIRD factor: nested-child count.** `CARGO_BUILD_JOBS` divides ONE nested
+cargo's compilers; it says nothing about how many nested cargos a gate holds open at once, and for
+a `cargo test` gate that count is the libtest thread count — `nproc` by default — so the true peak
+was `test threads × CARGO_BUILD_JOBS` compilers plus a spawned test binary per thread. The bound
+lives at the one helper every nested spawn goes through: `tool_cmd`
+(`src/tests/integration_tests.rs`) acquires a counting-semaphore permit held across the child's
+whole execution, with the permit count read from `CDDL_NESTED_TOOL_PERMITS`. The runner exports 1
+per gate (`CHECK_NESTED_PERMITS=<n>` overrides): a gate's whole `-j` share is each child's internal
+parallelism, so at N children the gate spends N × its share — permits and jobs multiply, and any
+pair that both track the share overshoots the budget quadratically. For invocations the runner
+never sees (a bare `cargo test`), the same helper defaults to 2 permits and sets
+`CARGO_BUILD_JOBS` to the `.cargo/config.toml` floor when the environment has neither — a nested
+cargo runs from a scratch directory where config discovery finds nothing, so before this the
+"floored" bare path still ran its nested children at `-j $(nproc)`, up to a test-thread count of
+them concurrently.
 
 The bound is close to free, measured on a 4-gate batch in one warm regime, sampled at 1 s:
 
@@ -213,6 +230,18 @@ the largest single `rustc` resident set observed across that batch and a whole `
 one big crate rather than many small ones. Hence the memory derivation — and hence deriving it from
 a deliberately pessimistic per-slot peak rather than from that measurement, which sampled only the
 compile half of what a slot holds.
+
+**The per-run memory sampler (report-only, asserted by NOTHING).** Every run samples its own
+descendant process tree at 1 s ticks and reports at the end — peak Σ RSS (test processes included),
+peak concurrent `rustc`, the largest single process, and the machine-wide `MemAvailable` floor —
+printed above the summary table and appended to the gitignored `draft/memory-peaks.jsonl`
+(`CHECK_MEM_SAMPLER=0` disables). Peaks and floors are nondeterministic, so no gate ever fails on
+one; what the numbers buy is replacing the assumed constants above with measured ones (the 4 GiB
+slot, the one-permit nested bound), and splitting the NEXT whole-machine incident into "the memory
+bound was wrong again" vs "memory was healthy, something else saturated". A freeze itself is still
+something no passive report can prevent: a machine at 100 % memory and swap thrashes without ever
+crossing the OOM killer's threshold, so containment on a shared dev box is an OPERATOR measure —
+an early-OOM daemon or a cgroup memory cap around the tier — not a gate.
 
 **What stays unmeasured: disk bandwidth.** The preflight below floors free scratch, which is a
 capacity check, not a rate one — `CHECK_JOBS` gates writing in parallel to their own target dirs

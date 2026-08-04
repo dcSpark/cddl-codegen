@@ -487,6 +487,166 @@ fn tool_exists(bin: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Counting semaphore bounding how many nested tool children (cargo, wasm-pack, …) this test
+/// process runs AT ONCE. `CARGO_BUILD_JOBS` bounds how many `rustc` each nested cargo spawns, but
+/// nothing bounded how many nested cargos run concurrently — under the default libtest parallelism
+/// that count is the test-thread count (`nproc`), so the real peak was
+/// `test threads × CARGO_BUILD_JOBS` compiler processes plus a test binary per thread, a product
+/// the memory budget never modeled. Bounding the CHILD COUNT here, at the one helper every nested
+/// spawn goes through, caps the memory-hungry part directly while leaving the (cheap, in-process)
+/// majority of the suite at full thread parallelism.
+///
+/// Reentrant per thread: a spawn site that constructs a second wrapped command while its first is
+/// still alive (e.g. the one-per-process generator build firing lazily inside a gated section)
+/// must not deadlock against itself, so a thread's nested acquisitions share its outermost permit.
+/// Reentrancy depth is tracked per SEMAPHORE INSTANCE (keyed by address) rather than in one global,
+/// so unit tests can exercise a local instance without contending on the process-wide one — whose
+/// holders legitimately keep permits for whole nested-cargo runs.
+pub(crate) struct NestedToolSem {
+    permits: usize,
+    in_use: std::sync::Mutex<usize>,
+    freed: std::sync::Condvar,
+}
+
+thread_local! {
+    /// Per-thread reentrancy depth, keyed by semaphore address (see `NestedToolSem` docs).
+    static NESTED_TOOL_DEPTH: std::cell::RefCell<std::collections::BTreeMap<usize, usize>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// Held permit; the slot frees when the thread's OUTERMOST permit for this semaphore drops.
+pub(crate) struct NestedToolPermit<'a> {
+    sem: &'a NestedToolSem,
+}
+
+impl NestedToolSem {
+    pub(crate) const fn new(permits: usize) -> Self {
+        Self {
+            permits,
+            in_use: std::sync::Mutex::new(0),
+            freed: std::sync::Condvar::new(),
+        }
+    }
+
+    pub(crate) fn acquire(&self) -> NestedToolPermit<'_> {
+        let key = self as *const Self as usize;
+        let depth = NESTED_TOOL_DEPTH.with(|d| {
+            let mut d = d.borrow_mut();
+            let e = d.entry(key).or_insert(0);
+            *e += 1;
+            *e
+        });
+        if depth == 1 {
+            let mut in_use = self
+                .in_use
+                .lock()
+                .unwrap_or_else(|e| panic!("nested-tool semaphore poisoned: {e}"));
+            while *in_use >= self.permits {
+                in_use = self
+                    .freed
+                    .wait(in_use)
+                    .unwrap_or_else(|e| panic!("nested-tool semaphore poisoned: {e}"));
+            }
+            *in_use += 1;
+        }
+        NestedToolPermit { sem: self }
+    }
+}
+
+impl Drop for NestedToolPermit<'_> {
+    fn drop(&mut self) {
+        let key = self.sem as *const NestedToolSem as usize;
+        let depth = NESTED_TOOL_DEPTH.with(|d| {
+            let mut d = d.borrow_mut();
+            let e = d
+                .get_mut(&key)
+                .expect("permit drop without a matching acquire — depth map desynced");
+            *e -= 1;
+            let left = *e;
+            if left == 0 {
+                d.remove(&key);
+            }
+            left
+        });
+        if depth == 0 {
+            let mut in_use = self
+                .sem
+                .in_use
+                .lock()
+                .unwrap_or_else(|e| panic!("nested-tool semaphore poisoned: {e}"));
+            *in_use -= 1;
+            drop(in_use);
+            self.sem.freed.notify_one();
+        }
+    }
+}
+
+/// `CDDL_NESTED_TOOL_PERMITS` parsed to a permit count, with the default for bare invocations.
+///
+/// The default (2) is for a `cargo test` nobody budgeted: two nested children at the
+/// `.cargo/config.toml` `-j` floor is roughly the per-gate worst case the runner's own memory
+/// arithmetic plans for, and a bare run has no `MemAvailable` reading to do better with. `check.ts`
+/// exports its own value per gate, and that export wins here by being present in the environment.
+/// Zero is clamped to 1 rather than honored — zero permits is a deadlock, not a bound.
+pub(crate) fn nested_tool_permits_from(raw: Option<&str>) -> (usize, Option<String>) {
+    const DEFAULT_PERMITS: usize = 2;
+    match raw {
+        None => (DEFAULT_PERMITS, None),
+        Some(s) => match s.trim().parse::<usize>() {
+            Ok(0) => (
+                1,
+                Some(
+                    "CDDL_NESTED_TOOL_PERMITS=0 would deadlock every nested spawn — using 1"
+                        .to_string(),
+                ),
+            ),
+            Ok(n) => (n, None),
+            Err(_) => (
+                DEFAULT_PERMITS,
+                Some(format!(
+                    "CDDL_NESTED_TOOL_PERMITS='{s}' is not a non-negative integer — using {DEFAULT_PERMITS}"
+                )),
+            ),
+        },
+    }
+}
+
+/// The process-wide instance `tool_cmd` gates on; permit count read once per process.
+static NESTED_TOOL_SEM: std::sync::OnceLock<NestedToolSem> = std::sync::OnceLock::new();
+
+fn nested_tool_sem() -> &'static NestedToolSem {
+    NESTED_TOOL_SEM.get_or_init(|| {
+        let raw = std::env::var("CDDL_NESTED_TOOL_PERMITS").ok();
+        let (permits, warning) = nested_tool_permits_from(raw.as_deref());
+        if let Some(w) = warning {
+            eprintln!("tool_cmd: {w}");
+        }
+        NestedToolSem::new(permits)
+    })
+}
+
+/// A `Command` plus the concurrency permit that licenses running it. Derefs to `Command`, so every
+/// existing `tool_cmd(...).args(...).output()` chain works unchanged — and because the wrapper
+/// temporary lives to the end of the statement (or the `let` binding's scope), the permit is held
+/// across the child's whole execution, which is the interval the semaphore exists to bound.
+pub(crate) struct ToolCmd {
+    cmd: std::process::Command,
+    _permit: NestedToolPermit<'static>,
+}
+
+impl std::ops::Deref for ToolCmd {
+    type Target = std::process::Command;
+    fn deref(&self) -> &std::process::Command {
+        &self.cmd
+    }
+}
+
+impl std::ops::DerefMut for ToolCmd {
+    fn deref_mut(&mut self) -> &mut std::process::Command {
+        &mut self.cmd
+    }
+}
+
 /// Spawn cargo/wasm-pack for building a *generated* crate. The generated code is the harness's
 /// own output and legitimately over-imports traits and globs — the usage-derived prune
 /// (`import_prune`) covers only the concrete collection-type imports, since a trait can be
@@ -494,10 +654,104 @@ fn tool_exists(bin: &str) -> bool {
 /// `RUSTFLAGS="-D warnings"` into the job env, which nested cargo builds would otherwise inherit
 /// and fail on those unused-import warnings. The root workspace keeps `-D warnings` via the
 /// dedicated Build/clippy steps; only these nested generated-crate builds must be insulated.
-pub(crate) fn tool_cmd(program: &str) -> std::process::Command {
+///
+/// Two resource bounds ride along, so they hold for EVERY invoker rather than only under
+/// `check.ts` (whose env exports cover its own runs but not a bare `cargo test`):
+///  - acquiring a `NestedToolSem` permit bounds how many nested children run at once;
+///  - `CARGO_BUILD_JOBS` is defaulted when absent, because a nested cargo runs from a scratch
+///    directory where config discovery (which walks up from the CWD) never finds the repo
+///    `.cargo/config.toml` floor — without this it runs at `-j $(nproc)`. The value mirrors the
+///    `[build] jobs` floor in `.cargo/config.toml` (keep the two in step), and an environment value
+///    present at spawn time (an operator's, or the runner's per-gate export) wins by never reaching
+///    this arm.
+pub(crate) fn tool_cmd(program: &str) -> ToolCmd {
+    let permit = nested_tool_sem().acquire();
     let mut c = std::process::Command::new(program);
     c.env_remove("RUSTFLAGS");
-    c
+    if std::env::var_os("CARGO_BUILD_JOBS").is_none() {
+        c.env("CARGO_BUILD_JOBS", "4");
+    }
+    ToolCmd {
+        cmd: c,
+        _permit: permit,
+    }
+}
+
+/// The counting bound itself, on a LOCAL instance so this never queues behind the process-wide
+/// semaphore's real holders (which keep permits for whole nested-cargo runs): four threads racing
+/// for two permits never exceed two concurrent holders, and all four eventually run.
+#[test]
+fn nested_tool_permits_bound_concurrent_holders() {
+    let sem = NestedToolSem::new(2);
+    let concurrent = std::sync::atomic::AtomicUsize::new(0);
+    let peak = std::sync::atomic::AtomicUsize::new(0);
+    let ran = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|s| {
+        for _ in 0..4 {
+            s.spawn(|| {
+                let _permit = sem.acquire();
+                let now = concurrent.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                peak.fetch_max(now, std::sync::atomic::Ordering::SeqCst);
+                // Long enough that the four threads genuinely overlap if the bound is absent;
+                // short enough to cost nothing when it holds.
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                concurrent.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+    });
+    assert_eq!(
+        ran.load(std::sync::atomic::Ordering::SeqCst),
+        4,
+        "every contender must eventually acquire — a lost wakeup would starve one"
+    );
+    assert!(
+        peak.load(std::sync::atomic::Ordering::SeqCst) <= 2,
+        "peak concurrent holders {} exceeded the 2 permits — the bound is the whole point",
+        peak.load(std::sync::atomic::Ordering::SeqCst)
+    );
+}
+
+/// Reentrancy: a thread's nested acquire shares its outermost permit (one slot consumed, not two —
+/// on a one-permit instance a second slot would be a self-deadlock), and the slot frees only when
+/// the outermost permit drops.
+#[test]
+fn nested_tool_reentrant_acquire_shares_the_outer_permit() {
+    let sem = NestedToolSem::new(1);
+    let outer = sem.acquire();
+    let inner = sem.acquire();
+    assert_eq!(
+        *sem.in_use.lock().unwrap(),
+        1,
+        "nested acquire must not consume a second slot"
+    );
+    drop(inner);
+    assert_eq!(
+        *sem.in_use.lock().unwrap(),
+        1,
+        "the slot belongs to the OUTERMOST permit"
+    );
+    drop(outer);
+    assert_eq!(
+        *sem.in_use.lock().unwrap(),
+        0,
+        "the outermost drop must free the slot"
+    );
+}
+
+/// The env parse: absent → the bare-invocation default, zero → clamped to 1 with a warning
+/// (zero permits is a deadlock, not a bound), junk → default with a warning, a real value → itself.
+#[test]
+fn nested_tool_permits_env_parse() {
+    assert_eq!(nested_tool_permits_from(None), (2, None));
+    assert_eq!(nested_tool_permits_from(Some("3")).0, 3);
+    assert_eq!(nested_tool_permits_from(Some(" 8 ")).0, 8);
+    let (zero, zero_warn) = nested_tool_permits_from(Some("0"));
+    assert_eq!(zero, 1);
+    assert!(zero_warn.is_some(), "a clamped zero must say so");
+    let (junk, junk_warn) = nested_tool_permits_from(Some("nope"));
+    assert_eq!(junk, 2);
+    assert!(junk_warn.is_some(), "an ignored value must say so");
 }
 
 /// The generator binary the generation call sites spawn, built exactly ONCE per test process.
@@ -545,10 +799,14 @@ fn generator_bin() -> &'static std::path::Path {
                 panic!("profile directory {profile_dir:?} has no parent target directory")
             });
             let bin = profile_dir.join(format!("cddl-codegen{}", std::env::consts::EXE_SUFFIX));
-            // Same `RUSTFLAGS` strip as `tool_cmd`: the `cargo run` form this replaces went through
-            // `tool_cmd`, so the generator was already built (and spawned) without CI's injected
-            // `-D warnings`. Keeping it makes the swap behaviour-preserving.
-            let mut build = tool_cmd("cargo");
+            // Same `RUSTFLAGS` strip as `tool_cmd`, but NOT `tool_cmd` itself: this build runs
+            // INSIDE the `OnceLock` init, and taking a nested-tool permit here would order the
+            // semaphore inside the lock — a thread holding a permit that calls `generator_bin()`
+            // while the initializing thread waits for a permit is a two-lock cycle. The build is
+            // one-per-process and runs with cwd = the repo, so the `.cargo/config.toml` jobs
+            // floor bounds it without the permit.
+            let mut build = std::process::Command::new("cargo");
+            build.env_remove("RUSTFLAGS");
             build.args(["build", "--bin", "cddl-codegen"]);
             if profile_dir.file_name() == Some(std::ffi::OsStr::new("release")) {
                 build.arg("--release");
