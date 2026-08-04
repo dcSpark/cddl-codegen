@@ -568,7 +568,7 @@ different things:
 | exit | what it means |
 |---|---|
 | `0` | the run did what it was asked, and nothing it can see says the workspace is inconsistent (the convergence warning, if it fires, is here — it is an instruction about the run, and re-running satisfies it) |
-| `1` | the **run** failed: a config that would not expand, a spec that would not generate. Fix the input and run it again |
+| `1` | the **run** failed: a config that would not expand, a spec that would not generate, a cross-crate sidecar a crate consumes that it refuses. Fix the input and run it again |
 | `2` | the run **succeeded** — every crate it was asked to generate is generated — and the committed **tree** does not build: the verdict above. Repeating the command changes nothing; the message names the dependency to regenerate |
 
 A CI job wants those apart: `1` is "this commit's inputs are broken", `2` is "this commit's generated
@@ -823,7 +823,9 @@ rather keep stable **first**.
 
 The blocker is not the document. An input-less run already emits the right `add_schemas`; it also
 emits a vestigial rust crate that the json-gen manifest then depends on, whose package name collides
-with the umbrella crate you are trying to serve.
+with the umbrella crate you are trying to serve — a collision generation now names on stderr when
+that umbrella crate is a workspace member (see [`--lib-name`](./command_line_flags)), rather than
+leaving it for cargo to report at the next build.
 :::
 
 ### Order, and which crate a collision blames

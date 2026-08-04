@@ -2654,8 +2654,8 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set idiom") is narrow by design;
   recognition is pinned by `optional_tag_set_tests`. Its full test map — the tag-set corpus
   fixtures, the `opt_set` golden wire vectors, and the in-process recognition/parity tests — lives
-  in `tests/README.md` § "Transparent tag-set idiom". Three boundary shapes stay unsupported, each
-  with its reopening signal (a real consumer spec hitting it):
+  in `tests/README.md` § "Transparent tag-set idiom". The boundary shapes below stay unsupported,
+  each with its reopening signal (a real consumer spec hitting it):
   - *Non-idiom choice-BODIED generic defs are refused, not supported.* The idiom is the ONLY
     choice-bodied generic def the generator can monomorphize — the collapse fires at parse time,
     before the generic machinery, and produces one struct to substitute into. Arms that do not
