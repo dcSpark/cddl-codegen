@@ -13,3 +13,8 @@ pub struct InnerEncoding {
     pub index_0_encoding: Option<cbor_event::Sz>,
     pub index_1_encoding: StringEncoding,
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct WrappedEncoding {
+    pub inner_bytes_encoding: StringEncoding,
+}

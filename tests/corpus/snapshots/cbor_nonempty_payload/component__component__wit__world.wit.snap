@@ -7,5 +7,21 @@ expression: content
 
 package cddl:cddl-lib@0.1.0;
 
+interface types {
+  resource wrapped-nonempty {
+    constructor(inner: list<u64>) -> result<wrapped-nonempty, string>;
+    get: func() -> list<u64>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<wrapped-nonempty, string>;
+  }
+  resource wrapped-nonempty-map {
+    constructor(inner: list<tuple<string, u64>>) -> result<wrapped-nonempty-map, string>;
+    get: func() -> list<tuple<string, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<wrapped-nonempty-map, string>;
+  }
+}
+
 world cddl-lib-world {
+  export types;
 }

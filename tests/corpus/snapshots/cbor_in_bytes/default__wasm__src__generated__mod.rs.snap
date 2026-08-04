@@ -61,4 +61,45 @@ impl AsRef<cddl_lib::Inner> for Inner {
     }
 }
 
-pub type Wrapped = Inner;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Wrapped(pub(crate) cddl_lib::Wrapped);
+
+#[wasm_bindgen]
+impl Wrapped {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Wrapped, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &Inner) -> Self {
+        Self(cddl_lib::Wrapped::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> Inner {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::Wrapped> for Wrapped {
+    fn from(native: cddl_lib::Wrapped) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Wrapped> for cddl_lib::Wrapped {
+    fn from(wasm: Wrapped) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Wrapped> for Wrapped {
+    fn as_ref(&self) -> &cddl_lib::Wrapped {
+        &self.0
+    }
+}

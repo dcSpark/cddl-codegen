@@ -570,9 +570,14 @@ pub(super) fn generate_wrapper_struct(
     let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut deser_impl = codegen::Impl::new(type_name.to_string());
     deser_impl.impl_trait("Deserialize");
-    if let ConceptualRustType::Rust(id) = &field_type.conceptual_type
-        && types.is_plain_group(id)
-    {
+    // A wrapper over a genuinely EMBEDDED plain group has no length context to hand the group's
+    // `deserialize_as_embedded_group` — that is what this guard is for. It must ask `is_basic`
+    // rather than `is_plain_group` alone: a plain group reached through its own array framing
+    // (`[coords]`, `bytes .cbor [coords]`) carries `basic_override`, so the emitter calls the
+    // group's STANDALONE `deserialize` (which reads the array header itself) and there is nothing
+    // to be short of. Before the `.cbor` rule body force-wrapped, the coarse spelling was unreachable
+    // for that shape only because the rule registered as a transparent alias instead.
+    if field_type.is_basic(types) {
         unimplemented!(
             "TODO: make len/read_len variables of appropriate sizes so the generated code compiles"
         );

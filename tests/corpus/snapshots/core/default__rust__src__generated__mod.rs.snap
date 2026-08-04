@@ -838,6 +838,12 @@ impl Foo {
     }
 }
 
+impl From<FooBytes> for Foo {
+    fn from(wrapper: FooBytes) -> Self {
+        wrapper.0
+    }
+}
+
 impl From<TaggedFooBytes> for Foo {
     fn from(wrapper: TaggedFooBytes) -> Self {
         wrapper.0
@@ -856,7 +862,24 @@ impl Foo2 {
     }
 }
 
-pub type FooBytes = Foo;
+#[derive(Clone, Debug)]
+pub struct FooBytes(pub(crate) Foo);
+
+impl FooBytes {
+    pub fn get(&self) -> &Foo {
+        &self.0
+    }
+
+    pub fn new(inner: Foo) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Foo> for FooBytes {
+    fn from(inner: Foo) -> Self {
+        FooBytes::new(inner)
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum GroupChoice {
@@ -1586,7 +1609,24 @@ impl OverlappingInlined {
     }
 }
 
-pub type ParenCbor = String;
+#[derive(Clone, Debug)]
+pub struct ParenCbor(pub(crate) String);
+
+impl ParenCbor {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<String> for ParenCbor {
+    fn from(inner: String) -> Self {
+        ParenCbor::new(inner)
+    }
+}
 
 pub type ParenSize = u8;
 
@@ -1859,6 +1899,12 @@ impl SignedInts {
 pub type StandaloneTable = BTreeMap<u64, String>;
 
 pub type StandaloneText = BTreeMap<String, String>;
+
+impl From<ParenCbor> for String {
+    fn from(wrapper: ParenCbor) -> Self {
+        wrapper.0
+    }
+}
 
 impl From<TaggedText> for String {
     fn from(wrapper: TaggedText) -> Self {

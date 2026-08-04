@@ -17,9 +17,14 @@ expression: content
 // comment stranded on a deleted row is what the edit-preservation overlay turns into a
 // build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
 // each row's type path is its own traceability.
-#[allow(unused_imports)]
-use crate::generated::WrappedNonempty as _;
-#[allow(unused_imports)]
-use crate::generated::WrappedNonemptyMap as _;
 #[allow(dead_code)]
-fn _extern_interface_self_check() {}
+fn _assert_serialize<T: cbor_event::se::Serialize>() {}
+#[allow(dead_code)]
+fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
+#[allow(dead_code)]
+fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::WrappedNonempty>();
+    _assert_deserialize::<crate::generated::WrappedNonempty>();
+    _assert_serialize::<crate::generated::WrappedNonemptyMap>();
+    _assert_deserialize::<crate::generated::WrappedNonemptyMap>();
+}

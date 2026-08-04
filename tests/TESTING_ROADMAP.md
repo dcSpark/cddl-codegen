@@ -184,35 +184,30 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      of the `tagged_constrained_int` / `cbor_bignint_table` corpus fixtures. Mechanical shape, worth
      building on the THIRD instance: mint each alias-classifying root also as an embedded variant
      (`rcN_embed = [e: rcN]` — the matrix probe's embed-holder pattern), scoped to alias roots to
-     bound the layer-2 wall-clock cost.
-     The class also has a SEMANTIC flavor beyond the compile one — probe-verified in both
-     directions (default profile; first read-confirmed during the Int-extern alias-reference
-     delivery, tests/corpus/int_alias.cddl): a bare `.cbor` alias root's STANDALONE
-     (de)serialization is the target type's own (`y = bytes .cbor int` → `pub type Y = Int`, whose
-     impls read/write a plain int — the byte-string wrapping exists only at embed sites), so the
-     root type's own `to_cbor_bytes` writes spec-divergent bytes AND its `from_cbor_bytes` accepts
-     the bare form while rejecting the spec's actual byte-string form, silently, in a crate that
-     compiles everywhere. The invariant the fix or boundary must express is broader than `.cbor`
-     (its probed neighbours are all safe: bounds auto-wrap, tags force-wrap, root `.default` has
-     no standalone meaning): no wire-affecting property of a type may survive on a root that
-     emits a transparent alias — a detector on the invariant is future-proof against the next
-     encoding op where a `.cbor` spot-fix is not. No standing layer sees the flavor: the compile
-     gates can't (it compiles), the decode-conformance corpus leg deliberately validates through
-     synthetic embed holders (`__probe_holder` — the wrapped path), and `--emit-tests` mints
-     round-trips only for structs, so the embed-site COMPILE leg above cannot see it either —
-     which is why the semantic question must NOT inherit that leg's third-instance trigger: they
-     are different instruments on different failure classes, and this one already has its
-     severity evidence. The mechanical detector: a standalone-vs-embedded decode differential on
-     alias-classifying roots — decode each root's pre-wrap spec-derived vectors (they already
-     exist; the mint wraps them to build holder vectors) through the root type's OWN impls beside
-     the holder leg, red where the accept/byte sets diverge; plain aliases pass by construction.
-     It would go RED today on every `bytes .cbor` alias root, so it cannot land without one of:
-     the fix (force-wrap `.cbor` roots — small in the generator, breaking outside it: transparent
-     call sites, the wasm class, and the documented alias taxonomy all change), a known-bad
-     ledger row, or an explicit boundary re-classification (document standalone impls as the
-     target's and assert exactly that frame difference). Whether any real consumer uses a
-     `bytes .cbor` root standalone is the first question for whoever picks this up — and per
-     AGENTS.md it must not be answered by regenerating a consumer checkout.
+     bound the layer-2 wall-clock cost. Note the POPULATION shrank on 2026-08-04 without the trigger
+     moving: both recorded instances were `.cbor` roots, and a `.cbor` rule body now force-wraps into
+     a struct that emits its (de)serialize code standalone, so the sweeps compile that surface
+     directly. What still classifies as a plain alias root is the named collection (tagged or not),
+     the scalar re-alias and the `T / null` collapse — that is the class a third instance would have
+     to come from, and it stands at two.
+     The class's SEMANTIC flavor is DELIVERED (2026-08-04) and is not a matrix leg. It was: a bare
+     `.cbor` alias root's STANDALONE (de)serialization was the target type's own
+     (`y = bytes .cbor int` → `pub type Y = Int`), so the root's `to_cbor_bytes` wrote the bare
+     inner form and its `from_cbor_bytes` accepted that form while rejecting the spec's actual
+     byte-string one — silently, in a crate that compiled everywhere, while embed sites wrapped
+     correctly. A `.cbor` rule body now force-wraps into the wrapper struct the `@newtype` spelling
+     produces, so the class is closed at the source rather than detected: the broader invariant it
+     was an instance of — no wire-affecting property of a `RustType` may survive on a root that
+     emits a transparent alias — is a hard refusal in
+     `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias`, which fires for any
+     FUTURE encoding operation at the one registration seam that could carry one (its one carve-out,
+     tags on a named collection / `T / null` collapse, is ledgered in `cddl-matrix/ROADMAP.md`
+     § Findings). The emitted-code half — the part no generator assert can speak for — is executed by
+     `integration_tests::cbor_rule_body_standalone_codec_agrees_with_its_embed_site` (`local` tier),
+     which runs the wrapped-form/bare-form/embed-agreement table on a scalar and a record payload
+     under the plain and preserve profiles. The embed-site COMPILE leg above keeps its own
+     third-instance trigger unchanged: it is a different instrument on a different failure class,
+     and it still stands at two instances.
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).

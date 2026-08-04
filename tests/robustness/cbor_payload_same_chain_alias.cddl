@@ -1,21 +1,17 @@
-; The ALIAS-FLATTENED spelling of a same-chain nested `.cbor` payload — `inner = bytes .cbor uint`
-; referenced as `bytes .cbor inner` — in top-level rule-BODY position. Rejected gracefully, with
-; the rule name in the message (the body seam is the only one that has one).
+; The NAMED-PAYLOAD spelling of a nested `.cbor` — `inner = bytes .cbor uint` referenced as
+; `bytes .cbor inner` — in top-level rule-BODY position. SUPPORTED: naming the inner payload is what
+; gives it a boundary.
 ;
-; This is the SAME encoding chain as the inline sibling
-; (tests/robustness/cbor_payload_same_chain_inline.cddl), not a lookalike: `inner`'s own `.cbor`
-; lives in its `RustType`'s ENCODING list, and resolving a reference to `inner` copies that type
-; whole, so by the time the operation applies `inner` and the parenthesized inline form both carry
-; one `CBORBytes` and the second application lands on a chain that already has one. Naming the
-; payload adds no boundary — which is a property of the encoding list, not of the conceptual `Alias`
-; node (the member/arm seam keeps that node, and the refusal fires there just the same).
-; A refusal keyed on the inline SPELLING would therefore miss this one entirely, which is why the
-; key is the chain rather than the syntax — and why a multi-link alias chain
-; (tests/robustness/cbor_ref_alias_chain.cddl's depth axis) is covered by the same key with no
-; extra case.
+; A `.cbor` rule body mints a wrapper struct (the same one the `@newtype` spelling mints), so `Inner`
+; is a real type with its own serialize fn and its own payload buffer, and `B` writes `43 41 05` for
+; the value 5 — a byte string holding a byte string holding a uint. The reference crosses a TYPE
+; rather than copying an encoding chain, which is why nothing here shares the `<var>_inner_se` buffer
+; that makes the inline sibling (tests/robustness/cbor_payload_same_chain_inline.cddl) unbuildable.
 ;
-; Rule-BODY position is deliberate for the second reason as well: it lowers to a `pub type` alias
-; that mints no serializer, so this spelling generated a crate that BUILT while being exactly as
-; unsupported as the member one. The refusal is on the composition, so the two agree.
+; This fixture is the CONTROL for that sibling's refusal: the refusal keys on the same-chain
+; composition, and a key that caught the named spelling too would refuse the documented remedy. It
+; also pins the rule-body force-wrap from the outside — were `inner` to register as a transparent
+; alias again, its own `.cbor` would ride on the `RustType` a reference copies whole, the chain would
+; be shared, and this file would go back to being an error.
 inner = bytes .cbor uint
 b = bytes .cbor inner

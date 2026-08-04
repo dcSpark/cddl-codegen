@@ -7,5 +7,26 @@ expression: content
 
 package cddl:cddl-lib@0.1.0;
 
+interface types {
+  resource cbor-int {
+    constructor(inner: int);
+    get: func() -> int;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-int, string>;
+  }
+  resource cbor-int-table {
+    constructor(inner: list<tuple<string, int>>);
+    get: func() -> list<tuple<string, int>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-int-table, string>;
+  }
+  variant int {
+    uint(u64),
+    // a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4
+    nint(u64),
+  }
+}
+
 world cddl-lib-world {
+  export types;
 }

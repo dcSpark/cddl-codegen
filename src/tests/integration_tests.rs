@@ -6970,6 +6970,171 @@ mod __double_option_pin {
     }
 }
 
+/// A `bytes .cbor T` RULE BODY agrees with itself: its own standalone `to_cbor_bytes` /
+/// `from_cbor_bytes` write and accept the spec's BYTE-STRING-WRAPPED form, reject the bare inner
+/// form, and produce byte-for-byte what an embed site of the same rule round-trips.
+///
+/// The defect this closes: the rule body registered a TRANSPARENT alias (`pub type Y = u64;`), so
+/// `Y` had no codec of its own and `Y::to_cbor_bytes()` was `u64`'s — writing the bare `05` where
+/// the spec says `41 05`, and `Y::from_cbor_bytes` accepting `05` while REJECTING `41 05`. Embed
+/// sites wrapped correctly the whole time, so one CDDL type had two incompatible wire forms
+/// selected by use-site, silently, in a crate that compiled everywhere.
+///
+/// The two halves are deliberately different kinds of evidence. `register_type_alias`'s wire-facts
+/// assert makes the CLASS unrepresentable at the only seam that could register it (a structural
+/// guard that also fires for a future control operator nobody has written yet); this test executes
+/// the EMITTED code, which is the half no assert in the generator can speak for. Both legs run the
+/// same table over a scalar payload and a record payload, and the embedded leg is what turns
+/// "the wrapper writes something" into "the wrapper writes what the member position always wrote"
+/// — the property the breaking change had to preserve.
+///
+/// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
+/// only `fast`. This gate will not be seen by CI.
+#[test]
+fn cbor_rule_body_standalone_codec_agrees_with_its_embed_site() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_cbor_root_wrap_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let target_dir = scratch.join("target");
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "scalar_root = bytes .cbor uint\n\
+         rec = [a: uint, b: tstr]\n\
+         rec_root = bytes .cbor rec\n\
+         holder = [s: scalar_root, r: rec_root]\n",
+    )
+    .unwrap();
+
+    // Wire forms, hand-derived from RFC 8949:
+    //   uint 5                      -> 05
+    //   bytes .cbor uint 5          -> 41 05           (1-byte payload)
+    //   [1, "x"]                    -> 82 01 61 78
+    //   bytes .cbor [1, "x"]        -> 44 82 01 61 78  (4-byte payload)
+    //   holder [<scalar>, <rec>]    -> 82 4105 4482016178
+    const PIN: &str = r##"
+#[cfg(test)]
+mod __cbor_root_wrap_pin {
+    use super::*;
+    use super::serialization::{Deserialize, ToCBORBytes};
+
+    const SCALAR_WRAPPED: &[u8] = &[0x41, 0x05];
+    const SCALAR_BARE: &[u8] = &[0x05];
+    const REC_WRAPPED: &[u8] = &[0x44, 0x82, 0x01, 0x61, 0x78];
+    const REC_BARE: &[u8] = &[0x82, 0x01, 0x61, 0x78];
+    const HOLDER: &[u8] = &[
+        0x82, 0x41, 0x05, 0x44, 0x82, 0x01, 0x61, 0x78,
+    ];
+
+    /// The standalone codec IS the spec's wrapped form, in both directions.
+    #[test]
+    fn standalone_codec_writes_and_accepts_the_wrapped_form() {
+        assert_eq!(
+            ScalarRoot::new(5).to_cbor_bytes(),
+            SCALAR_WRAPPED,
+            "a `.cbor` root must write the byte-string-wrapped form standalone"
+        );
+        assert_eq!(
+            ScalarRoot::from_cbor_bytes(SCALAR_WRAPPED)
+                .expect("the wrapped form must decode")
+                .to_cbor_bytes(),
+            SCALAR_WRAPPED
+        );
+        assert_eq!(
+            RecRoot::new(Rec::new(1, String::from("x"))).to_cbor_bytes(),
+            REC_WRAPPED
+        );
+        assert_eq!(
+            RecRoot::from_cbor_bytes(REC_WRAPPED)
+                .expect("the wrapped form must decode")
+                .to_cbor_bytes(),
+            REC_WRAPPED
+        );
+    }
+
+    /// And it REJECTS the bare inner form — the shape the transparent alias used to accept.
+    #[test]
+    fn standalone_codec_rejects_the_bare_inner_form() {
+        assert!(
+            ScalarRoot::from_cbor_bytes(SCALAR_BARE).is_err(),
+            "the bare inner form is not what the spec admits for a `.cbor` root"
+        );
+        assert!(
+            RecRoot::from_cbor_bytes(REC_BARE).is_err(),
+            "the bare inner form is not what the spec admits for a `.cbor` root"
+        );
+    }
+
+    /// Standalone and EMBEDDED agree byte-for-byte: the wrapper writes exactly what the member
+    /// position always wrote, so the breaking API change moved no wire byte.
+    #[test]
+    fn standalone_and_embedded_agree() {
+        let holder = Holder::new(
+            ScalarRoot::new(5),
+            RecRoot::new(Rec::new(1, String::from("x"))),
+        );
+        assert_eq!(holder.to_cbor_bytes(), HOLDER);
+        let back = Holder::from_cbor_bytes(HOLDER).expect("the holder vector must decode");
+        assert_eq!(back.to_cbor_bytes(), HOLDER);
+        // the members' own standalone bytes are the sub-slices the holder wrote
+        assert_eq!(back.s.to_cbor_bytes(), SCALAR_WRAPPED);
+        assert_eq!(back.r.to_cbor_bytes(), REC_WRAPPED);
+    }
+}
+"##;
+
+    for (leg, extra) in [
+        ("plain", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+    ] {
+        let out = scratch.join(leg);
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false");
+        for arg in extra {
+            cmd.arg(arg);
+        }
+        let gen_out = cmd.output().unwrap();
+        assert!(
+            gen_out.status.success(),
+            "{leg}: generation failed:\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        );
+        let generated_mod = out.join("rust/src/generated/mod.rs");
+        let source = std::fs::read_to_string(&generated_mod).unwrap();
+        // fixture premise: the roots must really be wrapper STRUCTS, or the pin below is asserting
+        // the payload type's codec under a different name.
+        assert!(
+            source.contains("pub struct ScalarRoot")
+                && source.contains("pub struct RecRoot")
+                && !source.contains("pub type ScalarRoot")
+                && !source.contains("pub type RecRoot"),
+            "{leg}: a `.cbor` rule body must mint a wrapper struct:\n{source}"
+        );
+        std::fs::write(&generated_mod, format!("{source}\n{PIN}")).unwrap();
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .arg("__cbor_root_wrap_pin")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{leg}: the `.cbor` root wire pin must build and pass:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tracked SILENT-WRONG-OUTPUT gaps (compile-green, snapshot-blessed, behaviorally wrong).
 //

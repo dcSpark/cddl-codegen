@@ -4,3 +4,98 @@ expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for WrappedNonempty {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        inner_inner_se.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for element in self.0.iter() {
+            inner_inner_se.write_unsigned_integer(*element)?;
+        }
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for WrappedNonempty {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let mut inner_arr = Vec::new();
+            let len = inner_de.array()?;
+            while match len {
+                cbor_event::Len::Len(n) => (inner_arr.len() as u64) < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                if matches!(len, cbor_event::Len::Indefinite)
+                    && inner_de.cbor_type()? == cbor_event::Type::Special
+                    && inner_de.special_break()?
+                {
+                    break;
+                }
+                inner_arr.push(inner_de.unsigned_integer()?);
+            }
+            let inner_arr = NonEmptyVec::try_from(inner_arr)?;
+            Ok(Self(inner_arr))
+        })()
+        .map_err(|e| e.annotate("WrappedNonempty"))
+    }
+}
+
+impl cbor_event::se::Serialize for WrappedNonemptyMap {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        inner_inner_se.write_map(cbor_event::Len::Len(self.0.len() as u64))?;
+        for (key, value) in self.0.iter() {
+            inner_inner_se.write_text(key)?;
+            inner_inner_se.write_unsigned_integer(*value)?;
+        }
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for WrappedNonemptyMap {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let mut inner_table = BTreeMap::new();
+            let inner_len = inner_de.map()?;
+            while match inner_len {
+                cbor_event::Len::Len(n) => (inner_table.len() as u64) < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                if matches!(inner_len, cbor_event::Len::Indefinite)
+                    && inner_de.cbor_type()? == cbor_event::Type::Special
+                    && inner_de.special_break()?
+                {
+                    break;
+                }
+                let inner_key = inner_de.text()?;
+                let inner_value = inner_de.unsigned_integer()?;
+                if inner_table.insert(inner_key.clone(), inner_value).is_some() {
+                    return Err(DeserializeFailure::DuplicateKey(Key::Str(inner_key)).into());
+                }
+            }
+            let inner_table = NonEmptyMap::try_from(inner_table)?;
+            Ok(Self(inner_table))
+        })()
+        .map_err(|e| e.annotate("WrappedNonemptyMap"))
+    }
+}

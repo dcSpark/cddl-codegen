@@ -379,45 +379,57 @@ fn member_call_targets_spell_the_declared_alias() {
     }
 }
 
-/// The `bytes .cbor` CARVE-OUT: the payload read inside an aliased `.cbor` member names the
-/// alias's TARGET, not the alias.
+/// A `bytes .cbor` RULE BODY is a wrapper struct, so no ident ever names the bytes-wrapped form
+/// transparently — and a `.cbor` payload written in a MEMBER's own type expression lifts the
+/// payload's alias, because there the ident denotes exactly the value being read.
 ///
-/// `cred_bytes = bytes .cbor credential` emits `pub type CredBytes = Credential;` and reads its
-/// payload from an `inner_de` positioned INSIDE the already-unwrapped byte string.
-/// `CredBytes::deserialize(inner_de)` compiles — the alias is transparent — and lies: it claims to
-/// read a bytes-wrapped value at the position that reads the payload. The lie is reachable rather
-/// than theoretical because a `RustType`'s encoding operations WRAP its conceptual type, so the
-/// `Alias` arm that lifts the spelling is reached only AFTER the `CBORBytes` operation is consumed —
-/// which is why the mechanism is a seal set on the operation's descent and not a clear (a clear at
-/// the descent would be overwritten by the lift below it).
+/// The shape this pins used to be the `bytes .cbor` CARVE-OUT: `cred_bytes = bytes .cbor credential`
+/// emitted `pub type CredBytes = Credential;`, so `CredBytes` named the bytes-wrapped thing while its
+/// standalone codec was `Credential`'s — one type, two wire forms — and the payload read had to be
+/// sealed away from the alias's own ident, which would otherwise have compiled and lied. The rule
+/// body now force-wraps, so the ident denotes a real type whose codec IS the bytes-wrapped form:
+/// `CredBytes::deserialize` is the truth at the member position, and there is no transparent
+/// bytes-wrapped ident left for a payload read to be sealed from.
 ///
-/// Without this pin a later "make the spelling uniform everywhere" pass breaks the carve-out and
-/// nothing fails.
+/// The seal MECHANISM (an alias whose own `base_type` carries encodings does not lift) stays live
+/// for the remaining rule-owned-operation aliases — see
+/// `encoding_operation_ownership_decides_whether_the_spelling_survives`, whose seal half is a tagged
+/// collection.
 #[test]
-fn cbor_bytes_alias_payload_read_names_the_target() {
+fn cbor_bytes_root_wraps_and_a_member_cbor_lifts_the_payloads_alias() {
     let src = generate(
         "credential = [idx: uint]\n\
+         stake_credential = credential\n\
          cred_bytes = bytes .cbor credential\n\
-         holder = [cb: cred_bytes]\n",
+         holder = [cb: cred_bytes, payload: bytes .cbor stake_credential]\n",
         "cbor_carve_out",
         PRESERVE,
     )
     .expect("must generate");
 
     assert!(
-        src.contains("pub type CredBytes = Credential;") && src.contains("pub cb: CredBytes,"),
-        "the fixture must actually produce an aliased `.cbor` member, or the pin below is \
-         vacuous:\n{src}"
+        // `PRESERVE` mints the wrapper with named fields (an `encodings` sidecar rides beside the
+        // inner), so the shape assertion is "a struct, not an alias" rather than the tuple spelling.
+        src.contains("pub struct CredBytes")
+            && !src.contains("pub type CredBytes")
+            && src.contains("pub cb: CredBytes,"),
+        "a `.cbor` rule body must mint a wrapper struct, never a transparent alias naming the \
+         bytes-wrapped form:\n{src}"
     );
     assert!(
         src.contains("Credential::deserialize(inner_de)"),
-        "the payload read inside an aliased `.cbor` member must name the alias's TARGET — the \
-         position is the payload, not the bytes-wrapped member:\n{src}"
+        "the wrapper's own payload read names its target — the position is the payload, not the \
+         bytes-wrapped value:\n{src}"
     );
     assert!(
-        !src.contains("CredBytes::deserialize"),
-        "the `.cbor` carve-out is broken: the alias names the bytes-wrapped type, so spelling it \
-         at the payload read compiles and lies:\n{src}"
+        src.contains("CredBytes::deserialize(raw)"),
+        "the MEMBER read names the wrapper, whose codec is the bytes-wrapped form — the spelling \
+         that used to be a lie is now the truth:\n{src}"
+    );
+    assert!(
+        src.contains("StakeCredential::deserialize(inner_de)"),
+        "a `.cbor` written in the MEMBER's own type expression lifts the payload's alias — the \
+         ident denotes exactly the value read there:\n{src}"
     );
 }
 
@@ -558,40 +570,43 @@ fn aliased_member_leaves_error_strings_and_variant_paths_alone() {
 /// WHO OWNS the encoding operation decides whether the member's declared spelling survives it — not
 /// whether the descent crossed one.
 ///
-/// The seal exists because an alias ident can name the WRAPPED form: `cred_bytes = bytes .cbor
-/// credential` means `CredBytes` IS the bytes-wrapped thing, so the payload position is not what the
-/// ident denotes. That is true exactly when the operation belongs to the alias RULE. When the
-/// operation comes from the MEMBER's own type expression (`f: #6.9(stake_credential)`) the alias still
-/// denotes precisely the value being read there — and the field is typed `StakeCredential`, so
-/// lifting is what closes the disagreement rather than what creates one.
+/// The seal exists because an alias ident can name the WRAPPED form: `tagged_creds =
+/// #6.11([* stake_credential])` means `TaggedCreds` IS the tagged array, so the position that reads
+/// the array body is not what the ident denotes. That is true exactly when the operation belongs to
+/// the alias RULE. When the operation comes from the MEMBER's own type expression
+/// (`f: #6.9(stake_credential)`) the alias still denotes precisely the value being read there — and
+/// the field is typed `StakeCredential`, so lifting is what closes the disagreement rather than what
+/// creates one.
 ///
 /// The premise "a tag never has an alias in play, because `x = #6.9(y)` auto-wraps into a newtype"
 /// holds only for the RULE form. The FIELD form keeps the alias, which is why `f` below was a live
 /// instance of the reported defect: a field typed `StakeCredential` filled by
 /// `Credential::deserialize`.
 ///
-/// The compound member is the case that separates the ownership test from a "did we cross an
-/// operation" test: `#6.9(cred_bytes)` crosses a member-owned tag AND a rule-owned `.cbor`, and must
-/// seal — on the `.cbor`'s account, not the tag's.
+/// The seal half uses a TAGGED COLLECTION because that is the rule-owned-operation alias class that
+/// still exists: a `bytes .cbor` rule body force-wraps (its ident is a real type, so the question
+/// does not arise — see `cbor_bytes_root_wraps_and_a_member_cbor_lifts_the_payloads_alias`), while
+/// the named-array/named-table kind-walk still registers `#6.n([* t])` as an alias whose `base_type`
+/// carries the tag.
 #[test]
 fn encoding_operation_ownership_decides_whether_the_spelling_survives() {
     let src = generate(
         "credential = [idx: uint]\n\
          stake_credential = credential\n\
-         cred_bytes = bytes .cbor credential\n\
-         holder = [f: #6.9(stake_credential), g: cred_bytes, h: stake_credential, i: #6.9(cred_bytes)]\n",
+         tagged_creds = #6.11([* stake_credential])\n\
+         holder = [f: #6.9(stake_credential), g: tagged_creds, h: stake_credential, i: bytes .cbor stake_credential]\n",
         "op_ownership",
         PRESERVE,
     )
     .expect("must generate");
 
-    // The fixture's own premises: `f` and `i` must really carry a MEMBER-owned tag over an alias, or
-    // the two halves below are testing nothing.
+    // The fixture's own premises: `f` must really carry a MEMBER-owned tag over an alias, and `g` a
+    // RULE-owned one, or the two halves below are testing nothing.
     for (field, ty) in [
         ("pub f:", "StakeCredential,"),
-        ("pub g:", "CredBytes,"),
+        ("pub g:", "TaggedCreds,"),
         ("pub h:", "StakeCredential,"),
-        ("pub i:", "CredBytes,"),
+        ("pub i:", "StakeCredential,"),
     ] {
         assert!(
             src.contains(&format!("{field} {ty}")),
@@ -608,21 +623,18 @@ fn encoding_operation_ownership_decides_whether_the_spelling_survives() {
          exactly the value read inside the tag:\n{src}"
     );
 
-    // SEAL — twice, both on the RULE-owned `.cbor`'s account. `i` additionally crosses a
-    // member-owned tag, which must not change the verdict in either direction.
-    assert_eq!(
-        src.matches("Credential::deserialize(inner_de)").count()
-            - src
-                .matches("StakeCredential::deserialize(inner_de)")
-                .count(),
-        2,
-        "both `.cbor` payload reads must name the alias's TARGET: the alias names the \
-         bytes-wrapped form, so its ident does not denote the payload position — and the compound \
-         member's member-owned tag does not change that:\n{src}"
-    );
+    // LIFT — a `.cbor` written in the MEMBER's own type expression is the member's operation too,
+    // so the payload's alias denotes the payload and survives the descent.
     assert!(
-        !src.contains("CredBytes::deserialize"),
-        "a rule-owned `.cbor` alias must never spell its own ident at the payload read, with or \
-         without a member-owned tag stacked on top:\n{src}"
+        src.contains("StakeCredential::deserialize(inner_de)"),
+        "a member-expression `.cbor` over an alias must LIFT at the payload read:\n{src}"
+    );
+
+    // SEAL — the tag on `g` is the alias RULE's, so `TaggedCreds` names the tagged array and does
+    // not denote the position that reads the array body; the member is read structurally instead.
+    assert!(
+        !src.contains("TaggedCreds::deserialize"),
+        "a rule-owned encoding alias must never spell its own ident inside the operation it \
+         names:\n{src}"
     );
 }

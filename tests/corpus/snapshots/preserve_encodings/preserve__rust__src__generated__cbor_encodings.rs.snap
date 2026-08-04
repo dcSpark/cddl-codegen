@@ -96,7 +96,6 @@ pub struct CborEnumWrappersEncoding {
 #[derive(Clone, Debug, Default)]
 pub struct CborInCborEncoding {
     pub len_encoding: LenEncoding,
-    pub foo_bytes_bytes_encoding: StringEncoding,
     pub uint_bytes_bytes_encoding: StringEncoding,
     pub uint_bytes_encoding: Option<cbor_event::Sz>,
 }
@@ -200,6 +199,11 @@ pub struct FloatHeadsEncoding {
     pub s_encoding: Option<cbor_event::Sz>,
     pub d_encoding: Option<cbor_event::Sz>,
     pub f_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FooBytesEncoding {
+    pub inner_bytes_encoding: StringEncoding,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -689,7 +689,10 @@ mod tests {
     #[test]
     fn cbor_in_cbor() {
         let foo = Foo::new(0, String::new(), vec![]);
-        deser_test(&CborInCbor::new(foo.clone(), 9, foo.into()))
+        // Both `.cbor` ROOTS (`foo_bytes`, `tagged_foo_bytes`) are wrapper structs, so each member
+        // is constructed through its own `From<Foo>` — a `.cbor` rule body is a type of its own,
+        // never a transparent alias for its payload.
+        deser_test(&CborInCbor::new(foo.clone().into(), 9, foo.into()))
     }
 
     // The two WRAPPING contexts over a named alias — a tag head and a `.cbor` payload — round-trip,

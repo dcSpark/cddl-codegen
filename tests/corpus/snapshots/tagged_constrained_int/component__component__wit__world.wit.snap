@@ -8,6 +8,12 @@ expression: content
 package cddl:cddl-lib@0.1.0;
 
 interface types {
+  resource cbor-ctl-ne {
+    constructor(inner: s64) -> result<cbor-ctl-ne, string>;
+    get: func() -> s64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-ctl-ne, string>;
+  }
   resource garm {
     new-ga: static func(ga: s64) -> result<garm, string>;
     as-ga: func() -> option<s64>;
@@ -22,14 +28,14 @@ interface types {
     gb,
   }
   resource holder {
-    constructor(a: borrow<tagged-ctl-ne>, b: borrow<tagged-range-incl>, c: borrow<tagged-range-excl>, d: borrow<tagged-range-nint>, e: borrow<tagged-range-uint>, f: borrow<garm>, g: s64) -> result<holder, string>;
+    constructor(a: borrow<tagged-ctl-ne>, b: borrow<tagged-range-incl>, c: borrow<tagged-range-excl>, d: borrow<tagged-range-nint>, e: borrow<tagged-range-uint>, f: borrow<garm>, g: borrow<cbor-ctl-ne>);
     a: func() -> tagged-ctl-ne;
     b: func() -> tagged-range-incl;
     c: func() -> tagged-range-excl;
     d: func() -> tagged-range-nint;
     e: func() -> tagged-range-uint;
     f: func() -> garm;
-    g: func() -> s64;
+    g: func() -> cbor-ctl-ne;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
   }

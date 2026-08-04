@@ -21,7 +21,7 @@ mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
-use cbor_encodings::{HolderEncoding, PreludeBignintEncoding};
+use cbor_encodings::{HolderEncoding, PreludeBignintEncoding, XEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Holder {
@@ -76,4 +76,33 @@ impl From<PreludeBignint> for Vec<u8> {
     }
 }
 
-pub type X = OrderedHashMap<PreludeBignint, u64>;
+#[derive(Clone, Debug)]
+pub struct X {
+    pub(crate) inner: OrderedHashMap<PreludeBignint, u64>,
+    pub encodings: Option<XEncoding>,
+}
+
+impl X {
+    pub fn get(&self) -> &OrderedHashMap<PreludeBignint, u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: OrderedHashMap<PreludeBignint, u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedHashMap<PreludeBignint, u64>> for X {
+    fn from(inner: OrderedHashMap<PreludeBignint, u64>) -> Self {
+        X::new(inner)
+    }
+}
+
+impl From<X> for OrderedHashMap<PreludeBignint, u64> {
+    fn from(wrapper: X) -> Self {
+        wrapper.inner
+    }
+}

@@ -23,9 +23,115 @@ pub mod serialization;
 
 pub type BareInt = Int;
 
-pub type CborInt = Int;
+#[derive(Clone, Debug)]
+pub struct CborInt(pub(crate) Int);
 
-pub type CborIntTable = BTreeMap<String, Int>;
+impl CborInt {
+    pub fn get(&self) -> &Int {
+        &self.0
+    }
+
+    pub fn new(inner: Int) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Int> for CborInt {
+    fn from(inner: Int) -> Self {
+        CborInt::new(inner)
+    }
+}
+
+impl serde::Serialize for CborInt {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for CborInt {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <Int as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for CborInt {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("CborInt")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Int as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <Int as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborIntTable(pub(crate) BTreeMap<String, Int>);
+
+impl CborIntTable {
+    pub fn get(&self) -> &BTreeMap<String, Int> {
+        &self.0
+    }
+
+    pub fn new(inner: BTreeMap<String, Int>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<BTreeMap<String, Int>> for CborIntTable {
+    fn from(inner: BTreeMap<String, Int>) -> Self {
+        CborIntTable::new(inner)
+    }
+}
+
+impl From<CborIntTable> for BTreeMap<String, Int> {
+    fn from(wrapper: CborIntTable) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for CborIntTable {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for CborIntTable {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <BTreeMap<String, Int> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for CborIntTable {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("CborIntTable")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <BTreeMap<String, Int> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <BTreeMap<String, Int> as schemars::JsonSchema>::inline_schema()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Int {
@@ -106,6 +212,12 @@ impl TryFrom<i128> for Int {
         } else {
             u64::try_from((x + 1).unsigned_abs()).map(Self::Nint)
         }
+    }
+}
+
+impl From<CborInt> for Int {
+    fn from(wrapper: CborInt) -> Self {
+        wrapper.0
     }
 }
 

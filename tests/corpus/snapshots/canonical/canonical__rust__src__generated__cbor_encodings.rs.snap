@@ -29,7 +29,6 @@ pub struct BarEncoding {
 #[derive(Clone, Debug, Default)]
 pub struct CborInCborEncoding {
     pub len_encoding: LenEncoding,
-    pub foo_bytes_bytes_encoding: StringEncoding,
     pub uint_bytes_bytes_encoding: StringEncoding,
     pub uint_bytes_encoding: Option<cbor_event::Sz>,
 }
@@ -82,6 +81,11 @@ pub struct DeeplyNestedEncoding {
     pub data_encoding: LenEncoding,
     pub data_key_encodings: BTreeMap<Vec<u8>, (Option<cbor_event::Sz>, StringEncoding)>,
     pub data_value_encodings: DeeplyNestedDataValueEncodings,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FooBytesEncoding {
+    pub inner_bytes_encoding: StringEncoding,
 }
 
 #[derive(Clone, Debug, Default)]

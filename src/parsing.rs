@@ -2808,46 +2808,50 @@ fn parse_type(
                                     } else {
                                         ty.as_bytes().tag_if(outer_tag)
                                     };
-                                    // Same reasoning as the primitive tag rule below: a top-level
-                                    // `x = #6.n(bytes .cbor T)` must wrap so its standalone
-                                    // `to/from_cbor_bytes` writes/checks the tag (a transparent
-                                    // `pub type X = T` alias drops it from the wire). The tag rides on
-                                    // `cbor_bytes_type` (`.tag_if(outer_tag)`), so the wrapper emits it.
-                                    if rule_metadata.newtype.is_some() || outer_tag.is_some() {
-                                        types.register_rust_struct(
-                                            parent_visitor,
-                                            RustStruct::new_wrapper(
-                                                type_name.clone(),
-                                                None,
-                                                Some(&rule_metadata),
-                                                cbor_bytes_type,
-                                                None,
-                                            ),
-                                            cli,
-                                        );
-                                    } else {
-                                        // The TRANSPARENT spelling registers an alias, which cannot
-                                        // hold the `Alias` node the payload's target may still be
-                                        // (`register_type_alias` refuses one) — so the strip happens
-                                        // here, carrying the target rule's wire facts with it. The
-                                        // WRAPPER branch above keeps the node, exactly as a member or
-                                        // arm does.
-                                        let mut alias_metadata = rule_metadata.clone();
-                                        let (cbor_bytes_type, inherited_from) =
-                                            strip_alias_for_registration(
-                                                types,
-                                                cbor_bytes_type,
-                                                &mut alias_metadata,
-                                            );
-                                        types.register_type_alias(
-                                            type_name.clone(),
-                                            AliasInfo::new_from_metadata(
-                                                cbor_bytes_type,
-                                                alias_metadata,
-                                            )
-                                            .with_inherited_wire_metadata(inherited_from),
-                                        );
+                                    // A `.cbor` rule body ALWAYS wraps, `@newtype` or not: the
+                                    // byte-string framing (and any outer tag riding on
+                                    // `cbor_bytes_type` via `.tag_if(outer_tag)`) is a wire-affecting
+                                    // property of the rule, and a transparent `pub type X = T` alias
+                                    // mints no type to hang it on — `X::to_cbor_bytes` would be `T`'s,
+                                    // writing the BARE inner form while every embed site of `X`
+                                    // writes the wrapped one. So the `@newtype` spelling is redundant
+                                    // here exactly as it is on a single-type tag rule: both spellings
+                                    // produce the identical wrapper struct, and
+                                    // `register_type_alias`'s wire-facts assert keeps the alias
+                                    // spelling unrepresentable rather than merely unused.
+                                    //
+                                    // The payload's `Alias` node is KEPT (as a member or arm keeps
+                                    // it): it is the only thing the emitter's `Alias` arms lift a
+                                    // wrapped rule's `@custom_serialize`/`@custom_deserialize` pair
+                                    // from.
+                                    //
+                                    // A bare-fixed payload (`bytes .cbor 5`, `bytes .cbor true`)
+                                    // is refused at this seam for the same reason the plain-typename
+                                    // tag arm below refuses `#6.11(true)`: `Fixed` has no member Rust
+                                    // representation, so rendering it as the wrapper's inner type
+                                    // panics `for_rust_member` during generation. The alias seam used
+                                    // to catch it through `register_type_alias`'s own guard; now that
+                                    // this arm never reaches that seam, it carries the guard itself,
+                                    // through the one shared message. Registration still happens (a
+                                    // sibling rule may reference this one, and `finalize` never
+                                    // generates once a rejection is recorded).
+                                    if let ConceptualRustType::Fixed(fixed) =
+                                        cbor_bytes_type.conceptual_type.resolve_alias_shallow()
+                                    {
+                                        let fixed = fixed.clone();
+                                        types.record_bare_fixed_rule_rejection(type_name, &fixed);
                                     }
+                                    types.register_rust_struct(
+                                        parent_visitor,
+                                        RustStruct::new_wrapper(
+                                            type_name.clone(),
+                                            None,
+                                            Some(&rule_metadata),
+                                            cbor_bytes_type,
+                                            None,
+                                        ),
+                                        cli,
+                                    );
                                 }
                                 // Not a byte-string head: refuse the shape (RFC 8610 restricts
                                 // `.cbor` to byte strings) rather than aborting, and register

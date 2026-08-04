@@ -2375,13 +2375,27 @@ fn extern_interface_emit_exclusions_and_closure() {
         "`anon_arr` (references an anonymous generic instance) must be excluded:\n{root}"
     );
 
-    // a prelude reference RENDERS by prelude name, it is NOT an exclusion.
+    // a prelude reference RENDERS by prelude name, it is NOT an exclusion. The carrier is a
+    // transparent named table: a `bytes .cbor` rule body force-wraps, so it projects opaque
+    // (asserted just below) and cannot exercise the rendering path.
     assert!(
-        root.contains("bn = bytes .cbor {* bignint => uint} ; @rust_name Bn"),
-        "`bn` must render the `bignint` prelude reference, not be excluded:\n{root}"
+        root.contains("bn_tbl = {* bignint => uint} ; @rust_name BnTbl"),
+        "`bn_tbl` must render the `bignint` prelude reference, not be excluded:\n{root}"
     );
     assert!(
-        !root.contains("; unexported: bn"),
+        !root.contains("; unexported: bn_tbl"),
+        "`bn_tbl` must not be excluded:\n{root}"
+    );
+
+    // a `bytes .cbor` rule body is a WRAPPER struct, so it projects as the opaque marker (the
+    // wrapper owns the byte-string framing; a consumer re-deriving it from a transparent body
+    // would have had two wire forms for one type).
+    assert!(
+        root.contains("bn = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "`bn` (a force-wrapped `.cbor` root) must project opaquely:\n{root}"
+    );
+    assert!(
+        !root.contains("; unexported: bn "),
         "`bn` must not be excluded:\n{root}"
     );
 

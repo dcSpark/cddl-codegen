@@ -23,7 +23,13 @@ na = uint ; @no_alias
 ; transparent alias + alias chain (big_coin refs coin)
 coin = uint
 big_coin = coin
-; prelude reference (bignint) renders by prelude name; NOT an exclusion
+; prelude reference (bignint) renders by prelude name from a TRANSPARENT row; NOT an exclusion.
+; The carrier is a named table because a `bytes .cbor` rule body is no longer transparent — it
+; force-wraps (see `bn` below), which projects as an opaque marker and so cannot exercise the
+; prelude-rendering path.
+bn_tbl = { * bignint => uint }
+; a `bytes .cbor` rule body force-wraps into a real wrapper struct, so it projects OPAQUE like
+; `wrap` above rather than rendering its transparent body
 bn = bytes .cbor { * bignint => uint }
 
 ; generics: the DEFINITION never crosses the boundary (no record); the named instance is opaque

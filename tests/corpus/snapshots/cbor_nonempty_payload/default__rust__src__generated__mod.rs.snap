@@ -22,8 +22,52 @@ pub mod serialization;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 
-/// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-pub type WrappedNonempty = NonEmptyVec<u64>;
+#[derive(Clone, Debug)]
+pub struct WrappedNonempty(pub(crate) NonEmptyVec<u64>);
 
-/// `{+ String => u64}`: at least one entry, enforced at the `NonEmptyMap` `TryFrom` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-pub type WrappedNonemptyMap = NonEmptyMap<String, u64>;
+impl WrappedNonempty {
+    pub fn get(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+
+    pub fn new(inner: NonEmptyVec<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyVec<u64>> for WrappedNonempty {
+    fn from(inner: NonEmptyVec<u64>) -> Self {
+        WrappedNonempty::new(inner)
+    }
+}
+
+impl From<WrappedNonempty> for NonEmptyVec<u64> {
+    fn from(wrapper: WrappedNonempty) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WrappedNonemptyMap(pub(crate) NonEmptyMap<String, u64>);
+
+impl WrappedNonemptyMap {
+    pub fn get(&self) -> &NonEmptyMap<String, u64> {
+        &self.0
+    }
+
+    pub fn new(inner: NonEmptyMap<String, u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyMap<String, u64>> for WrappedNonemptyMap {
+    fn from(inner: NonEmptyMap<String, u64>) -> Self {
+        WrappedNonemptyMap::new(inner)
+    }
+}
+
+impl From<WrappedNonemptyMap> for NonEmptyMap<String, u64> {
+    fn from(wrapper: WrappedNonemptyMap) -> Self {
+        wrapper.0
+    }
+}

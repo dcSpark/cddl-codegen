@@ -8,10 +8,14 @@ expression: content
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 
 #[derive(Clone, Debug, Default)]
+pub struct CborCtlNeEncoding {
+    pub inner_bytes_encoding: StringEncoding,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct HolderEncoding {
     pub len_encoding: LenEncoding,
-    pub g_bytes_encoding: StringEncoding,
-    pub g_encoding: Option<cbor_event::Sz>,
 }
 
 #[derive(Clone, Debug, Default)]

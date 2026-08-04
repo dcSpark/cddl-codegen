@@ -9,6 +9,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::PreludeBignint>();
+    reg.add::<cddl_lib::X>();
 }
 
 pub fn export_schemas() {

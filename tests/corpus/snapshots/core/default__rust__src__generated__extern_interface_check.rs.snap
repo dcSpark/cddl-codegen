@@ -35,8 +35,6 @@ use crate::generated::EmbeddedTable as _;
 #[allow(unused_imports)]
 use crate::generated::EmbeddedText as _;
 #[allow(unused_imports)]
-use crate::generated::FooBytes as _;
-#[allow(unused_imports)]
 use crate::generated::I8 as _;
 #[allow(unused_imports)]
 use crate::generated::I64 as _;
@@ -54,8 +52,6 @@ use crate::generated::NullableBool as _;
 use crate::generated::NullableFloat as _;
 #[allow(unused_imports)]
 use crate::generated::OptText as _;
-#[allow(unused_imports)]
-use crate::generated::ParenCbor as _;
 #[allow(unused_imports)]
 use crate::generated::ParenSize as _;
 #[allow(unused_imports)]
@@ -136,6 +132,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Foo>();
     _assert_serialize::<crate::generated::Foo2>();
     _assert_deserialize::<crate::generated::Foo2>();
+    _assert_serialize::<crate::generated::FooBytes>();
+    _assert_deserialize::<crate::generated::FooBytes>();
     _assert_serialize::<crate::generated::GroupChoice>();
     _assert_deserialize::<crate::generated::GroupChoice>();
     _assert_serialize::<crate::generated::Hash>();
@@ -212,6 +210,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Overlapping2>();
     _assert_serialize::<crate::generated::OverlappingInlined>();
     _assert_deserialize::<crate::generated::OverlappingInlined>();
+    _assert_serialize::<crate::generated::ParenCbor>();
+    _assert_deserialize::<crate::generated::ParenCbor>();
     _assert_serialize::<crate::generated::Plain>();
     _assert_serialize_embedded_group::<crate::generated::Plain>();
     _assert_deserialize::<crate::generated::Plain>();

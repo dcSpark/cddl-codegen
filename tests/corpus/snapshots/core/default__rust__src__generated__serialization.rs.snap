@@ -1239,10 +1239,7 @@ impl cbor_event::se::Serialize for CborInCbor {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(3))?;
-        let mut foo_bytes_inner_se = Serializer::new_vec();
-        self.foo_bytes.serialize(&mut foo_bytes_inner_se)?;
-        let foo_bytes_bytes = foo_bytes_inner_se.finalize();
-        serializer.write_bytes(&foo_bytes_bytes)?;
+        self.foo_bytes.serialize(serializer)?;
         let mut uint_bytes_inner_se = Serializer::new_vec();
         uint_bytes_inner_se.write_unsigned_integer(self.uint_bytes)?;
         let uint_bytes_bytes = uint_bytes_inner_se.finalize();
@@ -1259,12 +1256,8 @@ impl Deserialize for CborInCbor {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(3)?;
             read_len.finish()?;
-            let foo_bytes = (|| -> Result<_, DeserializeError> {
-                let foo_bytes_bytes = raw.bytes()?;
-                let inner_de = &mut Deserializer::from(foo_bytes_bytes);
-                Foo::deserialize(inner_de)
-            })()
-            .map_err(|e| e.annotate("foo_bytes"))?;
+            let foo_bytes = FooBytes::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("foo_bytes"))?;
             let uint_bytes = (|| -> Result<_, DeserializeError> {
                 let uint_bytes_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(uint_bytes_bytes);
@@ -3137,6 +3130,29 @@ impl Deserialize for Foo2 {
             Ok(Foo2 { index_0, opt_text })
         })()
         .map_err(|e| e.annotate("Foo2"))
+    }
+}
+
+impl cbor_event::se::Serialize for FooBytes {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        self.0.serialize(&mut inner_inner_se)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for FooBytes {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            Ok(Self(Foo::deserialize(inner_de)?))
+        })()
+        .map_err(|e| e.annotate("FooBytes"))
     }
 }
 
@@ -6584,6 +6600,29 @@ impl Deserialize for OverlappingInlined {
             Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
         })()
         .map_err(|e| e.annotate("OverlappingInlined"))
+    }
+}
+
+impl cbor_event::se::Serialize for ParenCbor {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        inner_inner_se.write_text(&self.0)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for ParenCbor {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            Ok(Self(inner_de.text()?))
+        })()
+        .map_err(|e| e.annotate("ParenCbor"))
     }
 }
 

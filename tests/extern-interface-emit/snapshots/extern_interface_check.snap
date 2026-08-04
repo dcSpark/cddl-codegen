@@ -33,7 +33,7 @@ fn _assert_deserialize_embedded_group<
 #[allow(unused_imports)]
 use crate::generated::BigCoin as _;
 #[allow(unused_imports)]
-use crate::generated::Bn as _;
+use crate::generated::BnTbl as _;
 #[allow(unused_imports)]
 use crate::generated::Ce as _;
 #[allow(unused_imports)]
@@ -44,6 +44,8 @@ use crate::generated::FooList as _;
 use crate::generated::Tbl as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::Bn>();
+    _assert_deserialize::<crate::generated::Bn>();
     _assert_serialize::<crate::generated::Gc>();
     _assert_deserialize::<crate::generated::Gc>();
     _assert_raw_bytes::<crate::generated::Hash>();

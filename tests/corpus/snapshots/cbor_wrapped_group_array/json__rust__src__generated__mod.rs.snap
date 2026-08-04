@@ -11,6 +11,7 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -29,6 +30,12 @@ impl Coords {
     }
 }
 
+impl From<Wrapped> for Coords {
+    fn from(wrapper: Wrapped) -> Self {
+        wrapper.0
+    }
+}
+
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Holder {
     pub c: Coords,
@@ -40,4 +47,54 @@ impl Holder {
     }
 }
 
-pub type Wrapped = Coords;
+#[derive(Clone, Debug)]
+pub struct Wrapped(pub(crate) Coords);
+
+impl Wrapped {
+    pub fn get(&self) -> &Coords {
+        &self.0
+    }
+
+    pub fn new(inner: Coords) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Coords> for Wrapped {
+    fn from(inner: Coords) -> Self {
+        Wrapped::new(inner)
+    }
+}
+
+impl serde::Serialize for Wrapped {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for Wrapped {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <Coords as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for Wrapped {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("Wrapped")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Coords as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <Coords as schemars::JsonSchema>::inline_schema()
+    }
+}

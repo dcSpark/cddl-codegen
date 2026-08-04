@@ -3,15 +3,13 @@
 ; tests/robustness/choice_cbor_ref_arm.cddl, kept as its own row because it reaches the failure
 ; through a different site and needed a different fix.
 ;
-; What it pins is that the rule-BODY registration strips the target's `Alias` wrapper before it
-; registers, so `x = bytes .cbor bar` lowers to a transparent alias. Without that strip the target
-; arrives as an already-`Alias`-wrapped `RustType`, and registering the rule body trips
-; `register_type_alias`'s first assertion, which forbids exactly that. The strip belongs to THIS
-; seam alone (`parsing::strip_alias_for_registration`): a MEMBER or type-choice arm keeps the node,
-; which is what routes an annotated target's custom codec and types the field by the alias name.
-; Stripping costs nothing structural here — a CDDL alias rule over a primitive generates a
-; TRANSPARENT `pub type Bar = u64;`, so the alias and its target are the same Rust type — and the
-; wire facts written on the target travel across the strip with it.
+; What it pins is that the rule-BODY registration resolves the reference and force-WRAPS it:
+; `x = bytes .cbor bar` mints `pub struct X(pub(crate) u64);` whose codec writes and reads the
+; byte-string framing, keeping the target's `Alias` node exactly as a member or type-choice arm does
+; (the node is what routes an annotated target's custom codec). A transparent alias here would have
+; carried the framing on an ident that mints no serializer, so `X::to_cbor_bytes` would have been
+; `Bar`'s and written the BARE uint — `register_type_alias`'s wire-facts assert now refuses that
+; shape outright.
 ;
 ; This row is also the reason the rule-graph edge that fixes the choice-arm sibling cannot ship on
 ; its own. That edge orders the target BEFORE its user, which is correct; but it means the body sees

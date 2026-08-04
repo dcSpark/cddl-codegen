@@ -2343,6 +2343,7 @@ impl<'a> IntermediateTypes<'a> {
                 alias, info.base_type
             );
         }
+        Self::assert_no_wire_facts_survive_a_transparent_alias(&alias, &info.base_type);
         // A top-level rule whose entire body resolves to a bare fixed value — `foo = 5`, `foo = -5`,
         // `foo = "text"`, `foo = 5.0`, the reserved-alias constants `foo = true`/`false`/`null`/`nil`,
         // or any of these behind a tag head (`foo = #6.n(5)`) — arrives here as a standalone `Fixed`
@@ -2394,6 +2395,73 @@ impl<'a> IntermediateTypes<'a> {
             self.record_custom_json_on_transparent_alias_rejection(&alias);
         }
         self.type_aliases.insert(alias.into(), info);
+    }
+
+    /// The transparent-alias wire invariant: **no wire-affecting property of a `RustType` may
+    /// survive on a root that emits a transparent alias.**
+    ///
+    /// A `pub type Foo = <target>;` line mints no type of its own, so `Foo`'s standalone
+    /// `to_cbor_bytes`/`from_cbor_bytes` ARE the target's — while every embed site of `Foo` applies
+    /// the encoding operations the alias entry carries (`write_bytes` around a `.cbor` payload, a
+    /// `write_tag` before a tagged body). One CDDL type then has two incompatible wire forms
+    /// depending on which use-site reached it, in a crate that compiles everywhere and says nothing.
+    /// That is the shape T1-02 was: a `bytes .cbor T` rule body registered here with a `CBORBytes`
+    /// operation on its base. It cannot register any more — the `.cbor` rule body force-wraps into a
+    /// real wrapper struct — and this assert is what keeps the class UNREPRESENTABLE rather than
+    /// re-found later: any FUTURE control operator that adds an encoding operation fails here at its
+    /// first registration instead of shipping a second silent wire form.
+    ///
+    /// It is an internal invariant, unreachable from user input, so a panic is the honest posture —
+    /// same class as the already-`Alias`-wrapped-base refusal above. Two carve-outs, both narrow and
+    /// both enumerated by GENERATION over every committed spec rather than by grep:
+    ///
+    /// 1. A base that is `Fixed`: the rule is refused, by `record_bare_fixed_rule_rejection` in this
+    ///    same function (`foo = #6.5(5)`, `tests/robustness/tagged_literal.cddl`). The entry is
+    ///    inserted only so a sibling's reference resolves during parse; `finalize` turns the
+    ///    rejection into an `Err` before anything is emitted, so no alias — and no surviving tag —
+    ///    ever reaches a wire. The invariant is about what EMITS.
+    /// 2. A tag operation (and ONLY a tag operation) on the two bases a tagged rule body still
+    ///    collapses to instead of wrapping: a collection (`#6.n([* t])` / `#6.n({ * k => v })`,
+    ///    registered by the named-array/named-table kind-walk through `AliasInfo::new_manual`) and an
+    ///    `Optional` (`#6.n(T / null)`, the `T / null` collapse). Those roots have the SAME
+    ///    standalone-vs-embed split this invariant describes, they had it before this assert existed,
+    ///    and fixing them is a separate delivery with its own blast radius (the wasm face, the
+    ///    matrix's tagged-collection cells). The class is recorded in `cddl-matrix/ROADMAP.md`
+    ///    § Findings ("A tagged collection / `T / null` rule body's standalone codec drops the tag")
+    ///    so it is a KNOWN exemption rather than an unknown; narrowing the carve-out to tag
+    ///    operations on exactly those bases keeps a future operation — or a tag on any other base —
+    ///    firing.
+    fn assert_no_wire_facts_survive_a_transparent_alias(alias: &RustIdent, base_type: &RustType) {
+        if base_type.encodings.is_empty() {
+            return;
+        }
+        if matches!(base_type.conceptual_type, ConceptualRustType::Fixed(_)) {
+            return;
+        }
+        let ledgered_tag_base = matches!(
+            base_type.conceptual_type,
+            ConceptualRustType::Array(_)
+                | ConceptualRustType::Map(_, _)
+                | ConceptualRustType::Optional(_)
+        );
+        let only_tags = base_type.encodings.iter().all(|op| {
+            matches!(
+                op,
+                CBOREncodingOperation::Tagged(_) | CBOREncodingOperation::OptionallyTagged(_)
+            )
+        });
+        if ledgered_tag_base && only_tags {
+            return;
+        }
+        panic!(
+            "register_type_alias({alias}): a transparent alias cannot carry wire-affecting \
+             encodings, and this one carries {:?}. `pub type {alias} = …;` mints no type of its \
+             own, so `{alias}`'s standalone to/from_cbor_bytes would be the target's (writing and \
+             accepting the UNWRAPPED form) while every embed site of `{alias}` applies these \
+             operations — one CDDL type with two wire forms. Register the rule as a wrapper struct \
+             (`RustStruct::new_wrapper`) instead, the way the `.cbor` and tag-head rule bodies do.",
+            base_type.encodings
+        );
     }
 
     /// The rejection for `@custom_json` on a rule that resolves to a transparent alias rather than to
@@ -5696,13 +5764,18 @@ mod rust_type;
 pub use rust_type::*;
 
 /// The refusal for a `.cbor` payload applied to a type whose own encoding chain ALREADY carries a
-/// `CBORBytes` operation — `bytes .cbor (bytes .cbor uint)` and the alias-flattened spelling
-/// (`inner = bytes .cbor uint` + `bytes .cbor inner`), which carry the SAME encoding chain by the
-/// time the operator is applied. An alias rule's own `.cbor` lives in its `RustType`'s ENCODING
-/// list, and resolving a reference to that rule copies the type whole (`resolve_alias`), so naming
-/// the rule instead of spelling it inline introduces no boundary: the second `.as_bytes()` lands on
-/// a chain that already has one. This is independent of the conceptual `Alias` node, which the
-/// member/arm seam keeps (see `parse_control_operator`'s `ControlOperator::CBOR` arm).
+/// `CBORBytes` operation, which is now exactly the INLINE spelling: `bytes .cbor (bytes .cbor uint)`
+/// and its deeper twins, where both depths live in one type expression and therefore in one
+/// `RustType`'s encoding list.
+///
+/// NAMING the inner payload is what introduces the boundary that makes the shape work: a
+/// `bytes .cbor T` rule body mints a wrapper struct with its own serialize fn and its own payload
+/// buffer, so `inner = bytes .cbor uint` referenced as `bytes .cbor inner` is a supported two-level
+/// wire shape (it needs no `@newtype` — the rule body force-wraps either way, which is what keeps
+/// `Inner`'s standalone codec from writing the bare payload). A transparent alias could not do
+/// that: its own `.cbor` rode on the `RustType` a reference copied whole, so the second
+/// `.as_bytes()` landed on a chain that already had one and the two spellings really were one
+/// chain. `register_type_alias`'s wire-facts assert now makes that class unrepresentable.
 ///
 /// Both spellings generated at exit 0 and emitted a crate that cannot build: the serialize walk
 /// names the payload buffer `<var>_inner_se` from the OWNING variable, so every depth in one chain
@@ -5711,10 +5784,10 @@ pub use rust_type::*;
 /// shape to generate, which is the parked feature; refusing keys on exactly the broken set.
 ///
 /// Nesting a payload through a STRUCT boundary is unaffected and stays supported, because the inner
-/// type then owns its own serialize fn and its own buffer: `inner = bytes .cbor uint ; @newtype`
-/// referenced as `bytes .cbor inner` emits the same two-level wire shape and builds. So does a
-/// payload nested inside a payload's COLLECTION (`bytes .cbor [* bytes .cbor uint]`) — the element
-/// is its own `RustType` with its own chain (`tests/corpus/cbor_payload_nested.cddl`).
+/// type then owns its own serialize fn and its own buffer: `inner = bytes .cbor uint` referenced as
+/// `bytes .cbor inner` emits the same two-level wire shape and builds. So does a payload nested
+/// inside a payload's COLLECTION (`bytes .cbor [* bytes .cbor uint]`) — the element is its own
+/// `RustType` with its own chain (`tests/corpus/cbor_payload_nested.cddl`).
 ///
 /// A FUNCTION rather than an inline message because two parse seams apply `.cbor` and must speak
 /// with one voice: the rule-BODY registration (`x = bytes .cbor T`) and `rust_type_from_type1`
@@ -5723,14 +5796,12 @@ pub use rust_type::*;
 pub fn nested_cbor_payload_rejection() -> String {
     "a `.cbor` payload whose own target is already a `.cbor` payload is unsupported — the \
      generated serializer names one payload buffer per owning value, so both depths would share \
-     it. The inline spelling (`bytes .cbor (bytes .cbor T)`) and the alias-flattened one \
-     (`inner = bytes .cbor T` referenced as `bytes .cbor inner`) are the same encoding chain here, \
-     because the target rule's own `.cbor` rides on the type a reference to it copies — naming the \
-     rule adds no boundary. Give the inner payload its own type to nest \
-     through — `inner = bytes .cbor T ; @newtype`, referenced as `bytes .cbor inner`, emits the \
-     same nested wire shape — or nest it inside a collection (`bytes .cbor [* bytes .cbor T]`), \
-     which is also supported. Depth-threading the payload buffer so the flat spelling generates is \
-     not implemented."
+     it. This is the INLINE spelling (`bytes .cbor (bytes .cbor T)`), where both depths sit in one \
+     type expression. Give the inner payload its own type to nest through — `inner = bytes .cbor \
+     T`, referenced as `bytes .cbor inner`, is a wrapper struct with its own payload buffer and \
+     emits the same nested wire shape — or nest it inside a collection \
+     (`bytes .cbor [* bytes .cbor T]`), which is also supported. Depth-threading the payload buffer \
+     so the flat spelling generates is not implemented."
         .to_string()
 }
 

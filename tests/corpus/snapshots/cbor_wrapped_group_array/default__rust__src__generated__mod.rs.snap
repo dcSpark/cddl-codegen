@@ -27,6 +27,12 @@ impl Coords {
     }
 }
 
+impl From<Wrapped> for Coords {
+    fn from(wrapper: Wrapped) -> Self {
+        wrapper.0
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Holder {
     pub c: Coords,
@@ -38,4 +44,21 @@ impl Holder {
     }
 }
 
-pub type Wrapped = Coords;
+#[derive(Clone, Debug)]
+pub struct Wrapped(pub(crate) Coords);
+
+impl Wrapped {
+    pub fn get(&self) -> &Coords {
+        &self.0
+    }
+
+    pub fn new(inner: Coords) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Coords> for Wrapped {
+    fn from(inner: Coords) -> Self {
+        Wrapped::new(inner)
+    }
+}
