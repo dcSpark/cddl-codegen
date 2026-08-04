@@ -832,6 +832,34 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   search returns its own fixed endpoint), plus the specific-error-keyed verdict shape and the
   cheaper reproduce-at-parent/pickaxe-first alternatives — live in
   `draft/bisect-verdict-discipline.md`.
+- **A finding's DEFECT-SIDE attribution recorded by narrative plausibility, not execution — the
+  RECORDING-side twin of the closure-side reproduce-at-parent rule above.** First instance
+  (caught at item pickup, cycle 10 of the burndown effort): the present-null-optional finding
+  (recorded `63feb259`, retired `78aab6d3`) attributed the dropped state to the CBOR re-encode
+  and the faithful behaviour to the json round-trip; worktree execution AT THE RECORDING COMMIT
+  showed the reverse on both surfaces (CBOR re-encoded `820082190338f6` byte-exact; the json
+  detour came back `820081190338`). The inversion was structural, not a typo's risk profile: the
+  surfacing gate (`corpus_decode_replay`'s json leg) proves the two decode surfaces DISAGREE — a
+  SYMMETRIC fact — and the prose then named a culprit the gate never identified. No existing
+  layer could have caught it: the `JSON_SURFACE_SKIP` guard asserts only that the cell STILL
+  FAILS, which stayed true (the disagreement was real, whichever side owned it), so an inverted
+  attribution stays green indefinitely; and the findings-claims arm (`project_corpus.ts` check
+  `I`) checks citation RESOLUTION, not claim semantics — the same boundary the entry above
+  records it stopping at. Cost while it stood: two burndown triage passes carried the row with
+  its fix shape pointed at the WRONG surface ("fix serialize for nullable-inner optionals"), and
+  only the pickup re-probe rule (AGENTS.md) prevented a delivery built against it. Working rule,
+  now, in place of a mechanical layer: **a finding that attributes a defect to ONE of several
+  surfaces or directions quotes each surface's executed probe output — bytes in, bytes out, per
+  surface, at the recording sha — in the entry; a disagreement gate licenses recording the
+  disagreement, and only an executed per-surface probe licenses naming the culprit.** (Symmetric
+  evidence for a symmetric fact; the closure-side rule above already demands the same discipline
+  when a finding is retired.) The mechanical layer, if the class recurs: skip-ledger rows carry a
+  machine-checkable failure SIGNATURE (which leg diverges, and the divergent bytes) that the
+  replay guard executes every run, so a recorded attribution is re-asserted continuously instead
+  of trusted from its recording day. Reopening signal: a SECOND finding whose recorded
+  surface/direction attribution is falsified at pickup — measured by the pickup party, who is
+  already re-probing premises under AGENTS.md's rule, so the observation arrives as a by-product
+  of work being done anyway.
 - **A "no gate demands this" premise probed against ONE gate is not evidence about a gate in
   another TIER — and a full-tier gate is where such a premise survives longest, because CI runs
   `fast` only.** Proven instance: the `@no_json_schema_export` delivery deferred its cddl-matrix
