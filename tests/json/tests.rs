@@ -90,6 +90,25 @@ mod tests {
         assert_eq!(json_str, serde_json::to_string_pretty(&from_json).unwrap());
     }
 
+    // `@custom_json` in CONTAINED position. `CustomHolder` derives serde and schemars, and each
+    // derive re-demands that trait on its `CustomWrapper` member — so this test's mere COMPILATION
+    // is the proof that the hand-written impls the directive promises satisfy the contained flavor,
+    // which is the one a real consumer always hits. What it then asserts is that the container's
+    // derive routes the member through those hand impls unchanged: the member renders as the
+    // quoted-decimal string the standalone `custom_wrapper` test pins, never as the number the
+    // derives would have produced on their own.
+    #[test]
+    fn custom_wrapper_in_derived_container() {
+        let json_str = r#"{"c":"1234"}"#;
+        let holder = CustomHolder::new(CustomWrapper::from(1234u64));
+        assert_eq!(serde_json::to_string(&holder).unwrap(), json_str);
+        let from_json: CustomHolder = serde_json::from_str(json_str).unwrap();
+        assert_eq!(serde_json::to_string(&from_json).unwrap(), json_str);
+        // the member's own rejection door still applies through the container
+        assert_json_reject::<CustomHolder>(r#"{"c":1234}"#, "invalid type");
+        assert_json_reject::<CustomHolder>(r#"{"c":"abc"}"#, "invalid u64 as string");
+    }
+
     // The bare `Int` serializes as the signed decimal *string* (see its serde impls): a JSON number
     // can't hold the full RFC 8949 §3.1 range (-2^64..=2^64-1), and the derived enum form would leak
     // the nint encoding (`{"Nint":4}` actually meaning -5). Known-answer pairs (Int <-> exact JSON),
@@ -263,6 +282,10 @@ mod tests {
         check!(NintWrapper, NintWrapper::new(u64::MAX));
         check!(StructWrapper, StructWrapper::new(U64Wrapper::new(u64::MAX)));
         check!(CustomWrapper, CustomWrapper::new(1234));
+        // the CONTAINED flavor: the holder's DERIVED schema delegates the member to the
+        // hand-written `JsonSchema` impl, so the published shape agrees with what the hand-written
+        // `Serialize` actually writes
+        check!(CustomHolder, CustomHolder::new(CustomWrapper::new(1234)));
         check!(Int, Int::new_uint(u64::MAX));
         check!(Int, Int::new_nint(499));
         let mut table = Table::new();
@@ -316,6 +339,10 @@ mod tests {
         check_rejects!(StructWrapper, serde_json::json!("nope"));
         // ...and object-shaped forms reject a wrong-typed field
         check_rejects!(TableHolder, serde_json::json!({"t": {"a": "nope"}}));
+        // the contained `@custom_json` member's hand-written schema is string-shaped, so a
+        // number-valued member fails the holder's derived schema (an over-permissive delegation —
+        // the likeliest decay for a hand impl reached through a derive — would accept it)
+        check_rejects!(CustomHolder, serde_json::json!({"c": 1234}));
         // WI-4: a PairMap's array-of-pairs schema rejects an OBJECT for the field (the object form a
         // naive map JSON would use) — proving the schema is the honest array shape, not object-shaped.
         check_rejects!(PreservePmapJson, serde_json::json!({"xs": {"1": "a"}}));

@@ -12,6 +12,14 @@ nint_wrapper = nint ; @newtype
 
 struct_wrapper = u64_wrapper ; @newtype
 custom_wrapper = uint ; @newtype @custom_json
+; `@custom_json` in CONTAINED position: a serde/schemars-DERIVED holder whose member is the type
+; whose json impls the user owns. The derived holder's `Serialize`/`Deserialize`/`JsonSchema` each
+; demand the same trait on `custom_wrapper`, so this member is the compile proof that the hand impls
+; the directive promises satisfy the contained flavor too — not just the type's own standalone
+; surface. It is the flavor a real consumer always hits (a hand-owned JSON type is written to be
+; held), and it holds on all three surfaces this fixture builds: the rust crate, the wasm wrapper's
+; to_json/from_json door, and json-gen's schema row.
+custom_holder = [c: custom_wrapper]
 
 ; NB: float JSON lives in tests/json-float/, whose fixture carries the schema-validation and
 ; bit-exact-f64 round-trip tests this one has no home for. The split dates from preserve-encodings

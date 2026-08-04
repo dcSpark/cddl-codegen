@@ -98,6 +98,17 @@ impl schemars::JsonSchema for BytesWrapper {
     }
 }
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct CustomHolder {
+    pub c: CustomWrapper,
+}
+
+impl CustomHolder {
+    pub fn new(c: CustomWrapper) -> Self {
+        Self { c }
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct CustomWrapper(pub(crate) u64);
 
