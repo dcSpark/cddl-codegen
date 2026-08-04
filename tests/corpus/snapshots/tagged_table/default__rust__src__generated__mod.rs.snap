@@ -29,4 +29,27 @@ impl Holder {
     }
 }
 
-pub type TaggedTable = BTreeMap<String, u64>;
+#[derive(Clone, Debug)]
+pub struct TaggedTable(pub(crate) BTreeMap<String, u64>);
+
+impl TaggedTable {
+    pub fn get(&self) -> &BTreeMap<String, u64> {
+        &self.0
+    }
+
+    pub fn new(inner: BTreeMap<String, u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<BTreeMap<String, u64>> for TaggedTable {
+    fn from(inner: BTreeMap<String, u64>) -> Self {
+        TaggedTable::new(inner)
+    }
+}
+
+impl From<TaggedTable> for BTreeMap<String, u64> {
+    fn from(wrapper: TaggedTable) -> Self {
+        wrapper.0
+    }
+}

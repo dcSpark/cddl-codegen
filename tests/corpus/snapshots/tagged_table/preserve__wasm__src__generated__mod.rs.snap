@@ -58,14 +58,12 @@ impl AsRef<cddl_lib::Holder> for Holder {
     }
 }
 
-pub type MapTextToU64 = TaggedTable;
-
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedTable(pub(crate) cddl_lib::TaggedTable);
+pub struct MapTextToU64(pub(crate) OrderedHashMap<String, u64>);
 
 #[wasm_bindgen]
-impl TaggedTable {
+impl MapTextToU64 {
     pub fn new() -> Self {
         Self(OrderedHashMap::new())
     }
@@ -84,6 +82,49 @@ impl TaggedTable {
 
     pub fn keys(&self) -> Vec<String> {
         self.0.keys().cloned().collect::<Vec<_>>()
+    }
+}
+
+impl From<OrderedHashMap<String, u64>> for MapTextToU64 {
+    fn from(native: OrderedHashMap<String, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapTextToU64> for OrderedHashMap<String, u64> {
+    fn from(wasm: MapTextToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<String, u64>> for MapTextToU64 {
+    fn as_ref(&self) -> &OrderedHashMap<String, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedTable(pub(crate) cddl_lib::TaggedTable);
+
+#[wasm_bindgen]
+impl TaggedTable {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedTable, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &MapTextToU64) -> Self {
+        Self(cddl_lib::TaggedTable::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> MapTextToU64 {
+        self.0.get().clone().into()
     }
 }
 

@@ -1254,26 +1254,54 @@ fn parse_type_choices(
         // list on (it is exposed as a nullable of T's own wasm spelling, so the wrapper would either
         // duplicate T's or name no class at all). Reject rather than mark: marking would put the
         // rule into the demand/elem sets and let the wrapper minters silently produce nothing.
+        // Both are scoped to the UNTAGGED collapse, which is the one that registers a transparent
+        // alias. A TAGGED `T / null` rule wraps (below), so it mints a real class — but wiring the
+        // wasm map-key / loose-list minters for a wrapper over an `Optional` inner is its own work,
+        // and until it exists the honest answer is still a refusal, with the reason the tagged shape
+        // actually has rather than the untagged one's.
         if rule_metadata.key_demand.is_some() {
-            types.record_rejection(format!(
-                "@used_as_key on `{name}`: a `T / null` rule collapses to a transparent `Option<T>` \
-                 alias, which mints no wasm class of its own, so there is nothing for a map-key \
-                 wrapper to key on. Put the directive on the rule for the inner type `T` instead."
-            ));
+            types.record_rejection(if tag.is_some() {
+                format!(
+                    "@used_as_key on `{name}`: a tagged `T / null` rule wraps into a struct over an \
+                     `Option<T>` inner, and the wasm map-key wrapper minter has no boundary for an \
+                     optional key type. Put the directive on the rule for the inner type `T` instead."
+                )
+            } else {
+                format!(
+                    "@used_as_key on `{name}`: a `T / null` rule collapses to a transparent \
+                     `Option<T>` alias, which mints no wasm class of its own, so there is nothing \
+                     for a map-key wrapper to key on. Put the directive on the rule for the inner \
+                     type `T` instead."
+                )
+            });
         }
         if rule_metadata.used_as_elem {
-            types.record_rejection(format!(
-                "@used_as_elem on `{name}`: a `T / null` rule collapses to a transparent \
-                 `Option<T>` alias, which mints no wasm class of its own, so there is no element \
-                 type for a loose-list wrapper to hold. Put the directive on the rule for the inner \
-                 type `T` instead."
-            ));
+            types.record_rejection(if tag.is_some() {
+                format!(
+                    "@used_as_elem on `{name}`: a tagged `T / null` rule wraps into a struct over an \
+                     `Option<T>` inner, and the wasm loose-list wrapper minter has no boundary for \
+                     an optional element type. Put the directive on the rule for the inner type `T` \
+                     instead."
+                )
+            } else {
+                format!(
+                    "@used_as_elem on `{name}`: a `T / null` rule collapses to a transparent \
+                     `Option<T>` alias, which mints no wasm class of its own, so there is no \
+                     element type for a loose-list wrapper to hold. Put the directive on the rule \
+                     for the inner type `T` instead."
+                )
+            });
         }
         // `@newtype` mints a wrapper STRUCT around the rule's body; this branch registers a
         // transparent alias and no struct, so the directive has nothing to wrap and would silently
         // do nothing (on every other alias-producing rule body it does mint the wrapper, which is
         // what makes the drop a surprise rather than a documented shape).
-        if rule_metadata.newtype.is_some() {
+        // Scoped to the UNTAGGED collapse. A TAGGED `T / null` rule wraps unconditionally (below),
+        // so there the directive is redundant-but-honored exactly as on a single-type tag rule and
+        // a `.cbor` rule body — and this rejection was never reached on the tagged path anyway, so
+        // `#6.10(uint / null) ; @newtype` used to be a SILENT drop (exit 0, empty stderr, no
+        // wrapper). Force-wrapping dissolves that drop by construction.
+        if tag.is_none() && rule_metadata.newtype.is_some() {
             types.record_rejection(format!(
                 "@newtype on `{name}`: a `T / null` rule collapses to a transparent `Option<T>` \
                  alias, and no wrapper struct is generated for it, so the directive would silently \
@@ -1305,6 +1333,22 @@ fn parse_type_choices(
                     misplaced.join(" / ")
                 ));
             }
+        }
+        // A TAGGED `T / null` rule WRAPS: the tag rides `final_type`, and a transparent
+        // `pub type Topt = Option<u64>;` mints no type to hang it on — `Topt::to_cbor_bytes` would
+        // be `Option<u64>`'s, writing the payload with NO tag, while every embed site of the rule
+        // writes `write_tag(n)` first and every embed site's decoder requires it. Same reasoning,
+        // and the same byte-identical-to-`@newtype` outcome, as the tagged-collection and `.cbor`
+        // rule bodies; `register_type_alias`'s wire-facts assert makes the alias spelling
+        // unrepresentable rather than merely unused. The UNTAGGED collapse is unaffected and stays
+        // the transparent `Option<T>` alias it has always been.
+        if tag.is_some() {
+            types.register_rust_struct(
+                parent_visitor,
+                RustStruct::new_wrapper(name.clone(), None, Some(&rule_metadata), final_type, None),
+                cli,
+            );
+            return;
         }
         types.register_type_alias(
             name.clone(),
@@ -1509,14 +1553,55 @@ fn parse_type_choices(
                     .as_optionally_tagged()
                     .as_set_nominal()
                 }
-                ConceptualRustType::Array(element_type) => RustStruct::new_array(
-                    name.clone(),
-                    Some(set_tag),
-                    Some(&effective_metadata),
-                    *element_type,
-                    bounds,
-                )
-                .as_optionally_tagged(),
+                // A NON-258 optional-tag idiom does not nominalize (no set semantics — that is
+                // the 258 registry entry's alone, and the branch above owns it), but it still
+                // WRAPS: the tag is a wire-affecting property, and a transparent
+                // `pub type Foo = Vec<u64>;` carrying `OptionallyTagged(42)` would make
+                // `Foo::from_cbor_bytes` refuse the tagged half of the wire the idiom exists to
+                // admit while every embed site accepts both. The inner stays a plain `Vec` — the
+                // `OrderedSet` twin belongs to the set-nominal branch, not to wrapping.
+                ConceptualRustType::Array(element_type) => {
+                    let mut array_type: RustType = ConceptualRustType::Array(element_type).into();
+                    if let Some(bounds) = bounds {
+                        array_type = array_type.with_bounds(bounds);
+                    }
+                    RustStruct::new_wrapper(
+                        name.clone(),
+                        Some(set_tag),
+                        Some(&effective_metadata),
+                        array_type,
+                        None,
+                    )
+                    .as_optionally_tagged()
+                }
+                // The MAP flavor of the optional-tag idiom WRAPS, for the same reason its array
+                // sibling nominalizes above and the mandatory-tag table body does: a transparent
+                // `pub type Sm = BTreeMap<..>;` carrying `OptionallyTagged(258)` mints no type to
+                // hang the tag on, so `Sm::from_cbor_bytes` would REFUSE the tagged half of the very
+                // wire the idiom exists to admit while every embed site accepts both. The one
+                // exemption is the same one the mandatory-tag table body carries — a `preserve`
+                // policy, whose `PairMap` inner has no wired wasm wrapper boundary (see that seam's
+                // comment); it stays a transparent alias and is ledgered with it.
+                ConceptualRustType::Map(key_type, value_type)
+                    if !matches!(
+                        effective_metadata.duplicates,
+                        Some(DuplicatesPolicy::Preserve)
+                    ) =>
+                {
+                    let mut map_type: RustType =
+                        ConceptualRustType::Map(key_type, value_type).into();
+                    if let Some(bounds) = bounds {
+                        map_type = map_type.with_bounds(bounds);
+                    }
+                    RustStruct::new_wrapper(
+                        name.clone(),
+                        Some(set_tag),
+                        Some(&effective_metadata),
+                        map_type,
+                        None,
+                    )
+                    .as_optionally_tagged()
+                }
                 ConceptualRustType::Map(key_type, value_type) => RustStruct::new_table(
                     name.clone(),
                     Some(set_tag),
@@ -6647,8 +6732,16 @@ fn parse_group_choice(
                     None,
                 )
                 .as_set_nominal()
-            } else if rule_metadata.newtype.is_some() {
-                // generate newtype over array. Route through the SAME effective-metadata helper the
+            } else if rule_metadata.newtype.is_some() || tag.is_some() {
+                // generate newtype over array — on `@newtype`, and UNCONDITIONALLY when the rule
+                // carries a TAG. A tagged transparent alias (`pub type TaggedArr = Vec<u64>;` with
+                // the tag riding the alias entry) mints no type to hang the tag on, so
+                // `TaggedArr::to_cbor_bytes` would be `Vec<u64>`'s — writing the BARE array while
+                // every embed site of the rule writes `write_tag(n)` first and every embed site's
+                // decoder requires it. Same reasoning as the single-type tag rule and the `.cbor`
+                // rule body; `register_type_alias`'s wire-facts assert makes the alias spelling
+                // unrepresentable rather than merely unused, and `@newtype` is redundant here.
+                // Route through the SAME effective-metadata helper the
                 // plain single-arm array path uses so a single-arm tag-258 `@newtype` wrapper
                 // (`#6.258([* a]) ; @newtype`) picks up the registry's set-semantics default
                 // (reject) and fires the single-arm defaulting notice, exactly as the non-newtype
@@ -6760,7 +6853,25 @@ fn parse_group_choice(
                     );
                 }
             }
-            if rule_metadata.newtype.is_some() {
+            // A tag forces the wrapper for the reason the array sibling above states: a tagged
+            // transparent map alias drops the tag from the rule's own standalone
+            // `to/from_cbor_bytes` while every embed site writes and requires it. ONE combination is
+            // exempt and stays a transparent alias: a `preserve` policy, whose inner is the
+            // `PairMap` twin. A wrapper cannot carry that inner — the register-side threading is
+            // scoped to `Array` deliberately, because the synthesized structural map wasm wrapper
+            // class wraps `BTreeMap`, not `PairMap` (probed: the wasm crate fails E0425 on a missing
+            // `PairMapU64ToText`), so wrapping here would either drop the directive silently or emit
+            // a wasm crate that cannot build. A preserve-table ALIAS works under wasm only because
+            // the named rule itself becomes the `PairMap` class. Refusing instead is not available
+            // either: `#6.n({…}) ; @duplicates preserve` generates and compiles today, so a refusal
+            // would be a support regression. The combination therefore keeps the standalone-tag-drop
+            // it has always had, ledgered in `cddl-matrix/ROADMAP.md` § Findings and carved out of
+            // the transparent-alias wire assert by name. Wiring the PairMap-aware wasm wrapper is
+            // what retires both.
+            let preserve_table =
+                matches!(rule_metadata.duplicates, Some(DuplicatesPolicy::Preserve));
+            if rule_metadata.newtype.is_some() || (tag.is_some() && !preserve_table) {
+                //
                 // `@duplicates` on a `@newtype` TABLE is not yet supported: a `preserve` policy
                 // would swap the wrapper's inner to the `PairMap` twin, but the synthesized
                 // structural map wasm wrapper class wraps `BTreeMap`, not `PairMap`, so the wasm
@@ -6770,7 +6881,12 @@ fn parse_group_choice(
                 // transparent-table-alias workaround. draft/set-architecture-plan.md
                 // "Phase 2.2 — named set rules nominalize" wires the PairMap-aware wasm wrapper and
                 // subsumes this rejection.
-                if rule_metadata.duplicates.is_some() {
+                // Scoped to an AUTHOR-WRITTEN `@newtype`, which is what the message names: a
+                // TAG-forced wrapper can only ever reach here carrying `reject` (a documented no-op
+                // for tables — `preserve` is exempted from the force-wrap above precisely because
+                // its `PairMap` inner is what this rejection is about), so nothing is dropped and
+                // nothing unbuildable is emitted.
+                if rule_metadata.newtype.is_some() && rule_metadata.duplicates.is_some() {
                     types.record_rejection(format!(
                             "@duplicates on rule `{name}`: a `@duplicates` policy on a `@newtype` table \
                              (`{{ * k => v }} ; @newtype`) is not yet supported — the PairMap wasm \

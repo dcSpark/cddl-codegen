@@ -262,35 +262,12 @@ expression: ir
                     RustField {
                         name: "a",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "OuterOverArray",
-                                    ),
-                                ),
-                                Array(
-                                    RustType {
-                                        conceptual_type: Rust(
-                                            RustIdent(
-                                                "ElemTagged",
-                                            ),
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            duplicates: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "OuterOverArray",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    24,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
@@ -468,12 +445,24 @@ expression: ir
             duplicates: None,
             set_nominal: false,
         },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Rust(
-                    RustIdent(
-                        "ElemTagged",
-                    ),
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Rust(
+                            RustIdent(
+                                "ElemTagged",
+                            ),
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
@@ -484,7 +473,8 @@ expression: ir
                     basic_override: false,
                 },
             },
-            bounds: None,
+            min_max: None,
+            float_min_max: None,
         },
     },
 }

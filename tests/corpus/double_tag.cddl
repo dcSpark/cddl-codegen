@@ -5,8 +5,9 @@
 ; is closed STRUCTURALLY by nominalization (there is nothing left to stack). This fixture pins that
 ; outcome; the depth-suffixed stacking of genuinely-flattened NON-set tags (`{name}_tag_encoding` at
 ; level 1, `{name}_tag{k}_encoding` at level k>=2) is pinned by
-; `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated` (non-258 tags, which stay
-; transparent aliases whose tag DOES flatten).
+; `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated`, whose carrier is a tag
+; written into a MEMBER's own type expression — since T1-13 EVERY tagged rule body wraps and owns its
+; tag, so a rule reference never contributes a flattened level any more).
 ;
 ; - `homogeneous_inner` / `homogeneous` — outer mandatory tag 24 over a single-arm 258 set nominal:
 ;   `HomogeneousEncoding` carries only `inner_tag_encoding: Option<cbor_event::Sz>` (the 258 lives in

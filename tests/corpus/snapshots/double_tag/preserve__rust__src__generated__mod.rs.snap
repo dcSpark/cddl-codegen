@@ -187,7 +187,7 @@ use crate::generated::error::*;
 use crate::generated::ordered_set::OrderedSet;
 use cbor_encodings::{
     ElemTaggedEncoding, HeterogeneousEncoding, HeterogeneousSetEncoding, HolderEncoding,
-    HomogeneousEncoding, HomogeneousInnerEncoding,
+    HomogeneousEncoding, HomogeneousInnerEncoding, OuterOverArrayEncoding,
 };
 
 #[derive(Clone, Debug, derivative::Derivative)]
@@ -373,4 +373,33 @@ impl From<HomogeneousInner> for OrderedSet<u64> {
     }
 }
 
-pub type OuterOverArray = Vec<ElemTagged>;
+#[derive(Clone, Debug)]
+pub struct OuterOverArray {
+    pub(crate) inner: Vec<ElemTagged>,
+    pub encodings: Option<OuterOverArrayEncoding>,
+}
+
+impl OuterOverArray {
+    pub fn get(&self) -> &Vec<ElemTagged> {
+        &self.inner
+    }
+
+    pub fn new(inner: Vec<ElemTagged>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Vec<ElemTagged>> for OuterOverArray {
+    fn from(inner: Vec<ElemTagged>) -> Self {
+        OuterOverArray::new(inner)
+    }
+}
+
+impl From<OuterOverArray> for Vec<ElemTagged> {
+    fn from(wrapper: OuterOverArray) -> Self {
+        wrapper.inner
+    }
+}

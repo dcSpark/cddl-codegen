@@ -13,6 +13,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::Homogeneous>();
     reg.add::<cddl_lib::HomogeneousInner>();
+    reg.add::<cddl_lib::OuterOverArray>();
 }
 
 pub fn export_schemas() {

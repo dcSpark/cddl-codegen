@@ -309,4 +309,27 @@ impl From<HomogeneousInner> for OrderedSet<u64> {
     }
 }
 
-pub type OuterOverArray = Vec<ElemTagged>;
+#[derive(Clone, Debug)]
+pub struct OuterOverArray(pub(crate) Vec<ElemTagged>);
+
+impl OuterOverArray {
+    pub fn get(&self) -> &Vec<ElemTagged> {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<ElemTagged>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<ElemTagged>> for OuterOverArray {
+    fn from(inner: Vec<ElemTagged>) -> Self {
+        OuterOverArray::new(inner)
+    }
+}
+
+impl From<OuterOverArray> for Vec<ElemTagged> {
+    fn from(wrapper: OuterOverArray) -> Self {
+        wrapper.0
+    }
+}

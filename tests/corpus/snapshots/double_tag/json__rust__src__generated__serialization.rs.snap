@@ -145,11 +145,7 @@ impl cbor_event::se::Serialize for Holder {
         serializer.write_array(cbor_event::Len::Len(3))?;
         self.h.serialize(serializer)?;
         self.s.serialize(serializer)?;
-        serializer.write_tag(24u64)?;
-        serializer.write_array(cbor_event::Len::Len(self.a.len() as u64))?;
-        for element in self.a.iter() {
-            element.serialize(serializer)?;
-        }
+        self.a.serialize(serializer)?;
         Ok(serializer)
     }
 }
@@ -164,33 +160,8 @@ impl Deserialize for Holder {
             let h = Homogeneous::deserialize(raw).map_err(|e: DeserializeError| e.annotate("h"))?;
             let s =
                 Heterogeneous::deserialize(raw).map_err(|e: DeserializeError| e.annotate("s"))?;
-            let a = (|| -> Result<_, DeserializeError> {
-                match raw.tag()? {
-                    24 => {
-                        let mut a_arr = Vec::new();
-                        let len = raw.array()?;
-                        while match len {
-                            cbor_event::Len::Len(n) => (a_arr.len() as u64) < n,
-                            cbor_event::Len::Indefinite => true,
-                        } {
-                            if matches!(len, cbor_event::Len::Indefinite)
-                                && raw.cbor_type()? == cbor_event::Type::Special
-                                && raw.special_break()?
-                            {
-                                break;
-                            }
-                            a_arr.push(ElemTagged::deserialize(raw)?);
-                        }
-                        Ok(a_arr)
-                    }
-                    tag => Err(DeserializeFailure::TagMismatch {
-                        found: tag,
-                        expected: 24,
-                    }
-                    .into()),
-                }
-            })()
-            .map_err(|e| e.annotate("a"))?;
+            let a =
+                OuterOverArray::deserialize(raw).map_err(|e: DeserializeError| e.annotate("a"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -278,5 +249,53 @@ impl Deserialize for HomogeneousInner {
             }))
         })()
         .map_err(|e| e.annotate("HomogeneousInner"))
+    }
+}
+
+impl cbor_event::se::Serialize for OuterOverArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_tag(24u64)?;
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for element in self.0.iter() {
+            element.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OuterOverArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                24 => {
+                    let mut inner_arr = Vec::new();
+                    let len = raw.array()?;
+                    while match len {
+                        cbor_event::Len::Len(n) => (inner_arr.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        inner_arr.push(ElemTagged::deserialize(raw)?);
+                    }
+                    inner_arr
+                }
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 24,
+                    }
+                    .into());
+                }
+            }))
+        })()
+        .map_err(|e| e.annotate("OuterOverArray"))
     }
 }

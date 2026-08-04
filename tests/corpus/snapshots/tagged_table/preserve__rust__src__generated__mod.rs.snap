@@ -21,7 +21,7 @@ mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
-use cbor_encodings::HolderEncoding;
+use cbor_encodings::{HolderEncoding, TaggedTableEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Holder {
@@ -38,4 +38,33 @@ impl Holder {
     }
 }
 
-pub type TaggedTable = OrderedHashMap<String, u64>;
+#[derive(Clone, Debug)]
+pub struct TaggedTable {
+    pub(crate) inner: OrderedHashMap<String, u64>,
+    pub encodings: Option<TaggedTableEncoding>,
+}
+
+impl TaggedTable {
+    pub fn get(&self) -> &OrderedHashMap<String, u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: OrderedHashMap<String, u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedHashMap<String, u64>> for TaggedTable {
+    fn from(inner: OrderedHashMap<String, u64>) -> Self {
+        TaggedTable::new(inner)
+    }
+}
+
+impl From<TaggedTable> for OrderedHashMap<String, u64> {
+    fn from(wrapper: TaggedTable) -> Self {
+        wrapper.inner
+    }
+}

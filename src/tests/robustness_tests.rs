@@ -1702,9 +1702,11 @@ fn well_known_tag_258_default_shape_guard_negatives() {
 
     // Non-258 collapse (`#6.259([* uint]) / [* uint]`): the collapse is tag-agnostic but the registry
     // is not — only 258 carries set semantics, so a 259 idiom keeps today's PRESERVE default (`Vec`).
+    // (It WRAPS, like every tagged rule body since T1-13 — the boundary this pins is the INNER
+    // representation, not the wrapping.)
     let non_258 = gen_src("foo = #6.259([* uint]) / [* uint]\nholder = [f: foo]\n");
     assert!(
-        non_258.contains("pub type Foo = Vec<u64>;") && !non_258.contains("OrderedSet"),
+        non_258.contains("pub struct Foo(pub(crate) Vec<u64>)") && !non_258.contains("OrderedSet"),
         "a non-258 collapsed idiom must keep the plain `Vec` preserve default:\n{non_258}"
     );
 }
@@ -5255,9 +5257,10 @@ fn size_on_signed_int_rejects_gracefully() {
         .expect("`uint .size N` is spec-defined and supported — must keep generating");
 }
 
-/// Stacked tag encodings (a tag applied to an already-tagged value, reached via alias/rule-reference
-/// stacking since literal `#6.24(#6.258(..))` is parse-rejected) must give each tag level its OWN
-/// encoding member. Levels are counted OUTSIDE-IN: level 1 keeps today's `{name}_tag_encoding`
+/// Stacked tag encodings (a tag applied to an already-tagged value, reached by writing the outer tag
+/// into a MEMBER's own type expression — the rule-BODY spelling `foo = #6.24(#6.100(uint))` is
+/// parse-rejected, and a tagged rule body wraps rather than flattening) must give each tag level its
+/// OWN encoding member. Levels are counted OUTSIDE-IN: level 1 keeps today's `{name}_tag_encoding`
 /// (byte-stability for all existing single-tag output), level k >= 2 mints `{name}_tag{k}_encoding`.
 /// Without this both levels reuse `inner_tag_encoding`, emitting a struct with two identically-named
 /// members that does not compile — homogeneous (two mandatory tags -> two `Option<cbor_event::Sz>`)
@@ -5293,8 +5296,8 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
     // The declaration lines inside `pub struct FooEncoding { .. }` — the members that collide.
     fn foo_member_lines(encodings: &str) -> Vec<String> {
         let start = encodings
-            .find("pub struct FooEncoding {")
-            .unwrap_or_else(|| panic!("no FooEncoding struct in:\n{encodings}"));
+            .find("pub struct HolderEncoding {")
+            .unwrap_or_else(|| panic!("no HolderEncoding struct in:\n{encodings}"));
         let rest = &encodings[start..];
         let end = rest.find('}').expect("FooEncoding struct must close");
         rest[..end]
@@ -5305,16 +5308,14 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
             .collect()
     }
 
-    // Non-258 tags throughout: a 258 SET now NOMINALIZES (Phase 2.2), so it OWNS its tag inside its own
-    // encoding struct and no longer flattens onto the holder — the flattened-stack scenario this pins
-    // (depth-suffixed members) is exercised by a NON-258 tagged collection, which stays a transparent
-    // alias whose tag DOES flatten. (The `#6.24(<258-set>)` double-tag flavor is closed structurally by
-    // nominalization; `double_tag.cddl` pins that outcome.)
+    // The carrier is MEMBER position, because a rule BODY no longer flattens a tag onto anything: a
+    // tagged rule body of every shape now WRAPS (T1-13), so it owns its tag inside its own encoding
+    // struct exactly as a 258 set nominal always did. What still stacks is a tag written into a
+    // MEMBER's own type expression over an already-tagged inner — the levels then flatten onto the
+    // holder's encoding struct and collide unless depth-suffixed, which is the mechanism this pins.
+    // (The rule-body double-tag spelling `foo = #6.24(#6.100(uint))` is parse-rejected outright.)
     // Flavor A (homogeneous): two mandatory tags stack, both lowering to `Option<cbor_event::Sz>`.
-    let flavor_a = gen_encodings(
-        "xs = #6.100([* uint])\nfoo = #6.24(xs)\nholder = [f: foo]\n",
-        "a",
-    );
+    let flavor_a = gen_encodings("holder = [f: #6.24(#6.100(uint))]\n", "a");
     let a_members = foo_member_lines(&flavor_a);
     let mut a_sorted = a_members.clone();
     a_sorted.sort();
@@ -5322,19 +5323,26 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
     assert_eq!(
         a_sorted.len(),
         a_members.len(),
-        "FooEncoding must have no duplicated member declaration; got:\n{a_members:#?}"
+        "HolderEncoding must have no duplicated member declaration; got:\n{a_members:#?}"
     );
     assert!(
-        flavor_a.contains("pub inner_tag_encoding: Option<cbor_event::Sz>")
-            && flavor_a.contains("pub inner_tag2_encoding: Option<cbor_event::Sz>"),
-        "homogeneous stacked tags must mint level-1 `inner_tag_encoding` and level-2 \
-         `inner_tag2_encoding`; got:\n{flavor_a}"
+        flavor_a.contains("pub f_tag_encoding: Option<cbor_event::Sz>")
+            && flavor_a.contains("pub f_tag2_encoding: Option<cbor_event::Sz>"),
+        "homogeneous stacked tags must mint level-1 `f_tag_encoding` and level-2 \
+         `f_tag2_encoding`; got:\n{flavor_a}"
     );
 
-    // Flavor B (heterogeneous): mandatory outer 24 (level 1, `Option<Sz>`) + optional inner 258
-    // (level 2, `TagPresenceEncoding`).
+    // Flavor B (heterogeneous): mandatory outer 24 (level 1, `Option<Sz>`) + an OPTIONAL inner tag
+    // (level 2, `TagPresenceEncoding`). The carrier is the one rule shape whose tag still rides a
+    // transparent alias — a tagged PRESERVE table, carved out of the transparent-alias wire assert
+    // because a wrapper cannot hold its `PairMap` inner (see
+    // `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias`). That coupling is
+    // deliberate and load-bearing: when the PairMap-aware wasm wrapper lands and the carve-out
+    // retires, this flavor loses its last spelling and the optional-tag level-2 path becomes
+    // unreachable — retire the flavor with it rather than inventing a carrier.
     let flavor_b = gen_encodings(
-        "set = #6.100([* uint]) / [* uint]\nfoo = #6.24(set)\nholder = [f: foo]\n",
+        "set = #6.100({* uint => tstr}) / {* uint => tstr} ; @duplicates preserve\n\
+         holder = [f: #6.24(set)]\n",
         "b",
     );
     let b_members = foo_member_lines(&flavor_b);
@@ -5344,16 +5352,16 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
     assert_eq!(
         b_sorted.len(),
         b_members.len(),
-        "FooEncoding must have no duplicated member declaration; got:\n{b_members:#?}"
+        "HolderEncoding must have no duplicated member declaration; got:\n{b_members:#?}"
     );
     assert!(
-        flavor_b.contains("pub inner_tag_encoding: Option<cbor_event::Sz>"),
-        "heterogeneous outer mandatory 24 must be level-1 `inner_tag_encoding: Option<cbor_event::Sz>`; \
+        flavor_b.contains("pub f_tag_encoding: Option<cbor_event::Sz>"),
+        "heterogeneous outer mandatory 24 must be level-1 `f_tag_encoding: Option<cbor_event::Sz>`; \
          got:\n{flavor_b}"
     );
     assert!(
-        flavor_b.contains("pub inner_tag2_encoding: TagPresenceEncoding"),
-        "heterogeneous inner optional 258 must be level-2 `inner_tag2_encoding: TagPresenceEncoding`; \
+        flavor_b.contains("pub f_tag2_encoding: TagPresenceEncoding"),
+        "heterogeneous inner optional tag must be level-2 `f_tag2_encoding: TagPresenceEncoding`; \
          got:\n{flavor_b}"
     );
 
@@ -5364,7 +5372,7 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
     // boundary — the same reset `encoding_fields_impl` does — or the write reads a depth-inflated
     // `f_elem_tag2_encoding` the encoding struct never minted (E0425, the generated crate breaks).
     let flavor_c_ser = gen_file(
-        "t100s = #6.100([* uint])\nfoo = #6.24([* t100s])\nholder = [f: foo]\n",
+        "holder = [f: #6.24([* #6.100(uint)])]\n",
         "c",
         "rust/src/generated/serialization.rs",
     );

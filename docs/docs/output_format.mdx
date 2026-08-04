@@ -63,7 +63,7 @@ the emitted `pid` is `PolicyId`, never `Vec<u8>`; `m`'s encoding sidecar is keye
 The positions this covers:
 
 - **data-struct fields**, and the constructor / getter / setter / wasm signatures built from them;
-- a **wrapper rule's inner value** — the type a tag-head rule (`tagged_sc = #6.9(stake_credential)`), a `bytes .cbor` rule body (`sc_bytes = bytes .cbor stake_credential`) or a `@newtype` rule wraps — and the `new` / getter / `From` signatures built from it;
+- a **wrapper rule's inner value** — the type a tag-head rule (`tagged_sc = #6.9(stake_credential)`, including its collection and `T / null` bodies), a `bytes .cbor` rule body (`sc_bytes = bytes .cbor stake_credential`) or a `@newtype` rule wraps — and the `new` / getter / `From` signatures built from it;
 - a **`.cbor` payload's own type** where the operator is written into a member's or type-choice arm's expression (`f: bytes .cbor stake_credential`, `bytes .cbor stake_credential / tstr`): the field is typed `StakeCredential` and the arm is `StakeCredential`, since the framing belongs to the expression and the alias still names the value inside the byte string (see the ownership rule below);
 - **encoding-struct fields** under `--preserve-encodings`, including the sidecar **index key** of a map-typed member (that one *must* match the data field's key type: serialize looks the sidecar up with a key borrowed straight out of the data map, so the two are one type expressed twice);
 - the same sidecars for an [open struct-map rest row](#open-struct-maps-rest-rows) or [open array rest tail](#open-arrays-rest-tails);
@@ -76,13 +76,13 @@ The positions this covers:
 
 ```cddl
 credential = [idx: uint, hash: policy_id]
-tagged_creds = #6.11([* credential])
+tagged_creds = #6.11({* uint => credential}) ; @duplicates preserve
 holder = [tc: tagged_creds]
 ```
 
-`tagged_creds` emits `pub type TaggedCreds = Vec<Credential>;` with the tag riding the alias, and its elements are read with `Credential::deserialize` *inside* the already-consumed tag. `TaggedCreds::deserialize` there would compile (the alias is transparent) and would lie: `TaggedCreds` **is** the tagged array, so naming it at the position that reads the array body claims to read a tagged value. This is the one place the rule and "one spelling per member" disagree, and the rule loses on purpose.
+`tagged_creds` emits `pub type TaggedCreds = PairMap<u64, Credential>;` with the tag riding the alias, and its values are read with `Credential::deserialize` *inside* the already-consumed tag. `TaggedCreds::deserialize` there would compile (the alias is transparent) and would lie: `TaggedCreds` **is** the tagged table, so naming it at the position that reads the map body claims to read a tagged value. This is the one place the rule and "one spelling per member" disagree, and the rule loses on purpose.
 
-Only rules that *stay* transparent while carrying an operation can reach this: a tagged named collection (above) and a tagged `T / null`. A `bytes .cbor T` rule body and a single-type tag rule both mint a **wrapper struct** instead, so their ident denotes a real type whose codec *is* the wrapped form — `cred_bytes = bytes .cbor credential` is read with `CredBytes::deserialize`, which is the truth rather than a lie.
+A tagged **preserve table** is the only rule shape that can still reach this, and only because a wrapper cannot hold its `PairMap` inner (see [Type aliases and tagged rules](current_capacities#type-aliases-and-tagged-rules)). Every other tagged rule body — and every `bytes .cbor` one — mints a **wrapper struct**, so its ident denotes a real type whose codec *is* the wrapped form: `cred_bytes = bytes .cbor credential` is read with `CredBytes::deserialize`, and `tagged_arr = #6.24([* uint])` with `TaggedArr::deserialize`, which is the truth rather than a lie.
 
 What matters is which declaration owns the encoding operation, not that there is one. An operation written into the **member's own type expression** leaves the alias denoting exactly the value being read, so the spelling survives it: `f: #6.9(stake_credential)` is a field typed `StakeCredential` read with `StakeCredential::deserialize` inside the tag, and `j: bytes .cbor stake_credential` is a field typed `StakeCredential` read with `StakeCredential::deserialize` inside the byte string. And a container inner *inside* a payload is a member position of its own again, so `bytes .cbor [* stake_credential]` reads its elements with `StakeCredential::deserialize`.
 

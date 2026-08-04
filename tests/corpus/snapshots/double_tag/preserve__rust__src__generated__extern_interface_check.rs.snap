@@ -21,8 +21,6 @@ expression: content
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
-#[allow(unused_imports)]
-use crate::generated::OuterOverArray as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::ElemTagged>();
@@ -37,4 +35,6 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Homogeneous>();
     _assert_serialize::<crate::generated::HomogeneousInner>();
     _assert_deserialize::<crate::generated::HomogeneousInner>();
+    _assert_serialize::<crate::generated::OuterOverArray>();
+    _assert_deserialize::<crate::generated::OuterOverArray>();
 }

@@ -103,6 +103,47 @@ impl AsRef<cddl_lib::ElemTagged> for ElemTagged {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct ElemTaggedList(pub(crate) Vec<cddl_lib::ElemTagged>);
+
+#[wasm_bindgen]
+impl ElemTaggedList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> ElemTagged {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &ElemTagged) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::ElemTagged>> for ElemTaggedList {
+    fn from(native: Vec<cddl_lib::ElemTagged>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ElemTaggedList> for Vec<cddl_lib::ElemTagged> {
+    fn from(wasm: ElemTaggedList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::ElemTagged>> for ElemTaggedList {
+    fn as_ref(&self) -> &Vec<cddl_lib::ElemTagged> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Heterogeneous(pub(crate) cddl_lib::Heterogeneous);
 
 #[wasm_bindgen]
@@ -461,41 +502,58 @@ impl AsRef<cddl_lib::HomogeneousInner> for HomogeneousInner {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OuterOverArray(pub(crate) Vec<cddl_lib::ElemTagged>);
+pub struct OuterOverArray(pub(crate) cddl_lib::OuterOverArray);
 
 #[wasm_bindgen]
 impl OuterOverArray {
-    pub fn new() -> Self {
-        Self(Vec::new())
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OuterOverArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn get(&self, index: usize) -> ElemTagged {
-        self.0[index].clone().into()
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
     }
 
-    pub fn add(&mut self, elem: &ElemTagged) {
-        self.0.push(elem.clone().into());
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<OuterOverArray, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &ElemTaggedList) -> Self {
+        Self(cddl_lib::OuterOverArray::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> ElemTaggedList {
+        self.0.get().clone().into()
     }
 }
 
-impl From<Vec<cddl_lib::ElemTagged>> for OuterOverArray {
-    fn from(native: Vec<cddl_lib::ElemTagged>) -> Self {
+impl From<cddl_lib::OuterOverArray> for OuterOverArray {
+    fn from(native: cddl_lib::OuterOverArray) -> Self {
         Self(native)
     }
 }
 
-impl From<OuterOverArray> for Vec<cddl_lib::ElemTagged> {
+impl From<OuterOverArray> for cddl_lib::OuterOverArray {
     fn from(wasm: OuterOverArray) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<cddl_lib::ElemTagged>> for OuterOverArray {
-    fn as_ref(&self) -> &Vec<cddl_lib::ElemTagged> {
+impl AsRef<cddl_lib::OuterOverArray> for OuterOverArray {
+    fn as_ref(&self) -> &cddl_lib::OuterOverArray {
         &self.0
     }
 }

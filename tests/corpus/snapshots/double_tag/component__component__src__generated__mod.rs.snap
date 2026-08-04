@@ -23,6 +23,7 @@ impl wit_types::Guest for Component {
     type Holder = WitHolder;
     type Homogeneous = WitHomogeneous;
     type HomogeneousInner = WitHomogeneousInner;
+    type OuterOverArray = WitOuterOverArray;
 }
 
 export!(Component);
@@ -113,14 +114,11 @@ impl wit_types::GuestHolder for WitHolder {
     fn new(
         h: wit_types::HomogeneousBorrow<'_>,
         s: wit_types::HeterogeneousBorrow<'_>,
-        a: Vec<wit_types::ElemTaggedBorrow<'_>>,
+        a: wit_types::OuterOverArrayBorrow<'_>,
     ) -> Self {
         let h = h.get::<WitHomogeneous>().0.borrow().clone();
         let s = s.get::<WitHeterogeneous>().0.borrow().clone();
-        let a = a
-            .into_iter()
-            .map(|x| x.get::<WitElemTagged>().0.borrow().clone())
-            .collect();
+        let a = a.get::<WitOuterOverArray>().0.borrow().clone();
         let inner = cddl_lib::Holder::new(h, s, a);
         WitHolder(RefCell::new(inner))
     }
@@ -135,11 +133,9 @@ impl wit_types::GuestHolder for WitHolder {
         wit_types::Heterogeneous::new(WitHeterogeneous(RefCell::new(me.s.clone())))
     }
 
-    fn a(&self) -> Vec<wit_types::ElemTagged> {
+    fn a(&self) -> wit_types::OuterOverArray {
         let me = self.0.borrow();
-        me.a.iter()
-            .map(|x| wit_types::ElemTagged::new(WitElemTagged(RefCell::new(x.clone()))))
-            .collect()
+        wit_types::OuterOverArray::new(WitOuterOverArray(RefCell::new(me.a.clone())))
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {
@@ -202,5 +198,39 @@ impl wit_types::GuestHomogeneousInner for WitHomogeneousInner {
         )
         .map(|v| wit_types::HomogeneousInner::new(WitHomogeneousInner(RefCell::new(v))))
         .map_err(err)
+    }
+}
+
+pub struct WitOuterOverArray(pub RefCell<cddl_lib::OuterOverArray>);
+
+impl wit_types::GuestOuterOverArray for WitOuterOverArray {
+    fn new(inner: Vec<wit_types::ElemTaggedBorrow<'_>>) -> Self {
+        let inner = inner
+            .into_iter()
+            .map(|x| x.get::<WitElemTagged>().0.borrow().clone())
+            .collect();
+        let inner = cddl_lib::OuterOverArray::new(inner);
+        WitOuterOverArray(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<wit_types::ElemTagged> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+            .iter()
+            .map(|x| wit_types::ElemTagged::new(WitElemTagged(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OuterOverArray as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OuterOverArray, String> {
+        <cddl_lib::OuterOverArray as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OuterOverArray::new(WitOuterOverArray(RefCell::new(v))))
+            .map_err(err)
     }
 }
