@@ -143,15 +143,22 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-1. **An uncovered surface around `export()`, measured while probing the aggregate-package
-   deferral above.** It does not depend on that feature ever shipping.
-   - **`export()`'s write tail has no coverage independent of a full spec-bearing run.** The
-     snapshot corpus goes through `generated_strings`, which stops at the file map; the manifest
-     merge, comment-preservation overlay, post-overlay import re-prune, seed-once write loop and
-     stale-file scan are exercised only incidentally by the e2e cells that happen to write to disk.
-     That is the most invariant-dense code in the tree — three bounded exceptions to
-     no-prior-output-dependence plus four diagnostic-only prior-output reads — and it is the half a
-     refactor there would most easily break silently.
+1. **The two write paths inside `export()`'s write tail that still have no direct case.** The tail
+   is one implementation now (`generation::write_tail`), driven directly by
+   `src/tests/write_tail_tests.rs` — a synthetic file map and a temp dir, no CDDL, no
+   `IntermediateTypes`, no `GenerationScope` — which is where the seed-once roots, the manifest
+   changeset merge, the family-wide post-overlay import re-prune, never-silent comment handling,
+   run-twice = run-once, the no-prior-output bound, the stale-file scan and the byte-inertness of
+   the diagnostic reads are pinned. Two of the tail's writes are still exercised only incidentally,
+   by whichever e2e cell happens to reach them:
+   - **the composed runtime statics**, which take the per-file `write_rs_with_preserve` route —
+     the ONE overlay path that is not map-level, so it is the one whose preservation cannot be
+     inferred from the map-level cases;
+   - **the `--export-static-crate` target's writes**, whose new-static-file notice is an existence
+     check against a HAND-OWNED crate the tool otherwise never touches.
+   Each is one `WriteTailPlan` field away (`composed_runtime_files` / `static_crate`), so build them
+   as two more cases in that module rather than as e2e cells: the point of the extraction is that a
+   write path's contract no longer needs a spec to state it.
 
 2. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
@@ -2495,14 +2502,15 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   Cargo auto-adopts that path dependency as a workspace member, so its `package.name` collides with
   the hand-written umbrella crate the aggregate exists to serve; renaming escapes the collision only
   by changing the document's title and filename, both published surface.
-  What to build, in order: FIRST extract `GenerationScope::export`'s write tail (manifest merge,
-  comment-preservation overlay, post-overlay import re-prune, seed-once write loop, stale-file scan)
-  into one parameterised helper, so the no-prior-output contract and its diagnostic-only reads have
-  exactly one implementation; lift the `--json-schema-dep` / `--json-gen-dep` / `--json-schema-root`
+  What to build, in order: lift the `--json-schema-dep` / `--json-gen-dep` / `--json-schema-root`
   validations out of `with_types`, which an input-less run never enters; make the `../../rust`
-  manifest op conditional. Only then land the aggregate path on top. A second write loop beside the
-  existing one is the shape to avoid — the snapshot corpus reaches `generated_strings`, not
-  `export`, so nothing there would cover it. Reopening signal (magnitude, consumer-side): the count
+  manifest op conditional. Only then land the aggregate path on top. The step this list used to
+  open with is already done and is what makes the rest safe: `GenerationScope::export`'s write tail
+  is one parameterised implementation (`generation::write_tail`), so the no-prior-output contract
+  and its diagnostic-only reads have exactly one home and direct coverage
+  (`src/tests/write_tail_tests.rs`). A second write loop beside it is still the shape to avoid — the
+  snapshot corpus reaches `generated_strings`, not `export` — but an aggregate path now has a
+  `WriteTailPlan` to fill in rather than a write loop to clone. Reopening signal (magnitude, consumer-side): the count
   of hand-written umbrella exporter files a consumer maintains rising above one, which is what a
   project publishing a second npm package over generated crates produces.
 

@@ -644,6 +644,16 @@ Snapshots are the fast inner loop and the primary safety net for refactors; inte
 the correctness gate. A refactor that doesn't intend to change output should leave every snapshot
 untouched — if one moves, you see exactly what changed.
 
+A third in-process layer sits on a different axis: `src/tests/write_tail_tests.rs` drives
+`export()`'s write tail (`generation::write_tail`) directly, with a synthetic file map and a temp
+dir — no CDDL parse, no `IntermediateTypes`, no `GenerationScope` — and asserts on the resulting
+tree. Snapshots stop at the file map (`generated_strings`) and integration cells reach disk only
+incidentally, so this is where the write path's own contracts are pinned: the seed-once crate
+roots, the manifest changeset merge, the family-wide post-overlay import re-prune, never-silent
+comment handling, run-twice = run-once over a replace-block-bearing prior, the no-prior-output
+bound, the stale-file scan's report-never-delete rule, and the byte-inertness of every diagnostic
+prior-output read.
+
 **CI policy — fast tier only.** CI (`.github/workflows/build.yml`) runs exactly
 `bun run check.ts fast` and nothing else (CI minutes cost real money — sole maintainer, AI-velocity
 commits). The fast tier of the registry is the single definition of what CI does,
