@@ -297,7 +297,9 @@ Rules:
 - **What survives is `tests/timings.json`** (committed, one measured row per gate; see
   `tests/README.md` § "Measured gate durations"). Durations belong there rather than in prose,
   because it re-measures itself and prose rots. `draft/timings.jsonl` and `draft/timing-cells.jsonl`
-  are the local ledgers behind it — gitignored, trimmed, and disposable like the logs.
+  are the local ledgers behind it — gitignored, trimmed, and disposable like the logs — and
+  `draft/memory-peaks.jsonl` is the same class for the per-run memory sampler's peaks (one row per
+  run, kept to the last 200; `tests/README.md` § "Gate-level concurrency").
 - **A fail-fast FAIL plus a single-gate retry is NOT a tier pass.** Fail-fast SKIPS every gate
   after the failure point, so "the failed gate passed on isolated retry" leaves the rest unrun —
   re-run the tier before claiming it green (the gate cache keeps already-passed cells cheap). A
