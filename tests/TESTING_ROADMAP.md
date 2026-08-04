@@ -589,8 +589,7 @@ over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is buil
 section's recur-first premise stays honest.** Cited count-free and by exact title, because a
 hand-maintained tally of this list is itself the rot class `cddl-matrix/ROADMAP.md` § Maintenance
 records — this one went stale twice in a single day of deliveries before the number came out. The
-full record of each stays in place below: "Regenerating over prior output with a rule DELETION is
-exercised as a gate for only two files"; "A "no gate demands this" premise probed against ONE gate
+full record of each stays in place below: "A "no gate demands this" premise probed against ONE gate
 is not evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
 `check.ts` itself); and "`--extern-wrapper-index` deferral-boundaries".
 
@@ -739,53 +738,20 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   Mechanical layer on a SECOND instance: a per-suite anchor-completeness check (each
   round-tripped type's public fields ⊆ the fields its suite's asserts mention — buildable as a
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
-- **Regenerating over prior output with a rule DELETION is exercised as a gate for only two files,
-  not corpus-wide — an emitted-comment-on-a-deletable-row trap in any OTHER generated file would
-  ship unseen.** The comment-preservation overlay participates only when `export()` runs over
-  prior on-disk output (it is applied to the in-memory file map ahead of the write loop), and its
-  one corpus-scale gate (`comment_preserve_lexer_round_trip_over_corpus`) does SELF-preserve
-  (`preserve(content, content)`), which is a no-op for any trailing comment regardless of whether a
-  real regen would strand it — so it cannot see the sentinel-trap class at all. Proven instance
-  (feature-requests 03/04, reproduced before fixing): `extern_interface_check.rs` and
-  `key_demand_assertions.rs` emitted a per-row `// <cddl>` comment on every row; deleting the rule
-  behind any row stranded that comment into a self-perpetuating `compile_error!` sentinel on the
-  next in-place regen (and rustfmt's import reordering separately GLUED markers onto neighbouring
-  rows). Standing coverage now: `extern_interface_check_regen_over_deletion_no_trap` (regenerates in
-  place with a deletion, asserts neither sidecar gains a trap) and
-  `extern_interface_check_has_no_trailing_row_comments` (a source-shape floor on the one file);
-  emitters made banner-only. But those pin the two KNOWN files by name — a third generated file that
-  grows a per-row comment is invisible again. Working rule meanwhile: no generated file emits a
-  comment on a row a spec change can delete (comments live in fixed banners). Mechanical layer on a
-  second instance: a corpus-wide regen-with-deletion leg (generate each corpus fixture, regenerate a
-  rule-deleted variant IN PLACE, fail on any `cddl-codegen:unpreserved-comment` in the tool-owned
-  trees) — the only layer that catches the class without knowing each file by name. Two shaping
-  notes for that leg. First, a CHEAPER static floor can land ahead of it (or alongside): a
-  corpus-wide scan of freshly generated tool-owned trees for a trailing `//` on any code row —
-  single generation, pure text scan, no regen — which catches the trap SOURCE before any deletion
-  exists, and is also the layer that falsifies a stale code-behavior premise loudly (the overlay's
-  "generator emits no trailing comments" comment stayed load-bearing-but-false for as long as the
-  markers shipped, because the two comment-preservation integration tests structurally cannot see
-  that violation — `tests/README.md` § the preserve-fixtures section records which assumption is
-  therefore enforced as an emitter invariant instead). Second, the leg only exercises
-  `key_demand_assertions.rs` where a fixture carries a `@used_as_key` tag — the deletion-variant
-  fixture set must include at least one, or that file's rows are vacuously green.
-  SECOND instance on record (2026-07-22, consumer-reported, so the corpus-wide leg's trigger has
-  FIRED and the leg is now DUE) — the regen-over-EDITED-output flavor: the import prune ran only
-  over freshly-generated content while the overlay applied later, per file, at the disk-write seam,
-  so a `cddl-codegen:replace` block that removed an import's last user shipped the orphaned `use`
-  (CML's regen unused-import residue). Fixed by ordering — `export()` applies the overlay to the
-  in-memory file map, then reruns the prune family-wide over the post-overlay map — with the two
-  known shapes pinned (`comment_preservation_replace_orphans_import_same_file`,
-  `comment_preservation_replace_in_descendant_orphans_parent_import`): the same
-  known-shapes-by-name posture as the deletion instance's per-file pins, and the same residual
-  blindness to a third shape. Consequence for the named layer's design: the corpus-wide regen leg
-  must carry BOTH variant families — the rule-DELETED variant (fail on any
-  `cddl-codegen:unpreserved-comment` in the tool-owned trees) AND a user-EDIT variant (a canonical
-  replace block injected over a corpus fixture's own output) asserting the regenerated crate stays
-  rustc-warning-clean (the `feature_corpus_compiles` unused-import/variable scan applied to the
-  regen) and reaches a byte-identical fixed point on the following run. Cross-checked against the
-  cddl-matrix ROADMAP at this instance too: its pending items enumerate CDDL input surface;
-  regen-over-prior-output interaction stays this roadmap's domain.
+- **The corpus-wide regen-over-prior-output sweep runs ONE emission profile, so a comment the
+  generator emits only under another one is unwatched.** `regen_over_prior_output_corpus` (and its
+  compile sibling) generate with `--wasm=true` and nothing else, which is the profile whose emitters
+  the overlay's two known trap instances lived in. Under `--preserve-encodings` a whole file exists
+  that the sweep never sees (`cbor_encodings.rs`), and the json profile adds derive attributes and a
+  `json-gen` tree; a comment emitted on a deletable row in any of those is exactly the class the
+  sweep exists to catch, in a place it does not look. The cost of closing it is a multiple of the
+  sweep's measured wall per added profile, paid on every `local` tier run, which is why one profile
+  shipped rather than three. **Owner meanwhile:** the emitter invariant itself — no generated comment
+  on a row a spec change can delete — plus the sweep's static floor, which is profile-independent in
+  its REASONING even where it is single-profile in its reach. **Trigger:** a second trap instance
+  (a `cddl-codegen:unpreserved-comment` sentinel reported against a regenerated tree, by a consumer
+  or by any gate) in a file the default profile does not emit — at which point the profile that
+  produced it is the one to add, not all of them.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in
