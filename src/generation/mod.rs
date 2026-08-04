@@ -72,6 +72,11 @@ pub(crate) mod component;
 // terms `extern_interface` states, but built from `Cli` alone (no IR). `pub(crate)` so the test-only
 // `api::no_std_check_strings` helper can reach the producer for snapshot fixtures.
 pub(crate) mod no_std_check;
+
+// The write tail of `export()`: every byte written to disk after the content is decided, and every
+// read of prior output the tool performs. `pub(crate)` because it is drivable — deliberately —
+// without an IR or a `GenerationScope`, which is what `src/tests/write_tail_tests.rs` does.
+pub(crate) mod write_tail;
 // Re-exports keeping the pre-split paths (`generation::X`) resolving for callers outside this
 // module: the public `rustfmt_generated_string` and the test-only helpers. None are used in the
 // crate's non-test compilations, so the aliases read as unused there — allow the lint on them.
