@@ -1009,13 +1009,24 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
             .ret("String")
             .line("self.0.to_string()");
 
+        // An inherent `from_str` beside the rust crate's `FromStr` impl: a trait impl is invisible
+        // across the wasm boundary, so the method has to be redefined here to be exported.
+        //
+        // That rationale is a comment HERE and not a `.line("// …")` in the emitted body, and the
+        // distinction is load-bearing rather than stylistic: an own-line comment inside a per-type
+        // generated item is stranded when a spec change deletes the type, and the
+        // comment-preservation overlay then re-injects it as a `cddl-codegen:unpreserved-comment` +
+        // `compile_error!` sentinel that every further regen carries forward. This body carried such
+        // a comment until `regen_over_prior_output_corpus` reproduced exactly that trap on three
+        // corpus fixtures. The standing emitter rule: generated comments live in fixed banners or in
+        // `///` docs (which the overlay owns and drops cleanly), never as a bare `//` on a row a spec
+        // change can delete.
         let mut from_str = codegen::Function::new("from_str");
         from_str
             .attr("allow(clippy::should_implement_trait)")
             .vis("pub")
             .arg("string", "&str")
             .ret("Result<Int, JsError>")
-            .line("// have to redefine so it's visible in WASM")
             .line("std::str::FromStr::from_str(string).map(Self).map_err(|e| JsError::new(&format!(\"Int.from_str({}): {:?}\", string, e)))");
 
         wrapper
