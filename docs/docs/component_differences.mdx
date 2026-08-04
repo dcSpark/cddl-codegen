@@ -465,7 +465,11 @@ the shape; every other corpus shape compiles and validates.
   `--preserve-encodings --canonical-form`, the one posture whose composed runtime declares it.
 - **`--json-serde-derives`** adds a fallible `to-json` / `from-json` pair to each type the tool
   defines, plus the `cbor-to-json` / `cbor-from-json` free functions. They are strings only; there
-  is no `JsValue` equivalent to mirror the wasm face's `to_json_value()`.
+  is no `JsValue` equivalent to mirror the wasm face's `to_json_value()`. The pair goes to the types
+  the tool defines because their serde impls exist by contract: derived here, or — on a rule
+  carrying [`@custom_json`](comment_dsl#custom_json) — hand-written by you, which this face publishes
+  exactly as the wasm door does (the directive is refused on an extern, so no bridging type is ever
+  asked for impls it need not have).
 - **`--json-schema-export` and the json-gen crate are orthogonal and untouched.** They are gated on
   their own flag and exist even under `--wasm=false`, so a `--component --wasm=false` user loses
   nothing.

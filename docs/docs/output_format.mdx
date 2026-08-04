@@ -2031,6 +2031,18 @@ Known limitation: changing `--lib-name` between runs leaves the old-name path de
 `wasm/Cargo.toml` (the changeset is keyed by the *current* name). The error is loud (a duplicate/
 unused dep) and the fix is to delete the stale line by hand.
 
+**`package.name` against the surrounding workspace.** After every manifest is written, the tool reads
+back the names it just wrote and compares them against the members of the cargo workspace the output
+sits in (if any). A name a *different* member already holds is announced on stderr naming both
+manifests and the [`--lib-name`](./command_line_flags) remedy, because cargo adopts an in-workspace
+path dependency as a member and would otherwise report `two packages named X in this workspace` at
+your next build — long after the run that caused it exited 0 with an empty stderr. It is a warning
+and never a refusal: the surrounding workspace is an **input** the tool may read, and keeping the read
+diagnostic-only is what stops a directory this run does not own from deciding an emitted byte.
+Membership resolution is cargo's own, so this only approximates it (literal `members` entries and a
+one-level expansion of a `*` entry, minus `exclude`), which costs a missed warning at worst — every
+name it reports was read out of a real manifest on disk.
+
 **Example Output**
 
 ![](/img/output.png)

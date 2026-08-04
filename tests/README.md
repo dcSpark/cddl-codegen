@@ -1423,6 +1423,14 @@ hard error naming the file rather than a clobber. Note for harness authors: beca
 rather than clobber, `run_test` deletes the three manifests in its reused export dirs before
 regenerating — its raw-appended `test_deps` would otherwise accumulate across runs.
 
+The names those manifests carry are checked against the SURROUNDING workspace — an input read, not a
+prior-output one — by `workspace_package_name_collision_warning_names_both_manifests` (integration,
+a real CLI spawn): a `package.name` another member of the enclosing workspace already holds is
+announced on stderr naming both manifests and the `--lib-name` remedy, since cargo would otherwise
+report it at the consumer's next build. Pinned with all three negative controls (no workspace above
+the output, a workspace with no clash, and a workspace whose colliding member IS this generated
+crate) and `--verbosity=error` silence, because the warning IS the whole mitigation.
+
 `getting_started_example` pins the documented first-run experience: it generates from
 `example/test.cddl` — the spec `docs/docs/getting_started.mdx` tells a newcomer to run verbatim —
 and `cargo check`s both the rust and wasm crates, so that command can't rot silently.
@@ -1551,9 +1559,9 @@ idiom") is verified across the layers:
   `integration_tests::alias_of_instance_chain_member_compiles`. The embedded-element flavor carries
   independent decode evidence: the corpus decode-conformance row `tag_set_reject_anon_generic.outer`
   (`outer = [* oset<uint>]` under holder mode, which embeds the rule).
-- **Boundary limitations** — `tests/TESTING_ROADMAP.md` § "Deferred features" (non-idiom
-  choice-bodied generic-def crash, inline choices, and the pre-existing multi-tag-per-field
-  encoding-var collision).
+- **Boundary limitations** — `tests/TESTING_ROADMAP.md` § "Deferred features", entry "Transparent
+  tag-set idiom — recognized-shape boundary": non-idiom choice-bodied generic defs (refused at
+  parse, not supported) and inline/anonymous two-arm choices (not recognized).
 
 ### Open struct-maps (rest rows) — test map (loose-CBOR Phase B)
 
@@ -2367,7 +2375,9 @@ path). Resident classes at HEAD (ledgered in § findings):
 `dsl_custom.custom_newtype` — can't compile standalone); and **non-string map keys** serde_json
 can't serialize (`bytes_map_key.*`, `composite_map_key.holder`, corpus). `WASM_SURFACE_SKIP` — rows whose `--wasm`
 generation or wasm-crate compile legitimately fails; also cited; sole resident class at HEAD is the
-same `@custom_json` gap (the wrapper's `to_json`/`from_json` require the omitted derives). Distinct
+same `@custom_json` can't-compile-standalone class (the wrapper's `to_json`/`from_json` need the
+impls the directive hands to the spec author, and these legs supply none — the contract working as
+documented, not a defect). Distinct
 from a **mechanical** skip: a type with NO `from_cbor_bytes` wasm wrapper surface (a bare primitive
 alias, or a wrapper without the deserialize method — `deserialize_generated` gating) is classified
 MECHANICALLY (`wasm_impl_has_fn` scans the generated wasm source for that type's inherent impl),
@@ -4329,7 +4339,12 @@ a statement about the committed TREE that re-running cannot settle — is the on
 by `VerdictError`'s type rather than by message match), and
 `a_mid_run_generation_failure_names_the_crates_already_regenerated` pins that a failure partway
 through a run states what is already rewritten on disk, checking the earlier crate's output really
-exists rather than only the wording.
+exists rather than only the wording. Its sibling
+`a_mid_run_sidecar_refusal_names_the_crates_already_regenerated` pins the same statement for the
+other way a crate fails mid-run — a cross-crate sidecar (`--wrapper-requests` / `--key-requests`)
+this run refuses — which reaches that wrapper only because every sidecar-reader refusal travels the
+error channel rather than aborting the process (exit codes for the two sites nothing else covered:
+`integration_tests::sidecar_reader_refusals_exit_through_the_error_channel`).
 
 **The command-line surface of config mode.** `--static-dir` is the one generation flag accepted
 alongside `--config` (a machine-local tool location with no per-crate precedence question);
