@@ -17,6 +17,7 @@ use exports::cddl::cddl_lib::types as wit_types;
 struct Component;
 
 impl wit_types::Guest for Component {
+    type CborCtlNe = WitCborCtlNe;
     type Garm = WitGarm;
     type Holder = WitHolder;
     type TaggedCtlNe = WitTaggedCtlNe;
@@ -32,6 +33,33 @@ export!(Component);
 /// so a WIT `result<_, string>` carries the same text a native caller would see.
 fn err<E: core::fmt::Display>(e: E) -> String {
     e.to_string()
+}
+
+pub struct WitCborCtlNe(pub RefCell<cddl_lib::CborCtlNe>);
+
+impl wit_types::GuestCborCtlNe for WitCborCtlNe {
+    fn new(inner: i64) -> Result<Self, String> {
+        let inner = cddl_lib::CborCtlNe::new(inner);
+        Ok(WitCborCtlNe(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> i64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborCtlNe as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborCtlNe, String> {
+        <cddl_lib::CborCtlNe as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::CborCtlNe::new(WitCborCtlNe(RefCell::new(v))))
+            .map_err(err)
+    }
 }
 
 pub struct WitGarm(pub RefCell<cddl_lib::Garm>);
@@ -92,16 +120,17 @@ impl wit_types::GuestHolder for WitHolder {
         d: wit_types::TaggedRangeNintBorrow<'_>,
         e: wit_types::TaggedRangeUintBorrow<'_>,
         f: wit_types::GarmBorrow<'_>,
-        g: i64,
-    ) -> Result<Self, String> {
+        g: wit_types::CborCtlNeBorrow<'_>,
+    ) -> Self {
         let a = a.get::<WitTaggedCtlNe>().0.borrow().clone();
         let b = b.get::<WitTaggedRangeIncl>().0.borrow().clone();
         let c = c.get::<WitTaggedRangeExcl>().0.borrow().clone();
         let d = d.get::<WitTaggedRangeNint>().0.borrow().clone();
         let e = e.get::<WitTaggedRangeUint>().0.borrow().clone();
         let f = f.get::<WitGarm>().0.borrow().clone();
-        let inner = cddl_lib::Holder::new(a, b, c, d, e, f, g).map_err(err)?;
-        Ok(WitHolder(RefCell::new(inner)))
+        let g = g.get::<WitCborCtlNe>().0.borrow().clone();
+        let inner = cddl_lib::Holder::new(a, b, c, d, e, f, g);
+        WitHolder(RefCell::new(inner))
     }
 
     fn a(&self) -> wit_types::TaggedCtlNe {
@@ -134,9 +163,9 @@ impl wit_types::GuestHolder for WitHolder {
         wit_types::Garm::new(WitGarm(RefCell::new(me.f.clone())))
     }
 
-    fn g(&self) -> i64 {
+    fn g(&self) -> wit_types::CborCtlNe {
         let me = self.0.borrow();
-        me.g
+        wit_types::CborCtlNe::new(WitCborCtlNe(RefCell::new(me.g.clone())))
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {

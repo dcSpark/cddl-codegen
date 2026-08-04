@@ -18,7 +18,7 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use cbor_encodings::{CoordsEncoding, HolderEncoding};
+use cbor_encodings::{CoordsEncoding, HolderEncoding, WrappedEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Coords {
@@ -37,6 +37,12 @@ impl Coords {
     }
 }
 
+impl From<Wrapped> for Coords {
+    fn from(wrapper: Wrapped) -> Self {
+        wrapper.inner
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Holder {
     pub c: Coords,
@@ -49,4 +55,27 @@ impl Holder {
     }
 }
 
-pub type Wrapped = Coords;
+#[derive(Clone, Debug)]
+pub struct Wrapped {
+    pub(crate) inner: Coords,
+    pub encodings: Option<WrappedEncoding>,
+}
+
+impl Wrapped {
+    pub fn get(&self) -> &Coords {
+        &self.inner
+    }
+
+    pub fn new(inner: Coords) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Coords> for Wrapped {
+    fn from(inner: Coords) -> Self {
+        Wrapped::new(inner)
+    }
+}

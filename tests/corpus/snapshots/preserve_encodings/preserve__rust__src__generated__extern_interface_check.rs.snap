@@ -35,8 +35,6 @@ use crate::generated::CborPayloadEnum as _;
 #[allow(unused_imports)]
 use crate::generated::Data as _;
 #[allow(unused_imports)]
-use crate::generated::FooBytes as _;
-#[allow(unused_imports)]
 use crate::generated::NullableBool as _;
 #[allow(unused_imports)]
 use crate::generated::NullableFloat as _;
@@ -92,6 +90,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::FloatHeads>();
     _assert_serialize::<crate::generated::Foo>();
     _assert_deserialize::<crate::generated::Foo>();
+    _assert_serialize::<crate::generated::FooBytes>();
+    _assert_deserialize::<crate::generated::FooBytes>();
     _assert_serialize::<crate::generated::GroupChoice>();
     _assert_deserialize::<crate::generated::GroupChoice>();
     _assert_serialize::<crate::generated::Hash>();

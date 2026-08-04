@@ -19,6 +19,7 @@ struct Component;
 impl wit_types::Guest for Component {
     type Coords = WitCoords;
     type Holder = WitHolder;
+    type Wrapped = WitWrapped;
 }
 
 export!(Component);
@@ -79,6 +80,32 @@ impl wit_types::GuestHolder for WitHolder {
     fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Holder, String> {
         <cddl_lib::Holder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
             .map(|v| wit_types::Holder::new(WitHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitWrapped(pub RefCell<cddl_lib::Wrapped>);
+
+impl wit_types::GuestWrapped for WitWrapped {
+    fn new(inner: wit_types::CoordsBorrow<'_>) -> Self {
+        let inner = inner.get::<WitCoords>().0.borrow().clone();
+        let inner = cddl_lib::Wrapped::new(inner);
+        WitWrapped(RefCell::new(inner))
+    }
+
+    fn get(&self) -> wit_types::Coords {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        wit_types::Coords::new(WitCoords(RefCell::new(inner.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Wrapped as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Wrapped, String> {
+        <cddl_lib::Wrapped as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Wrapped::new(WitWrapped(RefCell::new(v))))
             .map_err(err)
     }
 }

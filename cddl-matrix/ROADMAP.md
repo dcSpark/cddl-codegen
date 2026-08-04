@@ -191,6 +191,46 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
+- **A transparent alias carrying a `@custom_serialize`/`@custom_deserialize` PAIR has two wire forms
+  in one crate: every embed site routes through the pair, its own standalone codec does not.** Probed
+  2026-08-04 while force-wrapping the `.cbor` rule bodies (which closed the structurally identical
+  `.cbor` instance). `inner = uint ; @custom_serialize cs @custom_deserialize cd` emits
+  `pub type Inner = u64;` — the pair replaces the codec of the type the alias RESOLVES to, at each
+  position that reaches it, and mints no type of its own — so `Inner::to_cbor_bytes()` /
+  `Inner::from_cbor_bytes()` are `u64`'s built-in codec while `[f: inner]` writes and reads `cs`/`cd`.
+  Silent, and the crate compiles. Deliberately NOT fixed here: the transparent spelling is the
+  DOCUMENTED contract for the pair (`comment_dsl.mdx` prescribes it as the remedy for the extern /
+  raw-bytes marker, tag-rule and `@newtype` refusals — wrapping the alias would break each of those),
+  and the extern-interface seam already treats such an alias as hazardous (`; unexported:` row). The
+  invariant assert added with the `.cbor` fix therefore scopes to the `RustType`'s OWN `encodings`
+  vec, never to `AliasInfo`-carried codec metadata. Documented as a caution in `comment_dsl.mdx`
+  § "Reaching an annotated alias through another rule". **Reopening signal:** a consumer reporting
+  that a pair-carrying alias's standalone `to_cbor_bytes`/`from_cbor_bytes` produced or accepted the
+  built-in wire where their spec says the pair's — i.e. someone calling the standalone entry point at
+  all, which is what nothing yet says anyone does.
+
+- **A tagged rule body that stays a transparent alias drops the tag from its own standalone codec.**
+  Found 2026-08-04 by the transparent-alias wire-facts assert added with the `.cbor` force-wrap,
+  which enumerated (by generation over every committed spec, plus the test suite's inline specs) the
+  registrations that survive it. Two shapes reach `register_type_alias` with a tag riding the base:
+  a named COLLECTION (`tagged_table = #6.11({* tstr => uint})`, `outer = #6.24([* t])` — the
+  named-array/named-table kind-walk registers the tag on the alias) and a `T / null` collapse
+  (`t = #6.10(uint / null)`). Both emit `pub type TaggedTable = BTreeMap<String, u64>;`, so
+  `TaggedTable::to_cbor_bytes()` writes a BARE map while every embed site of `tagged_table` writes
+  `write_tag(11)` first and every embed site's decoder requires the tag — the exact
+  one-type-two-wire-forms shape T1-02 was for `.cbor`. Not fixed with it: force-wrapping a tagged
+  collection moves the wasm face (a `pub type` becomes a wrapper class), the `--component`/WIT
+  projection and the matrix's tagged-collection cells, which is its own delivery. Ledgered as the
+  ONE narrow carve-out in `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias`
+  (tag operations only, on exactly those two base kinds — any other operation, or a tag on any other
+  base, still fires), so the class is a KNOWN exemption rather than an unknown. `tests/corpus/
+  tagged_table.cddl` and `tests/corpus/double_tag.cddl` carry the shape today, and
+  `tagged_table.cddl`'s own header comment claiming the rust type "owns ALL serialization including
+  the tag" is what the probe falsified. **Reopening signal:** a consumer calling a tagged collection
+  rule's standalone `to_cbor_bytes`/`from_cbor_bytes` and getting the untagged wire — or, cheaper to
+  fire, any new spec in this repo whose tagged collection root is used standalone rather than only
+  from a holder.
+
 - **Three control-operator arms ABORT (exit 101) where every sibling refuses gracefully.** Found
   2026-08-03 by the refused-name × resolution-context closure sweep
   (`src/tests/refused_name_closure_tests.rs`) enumerating the control-operator arms as separate

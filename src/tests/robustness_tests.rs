@@ -8016,20 +8016,24 @@ fn generic_raw_bytes_base_rejects_gracefully() {
     }
 }
 
-/// A `.cbor` payload applied to a target that is ALREADY a `.cbor` payload — `bytes .cbor (bytes
-/// .cbor uint)` and the alias-flattened `inner = bytes .cbor uint` + `bytes .cbor inner` — used to
-/// generate at exit 0 and emit a crate that cannot build. Both spellings are the SAME encoding
-/// chain by the time the operator applies (an alias rule's own `.cbor` rides on its `RustType`'s
-/// encoding list, which a reference to the rule copies whole, so naming it adds no boundary), and
-/// the serialize walk names the payload buffer after the OWNING variable,
-/// so every depth in one chain mints `<var>_inner_se` and the outer write borrows what the inner
-/// `finalize()` moved (E0382, once per extra depth). Now a parse-time graceful rejection at both
-/// seams that can apply the operation: the rule-BODY registration (which has a rule name to prefix)
-/// and `rust_type_from_type1` (every member / element / choice-arm position, which does not).
+/// A `.cbor` payload applied to a target that is ALREADY a `.cbor` payload — the INLINE spelling
+/// `bytes .cbor (bytes .cbor uint)` — used to generate at exit 0 and emit a crate that cannot
+/// build: the serialize walk names the payload buffer after the OWNING variable, so every depth in
+/// one chain mints `<var>_inner_se` and the outer write borrows what the inner `finalize()` moved
+/// (E0382, once per extra depth). Now a parse-time graceful rejection at both seams that can apply
+/// the operation: the rule-BODY registration (which has a rule name to prefix) and
+/// `rust_type_from_type1` (every member / element / choice-arm position, which does not).
+///
+/// NAMING the inner payload is the boundary, and it is why the alias-flattened spelling
+/// (`inner = bytes .cbor uint` + `bytes .cbor inner`) is in the CONTROLS rather than the vectors: a
+/// `.cbor` rule body mints a wrapper struct with its own serialize fn and its own buffer, so the
+/// reference crosses a real type instead of copying a chain that already carried a `CBORBytes`. The
+/// transparent-alias flattening that made the two spellings one chain is unrepresentable now
+/// (`register_type_alias`'s wire-facts assert).
 ///
 /// The controls are the load-bearing half, because the refusal keys on the SAME-CHAIN composition
 /// only and a sloppier key would take the whole `.cbor` feature down with it. Nesting through a
-/// STRUCT boundary (`; @newtype`) and nesting inside a payload's COLLECTION
+/// named payload (with or without `@newtype`) and nesting inside a payload's COLLECTION
 /// (`tests/corpus/cbor_payload_nested.cddl`'s shape) both give the inner payload its own serialize
 /// fn and its own buffer, emit the same nested wire shape, and must keep generating; so must a
 /// single payload, a payload over a tag, and a payload over a struct.
@@ -8039,23 +8043,8 @@ fn nested_cbor_payload_rejects_gracefully() {
     let vectors = [
         ("inline_body", "b = bytes .cbor (bytes .cbor uint)\n", true),
         (
-            "alias_body",
-            "inner = bytes .cbor uint\nb = bytes .cbor inner\n",
-            true,
-        ),
-        (
             "inline_member",
             "foo = [b: bytes .cbor (bytes .cbor uint)]\n",
-            false,
-        ),
-        (
-            "alias_member",
-            "inner = bytes .cbor uint\nfoo = [b: bytes .cbor inner]\n",
-            false,
-        ),
-        (
-            "alias_chain_member",
-            "i1 = bytes .cbor uint\ni2 = i1\nfoo = [b: bytes .cbor i2]\n",
             false,
         ),
         (
@@ -8064,13 +8053,13 @@ fn nested_cbor_payload_rejects_gracefully() {
             false,
         ),
         (
-            "choice_arm",
-            "inner = bytes .cbor uint\na = bytes .cbor inner / tstr\n",
+            "inline_choice_arm",
+            "a = bytes .cbor (bytes .cbor uint) / tstr\n",
             false,
         ),
         (
-            "array_element",
-            "inner = bytes .cbor uint\na = [* bytes .cbor inner]\n",
+            "inline_array_element",
+            "a = [* bytes .cbor (bytes .cbor uint)]\n",
             false,
         ),
     ];
@@ -8090,12 +8079,11 @@ fn nested_cbor_payload_rejects_gracefully() {
                 "the rejection must name the composition ({tag}, {extra:?}), got: {msg}"
             );
             assert!(
-                msg.contains("are the same encoding chain here") && msg.contains("alias-flattened"),
-                "the rejection must say the inline and alias-flattened spellings are one chain \
-                 ({tag}, {extra:?}), got: {msg}"
+                msg.contains("This is the INLINE spelling"),
+                "the rejection must name the composition it keys on ({tag}, {extra:?}), got: {msg}"
             );
             assert!(
-                msg.contains("`inner = bytes .cbor T ; @newtype`")
+                msg.contains("`inner = bytes .cbor T`")
                     && msg.contains("bytes .cbor [* bytes .cbor T]"),
                 "the rejection must point at the two supported ways to nest a payload ({tag}, \
                  {extra:?}), got: {msg}"
@@ -8120,6 +8108,29 @@ fn nested_cbor_payload_rejects_gracefully() {
         (
             "newtype_boundary",
             "inner = bytes .cbor uint ; @newtype\nb = [f: bytes .cbor inner]\n",
+        ),
+        // The same boundary WITHOUT `@newtype`: a `.cbor` rule body force-wraps either way, so
+        // these four (rule body, member, choice arm, array element) are the spellings that used to
+        // be same-chain vectors and are supported now.
+        (
+            "named_boundary_body",
+            "inner = bytes .cbor uint\nb = bytes .cbor inner\n",
+        ),
+        (
+            "named_boundary_member",
+            "inner = bytes .cbor uint\nfoo = [b: bytes .cbor inner]\n",
+        ),
+        (
+            "named_boundary_chain_member",
+            "i1 = bytes .cbor uint\ni2 = i1\nfoo = [b: bytes .cbor i2]\n",
+        ),
+        (
+            "named_boundary_choice_arm",
+            "inner = bytes .cbor uint\na = bytes .cbor inner / tstr\n",
+        ),
+        (
+            "named_boundary_array_element",
+            "inner = bytes .cbor uint\na = [* bytes .cbor inner]\n",
         ),
         (
             "struct_target",

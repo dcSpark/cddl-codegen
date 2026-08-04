@@ -8,7 +8,8 @@ expression: content
 ; unexported: dep_cs — references excluded cs
 ; unexported: helper — plain group never referenced in the dependency's own spec — no materialized shape to project
 big_coin = coin ; @rust_name BigCoin
-bn = bytes .cbor {* bignint => uint} ; @rust_name Bn
+bn = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Bn
+bn_tbl = {* bignint => uint} ; @rust_name BnTbl
 ce = 0 / 1 / 2 ; @rust_name Ce
 coin = uint ; @rust_name Coin
 foo_list = [* rec] ; @rust_name FooList

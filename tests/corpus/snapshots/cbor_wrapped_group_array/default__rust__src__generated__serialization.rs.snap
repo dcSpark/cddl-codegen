@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -104,5 +103,28 @@ impl Deserialize for Holder {
             Ok(Holder { c })
         })()
         .map_err(|e| e.annotate("Holder"))
+    }
+}
+
+impl cbor_event::se::Serialize for Wrapped {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        self.0.serialize(&mut inner_inner_se)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for Wrapped {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            Ok(Self(Coords::deserialize(inner_de)?))
+        })()
+        .map_err(|e| e.annotate("Wrapped"))
     }
 }

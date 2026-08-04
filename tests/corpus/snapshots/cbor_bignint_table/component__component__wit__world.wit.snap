@@ -9,8 +9,8 @@ package cddl:cddl-lib@0.1.0;
 
 interface types {
   resource holder {
-    constructor(payload: list<tuple<borrow<prelude-bignint>, u64>>);
-    payload: func() -> list<tuple<prelude-bignint, u64>>;
+    constructor(payload: borrow<x>);
+    payload: func() -> x;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
   }
@@ -19,6 +19,12 @@ interface types {
     get: func() -> list<u8>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-bignint, string>;
+  }
+  resource x {
+    constructor(inner: list<tuple<borrow<prelude-bignint>, u64>>);
+    get: func() -> list<tuple<prelude-bignint, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<x, string>;
   }
 }
 

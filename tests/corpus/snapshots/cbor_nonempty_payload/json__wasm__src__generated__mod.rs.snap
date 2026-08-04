@@ -15,7 +15,7 @@ pub mod collections;
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
 use std::collections::BTreeMap;
-use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -167,6 +167,118 @@ impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
     }
 }
 
-pub type WrappedNonempty = NonEmptyU64List;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedNonempty(pub(crate) cddl_lib::WrappedNonempty);
 
-pub type WrappedNonemptyMap = NonEmptyMapTextToU64;
+#[wasm_bindgen]
+impl WrappedNonempty {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedNonempty, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WrappedNonempty, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyU64List) -> Self {
+        Self(cddl_lib::WrappedNonempty::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyU64List {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::WrappedNonempty> for WrappedNonempty {
+    fn from(native: cddl_lib::WrappedNonempty) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedNonempty> for cddl_lib::WrappedNonempty {
+    fn from(wasm: WrappedNonempty) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedNonempty> for WrappedNonempty {
+    fn as_ref(&self) -> &cddl_lib::WrappedNonempty {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedNonemptyMap(pub(crate) cddl_lib::WrappedNonemptyMap);
+
+#[wasm_bindgen]
+impl WrappedNonemptyMap {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedNonemptyMap, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WrappedNonemptyMap, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyMapTextToU64) -> Self {
+        Self(cddl_lib::WrappedNonemptyMap::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyMapTextToU64 {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::WrappedNonemptyMap> for WrappedNonemptyMap {
+    fn from(native: cddl_lib::WrappedNonemptyMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedNonemptyMap> for cddl_lib::WrappedNonemptyMap {
+    fn from(wasm: WrappedNonemptyMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedNonemptyMap> for WrappedNonemptyMap {
+    fn as_ref(&self) -> &cddl_lib::WrappedNonemptyMap {
+        &self.0
+    }
+}

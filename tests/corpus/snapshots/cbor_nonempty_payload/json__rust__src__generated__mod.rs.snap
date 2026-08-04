@@ -24,8 +24,119 @@ pub mod serialization;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 
-/// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-pub type WrappedNonempty = NonEmptyVec<u64>;
+#[derive(Clone, Debug)]
+pub struct WrappedNonempty(pub(crate) NonEmptyVec<u64>);
 
-/// `{+ String => u64}`: at least one entry, enforced at the `NonEmptyMap` `TryFrom` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-pub type WrappedNonemptyMap = NonEmptyMap<String, u64>;
+impl WrappedNonempty {
+    pub fn get(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+
+    pub fn new(inner: NonEmptyVec<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyVec<u64>> for WrappedNonempty {
+    fn from(inner: NonEmptyVec<u64>) -> Self {
+        WrappedNonempty::new(inner)
+    }
+}
+
+impl From<WrappedNonempty> for NonEmptyVec<u64> {
+    fn from(wrapper: WrappedNonempty) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for WrappedNonempty {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for WrappedNonempty {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <NonEmptyVec<u64> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for WrappedNonempty {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("WrappedNonempty")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <NonEmptyVec<u64> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <NonEmptyVec<u64> as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WrappedNonemptyMap(pub(crate) NonEmptyMap<String, u64>);
+
+impl WrappedNonemptyMap {
+    pub fn get(&self) -> &NonEmptyMap<String, u64> {
+        &self.0
+    }
+
+    pub fn new(inner: NonEmptyMap<String, u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyMap<String, u64>> for WrappedNonemptyMap {
+    fn from(inner: NonEmptyMap<String, u64>) -> Self {
+        WrappedNonemptyMap::new(inner)
+    }
+}
+
+impl From<WrappedNonemptyMap> for NonEmptyMap<String, u64> {
+    fn from(wrapper: WrappedNonemptyMap) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for WrappedNonemptyMap {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for WrappedNonemptyMap {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner =
+            <NonEmptyMap<String, u64> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for WrappedNonemptyMap {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("WrappedNonemptyMap")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <NonEmptyMap<String, u64> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <NonEmptyMap<String, u64> as schemars::JsonSchema>::inline_schema()
+    }
+}

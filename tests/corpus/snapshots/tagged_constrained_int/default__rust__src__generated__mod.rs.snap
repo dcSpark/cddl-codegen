@@ -19,7 +19,24 @@ pub mod serialization;
 
 use crate::generated::error::*;
 
-pub type CborCtlNe = i64;
+#[derive(Clone, Debug, Copy)]
+pub struct CborCtlNe(pub(crate) i64);
+
+impl CborCtlNe {
+    pub fn get(&self) -> i64 {
+        self.0
+    }
+
+    pub fn new(inner: i64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<i64> for CborCtlNe {
+    fn from(inner: i64) -> Self {
+        CborCtlNe::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Garm {
@@ -65,16 +82,8 @@ impl Holder {
         e: TaggedRangeUint,
         f: Garm,
         g: CborCtlNe,
-    ) -> Result<Self, DeserializeError> {
-        if g == 1 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: g as i128,
-                min: Some(2),
-                max: Some(0),
-            }
-            .into());
-        }
-        Ok(Self {
+    ) -> Self {
+        Self {
             a,
             b,
             c,
@@ -82,7 +91,7 @@ impl Holder {
             e,
             f,
             g,
-        })
+        }
     }
 }
 
@@ -238,6 +247,12 @@ impl TryFrom<u64> for TaggedRangeUint {
 
     fn try_from(inner: u64) -> Result<Self, Self::Error> {
         TaggedRangeUint::new(inner)
+    }
+}
+
+impl From<CborCtlNe> for i64 {
+    fn from(wrapper: CborCtlNe) -> Self {
+        wrapper.0
     }
 }
 

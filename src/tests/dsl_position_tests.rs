@@ -2015,10 +2015,13 @@ fn transparent_realias_and_member_agree_on_the_aliass_custom_pair() {
 /// A RULE-BODY `.cbor` over an annotated alias (`plainbody = bytes .cbor inner`) keeps the wrapped
 /// alias's custom pair for every member declared through it, in both directions.
 ///
-/// Same flattening seam as the re-alias test above — this rule registers as a transparent alias too,
-/// so its `Alias` node cannot survive `register_type_alias` — with the byte-string framing stacked
-/// on top. The framing is the rule's own (`plainbody` IS the bytes-wrapped form), so the pair call
-/// must sit INSIDE it, taking the payload's serializer/deserializer.
+/// Unlike the re-alias test above, this rule body FORCE-WRAPS: a `.cbor` root mints the same wrapper
+/// struct the `@newtype` spelling does, so the byte-string framing has a type of its own to live on
+/// (a transparent alias would have left `Plainbody::to_cbor_bytes` writing the BARE payload while
+/// every member of it wrote the wrapped one). The framing is therefore the WRAPPER's, and the
+/// wrapped alias's pair call must sit INSIDE it, taking the payload's serializer/deserializer — the
+/// wrapper seam keeps the `Alias` node exactly as a member or arm does, which is what the pair is
+/// lifted from. The holder just delegates.
 #[test]
 fn rule_body_cbor_alias_and_member_agree_on_the_wrapped_aliass_custom_pair() {
     const SPEC: &str = "inner = uint ; @custom_serialize ser_inner @custom_deserialize deser_inner\n\
@@ -2037,13 +2040,30 @@ fn rule_body_cbor_alias_and_member_agree_on_the_wrapped_aliass_custom_pair() {
          assertions below are vacuous:\n{src}"
     );
 
-    let ser = impl_block(&src, "cbor_event::se::Serialize for Holder");
+    // The holder DELEGATES: the rule is a type of its own now, so the member site emits no framing
+    // and no codec call — everything the two used to share lives on `Plainbody`.
+    let holder_ser = impl_block(&src, "cbor_event::se::Serialize for Holder");
     assert!(
-        ser.contains("Serializer::new_vec()") && ser.contains("write_bytes(&p_bytes)"),
+        holder_ser.contains("self.p.serialize(serializer)")
+            && !holder_ser.contains("Serializer::new_vec()")
+            && !holder_ser.contains("ser_inner"),
+        "the holder must delegate to the wrapper rather than inline the framing/pair:\n{holder_ser}"
+    );
+    let holder_deser = impl_block(&src, "Deserialize for Holder");
+    assert!(
+        holder_deser.contains("Plainbody::deserialize(raw)")
+            && !holder_deser.contains("raw.bytes()")
+            && !holder_deser.contains("deser_inner"),
+        "the holder must delegate to the wrapper rather than inline the framing/pair:\n{holder_deser}"
+    );
+
+    let ser = impl_block(&src, "cbor_event::se::Serialize for Plainbody");
+    assert!(
+        ser.contains("Serializer::new_vec()") && ser.contains("write_bytes(&inner_bytes)"),
         "the byte-string framing around the payload stays generated-code-owned:\n{ser}"
     );
     assert!(
-        ser.contains("ser_inner(&mut p_inner_se, &self.p)"),
+        ser.contains("ser_inner(&mut inner_inner_se, &self.0)"),
         "the payload must be written by the wrapped alias's @custom_serialize, into the PAYLOAD's \
          own serializer:\n{ser}"
     );
@@ -2052,9 +2072,9 @@ fn rule_body_cbor_alias_and_member_agree_on_the_wrapped_aliass_custom_pair() {
         "the payload must not ALSO emit the built-in uint codec it replaces:\n{ser}"
     );
 
-    let deser = impl_block(&src, "Deserialize for Holder");
+    let deser = impl_block(&src, "Deserialize for Plainbody");
     assert!(
-        deser.contains("raw.bytes()") && deser.contains("Deserializer::from(p_bytes)"),
+        deser.contains("raw.bytes()") && deser.contains("Deserializer::from(inner_bytes)"),
         "the byte-string framing around the payload stays generated-code-owned:\n{deser}"
     );
     assert!(

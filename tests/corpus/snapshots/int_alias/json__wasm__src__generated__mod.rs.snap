@@ -17,9 +17,121 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 pub type BareInt = Int;
 
-pub type CborInt = Int;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborInt(pub(crate) cddl_lib::CborInt);
 
-pub type CborIntTable = MapTextToInt;
+#[wasm_bindgen]
+impl CborInt {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborInt, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<CborInt, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &Int) -> Self {
+        Self(cddl_lib::CborInt::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> Int {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::CborInt> for CborInt {
+    fn from(native: cddl_lib::CborInt) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborInt> for cddl_lib::CborInt {
+    fn from(wasm: CborInt) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborInt> for CborInt {
+    fn as_ref(&self) -> &cddl_lib::CborInt {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborIntTable(pub(crate) cddl_lib::CborIntTable);
+
+#[wasm_bindgen]
+impl CborIntTable {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborIntTable, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<CborIntTable, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &MapTextToInt) -> Self {
+        Self(cddl_lib::CborIntTable::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> MapTextToInt {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::CborIntTable> for CborIntTable {
+    fn from(native: cddl_lib::CborIntTable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborIntTable> for cddl_lib::CborIntTable {
+    fn from(wasm: CborIntTable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborIntTable> for CborIntTable {
+    fn as_ref(&self) -> &cddl_lib::CborIntTable {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

@@ -1990,7 +1990,48 @@ impl AsRef<cddl_lib::Foo2> for Foo2 {
     }
 }
 
-pub type FooBytes = Foo;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FooBytes(pub(crate) cddl_lib::FooBytes);
+
+#[wasm_bindgen]
+impl FooBytes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FooBytes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &Foo) -> Self {
+        Self(cddl_lib::FooBytes::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> Foo {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::FooBytes> for FooBytes {
+    fn from(native: cddl_lib::FooBytes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FooBytes> for cddl_lib::FooBytes {
+    fn from(wasm: FooBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FooBytes> for FooBytes {
+    fn as_ref(&self) -> &cddl_lib::FooBytes {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -5142,7 +5183,48 @@ pub enum OverlappingKind {
 
 pub type PairMapU64ToBytes = PreserveUintMap;
 
-pub type ParenCbor = String;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ParenCbor(pub(crate) cddl_lib::ParenCbor);
+
+#[wasm_bindgen]
+impl ParenCbor {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ParenCbor, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: String) -> Self {
+        Self(cddl_lib::ParenCbor::new(inner))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.get().clone()
+    }
+}
+
+impl From<cddl_lib::ParenCbor> for ParenCbor {
+    fn from(native: cddl_lib::ParenCbor) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ParenCbor> for cddl_lib::ParenCbor {
+    fn from(wasm: ParenCbor) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ParenCbor> for ParenCbor {
+    fn as_ref(&self) -> &cddl_lib::ParenCbor {
+        &self.0
+    }
+}
 
 pub type ParenSize = u8;
 

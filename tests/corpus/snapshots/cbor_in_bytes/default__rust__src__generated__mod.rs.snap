@@ -29,4 +29,27 @@ impl Inner {
     }
 }
 
-pub type Wrapped = Inner;
+impl From<Wrapped> for Inner {
+    fn from(wrapper: Wrapped) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Wrapped(pub(crate) Inner);
+
+impl Wrapped {
+    pub fn get(&self) -> &Inner {
+        &self.0
+    }
+
+    pub fn new(inner: Inner) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Inner> for Wrapped {
+    fn from(inner: Inner) -> Self {
+        Wrapped::new(inner)
+    }
+}

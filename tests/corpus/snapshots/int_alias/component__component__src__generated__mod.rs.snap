@@ -5,7 +5,100 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+use core::cell::RefCell;
+
 wit_bindgen::generate!({
     path: "wit",
     world: "cddl-lib-world",
 });
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type CborInt = WitCborInt;
+    type CborIntTable = WitCborIntTable;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn int_to_wit_types(v: &cddl_lib::Int) -> wit_types::Int {
+    match v {
+        cddl_lib::Int::Uint(value) => wit_types::Int::Uint(*value),
+        cddl_lib::Int::Nint(value) => wit_types::Int::Nint(*value),
+    }
+}
+
+fn int_from_wit_types(v: wit_types::Int) -> cddl_lib::Int {
+    match v {
+        wit_types::Int::Uint(value) => cddl_lib::Int::new_uint(value),
+        wit_types::Int::Nint(value) => cddl_lib::Int::new_nint(value),
+    }
+}
+
+pub struct WitCborInt(pub RefCell<cddl_lib::CborInt>);
+
+impl wit_types::GuestCborInt for WitCborInt {
+    fn new(inner: wit_types::Int) -> Self {
+        let inner = int_from_wit_types(inner);
+        let inner = cddl_lib::CborInt::new(inner);
+        WitCborInt(RefCell::new(inner))
+    }
+
+    fn get(&self) -> wit_types::Int {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        int_to_wit_types(&inner)
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborInt as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborInt, String> {
+        <cddl_lib::CborInt as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::CborInt::new(WitCborInt(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitCborIntTable(pub RefCell<cddl_lib::CborIntTable>);
+
+impl wit_types::GuestCborIntTable for WitCborIntTable {
+    fn new(inner: Vec<(String, wit_types::Int)>) -> Self {
+        let inner = inner
+            .into_iter()
+            .map(|(x0, x1)| (x0, int_from_wit_types(x1)))
+            .collect();
+        let inner = cddl_lib::CborIntTable::new(inner);
+        WitCborIntTable(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<(String, wit_types::Int)> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+            .iter()
+            .map(|(x0, x1)| (x0.clone(), int_to_wit_types(x1)))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborIntTable as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborIntTable, String> {
+        <cddl_lib::CborIntTable as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::CborIntTable::new(WitCborIntTable(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -4,6 +4,54 @@ expression: ir
 ---
 {
     RustIdent(
+        "CborCtlNe",
+    ): RustStruct {
+        ident: RustIdent(
+            "CborCtlNe",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    I64,
+                ),
+                encodings: [
+                    CBORBytes,
+                ],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: Some(
+                        (
+                            Some(
+                                2,
+                            ),
+                            Some(
+                                0,
+                            ),
+                        ),
+                    ),
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+            float_min_max: None,
+        },
+    },
+    RustIdent(
         "Garm",
     ): RustStruct {
         ident: RustIdent(
@@ -353,31 +401,15 @@ expression: ir
                     RustField {
                         name: "g",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "CborCtlNe",
-                                    ),
-                                ),
-                                Primitive(
-                                    I64,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "CborCtlNe",
                                 ),
                             ),
-                            encodings: [
-                                CBORBytes,
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
-                                bounds: Some(
-                                    (
-                                        Some(
-                                            2,
-                                        ),
-                                        Some(
-                                            0,
-                                        ),
-                                    ),
-                                ),
+                                bounds: None,
                                 duplicates: None,
                                 float_bounds: None,
                                 basic_override: false,

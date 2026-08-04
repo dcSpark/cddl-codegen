@@ -16,16 +16,70 @@ use alloc::string::String;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
+pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
+use cbor_encodings::{CborIntEncoding, CborIntTableEncoding};
 
 pub type BareInt = Int;
 
-pub type CborInt = Int;
+#[derive(Clone, Debug)]
+pub struct CborInt {
+    pub(crate) inner: Int,
+    pub encodings: Option<CborIntEncoding>,
+}
 
-pub type CborIntTable = OrderedHashMap<String, Int>;
+impl CborInt {
+    pub fn get(&self) -> &Int {
+        &self.inner
+    }
+
+    pub fn new(inner: Int) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Int> for CborInt {
+    fn from(inner: Int) -> Self {
+        CborInt::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborIntTable {
+    pub(crate) inner: OrderedHashMap<String, Int>,
+    pub encodings: Option<CborIntTableEncoding>,
+}
+
+impl CborIntTable {
+    pub fn get(&self) -> &OrderedHashMap<String, Int> {
+        &self.inner
+    }
+
+    pub fn new(inner: OrderedHashMap<String, Int>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedHashMap<String, Int>> for CborIntTable {
+    fn from(inner: OrderedHashMap<String, Int>) -> Self {
+        CborIntTable::new(inner)
+    }
+}
+
+impl From<CborIntTable> for OrderedHashMap<String, Int> {
+    fn from(wrapper: CborIntTable) -> Self {
+        wrapper.inner
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Int {
@@ -89,6 +143,12 @@ impl TryFrom<i128> for Int {
                 encoding: None,
             })
         }
+    }
+}
+
+impl From<CborInt> for Int {
+    fn from(wrapper: CborInt) -> Self {
+        wrapper.inner
     }
 }
 

@@ -20,7 +20,7 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use cbor_encodings::InnerEncoding;
+use cbor_encodings::{InnerEncoding, WrappedEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Inner {
@@ -39,4 +39,33 @@ impl Inner {
     }
 }
 
-pub type Wrapped = Inner;
+impl From<Wrapped> for Inner {
+    fn from(wrapper: Wrapped) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Wrapped {
+    pub(crate) inner: Inner,
+    pub encodings: Option<WrappedEncoding>,
+}
+
+impl Wrapped {
+    pub fn get(&self) -> &Inner {
+        &self.inner
+    }
+
+    pub fn new(inner: Inner) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Inner> for Wrapped {
+    fn from(inner: Inner) -> Self {
+        Wrapped::new(inner)
+    }
+}

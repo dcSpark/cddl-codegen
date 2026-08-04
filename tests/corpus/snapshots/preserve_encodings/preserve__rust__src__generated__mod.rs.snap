@@ -92,11 +92,11 @@ use cbor_encodings::{
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
     CborNestedPayloadsEncoding, CustomFieldHolderEncoding, CustomTablePositionsEncoding,
     DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FloatHeadsEncoding,
-    FooEncoding, HashEncoding, MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding,
-    NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
-    OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding,
-    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
-    SignedIntsEncoding, String64Encoding, String1632Encoding,
+    FooBytesEncoding, FooEncoding, HashEncoding, MapStructWithCustomSerializationEncoding,
+    MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding,
+    OptFixedArrEncoding, OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding,
+    PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding, SecondEncoding,
+    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
     TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
@@ -826,13 +826,42 @@ impl Foo {
     }
 }
 
+impl From<FooBytes> for Foo {
+    fn from(wrapper: FooBytes) -> Self {
+        wrapper.inner
+    }
+}
+
 impl From<TaggedFooBytes> for Foo {
     fn from(wrapper: TaggedFooBytes) -> Self {
         wrapper.inner
     }
 }
 
-pub type FooBytes = Foo;
+#[derive(Clone, Debug)]
+pub struct FooBytes {
+    pub(crate) inner: Foo,
+    pub encodings: Option<FooBytesEncoding>,
+}
+
+impl FooBytes {
+    pub fn get(&self) -> &Foo {
+        &self.inner
+    }
+
+    pub fn new(inner: Foo) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Foo> for FooBytes {
+    fn from(inner: Foo) -> Self {
+        FooBytes::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum GroupChoice {

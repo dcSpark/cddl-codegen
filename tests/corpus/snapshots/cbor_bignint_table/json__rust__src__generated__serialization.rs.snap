@@ -19,14 +19,7 @@ impl cbor_event::se::Serialize for Holder {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(1))?;
-        let mut payload_inner_se = Serializer::new_vec();
-        payload_inner_se.write_map(cbor_event::Len::Len(self.payload.len() as u64))?;
-        for (key, value) in self.payload.iter() {
-            key.serialize(&mut payload_inner_se)?;
-            payload_inner_se.write_unsigned_integer(*value)?;
-        }
-        let payload_bytes = payload_inner_se.finalize();
-        serializer.write_bytes(&payload_bytes)?;
+        self.payload.serialize(serializer)?;
         Ok(serializer)
     }
 }
@@ -38,36 +31,8 @@ impl Deserialize for Holder {
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(1)?;
             read_len.finish()?;
-            let payload = (|| -> Result<_, DeserializeError> {
-                let payload_bytes = raw.bytes()?;
-                let inner_de = &mut Deserializer::from(payload_bytes);
-                let mut payload_table = BTreeMap::new();
-                let payload_len = inner_de.map()?;
-                while match payload_len {
-                    cbor_event::Len::Len(n) => (payload_table.len() as u64) < n,
-                    cbor_event::Len::Indefinite => true,
-                } {
-                    if matches!(payload_len, cbor_event::Len::Indefinite)
-                        && inner_de.cbor_type()? == cbor_event::Type::Special
-                        && inner_de.special_break()?
-                    {
-                        break;
-                    }
-                    let payload_key = PreludeBignint::deserialize(inner_de)?;
-                    let payload_value = inner_de.unsigned_integer()?;
-                    if payload_table
-                        .insert(payload_key.clone(), payload_value)
-                        .is_some()
-                    {
-                        return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
-                            "some complicated/unsupported type",
-                        )))
-                        .into());
-                    }
-                }
-                Ok(payload_table)
-            })()
-            .map_err(|e| e.annotate("payload"))?;
+            let payload =
+                X::deserialize(raw).map_err(|e: DeserializeError| e.annotate("payload"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -106,5 +71,53 @@ impl Deserialize for PreludeBignint {
             }))
         })()
         .map_err(|e| e.annotate("PreludeBignint"))
+    }
+}
+
+impl cbor_event::se::Serialize for X {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        inner_inner_se.write_map(cbor_event::Len::Len(self.0.len() as u64))?;
+        for (key, value) in self.0.iter() {
+            key.serialize(&mut inner_inner_se)?;
+            inner_inner_se.write_unsigned_integer(*value)?;
+        }
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for X {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let mut inner_table = BTreeMap::new();
+            let inner_len = inner_de.map()?;
+            while match inner_len {
+                cbor_event::Len::Len(n) => (inner_table.len() as u64) < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                if matches!(inner_len, cbor_event::Len::Indefinite)
+                    && inner_de.cbor_type()? == cbor_event::Type::Special
+                    && inner_de.special_break()?
+                {
+                    break;
+                }
+                let inner_key = PreludeBignint::deserialize(inner_de)?;
+                let inner_value = inner_de.unsigned_integer()?;
+                if inner_table.insert(inner_key.clone(), inner_value).is_some() {
+                    return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                        "some complicated/unsupported type",
+                    )))
+                    .into());
+                }
+            }
+            Ok(Self(inner_table))
+        })()
+        .map_err(|e| e.annotate("X"))
     }
 }

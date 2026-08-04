@@ -15,6 +15,12 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<inner, string>;
   }
+  resource wrapped {
+    constructor(inner: borrow<inner>);
+    get: func() -> inner;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<wrapped, string>;
+  }
 }
 
 world cddl-lib-world {

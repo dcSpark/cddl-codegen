@@ -26,39 +26,7 @@ impl cbor_event::se::Serialize for Holder {
                 .unwrap_or_default()
                 .to_len_sz(1),
         )?;
-        let mut payload_inner_se = Serializer::new_vec();
-        payload_inner_se.write_map_sz(
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.payload_encoding)
-                .unwrap_or_default()
-                .to_len_sz(self.payload.len() as u64),
-        )?;
-        for (key, value) in self.payload.iter() {
-            key.serialize(&mut payload_inner_se)?;
-            let payload_value_encoding = self
-                .encodings
-                .as_ref()
-                .and_then(|encs| encs.payload_value_encodings.get(key))
-                .cloned()
-                .unwrap_or_default();
-            payload_inner_se
-                .write_unsigned_integer_sz(*value, fit_sz(*value, payload_value_encoding))?;
-        }
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.payload_encoding)
-            .unwrap_or_default()
-            .end(&mut payload_inner_se)?;
-        let payload_bytes = payload_inner_se.finalize();
-        serializer.write_bytes_sz(
-            &payload_bytes,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.payload_bytes_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(payload_bytes.len() as u64),
-        )?;
+        self.payload.serialize(serializer)?;
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)
@@ -75,47 +43,8 @@ impl Deserialize for Holder {
             let mut read_len = CBORReadLen::new(len);
             read_len.read_elems(1)?;
             read_len.finish()?;
-            let (payload, payload_bytes_encoding, payload_encoding, payload_value_encodings) =
-                (|| -> Result<_, DeserializeError> {
-                    let (payload_bytes, payload_bytes_encoding) = raw.bytes_sz()?;
-                    let inner_de = &mut Deserializer::from(payload_bytes);
-                    let mut payload_table = OrderedHashMap::new();
-                    let payload_len = inner_de.map_sz()?;
-                    let payload_encoding = payload_len.into();
-                    let mut payload_value_encodings = BTreeMap::new();
-                    while match payload_len {
-                        cbor_event::LenSz::Len(n, _) => (payload_table.len() as u64) < n,
-                        cbor_event::LenSz::Indefinite => true,
-                    } {
-                        if matches!(payload_len, cbor_event::LenSz::Indefinite)
-                            && inner_de.cbor_type()? == cbor_event::Type::Special
-                            && inner_de.special_break()?
-                        {
-                            break;
-                        }
-                        let payload_key = PreludeBignint::deserialize(inner_de)?;
-                        let (payload_value, payload_value_encoding) = inner_de
-                            .unsigned_integer_sz()
-                            .map(|(x, enc)| (x, Some(enc)))?;
-                        if payload_table
-                            .insert(payload_key.clone(), payload_value)
-                            .is_some()
-                        {
-                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
-                                "some complicated/unsupported type",
-                            )))
-                            .into());
-                        }
-                        payload_value_encodings.insert(payload_key.clone(), payload_value_encoding);
-                    }
-                    Ok((
-                        payload_table,
-                        StringEncoding::from(payload_bytes_encoding),
-                        payload_encoding,
-                        payload_value_encodings,
-                    ))
-                })()
-                .map_err(|e| e.annotate("payload"))?;
+            let payload =
+                X::deserialize(raw).map_err(|e: DeserializeError| e.annotate("payload"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
                 cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -125,12 +54,7 @@ impl Deserialize for Holder {
             }
             Ok(Holder {
                 payload,
-                encodings: Some(HolderEncoding {
-                    len_encoding,
-                    payload_bytes_encoding,
-                    payload_encoding,
-                    payload_value_encodings,
-                }),
+                encodings: Some(HolderEncoding { len_encoding }),
             })
         })()
         .map_err(|e| e.annotate("Holder"))
@@ -187,5 +111,96 @@ impl Deserialize for PreludeBignint {
             })
         })()
         .map_err(|e| e.annotate("PreludeBignint"))
+    }
+}
+
+impl cbor_event::se::Serialize for X {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        inner_inner_se.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.inner.len() as u64),
+        )?;
+        for (key, value) in self.inner.iter() {
+            key.serialize(&mut inner_inner_se)?;
+            let inner_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.inner_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            inner_inner_se
+                .write_unsigned_integer_sz(*value, fit_sz(*value, inner_value_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.inner_encoding)
+            .unwrap_or_default()
+            .end(&mut inner_inner_se)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &inner_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(inner_bytes.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for X {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner_bytes, inner_bytes_encoding) = raw.bytes_sz()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let mut inner_table = OrderedHashMap::new();
+            let inner_len = inner_de.map_sz()?;
+            let inner_encoding = inner_len.into();
+            let mut inner_value_encodings = BTreeMap::new();
+            while match inner_len {
+                cbor_event::LenSz::Len(n, _) => (inner_table.len() as u64) < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                if matches!(inner_len, cbor_event::LenSz::Indefinite)
+                    && inner_de.cbor_type()? == cbor_event::Type::Special
+                    && inner_de.special_break()?
+                {
+                    break;
+                }
+                let inner_key = PreludeBignint::deserialize(inner_de)?;
+                let (inner_value, inner_value_encoding) = inner_de
+                    .unsigned_integer_sz()
+                    .map(|(x, enc)| (x, Some(enc)))?;
+                if inner_table.insert(inner_key.clone(), inner_value).is_some() {
+                    return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                        "some complicated/unsupported type",
+                    )))
+                    .into());
+                }
+                inner_value_encodings.insert(inner_key.clone(), inner_value_encoding);
+            }
+            let (inner, inner_bytes_encoding, inner_encoding, inner_value_encodings) = (
+                inner_table,
+                StringEncoding::from(inner_bytes_encoding),
+                inner_encoding,
+                inner_value_encodings,
+            );
+            Ok(Self {
+                inner,
+                encodings: Some(XEncoding {
+                    inner_bytes_encoding,
+                    inner_encoding,
+                    inner_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("X"))
     }
 }

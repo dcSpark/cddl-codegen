@@ -164,3 +164,42 @@ impl Deserialize for Holder {
         .map_err(|e| e.annotate("Holder"))
     }
 }
+
+impl cbor_event::se::Serialize for Wrapped {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        self.inner.serialize(&mut inner_inner_se)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &inner_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(inner_bytes.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for Wrapped {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner_bytes, inner_bytes_encoding) = raw.bytes_sz()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let (inner, inner_bytes_encoding) = (
+                Coords::deserialize(inner_de)?,
+                StringEncoding::from(inner_bytes_encoding),
+            );
+            Ok(Self {
+                inner,
+                encodings: Some(WrappedEncoding {
+                    inner_bytes_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("Wrapped"))
+    }
+}

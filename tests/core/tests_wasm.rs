@@ -214,22 +214,23 @@ fn wasm_nullable_field_both_states() {
     assert!(back.opt_text().is_none());
 }
 
-// shapes: cborwrap (`bytes .cbor foo`) — `foo_bytes` (FooBytes = Foo) stays a transparent passthru
-// alias, so it crosses as the inner Foo wrapper; `tagged_foo_bytes` (#6.20(bytes .cbor foo)) now
-// auto-wraps into the opaque TaggedFooBytes tag wrapper. Both nested-CBOR re-encodings must be
-// lossless.
+// shapes: cborwrap (`bytes .cbor foo`) — `foo_bytes` auto-wraps into its own opaque FooBytes class
+// (a `.cbor` rule body owns the byte-string framing, which a transparent passthru alias to Foo could
+// not carry: the alias's standalone codec would have been Foo's, writing the UNWRAPPED array);
+// `tagged_foo_bytes` (#6.20(bytes .cbor foo)) auto-wraps into the TaggedFooBytes tag wrapper for the
+// same reason. Both cross as opaque classes, and both nested-CBOR re-encodings must be lossless.
 #[test]
 fn wasm_cbor_in_cbor_boundary() {
-    let inner = Foo::new(5, String::from("in"), vec![9]);
+    let inner = FooBytes::new(&Foo::new(5, String::from("in"), vec![9]));
     let tagged: TaggedFooBytes =
         cddl_lib::TaggedFooBytes::from(cddl_lib::Foo::new(6, String::from("tag"), vec![])).into();
     let expected_tagged = tagged.to_cbor_bytes();
     let back = CborInCbor::from_cbor_bytes(&CborInCbor::new(&inner, 42, &tagged).to_cbor_bytes())
         .ok()
         .expect("CborInCbor round-trip");
-    assert_eq!(back.foo_bytes().index_0(), 5);
-    assert_eq!(back.foo_bytes().index_1(), "in");
-    assert_eq!(back.foo_bytes().index_2(), vec![9]);
+    assert_eq!(back.foo_bytes().get().index_0(), 5);
+    assert_eq!(back.foo_bytes().get().index_1(), "in");
+    assert_eq!(back.foo_bytes().get().index_2(), vec![9]);
     assert_eq!(back.uint_bytes(), 42);
     assert_eq!(back.tagged_foo_bytes().to_cbor_bytes(), expected_tagged);
 }

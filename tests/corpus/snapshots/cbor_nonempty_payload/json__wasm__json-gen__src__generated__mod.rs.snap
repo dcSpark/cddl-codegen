@@ -2,10 +2,14 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
-#[allow(unused_variables)]
-pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {}
+pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::WrappedNonempty>();
+    reg.add::<cddl_lib::WrappedNonemptyMap>();
+}
 
 pub fn export_schemas() {
     let schema_path = std::path::Path::new("schemas");

@@ -54,4 +54,27 @@ impl From<PreludeBignint> for Vec<u8> {
     }
 }
 
-pub type X = BTreeMap<PreludeBignint, u64>;
+#[derive(Clone, Debug)]
+pub struct X(pub(crate) BTreeMap<PreludeBignint, u64>);
+
+impl X {
+    pub fn get(&self) -> &BTreeMap<PreludeBignint, u64> {
+        &self.0
+    }
+
+    pub fn new(inner: BTreeMap<PreludeBignint, u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<BTreeMap<PreludeBignint, u64>> for X {
+    fn from(inner: BTreeMap<PreludeBignint, u64>) -> Self {
+        X::new(inner)
+    }
+}
+
+impl From<X> for BTreeMap<PreludeBignint, u64> {
+    fn from(wrapper: X) -> Self {
+        wrapper.0
+    }
+}

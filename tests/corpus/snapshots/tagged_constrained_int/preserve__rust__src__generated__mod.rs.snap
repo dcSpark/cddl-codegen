@@ -23,11 +23,34 @@ pub mod serialization;
 use crate::generated::error::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
-    HolderEncoding, TaggedCtlNeEncoding, TaggedRangeExclEncoding, TaggedRangeInclEncoding,
-    TaggedRangeNintEncoding, TaggedRangeUintEncoding,
+    CborCtlNeEncoding, HolderEncoding, TaggedCtlNeEncoding, TaggedRangeExclEncoding,
+    TaggedRangeInclEncoding, TaggedRangeNintEncoding, TaggedRangeUintEncoding,
 };
 
-pub type CborCtlNe = i64;
+#[derive(Clone, Debug)]
+pub struct CborCtlNe {
+    pub(crate) inner: i64,
+    pub encodings: Option<CborCtlNeEncoding>,
+}
+
+impl CborCtlNe {
+    pub fn get(&self) -> i64 {
+        self.inner
+    }
+
+    pub fn new(inner: i64) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<i64> for CborCtlNe {
+    fn from(inner: i64) -> Self {
+        CborCtlNe::new(inner)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Garm {
@@ -92,16 +115,8 @@ impl Holder {
         e: TaggedRangeUint,
         f: Garm,
         g: CborCtlNe,
-    ) -> Result<Self, DeserializeError> {
-        if g == 1 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: g as i128,
-                min: Some(2),
-                max: Some(0),
-            }
-            .into());
-        }
-        Ok(Self {
+    ) -> Self {
+        Self {
             a,
             b,
             c,
@@ -110,7 +125,7 @@ impl Holder {
             f,
             g,
             encodings: None,
-        })
+        }
     }
 }
 
@@ -296,6 +311,12 @@ impl TryFrom<u64> for TaggedRangeUint {
 
     fn try_from(inner: u64) -> Result<Self, Self::Error> {
         TaggedRangeUint::new(inner)
+    }
+}
+
+impl From<CborCtlNe> for i64 {
+    fn from(wrapper: CborCtlNe) -> Self {
+        wrapper.inner
     }
 }
 

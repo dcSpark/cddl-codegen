@@ -421,18 +421,7 @@ impl Serialize for CborInCbor {
                 .unwrap_or_default()
                 .to_len_sz(2, force_canonical),
         )?;
-        let mut foo_bytes_inner_se = Serializer::new_vec();
-        self.foo_bytes
-            .serialize(&mut foo_bytes_inner_se, force_canonical)?;
-        let foo_bytes_bytes = foo_bytes_inner_se.finalize();
-        serializer.write_bytes_sz(
-            &foo_bytes_bytes,
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.foo_bytes_bytes_encoding.clone())
-                .unwrap_or_default()
-                .to_str_len_sz(foo_bytes_bytes.len() as u64, force_canonical),
-        )?;
+        self.foo_bytes.serialize(serializer, force_canonical)?;
         let mut uint_bytes_inner_se = Serializer::new_vec();
         uint_bytes_inner_se.write_unsigned_integer_sz(
             self.uint_bytes,
@@ -470,15 +459,8 @@ impl Deserialize for CborInCbor {
             let mut read_len = CBORReadLen::new(len);
             read_len.read_elems(2)?;
             read_len.finish()?;
-            let (foo_bytes, foo_bytes_bytes_encoding) = (|| -> Result<_, DeserializeError> {
-                let (foo_bytes_bytes, foo_bytes_bytes_encoding) = raw.bytes_sz()?;
-                let inner_de = &mut Deserializer::from(foo_bytes_bytes);
-                Ok((
-                    Foo::deserialize(inner_de)?,
-                    StringEncoding::from(foo_bytes_bytes_encoding),
-                ))
-            })()
-            .map_err(|e| e.annotate("foo_bytes"))?;
+            let foo_bytes = FooBytes::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("foo_bytes"))?;
             let (uint_bytes, uint_bytes_bytes_encoding, uint_bytes_encoding) =
                 (|| -> Result<_, DeserializeError> {
                     let (uint_bytes_bytes, uint_bytes_bytes_encoding) = raw.bytes_sz()?;
@@ -507,7 +489,6 @@ impl Deserialize for CborInCbor {
                 uint_bytes,
                 encodings: Some(CborInCborEncoding {
                     len_encoding,
-                    foo_bytes_bytes_encoding,
                     uint_bytes_bytes_encoding,
                     uint_bytes_encoding,
                 }),
@@ -1418,6 +1399,46 @@ impl Deserialize for Foo {
             })
         })()
         .map_err(|e| e.annotate("Foo"))
+    }
+}
+
+impl Serialize for FooBytes {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+        force_canonical: bool,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        self.inner.serialize(&mut inner_inner_se, force_canonical)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &inner_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(inner_bytes.len() as u64, force_canonical),
+        )
+    }
+}
+
+impl Deserialize for FooBytes {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner_bytes, inner_bytes_encoding) = raw.bytes_sz()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let (inner, inner_bytes_encoding) = (
+                Foo::deserialize(inner_de)?,
+                StringEncoding::from(inner_bytes_encoding),
+            );
+            Ok(Self {
+                inner,
+                encodings: Some(FooBytesEncoding {
+                    inner_bytes_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("FooBytes"))
     }
 }
 

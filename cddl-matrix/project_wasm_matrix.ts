@@ -100,12 +100,15 @@ const SHAPES: Record<string, Shape> = {
   // and executes map-rep serialization in the roundtrips gate; full role coverage would only duplicate
   // `struct`'s cells.
   mstruct: { defs: ["mst = { a: uint, b: text }"], ty: "mst", roles: ["array-element"] },
-  // transparent-to-wrapper via `.cbor` (follows the inner wrapper `Foo`)
+  // `.cbor` rule body -> its OWN wrapper class: the rule owns the byte-string framing, so it mints a
+  // wasm wrapper with a `new(inner)` ctor and a `get()` accessor over the inner `Foo` wrapper. The
+  // sibling of `tag` (same wasm ABI, different framing); the wrapper is what keeps the standalone
+  // `to_cbor_bytes` writing the WRAPPED form a transparent alias to `Foo` would have dropped.
   cborwrap: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo"], ty: "fb" },
-  // CBOR-tag wrapper struct — a distinct wasm-ABI shape: crosses via a wasm `new(inner)` ctor and an
-  // inner-value `get()` accessor (plus `From<cddl_lib::Tg>` / cbor bytes), unlike `cborwrap`
-  // (transparent-to-wrapper, which resolves to the inner `Foo` wrapper) and the `coll`/`collmap`
-  // wrappers (which expose the richer `new`/`add`/`insert` collection API).
+  // CBOR-tag wrapper struct — crosses via a wasm `new(inner)` ctor and an inner-value `get()`
+  // accessor (plus `From<cddl_lib::Tg>` / cbor bytes), the same ABI shape `cborwrap` takes over a
+  // record inner, and distinct from the `coll`/`collmap` wrappers (which expose the richer
+  // `new`/`add`/`insert` collection API).
   tag: { defs: ["tg = #6.10(uint)"], ty: "tg" },
   // bounded/range wrapper struct — the ONLY `Result`-returning wasm `new`: `new(inner)` enforces the
   // `.size` bound and returns `Result<_, JsError>`, alongside the inner-value `get()`. Pins the
@@ -221,6 +224,8 @@ const SHAPES: Record<string, Shape> = {
   // --- Depth / representative smoke cells: same boundary logic as a 1-hop shape above, kept only to
   // guard alias-chain *resolution depth* (>1 hop). One role each — full role coverage would only
   // duplicate `passthru`/`cborwrap` accessors (verified: differs from them only by type name).
+  // `cborwrap2` is a transparent re-alias OF a `.cbor` wrapper (`fb2 = fb`), so it resolves to the
+  // `fb` wrapper class — the re-alias carries no encodings of its own and stays transparent.
   chain: { defs: ["ca = [* uint]", "cb = ca", "cc = cb"], ty: "cc", roles: ["array-element"] }, // 2-hop passthru
   cborwrap2: {
     defs: ["foo = [a: uint]", "fb = bytes .cbor foo", "fb2 = fb"],
