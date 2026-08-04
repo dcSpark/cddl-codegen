@@ -10016,7 +10016,54 @@ axis = "corpus"
 example = "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nouter = [* oset<uint>]"
 fixture = "tag_set_reject_anon_generic"
 rule = "outer"
-pinned_reason = "probe crate does not compile: holder-mode EMBEDS the rule, inlining its array loop, and the loop's element is a reject-instance transparent alias (`element.serialize()` / `OsetU64::deserialize()` on an impl-less `OrderedSet<u64>` alias) — the 'Alias-of-instance chains don't compile' second-hop convergence-walk boundary (tests/TESTING_ROADMAP.md, REQUEST-08 entry), reject-instance-ELEMENT flavor; the fixture itself compiles (nothing embeds `outer`). Re-mint when the convergence walk chases the reject-instance-element hop."
+spec = "__probe_holder = [0, outer]\noset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nouter = [* oset<uint>]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081d9010280"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082d9010282190ee5190dad81190651"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082d90102841907c31903d419117c1911f281190690"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083821907e7190700d90102841903391905c1190dc519016cd9010280"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083831902cf190a7e19101cd90102831902fb190a24190c51d9010282190c5c1903bb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d9010280d9010280d9010281190c2e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084831908cf19056a190139d9010280d9010282190a89190dd8821901bc19012e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200848419031719109f1903f8183ad9010281190dbed9010281190f0984190a861903751902eb1908a4"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "tagged.holder"

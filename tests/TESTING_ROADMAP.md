@@ -2648,7 +2648,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set idiom") is narrow by design;
   recognition is pinned by `optional_tag_set_tests`. Its full test map — the tag-set corpus
   fixtures, the `opt_set` golden wire vectors, and the in-process recognition/parity tests — lives
-  in `tests/README.md` § "Transparent tag-set idiom". Four boundary shapes stay unsupported, each
+  in `tests/README.md` § "Transparent tag-set idiom". Three boundary shapes stay unsupported, each
   with its reopening signal (a real consumer spec hitting it):
   - *Non-idiom choice-BODIED generic defs are refused, not supported.* The idiom is the ONLY
     choice-bodied generic def the generator can monomorphize — the collapse fires at parse time,
@@ -2658,19 +2658,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     rejected at parse naming the idiom (`robustness_tests::unsupported_generic_def_bodies_reject_
     gracefully`). Remedy when the refusal bites: teach the generic machinery to substitute into an
     enum's arms, which is the same work a generic GROUP-choice def needs.
-  - *Alias-of-instance chains don't compile.* `bar = xs_int` where `xs_int = xs<uint>` is itself a
-    generic collection instance emits `pub type Bar = XsInt;` plus use-site `self.x.serialize()` /
-    `Bar::deserialize()` — methods a transparent `Vec` alias lacks (verified: generates, does not
-    compile). Phase 2.5's field-convergence walk resolves a DIRECT instance field and a nested
-    collection-of-instance ELEMENT (`[* xs_int]` is inlined correctly, both directions), but an
-    alias-of-an-instance is a second hop it does not follow. Remedy when it bites: extend the walk
-    (or `resolve_alias`) to chase an alias whose target is itself a structural collection instance.
-    A REJECT-instance-ELEMENT flavor of the same boundary is now concretely pinned: embedding a
-    named array rule whose element is a reject-flavored instance (`outer = [* oset<uint>]` used as
-    a member) inlines the array loop but leaves `element.serialize()` /
-    `OsetU64::deserialize()` calls on the impl-less transparent `OrderedSet` alias — the
-    decode-conformance row `tag_set_reject_anon_generic.outer` is `pinned_reason`-pinned on it
-    (the fixture itself compiles; only an EMBEDDING of the rule materializes the calls).
   - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
     `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
     two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.

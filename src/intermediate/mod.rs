@@ -2835,20 +2835,50 @@ impl<'a> IntermediateTypes<'a> {
         if resolved.is_empty() {
             return;
         }
+        // The DANGLING subset of `resolved`: instance idents that name NO registered struct, so a
+        // surviving `Rust(<instance>)` leaf spelling one of them refers to nothing generation can
+        // look up. Today that is exactly the NAMED set-nominal binding (`xs_int = xs<uint>` over a
+        // tag-258 set idiom): its resolution mints the struct under the INSTANTIATION canonical
+        // (`XsU64`) and gives the binding ident only a transparent `pub type XsInt = XsU64;` alias.
+        // A transparent-collection instance and a generic EXTERN instance both DO register a struct
+        // under their own ident, so their leaves are well-formed and stay untouched — which is why
+        // the `Alias`-box descent below is restricted to this subset rather than run over all of
+        // `resolved`: repairing only what dangles keeps every already-working shape's emitted bytes
+        // identical. The conceptual type alone is carried because an `Alias` box holds a
+        // `ConceptualRustType` with nowhere to put encodings; the filter demands the resolved type
+        // have none, so nothing can be dropped silently (a set-nominal binding's alias base is a
+        // bare `Rust(canonical)` and never carries any).
+        let dangling: BTreeMap<RustIdent, ConceptualRustType> = resolved
+            .iter()
+            .filter(|(ident, rt)| self.rust_struct(ident).is_none() && rt.encodings.is_empty())
+            .map(|(ident, rt)| (ident.clone(), rt.conceptual_type.clone()))
+            .collect();
         // Replace a `Rust(instance)` leaf with the resolved collection alias, keeping any
         // reference-site encodings (`#6.24(xs_int)`-style outer wraps) OUTSIDE the alias's own by
         // appending them. Recurses into structural children first so `[* xs_int]` / `? xs_int` reach
-        // the leaf. Does not descend through the inserted `Alias` box — nested collection-of-generic
-        // -instance is out of scope (no such shape reaches here today).
-        fn walk(rt: &mut RustType, resolved: &BTreeMap<RustIdent, RustType>) {
+        // the leaf.
+        //
+        // An `Alias` box is descended too, for the `dangling` subset only. A SECOND alias hop
+        // (`bar = xs_int`, then `[b: bar]` / `[* bar]`) registers `Bar`'s own base as the bare
+        // instance leaf built at parse time, so the use site arrives here as
+        // `Alias(Bar, Rust(XsInt))` — the leaf the one-hop case exposes at top level is one box
+        // deeper, and leaving it there aborted generation on the set-idiom flavor. Chains of any
+        // depth and leaves under a container inside the box (`Alias(Bar, Array(Rust(XsInt)))`)
+        // recurse back through here.
+        fn walk(
+            rt: &mut RustType,
+            resolved: &BTreeMap<RustIdent, RustType>,
+            dangling: &BTreeMap<RustIdent, ConceptualRustType>,
+        ) {
             match &mut rt.conceptual_type {
                 ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                    walk(inner, resolved)
+                    walk(inner, resolved, dangling)
                 }
                 ConceptualRustType::Map(k, v) => {
-                    walk(k, resolved);
-                    walk(v, resolved);
+                    walk(k, resolved, dangling);
+                    walk(v, resolved, dangling);
                 }
+                ConceptualRustType::Alias(_, inner) => walk_ct(inner, resolved, dangling),
                 _ => {}
             }
             let replacement = match &rt.conceptual_type {
@@ -2860,34 +2890,59 @@ impl<'a> IntermediateTypes<'a> {
                 *rt = new_rt;
             }
         }
+        /// The inside-an-`Alias`-box half of `walk`. Only `dangling` leaves are substituted here
+        /// (see its definition); structural children are full `RustType`s and hand back to `walk`,
+        /// which applies the encodings-preserving replacement they can hold.
+        fn walk_ct(
+            ct: &mut ConceptualRustType,
+            resolved: &BTreeMap<RustIdent, RustType>,
+            dangling: &BTreeMap<RustIdent, ConceptualRustType>,
+        ) {
+            match ct {
+                ConceptualRustType::Alias(_, inner) => walk_ct(inner, resolved, dangling),
+                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                    walk(inner, resolved, dangling)
+                }
+                ConceptualRustType::Map(k, v) => {
+                    walk(k, resolved, dangling);
+                    walk(v, resolved, dangling);
+                }
+                _ => {}
+            }
+            if let ConceptualRustType::Rust(ident) = ct
+                && let Some(replacement) = dangling.get(ident)
+            {
+                *ct = replacement.clone();
+            }
+        }
         for rust_struct in self.rust_structs.values_mut() {
             match &mut rust_struct.variant {
                 RustStructType::Record(record) => {
                     for field in record.fields.iter_mut() {
-                        walk(&mut field.rust_type, &resolved);
+                        walk(&mut field.rust_type, &resolved, &dangling);
                     }
                 }
                 RustStructType::Table { domain, range, .. } => {
-                    walk(domain, &resolved);
-                    walk(range, &resolved);
+                    walk(domain, &resolved, &dangling);
+                    walk(range, &resolved, &dangling);
                 }
                 RustStructType::Array { element_type, .. } => {
-                    walk(element_type, &resolved);
+                    walk(element_type, &resolved, &dangling);
                 }
                 RustStructType::GroupChoice { variants, .. }
                 | RustStructType::TypeChoice { variants } => {
                     for variant in variants.iter_mut() {
                         match &mut variant.data {
-                            EnumVariantData::RustType(ty) => walk(ty, &resolved),
+                            EnumVariantData::RustType(ty) => walk(ty, &resolved, &dangling),
                             EnumVariantData::Inlined(rec) => {
                                 for field in rec.fields.iter_mut() {
-                                    walk(&mut field.rust_type, &resolved);
+                                    walk(&mut field.rust_type, &resolved, &dangling);
                                 }
                             }
                         }
                     }
                 }
-                RustStructType::Wrapper { wrapped, .. } => walk(wrapped, &resolved),
+                RustStructType::Wrapper { wrapped, .. } => walk(wrapped, &resolved, &dangling),
                 RustStructType::CStyleEnum { .. }
                 | RustStructType::Extern
                 | RustStructType::RawBytesType => {}
