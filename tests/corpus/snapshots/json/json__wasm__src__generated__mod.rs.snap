@@ -79,6 +79,64 @@ impl AsRef<cddl_lib::BytesWrapper> for BytesWrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct CustomHolder(pub(crate) cddl_lib::CustomHolder);
+
+#[wasm_bindgen]
+impl CustomHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CustomHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<CustomHolder, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn c(&self) -> CustomWrapper {
+        self.0.c.clone().into()
+    }
+
+    pub fn new(c: &CustomWrapper) -> Self {
+        Self(cddl_lib::CustomHolder::new(c.clone().into()))
+    }
+}
+
+impl From<cddl_lib::CustomHolder> for CustomHolder {
+    fn from(native: cddl_lib::CustomHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CustomHolder> for cddl_lib::CustomHolder {
+    fn from(wasm: CustomHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CustomHolder> for CustomHolder {
+    fn as_ref(&self) -> &cddl_lib::CustomHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct CustomWrapper(pub(crate) cddl_lib::CustomWrapper);
 
 #[wasm_bindgen]

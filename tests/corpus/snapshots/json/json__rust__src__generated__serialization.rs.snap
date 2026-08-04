@@ -31,6 +31,39 @@ impl Deserialize for BytesWrapper {
     }
 }
 
+impl cbor_event::se::Serialize for CustomHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        self.c.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for CustomHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let c =
+                CustomWrapper::deserialize(raw).map_err(|e: DeserializeError| e.annotate("c"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CustomHolder { c })
+        })()
+        .map_err(|e| e.annotate("CustomHolder"))
+    }
+}
+
 impl cbor_event::se::Serialize for CustomWrapper {
     fn serialize<'se>(
         &self,
