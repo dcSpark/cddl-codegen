@@ -564,7 +564,15 @@
       "role": "role.cbor-payload"
     },
     {
+      "feature": "prelude.any",
+      "role": "role.choice-member"
+    },
+    {
       "feature": "prelude.null",
+      "role": "role.choice-member"
+    },
+    {
+      "feature": "prelude.true",
       "role": "role.choice-member"
     },
     {
@@ -613,6 +621,10 @@
     },
     {
       "feature": "type2.map",
+      "role": "role.group-choice-arm"
+    },
+    {
+      "feature": "type2.tag",
       "role": "role.group-choice-arm"
     },
     {

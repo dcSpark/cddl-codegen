@@ -139,6 +139,28 @@ spec = "allowed"
 note = "Array-representation group-choice arm containing an inline parenthesized group. RFC8610 §2.2.1, §2.2.2, §3.4."
 example = "t = [ (uint, tstr) // bytes ]"
 
+# Fixed-value KINDS in the ARRAY-rep arm. The map-rep fixed-value arm is `type2.value.map` above
+# (`{ a: 0 // b: tstr }`); bool and null are covered array-rep by `tests/corpus/group_choice_fixed_special.cddl`.
+# These two enumerate the remaining kinds the array rep had never probed — a nint constant and a
+# tag-wrapped fixed form — and each spells its DISPATCH PATH, because a kind proven on the type-match
+# dispatch certifies nothing about the brute-force one (`contain.choice-member.prelude.true.same_major_brute`).
+
+[[contain]]
+id = "contain.group-choice-arm.type2.value.nint_array"
+role = "role.group-choice-arm"
+feature = "type2.value"
+spec = "allowed"
+note = "Array-representation group-choice arm carrying a fixed NEGATIVE integer member value (`[ v: -1 // label: tstr ]`) — the array-rep, nint-kind counterpart of `contain.group-choice-arm.type2.value.map` (`{ a: 0 // b: tstr }`, a fixed uint in the map rep). Dispatch path: TYPE-MATCH — the emitted deserialize reads the array header then matches `raw.cbor_type()`, routing CBOR major 1 (NegativeInteger) to this arm and major 3 (Text) to the sibling; the arm then verifies the constant and stores nothing, reporting a wrong constant as `FixedValueMismatch` with a `Key::Nint` naming the AUTHORED value (`-1`), not the `-1-N` wire form. No backtracking is emitted, so this row measures the type-match site only. RFC8610 §2.1, §2.2.2, §3.4."
+example = "t = [ v: -1 // label: tstr ]"
+
+[[contain]]
+id = "contain.group-choice-arm.type2.tag.fixed_array"
+role = "role.group-choice-arm"
+feature = "type2.tag"
+spec = "allowed"
+note = "Array-representation group-choice arm whose member is a TAG-WRAPPED fixed value (`[ v: #6.11(true) // label: tstr ]`) — the arm-position counterpart of the member-position cells `contain.array-element.type2.tag.fixed_null` / `.fixed_bool`. Dispatch path: TYPE-MATCH, two-level — `raw.cbor_type()` routes CBOR major 6 (Tag) here and major 3 (Text) to the sibling, then a second match on `raw.tag()` admits 11 and rejects anything else as `TagMismatch`, after which the wrapped constant is verified as `FixedValueMismatch` and stored nowhere. The tag head is what makes the arm discriminable, so unlike the bare fixed specials this kind never needs the brute-force path. RFC8610 §2.1, §2.2.2, §2.2.4, §3.4, §3.6."
+example = "t = [ v: #6.11(true) // label: tstr ]"
+
 [[contain]]
 id = "contain.group-choice-arm.type2.map.array"
 role = "role.group-choice-arm"

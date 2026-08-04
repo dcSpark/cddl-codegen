@@ -54,3 +54,42 @@ feature = "prelude.null"
 spec = "allowed"
 note = "`null` as a `/` alternative (`tstr / null`) — the canonical nullable pattern (Option<T>). Contrast contain.top-level via the per-feature bit: a standalone `x = null` type panics. RFC8610 §2.2.2, App. D."
 example = "a = tstr / null"
+
+# The `any`-arm POSITION axis. A bare `any` accepts EVERY CBOR item, so where the arm sits decides
+# whether the choice is well-formed at all — the three cells below are the same construct at the two
+# positions plus the tagged form that is not a catch-all. The boundary is stated in prose in
+# `README.md` § "Gotchas" (the permanent-unsupported bullet); these rows make it a per-cell verdict.
+
+[[contain]]
+id = "contain.choice-member.prelude.any.non_last"
+role = "role.choice-member"
+feature = "prelude.any"
+spec = "allowed"
+note = "A bare `any` type-choice arm in a NON-LAST position (`a = any / tstr`). Spec-legal — RFC 8610 places no ordering constraint on `/` alternatives — but cddl-codegen REFUSES it gracefully (exit 1) because a bare `any` accepts every CBOR item, making every later arm unreachable dead code; the message says so and names the remedy (`move it last`). This unsupported verdict is PERMANENT BY DECISION, not pending work: a green flip here would be a REGRESSION, not progress (`README.md` § \"Gotchas\", the permanent-unsupported bullet, which lists this as the first of its three deliberate boundaries). Pinned by `tests/robustness/choice_any_arm.cddl`. Its supported siblings are `contain.choice-member.prelude.any.last` (the same bare arm, last) and `contain.choice-member.type2.tag.any_non_last` (a tagged `any`, non-last) — position and tagging are the two axes that flip this verdict. RFC8610 §2.2.2, App. D (any)."
+example = "a = any / tstr"
+
+[[contain]]
+id = "contain.choice-member.prelude.any.last"
+role = "role.choice-member"
+feature = "prelude.any"
+spec = "allowed"
+note = "A bare `any` type-choice arm in the LAST position (`a = tstr / any`) — supported, the catch-all spelling the non-last refusal points at. Dispatch path: BRUTE-FORCE try-each-arm. A bare `any` claims every CBOR major type, so no type-match discriminant can separate it from any sibling; the emitted deserialize anchors `raw.position()`, tries each arm in source order and rewinds on failure, reaching the `AnyCbor` arm only after every earlier arm has declined. That forced backtracking is exactly why the arm must be last and why the sibling cell `contain.choice-member.prelude.any.non_last` is a permanent refusal. RFC8610 §2.2.2, App. D (any)."
+example = "a = tstr / any"
+
+[[contain]]
+id = "contain.choice-member.type2.tag.any_non_last"
+role = "role.choice-member"
+feature = "type2.tag"
+spec = "allowed"
+note = "A TAGGED `any` type-choice arm in a NON-LAST position (`a = #6.10(any) / tstr`) — supported in any position, which is the whole point of the cell: the tag head is a discriminant, so `#6.n(any)` is NOT a catch-all even though its payload is. Dispatch path: TYPE-MATCH — the emitted deserialize matches `raw.cbor_type()`, routes major 6 to the tag arm (checking the tag number, `TagMismatch` otherwise) and major 3 to the text arm, with no backtracking anywhere. Contrast its bare siblings `contain.choice-member.prelude.any.{non_last,last}`: the tag is what buys back the position freedom the bare arm loses. Pinned by `tests/robustness/choice_last_any_arm.cddl`. RFC8610 §2.2.2, §2.2.4, §3.6, App. D (any)."
+example = "a = #6.10(any) / tstr"
+
+# The same-major-type (brute-force) fixed-arm pairing. Its home is this role because the varying axis
+# is which DISPATCH the arms force, and that is a property of the type choice, not of any one arm.
+[[contain]]
+id = "contain.choice-member.prelude.true.same_major_brute"
+role = "role.choice-member"
+feature = "prelude.true"
+spec = "allowed"
+note = "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: a null arm in a two-arm choice triggers the `Option<T>` collapse, which refuses a fixed-value inner (see `cddl-matrix/ROADMAP.md` § findings, \"A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member REPRESENTATION…\"). Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D."
+example = "t = true / null / tstr"
