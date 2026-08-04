@@ -86,6 +86,9 @@ impl Deserialize for WrappedNonempty {
                 inner_encoding,
                 inner_elem_encodings,
             );
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
             Ok(Self {
                 inner,
                 encodings: Some(WrappedNonemptyEncoding {
@@ -193,6 +196,9 @@ impl Deserialize for WrappedNonemptyMap {
                 inner_key_encodings,
                 inner_value_encodings,
             );
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
             Ok(Self {
                 inner,
                 encodings: Some(WrappedNonemptyMapEncoding {

@@ -27,7 +27,11 @@ impl Deserialize for CborInt {
         (|| -> Result<_, DeserializeError> {
             let inner_bytes = raw.bytes()?;
             let inner_de = &mut Deserializer::from(inner_bytes);
-            Ok(Self(Int::deserialize(inner_de)?))
+            let inner_payload = Int::deserialize(inner_de)?;
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
         })()
         .map_err(|e| e.annotate("CborInt"))
     }

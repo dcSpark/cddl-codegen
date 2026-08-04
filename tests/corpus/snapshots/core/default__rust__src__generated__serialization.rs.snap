@@ -1261,7 +1261,11 @@ impl Deserialize for CborInCbor {
             let uint_bytes = (|| -> Result<_, DeserializeError> {
                 let uint_bytes_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(uint_bytes_bytes);
-                Ok(inner_de.unsigned_integer()?)
+                let uint_bytes_payload = inner_de.unsigned_integer()?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(uint_bytes_payload)
             })()
             .map_err(|e| e.annotate("uint_bytes"))?;
             let tagged_foo_bytes = TaggedFooBytes::deserialize(raw)
@@ -1333,7 +1337,11 @@ impl Deserialize for CborPayloadCollections {
                     }
                     arr_payload_arr.push(inner_de.unsigned_integer()?);
                 }
-                Ok(arr_payload_arr)
+                let arr_payload_payload = arr_payload_arr;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(arr_payload_payload)
             })()
             .map_err(|e| e.annotate("arr_payload"))?;
             let map_payload = (|| -> Result<_, DeserializeError> {
@@ -1362,7 +1370,11 @@ impl Deserialize for CborPayloadCollections {
                         );
                     }
                 }
-                Ok(map_payload_table)
+                let map_payload_payload = map_payload_table;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(map_payload_payload)
             })()
             .map_err(|e| e.annotate("map_payload"))?;
             let tail = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("tail"))?;
@@ -1452,117 +1464,149 @@ impl Deserialize for CborPayloadLeaves {
             let f64_payload = (|| -> Result<_, DeserializeError> {
                 let f64_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(f64_payload_bytes);
-                read_float_width(inner_de, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
+                let f64_payload_payload =
+                    read_float_width(inner_de, cbor_event::Sz::Eight, cbor_event::Sz::Eight)?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(f64_payload_payload)
             })()
             .map_err(|e| e.annotate("f64_payload"))?;
             let f32_payload = (|| -> Result<_, DeserializeError> {
                 let f32_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(f32_payload_bytes);
-                read_float_width(inner_de, cbor_event::Sz::Four, cbor_event::Sz::Four)
-                    .map(narrow_f32)
+                let f32_payload_payload =
+                    read_float_width(inner_de, cbor_event::Sz::Four, cbor_event::Sz::Four)
+                        .map(narrow_f32)?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(f32_payload_payload)
             })()
             .map_err(|e| e.annotate("f32_payload"))?;
             let bounded64_payload = (|| -> Result<_, DeserializeError> {
                 let bounded64_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(bounded64_payload_bytes);
-                read_float_width(inner_de, cbor_event::Sz::Eight, cbor_event::Sz::Eight).and_then(
-                    |x| {
-                        if !(x <= 10.5f64) {
-                            Err(DeserializeFailure::RangeCheckFloat {
-                                found: x as f64,
-                                min: None,
-                                max: Some(10.5f64),
-                                min_inclusive: false,
-                                max_inclusive: true,
+                let bounded64_payload_payload =
+                    read_float_width(inner_de, cbor_event::Sz::Eight, cbor_event::Sz::Eight)
+                        .and_then(|x| {
+                            if !(x <= 10.5f64) {
+                                Err(DeserializeFailure::RangeCheckFloat {
+                                    found: x as f64,
+                                    min: None,
+                                    max: Some(10.5f64),
+                                    min_inclusive: false,
+                                    max_inclusive: true,
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
                             }
-                            .into())
-                        } else {
-                            Ok(x)
-                        }
-                    },
-                )
+                        })?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(bounded64_payload_payload)
             })()
             .map_err(|e| e.annotate("bounded64_payload"))?;
             let bounded32_payload = (|| -> Result<_, DeserializeError> {
                 let bounded32_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(bounded32_payload_bytes);
-                read_float_width(inner_de, cbor_event::Sz::Four, cbor_event::Sz::Four)
-                    .map(narrow_f32)
-                    .and_then(|x| {
-                        if !((x as f64) <= 10.5f64) {
-                            Err(DeserializeFailure::RangeCheckFloat {
-                                found: x as f64,
-                                min: None,
-                                max: Some(10.5f64),
-                                min_inclusive: false,
-                                max_inclusive: true,
+                let bounded32_payload_payload =
+                    read_float_width(inner_de, cbor_event::Sz::Four, cbor_event::Sz::Four)
+                        .map(narrow_f32)
+                        .and_then(|x| {
+                            if !((x as f64) <= 10.5f64) {
+                                Err(DeserializeFailure::RangeCheckFloat {
+                                    found: x as f64,
+                                    min: None,
+                                    max: Some(10.5f64),
+                                    min_inclusive: false,
+                                    max_inclusive: true,
+                                }
+                                .into())
+                            } else {
+                                Ok(x)
                             }
-                            .into())
-                        } else {
-                            Ok(x)
-                        }
-                    })
+                        })?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(bounded32_payload_payload)
             })()
             .map_err(|e| e.annotate("bounded32_payload"))?;
             let bool_payload = (|| -> Result<_, DeserializeError> {
                 let bool_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(bool_payload_bytes);
-                bool::deserialize(inner_de)
+                let bool_payload_payload = bool::deserialize(inner_de)?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(bool_payload_payload)
             })()
             .map_err(|e| e.annotate("bool_payload"))?;
             let enum_payload = (|| -> Result<_, DeserializeError> {
                 let enum_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(enum_payload_bytes);
-                let initial_position = inner_de.position();
-                let deser_variant = (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
-                    let i3_value = inner_de.unsigned_integer()?;
-                    if i3_value != 3 {
-                        return Err(DeserializeFailure::FixedValueMismatch {
-                            found: Key::Uint(i3_value),
-                            expected: Key::Uint(3),
-                        }
-                        .into());
-                    }
-                    Ok(())
-                })(inner_de);
-                match deser_variant {
-                    Ok(()) => return Ok(CEnum::I3),
-                    Err(_) => inner_de.set_position(initial_position).unwrap(),
-                };
-                let deser_variant = (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
-                    let i1_value = inner_de.unsigned_integer()?;
-                    if i1_value != 1 {
-                        return Err(DeserializeFailure::FixedValueMismatch {
-                            found: Key::Uint(i1_value),
-                            expected: Key::Uint(1),
-                        }
-                        .into());
-                    }
-                    Ok(())
-                })(inner_de);
-                match deser_variant {
-                    Ok(()) => return Ok(CEnum::I1),
-                    Err(_) => inner_de.set_position(initial_position).unwrap(),
-                };
-                let deser_variant = (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
-                    let i4_value = inner_de.unsigned_integer()?;
-                    if i4_value != 4 {
-                        return Err(DeserializeFailure::FixedValueMismatch {
-                            found: Key::Uint(i4_value),
-                            expected: Key::Uint(4),
-                        }
-                        .into());
-                    }
-                    Ok(())
-                })(inner_de);
-                match deser_variant {
-                    Ok(()) => return Ok(CEnum::I4),
-                    Err(_) => inner_de.set_position(initial_position).unwrap(),
-                };
-                Err(DeserializeError::new(
-                    "CEnum",
-                    DeserializeFailure::NoVariantMatched,
-                ))
+                let enum_payload_payload = (|| -> Result<_, DeserializeError> {
+                    let initial_position = inner_de.position();
+                    let deser_variant =
+                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                            let i3_value = inner_de.unsigned_integer()?;
+                            if i3_value != 3 {
+                                return Err(DeserializeFailure::FixedValueMismatch {
+                                    found: Key::Uint(i3_value),
+                                    expected: Key::Uint(3),
+                                }
+                                .into());
+                            }
+                            Ok(())
+                        })(inner_de);
+                    match deser_variant {
+                        Ok(()) => return Ok(CEnum::I3),
+                        Err(_) => inner_de.set_position(initial_position).unwrap(),
+                    };
+                    let deser_variant =
+                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                            let i1_value = inner_de.unsigned_integer()?;
+                            if i1_value != 1 {
+                                return Err(DeserializeFailure::FixedValueMismatch {
+                                    found: Key::Uint(i1_value),
+                                    expected: Key::Uint(1),
+                                }
+                                .into());
+                            }
+                            Ok(())
+                        })(inner_de);
+                    match deser_variant {
+                        Ok(()) => return Ok(CEnum::I1),
+                        Err(_) => inner_de.set_position(initial_position).unwrap(),
+                    };
+                    let deser_variant =
+                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                            let i4_value = inner_de.unsigned_integer()?;
+                            if i4_value != 4 {
+                                return Err(DeserializeFailure::FixedValueMismatch {
+                                    found: Key::Uint(i4_value),
+                                    expected: Key::Uint(4),
+                                }
+                                .into());
+                            }
+                            Ok(())
+                        })(inner_de);
+                    match deser_variant {
+                        Ok(()) => return Ok(CEnum::I4),
+                        Err(_) => inner_de.set_position(initial_position).unwrap(),
+                    };
+                    Err(DeserializeError::new(
+                        "CEnum",
+                        DeserializeFailure::NoVariantMatched,
+                    ))
+                })()?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(enum_payload_payload)
             })()
             .map_err(|e| e.annotate("enum_payload"))?;
             let tail = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("tail"))?;
@@ -1650,8 +1694,17 @@ impl Deserialize for CborPayloadNestedPayloads {
                     let elem_payloads_elem_bytes = inner_de.bytes()?;
                     let inner_de = &mut Deserializer::from(elem_payloads_elem_bytes);
                     elem_payloads_arr.push(inner_de.unsigned_integer()?);
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                 }
-                Ok(elem_payloads_arr)
+                let elem_payloads_payload = elem_payloads_arr;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(elem_payloads_payload)
             })()
             .map_err(|e| e.annotate("elem_payloads"))?;
             let value_payloads = (|| -> Result<_, DeserializeError> {
@@ -1673,6 +1726,11 @@ impl Deserialize for CborPayloadNestedPayloads {
                     let value_payloads_value_bytes = inner_de.bytes()?;
                     let inner_de = &mut Deserializer::from(value_payloads_value_bytes);
                     let value_payloads_value = inner_de.unsigned_integer()?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                     if value_payloads_table
                         .insert(value_payloads_key, value_payloads_value)
                         .is_some()
@@ -1683,13 +1741,21 @@ impl Deserialize for CborPayloadNestedPayloads {
                         .into());
                     }
                 }
-                Ok(value_payloads_table)
+                let value_payloads_payload = value_payloads_table;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(value_payloads_payload)
             })()
             .map_err(|e| e.annotate("value_payloads"))?;
             let after_payload = (|| -> Result<_, DeserializeError> {
                 let after_payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(after_payload_bytes);
-                Ok(inner_de.unsigned_integer()?)
+                let after_payload_payload = inner_de.unsigned_integer()?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(after_payload_payload)
             })()
             .map_err(|e| e.annotate("after_payload"))?;
             let tail = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("tail"))?;
@@ -3150,7 +3216,11 @@ impl Deserialize for FooBytes {
         (|| -> Result<_, DeserializeError> {
             let inner_bytes = raw.bytes()?;
             let inner_de = &mut Deserializer::from(inner_bytes);
-            Ok(Self(Foo::deserialize(inner_de)?))
+            let inner_payload = Foo::deserialize(inner_de)?;
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
         })()
         .map_err(|e| e.annotate("FooBytes"))
     }
@@ -5321,6 +5391,11 @@ impl Deserialize for NonOverlapBasicNotBasic {
                     let inner_de = &mut Deserializer::from(group_bytes_bytes);
                     let group_bytes =
                         Basic::deserialize_as_embedded_group(inner_de, &mut read_len, len)?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                     match len {
                         cbor_event::Len::Len(_) => (),
                         cbor_event::Len::Indefinite => match raw.special()? {
@@ -6620,7 +6695,11 @@ impl Deserialize for ParenCbor {
         (|| -> Result<_, DeserializeError> {
             let inner_bytes = raw.bytes()?;
             let inner_de = &mut Deserializer::from(inner_bytes);
-            Ok(Self(inner_de.text()?))
+            let inner_payload = inner_de.text()?;
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
         })()
         .map_err(|e| e.annotate("ParenCbor"))
     }
@@ -6928,7 +7007,11 @@ impl Deserialize for ScalarAliasHolder {
             let payload = (|| -> Result<_, DeserializeError> {
                 let payload_bytes = raw.bytes()?;
                 let inner_de = &mut Deserializer::from(payload_bytes);
-                Ok(inner_de.unsigned_integer()?)
+                let payload_payload = inner_de.unsigned_integer()?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(payload_payload)
             })()
             .map_err(|e| e.annotate("payload"))?;
             match len {
@@ -8347,7 +8430,13 @@ impl Deserialize for TaggedFooBytes {
                 20 => {
                     let inner_bytes = raw.bytes()?;
                     let inner_de = &mut Deserializer::from(inner_bytes);
-                    Foo::deserialize(inner_de)?
+                    let inner_payload = Foo::deserialize(inner_de)?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    inner_payload
                 }
                 tag => {
                     return Err(DeserializeFailure::TagMismatch {

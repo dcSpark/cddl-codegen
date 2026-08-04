@@ -229,23 +229,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-3. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
-   The `from_cbor_bytes` fuzz crate generates from `tests/preserve-encodings/input.cddl`, which now
-   carries a `@duplicates reject` collapsed tag-set field minted as a GENERIC instance
-   (`oset_p<a> = #6.258([* a]) / [* a] ; @duplicates reject`, used by `reject_set_preserve`) — so
-   both the optionally-tagged deserialize peek path (peek the major type, conditionally consume +
-   validate the tag, then the collection body — the one hand-rolled branch the tag-set collapse
-   added) AND the reject uniqueness door (the collected Vec routed through `OrderedSet::try_from`,
-   raising `DuplicateKey`) are in the fuzzed probe set, along with the generic/non-generic
-   convergence. `fuzz_compile_rot` (full tier) proves the surface stays REACHABLE (the crate
-   compiles with the field), but the actual hostile-input exploration — a tag head with a truncated
-   body, a tag-of-a-tag, a non-array after the tag under indefinite lengths, a duplicate on either
-   wire arm — only happens on a manual `cargo +nightly fuzz run from_cbor_bytes`. The residual is a
-   scheduling one: wire a periodic / pre-ship fuzz RUN (bounded corpus, time-boxed) so the reachable
-   surface is actually walked, not merely compiled — the compile-rot gate cannot see a panic that
-   only a live libFuzzer input triggers.
-
-4. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
+3. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
    preserve-encodings, canonical, JSON/schemars, wasm, extern-interface projection, and the
    `dsl.duplicates.{reject,preserve}` matrix feature rows. Current state lives in
@@ -305,7 +289,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      rootings hold a compile-and-wire floor in the `key_`/`ukey_`/`upres_` blocks of
      `tests/recursive-collection-ref/input.cddl`.)
 
-5. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
+4. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on three cases (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
@@ -333,7 +317,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    consumer CI will trip"; the consumer-report channel stays load-bearing for that remainder, which
    is why those two lints are allowed at the generated root rather than chased per-spec.
 
-6. **One rustfmt-seam error leg still has no witness, and it is the one that needs a
+5. **One rustfmt-seam error leg still has no witness, and it is the one that needs a
    subprocess-scoped test harness.** The seam's non-0/3-exit-is-fatal contract — which both the
    width ladder (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the
    preserve-fixture rustfmt sweep (`preserve_fixtures_rustfmt_cycle_stability`) cite as their
@@ -353,7 +337,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    whoever next writes one — today it is one, so a SECOND is what makes the harness worth building
    rather than the leg worth skipping.
 
-7. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
+6. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
    gives the rustfmt-cycle sweep discovery power.**
    `preserve_fixtures_rustfmt_cycle_stability` holds the post-rustfmt on-disk fixed point over
    every fixture, but only over fold positions the corpus expresses — its own delivery record is
@@ -376,7 +360,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    formatter's novel comment re-owning — the sweep's version-bump tripwire is the instrument for
    those.
 
-8. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
+7. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
    SAME-VERSION suite by construction: every case's `old.rs` and `new.rs` agree on generated code
    bytes except where the fixture deliberately drifts one item, which is the shape a re-run of one
    tool version produces. A tool UPGRADE is the other shape — it adds tokens and rewrites others
@@ -395,7 +379,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    does NOT reproduce — a block that self-clears is a false positive by construction, which is
    exactly how the no_std one was identified.
 
-9. **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
+8. **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
     coverage — its placement behaviour rests on one hand cell per construct.** Most of the IR's
     containers are `Map`/`Array` nodes a walk meets as composites; a few are assembled from inner
     types stored separately, so every walk that reasons about containers has to be told about them
@@ -424,7 +408,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
       (placement × reference mode × profile) is coverage three constructs are each doing without.
 
-10. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
+9. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
     lost one layer above where the spelling rule operates.** `holder = [j: bytes .cbor
     stake_credential]` emits `pub j: Credential` — not `StakeCredential` — while the tag form of the
     same shape (`f: #6.9(stake_credential)`) keeps `Alias(StakeCredential, Rust(Credential))` and
@@ -446,7 +430,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       public API loses a name they wrote. That is one grep of their own generated source, and it does
       not require anyone to recognise it as a parse-layer issue.
 
-11. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
+10. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
     comes from a bounded probe matrix, so a position that matrix never touched can still ship an
     uncompilable crate.** A field whose emitted identifier is one of the fixed locals the generated
     serialization bodies bind now rejects at parse time (`parsing::GENERATED_LOCAL_RESERVED`, seven
@@ -472,7 +456,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       reserved name used in a shape outside its declared scope — the compile error names the
       binding, so the report arrives pre-diagnosed and says exactly which row to widen.
 
-12. **The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust
+11. **The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust
     surface it mirrors.** `wasm_door_vocabulary_matches_the_posture_that_owes_it`
     (`src/tests/wasm_parity_tests.rs`) pins the six flag-conditional door members —
     `to_cbor_bytes`, `from_cbor_bytes`, `to_canonical_cbor_bytes`, `to_json`, `to_json_value`,
@@ -495,7 +479,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       counterpart they can point at), and the count of silently-missing members is the dimension
       along which a hand-listed vocabulary stops being maintainable.
 
-13. **Run the WHOLE input-robustness catalog out of process, not only a listed abort-prone subset.**
+12. **Run the WHOLE input-robustness catalog out of process, not only a listed abort-prone subset.**
     Today `input_robustness_catalog` spawns a process per input named in `ABORT_PRONE_INPUTS` and
     runs every other input in-process inside `catch_unwind`. That list is hand-maintained, so an
     input whose generation newly starts to abort — a non-unwinding crash `catch_unwind` cannot see —
@@ -511,7 +495,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       (`tests/robustness/recursive_collection_holder.cddl`) no longer aborts — the recursive-type
       boundary repairs it — so the signal is not met by the catalog's own contents.
 
-14. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
+13. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
     serialize error into a panic.** A `float16` member's carrier is `f32`, and a carrier value that
     is not f16-exact cannot be written at the one head the type declares — so `Serialize` returns
     `Err` (`InvalidLenPassed`, the declared-width refusal working as designed: rounding to fit
@@ -527,7 +511,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     (`tests/core/tests.rs`). Reopening signal: the maintainer takes the ruling, or a consumer
     reports the panic from production data (measurable by the party holding the inexact value).
 
-15. **A registration-class base axis for the reference-context sweep family — generation floor,
+14. **A registration-class base axis for the reference-context sweep family — generation floor,
     not directive preservation.** Rule classes differ in what their ident REGISTERS (a struct
     under its own name; an alias to an instantiation canonical, as the named set-nominal binding;
     an extern; a transparent collection alias), and a reference context that assumes one class
@@ -547,7 +531,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     construction (the first member of the class is the one already fixed, so the signal is not
     met by this entry's own record).
 
-16. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
+15. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
     it.** Skip-listed gate rows are ledgered with citations and stale-guards; an eviction — a
     shape REMOVED from a fixture because it trips a known bug — is recorded only in prose, which
     nothing re-probes. Proven cost: `tests/corpus/tag_set_generic.cddl` dropped its bytes

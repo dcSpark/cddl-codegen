@@ -1694,77 +1694,85 @@ impl Deserialize for CborEnumWrappers {
                 (|| -> Result<_, DeserializeError> {
                     let (bytes_arm_bytes, bytes_arm_bytes_encoding) = raw.bytes_sz()?;
                     let inner_de = &mut Deserializer::from(bytes_arm_bytes);
-                    let initial_position = inner_de.position();
-                    let deser_variant =
-                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
-                            let (i0_value, i0_encoding) = inner_de.unsigned_integer_sz()?;
-                            if i0_value != 0 {
-                                return Err(DeserializeFailure::FixedValueMismatch {
-                                    found: Key::Uint(i0_value),
-                                    expected: Key::Uint(0),
+                    let bytes_arm_payload = (|| -> Result<_, DeserializeError> {
+                        let initial_position = inner_de.position();
+                        let deser_variant =
+                            (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i0_value, i0_encoding) = inner_de.unsigned_integer_sz()?;
+                                if i0_value != 0 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i0_value),
+                                        expected: Key::Uint(0),
+                                    }
+                                    .into());
                                 }
-                                .into());
+                                Ok(Some(i0_encoding))
+                            })(inner_de);
+                        match deser_variant {
+                            Ok(bytes_arm_encoding) => {
+                                return Ok((
+                                    CborPayloadEnum::I0,
+                                    StringEncoding::from(bytes_arm_bytes_encoding),
+                                    bytes_arm_encoding,
+                                ));
                             }
-                            Ok(Some(i0_encoding))
-                        })(inner_de);
-                    match deser_variant {
-                        Ok(bytes_arm_encoding) => {
-                            return Ok((
-                                CborPayloadEnum::I0,
-                                StringEncoding::from(bytes_arm_bytes_encoding),
-                                bytes_arm_encoding,
-                            ));
-                        }
-                        Err(_) => inner_de.set_position(initial_position).unwrap(),
-                    };
-                    let deser_variant =
-                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
-                            let (i1_value, i1_encoding) = inner_de.unsigned_integer_sz()?;
-                            if i1_value != 1 {
-                                return Err(DeserializeFailure::FixedValueMismatch {
-                                    found: Key::Uint(i1_value),
-                                    expected: Key::Uint(1),
+                            Err(_) => inner_de.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i1_value, i1_encoding) = inner_de.unsigned_integer_sz()?;
+                                if i1_value != 1 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i1_value),
+                                        expected: Key::Uint(1),
+                                    }
+                                    .into());
                                 }
-                                .into());
+                                Ok(Some(i1_encoding))
+                            })(inner_de);
+                        match deser_variant {
+                            Ok(bytes_arm_encoding) => {
+                                return Ok((
+                                    CborPayloadEnum::I1,
+                                    StringEncoding::from(bytes_arm_bytes_encoding),
+                                    bytes_arm_encoding,
+                                ));
                             }
-                            Ok(Some(i1_encoding))
-                        })(inner_de);
-                    match deser_variant {
-                        Ok(bytes_arm_encoding) => {
-                            return Ok((
-                                CborPayloadEnum::I1,
-                                StringEncoding::from(bytes_arm_bytes_encoding),
-                                bytes_arm_encoding,
-                            ));
-                        }
-                        Err(_) => inner_de.set_position(initial_position).unwrap(),
-                    };
-                    let deser_variant =
-                        (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
-                            let (i2_value, i2_encoding) = inner_de.unsigned_integer_sz()?;
-                            if i2_value != 2 {
-                                return Err(DeserializeFailure::FixedValueMismatch {
-                                    found: Key::Uint(i2_value),
-                                    expected: Key::Uint(2),
+                            Err(_) => inner_de.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|inner_de: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i2_value, i2_encoding) = inner_de.unsigned_integer_sz()?;
+                                if i2_value != 2 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i2_value),
+                                        expected: Key::Uint(2),
+                                    }
+                                    .into());
                                 }
-                                .into());
+                                Ok(Some(i2_encoding))
+                            })(inner_de);
+                        match deser_variant {
+                            Ok(bytes_arm_encoding) => {
+                                return Ok((
+                                    CborPayloadEnum::I2,
+                                    StringEncoding::from(bytes_arm_bytes_encoding),
+                                    bytes_arm_encoding,
+                                ));
                             }
-                            Ok(Some(i2_encoding))
-                        })(inner_de);
-                    match deser_variant {
-                        Ok(bytes_arm_encoding) => {
-                            return Ok((
-                                CborPayloadEnum::I2,
-                                StringEncoding::from(bytes_arm_bytes_encoding),
-                                bytes_arm_encoding,
-                            ));
-                        }
-                        Err(_) => inner_de.set_position(initial_position).unwrap(),
-                    };
-                    Err(DeserializeError::new(
-                        "CborPayloadEnum",
-                        DeserializeFailure::NoVariantMatched,
-                    ))
+                            Err(_) => inner_de.set_position(initial_position).unwrap(),
+                        };
+                        Err(DeserializeError::new(
+                            "CborPayloadEnum",
+                            DeserializeFailure::NoVariantMatched,
+                        ))
+                    })()?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(bytes_arm_payload)
                 })()
                 .map_err(|e| e.annotate("bytes_arm"))?;
             let (tagged_arm, tagged_arm_tag_encoding, tagged_arm_encoding) =
@@ -1930,16 +1938,19 @@ impl Deserialize for CborInCbor {
                 (|| -> Result<_, DeserializeError> {
                     let (uint_bytes_bytes, uint_bytes_bytes_encoding) = raw.bytes_sz()?;
                     let inner_de = &mut Deserializer::from(uint_bytes_bytes);
-                    inner_de
-                        .unsigned_integer_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(x, enc)| {
-                            (
-                                x,
-                                StringEncoding::from(uint_bytes_bytes_encoding),
-                                Some(enc),
-                            )
-                        })
+                    let uint_bytes_payload = inner_de.unsigned_integer_sz().map(|(x, enc)| {
+                        (
+                            x,
+                            StringEncoding::from(uint_bytes_bytes_encoding),
+                            Some(enc),
+                        )
+                    })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(uint_bytes_payload)
                 })()
                 .map_err(|e| e.annotate("uint_bytes"))?;
             let tagged_foo_bytes = TaggedFooBytes::deserialize(raw)
@@ -2138,18 +2149,27 @@ impl Deserialize for CborNestedPayloads {
                             Some(enc),
                         )
                     })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                     elem_payloads_arr.push(elem_payloads_elem);
                     elem_payloads_elem_encodings.push((
                         elem_payloads_elem_bytes_encoding,
                         elem_payloads_elem_encoding,
                     ));
                 }
-                Ok((
+                let elem_payloads_payload = (
                     elem_payloads_arr,
                     StringEncoding::from(elem_payloads_bytes_encoding),
                     elem_payloads_encoding,
                     elem_payloads_elem_encodings,
-                ))
+                );
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(elem_payloads_payload)
             })()
             .map_err(|e| e.annotate("elem_payloads"))?;
             let (
@@ -2193,6 +2213,11 @@ impl Deserialize for CborNestedPayloads {
                             Some(enc),
                         )
                     })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                     if value_payloads_table
                         .insert(value_payloads_key, value_payloads_value)
                         .is_some()
@@ -2212,29 +2237,37 @@ impl Deserialize for CborNestedPayloads {
                         ),
                     );
                 }
-                Ok((
+                let value_payloads_payload = (
                     value_payloads_table,
                     StringEncoding::from(value_payloads_bytes_encoding),
                     value_payloads_encoding,
                     value_payloads_key_encodings,
                     value_payloads_value_encodings,
-                ))
+                );
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(value_payloads_payload)
             })()
             .map_err(|e| e.annotate("value_payloads"))?;
             let (after_payload, after_payload_bytes_encoding, after_payload_encoding) =
                 (|| -> Result<_, DeserializeError> {
                     let (after_payload_bytes, after_payload_bytes_encoding) = raw.bytes_sz()?;
                     let inner_de = &mut Deserializer::from(after_payload_bytes);
-                    inner_de
-                        .unsigned_integer_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .map(|(x, enc)| {
+                    let after_payload_payload =
+                        inner_de.unsigned_integer_sz().map(|(x, enc)| {
                             (
                                 x,
                                 StringEncoding::from(after_payload_bytes_encoding),
                                 Some(enc),
                             )
-                        })
+                        })?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(after_payload_payload)
                 })()
                 .map_err(|e| e.annotate("after_payload"))?;
             match len {
@@ -4496,6 +4529,9 @@ impl Deserialize for FooBytes {
                 Foo::deserialize(inner_de)?,
                 StringEncoding::from(inner_bytes_encoding),
             );
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
             Ok(Self {
                 inner,
                 encodings: Some(FooBytesEncoding {
@@ -6036,6 +6072,11 @@ impl Deserialize for NonOverlapBasicNotBasic {
                         BasicArr::deserialize(inner_de)?,
                         StringEncoding::from(group_bytes_bytes_encoding),
                     );
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
                     match len {
                         cbor_event::LenSz::Len(_, _) => (),
                         cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -9723,11 +9764,17 @@ impl Deserialize for TaggedFooBytes {
                 (20, tag_enc) => {
                     let (inner_bytes, inner_bytes_encoding) = raw.bytes_sz()?;
                     let inner_de = &mut Deserializer::from(inner_bytes);
-                    (
+                    let inner_payload = (
                         Foo::deserialize(inner_de)?,
                         Some(tag_enc),
                         StringEncoding::from(inner_bytes_encoding),
-                    )
+                    );
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    inner_payload
                 }
                 (tag, _enc) => {
                     return Err(DeserializeFailure::TagMismatch {
