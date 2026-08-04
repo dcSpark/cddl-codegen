@@ -343,6 +343,10 @@ artifacts, three lifetimes:
   dangling-by-construction and cannot fail loudly. The conclusion and its numbers belong in the
   message/commit/doc; the log is a working artifact for the session that produced it.
 - `draft/timings.jsonl` — the local ledger, one JSON object per gate-run. Gitignored.
+- `draft/memory-peaks.jsonl` — the memory sampler's ledger, one JSON object per RUN (peak Σ RSS,
+  peak concurrent `rustc`, largest single process, MemAvailable floor), kept to the last 200 rows.
+  Gitignored, and asserted by nothing — see "Gate-level concurrency" above for what the numbers
+  are for.
 - `tests/timings.json` — the committed digest, one row per registry gate plus one per tier. It is
   committed so a fresh checkout has real numbers on its FIRST run, before any local ledger exists.
 
