@@ -117,13 +117,22 @@ export function stableJson(obj: unknown): string {
   return JSON.stringify(obj, sortKeys, 2) + "\n";
 }
 
-export const GATE_CACHE_SCHEMA = "gate-cache-v1";
+// v2 adds the repo cargo config to the key material (see `cargoConfigDigest`). Bumped rather than
+// left alone so the invalidation is DECLARED: adding a field silently retires every v1 entry anyway,
+// and a reader comparing two runs' cache-hit rates deserves to see why rather than infer it.
+export const GATE_CACHE_SCHEMA = "gate-cache-v2";
 
 export interface GateCacheKeyComponents {
   gate: string;
   argv: string[];
   tree: string;
   rustflags?: string;
+  /**
+   * Digest of the repo cargo config. Production leaves it unset and the real file is read; the
+   * parameter exists so the closure audit can PROVE the key depends on it by varying it, rather
+   * than trusting that it does.
+   */
+  cargoConfig?: string;
 }
 
 export interface GateCacheEntry {
@@ -188,6 +197,27 @@ export function hashTree(root: string): string {
   return h.digest("hex");
 }
 
+/**
+ * The repo's cargo config, as key material — `absent` when there is none.
+ *
+ * A cached gate's nested cargo runs with its cwd inside the checkout, so cargo discovers this file
+ * and it is an input to the verdict. `rustflags` and `build.target` change what gets built, so a
+ * cached PASS taken under one config is not evidence under another. It is hashed rather than
+ * allowlisted deliberately: an allowlist would have to re-decide, every time the file grows a key,
+ * whether that key is verdict-affecting — and the answer would be wrong exactly once.
+ *
+ * Both spellings are checked because cargo accepts either, and a checkout with neither must key
+ * differently from one with an empty config rather than colliding with it.
+ */
+export function cargoConfigDigest(repoRoot = resolve(ROOT, "..")): string {
+  for (const rel of [".cargo/config.toml", ".cargo/config"]) {
+    try {
+      return `${rel}:${createHash("sha256").update(readFileSync(join(repoRoot, rel))).digest("hex")}`;
+    } catch { /* try the next spelling */ }
+  }
+  return "absent";
+}
+
 export function gateCacheKey(components: GateCacheKeyComponents): { key: string; rustc: string; rustflags: string } {
   const rustc = rustcVersionVerbose();
   const rustflags = components.rustflags ?? process.env.RUSTFLAGS ?? "";
@@ -197,6 +227,11 @@ export function gateCacheKey(components: GateCacheKeyComponents): { key: string;
     argv: components.argv,
     rustc,
     rustflags,
+    // Folded in HERE rather than at each call site: the audit's requirement is that every cached
+    // site key on it, and the only way to make that true by construction — instead of true until
+    // someone adds the next call site — is for the single funnel every site already goes through
+    // to carry it.
+    cargoConfig: components.cargoConfig ?? cargoConfigDigest(),
     tree: components.tree,
   });
   return { key: createHash("sha256").update(material).digest("hex"), rustc, rustflags };
