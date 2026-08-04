@@ -78,7 +78,7 @@
  *   canaries reverted after confirming red.
  */
 import {
-  appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync,
+  existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync,
   unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -584,10 +584,13 @@ function reportMemPeaks(peaks: MemPeaks, tier: Tier): void {
   );
   try {
     mkdirSync(join(ROOT, "draft"), { recursive: true });
-    appendFileSync(
-      join(ROOT, "draft", "memory-peaks.jsonl"),
-      JSON.stringify({ stamp: new Date().toISOString(), tier, ...peaks }) + "\n",
-    );
+    const ledger = join(ROOT, "draft", "memory-peaks.jsonl");
+    // Bounded like the other draft ledgers, but self-contained: keep the last N runs at append
+    // time rather than joining the log-keyed retention pass — peaks rows carry no cross-file keys,
+    // and 200 runs is months of history at one row per run, plenty to re-derive a constant from.
+    const rows = existsSync(ledger) ? readFileSync(ledger, "utf8").split("\n").filter(l => l.trim()) : [];
+    rows.push(JSON.stringify({ stamp: new Date().toISOString(), tier, ...peaks }));
+    writeFileSync(ledger, rows.slice(-200).join("\n") + "\n");
   } catch (e) {
     console.log("memory sampler: ledger append failed (non-fatal — peaks are never a gate): " +
       (e instanceof Error ? e.message : String(e)));
