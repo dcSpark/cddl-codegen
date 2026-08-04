@@ -20190,6 +20190,21 @@ fn decode_conformance_replay() {
              typed entry — the documented open-table contract; remedied spellings are executed in \
              tests/open-table-json-e2e (cddl-matrix/ROADMAP.md § findings)",
         ),
+        // The open STRUCT-map rest row's `bytes` key domain: same class as the open-table entries
+        // above through the rest row's own hand-written face — the delivered posture images
+        // text/uint/nint keys as natural strings and STRICT-FAILS bytes/composite keys at to_json
+        // (`open struct-map rest key has no JSON member-name image`), refusing a lossy encoding
+        // (docs/docs/output_format.mdx § "Typed key domains in JSON"). The loud error IS the
+        // contract, and the cell's own note marks the row as where the flattened-rest JSON
+        // convention stops. Its `nint` sibling row crosses the boundary fine (nint has a
+        // member-name image) and is deliberately NOT listed.
+        (
+            "contain.occurrence-target.memberkey.type1.open_struct_bytes_key",
+            "a `bytes` rest-row key domain has no JSON member-name image, so to_json strict-fails \
+             loudly on every captured entry — the decided open-struct rest-row posture \
+             (docs/docs/output_format.mdx § \"Typed key domains in JSON\"; cddl-matrix/ROADMAP.md \
+             § findings, the non-string-map-key entry)",
+        ),
     ];
     // WASM_SURFACE_SKIP: rows whose `--wasm` generation or wasm-crate compile legitimately fails. Each
     // resident cites a finding. Distinct from a MECHANICAL skip — a type with no `from_cbor_bytes`
