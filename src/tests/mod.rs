@@ -35,6 +35,7 @@ pub(crate) mod preserve_fixture_tests;
 pub(crate) mod recombination_tests;
 pub(crate) mod referencing_context_tests;
 pub(crate) mod refused_name_closure_tests;
+pub(crate) mod regen_over_prior_tests;
 pub(crate) mod robustness_tests;
 pub(crate) mod rust_name_tests;
 pub(crate) mod snapshot_tests;

@@ -1600,6 +1600,41 @@ fn map_disk_line(normalized_line: usize, inserted_lines: &[usize]) -> usize {
     normalized_line - shift
 }
 
+/// Every comment in `src` that SHARES its row with code, as `(1-based line, comment text)`.
+///
+/// This is the emitter invariant the overlay's soundness rests on, made checkable: a comment on a
+/// row a spec change can DELETE is stranded by that deletion and re-injected as a
+/// `cddl-codegen:unpreserved-comment` + `compile_error!` sentinel that every further regen carries
+/// forward. Own-line banner comments have no such row to lose, so only the shared-row ones are
+/// reported.
+///
+/// It is exposed from THIS module rather than re-implemented by its caller because the question is
+/// lexical, not textual: a `"http://…"` inside a string literal, a `//` inside a raw string, and a
+/// `/*` inside a `//` comment are all NOT comments, and [`lex`] is the one place in this crate that
+/// knows so. A `line.find("//")` scan gets each of those wrong, in the direction that fails a
+/// green tree.
+///
+/// Errors exactly where [`lex`] does (unterminated literal / block comment), so a caller scanning a
+/// tree gets the same loud failure the overlay would give on that file.
+///
+/// `#[cfg(test)]`: the invariant is asserted by the suite (`regen_over_prior_tests`'s static floor
+/// and this module's own lexer-grade pin), never consulted by generation itself.
+#[cfg(test)]
+pub(crate) fn comments_sharing_a_code_row(
+    src: &str,
+) -> Result<Vec<(usize, String)>, PreserveError> {
+    let lexed = lex(src)?;
+    Ok(lexed
+        .comments
+        .iter()
+        .filter(|c| !c.own_line)
+        .map(|c| {
+            let line = src[..c.start].bytes().filter(|b| *b == b'\n').count() + 1;
+            (line, c.text.to_owned())
+        })
+        .collect())
+}
+
 /// Overlay the user comments from `old` onto the freshly generated `new`. See the module docs for
 /// the tiered anchoring. Pure: no I/O; output is a function of `(old, new)`.
 ///
@@ -2421,6 +2456,37 @@ mod tests {
         assert!(lexed.comments.iter().all(|c| c.text.starts_with("//")
             && !c.text.contains("not-a-comment")
             && !c.text.contains("also")));
+    }
+
+    /// The emitter-invariant scan (`comments_sharing_a_code_row`) reports a comment that shares a row
+    /// with code — trailing `//`, a `/* */` wedged mid-row, and a `//` whose row starts with a block
+    /// comment — and reports NONE of the lookalikes a `line.find("//")` scan gets wrong: a URL in a
+    /// string, a `//` in a raw string, and a `/*` sitting inside an own-line `//` banner (the shape
+    /// `extern_interface_check.rs`'s banner actually emits).
+    #[test]
+    fn comments_sharing_a_code_row_is_lexer_grade() {
+        let clean = format!(
+            "{HEADER}// a banner mentioning `extern-interface/<dep>/**` and /* stars */\npub fn f() {{\n    \
+             let a = \"http://not-a-comment\";\n    let b = r#\"also // not a comment\"#;\n    \
+             // an own-line comment inside a body\n    let c = 1;\n}}\n"
+        );
+        assert!(
+            comments_sharing_a_code_row(&clean).unwrap().is_empty(),
+            "no comment in this file shares a row with code"
+        );
+
+        let dirty = format!(
+            "{HEADER}pub fn f() {{\n    let a = 1; // trailing\n    let /* wedged */ b = 2;\n}}\n"
+        );
+        let hits = comments_sharing_a_code_row(&dirty).unwrap();
+        assert_eq!(
+            hits,
+            vec![
+                (5, "// trailing".to_string()),
+                (6, "/* wedged */".to_string())
+            ],
+            "both shared-row comments must be reported with their 1-based lines"
+        );
     }
 
     #[test]

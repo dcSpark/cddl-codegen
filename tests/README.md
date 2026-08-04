@@ -61,7 +61,7 @@ not interchangeable: a nominal reference to a collection typedef needed an `enco
 fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 15 `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 17 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check, `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
 didn't run is always
@@ -896,16 +896,19 @@ never own). The cross-file family-wide re-prune MODEL is pinned shape-independen
 and siblings) — the real output no longer holds a glob-only import to pin it end-to-end. That
 property lives in the export driver, not in the merge, so it cannot be a fixture. Keep both sets thin; new merge behavior belongs in fixtures.
 
-One generator-output assumption is deliberately NOT pinned by that set, because none of the three
-can see its violation: "the generator emits no comment on a row a spec change can delete" (which
-subsumes "no trailing comments"). The disk round-trip regenerates the SAME spec — no row is ever
-deleted — and the corpus round-trip self-preserves (`preserve(content, content)`), a no-op for any
-comment whether or not a real regen would strand it. That blindness shipped a real trap once (the
+One generator-output assumption is invisible to all three, because none of them regenerates over a
+CHANGED spec: "the generator emits no comment on a row a spec change can delete" (which subsumes
+"no trailing comments"). The disk round-trip regenerates the SAME spec — no row is ever deleted —
+and the corpus round-trip self-preserves (`preserve(content, content)`), a no-op for any comment
+whether or not a real regen would strand it. That blindness shipped a real trap once (the
 `extern_interface_check.rs` / `key_demand_assertions.rs` per-row markers — see the corresponding
-`TESTING_ROADMAP.md` entry), so the assumption is enforced as an emitter invariant instead —
-banner-only sidecar files, pinned by `extern_interface_check_regen_over_deletion_no_trap`
-(a real regen-over-prior-output with a rule deletion) and
-`extern_interface_check_has_no_trailing_row_comments` (a source-shape floor).
+`TESTING_ROADMAP.md` entry), and the two pins minted then —
+`extern_interface_check_regen_over_deletion_no_trap` (a real regen-over-prior-output with a rule
+deletion, over a hand spec whose two `@used_as_key` rules let one tag be deleted while the file
+survives) and `extern_interface_check_has_no_trailing_row_comments` (a source-shape floor) — name
+those two FILES. The by-shape layer that owns the class corpus-wide, for files nobody named in
+advance, is `regen_over_prior_output_corpus` (§ "Regen over prior output at corpus breadth" below);
+it caught a third instance in `wasm/src/generated/mod.rs` on its first run.
 
 The other comment-loss path the overlay cannot see is a file it never merges: a `.rs` left under a
 generated tree by a PRIOR run, which nothing declares any more, so it and its comments drop out of
@@ -3963,6 +3966,63 @@ emission conditions that replaced them are pinned in `src/tests/component_tests.
 `snapshot_tests::PROFILE_GENERATION_SKIP` instead, and fixtures whose RUST crate references
 user-supplied code are excluded through `integration_tests::COMPILE_SKIP`, which this gate shares
 rather than restates.
+
+### Regen over prior output at corpus breadth (`src/tests/regen_over_prior_tests.rs`, gates `regen_over_prior_output_corpus` `local` + `regen_over_prior_output_corpus_compiles` `full`)
+
+The comment-preservation overlay runs on exactly one path — `export()` over a tree a previous run
+wrote — so every gate that generates into a clean directory is blind to it, and the two gates that
+were not (§ "Preservation-merge fixtures") name their two files by hand. This pair asks the same
+questions of every `tests/corpus/*.cddl` fixture, with no file named in advance. It found a third
+instance on its first run: the wasm `Int` wrapper's `from_str` body carried an own-line
+`// have to redefine so it's visible in WASM`, which a rule deletion stranded into a
+self-perpetuating `compile_error!` sentinel in `wasm/src/generated/mod.rs` on three fixtures. Fixed
+where the class is always fixed — emitter-side (`generation/wrappers.rs`); the rationale moved into
+the generator's own source, which is where a maintainer note belongs.
+
+Three legs, all over the tool-owned trees (`rust/src/generated`, `wasm/src/generated`,
+`wasm/json-gen/src/generated`) under the default `--wasm=true` profile:
+
+1. **The static floor.** Every generated `.rs` of a FRESH generation, scanned for a comment that
+   shares its row with code — the trap SOURCE, catchable before any deletion exists. Lexer-grade via
+   `comment_preserve::comments_sharing_a_code_row`, not a `line.find("//")` scan: this corpus emits
+   a URL inside a string literal and a `/*` inside an own-line banner, and a textual scan calls both
+   comments.
+2. **The rule-DELETION variant.** One rule (and the transitive closure of rules referencing it) is
+   removed from the spec, the variant is regenerated IN PLACE over the fresh output, and any
+   `cddl-codegen:unpreserved-comment` anywhere in the trees fails the cell. Deletion by whole LINES
+   rather than by the `cddl` crate's AST span, because a rule's comment-DSL directives live in the
+   `;` comment trailing it — an AST-span deletion would leave `; @used_as_key` behind to re-attach
+   to a different rule, silently changing what the variant means while still generating.
+3. **The user-EDIT variant.** One canonical `cddl-codegen:replace` block (the pinned grammar, the
+   recorded original taken verbatim from this run's own output) stubs a `self`-only function body,
+   after which the regen must apply the block rather than strand it, and a SECOND regen must reach a
+   byte-identical fixed point. Sites with parameters are excluded on purpose: a stubbed body would
+   leave them unused, and the compile gate's `unused variable` scan must stay a statement about the
+   generator.
+
+**Why the compile half is its own gate.** Whether the regenerated crate still BUILDS warning-clean
+is the only leg that pays nested cargo, and it is the one that catches the orphaned-`use` class —
+`unused import` is a WARNING, so no assertion about generation exiting 0 can see it. It reuses
+`feature_corpus_compiles`' scans and `COMPILE_SKIP`, and is gate-cached per generated-crate content
+hash with its own `regen-edit=v1` verdict-logic marker.
+
+**Vacuity floors**, in the module and asserted from the summed run: files scanned, deletion cells,
+deletion cells that delete a `@used_as_key` rule, edit cells, edit cells landing in a per-type
+surface (rather than in a composed static runtime file, whose bytes are the same for every fixture),
+and edit cells that orphan an import. The last is the one that is genuinely low rather than merely
+conservative — whether a `self`-only body happens to hold a same-file import's last use is a
+property of what the corpus emits, not something the sweep can arrange.
+
+**Measured on the delivering machine:** the generation sweep **40 s** (six worker THREADS over
+generator subprocesses — threads rather than sibling `#[test]` shards because every `#[ignore]`d
+test needs its own registry entry, and six shards would be six gates for one question), which is
+what places it at `local`; the compile gate **159 s** on a cold scratch root.
+
+**Residual, a property of this corpus:** no fixture carries two `@used_as_key` tags, so "a
+`key_demand_assertions.rs` ROW disappears while the file survives" is not expressible here —
+deleting the sole tagged rule stops the file being generated at all, and the overlay then never
+runs over it. The chooser still prefers a tagged rule in a tagged fixture, and that shape stays
+covered by `extern_interface_check_regen_over_deletion_no_trap`'s hand spec.
 
 ## multifile placement matrix (`tests/matrix_multifile/` + `integration_tests::multifile_matrix_{compiles,roundtrips}`)
 

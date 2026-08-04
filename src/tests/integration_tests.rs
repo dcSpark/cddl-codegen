@@ -1856,7 +1856,7 @@ const UNUSED_IMPORT_TRAIT_RESIDUE: &[&str] = &["Serialize"];
 /// `PATH`` (or the plural `warning: unused imports: `A`, `B``) with the path(s) inline in backticks;
 /// the leaf ident is the last `::` segment (`super::*` → `*`, always flagged). Returns each offending
 /// line (trimmed) so the caller can name it in the failure.
-fn unused_generated_import_lines(stderr: &str) -> Vec<String> {
+pub(crate) fn unused_generated_import_lines(stderr: &str) -> Vec<String> {
     stderr
         .lines()
         .filter_map(|line| {
@@ -1930,7 +1930,7 @@ fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() 
 /// constant (`Some(x) => 3`) should bind `_`, not `x`. Rustc renders these as `warning: unused
 /// variable: `x``. There is no trait-residue analogue here (every such binding is generator-owned),
 /// so every matching line is returned (trimmed) for the caller to name in the failure.
-fn unused_generated_variable_lines(stderr: &str) -> Vec<String> {
+pub(crate) fn unused_generated_variable_lines(stderr: &str) -> Vec<String> {
     stderr
         .lines()
         .filter(|line| line.contains("warning: unused variable"))
@@ -2004,7 +2004,7 @@ fn assert_no_unused_generated_warnings(label: &str, stderr: &[u8]) {
 /// feature_corpus_compiles`, the docs, `CLOSURE_AUDIT_GATE`) still selects the whole gate. The
 /// whole-corpus assertions that no single shard can make live in
 /// [`feature_corpus_compiles_pins_are_live`].
-fn feature_corpus_entries() -> Vec<std::path::PathBuf> {
+pub(crate) fn feature_corpus_entries() -> Vec<std::path::PathBuf> {
     use std::str::FromStr;
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
