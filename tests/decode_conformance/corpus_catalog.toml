@@ -8623,60 +8623,60 @@ expect = "accept"
 [[row]]
 id = "tag_set_generic.holder"
 axis = "corpus"
-example = "set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\nnonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\nnonempty_oset<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\npoint = [x: uint, y: uint]\nholder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>]"
+example = "set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\nnonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\nnonempty_oset<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\npoint = [x: uint, y: uint]\nholder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>, d: nonempty_set<bytes>]"
 fixture = "tag_set_generic"
 rule = "holder"
-spec = "__probe_holder = [0, holder]\nset<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\nnonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\nnonempty_oset<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\npoint = [x: uint, y: uint]\nholder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>]"
+spec = "__probe_holder = [0, holder]\nset<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\nnonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\nnonempty_oset<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\npoint = [x: uint, y: uint]\nholder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>, d: nonempty_set<bytes>]"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82008380d90102816666656c6f6e7982821903db190c768218f5188c"
+hex = "820084810c846553656c696d6769726f6e6965736750756c6c6d616e66747261702773d9010284821904061908b482190ee1190d8d8219038c190763821909b719081dd901028248627265657a65277348776f726d69657374"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008380d901028169747567626f61742773d901028282185e190db182190c7c1909ad"
+hex = "8200848119012d836a646174656c696e696e6768737069746566756c68736e617073686f748182190749190ff081486675636873696173"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008380d90102826375736566706f737465648482190a2c1901f882190748190faf821910ae19050a821911b1191182"
+hex = "820084811905f8d901028266616464656e646e70726f636c616d6174696f6e2773d90102818219022e19103083426c734f57617368696e67746f6e69616e2773454372616674"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838219035019014ad901028168756b756c656c6573d901028182190e4d191149"
+hex = "82008482190110191102846667616e6465726a656d62726f696c696e6769746f626163636f27736870726f746f7a6f618482190664190195821908b01842821892190854821854191198d901028143446179"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083821910cd1905edd90102846648657273657967506f6f6e61277364436170686b707265656d696e656e63658282190700190e9c82190a5d1901f8"
+hex = "82008482190b7e190e2a8369706572736f6e6167656a72616b6973686e6573736e6e656f636f6c6f6e69616c69736d82821907681908568219040f1901688147746172706f6e73"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083841906901910c91909a5191191d90102816a72616d736861636b6c65d90102818219077a190fce"
+hex = "82008483190279190e7e19023cd90102836b4d6973736f757269616e736e6e6f74696669636174696f6e2773676c756767696e678182190f5a190329844c70686f6e6f6c6f676963616c45416b697661444d616e784766756c66696c73"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838419094b1907a0191044191113846e6d6f64696669636174696f6e277369666c6167706f6c65736c7375666672616765747465736a4368726973746965277381821903a3190bb0"
+hex = "820084d9010281190745d90102846e6c756d696e657363656e636527736c696e6672657175656e746c796c6f70746f6d6574726973747369746563746f6e69637381821906f018a7d9010282496f6274727564696e67457069702773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083d9010280d9010283686f766572647265776c54656c656d616368757327736763757475702773d90102828219115119022f821908371908e3"
+hex = "820084d9010281190b42d90102846d696e6578707265737369626c656a7468726f7761776179736d696e64656e746174696f6e277363504f57d901028382190589190e848219122f1901df821908c3190e22d90102834d64697374696e677569736865644d616273656e74656569736d27734774756e6e696573"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083d9010281191234836b63686565736563616b6573666c61676f6f6e6554616d7061848219090b190786821903a7190ad9821909f81910e682190fe0190cd5"
+hex = "820084d9010281191061d90102826b69727269746174696f6e736a736c656e646572657374d9010284821823190a7882190da1190aa282191160185082190cfd19078d8248617070726973657347656d7061746879"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083d9010282190f8e190733846c6d6f746f726379636c6527736b776f726b666f72636527736b61746d6f737068657269636572696c6c73828219042e19054282190c22190eb6"
+hex = "820084d901028318341906161909bf8267626574616b656e654d6f727365d901028382190a1a18dd82190a4219122882190cf4190312d90102814b48696d616c617961732773"
 source = "ruby-generate"
 expect = "accept"
 
@@ -8707,52 +8707,52 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820082190361190be4"
+hex = "82008219028a190887"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008219042018c3"
+hex = "8200821902e6190f05"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200821906d719065a"
+hex = "820082190645190c6c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190759190e1c"
+hex = "82008219073d190b28"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008219090d191175"
+hex = "820082190a201904ab"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190a02190de6"
+hex = "820082190ca1190b78"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190b1b187a"
+hex = "820082190ccd1910a4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190f571907e0"
+hex = "820082190ec7191240"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082191093190555"
+hex = "8200821910fc1905e2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200821911be190810"
+hex = "8200821911a51907f3"
 source = "ruby-generate"
 expect = "accept"
 

@@ -385,7 +385,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.biguint` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.bool` |  | · |  | · |  | · |  | · |  |  |
 | `prelude.bstr` |  | · |  | · |  |  |  |  |  |  |
-| `prelude.bytes` | · | · | · | · |  | · |  | · |  |  |
+| `prelude.bytes` | · | · | · | · |  | · |  | · |  | · |
 | `prelude.decfrac` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.encoded-cbor` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.false` |  | ✅ | ✅ |  |  |  |  | · |  |  |
@@ -422,7 +422,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Modelled `(role × feature)` cells: **65** (over 120 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **31**.
-- Exercised by the corpus, modelled by **nothing**: **150** (the `·` cells).
+- Exercised by the corpus, modelled by **nothing**: **151** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **34**.
 
 ## Notable findings

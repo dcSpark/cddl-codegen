@@ -2661,26 +2661,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
     `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
     two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.
-- **Named bytes-element collection aliases generate a wasm wrapper class that fails E0271
-  (pre-existing, not REQUEST-08-specific).** A named collection over byte-string elements
-  (`Vec<Vec<u8>>` / `NonEmptyVec<Vec<u8>>`) mints a `#[wasm_bindgen]` list-wrapper class exposing the
-  `Vec<u8>` element across the wasm ABI, and the generated wasm crate does not compile:
-  `error[E0271]: type mismatch resolving <Vec<u8> as ErasableGeneric>::Repr == JsValue`
-  (wasm-bindgen's `VectorFromWasmAbi` needs JsValue-convertible elements; a bare `Vec<u8>` element is
-  not). Reproduced two ways, both independent of the tag-set feature: (A) worktree binary, a
-  non-generic collapsed `nes = #6.258([+ bytes]) / [+ bytes]` + holder — wasm crate → E0271; and
-  (C) the MASTER binary at `3bdcbd3` (pre-series), a single-arm `nes = #6.258([+ bytes])` + holder —
-  wasm crate → same E0271. So the wasm wrapper for ANY named bytes-element collection alias has never
-  compiled; the tag-set corpus fixture was merely the first corpus entry to exercise it under the
-  wasm profile (the `tag_set_generic` fixture now omits its bytes instance; the RUST-side bytes
-  collapse — incl. per-element `StringEncoding` preservation, the `@raw_bytes_flavor`-moot finding —
-  is pinned in-process by `optional_tag_set_tests::bytes_element_set_collapses_with_elem_encodings`,
-  which does not compile wasm). Reopening signal: a consumer wanting a bytes-element set across the
-  wasm boundary — CML's raw-bytes sets used extern HAND wrappers (its `NonemptySetRawBytes` wasm
-  glue), which is exactly why this never surfaced there. Remedy when it bites: in the wasm
-  list-wrapper minting machinery, expose the byte-string element through its own wrapper class or a
-  `js_sys::Uint8Array`-based ABI instead of a bare `Vec<u8>` element.
-
 - **Opt-in RFC 8949 §6.1-faithful total CBOR→JSON rendering (a `to_json_rfc8949`-style lossy
   flavor).** §6.1 is self-described "non-normative advice", and its non-injective rows are lossy
   by its own admission: byte strings become base64url JSON strings indistinguishable from text,

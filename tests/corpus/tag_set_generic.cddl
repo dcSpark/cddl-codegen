@@ -18,15 +18,19 @@
 ; defs is exercised by tag_set_reject.cddl (`oset<a0> … ; @duplicates reject`) and
 ; tag_set_reject_anon_generic.cddl.
 ;
-; Instances span uint / text / a struct-typed element so transparent-alias resolution is exercised
-; across element kinds; `nonempty_oset` is the third in-the-wild base (conway + dijkstra ledger CDDL)
-; proving the mechanism covers N rules, not a hardcoded two. A BYTES element is deliberately omitted:
-; a named bytes-element collection alias's wasm wrapper class fails to compile (E0271) regardless of
-; this feature — a pre-existing limitation tracked in tests/TESTING_ROADMAP.md; the rust-side bytes
-; collapse (incl. per-element StringEncoding preservation) is pinned in-process by
+; Instances span uint / text / bytes / a struct-typed element so transparent-alias resolution is
+; exercised across element kinds; `nonempty_oset` is the third in-the-wild base (conway + dijkstra
+; ledger CDDL) proving the mechanism covers N rules, not a hardcoded two. The BYTES element also
+; carries this fixture's share of the LIST-DOOR ABI contract: `bytes` is a wasm-bindgen scalar whose
+; bare `Vec` is NOT ABI-legal, so its restricted list wrapper must enter through the loose
+; `BytesList` class rather than a `Vec<Vec<u8>>` argument — a door spelled the other way generates
+; at exit 0 and fails the wasm crate's own compile (E0271), which is what this fixture's wasm-face
+; compile cell now catches. The narrow contract is pinned in-process by
+; `integration_tests::bytes_and_bool_element_list_doors_compile_and_round_trip`; the rust-side bytes
+; collapse (incl. per-element StringEncoding preservation) by
 ; `optional_tag_set_tests::bytes_element_set_collapses_with_elem_encodings`.
 set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve
 nonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve
 nonempty_oset<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve
 point = [x: uint, y: uint]
-holder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>]
+holder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>, d: nonempty_set<bytes>]

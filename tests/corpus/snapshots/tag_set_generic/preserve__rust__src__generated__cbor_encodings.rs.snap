@@ -21,6 +21,13 @@ pub struct NonemptyOsetPointEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct NonemptySetBytesEncoding {
+    pub inner_tag_encoding: TagPresenceEncoding,
+    pub inner_encoding: LenEncoding,
+    pub inner_elem_encodings: Vec<StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct NonemptySetTextEncoding {
     pub inner_tag_encoding: TagPresenceEncoding,
     pub inner_encoding: LenEncoding,

@@ -24880,3 +24880,176 @@ fn alias_of_instance_chain_member_compiles() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// COMPILE FLOOR + behavioral leg for the LIST-TAKING wasm doors over an element wasm-bindgen
+/// exposes as a scalar but NOT as a bare `Vec`.
+///
+/// `try_from(elements: Vec<Elem>)` is only ABI-legal when a `Vec` OF the element crosses the
+/// boundary — a strictly stronger condition than the element itself crossing it. `bytes` (already
+/// `Vec<u8>`, so nesting is unrepresentable) and `bool` (no `VectorFromWasmAbi`) satisfy the weaker
+/// condition and fail the stronger one, so every door that asked the element's own question emitted
+/// `try_from(elements: Vec<Vec<u8>>)`: generation exit 0, and the generated wasm crate then failed
+/// its own compile with `E0271 … <Vec<u8> as ErasableGeneric>::Repr == JsValue`. Exactly the
+/// exit-0-and-does-not-compile class a source assertion cannot see, which is why this is a floor.
+///
+/// Every emitter that owns such a door is represented, over BOTH offending primitives: the set
+/// nominal's flattened `try_from`/`try_opt_from` (`nes`, `los`, `nbs`), the `@duplicates reject`
+/// companion set wrapper (`NonEmptyBytesOrderedSet`, `BytesOrderedSet`, `NonEmptyBoolOrderedSet`),
+/// and the restricted `NonEmptyVec` list wrapper (`nel`, `nbl`) — which is also the door the
+/// `@duplicates preserve` set nominal (`ps`) reaches its contents through, since that flavor wraps a
+/// plain `NonEmptyVec` rather than a uniqueness twin.
+///
+/// The behavioral half runs on the PLAIN profile only, as a native `cargo test` inside the generated
+/// wasm crate (its `[lib] crate-type` includes `rlib`): it constructs through the loose list wrapper
+/// the fix routes the door through, and asserts the wasm door's bytes equal the rust door's. Error
+/// paths are asserted on the rust type instead — a `JsError` cannot be constructed on a non-wasm
+/// target. `--preserve-encodings` gets a compile-only cell: its encoding fields reach these wrappers
+/// through an independent seam.
+#[test]
+fn bytes_and_bool_element_list_doors_compile_and_round_trip() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_vec_elem_doors_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        "\
+; tag-258 set nominals over the two offending primitives, both bounds
+nes = #6.258([+ bytes])
+los = #6.258([* bytes])
+nbs = #6.258([+ bool])
+; the `@duplicates preserve` opt-out: a plain NonEmptyVec companion, not a uniqueness twin
+ps = #6.258([+ bytes]) ; @duplicates preserve
+; the restricted list wrappers on their own — no set involved, same door
+nel = [+ bytes]
+nbl = [+ bool]
+holder = [a: nes, b: los, c: ps, d: nel, e: nbs, f: nbl]
+",
+    )
+    .unwrap();
+    let target_dir = root.join("target");
+    for (profile, extra) in [
+        ("plain", None),
+        ("preserve", Some("--preserve-encodings=true")),
+    ] {
+        let out = root.join(format!("out_{profile}"));
+        let _ = std::fs::remove_dir_all(&out);
+        let mut cmd = codegen_cmd();
+        cmd.args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--wasm=true",
+        ]);
+        if let Some(extra) = extra {
+            cmd.arg(extra);
+        }
+        let generated = cmd.output().unwrap();
+        assert!(
+            generated.status.success(),
+            "{profile}: the bytes/bool-element set + list shapes must generate; stderr:\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        // No door may spell a nested/bool `Vec` in a `#[wasm_bindgen]` signature — the source half
+        // of the floor, which names the offending signature where the compile half names a line.
+        let wasm_src = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+        for door in ["try_from", "try_opt_from"] {
+            assert!(
+                !wasm_src.contains(&format!("pub fn {door}(elements: Vec<Vec<u8>>)"))
+                    && !wasm_src.contains(&format!("pub fn {door}(elements: Vec<bool>)")),
+                "{profile}: `{door}` must take the loose list wrapper, not a bare nested/bool \
+                 `Vec` (ABI-illegal — E0271 at the wasm crate's own compile):\n{wasm_src}"
+            );
+        }
+        if profile == "preserve" {
+            let check = tool_cmd("cargo")
+                .args(["check"])
+                .current_dir(out.join("wasm"))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            assert!(
+                check.status.success(),
+                "{profile}: the generated wasm crate must build; stderr:\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            );
+            continue;
+        }
+        // plain profile: the behavioral leg, run through the doors themselves. Building it also
+        // compiles the wasm crate and (as its dependency) the rust one, so this cell is the compile
+        // floor as well.
+        let tests_dir = out.join("wasm/tests");
+        std::fs::create_dir_all(&tests_dir).unwrap();
+        std::fs::write(tests_dir.join("doors.rs"), VEC_ELEM_DOOR_TEST).unwrap();
+        let run = tool_cmd("cargo")
+            .args(["test", "--test", "doors"])
+            .current_dir(out.join("wasm"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "{profile}: the generated wasm crate must build AND its list doors must round-trip; \
+             stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&run.stdout),
+            String::from_utf8_lossy(&run.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The behavioral leg of `bytes_and_bool_element_list_doors_compile_and_round_trip`, written into
+/// the generated wasm crate as an integration test.
+const VEC_ELEM_DOOR_TEST: &str = r#"use cddl_lib_wasm::*;
+
+fn bytes_list(elems: &[&[u8]]) -> BytesList {
+    let mut list = BytesList::new();
+    for e in elems {
+        list.add(e.to_vec());
+    }
+    list
+}
+
+#[test]
+fn list_doors_round_trip() {
+    let list = bytes_list(&[b"ab", b"c"]);
+    // the fixed door: construct the set nominal from the loose list wrapper
+    let nes = Nes::try_from(&list).unwrap();
+    assert_eq!(nes.len(), 2);
+    assert_eq!(nes.get(0), b"ab".to_vec());
+    // ... and it agrees byte-for-byte with the rust door it delegates to
+    let native = cddl_lib::Nes::try_from(vec![b"ab".to_vec(), b"c".to_vec()]).unwrap();
+    assert_eq!(
+        nes.to_cbor_bytes(),
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&native)
+    );
+    assert_eq!(Nes::from_cbor_bytes(&nes.to_cbor_bytes()).unwrap().len(), 2);
+    // the uniqueness door is still a door. Asserted on the rust type the wasm door delegates to:
+    // a `JsError` cannot be constructed on a non-wasm target.
+    assert!(cddl_lib::Nes::try_from(vec![b"ab".to_vec(), b"ab".to_vec()]).is_err());
+    // try_opt_from keeps its empty-means-absent contract through the new argument type
+    assert!(Nes::try_opt_from(&BytesList::new()).unwrap().is_none());
+    assert!(Nes::try_opt_from(&list).unwrap().is_some());
+    // `@duplicates preserve`: same door, reached via the restricted list wrapper, duplicates kept
+    let ps = Ps::new(&Nel::try_from(&bytes_list(&[b"ab", b"ab"])).unwrap());
+    assert_eq!(ps.get().len(), 2);
+    // the loose set nominal and both bare companion classes
+    assert_eq!(Los::try_from(&list).unwrap().len(), 2);
+    assert_eq!(BytesOrderedSet::try_from(&list).unwrap().len(), 2);
+    assert_eq!(NonEmptyBytesOrderedSet::try_from(&list).unwrap().len(), 2);
+    // the bool sibling: exposable as a scalar, not as a bare `Vec`
+    let mut bools = BoolList::new();
+    bools.add(true);
+    bools.add(false);
+    assert_eq!(Nbs::try_from(&bools).unwrap().len(), 2);
+    assert_eq!(Nbl::try_from(&bools).unwrap().len(), 2);
+    assert_eq!(NonEmptyBoolOrderedSet::try_from(&bools).unwrap().len(), 2);
+}
+"#;

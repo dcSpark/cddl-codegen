@@ -356,10 +356,11 @@ fn alias_binding_set_nominal_wasm_surface_flattens_and_names_the_rekey() {
 /// A BYTES-element set collapses to a transparent `NonEmptyOrderedSet<Vec<u8>>` alias (258 defaults
 /// to reject) and, under `--preserve-encodings`, its byte-string elements ride the EXISTING per-element `StringEncoding`
 /// machinery (`..._elem_encodings: Vec<StringEncoding>`) — so `@raw_bytes_flavor` is moot for the
-/// generated type (it stays extern-only). This is asserted in-process on the RUST side only: the
-/// corpus fixtures omit a bytes element because a named bytes-element collection's WASM wrapper class
-/// fails to compile (E0271), a pre-existing limitation independent of this feature (tracked in
-/// `tests/TESTING_ROADMAP.md`).
+/// generated type (it stays extern-only). This is asserted in-process on the RUST side only; the wasm
+/// side of a bytes-element set — whose list-taking doors must borrow the loose `BytesList` class,
+/// because a bare `Vec<Vec<u8>>` is not ABI-legal — is a compile floor,
+/// `integration_tests::bytes_and_bool_element_list_doors_compile_and_round_trip`, and the
+/// `tag_set_generic` corpus fixture carries a bytes instance for the same reason.
 #[test]
 fn bytes_element_set_collapses_with_elem_encodings() {
     let src = generate(

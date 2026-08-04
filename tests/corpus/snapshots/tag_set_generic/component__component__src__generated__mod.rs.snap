@@ -19,6 +19,7 @@ struct Component;
 impl wit_types::Guest for Component {
     type Holder = WitHolder;
     type NonemptyOsetPoint = WitNonemptyOsetPoint;
+    type NonemptySetBytes = WitNonemptySetBytes;
     type NonemptySetText = WitNonemptySetText;
     type Point = WitPoint;
     type SetU64 = WitSetU64;
@@ -39,11 +40,13 @@ impl wit_types::GuestHolder for WitHolder {
         a: wit_types::SetU64Borrow<'_>,
         b: wit_types::NonemptySetTextBorrow<'_>,
         c: wit_types::NonemptyOsetPointBorrow<'_>,
+        d: wit_types::NonemptySetBytesBorrow<'_>,
     ) -> Self {
         let a = a.get::<WitSetU64>().0.borrow().clone();
         let b = b.get::<WitNonemptySetText>().0.borrow().clone();
         let c = c.get::<WitNonemptyOsetPoint>().0.borrow().clone();
-        let inner = cddl_lib::Holder::new(a, b, c);
+        let d = d.get::<WitNonemptySetBytes>().0.borrow().clone();
+        let inner = cddl_lib::Holder::new(a, b, c, d);
         WitHolder(RefCell::new(inner))
     }
 
@@ -60,6 +63,11 @@ impl wit_types::GuestHolder for WitHolder {
     fn c(&self) -> wit_types::NonemptyOsetPoint {
         let me = self.0.borrow();
         wit_types::NonemptyOsetPoint::new(WitNonemptyOsetPoint(RefCell::new(me.c.clone())))
+    }
+
+    fn d(&self) -> wit_types::NonemptySetBytes {
+        let me = self.0.borrow();
+        wit_types::NonemptySetBytes::new(WitNonemptySetBytes(RefCell::new(me.d.clone())))
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {
@@ -96,6 +104,30 @@ impl wit_types::GuestNonemptyOsetPoint for WitNonemptyOsetPoint {
             &bytes,
         )
         .map(|v| wit_types::NonemptyOsetPoint::new(WitNonemptyOsetPoint(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitNonemptySetBytes(pub RefCell<cddl_lib::NonemptySetBytes>);
+
+impl wit_types::GuestNonemptySetBytes for WitNonemptySetBytes {
+    fn new(inner: Vec<Vec<u8>>) -> Result<Self, String> {
+        let inner: Vec<_> = inner.into_iter().map(|x| x.into_iter().collect()).collect();
+        let inner = cddl_lib::NonemptySetBytes::new(inner.try_into().map_err(err)?);
+        Ok(WitNonemptySetBytes(RefCell::new(inner)))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NonemptySetBytes as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NonemptySetBytes, String> {
+        <cddl_lib::NonemptySetBytes as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::NonemptySetBytes::new(WitNonemptySetBytes(RefCell::new(v))))
         .map_err(err)
     }
 }
