@@ -520,6 +520,40 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     (`tests/core/tests.rs`). Reopening signal: the maintainer takes the ruling, or a consumer
     reports the panic from production data (measurable by the party holding the inexact value).
 
+15. **A registration-class base axis for the reference-context sweep family — generation floor,
+    not directive preservation.** Rule classes differ in what their ident REGISTERS (a struct
+    under its own name; an alias to an instantiation canonical, as the named set-nominal binding;
+    an extern; a transparent collection alias), and a reference context that assumes one class
+    aborts on another: the twice-aliased set-idiom instance panicked at a member site because the
+    set-nominal binding is the one class whose ident names no struct, and the repair walk looked
+    one `Alias` box too shallow (fixed and pinned by
+    `generic_collection_tests::alias_of_instance_chains_generate`, 30 cells). No existing sweep
+    could have seen it: `directive_referencing_context_sweep`'s bases are DIRECTIVE families (a
+    directive-less instance binding is not a base), and the recombination roles include a
+    generic-arg position but no rule-level alias hop. The system this asks for is the sweep
+    sibling with bases = registration classes, contexts = the existing reference-context rows
+    (member, element, re-alias hop, map value, tag head, …), verdict = generation succeeds and
+    the crate compiles — the 30-cell pin is one row of it, hand-built. Reopening signal, on the
+    dimension the cost grows along: a SECOND generation abort on a directive-less shape whose
+    trigger is a reference context over a registration class those cells do not span — the abort
+    is exit-101-loud and belongs to whoever generates the shape, so the reporter exists by
+    construction (the first member of the class is the one already fixed, so the signal is not
+    met by this entry's own record).
+
+16. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
+    it.** Skip-listed gate rows are ledgered with citations and stale-guards; an eviction — a
+    shape REMOVED from a fixture because it trips a known bug — is recorded only in prose, which
+    nothing re-probes. Proven cost: `tests/corpus/tag_set_generic.cddl` dropped its bytes
+    instance when the bytes-element list doors failed the wasm compile (E0271), and the corpus
+    wasm-face compile floor — the exact gate that owns the class — went blind to it for the
+    defect's whole life; the shape came back only because the burndown re-probed the row's
+    premises by hand. What to build, when the class recurs: a small eviction ledger (fixture,
+    evicted spelling, defect citation) with a guard that generates each evicted spelling and
+    fails loudly the day it heals, the same stale-guard contract skip rows already carry.
+    Reopening signal: a second eviction — a fixture edit that removes a spelling citing a defect
+    rather than restructuring the fixture — measurable by its author at the moment of eviction,
+    which is when the ledger row would be written anyway.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
