@@ -1123,6 +1123,22 @@ impl RustType {
         self.conceptual_type.directly_wasm_exposable_ct(types)
     }
 
+    /// `self` is the ELEMENT type; whether a BARE `Vec<self>` is legal in a `#[wasm_bindgen]`
+    /// signature. This — not `directly_wasm_exposable` — is the question every list-taking DOOR
+    /// (`try_from(elements: Vec<Elem>)`) must ask, because wasm-bindgen exposing a scalar does NOT
+    /// imply it exposes a vector of it: `bytes` is already `Vec<u8>` (nesting is unrepresentable) and
+    /// `bool` has no `VectorFromWasmAbi`. Asking the element's own question there emitted
+    /// `try_from(elements: Vec<Vec<u8>>)`, which generates at exit 0 and then fails the generated
+    /// wasm crate's own compile with `E0271 … <Vec<u8> as ErasableGeneric>::Repr == JsValue`.
+    /// Spelled as the ARRAY-level probe so it stays in lockstep with `name_as_wasm_array`, which
+    /// names the loose `<Elem>List` wrapper under exactly the negation of this test — so a door that
+    /// falls out of the bare-`Vec` arm always has a loose class to borrow instead. The bounds-aware
+    /// element cases are subsumed: `[+ …]` / `@duplicates reject` both require an `Array` conceptual
+    /// type, which the array-level probe already rejects as a nested vec.
+    pub fn vec_of_self_directly_wasm_exposable(&self, types: &IntermediateTypes) -> bool {
+        ConceptualRustType::Array(Box::new(self.clone())).directly_wasm_exposable_ct(types)
+    }
+
     /// `self` is the ELEMENT type; this names the LOOSE `Vec`-of-`self` wrapper (`BarList`,
     /// `ArrIntList`). It is NOT the nonempty-container name — that is `for_wasm_member` on the array
     /// RustType. The element's own `for_variant` (bounds-invariant) drives the name, so a nonempty

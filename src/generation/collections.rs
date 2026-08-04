@@ -491,7 +491,7 @@ impl GenerationScope {
         // legitimately owns the ident for its restricted class (collision-checked in finalize), so
         // the wrapper emits WITHOUT `try_from` and is built incrementally (`new(first)` + `add`).
         let elem_wasm = element_type.for_wasm_member(types);
-        let loose_list = (!element_type.directly_wasm_exposable(types)
+        let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types)
             && !element_type.is_non_empty_array())
         .then(|| element_type.name_as_wasm_array(types));
         let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
@@ -534,7 +534,7 @@ impl GenerationScope {
         // try_from: the single checked door from the loose form to the restricted wrapper. It
         // BORROWS (and clones) so the source loose list/Vec remains valid on the JS side, and the
         // throw happens here — right at the conversion, not inside a parent constructor.
-        if element_type.directly_wasm_exposable(types) {
+        if element_type.vec_of_self_directly_wasm_exposable(types) {
             // exposable element: no loose wrapper exists, so take the bare Vec by value (boundary copy)
             wrapper
                 .s_impl
@@ -621,7 +621,7 @@ impl GenerationScope {
         // the import tracker's struct-walk Array arm (`scope_references`/`mark_refs`, intermediate/mod.rs)
         // registers the loose source for reject rules under the SAME condition — its gate keys on
         // `duplicates == Reject` (not just the non-empty bound). Change the two together.
-        let loose_list = (!element_type.directly_wasm_exposable(types)
+        let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types)
             && !element_type.is_non_empty_array())
         .then(|| element_type.name_as_wasm_array(types));
         let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
@@ -724,7 +724,7 @@ impl GenerationScope {
                 )
             ));
         // try_from: the single checked door from the loose form to the restricted wrapper.
-        if element_type.directly_wasm_exposable(types) {
+        if element_type.vec_of_self_directly_wasm_exposable(types) {
             wrapper
                 .s_impl
                 .new_fn("try_from")

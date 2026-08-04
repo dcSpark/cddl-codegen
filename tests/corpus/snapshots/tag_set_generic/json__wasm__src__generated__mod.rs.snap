@@ -17,6 +17,47 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct BytesList(pub(crate) Vec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl BytesList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<Vec<u8>>> for BytesList {
+    fn from(native: Vec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesList> for Vec<Vec<u8>> {
+    fn from(wasm: BytesList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<Vec<u8>>> for BytesList {
+    fn as_ref(&self) -> &Vec<Vec<u8>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Holder(pub(crate) cddl_lib::Holder);
 
 #[wasm_bindgen]
@@ -58,11 +99,21 @@ impl Holder {
         self.0.c.clone().into()
     }
 
-    pub fn new(a: &SetU64, b: &NonemptySetText, c: &NonemptyOsetPoint) -> Self {
+    pub fn d(&self) -> NonemptySetBytes {
+        self.0.d.clone().into()
+    }
+
+    pub fn new(
+        a: &SetU64,
+        b: &NonemptySetText,
+        c: &NonemptyOsetPoint,
+        d: &NonemptySetBytes,
+    ) -> Self {
         Self(cddl_lib::Holder::new(
             a.clone().into(),
             b.clone().into(),
             c.clone().into(),
+            d.clone().into(),
         ))
     }
 }
@@ -81,6 +132,57 @@ impl From<Holder> for cddl_lib::Holder {
 
 impl AsRef<cddl_lib::Holder> for Holder {
     fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+/// `[+ Vec<u8>]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyBytesList(pub(crate) NonEmptyVec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl NonEmptyBytesList {
+    pub fn new(first: Vec<u8>) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(list: &BytesList) -> Result<NonEmptyBytesList, JsError> {
+        let inner: Vec<Vec<u8>> = list.clone().into();
+        NonEmptyVec::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<Vec<u8>>> for NonEmptyBytesList {
+    fn from(native: NonEmptyVec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyBytesList> for NonEmptyVec<Vec<u8>> {
+    fn from(wasm: NonEmptyBytesList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<Vec<u8>>> for NonEmptyBytesList {
+    fn as_ref(&self) -> &NonEmptyVec<Vec<u8>> {
         &self.0
     }
 }
@@ -242,6 +344,64 @@ impl From<NonemptyOsetPoint> for cddl_lib::NonemptyOsetPoint {
 
 impl AsRef<cddl_lib::NonemptyOsetPoint> for NonemptyOsetPoint {
     fn as_ref(&self) -> &cddl_lib::NonemptyOsetPoint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptySetBytes(pub(crate) cddl_lib::NonemptySetBytes);
+
+#[wasm_bindgen]
+impl NonemptySetBytes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonemptySetBytes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NonemptySetBytes, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyBytesList) -> Self {
+        Self(cddl_lib::NonemptySetBytes::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyBytesList {
+        <NonEmptyVec<Vec<u8>>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::NonemptySetBytes> for NonemptySetBytes {
+    fn from(native: cddl_lib::NonemptySetBytes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptySetBytes> for cddl_lib::NonemptySetBytes {
+    fn from(wasm: NonemptySetBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonemptySetBytes> for NonemptySetBytes {
+    fn as_ref(&self) -> &cddl_lib::NonemptySetBytes {
         &self.0
     }
 }

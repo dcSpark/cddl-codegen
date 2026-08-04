@@ -63,6 +63,54 @@ impl TryFrom<Vec<Point>> for NonemptyOsetPoint {
     }
 }
 
+impl core::ops::Deref for NonemptySetBytes {
+    type Target = NonEmptyVec<Vec<u8>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl core::ops::DerefMut for NonemptySetBytes {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a NonemptySetBytes {
+    type Item = &'a Vec<u8>;
+    type IntoIter = core::slice::Iter<'a, Vec<u8>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for NonemptySetBytes {
+    type Item = Vec<u8>;
+    type IntoIter = alloc::vec::IntoIter<Vec<u8>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<Vec<u8>>::from(self.0).into_iter()
+    }
+}
+
+impl From<NonemptySetBytes> for Vec<Vec<u8>> {
+    fn from(wrapper: NonemptySetBytes) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<Vec<u8>>> for NonemptySetBytes {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<Vec<u8>>) -> Result<Self, Self::Error> {
+        Ok(NonemptySetBytes::new(<NonEmptyVec<Vec<u8>>>::try_from(
+            vec,
+        )?))
+    }
+}
+
 impl core::ops::Deref for NonemptySetText {
     type Target = NonEmptyVec<String>;
 
@@ -151,11 +199,12 @@ pub struct Holder {
     pub a: SetU64,
     pub b: NonemptySetText,
     pub c: NonemptyOsetPoint,
+    pub d: NonemptySetBytes,
 }
 
 impl Holder {
-    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
-        Self { a, b, c }
+    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptyOsetPoint, d: NonemptySetBytes) -> Self {
+        Self { a, b, c, d }
     }
 }
 
@@ -176,6 +225,27 @@ impl From<NonEmptyVec<Point>> for NonemptyOsetPoint {
 
 impl From<NonemptyOsetPoint> for NonEmptyVec<Point> {
     fn from(wrapper: NonemptyOsetPoint) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NonemptySetBytes(pub(crate) NonEmptyVec<Vec<u8>>);
+
+impl NonemptySetBytes {
+    pub fn new(inner: NonEmptyVec<Vec<u8>>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyVec<Vec<u8>>> for NonemptySetBytes {
+    fn from(inner: NonEmptyVec<Vec<u8>>) -> Self {
+        NonemptySetBytes::new(inner)
+    }
+}
+
+impl From<NonemptySetBytes> for NonEmptyVec<Vec<u8>> {
+    fn from(wrapper: NonemptySetBytes) -> Self {
         wrapper.0
     }
 }

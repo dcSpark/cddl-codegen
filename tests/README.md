@@ -1509,7 +1509,23 @@ idiom") is verified across the layers:
   and the named-rule boundary still hard-errors naming `NamedSet`.
 - **Compile + round-trip** — the `tag_set_idiom` / `tag_set_generic` / `tag_set_near_miss` corpus
   fixtures (`feature_corpus` snapshots + `feature_corpus_compiles`' three-profile compile and the
-  default-profile `--emit-tests` byte-exact round-trip of the tagged arm).
+  default-profile `--emit-tests` byte-exact round-trip of the tagged arm). `tag_set_generic` carries
+  a BYTES instance, so its wasm-face compile cell also covers the list-door ABI contract below.
+- **The list-taking wasm doors' ABI contract** — a `try_from`/`try_opt_from` taking `Vec<Elem>` is
+  legal only when a `Vec` **of** the element crosses the wasm boundary, which is strictly stronger
+  than the element itself crossing it: `bytes` (already `Vec<u8>`) and `bool` (no
+  `VectorFromWasmAbi`) are scalars with no bare-`Vec` form, so every such door borrows the loose
+  `<Elem>List` class instead. The predicate is `RustType::vec_of_self_directly_wasm_exposable`,
+  spelled as the same array-level probe `name_as_wasm_array` uses to decide whether a loose wrapper
+  class exists at all — so a door that is not a bare `Vec` always has a class to borrow, by
+  construction. Floor:
+  `integration_tests::bytes_and_bool_element_list_doors_compile_and_round_trip` — both offending
+  primitives × the set-nominal flattened doors, the `@duplicates reject` companion set wrapper and
+  the restricted `NonEmptyVec` list wrapper, generated under the plain and `--preserve-encodings`
+  profiles, with the plain cell running a behavioral round-trip through the doors inside the
+  generated wasm crate. It is a compile floor because the defect class was exit-0 generation whose
+  wasm crate then failed its own `cargo check` with `E0271 … <Vec<u8> as ErasableGeneric>::Repr ==
+  JsValue`.
 - **Wire bytes** — the `opt_set` golden vectors above (both arms + canonical size-not-presence).
 - **Matrix cells (choice-member axis)** — `contain.choice-member.type2.tag.set_idiom` /
   `contain.choice-member.type2.tag.set_idiom_near_miss`

@@ -9,10 +9,11 @@ package cddl:cddl-lib@0.1.0;
 
 interface types {
   resource holder {
-    constructor(a: borrow<set-u64>, b: borrow<nonempty-set-text>, c: borrow<nonempty-oset-point>);
+    constructor(a: borrow<set-u64>, b: borrow<nonempty-set-text>, c: borrow<nonempty-oset-point>, d: borrow<nonempty-set-bytes>);
     a: func() -> set-u64;
     b: func() -> nonempty-set-text;
     c: func() -> nonempty-oset-point;
+    d: func() -> nonempty-set-bytes;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
   }
@@ -20,6 +21,11 @@ interface types {
     constructor(inner: list<borrow<point>>) -> result<nonempty-oset-point, string>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<nonempty-oset-point, string>;
+  }
+  resource nonempty-set-bytes {
+    constructor(inner: list<list<u8>>) -> result<nonempty-set-bytes, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nonempty-set-bytes, string>;
   }
   resource nonempty-set-text {
     constructor(inner: list<string>) -> result<nonempty-set-text, string>;

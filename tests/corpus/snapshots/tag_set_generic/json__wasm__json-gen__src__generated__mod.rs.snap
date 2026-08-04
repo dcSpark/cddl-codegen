@@ -9,6 +9,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::NonemptyOsetPoint>();
+    reg.add::<cddl_lib::NonemptySetBytes>();
     reg.add::<cddl_lib::NonemptySetText>();
     reg.add::<cddl_lib::Point>();
     reg.add::<cddl_lib::SetU64>();

@@ -132,7 +132,10 @@ value without consuming its elements:
   valid after the conversion. The throw happens at `try_from`, right where the mistake is — not deep
   inside a parent constructor. When the element's loose form is directly exposable (`[+ uint]` →
   `Vec<u64>`, `[+ text]` → `Vec<String>`), no loose wrapper exists and `try_from` takes the bare
-  `Vec<...>` **by value** instead (boundary copies, no ownership hazard).
+  `Vec<...>` **by value** instead (boundary copies, no ownership hazard). The test is the LOOSE
+  FORM's exposability, not the element's own: `bytes` and `bool` cross the boundary fine as single
+  values but have no bare-`Vec` form at all (see above), so `[+ bytes]` / `[+ bool]` take
+  `&BytesList` / `&BoolList` like any other wrapper-needing element.
 - **Parent constructors and setters take the pre-checked restricted wrapper by reference**
   (`Foo.new(…, tags: &NonEmptyBarList)`), so `Foo.new` stops being a throw site for the container
   bound — the same infallibility win as the rust side. Getters return a clone of the restricted
@@ -169,7 +172,9 @@ wrapping the uniqueness twin core:
 - Construction is via **`try_from`**, exactly like the non-empty restricted wrapper:
   `try_from(list: &FooList) -> Result<Self, JsError>` for a wrapper-needing element (borrows and
   clones, so the loose `FooList` stays valid), or `try_from(elements: Vec<T>)` by value when the
-  element's loose form is directly exposable (`[* uint]` → `Vec<u64>`).
+  element's loose form is directly exposable (`[* uint]` → `Vec<u64>`) — the same loose-form test as
+  the non-empty wrapper, so a reject set over `bytes` or `bool` also enters through `&BytesList` /
+  `&BoolList`.
 - **The one JS-visible difference from the non-empty wrappers: `add` is fallible.** A non-empty
   wrapper's `add` is infallible (a push can never violate a *minimum* bound), but a reject wrapper's
   `add` returns **`Result<(), JsError>`** and **throws when the element is already present** — the

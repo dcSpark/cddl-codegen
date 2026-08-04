@@ -172,15 +172,18 @@ pub(super) fn generate_wrapper_struct(
             // A list-taking construction door + the empty-means-absent `try_opt_from` (the wasm
             // mirror of the rust nominal's inherent constructor — its landing removes the matching
             // `PARITY_EXEMPT` entries). Both delegate to the rust nominal's `TryFrom<Vec<Elem>>` /
-            // `try_opt_from` through a SHARED list door: a directly-exposable element crosses as
-            // `Vec<Elem>` (passed straight through); otherwise the minted `<Elem>List` wrapper
-            // (always emitted alongside this nominal's companion) is cloned into the native `Vec`.
+            // `try_opt_from` through a SHARED list door: an element a BARE `Vec` can carry across the
+            // ABI crosses as `Vec<Elem>` (passed straight through); otherwise the minted `<Elem>List`
+            // wrapper (always emitted alongside this nominal's companion) is cloned into the native
+            // `Vec`. The bare-`Vec` test is `vec_of_self_directly_wasm_exposable` — the ELEMENT's own
+            // exposability is the wrong question, and asking it put `Vec<Vec<u8>>` in this signature
+            // for a bytes-element set (generation exit 0, wasm crate E0271).
             // A nested non-empty-array element has no clean loose source, so no list door is emitted
             // for it — the sole residual, uncovered by any fixture; a future one re-reds parity on
             // `<Nominal>::try_opt_from` (loud, local) rather than silently miscompiling here.
             let elem_wasm = element_type.for_wasm_member(types);
             let list_door: Option<(&str, String, Option<String>)> =
-                if element_type.directly_wasm_exposable(types) {
+                if element_type.vec_of_self_directly_wasm_exposable(types) {
                     Some(("elements", format!("Vec<{elem_wasm}>"), None))
                 } else if !element_type.is_non_empty_array() {
                     let loose = element_type.name_as_wasm_array(types);

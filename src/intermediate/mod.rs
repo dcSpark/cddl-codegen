@@ -1069,8 +1069,9 @@ impl<'a> IntermediateTypes<'a> {
         // field walk, the same class of problem as a map's `keys()`-list
         // (`register_deferred_keys_list`), solved the same way: follow the CLASS, not the using
         // site — import at the restricted wrapper's EMISSION scope, from the dep's `collections`
-        // module. No-op when: the element is exposable (`try_from` takes a bare `Vec`, no loose
-        // class is named) or itself non-empty (no loose source exists — built incrementally); the
+        // module. No-op when: a bare `Vec` of the element crosses the ABI (`try_from` takes that
+        // `Vec`, no loose class is named) or the element is itself non-empty (no loose source
+        // exists — built incrementally); the
         // loose name equals the wrapper ident (a self-named rule emits no `try_from`); or the
         // loose wrapper is not deferred (it is a local class in the same scope). Empty `deferred`
         // (rust pass / flag unused) makes this a no-op, so output is byte-identical without the flag.
@@ -1081,7 +1082,7 @@ impl<'a> IntermediateTypes<'a> {
             wrapper_ident: &RustIdent,
             elem: &RustType,
         ) {
-            if elem.directly_wasm_exposable(types) || elem.is_non_empty_array() {
+            if elem.vec_of_self_directly_wasm_exposable(types) || elem.is_non_empty_array() {
                 return;
             }
             let loose = elem.name_as_wasm_array(types);
@@ -1176,8 +1177,9 @@ impl<'a> IntermediateTypes<'a> {
         // minted class (typically ROOT-minted). Its `try_from(&<Elem>List)` names the loose builder
         // bare in `emit_scope`, so import it there — the list twin of `register_root_keys_list`. Also
         // register the loose builder's OWN element ref at the builder's scope (its `get`/`add`
-        // accessors name the element bare where the builder lives). No-op when: the element is
-        // exposable (`try_from` takes a bare `Vec`, no loose class) or itself non-empty (built
+        // accessors name the element bare where the builder lives). No-op when: a bare `Vec` of the
+        // element crosses the ABI (`try_from` takes that `Vec`, no loose class) or the element is
+        // itself non-empty (built
         // incrementally, no loose source); the loose name equals the wrapper ident (a self-named rule
         // emits no `try_from`); or the loose builder is deferred (the deferred helper imports it from
         // the dep's `collections` module instead).
@@ -1192,7 +1194,8 @@ impl<'a> IntermediateTypes<'a> {
             wrapper_ident: &RustIdent,
             elem: &RustType,
         ) {
-            if !wasm || elem.directly_wasm_exposable(types) || elem.is_non_empty_array() {
+            if !wasm || elem.vec_of_self_directly_wasm_exposable(types) || elem.is_non_empty_array()
+            {
                 return;
             }
             let loose = elem.name_as_wasm_array(types);
@@ -4447,8 +4450,8 @@ impl<'a> IntermediateTypes<'a> {
         let check_loose_need = |element: &RustType,
                                 needed_by: &str,
                                 msgs: &mut BTreeSet<String>| {
-            if element.directly_wasm_exposable(self) || element.is_non_empty_array() {
-                return; // exposable: try_from takes a bare Vec; nested: no loose source at all
+            if element.vec_of_self_directly_wasm_exposable(self) || element.is_non_empty_array() {
+                return; // bare-Vec door: try_from takes it directly; nested: no loose source at all
             }
             let loose = element.name_as_wasm_array(self);
             if self.wasm_ident_claimed_by_user_rule(&loose)
@@ -4497,7 +4500,9 @@ impl<'a> IntermediateTypes<'a> {
             if *bounds != Some((Some(1), None)) {
                 continue;
             }
-            if element_type.directly_wasm_exposable(self) || element_type.is_non_empty_array() {
+            if element_type.vec_of_self_directly_wasm_exposable(self)
+                || element_type.is_non_empty_array()
+            {
                 continue;
             }
             let loose = element_type.name_as_wasm_array(self);
