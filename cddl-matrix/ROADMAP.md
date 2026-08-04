@@ -716,8 +716,9 @@ ledgered here (that's what the probe/gate error messages point at).
   type it names precisely so the spec author owns its JSON form, and the JSON surfaces the tool
   emits over that type therefore resolve to traits the author is on the hook for: a derived
   container holding it re-demands `serde::Serialize`/`serde::Deserialize` on the member, the wasm
-  wrapper's `to_json`/`to_json_value`/`from_json` door demands the same pair, and (under
-  `--json-schema-export`) json-gen's registration row demands `schemars::JsonSchema`. Those three
+  wrapper's `to_json`/`to_json_value`/`from_json` door and the `--component` guest's `to-json` /
+  `from-json` members demand the same pair, and (under `--json-schema-export`) json-gen's
+  registration row demands `schemars::JsonSchema`. Those three
   impls are the WHOLE demand — every emission site that names a `@custom_json` type does so through
   one of them, so a build failure is always the named trait on the named type — and supplying them
   makes the whole surface build: `tests/json` splices the hand-written impls of

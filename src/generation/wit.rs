@@ -2084,8 +2084,10 @@ fn bytes_members(deserializable: bool, cli: &Cli) -> Vec<WitMember> {
 /// `serde::Serialize` — so a `to-json` on a bridging resource would name a trait impl that need not
 /// exist. That is the compile-error-in-generated-code class the `no_deserialize` fork and the
 /// raw-bytes seam split both exist to prevent, reached a third time. The seam therefore goes only to
-/// the types the tool DEFINES (records, `@newtype` wrappers, choices), whose serde impls it derives
-/// itself under the same flag.
+/// the types the tool DEFINES (records, `@newtype` wrappers, choices), whose serde impls exist by
+/// contract under the same flag — derived by the tool, or, where `@custom_json` transfers ownership
+/// of the JSON form to the spec author, hand-written by them (a directive the tool REFUSES on an
+/// extern precisely because there is no tool-defined type there to carry them).
 ///
 /// Both halves are FALLIBLE. `from-json` obviously so; `to-json` because the wasm face's own
 /// `to_json` is `Result<String, JsError>` and serialization genuinely can fail — the runtime's
