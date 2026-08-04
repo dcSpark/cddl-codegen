@@ -6912,9 +6912,16 @@ mod __double_option_pin {
 "##;
 
     // Both json-bearing profiles: the preserve struct shape differs (an extra `encodings` field the
-    // json face skips), so the attributes must land on the right field in each.
+    // json face skips), so the attributes must land on the right field in each. The plain leg also
+    // turns on `--json-schema-export`: `schemars`' derive reads `#[serde(with = …)]` as its OWN
+    // `with` (a TYPE), so the adapter's module path is an E0573 compile break unless the
+    // `#[schemars(with = "<field type>")]` neutralizer is emitted beside it — this leg's
+    // `cargo test` compiles the derive, so a neutralizer regression fails HERE (`local`) rather
+    // than only at the full tier's corpus json profile
+    // (`feature_corpus_roundtrips_nondefault_profiles`). Filing:
+    // `draft/schemars-serde-with-module-read-as-type.md`.
     for (leg, extra) in [
-        ("plain", &[][..]),
+        ("plain", &["--json-schema-export=true"][..]),
         ("preserve", &["--preserve-encodings=true"][..]),
     ] {
         let out = scratch.join(leg);
@@ -6938,6 +6945,14 @@ mod __double_option_pin {
             source.contains("#[serde(with = \"crate::generated::double_option\")]"),
             "{leg}: the optional-nullable member must be steered through the adapter:\n{source}"
         );
+        if extra.contains(&"--json-schema-export=true") {
+            assert!(
+                source.contains("#[schemars(with = \"Option<MaybeUint>\")]"),
+                "{leg}: under --json-schema-export the serde adapter needs its schemars \
+                 neutralizer beside it (schemars reads #[serde(with)] as a TYPE — E0573 \
+                 otherwise):\n{source}"
+            );
+        }
         std::fs::write(&generated_mod, format!("{source}\n{PIN}")).unwrap();
         let test = tool_cmd("cargo")
             .arg("test")
