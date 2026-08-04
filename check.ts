@@ -78,7 +78,8 @@
  *   canaries reverted after confirming red.
  */
 import {
-  existsSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, unlinkSync, writeFileSync,
+  appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync,
+  unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -400,6 +401,197 @@ export function parseJoinTimeoutMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return DEFAULT_JOIN_TIMEOUT_MS;
   const n = Number(raw.trim());
   return Number.isFinite(n) && n > 0 ? n * 1000 : DEFAULT_JOIN_TIMEOUT_MS;
+}
+
+// ---- the THIRD factor: how many nested tool children a gate runs AT ONCE -------------------------
+// `CARGO_BUILD_JOBS` bounds how many `rustc` each nested cargo spawns; it says nothing about how
+// many nested cargos a gate holds open concurrently. For a `cargo test` gate that count is the
+// libtest thread count — `nproc` by default — so the true peak was
+// `test threads × CARGO_BUILD_JOBS` compilers plus a spawned test binary per thread, a product the
+// slot arithmetic above never modeled. The bound lives in the test helper every nested spawn goes
+// through (`tool_cmd`, src/tests/integration_tests.rs), which reads `CDDL_NESTED_TOOL_PERMITS`;
+// this helper is the runner's side of it.
+//
+// The derived value is ONE child per gate, and that is not timidity but the only reading under
+// which the slot model is honest: a gate's whole `CARGO_BUILD_JOBS` share is each nested child's
+// internal `-j`, so at N children the gate spends N × share slots — permits and jobs multiply, and
+// any pair that both track the share overshoots the budget quadratically. One child at `-j share`
+// is exactly the "compile then run" slot `ASSUMED_PEAK_RUSTC_GIB` prices. The wall-time this
+// leaves on the table is real and deliberately unspent until the sampler below can price it
+// (raising permits is safe exactly when measured child peaks say so, and `CHECK_NESTED_PERMITS`
+// is the operator's override meanwhile).
+export function nestedToolPermitsForGate(o: {
+  override?: string;   // CHECK_NESTED_PERMITS
+  inherited?: string;  // CDDL_NESTED_TOOL_PERMITS already present in the environment
+}): { permits: number; why: string; warning?: string } {
+  let warning: string | undefined;
+  const asPositiveInt = (raw: string | undefined, name: string): number | undefined => {
+    if (raw === undefined || raw.trim() === "") return undefined;
+    const n = Number(raw.trim());
+    if (Number.isInteger(n) && n >= 1) return n;
+    warning = `${name}='${raw}' is not a positive integer — ignoring it`;
+    return undefined;
+  };
+  const override = asPositiveInt(o.override, "CHECK_NESTED_PERMITS");
+  if (override !== undefined)
+    return { permits: override, why: `CHECK_NESTED_PERMITS=${override} (operator override)`, ...(warning ? { warning } : {}) };
+  const derived = 1;
+  const inherited = asPositiveInt(o.inherited, "CDDL_NESTED_TOOL_PERMITS");
+  if (inherited !== undefined && inherited < derived)
+    return {
+      permits: inherited,
+      why: `1 nested child per gate, held down to the inherited CDDL_NESTED_TOOL_PERMITS=${inherited}`,
+      ...(warning ? { warning } : {}),
+    };
+  return { permits: derived, why: "1 nested child per gate (its whole -j share is that child's)", ...(warning ? { warning } : {}) };
+}
+
+// ---- per-run memory sampler (report-only, asserted by NOTHING) -----------------------------------
+// The slot arithmetic above budgets an ASSUMED per-slot footprint because no measurement of the
+// real one existed: no gate ever sampled concurrent `rustc`, Σ RSS of the run's own process tree
+// (test processes included), or how low `MemAvailable` actually went. This sampler is that
+// measurement. It reports and records; it never fails anything — peaks and floors are
+// nondeterministic, and a gate that fails on a number would be flaky by construction. What the
+// numbers buy is the ability to replace pessimistic constants (the 4 GiB slot, the one-permit
+// nested bound) with measured ones, and to split the NEXT whole-machine incident into "the memory
+// bound was wrong again" vs "memory was healthy, something else saturated".
+export interface ProcStat { pid: number; comm: string; ppid: number; rssBytes: number }
+
+/**
+ * One `/proc/<pid>/stat` line. The comm field is parenthesized and may itself contain spaces or
+ * parens (`(tokio-runtime-w)`, `(a) weird (name)`), so the split point is the LAST `)` — fields
+ * after it are whitespace-separated with state at index 0, ppid at 1, rss (pages) at 21.
+ */
+export function parseProcStat(pid: number, line: string, pageBytes: number): ProcStat | undefined {
+  const open = line.indexOf("(");
+  const close = line.lastIndexOf(")");
+  if (open < 0 || close < open) return undefined;
+  const rest = line.slice(close + 1).trim().split(/\s+/);
+  const ppid = Number(rest[1]);
+  const rssPages = Number(rest[21]);
+  if (!Number.isInteger(ppid) || !Number.isFinite(rssPages)) return undefined;
+  return { pid, comm: line.slice(open + 1, close), ppid, rssBytes: rssPages * pageBytes };
+}
+
+/** Transitive children of `root` (root itself excluded — the runner measures what it SPAWNED). */
+export function descendantsOf(root: number, procs: ProcStat[]): ProcStat[] {
+  const kids = new Map<number, ProcStat[]>();
+  for (const p of procs) {
+    const a = kids.get(p.ppid);
+    if (a) a.push(p); else kids.set(p.ppid, [p]);
+  }
+  const out: ProcStat[] = [];
+  const stack = [root];
+  while (stack.length) {
+    for (const c of kids.get(stack.pop()!) ?? []) {
+      out.push(c);
+      stack.push(c.pid);
+    }
+  }
+  return out;
+}
+
+export interface MemPeaks {
+  ticks: number;
+  readErrors: number;
+  /** Peak Σ RSS across the run's descendant tree, and the tree's shape at that tick. */
+  peakTreeGiB: number;
+  peakTreeProcs: number;
+  /** Peak count of concurrent `rustc` processes in the tree (its own tick, not the peak-RSS one). */
+  peakRustc: number;
+  /** Largest single process ever seen in the tree. */
+  maxSingleGiB: number;
+  maxSingleComm: string;
+  /** Machine-wide MemAvailable floor over the run — the number the budget's basis dips to. */
+  memAvailFloorGiB?: number;
+}
+
+function startMemSampler(intervalMs = 1000): { stop: () => MemPeaks } {
+  const peaks: MemPeaks = {
+    ticks: 0, readErrors: 0, peakTreeGiB: 0, peakTreeProcs: 0, peakRustc: 0,
+    maxSingleGiB: 0, maxSingleComm: "-",
+  };
+  // Page size once: x86-64 and most aarch64 kernels use 4096, but 16k/64k-page arm64 kernels
+  // exist, and rss in /proc is in PAGES.
+  let pageBytes = 4096;
+  try {
+    const out = Bun.spawnSync(["getconf", "PAGESIZE"]).stdout.toString().trim();
+    const n = Number(out);
+    if (Number.isInteger(n) && n > 0) pageBytes = n;
+  } catch { /* keep the default */ }
+  const tick = (): void => {
+    try {
+      const procs: ProcStat[] = [];
+      for (const entry of readdirSync("/proc")) {
+        if (!/^\d+$/.test(entry)) continue;
+        try {
+          const p = parseProcStat(Number(entry), readFileSync(`/proc/${entry}/stat`, "utf8"), pageBytes);
+          if (p) procs.push(p);
+        } catch { /* the process exited between readdir and read — normal churn, not an error */ }
+      }
+      const tree = descendantsOf(process.pid, procs);
+      let sum = 0;
+      let rustc = 0;
+      for (const p of tree) {
+        sum += p.rssBytes;
+        if (p.comm === "rustc") rustc++;
+        if (p.rssBytes / 2 ** 30 > peaks.maxSingleGiB) {
+          peaks.maxSingleGiB = p.rssBytes / 2 ** 30;
+          peaks.maxSingleComm = p.comm;
+        }
+      }
+      const sumGiB = sum / 2 ** 30;
+      if (sumGiB > peaks.peakTreeGiB) {
+        peaks.peakTreeGiB = sumGiB;
+        peaks.peakTreeProcs = tree.length;
+      }
+      if (rustc > peaks.peakRustc) peaks.peakRustc = rustc;
+      const avail = availGiB("mem");
+      if (avail !== undefined && (peaks.memAvailFloorGiB === undefined || avail < peaks.memAvailFloorGiB))
+        peaks.memAvailFloorGiB = avail;
+      peaks.ticks++;
+    } catch {
+      peaks.readErrors++;
+    }
+  };
+  const timer = setInterval(tick, intervalMs);
+  // Belt to the stop()'s braces: an unref'd timer can never hold the event loop open, so even a
+  // path that misses stop() cannot recreate the hang-after-success class the join guard exists for.
+  (timer as unknown as { unref?: () => void }).unref?.();
+  return {
+    stop: () => {
+      clearInterval(timer);
+      tick(); // one final sample, so a run shorter than the interval still reports something
+      return peaks;
+    },
+  };
+}
+
+/** The sampler's end-of-run report: a printed block, and a row in the gitignored local ledger. */
+function reportMemPeaks(peaks: MemPeaks, tier: Tier): void {
+  if (peaks.ticks === 0) {
+    console.log(`\nmemory sampler: no samples (${peaks.readErrors} read error(s) — no /proc on this platform?)`);
+    return;
+  }
+  const gib = (n: number | undefined): string => n === undefined ? "?" : n.toFixed(2);
+  console.log(
+    `\nmemory sampler (report-only, 1 s ticks × ${peaks.ticks}): ` +
+    `peak run Σ RSS ${gib(peaks.peakTreeGiB)} GiB over ${peaks.peakTreeProcs} proc(s); ` +
+    `peak concurrent rustc ${peaks.peakRustc}; ` +
+    `largest single process ${gib(peaks.maxSingleGiB)} GiB (${peaks.maxSingleComm}); ` +
+    `machine MemAvailable floor ${gib(peaks.memAvailFloorGiB)} GiB` +
+    (peaks.readErrors ? `; ${peaks.readErrors} read error(s)` : ""),
+  );
+  try {
+    mkdirSync(join(ROOT, "draft"), { recursive: true });
+    appendFileSync(
+      join(ROOT, "draft", "memory-peaks.jsonl"),
+      JSON.stringify({ stamp: new Date().toISOString(), tier, ...peaks }) + "\n",
+    );
+  } catch (e) {
+    console.log("memory sampler: ledger append failed (non-fatal — peaks are never a gate): " +
+      (e instanceof Error ? e.message : String(e)));
+  }
 }
 
 /** One unit of parallel work plus the handle the timeout guard would need to reclaim it. */
@@ -1477,6 +1669,14 @@ function runGateSequential(g: Gate, opts: Opts, timingCells: boolean): GateOutco
     inherited: process.env.CARGO_BUILD_JOBS,
   });
   process.env.CARGO_BUILD_JOBS = String(solo.jobs);
+  // The child-count half of the same bound (see `nestedToolPermitsForGate`): without it, a
+  // `cargo test` gate's nested spawns run as concurrently as libtest has threads, and the `-j`
+  // above multiplies by that count instead of standing alone.
+  const soloPermits = nestedToolPermitsForGate({
+    override: process.env.CHECK_NESTED_PERMITS,
+    inherited: process.env.CDDL_NESTED_TOOL_PERMITS,
+  });
+  process.env.CDDL_NESTED_TOOL_PERMITS = String(soloPermits.permits);
   // The REGISTRY gate a cell belongs to — knowable only here. The emitter labels the Rust side
   // has (`feature_corpus_compiles`, …) are three-quarters cell names inside the `test` gate, so a
   // cell row must not present one as a gate id; it carries both, and this is the half that is true.
@@ -1518,6 +1718,7 @@ function runGateSequential(g: Gate, opts: Opts, timingCells: boolean): GateOutco
  */
 async function runGateBuffered(
   g: Gate, timingCells: boolean, live: Map<string, Bun.Subprocess>, cargoJobs: number,
+  nestedPermits: number,
 ): Promise<GateOutcome & { text: string }> {
   const t0 = performance.now();
   const child = Bun.spawn(g.cmd!, {
@@ -1528,6 +1729,10 @@ async function runGateBuffered(
       // the gate is a `cargo test` whose test body spawns a fresh `cargo` per generated crate, and
       // that grandchild reads the same environment.
       CARGO_BUILD_JOBS: String(cargoJobs),
+      // Its sibling: how many such nested children the gate may hold open AT ONCE (read by
+      // `tool_cmd` in src/tests/integration_tests.rs). `-j` divides one child's compilers; this
+      // bounds the child count that `-j` silently multiplied by.
+      CDDL_NESTED_TOOL_PERMITS: String(nestedPermits),
       ...(timingCells ? { CDDL_TIMING_GATE: g.id } : {}),
     },
     stdout: "pipe",
@@ -1620,9 +1825,15 @@ export async function runGates(o: {
       inherited: process.env.CARGO_BUILD_JOBS,
     });
     if (cargo.warning) console.log(`>>> check.ts: ${cargo.warning}`);
+    const permits = nestedToolPermitsForGate({
+      override: process.env.CHECK_NESTED_PERMITS,
+      inherited: process.env.CDDL_NESTED_TOOL_PERMITS,
+    });
+    if (permits.warning) console.log(`>>> check.ts: ${permits.warning}`);
     console.log(
       `\n>>> parallel batch: ${order.length} gate(s) in group '${batch.group}', jobs=${jobs}` +
       `, CARGO_BUILD_JOBS=${cargo.jobs} per gate [${cargo.why}]` +
+      `, CDDL_NESTED_TOOL_PERMITS=${permits.permits} per gate [${permits.why}]` +
       ` (dispatch order, slowest measured first: ${order.map(g => g.id).join(", ")})`,
     );
     const live = new Map<string, Bun.Subprocess>();
@@ -1631,7 +1842,7 @@ export async function runGates(o: {
       jobs,
       async item => {
         console.log(`>>> ${item.id}: started`);
-        const r = await runGateBuffered(item.g, timingCells, live, cargo.jobs);
+        const r = await runGateBuffered(item.g, timingCells, live, cargo.jobs, permits.permits);
         // ONE write: header, the gate's whole output, footer — nothing from another gate between.
         process.stdout.write(
           `\n=== [${item.g.tier}] ${item.g.id} — ${item.g.desc} ===\n${r.text}` +
@@ -2105,6 +2316,8 @@ async function main() {
     console.log("         \"gates X, Y ran green\", never as a tier verdict.");
     console.log(`  env: CHECK_JOBS=<n>  gates in flight within a concurrency batch (default ${DEFAULT_JOBS}; 1 = fully sequential)`);
     console.log("       CHECK_CARGO_JOBS=<n>  CARGO_BUILD_JOBS given to each BATCHED gate (default: memory-derived, see check.ts)");
+    console.log("       CHECK_NESTED_PERMITS=<n>  concurrent nested tool children per gate (default 1; read by tool_cmd via CDDL_NESTED_TOOL_PERMITS)");
+    console.log("       CHECK_MEM_SAMPLER=0  disable the report-only per-run memory sampler");
     console.log(`       CHECK_SKIP_PREFLIGHT=1  skip the memory (${MEM_DEGRADE_FLOOR_GIB}/${MEM_REFUSE_FLOOR_GIB} GiB) and disk (${DISK_FLOOR_GIB} GiB) floors`);
     console.log("       CHECK_JOIN_TIMEOUT_S=<n>  runaway-hang guard on the parallel join (never a duration assertion)");
     process.exit(0);
@@ -2176,6 +2389,10 @@ async function main() {
   const emitted: { gate: string; status: "pass" | "fail" | "skipped"; ms: number }[] = [];
   const wall0 = performance.now();
 
+  // Report-only; started this late so a preflight refusal or a `--help` costs zero samples, and
+  // stopped (with its summary printed) before the registry table so the numbers land in every log.
+  const sampler = process.env.CHECK_MEM_SAMPLER === "0" ? null : startMemSampler();
+
   const inTier: Gate[] = [];
   let deselected = 0;
   for (const g of REGISTRY) {
@@ -2207,6 +2424,8 @@ async function main() {
       emit([gateRow(ctx, r.gate, status, r.ms)]);
     },
   })) results.set(r.gate, { out: r.out, ms: r.ms });
+
+  if (sampler) reportMemPeaks(sampler.stop(), tier);
 
   // ---- always-printed full-registry summary --------------------------------------------------
   const wall = performance.now() - wall0;

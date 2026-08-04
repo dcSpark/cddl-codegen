@@ -50,10 +50,11 @@ import { createHash } from "node:crypto";
 import { cpus, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  REGISTRY, SCRATCH_MAX_AGE_MS, SCRATCH_PREFIXES, cargoJobsForBatch, etaLines, gateRow, longestFirst,
-  memTotalGiB, parseArgv, parseJobs, parseJoinTimeoutMs, planBatches, preflightDecision, resolveSelection,
+  REGISTRY, SCRATCH_MAX_AGE_MS, SCRATCH_PREFIXES, cargoJobsForBatch, descendantsOf, etaLines,
+  gateRow, longestFirst, memTotalGiB, nestedToolPermitsForGate, parseArgv, parseJobs,
+  parseJoinTimeoutMs, parseProcStat, planBatches, preflightDecision, resolveSelection,
   retainLogs, runPool, runRow, sweepScratch,
-  type Gate, type RunContext, type SelectionResult,
+  type Gate, type ProcStat, type RunContext, type SelectionResult,
 } from "../check.ts";
 
 const HERE = import.meta.dir;
@@ -1690,6 +1691,50 @@ export async function selfTests(): Promise<TestResult[]> {
         memTotalGiB("MemTotal:       33886140 kB\nMemFree: 1 kB\n")! > 32 &&
         memTotalGiB("MemTotal:       33886140 kB\nMemFree: 1 kB\n")! < 33,
         String(memTotalGiB("MemTotal:       33886140 kB\n")));
+    }
+
+    // ---- the nested-child bound (the bound's THIRD factor) ---------------------------------------
+    // `CARGO_BUILD_JOBS` divides ONE nested cargo's compilers; nothing bounded how many nested
+    // cargos a gate holds open at once — under default libtest parallelism that count is the
+    // test-thread count, so the real peak was `threads × jobs` compilers plus a test binary per
+    // thread. The runner's side of the bound is this helper; the enforcement side is `tool_cmd`'s
+    // semaphore (src/tests/integration_tests.rs), pinned by its own #[test]s.
+    {
+      const derived = nestedToolPermitsForGate({});
+      ok("nested_permits_derive_to_one_child_per_gate", derived.permits === 1, JSON.stringify(derived));
+      const ov = nestedToolPermitsForGate({ override: "4" });
+      const held = nestedToolPermitsForGate({ inherited: "1", override: undefined });
+      const raised = nestedToolPermitsForGate({ inherited: "8" });
+      const bad = nestedToolPermitsForGate({ override: "nope" });
+      ok("nested_permits_override_wins_and_inherited_only_holds_down",
+        ov.permits === 4 && held.permits === 1 && raised.permits === 1 &&
+        bad.permits === 1 && bad.warning !== undefined,
+        JSON.stringify({ ov: ov.permits, held: held.permits, raised: raised.permits, bad }));
+    }
+
+    // ---- the memory sampler's pure parts ---------------------------------------------------------
+    // The sampler reports and is asserted by nothing — these pin only its PARSING, because a stat
+    // line misparse would make every reported peak silently wrong, which is worse than no number.
+    {
+      // comm may contain spaces and parens; the split point must be the LAST ')'.
+      const weird = parseProcStat(7, "7 (a) weird (name) S 3 7 7 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 0 0 512 1 2 3", 4096);
+      ok("proc_stat_comm_parses_past_embedded_parens",
+        weird !== undefined && weird.comm === "a) weird (name" && weird.ppid === 3 &&
+        weird.rssBytes === 512 * 4096,
+        JSON.stringify(weird));
+      ok("proc_stat_junk_reads_as_absent_not_zero",
+        parseProcStat(1, "not a stat line", 4096) === undefined &&
+        parseProcStat(1, "1 (x) S", 4096) === undefined, "-");
+      // Descendants are TRANSITIVE and exclude the root: the run measures what it spawned, not bun.
+      const procs: ProcStat[] = [
+        { pid: 10, comm: "bun", ppid: 1, rssBytes: 1 },
+        { pid: 11, comm: "cargo", ppid: 10, rssBytes: 2 },
+        { pid: 12, comm: "rustc", ppid: 11, rssBytes: 3 },
+        { pid: 13, comm: "other", ppid: 1, rssBytes: 4 },
+      ];
+      const tree = descendantsOf(10, procs).map(p => p.pid).sort();
+      ok("descendants_are_transitive_and_exclude_root_and_strangers",
+        JSON.stringify(tree) === "[11,12]", JSON.stringify(tree));
     }
 
     // ---- the resource preflight ------------------------------------------------------------------

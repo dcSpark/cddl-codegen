@@ -17,5 +17,10 @@
 # compiler processes and their peak resident set, and core count says nothing about memory. Raise it
 # only with the machine's memory in view, and prefer `CARGO_BUILD_JOBS=<n> cargo …` for a one-off on
 # a big machine over editing this line.
+#
+# One place this file cannot reach: a test's NESTED cargo runs from a scratch directory, and cargo
+# discovers config by walking up from the CWD — so `tool_cmd` (src/tests/integration_tests.rs)
+# defaults `CARGO_BUILD_JOBS` to this same floor for the children it builds. Change this number and
+# that default together.
 [build]
 jobs = 4

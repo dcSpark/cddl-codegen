@@ -2930,8 +2930,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
   os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
   destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
-- **A tier's PEAK MEMORY is bounded by arithmetic, not by observation — nothing measures the real
-  peak.** The sibling of the disk entry above, and the proven class: a full disk fails a gate, an
+- **A tier's PEAK MEMORY is bounded by arithmetic over ASSUMED constants — the sampler now
+  measures the real peak, and replacing the assumptions with its measurements is the open work.**
+  The sibling of the disk entry above, and the proven class: a full disk fails a gate, an
   overcommitted memory cap takes the whole machine — three times now (a ~10-minute freeze that
   produced the first bound, then two ~1–1.5 h freezes at 100 % memory and swap, 2026-08-04, that
   went through every check the first fix installed). The second incident's root-cause (`d5d43bba`)
@@ -2939,21 +2940,42 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   MemAvailable (now re-measured per batch), the sequential gate path set no bound at all (so
   `CHECK_JOBS=1` — the cautious setting — routed everything through the unbounded path), and bare
   `cargo test`/`build` invocations outside the runner had no bound anywhere (now floored at
-  `[build] jobs = 4` by the repo `.cargo/config.toml`, with an exported `CARGO_BUILD_JOBS` still
-  winning so scratch-dir nested cargo stays covered). It also settled one of this entry's two
-  recorded assumptions the hard way: the old 2 GiB per-slot footprint was a comfortable margin
-  over the wrong quantity — a slot compiles and then RUNS what it built, no gate samples a test
-  process's footprint, and 8 × 455 MiB cannot take down a 31 GiB box — so the constant is 4 GiB
-  now, deliberately pessimistic UNTIL a slot's true peak is measured. Which is this entry's
-  surviving system: the bound is still arithmetic over an assumed constant, pinned by the pure
-  helpers `cargoJobsForBatch` and `preflightDecision` in the `timings_digest_check` gate, and no
-  gate samples concurrent `rustc`, Σ RSS, test-process footprints or the MemAvailable floor
-  during a real run — so a future spawn path outside both the runner's env and cargo config
-  discovery would regress the bound silently, and the 4 GiB constant cannot be replaced by a
-  measurement that does not exist. The missing system is unchanged: a sampler the runner owns —
-  peak concurrent `rustc`, peak Σ RSS (test processes included) and the MemAvailable floor
-  recorded per run beside the durations, reported and never asserted (durations and peaks are
-  both nondeterministic; a gate that fails on a number would be flaky by construction).
+  `[build] jobs = 4` by the repo `.cargo/config.toml`). Two further holes closed since, both
+  found by asking what still multiplies concurrency after those fixes: the slot COUNT model was
+  wrong, not just the slot-size constant — `CARGO_BUILD_JOBS` divides one nested cargo's
+  compilers while the number of nested cargos a `cargo test` gate holds open is the libtest
+  thread count (`nproc`), a `threads × jobs` product no arithmetic modeled — bounded now by
+  `tool_cmd`'s counting semaphore (`CDDL_NESTED_TOOL_PERMITS`, runner-exported per gate, safe
+  default for bare runs); and the `.cargo/config.toml` floor never reached a bare invocation's
+  NESTED cargos (config discovery walks up from the scratch CWD and finds nothing; cargo does not
+  export its jobs to test children), so `tool_cmd` also defaults `CARGO_BUILD_JOBS` to the same
+  floor when the environment has neither. The measurement system this entry used to name as
+  missing exists now: every run samples its own descendant tree and reports peak Σ RSS
+  (test processes included), peak concurrent `rustc`, the largest single process and the
+  MemAvailable floor — printed per run and appended to `draft/memory-peaks.jsonl`, reported and
+  never asserted (peaks are nondeterministic; a gate that fails on a number would be flaky by
+  construction). What remains, in order of leverage:
+  - **Spend the measurements.** The 4 GiB slot constant and the one-permit nested bound are
+    deliberately pessimistic prices for unmeasured quantities, and the pessimism costs real wall
+    time (nested children serialize per gate). Once accumulated `memory-peaks.jsonl` rows from
+    real tiers bound a slot's true peak, re-derive both constants from the measurement and record
+    the basis where the constants live.
+  - **Freezes are a LIVELOCK, and no in-repo arithmetic can make them impossible — containment is
+    an operator measure.** The incident signature (hours at 100 % memory and swap, and the kernel
+    log carrying NO oom-kill for the window) is the near-OOM state where reclaim keeps barely
+    succeeding on file-backed pages, so the OOM killer never fires and the machine thrashes
+    indefinitely. This narrows an earlier claim of this entry's family: a saturated machine is
+    unobservable *by passive gates*, but kernel-enforced containment — an early-OOM daemon, or a
+    cgroup memory cap with `memory.oom.group` around the tier — converts the freeze into a killed
+    process inside a gate: attributable, loud, and over in seconds. It also covers the class the
+    arithmetic structurally cannot: MemAvailable per batch is a snapshot, not a reservation, so
+    concurrent sessions (and co-tenants like editors and language servers) can jointly overcommit
+    a box whose every individual budget was correct. Machine-level, so it is an operator action
+    recorded here rather than a gate to build.
+  - **The negative premise stands watch.** A future spawn path outside `tool_cmd`, the runner's
+    env exports and cargo config discovery would regress the bounds silently; the sampler's
+    per-run peaks are what would show it (a peak far above the budget's arithmetic is the tell),
+    which is another reason the reports must keep being produced even while nobody is debugging.
 - **A tier's DISK BANDWIDTH is unmeasured by anything — the scratch floor is a capacity check,
   not a rate one, and no incident has ever been attributable either way.** The third sibling of
   the two entries above, narrower than both: it names a candidate factor, not a proven one. Up to
@@ -2966,13 +2988,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   MEMORY (swap thrashing; three concrete budget holes, closed by `d5d43bba`), with the disk
   traffic as their symptom — so what survives here is exactly the unmeasured-factor claim, plus
   the two facts any future incident inherits: a saturated device is a WHOLE-MACHINE stall, never
-  a gate failure, so no gate can observe it even in principle (the signal is external — a human
-  at a dead terminal), and the post-`d5d43bba` budget logs its memory basis per batch, so the
+  a gate failure, so no PASSIVE gate can observe it (the signal is external — a human at a dead
+  terminal; kernel-enforced containment, the operator measure the sibling memory entry records,
+  is the one thing that can turn a stall into an in-gate failure), and the post-`d5d43bba` budget
+  logs its memory basis per batch — and the sibling entry's sampler now records per-run peaks and
+  the MemAvailable floor — so the
   NEXT stall can at least be split into "memory bound was wrong again" vs "memory healthy,
   something else saturated". Candidate instruments if that second reading ever occurs, recorded
   with costs rather than built (no portable measurement of a device's sustained-write ceiling
   exists, and a fixed cap is what `CHECK_JOBS` already is): an IO axis on the sibling memory
-  entry's unbuilt sampler — per-run `/proc/diskstats` write-rate deltas recorded beside the
+  entry's sampler (which exists and walks `/proc` per tick already) — per-run `/proc/diskstats`
+  write-rate deltas on the same ticks, recorded beside the
   durations, reported and never asserted — which is what would turn the next incident's
   attribution from forensics into a lookup; and only downstream of such an attribution, a
   rate-aware degrade (an environment-derived `CHECK_JOBS` default for virtual-disk hosts).
