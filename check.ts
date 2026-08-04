@@ -19,7 +19,7 @@
  *   --keep-going    run all in-tier gates even after a failure (default: fail fast — later cargo
  *                   gates depend on the build, so stopping early avoids cascade noise).
  *   --skip-missing  downgrade a missing verify.ts oracle from FAIL to SKIPPED(oracle absent).
- *   --refresh-fuzz  re-run fuzz/generate.sh before the fuzz compile-rot check even if generated/ exists.
+ *   --refresh-fuzz  re-run fuzz/generate.sh before the fuzz gates even if generated/ exists.
  *   --cache-transparency  enable the flag-gated `verify_cache_transparency` full-tier gate (two verify
  *                   runs — cached vs GATE_CACHE=0 — asserted byte-identical; otherwise SKIPPED).
  *   --only <a,b>    run ONLY these gates, in registry order, among the named tier's in-tier set
@@ -50,6 +50,12 @@
  * (`check-only-<stamp>.log` for a `--only` run — a name outside the tier regex on purpose, see
  * "GATE SELECTION"; path printed at start and end) — evidence preservation is the tool's job, not a piping habit.
  * Never pipe a run through `tail`/`grep` as its only capture; cite the printed log path instead.
+ *
+ * FUZZING: the `full` tier walks the byte-fuzzer's two targets live (`fuzz_bounded_run`), bounded to
+ * `FUZZ_BUDGET_S` seconds per target (default 120) and run one libFuzzer process at a time. It is a
+ * smoke-walk of the reachable hostile-input surface, not the periodic deep run — that stays manual
+ * (`fuzz/README.md`). Deliberately not gate-cached: a randomized exploration is not a pure function
+ * of the tree's bytes.
  *
  * NETWORK: local/full runs start with a retried `cargo fetch` warm-up (workspace + fuzz +
  * tests/warmup dep-universe manifest), then force CARGO_NET_OFFLINE=true for every gate — nested-
@@ -82,7 +88,7 @@ import {
   unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import {
   appendRows, cellCountsFor, compactDur, keptRunKeys, machineId, parseLog, readCells, readDigest,
   readLedger, runDigestUpdate, runKeysInOrder, splitLogName, tierWindow, trimCellLines, trimRows,
@@ -1185,16 +1191,124 @@ function runCacheTransparency(o: Opts): Outcome {
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cache_transparency.ts exit ${exit}` };
 }
 
+// ---- shared fuzz-crate provisioning: (re)generate `fuzz/generated` iff needed --------------------
+// The crates under fuzz are GENERATED and gitignored, so BOTH fuzz gates need them and each is
+// self-sufficient: whichever runs first materializes them, which is why neither declares a
+// `requires:` edge on the other (a `--only` selection of either one still generates what it needs —
+// there is no output of one that the other reads and would otherwise assert against vacuously).
+// The once-per-run memo bounds COST only: without it a `--refresh-fuzz` tier run would pay for the
+// same regeneration twice. It is set only on SUCCESS, so a failed generate is retried (and re-fails
+// loudly) rather than silently skipped by the second gate.
+let fuzzGeneratedThisRun = false;
+function ensureFuzzGenerated(o: Opts): string | null {
+  const gen = join(ROOT, "fuzz", "generated");
+  const refresh = o.refreshFuzz && !fuzzGeneratedThisRun;
+  if (existsSync(gen) && !refresh) return null;
+  console.log(`  ${existsSync(gen) ? "--refresh-fuzz" : "fuzz/generated absent"} -> running fuzz/generate.sh`);
+  const g = sh(["bash", "fuzz/generate.sh"], ROOT);
+  if (g !== 0) return `fuzz/generate.sh exit ${g}`;
+  fuzzGeneratedThisRun = true;
+  return null;
+}
+
 // ---- fuzz compile-rot gate: (re)generate iff needed, then cargo check the fuzz crate -------------
 function runFuzz(o: Opts): Outcome {
-  const gen = join(ROOT, "fuzz", "generated");
-  if (!existsSync(gen) || o.refreshFuzz) {
-    console.log(`  ${existsSync(gen) ? "--refresh-fuzz" : "fuzz/generated absent"} -> running fuzz/generate.sh`);
-    const g = sh(["bash", "fuzz/generate.sh"], ROOT);
-    if (g !== 0) return { status: "FAIL", reason: `fuzz/generate.sh exit ${g}` };
-  }
+  const err = ensureFuzzGenerated(o);
+  if (err) return { status: "FAIL", reason: err };
   const exit = sh(["cargo", "check", "--manifest-path", "fuzz/Cargo.toml"], ROOT);
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cargo check (fuzz) exit ${exit}` };
+}
+
+// ---- bounded fuzz RUN gate: a time-boxed libFuzzer walk of both targets --------------------------
+// What it adds over `fuzz_compile_rot`: that gate proves the hostile-input surface stays REACHABLE
+// (the crate compiles with every probed type in it); it cannot see a panic that only a live
+// libFuzzer input triggers. This gate walks the surface — bounded, so it is a SMOKE-WALK of the
+// reachable paths against the committed seed corpora, not the periodic deep run (that stays manual;
+// `fuzz/README.md` states the two-layer posture).
+//
+// NOT gate-cached, deliberately. `run_cached` memoizes nested cargo whose OUTPUT is a pure function
+// of the tree's bytes; a fuzz run is a randomized exploration that walks different inputs on every
+// invocation over a corpus it mutates as it goes, so a content-hash hit would skip the only thing
+// the gate does. The omission is a decision, not an oversight — the gate-cache closure audit traces
+// ONE cached cell (`CLOSURE_AUDIT_GATE`) and enumerates no gate set, so nothing else records it.
+//
+// Sequential over the targets, one libFuzzer process at a time with an explicit RSS cap: the peak
+// resident set the tier must bound is one process at `-rss_limit_mb` (2048, libFuzzer's default,
+// passed explicitly so the bound is stated rather than inherited) plus the cargo build that precedes
+// it — never a fan-out that scales with core count.
+const FUZZ_TARGETS = ["from_cbor_bytes", "from_cbor_bytes_recursive"] as const;
+const FUZZ_BUDGET_DEFAULT_S = 120;
+const FUZZ_RSS_LIMIT_MB = 2048;
+
+/** `FUZZ_BUDGET_S` — per-target `-max_total_time`, in seconds. Garbage falls back, loudly. */
+function fuzzBudgetSeconds(raw: string | undefined): { seconds: number; warning?: string } {
+  if (raw === undefined || raw.trim() === "") return { seconds: FUZZ_BUDGET_DEFAULT_S };
+  const n = Number(raw.trim());
+  if (!Number.isInteger(n) || n < 1)
+    return {
+      seconds: FUZZ_BUDGET_DEFAULT_S,
+      warning: `FUZZ_BUDGET_S='${raw}' is not a positive integer — using ${FUZZ_BUDGET_DEFAULT_S}s per target`,
+    };
+  return { seconds: n };
+}
+
+/** The newest libFuzzer artifact for a target, if the run left one — the reproducer to cite. */
+function newestFuzzArtifact(target: string): string | null {
+  const dir = join(ROOT, "fuzz", "artifacts", target);
+  if (!existsSync(dir)) return null;
+  const files = readdirSync(dir)
+    .map(f => join(dir, f))
+    .filter(p => statSync(p).isFile())
+    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+  return files[0] ?? null;
+}
+
+function runFuzzBoundedRun(o: Opts): Outcome {
+  // Missing tooling is a FAIL, never a skip: this gate exists only in the tier that ships the
+  // feature, and a silent skip there voids the guarantee (the `runNoStdCheck` full-tier posture).
+  // No local-tier softening arm because the gate is full-only — there is no softer tier to be in.
+  const missing: string[] = [];
+  const rustup = Bun.which("rustup");
+  const nightly = rustup
+    ? Bun.spawnSync([rustup, "toolchain", "list"], { stdout: "pipe", stderr: "pipe" })
+    : null;
+  if (!nightly || nightly.exitCode !== 0 || !/^nightly/m.test(nightly.stdout.toString()))
+    missing.push("nightly toolchain   install: rustup toolchain install nightly");
+  const cargo = Bun.which("cargo");
+  const fuzzVersion = cargo
+    ? Bun.spawnSync([cargo, "+nightly", "fuzz", "--version"], { stdout: "pipe", stderr: "pipe" })
+    : null;
+  if (!fuzzVersion || fuzzVersion.exitCode !== 0)
+    missing.push("cargo-fuzz          install: cargo install cargo-fuzz");
+  if (missing.length) {
+    console.log("  fuzz tooling preflight FAILED — the bounded fuzz run needs both:");
+    for (const m of missing) console.log("    - " + m);
+    return { status: "FAIL", reason: `missing fuzz tooling: ${missing.length === 2 ? "nightly + cargo-fuzz" : missing[0]!.split("  ")[0]}` };
+  }
+
+  const err = ensureFuzzGenerated(o);
+  if (err) return { status: "FAIL", reason: err };
+
+  const { seconds, warning } = fuzzBudgetSeconds(process.env.FUZZ_BUDGET_S);
+  if (warning) console.log("  WARN " + warning);
+  console.log(`  ${FUZZ_TARGETS.length} target(s), sequential, ${seconds}s each (FUZZ_BUDGET_S), rss limit ${FUZZ_RSS_LIMIT_MB} MiB`);
+  for (const target of FUZZ_TARGETS) {
+    console.log(`  --- fuzzing ${target} ---`);
+    const exit = sh(
+      ["cargo", "+nightly", "fuzz", "run", target, "--",
+        `-max_total_time=${seconds}`, `-rss_limit_mb=${FUZZ_RSS_LIMIT_MB}`],
+      ROOT,
+    );
+    if (exit !== 0) {
+      const artifact = newestFuzzArtifact(target);
+      return {
+        status: "FAIL",
+        reason: `${target}: cargo fuzz run exit ${exit}` +
+          (artifact ? ` — reproducer ${relative(ROOT, artifact)} (replay: cargo +nightly fuzz run ${target} ${relative(ROOT, artifact)})` : " (no artifact written)"),
+      };
+    }
+  }
+  return { status: "PASS" };
 }
 
 // ---- no-std drift gate: fresh-generate the profiles, thumb-check each emitted shim ---------------
@@ -1581,6 +1695,12 @@ export const REGISTRY: Gate[] = [
     desc: "every git rev asserted by a committed pin-carrying file resolves from its REMOTE (deliberately online; the phantom-pin class)" },
   { id: "fuzz_compile_rot", tier: "full", kind: "fn", run: runFuzz,
     desc: "fuzz crate compile-rot check (generate.sh iff needed, then cargo check)" },
+  // AFTER the compile-rot gate on purpose: a crate that does not COMPILE should be reported as
+  // compile rot, not as a fuzz run that failed to build. No `requires:` edge — both gates provision
+  // `fuzz/generated` themselves (see `ensureFuzzGenerated`), so a `--only fuzz_bounded_run` run
+  // asserts exactly what a whole-tier one does rather than passing vacuously.
+  { id: "fuzz_bounded_run", tier: "full", kind: "fn", run: runFuzzBoundedRun,
+    desc: "bounded libFuzzer RUN of both fuzz targets (FUZZ_BUDGET_S seconds each, default 120; not gate-cached)" },
 
   // --- tracked-failing IOU stubs: known-failing #[ignore] tests, NEVER executed (shown as STUB) ---
   // (none — the float-under-preserve IOU was delivered; `preserve_encodings_supports_floats` is now

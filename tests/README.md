@@ -62,7 +62,7 @@ fix that exists ONLY under `--preserve-encodings`, and every other profile was g
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
 manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 17 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
-the fuzz-crate compile-rot check, `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
+the two byte-fuzzer gates (`fuzz_compile_rot`, the compile-rot check, and `fuzz_bounded_run`, a time-boxed live libFuzzer walk of both targets — `fuzz/README.md`), `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
 didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -314,7 +314,11 @@ measured ~10-11 min on the dev machine when every cell runs (a `GATE_CACHE=0` or
 run; wasm + decode-foreign on), collapsing to ~4-5 min on a hit-heavy re-run against an unchanged
 tree (~715 of ~740 cells proven by key — see the gate-cache section below); hours cold, the
 shared-target warm-up dominating. The fuzz
-gate re-runs `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed.
+gates re-run `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed —
+either gate provisions it, whichever runs first, so neither depends on the other. `fuzz_bounded_run`
+then fuzzes each target for `FUZZ_BUDGET_S` seconds (default 120, one libFuzzer process at a time,
+`-rss_limit_mb=2048`); it is the one heavy gate deliberately outside the gate cache, because a
+randomized exploration is not a pure function of the tree's bytes.
 `--cache-transparency` enables the otherwise-`SKIPPED` `verify_cache_transparency` gate (two verify
 runs, cached vs `GATE_CACHE=0`, asserted byte-identical — see the gate-cache section).
 

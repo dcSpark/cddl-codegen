@@ -17,10 +17,29 @@ cargo +nightly fuzz run from_cbor_bytes_recursive
 Two oracles per input (both targets): (1) no panic/abort/OOM/stack-overflow; (2) preserve-encodings
 round-trip fidelity — anything `from_cbor_bytes` accepts must re-encode byte-identically.
 
-Not a CI gate (needs nightly + unbounded time) — run it periodically and when touching
-deserialization. What *is* gated (`check.ts` `full` tier, `fuzz_compile_rot`) is compile-rot: it runs
-`generate.sh` (iff `generated/` is absent or `--refresh-fuzz`) then `cargo check`s the fuzz crate, so
-a probe rename or a broken scrape regex fails a local `full` run.
+## Two layers: a gated smoke-walk, an unbounded manual run
+
+Never CI — nightly plus wall time is outside the fast tier's budget. The `full` tier carries two
+gates, in registry order, and they answer different questions:
+
+- **`fuzz_compile_rot` — reachability.** Runs `generate.sh` (iff `generated/` is absent or
+  `--refresh-fuzz`), then `cargo check`s the fuzz crate, so a probe rename or a broken scrape regex
+  fails a `full` run.
+- **`fuzz_bounded_run` — exploration.** Runs both targets live and sequentially over the local
+  corpus, `-max_total_time=<FUZZ_BUDGET_S>` (default 120) each at `-rss_limit_mb=2048`. A crash fails
+  the gate naming the libFuzzer artifact to replay. Two deliberate properties: it is **not**
+  gate-cached (a randomized exploration is not a pure function of the tree's bytes, so a
+  content-hash hit would skip the only thing the gate does), and a missing nightly toolchain or
+  cargo-fuzz is a **FAIL naming the install commands**, never a silent skip — a skip in the tier that
+  ships the guarantee voids it.
+
+A time-boxed walk is a smoke test of the reachable surface, not a search. The unbounded run is what
+actually finds things: run it periodically and whenever touching deserialization.
+
+```sh
+cargo +nightly fuzz run from_cbor_bytes             # until you stop it
+cargo +nightly fuzz run from_cbor_bytes_recursive
+```
 
 ## Two targets
 
