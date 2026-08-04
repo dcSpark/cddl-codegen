@@ -24782,3 +24782,101 @@ nom_map = { * text => nom_val }
     }
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+/// COMPILE FLOOR for the alias-of-instance CHAIN — a generic collection instance bound to a rule
+/// (`xs_int = xs<uint>`), that binding re-bound again (`bar = xs_int`), and the second binding used
+/// as a member (`[b: bar]`) or an element (`[* bar]`).
+///
+/// The generation side is `generic_collection_tests::alias_of_instance_chains_generate`; this pins
+/// the half a source assertion cannot see. The shape's whole defect class was "exit 0 and the crate
+/// does not compile" for the transparent-collection flavors and an outright abort for the tag-258
+/// SET IDIOM flavor, so the two halves are only meaningful together: a repair that emits a
+/// syntactically plausible member type naming an impl-less alias would satisfy the source assertion
+/// and fail here.
+///
+/// Every collection flavor is batched into ONE crate per profile with per-flavor ident prefixes, so
+/// the cells are equivalent to separate runs (no cross-cell name interference) at one nested-cargo
+/// cost each.
+#[test]
+fn alias_of_instance_chain_member_compiles() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    // (ident prefix, definition body) — the collection flavors a two-hop binding can be built over:
+    // loose/non-empty transparent arrays, the tag-258 set idiom in both arm spellings (reject, the
+    // 258 default), and its `@duplicates preserve` opt-out.
+    let defs = [
+        ("a", "xs_a<a0> = [* a0]"),
+        ("b", "xs_b<a0> = [+ a0]"),
+        ("c", "xs_c<a0> = #6.258([* a0]) / [* a0]"),
+        ("d", "xs_d<a0> = #6.258([+ a0]) / [+ a0]"),
+        (
+            "e",
+            "xs_e<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve",
+        ),
+    ];
+    let mut spec = String::new();
+    for (p, def) in defs {
+        spec.push_str(def);
+        spec.push('\n');
+        spec.push_str(&format!("xs_{p}_int = xs_{p}<uint>\n"));
+        spec.push_str(&format!("bar_{p} = xs_{p}_int\n"));
+        // both use positions of the twice-aliased binding
+        spec.push_str(&format!("member_{p} = [b: bar_{p}]\n"));
+        spec.push_str(&format!("element_{p} = [* bar_{p}]\n"));
+    }
+    let root = std::path::PathBuf::from_str(&format!(
+        "{}/cddl_codegen_alias_chain_{:016x}",
+        std::env::temp_dir().to_str().unwrap(),
+        checkout_hash()
+    ))
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("chain.cddl");
+    std::fs::write(&input, &spec).unwrap();
+    let target_dir = root.join("target");
+
+    // Both wasm-bearing profiles: the plain one, and `--preserve-encodings` (whose encoding-field
+    // derivation reaches the shape through a second, independent seam).
+    for (profile, extra) in [
+        ("plain", None),
+        ("preserve", Some("--preserve-encodings=true")),
+    ] {
+        let out = root.join(format!("out_{profile}"));
+        let _ = std::fs::remove_dir_all(&out);
+        let mut cmd = codegen_cmd();
+        cmd.args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--wasm=true",
+        ]);
+        if let Some(extra) = extra {
+            cmd.arg(extra);
+        }
+        let generated = cmd.output().unwrap();
+        assert!(
+            generated.status.success(),
+            "{profile}: the alias-of-instance chain must generate:\n{spec}\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        for face in ["rust", "wasm"] {
+            let check = tool_cmd("cargo")
+                .args(["check"])
+                .current_dir(out.join(face))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            assert!(
+                check.status.success(),
+                "{profile}: the generated {face} crate must build — an exit-0 crate that fails \
+                 `cargo check` is the second half of this shape's defect class; stderr:\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}

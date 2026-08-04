@@ -471,3 +471,60 @@ fn named_collapsed_set_instance_rule_aliases_the_instantiation_nominal() {
         "the named binding is a wasm passthrough alias to the ONE instantiation class:\n{wasm}"
     );
 }
+
+/// An ALIAS-OF-INSTANCE CHAIN — a generic instance bound to a rule (`xs_int = xs<uint>`), that
+/// binding re-bound again (`bar = xs_int`), and the second binding USED as a member or an element.
+///
+/// The second hop is what makes this its own cell. A one-hop use site is built as a bare
+/// `Rust(XsInt)` leaf at parse time (the instance's transparent alias is registered only in
+/// `finalize`), and `resolve_generic_collection_instance_fields` repairs those leaves. A SECOND hop
+/// registers `Bar`'s own alias base as that same bare leaf, so the use site is built as
+/// `Alias(Bar, Rust(XsInt))` — the leaf sits INSIDE an `Alias` box. For a def whose instance
+/// resolves to a TRANSPARENT collection the leaf is harmless (the instance ident is itself a
+/// registered struct), but for the tag-258 SET IDIOM the instance ident is only ever a type alias to
+/// the instantiation nominal (`pub type XsInt = XsU64;`) — the leaf names nothing in `rust_structs`
+/// and generation aborted on it. The repair therefore descends `Alias` boxes too, for exactly the
+/// leaves that name no struct.
+///
+/// Every cell must GENERATE; the compile floor for the shape is
+/// `alias_of_instance_chain_member_compiles` in `integration_tests`.
+#[test]
+fn alias_of_instance_chains_generate() {
+    // (definition body, tag) — the collection flavors a two-hop binding can be built over.
+    let defs = [
+        ("xs<a0> = [* a0]", "plain_star"),
+        ("xs<a0> = [+ a0]", "plain_plus"),
+        ("xs<a0> = #6.258([* a0]) / [* a0]", "set_star"),
+        ("xs<a0> = #6.258([+ a0]) / [+ a0]", "set_plus"),
+        (
+            "xs<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve",
+            "preserve_star",
+        ),
+    ];
+    // (holder body, tag) — the positions the twice-aliased binding is used in.
+    let positions = [("[b: bar]", "member"), ("[* bar]", "element")];
+    let profiles: &[(&str, &[&str])] = &[
+        ("default", &["--wasm", "false"]),
+        ("wasm", &["--wasm", "true"]),
+        (
+            "preserve_encodings",
+            &["--wasm", "true", "--preserve-encodings=true"],
+        ),
+    ];
+    for (def, def_tag) in defs {
+        for (holder, pos_tag) in positions {
+            for (profile_tag, flags) in profiles {
+                let spec = format!("{def}\nxs_int = xs<uint>\nbar = xs_int\nholder = {holder}\n");
+                let tag = format!("alias_chain_{def_tag}_{pos_tag}_{profile_tag}");
+                let files = generate(&spec, &tag, flags).unwrap_or_else(|e| {
+                    panic!("{tag}: the alias-of-instance chain must generate:\n{spec}\n{e}")
+                });
+                let rust = file_ending(&files, "rust/src/generated/mod.rs");
+                assert!(
+                    rust.contains("pub type Bar = XsInt;"),
+                    "{tag}: the second hop stays a transparent alias to the first:\n{rust}"
+                );
+            }
+        }
+    }
+}

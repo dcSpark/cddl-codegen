@@ -1519,9 +1519,25 @@ idiom") is verified across the layers:
   `project_decode_conformance.ts` — the untagged major-4 arm is the direction the default encoder
   never emits, so those vectors are the independent decode evidence). The reject-flavored idiom is
   pinned separately by the vendor feature row `dsl.duplicates.reject`.
+- **Alias-of-instance chains** — a generic collection instance bound to a rule
+  (`xs_int = xs<uint>`), that binding re-bound again (`bar = xs_int`), and the second binding used
+  as a member or an element. Every collection flavor of the definition works — loose/non-empty
+  transparent arrays and the tag-258 set idiom in both arm spellings and both duplicates policies —
+  emitting `pub type Bar = XsInt;` with the use site serializing through whatever the instance
+  resolved to. It works because the finalize-time field-convergence walk that repairs a use site's
+  bare instance leaf descends `Alias` boxes too, for exactly the leaves that name no registered
+  struct: a NAMED set-idiom binding mints its struct under the instantiation canonical (`XsU64`) and
+  gives the binding ident only a transparent alias, so a second hop's `Alias(Bar, Rust(XsInt))`
+  otherwise carried a leaf naming nothing. Generation is pinned per flavor × position × emission
+  profile by `generic_collection_tests::alias_of_instance_chains_generate`, and the compile floor —
+  the half a source assertion cannot see, since this shape's defect class was "exit 0, crate does
+  not compile" as well as an outright abort — by
+  `integration_tests::alias_of_instance_chain_member_compiles`. The embedded-element flavor carries
+  independent decode evidence: the corpus decode-conformance row `tag_set_reject_anon_generic.outer`
+  (`outer = [* oset<uint>]` under holder mode, which embeds the rule).
 - **Boundary limitations** — `tests/TESTING_ROADMAP.md` § "Deferred features" (non-idiom
-  choice-bodied generic-def crash, alias-of-instance chains, inline choices, and the pre-existing
-  multi-tag-per-field encoding-var collision).
+  choice-bodied generic-def crash, inline choices, and the pre-existing multi-tag-per-field
+  encoding-var collision).
 
 ### Open struct-maps (rest rows) — test map (loose-CBOR Phase B)
 
