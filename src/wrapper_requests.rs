@@ -70,21 +70,21 @@ const KNOWN_COMMENTS: &[&str] = &[
 ];
 
 /// Parse a committed `borrowed_collections.rs` sidecar into its `BORROWED_SHAPES` entries. `file` is
-/// the on-disk path, used only to make the hard-error messages actionable. Panics (hard error) on
-/// any content outside the frozen W1 grammar; returns every well-formed entry (the caller filters by
-/// dep).
-pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
+/// the on-disk path, used only to make the hard-error messages actionable. Returns `Err` (hard
+/// error) on any content outside the frozen W1 grammar; returns every well-formed entry (the caller
+/// filters by dep).
+pub fn parse_sidecar(contents: &str, file: &str) -> Result<Vec<WrapperRequestEntry>, String> {
     // A `compile_error!` anywhere is the surest sign of a trapped sidecar (the preservation overlay
     // emits one inside its `unpreserved-comment` blocks). Reject before any structural parse.
     if contents.contains("compile_error!") {
-        panic!(
+        return Err(format!(
             "--wrapper-requests {file}: the sidecar contains a `compile_error!` — it is a trapped or \
              drifted generated file (an edit-preservation `unpreserved-comment` block), which must \
              never be silently consumed. Regenerate the consumer crate to clear it."
-        );
+        ));
     }
 
-    let logical = flatten_overlay_blocks(contents, file, "--wrapper-requests");
+    let logical = flatten_overlay_blocks(contents, file, "--wrapper-requests")?;
 
     let mut entries = Vec::new();
     let mut in_mod = false;
@@ -105,12 +105,16 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
             // and traps on an in-place regen — so any comment here is either a stale old-format
             // sidecar or a stray hand edit.
             if trimmed.starts_with("//") {
-                hard_error(file, "unexpected comment inside `BORROWED_SHAPES`", trimmed);
+                return Err(hard_error(
+                    file,
+                    "unexpected comment inside `BORROWED_SHAPES`",
+                    trimmed,
+                ));
             }
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_const_item(&const_item, file));
+                entries.extend(parse_const_item(&const_item, file)?);
                 in_const = false;
                 const_item.clear();
             }
@@ -123,7 +127,11 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
                 // The compile-checked existence half; the dep validates via shapes, so the `use`
                 // lines are only checked for well-formedness, never cross-referenced here.
             } else {
-                hard_error(file, "unexpected line inside `mod borrowed`", trimmed);
+                return Err(hard_error(
+                    file,
+                    "unexpected line inside `mod borrowed`",
+                    trimmed,
+                ));
             }
             continue;
         }
@@ -132,7 +140,7 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
             continue;
         }
         if trimmed.starts_with("//") {
-            hard_error(file, "unexpected comment", trimmed);
+            return Err(hard_error(file, "unexpected comment", trimmed));
         }
         if trimmed == "#[allow(unused_imports)]" || trimmed == "#[allow(dead_code)]" {
             continue;
@@ -154,28 +162,28 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_const_item(&const_item, file));
+                entries.extend(parse_const_item(&const_item, file)?);
                 const_item.clear();
             } else {
                 in_const = true;
             }
             continue;
         }
-        hard_error(file, "unexpected item", trimmed);
+        return Err(hard_error(file, "unexpected item", trimmed));
     }
 
     if in_mod {
-        hard_error(file, "unterminated `mod borrowed` block", "");
+        return Err(hard_error(file, "unterminated `mod borrowed` block", ""));
     }
     if in_const {
-        hard_error(
+        return Err(hard_error(
             file,
             "unterminated `BORROWED_SHAPES` table (missing `];`)",
             "",
-        );
+        ));
     }
 
-    entries
+    Ok(entries)
 }
 
 /// Parse the complete `BORROWED_SHAPES` const item (header, `=`, `&[ … ];`) into entries. The
@@ -183,28 +191,32 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
 /// rustfmt may wrap the initializer onto the next line); the initializer must be a `&[ … ]` array
 /// expression. The first `=` in the item IS the initializer's: the type annotation contains none,
 /// and shape strings (which can contain `=>`) only occur after it.
-fn parse_const_item(item: &str, file: &str) -> Vec<WrapperRequestEntry> {
+fn parse_const_item(item: &str, file: &str) -> Result<Vec<WrapperRequestEntry>, String> {
     let Some(eq) = item.find('=') else {
-        hard_error(file, "malformed `BORROWED_SHAPES` item (missing `=`)", item);
+        return Err(hard_error(
+            file,
+            "malformed `BORROWED_SHAPES` item (missing `=`)",
+            item,
+        ));
     };
     let header: String = item[..eq].split_whitespace().collect::<Vec<_>>().join(" ");
     if header != "pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)]" {
-        hard_error(
+        return Err(hard_error(
             file,
             "unexpected `BORROWED_SHAPES` declaration (the type must be exactly `&[(&str, &str, &str)]`)",
             &header,
-        );
+        ));
     }
     let init = item[eq + 1..].trim();
     let Some(body) = init
         .strip_prefix("&[")
         .and_then(|rest| rest.trim_end().strip_suffix("];"))
     else {
-        hard_error(
+        return Err(hard_error(
             file,
             "malformed `BORROWED_SHAPES` initializer (expected `&[ … ];`)",
             init,
-        );
+        ));
     };
     parse_const_body(body, file)
 }
@@ -214,7 +226,7 @@ fn parse_const_item(item: &str, file: &str) -> Vec<WrapperRequestEntry> {
 /// lines verbatim (real payload rows); replace blocks contribute the USER section (before
 /// `:replaces`) and drop the `//`-commented recorded original (the `:replaces` section). An
 /// `unpreserved-comment` sentinel, or any unrecognized `cddl-codegen:` tag, is a hard error.
-fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Vec<String> {
+fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Result<Vec<String>, String> {
     // Overlay state: whether we are inside a `replaces` section (recorded originals to drop).
     let mut in_replaces_original = false;
     let mut out = Vec::new();
@@ -241,18 +253,18 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Vec<String>
                 // comment can never silently vanish from a machine-read sidecar.
                 t if crate::comment_preserve::tag_head(t) == "keep" => {}
                 "unpreserved-comment" => {
-                    panic!(
+                    return Err(format!(
                         "{flag} {file}: the sidecar contains a \
                          `// cddl-codegen:unpreserved-comment` sentinel — it is a trapped or drifted \
                          generated file, which must never be silently consumed. Regenerate the \
                          consumer crate to clear it."
-                    );
+                    ));
                 }
                 other => {
-                    panic!(
+                    return Err(format!(
                         "{flag} {file}: unexpected reserved comment \
                          `// cddl-codegen:{other}` in the sidecar."
-                    );
+                    ));
                 }
             }
         }
@@ -263,7 +275,7 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Vec<String>
         }
         out.push(raw.to_string());
     }
-    out
+    Ok(out)
 }
 
 /// The reserved `cddl-codegen:` tag on an own-line comment, if any — the text after
@@ -283,7 +295,7 @@ fn reserved_tag(line: &str) -> Option<&str> {
 /// a trailing `// …` after a row surfaces as an unexpected token below). Any deviation — a
 /// non-triple tuple, an unterminated literal, a stray token — is a hard error (a mangled sidecar
 /// must be loud).
-fn parse_const_body(body: &str, file: &str) -> Vec<WrapperRequestEntry> {
+fn parse_const_body(body: &str, file: &str) -> Result<Vec<WrapperRequestEntry>, String> {
     let chars: Vec<char> = body.chars().collect();
     let mut i = 0;
     let mut entries = Vec::new();
@@ -293,11 +305,11 @@ fn parse_const_body(body: &str, file: &str) -> Vec<WrapperRequestEntry> {
             break;
         }
         if chars[i] != '(' {
-            hard_error(
+            return Err(hard_error(
                 file,
                 "unexpected token in BORROWED_SHAPES (expected a `(...)` row)",
                 &tail_snippet(&chars, i),
-            );
+            ));
         }
         i += 1; // consume '('
         let mut fields = Vec::new();
@@ -308,13 +320,13 @@ fn parse_const_body(body: &str, file: &str) -> Vec<WrapperRequestEntry> {
                 break;
             }
             if i >= chars.len() || chars[i] != '"' {
-                hard_error(
+                return Err(hard_error(
                     file,
                     "malformed BORROWED_SHAPES row (expected a string literal)",
                     &tail_snippet(&chars, i),
-                );
+                ));
             }
-            let (s, next) = parse_string_literal(&chars, i, file);
+            let (s, next) = parse_string_literal(&chars, i, file)?;
             fields.push(s);
             i = next;
             i = skip_trivia(&chars, i);
@@ -324,19 +336,19 @@ fn parse_const_body(body: &str, file: &str) -> Vec<WrapperRequestEntry> {
                 i += 1; // consume ')'
                 break;
             } else {
-                hard_error(
+                return Err(hard_error(
                     file,
                     "malformed BORROWED_SHAPES row (expected `,` or `)`)",
                     &tail_snippet(&chars, i),
-                );
+                ));
             }
         }
         if fields.len() != 3 {
-            hard_error(
+            return Err(hard_error(
                 file,
                 "malformed BORROWED_SHAPES row (a row must be exactly three string literals: dep, name, shape)",
                 &format!("{fields:?}"),
-            );
+            ));
         }
         entries.push(WrapperRequestEntry {
             dep: fields[0].clone(),
@@ -349,7 +361,7 @@ fn parse_const_body(body: &str, file: &str) -> Vec<WrapperRequestEntry> {
             i += 1;
         }
     }
-    entries
+    Ok(entries)
 }
 
 /// Advance past whitespace only. Deliberately does NOT skip `//` comments: the emitter writes none
@@ -366,14 +378,18 @@ fn skip_trivia(chars: &[char], mut i: usize) -> usize {
 /// unescaped contents and the index just past the closing quote. Handles the escapes the emitter's
 /// `{:?}` formatting can produce (`\"`, `\\`, `\n`, `\t`, `\r`, `\0`); an unterminated literal is a
 /// hard error.
-fn parse_string_literal(chars: &[char], start: usize, file: &str) -> (String, usize) {
+fn parse_string_literal(
+    chars: &[char],
+    start: usize,
+    file: &str,
+) -> Result<(String, usize), String> {
     debug_assert_eq!(chars[start], '"');
     let mut i = start + 1;
     let mut s = String::new();
     while i < chars.len() {
         let c = chars[i];
         if c == '"' {
-            return (s, i + 1);
+            return Ok((s, i + 1));
         }
         if c == '\\' {
             i += 1;
@@ -395,7 +411,11 @@ fn parse_string_literal(chars: &[char], start: usize, file: &str) -> (String, us
         s.push(c);
         i += 1;
     }
-    hard_error(file, "unterminated string literal in BORROWED_SHAPES", "")
+    Err(hard_error(
+        file,
+        "unterminated string literal in BORROWED_SHAPES",
+        "",
+    ))
 }
 
 /// A short forward snippet of the remaining input, for error messages.
@@ -404,16 +424,19 @@ fn tail_snippet(chars: &[char], i: usize) -> String {
     chars[i..end].iter().collect::<String>()
 }
 
-fn hard_error(file: &str, what: &str, offending: &str) -> ! {
+/// The W1 grammar's refusal funnel: builds the diagnostic, which every call site returns as the
+/// `Err` of its own `Result`. Not diverging — a refusal here travels the generator's error channel
+/// so `--config`'s mid-run wrapper can name the crates it had already regenerated before it.
+fn hard_error(file: &str, what: &str, offending: &str) -> String {
     if offending.is_empty() {
-        panic!(
+        return format!(
             "--wrapper-requests {file}: {what}. The sidecar must be an unmodified, tool-generated `borrowed_collections.rs`."
         );
     }
-    panic!(
+    format!(
         "--wrapper-requests {file}: {what}: {offending:?}. The sidecar must be an unmodified, \
          tool-generated `borrowed_collections.rs`."
-    );
+    )
 }
 
 // ===== pre-finalize seeding of `used_as_key` from `--wrapper-requests` map shapes ============
@@ -751,28 +774,30 @@ pub struct KeyTypeEntry {
 
 /// Parse a sidecar flavor token (`bare`/`hash`/`ord`/`hash ord`) into a `DemandSet`. The emitter writes
 /// a single space-joined token per row; anything else is a hard error (a mangled sidecar must be loud).
-fn parse_key_flavor(token: &str, file: &str) -> DemandSet {
+fn parse_key_flavor(token: &str, file: &str) -> Result<DemandSet, String> {
     let mut demand = DemandSet::default();
     for word in token.split_whitespace() {
         match word {
             "bare" => demand.bare = true,
             "hash" => demand.hash = true,
             "ord" => demand.ord = true,
-            _ => key_hard_error(
-                file,
-                "unknown key-demand flavor in BORROWED_KEY_TYPES row",
-                token,
-            ),
+            _ => {
+                return Err(key_hard_error(
+                    file,
+                    "unknown key-demand flavor in BORROWED_KEY_TYPES row",
+                    token,
+                ));
+            }
         }
     }
     if demand == DemandSet::default() {
-        key_hard_error(
+        return Err(key_hard_error(
             file,
             "empty key-demand flavor in BORROWED_KEY_TYPES row",
             token,
-        );
+        ));
     }
-    demand
+    Ok(demand)
 }
 
 /// The exact comment lines the consumer's `borrowed_key_types.rs` emitter writes (header stamp +
@@ -800,15 +825,15 @@ const KNOWN_KEY_COMMENTS: &[&str] = &[
 /// `compile_error!` / `unpreserved-comment` sentinel, an unknown comment/item, or a mangled tuple is a
 /// hard error naming the file; overlay user blocks (`comment_preserve.rs`) are tolerated like the W1
 /// sidecar. Returns every well-formed row (the caller filters by dep).
-pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Vec<KeyTypeEntry> {
+pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Result<Vec<KeyTypeEntry>, String> {
     if contents.contains("compile_error!") {
-        panic!(
+        return Err(format!(
             "--key-requests {file}: the sidecar contains a `compile_error!` — it is a trapped or \
              drifted generated file, which must never be silently consumed. Regenerate the consumer \
              crate to clear it."
-        );
+        ));
     }
-    let logical = flatten_overlay_blocks(contents, file, "--key-requests");
+    let logical = flatten_overlay_blocks(contents, file, "--key-requests")?;
     let mut entries = Vec::new();
     let mut in_const = false;
     let mut const_item = String::new();
@@ -826,16 +851,16 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Vec<KeyTypeEntry> 
         }
         if in_const {
             if trimmed.starts_with("//") {
-                key_hard_error(
+                return Err(key_hard_error(
                     file,
                     "unexpected comment inside `BORROWED_KEY_TYPES`",
                     trimmed,
-                );
+                ));
             }
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_key_const_item(&const_item, file));
+                entries.extend(parse_key_const_item(&const_item, file)?);
                 in_const = false;
                 const_item.clear();
             }
@@ -846,7 +871,7 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Vec<KeyTypeEntry> 
             continue;
         }
         if trimmed.starts_with("//") {
-            key_hard_error(file, "unexpected comment", trimmed);
+            return Err(key_hard_error(file, "unexpected comment", trimmed));
         }
         if trimmed == "#[allow(dead_code)]" || trimmed == "#[allow(unused_imports)]" {
             continue;
@@ -868,35 +893,35 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Vec<KeyTypeEntry> 
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_key_const_item(&const_item, file));
+                entries.extend(parse_key_const_item(&const_item, file)?);
                 const_item.clear();
             } else {
                 in_const = true;
             }
             continue;
         }
-        key_hard_error(file, "unexpected item", trimmed);
+        return Err(key_hard_error(file, "unexpected item", trimmed));
     }
     if in_const {
-        key_hard_error(
+        return Err(key_hard_error(
             file,
             "unterminated `BORROWED_KEY_TYPES` table (missing `];`)",
             "",
-        );
+        ));
     }
-    entries
+    Ok(entries)
 }
 
 /// Parse the complete `BORROWED_KEY_TYPES` const item into entries. The header up to the initializer
 /// `=` must be exactly the frozen declaration (whitespace-normalized — rustfmt may wrap the
 /// initializer); the initializer must be a `&[ … ]` array of `("<dep>", "<ident>")` pairs.
-fn parse_key_const_item(item: &str, file: &str) -> Vec<KeyTypeEntry> {
+fn parse_key_const_item(item: &str, file: &str) -> Result<Vec<KeyTypeEntry>, String> {
     let Some(eq) = item.find('=') else {
-        key_hard_error(
+        return Err(key_hard_error(
             file,
             "malformed `BORROWED_KEY_TYPES` item (missing `=`)",
             item,
-        );
+        ));
     };
     let header: String = item[..eq].split_whitespace().collect::<Vec<_>>().join(" ");
     // Two forms are accepted: the frozen two-column `&[(&str, &str)]` (all rows bare — byte-identical to
@@ -906,22 +931,22 @@ fn parse_key_const_item(item: &str, file: &str) -> Vec<KeyTypeEntry> {
     if header != "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)]"
         && header != "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)]"
     {
-        key_hard_error(
+        return Err(key_hard_error(
             file,
             "unexpected `BORROWED_KEY_TYPES` declaration (the type must be `&[(&str, &str)]` or `&[(&str, &str, &str)]`)",
             &header,
-        );
+        ));
     }
     let init = item[eq + 1..].trim();
     let Some(body) = init
         .strip_prefix("&[")
         .and_then(|rest| rest.trim_end().strip_suffix("];"))
     else {
-        key_hard_error(
+        return Err(key_hard_error(
             file,
             "malformed `BORROWED_KEY_TYPES` initializer (expected `&[ … ];`)",
             init,
-        );
+        ));
     };
     parse_key_const_body(body, file)
 }
@@ -929,7 +954,7 @@ fn parse_key_const_item(item: &str, file: &str) -> Vec<KeyTypeEntry> {
 /// Tokenize the `BORROWED_KEY_TYPES` array body into `("<dep>", "<ident>")` pairs. Strict tuple
 /// grammar: exactly two string literals per `(...)` row, optional trailing commas. Any deviation is a
 /// hard error (a mangled sidecar must be loud).
-fn parse_key_const_body(body: &str, file: &str) -> Vec<KeyTypeEntry> {
+fn parse_key_const_body(body: &str, file: &str) -> Result<Vec<KeyTypeEntry>, String> {
     let chars: Vec<char> = body.chars().collect();
     let mut i = 0;
     let mut entries = Vec::new();
@@ -939,11 +964,11 @@ fn parse_key_const_body(body: &str, file: &str) -> Vec<KeyTypeEntry> {
             break;
         }
         if chars[i] != '(' {
-            key_hard_error(
+            return Err(key_hard_error(
                 file,
                 "unexpected token in BORROWED_KEY_TYPES (expected a `(...)` row)",
                 &tail_snippet(&chars, i),
-            );
+            ));
         }
         i += 1;
         let mut fields = Vec::new();
@@ -954,13 +979,13 @@ fn parse_key_const_body(body: &str, file: &str) -> Vec<KeyTypeEntry> {
                 break;
             }
             if i >= chars.len() || chars[i] != '"' {
-                key_hard_error(
+                return Err(key_hard_error(
                     file,
                     "malformed BORROWED_KEY_TYPES row (expected a string literal)",
                     &tail_snippet(&chars, i),
-                );
+                ));
             }
-            let (s, next) = parse_string_literal(&chars, i, file);
+            let (s, next) = parse_string_literal(&chars, i, file)?;
             fields.push(s);
             i = next;
             i = skip_trivia(&chars, i);
@@ -970,23 +995,23 @@ fn parse_key_const_body(body: &str, file: &str) -> Vec<KeyTypeEntry> {
                 i += 1;
                 break;
             } else {
-                key_hard_error(
+                return Err(key_hard_error(
                     file,
                     "malformed BORROWED_KEY_TYPES row (expected `,` or `)`)",
                     &tail_snippet(&chars, i),
-                );
+                ));
             }
         }
         if fields.len() != 2 && fields.len() != 3 {
-            key_hard_error(
+            return Err(key_hard_error(
                 file,
                 "malformed BORROWED_KEY_TYPES row (a row must be two string literals — dep, ident — or three, adding a flavor)",
                 &format!("{fields:?}"),
-            );
+            ));
         }
         // The optional 3rd column is the comparison/hash flavor; a two-column (old) row is `bare`.
         let demand = if fields.len() == 3 {
-            parse_key_flavor(&fields[2], file)
+            parse_key_flavor(&fields[2], file)?
         } else {
             DemandSet {
                 bare: true,
@@ -1004,19 +1029,21 @@ fn parse_key_const_body(body: &str, file: &str) -> Vec<KeyTypeEntry> {
             i += 1;
         }
     }
-    entries
+    Ok(entries)
 }
 
-fn key_hard_error(file: &str, what: &str, offending: &str) -> ! {
+/// The key-channel twin of [`hard_error`], and non-diverging for the same reason: a sidecar refusal
+/// belongs on the generator's error channel, where `--config`'s mid-run wrapper can see it.
+fn key_hard_error(file: &str, what: &str, offending: &str) -> String {
     if offending.is_empty() {
-        panic!(
+        return format!(
             "--key-requests {file}: {what}. The sidecar must be an unmodified, tool-generated `borrowed_key_types.rs`."
         );
     }
-    panic!(
+    format!(
         "--key-requests {file}: {what}: {offending:?}. The sidecar must be an unmodified, \
          tool-generated `borrowed_key_types.rs`."
-    );
+    )
 }
 
 /// Read one `--wrapper-requests` / `--key-requests` sidecar, or `None` when the consumer has not
@@ -1029,15 +1056,19 @@ fn key_hard_error(file: &str, what: &str, offending: &str) -> ! {
 /// dependency has written the export it imports. The absence is announced on stderr because the OTHER
 /// way to reach it is a wrong path, which would otherwise silently disable the whole channel.
 ///
-/// Every other read failure — a permission error, a non-UTF-8 file — stays a hard error: those are
-/// not "no sidecar", they are a sidecar this run cannot honour.
+/// Every other read failure — a permission error, a non-UTF-8 file — stays a hard error (the `Err`
+/// of the outer `Result`): those are not "no sidecar", they are a sidecar this run cannot honour.
 ///
 /// Determinism is unaffected: the file's absence is an input state exactly as its content is, so the
 /// same inputs still produce the same bytes. This is not a prior-OUTPUT read either — the sidecar is
 /// another crate's committed input, whether it exists or not.
-pub fn read_request_sidecar(flag: &str, consumer: &str, path: &str) -> Option<String> {
+pub fn read_request_sidecar(
+    flag: &str,
+    consumer: &str,
+    path: &str,
+) -> Result<Option<String>, String> {
     match std::fs::read_to_string(path) {
-        Ok(contents) => Some(contents),
+        Ok(contents) => Ok(Some(contents)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             crate::warn!(
                 "warning: {flag} {consumer}={path}: no sidecar there yet, so `{consumer}` is treated \
@@ -1045,31 +1076,36 @@ pub fn read_request_sidecar(flag: &str, consumer: &str, path: &str) -> Option<St
                  generated records. If `{consumer}` HAS been generated, the path is wrong — check it, \
                  or regenerate `{consumer}` and re-run this crate to converge."
             );
-            None
+            Ok(None)
         }
-        Err(e) => panic!("{flag} {consumer}={path}: cannot read the sidecar: {e}"),
+        Err(e) => Err(format!(
+            "{flag} {consumer}={path}: cannot read the sidecar: {e}"
+        )),
     }
 }
 
 /// Seed `used_as_key` from every `--key-requests` sidecar's rows addressed to THIS dep, resolving
 /// each CDDL ident to a `RustIdent` and marking it (finalize then expands transitively). No-op (and
 /// byte-identical to today) when there are no `--key-requests` flags. STRICT: a sidecar that exists
-/// but cannot be read is a hard error, and so is a row naming a type this dep does not define (a
+/// but cannot be read is an `Err`, and so is a row naming a type this dep does not define (a
 /// consumer keying on a type the dep deleted must be loud, mirroring the W1 compiled-`use`). A path
 /// with no file at all is the cold-workspace case — see [`read_request_sidecar`].
-pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &Cli) {
+pub fn seed_used_as_key_from_key_requests(
+    types: &mut IntermediateTypes,
+    cli: &Cli,
+) -> Result<(), String> {
     let request_files = cli.key_requests();
     if request_files.is_empty() {
-        return;
+        return Ok(());
     }
     let my_lib = cli.lib_name_code();
     let mut to_mark: std::collections::BTreeMap<RustIdent, DemandSet> =
         std::collections::BTreeMap::new();
     for (consumer, path) in &request_files {
-        let Some(contents) = read_request_sidecar("--key-requests", consumer, path) else {
+        let Some(contents) = read_request_sidecar("--key-requests", consumer, path)? else {
             continue;
         };
-        for entry in parse_key_types_sidecar(&contents, path) {
+        for entry in parse_key_types_sidecar(&contents, path)? {
             if entry.dep.replace('-', "_") != my_lib {
                 continue;
             }
@@ -1091,13 +1127,27 @@ pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &C
                             .contains_key(&AliasIdent::Rust(ident.clone()))
                 });
             if !known {
-                panic!(
+                // The one refusal in this file reachable from COMMITTED STATE alone — a dep whose
+                // spec dropped a type its consumer's committed sidecar still borrows — so it is the
+                // one that most needs the error channel rather than an abort: it can strike a
+                // `--config` run mid-way through a workspace, and the statement of what was already
+                // rewritten is the answer to the only question that leaves.
+                //
+                // It stays a mid-generation `Err` rather than a row of `--config`'s committed-state
+                // verdict, for two reasons that both come from what the fact IS. The verdict is a
+                // post-pass comparison of two committed FILES (a consumer's `borrowed_collections.rs`
+                // against a dep's `collections.rs` wrapper index), and "is this ident a type the dep
+                // defines" is not readable from any file — it is a question about the dep's finalized
+                // IR, which only this seam has. And the verdict runs in `--config` mode only, while
+                // `--key-requests` is a plain flag: routing the refusal there would leave the
+                // single-crate CLI path silently seeding nothing.
+                return Err(format!(
                     "--key-requests {consumer} ({path}): the borrowed key type {:?} (row \
                      ({:?}, {:?})) is not a type this dep defines — a consumer is keying a map on a \
                      type the dep no longer provides. Remedy: restore the type in the dep spec, or \
                      regenerate the consumer so it stops borrowing this key type.",
                     entry.ident, entry.dep, entry.ident
-                );
+                ));
             }
             let ident = RustIdent::new(CDDLIdent::new(entry.ident));
             let e = to_mark.entry(ident).or_default();
@@ -1107,11 +1157,30 @@ pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &C
     for (ident, demand) in to_mark {
         types.mark_key_demand(ident, demand);
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The refusal assertion every grammar-rejection test below shares, asserting BOTH halves of
+    /// what a refusal owes at once. That it is an `Err` and not an abort: these readers run inside
+    /// `generate_to_disk`, and only a value travelling the error channel reaches `--config`'s
+    /// mid-run wrapper (pinned end-to-end by
+    /// `config_tests::a_mid_run_sidecar_refusal_names_the_crates_already_regenerated`). And that the
+    /// diagnostic still SAYS what it said — these texts are what a user reads to find the file and
+    /// fix it, so each call site pins its own.
+    #[track_caller]
+    fn assert_refusal<T: std::fmt::Debug>(got: Result<T, String>, expected: &str) {
+        match got {
+            Ok(v) => panic!("expected a refusal containing {expected:?}, got Ok({v:?})"),
+            Err(e) => assert!(
+                e.contains(expected),
+                "the refusal must still name {expected:?}, got: {e}"
+            ),
+        }
+    }
 
     const CANONICAL: &str = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1151,7 +1220,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
 
     #[test]
     fn accepts_canonical_file() {
-        let entries = parse_sidecar(CANONICAL, "borrowed_collections.rs");
+        let entries = parse_sidecar(CANONICAL, "borrowed_collections.rs").unwrap();
         assert_eq!(
             entries,
             vec![
@@ -1181,7 +1250,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
 
     #[test]
     fn accepts_empty_file() {
-        let entries = parse_sidecar(EMPTY, "borrowed_collections.rs");
+        let entries = parse_sidecar(EMPTY, "borrowed_collections.rs").unwrap();
         assert!(entries.is_empty());
     }
 
@@ -1209,7 +1278,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     ),
 ];
 "#;
-        let entries = parse_sidecar(wrapped, "borrowed_collections.rs");
+        let entries = parse_sidecar(wrapped, "borrowed_collections.rs").unwrap();
         assert_eq!(
             entries,
             vec![WrapperRequestEntry {
@@ -1240,7 +1309,7 @@ mod borrowed {
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] =
     &[("index_dep_crate", "IdxFooList", "[* idx_foo]")];
 "#;
-        let entries = parse_sidecar(collapsed, "borrowed_collections.rs");
+        let entries = parse_sidecar(collapsed, "borrowed_collections.rs").unwrap();
         assert_eq!(
             entries,
             vec![WrapperRequestEntry {
@@ -1274,7 +1343,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     // cddl-codegen:insert-end
 ];
 "#;
-        let entries = parse_sidecar(with_insert, "borrowed_collections.rs");
+        let entries = parse_sidecar(with_insert, "borrowed_collections.rs").unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[1].name, "IdxBarList");
         assert_eq!(entries[1].shape, "[* idx_bar]");
@@ -1302,7 +1371,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     // cddl-codegen:replace-end
 ];
 "#;
-        let entries = parse_sidecar(with_replace, "borrowed_collections.rs");
+        let entries = parse_sidecar(with_replace, "borrowed_collections.rs").unwrap();
         assert_eq!(
             entries,
             vec![WrapperRequestEntry {
@@ -1314,7 +1383,6 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     }
 
     #[test]
-    #[should_panic(expected = "unpreserved-comment")]
     fn rejects_unpreserved_comment_trap() {
         let trapped = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1329,7 +1397,10 @@ mod borrowed {}
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
-        parse_sidecar(trapped, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(trapped, "borrowed_collections.rs"),
+            "unpreserved-comment",
+        );
     }
 
     /// A `// cddl-codegen:keep` marker is a REGISTERED tag (it must not hit the unknown-tag panic),
@@ -1338,7 +1409,6 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     /// hard error naming the line. Both `keep` forms land there, so user prose can never silently
     /// vanish from a machine-read sidecar. Pinned in both forms below.
     #[test]
-    #[should_panic(expected = "unexpected comment")]
     fn rejects_inline_keep_comment() {
         let with_keep = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1348,11 +1418,13 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
-        parse_sidecar(with_keep, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(with_keep, "borrowed_collections.rs"),
+            "unexpected comment",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "unexpected comment")]
     fn rejects_bare_keep_comment_run() {
         let with_keep = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1363,13 +1435,15 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
-        parse_sidecar(with_keep, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(with_keep, "borrowed_collections.rs"),
+            "unexpected comment",
+        );
     }
 
     /// `keep-<anything>` is NOT `keep`: it stays an unknown reserved tag, so the sidecar scanner
     /// rejects it with the unexpected-reserved-comment panic rather than the comment path.
     #[test]
-    #[should_panic(expected = "unexpected reserved comment")]
     fn rejects_keep_suffixed_unknown_tag() {
         let bad = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1379,11 +1453,13 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
-        parse_sidecar(bad, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(bad, "borrowed_collections.rs"),
+            "unexpected reserved comment",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "compile_error")]
     fn rejects_compile_error() {
         let trapped = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1393,11 +1469,13 @@ compile_error!("this file drifted");
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
-        parse_sidecar(trapped, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(trapped, "borrowed_collections.rs"),
+            "compile_error",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "unexpected item")]
     fn rejects_stray_line() {
         let stray = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1407,11 +1485,13 @@ fn sneaky() {}
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
-        parse_sidecar(stray, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(stray, "borrowed_collections.rs"),
+            "unexpected item",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "unexpected comment")]
     fn rejects_unknown_comment() {
         let stray = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1421,11 +1501,13 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
-        parse_sidecar(stray, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(stray, "borrowed_collections.rs"),
+            "unexpected comment",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "unexpected comment inside `BORROWED_SHAPES`")]
     fn rejects_in_const_comment() {
         // The old sidecar format kept the column legend INSIDE the const body, where the
         // preservation overlay anchored it to a deletable row (trapping on an in-place regen that
@@ -1440,11 +1522,13 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     ("index_dep_crate", "IdxFooList", "[* idx_foo]"),
 ];
 "#;
-        parse_sidecar(old_format, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(old_format, "borrowed_collections.rs"),
+            "unexpected comment inside `BORROWED_SHAPES`",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "malformed BORROWED_SHAPES row")]
     fn rejects_mangled_tuple() {
         // A two-element tuple (dep + name, no shape) is a mangled row.
         let mangled = r#"// This file was code-generated using an experimental CDDL to rust tool:
@@ -1455,7 +1539,10 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     ("index_dep_crate", "IdxFooList"),
 ];
 "#;
-        parse_sidecar(mangled, "borrowed_collections.rs");
+        assert_refusal(
+            parse_sidecar(mangled, "borrowed_collections.rs"),
+            "malformed BORROWED_SHAPES row",
+        );
     }
 
     // ===== lenient shape-key extraction (wrapper-requests seeding) =====
@@ -1579,7 +1666,7 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];
 
     #[test]
     fn key_types_accepts_canonical_file() {
-        let entries = parse_key_types_sidecar(CANONICAL_KEYS, "borrowed_key_types.rs");
+        let entries = parse_key_types_sidecar(CANONICAL_KEYS, "borrowed_key_types.rs").unwrap();
         assert_eq!(
             entries,
             vec![
@@ -1625,7 +1712,7 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[
 ];
 "#;
         assert_eq!(
-            parse_key_types_sidecar(src, "borrowed_key_types.rs"),
+            parse_key_types_sidecar(src, "borrowed_key_types.rs").unwrap(),
             vec![
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
@@ -1675,7 +1762,7 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] =
     &[("wr_dep", "root_key"), ("wr_dep", "scoped_key")];
 "#;
         assert_eq!(
-            parse_key_types_sidecar(src, "borrowed_key_types.rs"),
+            parse_key_types_sidecar(src, "borrowed_key_types.rs").unwrap(),
             vec![
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
@@ -1701,11 +1788,14 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] =
 
     #[test]
     fn key_types_accepts_empty_file() {
-        assert!(parse_key_types_sidecar(EMPTY_KEYS, "borrowed_key_types.rs").is_empty());
+        assert!(
+            parse_key_types_sidecar(EMPTY_KEYS, "borrowed_key_types.rs")
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
-    #[should_panic(expected = "unexpected comment")]
     fn key_types_rejects_unknown_comment() {
         let stray = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1716,11 +1806,13 @@ fn _assert_key_traits<K: Eq + Ord + PartialOrd + core::hash::Hash>() {}
 #[allow(dead_code)]
 pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];
 "#;
-        parse_key_types_sidecar(stray, "borrowed_key_types.rs");
+        assert_refusal(
+            parse_key_types_sidecar(stray, "borrowed_key_types.rs"),
+            "unexpected comment",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "compile_error")]
     fn key_types_rejects_compile_error() {
         let trapped = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1729,11 +1821,13 @@ compile_error!("this file drifted");
 #[allow(dead_code)]
 pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];
 "#;
-        parse_key_types_sidecar(trapped, "borrowed_key_types.rs");
+        assert_refusal(
+            parse_key_types_sidecar(trapped, "borrowed_key_types.rs"),
+            "compile_error",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "malformed BORROWED_KEY_TYPES row")]
     fn key_types_rejects_mangled_tuple() {
         // A four-element tuple is a mangled key row (a row is two literals — dep, ident — or three,
         // adding a flavor). Three is now legal (the optional flavor column), so the mangled case is 4+.
@@ -1745,12 +1839,14 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[
     ("wr_dep", "idx_foo", "hash", "extra"),
 ];
 "#;
-        parse_key_types_sidecar(mangled, "borrowed_key_types.rs");
+        assert_refusal(
+            parse_key_types_sidecar(mangled, "borrowed_key_types.rs"),
+            "malformed BORROWED_KEY_TYPES row",
+        );
     }
 
     // A three-column row whose flavor token is not a known word is a hard error (mangled sidecar).
     #[test]
-    #[should_panic(expected = "unknown key-demand flavor")]
     fn key_types_rejects_unknown_flavor() {
         let bad = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1760,11 +1856,13 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[
     ("wr_dep", "idx_foo", "nonsense"),
 ];
 "#;
-        parse_key_types_sidecar(bad, "borrowed_key_types.rs");
+        assert_refusal(
+            parse_key_types_sidecar(bad, "borrowed_key_types.rs"),
+            "unknown key-demand flavor",
+        );
     }
 
     #[test]
-    #[should_panic(expected = "unexpected item")]
     fn key_types_rejects_stray_item() {
         let stray = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
@@ -1773,6 +1871,9 @@ fn sneaky() {}
 #[allow(dead_code)]
 pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];
 "#;
-        parse_key_types_sidecar(stray, "borrowed_key_types.rs");
+        assert_refusal(
+            parse_key_types_sidecar(stray, "borrowed_key_types.rs"),
+            "unexpected item",
+        );
     }
 }

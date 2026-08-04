@@ -1114,8 +1114,10 @@ cannot leave the first crate's output half-migrated on disk.
 ### Generation itself is not transactional across crates
 
 What is checked up front is the **config**. Once the first crate starts generating, the run is a
-sequence of independent regenerations, and a crate whose CDDL spec fails to generate stops the run
-where it stands: the crates ordered before it are on disk in their regenerated form, the failing
+sequence of independent regenerations, and a crate that fails to generate stops the run
+where it stands — whether its own CDDL spec is what the tool refuses, or a cross-crate sidecar it
+consumes (`wrapper-requests` / `key-requests`) is: the crates ordered before it
+are on disk in their regenerated form, the failing
 crate's own output may be partly written, and the crates after it are untouched. This is not a
 rollback the tool can perform — each crate's output is a committed directory it clobbers in place.
 

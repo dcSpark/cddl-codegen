@@ -353,7 +353,7 @@ impl GenerationScope {
 
     /// Generates, i.e. populates the state, based on `types`.
     /// this does not create any files, call export() after.
-    pub fn generate(&mut self, types: &IntermediateTypes, cli: &Cli) {
+    pub fn generate(&mut self, types: &IntermediateTypes, cli: &Cli) -> Result<(), String> {
         // `--workspace-dep` and `--extern-wrapper-index` both LOAD AND VALIDATE mode-independently, so
         // every documented startup malformation aborts generation whether or not `--wasm` is set; their
         // DEFERRAL EFFECTS differ in scope. `--workspace-dep`'s primary sidecar
@@ -1134,7 +1134,7 @@ impl GenerationScope {
         // already produce into the `requested_collections` module. Wasm-only, and a no-op (byte
         // identical) with no `--wrapper-requests` flag.
         if cli.wasm {
-            self.emit_requested_collections(types, cli);
+            self.emit_requested_collections(types, cli)?;
         }
 
         // wasm face of the `AnyCbor` runtime type (CDDL `any`). Keyed on `uses_any_cbor()`, not on
@@ -2151,6 +2151,7 @@ impl GenerationScope {
                 "cddl-codegen --emit-tests: component module skipped (component test emission not yet supported)"
             );
         }
+        Ok(())
     }
 
     /// Generates in the appropriate scope for `ident`
