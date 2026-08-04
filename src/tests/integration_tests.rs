@@ -9688,6 +9688,61 @@ fn ir_conformance_corpus() {
         //  shortest lossless form is `f9`, making it a `float16` VALUE, which is why the gem refused
         //  it for a `float64` field. The gem implements the shortest-form partition, head-independently
         //  and correctly; once the mint drew class MEMBERS the divergence disappeared entirely.)
+        //
+        // The five rows below are one event, not five: the `.cbor` rule-body force-wrap (and the
+        // tagged-root sibling delivery) gave these long-committed rules STANDALONE codecs, so the
+        // `--emit-tests` minter now dumps standalone cases for rules that previously minted nothing
+        // of their own — and the gem, which could never parse their specs, now has cases to fail to
+        // judge. Each is the SAME parser gap as the three entries above (inline composite type2 as a
+        // control-operator argument, exit 65 at spec parse — never a bytes-level verdict, so none of
+        // these is the fork-misparse branch of this gate's panic message); what changed is only that
+        // the poisoned fixtures now contain construct-CARRYING rules with minted cases, where before
+        // only innocent holder siblings surfaced.
+        (
+            "cbor_wrapped_group_array",
+            "wrapped",
+            "same gem PARSER gap as this fixture's `holder` entry, and the same spec-parse poisoning \
+             — but this rule CARRIES the gapped construct (`bytes .cbor [coords]`, the inline-array \
+             controller). It mints standalone cases since the `.cbor` rule-body force-wrap made it a \
+             wrapper struct; before that it was a transparent alias with no wire API of its own and \
+             the gem's gap was invisible for it. \
+             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+        ),
+        (
+            "cbor_bignint_table",
+            "x",
+            "same gem PARSER gap as this fixture's `holder` entry — this is the construct-carrying \
+             rule itself (`bytes .cbor { * bignint => uint }`, the inline-map controller), minting \
+             standalone cases since the `.cbor` rule-body force-wrap. \
+             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+        ),
+        (
+            "cbor_nonempty_payload",
+            "wrapped_nonempty",
+            "gem PARSER gap (cddl 0.12.14), `[+ …]` flavor: `bytes .cbor [+ uint]` is an inline \
+             composite controller the gem cannot parse (exit 65). Standalone cases exist since the \
+             `.cbor` rule-body force-wrap; the fixture header records why it is isolated from \
+             cbor_in_bytes.cddl. \
+             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+        ),
+        (
+            "cbor_nonempty_payload",
+            "wrapped_nonempty_map",
+            "same gem PARSER gap, `{ + … }` flavor (`bytes .cbor { + tstr => uint }`); see this \
+             fixture's `wrapped_nonempty` entry. \
+             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+        ),
+        (
+            "cbor_int_table",
+            "cbor_int_table",
+            "same gem PARSER gap, `{ * … }` flavor (`bytes .cbor { * tstr => int }`). The rule lives \
+             alone in its fixture ON PURPOSE: it was split out of int_alias.cddl at the 2026-08-04 \
+             cycle close-out so the gem's whole-file parse failure stops poisoning the innocent \
+             siblings `bare_int` and `cbor_int` (`bytes .cbor int` is a form the gem parses fine — \
+             its divergence in the pre-split run was collateral, not a construct gap), keeping them \
+             ruby-judgeable while the gapped construct keeps its coverage here. \
+             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+        ),
     ];
 
     // Vacuity floor on total cases the gem actually validated across the corpus. 70 swept at landing;

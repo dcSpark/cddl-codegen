@@ -5,22 +5,25 @@
 ; visited rust structs only, so an alias-only `int` reference emitted `pub type X = Int;` naming an
 ; `Int` no one minted (`cannot find type Int`, E0425) — a dangle in both the rust and wasm crates.
 ;
-; The three rules span the descent the fix must cover: `bare_int` is a top-level `Rust(Int)` alias
-; base; `cbor_int` nests it under a `.cbor` bytes wrapper; `cbor_int_table` nests it as a table VALUE
-; under a `.cbor` bytes wrapper (`Map(_, Rust(Int))`). All three are UNCONSTRAINED — a control (e.g.
-; `int .ne 1`) instead makes a RangeCheck wrapper STRUCT that the rust-struct walk already covered, so
-; the alias classification is exactly the untested path. The control sibling lives in
+; The two rules here span the first two legs of the descent the fix must cover: `bare_int` is a
+; top-level `Rust(Int)` alias base; `cbor_int` nests it under a `.cbor` bytes wrapper (a wrapper
+; STRUCT since the `.cbor` rule-body force-wrap, whose inner is the `Int`-bearing base the walk
+; must still descend through). The table-VALUE leg (`Map(_, Rust(Int))` under `.cbor`) lives in
+; cbor_int_table.cddl — split out because its inline-map controller
+; (`bytes .cbor { * tstr => int }`) is a PARSE error for the ruby `cddl` gem (0.12.14; the gap in
+; draft/ruby-cddl-inline-composite-control-arg-gap.md), and a spec-parse failure poisons every
+; rule in its fixture for the `ir_conformance_corpus` ruby sweep. Kept apart, `bare_int` and
+; `cbor_int` stay ruby-judgeable. Both rules are UNCONSTRAINED — a control (e.g. `int .ne 1`)
+; instead makes a RangeCheck wrapper STRUCT that the rust-struct walk already covered, so the
+; alias classification is exactly the untested path. The control sibling lives in
 ; tagged_constrained_int.cddl (`cbor_ctl_ne = bytes .cbor (int .ne 1)`, with a holder).
 ;
-; Deliberately holder-FREE: embedding any of these in a record member (`h = [f: bare_int]`) registers
-; `Int` through the record's field walk, and `Int` is a crate-global extern emitted once for the whole
-; crate — so a single holder would define `Int` for the whole fixture and MASK the alias-only dangle
-; this fixture exists to pin (the same batch-masking that let the class hide behind int-referencing
-; batch-mates in the recombination sweep). The round-trip/decode side is covered by the
-; decode-conformance CORPUS leg, which holder-wraps each rule in its own synthetic probe
-; (`__probe_holder = [0, <rule>]`): `bare_int` and `cbor_int` mint spec-derived vectors, while
-; `cbor_int_table`'s inline-composite `.cbor` controller hits the ruby generator's parse gap and is
-; pinned (the same class as cbor_bignint_table's `.cbor { … }` rule).
+; Deliberately holder-FREE: embedding either of these in a record member (`h = [f: bare_int]`)
+; registers `Int` through the record's field walk, and `Int` is a crate-global extern emitted once
+; for the whole crate — so a single holder would define `Int` for the whole fixture and MASK the
+; alias-only dangle this fixture exists to pin (the same batch-masking that let the class hide
+; behind int-referencing batch-mates in the recombination sweep). The round-trip/decode side is
+; covered by the decode-conformance CORPUS leg, which holder-wraps each rule in its own synthetic
+; probe (`__probe_holder = [0, <rule>]`).
 bare_int = int
 cbor_int = bytes .cbor int
-cbor_int_table = bytes .cbor { * tstr => int }

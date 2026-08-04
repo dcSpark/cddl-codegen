@@ -1,16 +1,19 @@
-; `.cbor` payloads carrying an inline non-empty container. These rules classify as plain ALIASES
-; (not RustStructs), so their wasm alias line names the structural restricted wrapper
-; (`NonEmptyU64List` / `NonEmptyMapTextToU64`) — which only the alias-base minting walk emits.
+; `.cbor` payloads carrying an inline non-empty container. Since the `.cbor` rule-body force-wrap
+; these rules mint WRAPPER structs whose INNER is the structural restricted wrapper
+; (`NonEmptyU64List` / `NonEmptyMapTextToU64`) — which only the inner-base minting walk emits.
 ; Regression pinned (by this fixture's committed snapshots + the wasm-crate compile in
-; `feature_corpus_compiles`): the rust_structs minting walk never visited alias base types, so the
-; wasm crate referenced the wrapper without emitting it (E0425 with generation exit 0; surfaced by
-; the recombination wasm sweep's `bytes .cbor [+ uint]` composition).
+; `feature_corpus_compiles`): when these rules were transparent aliases, the rust_structs minting
+; walk never visited alias base types, so the wasm crate referenced the restricted wrapper without
+; emitting it (E0425 with generation exit 0; surfaced by the recombination wasm sweep's
+; `bytes .cbor [+ uint]` composition) — the descent through the rule body must still reach the
+; inner base now that a wrapper struct sits above it.
 ;
 ; Kept OUT of cbor_in_bytes.cddl deliberately: the ruby `cddl` gem (0.12.14) cannot PARSE an
 ; inline composite type2 controller (`bytes .cbor [+ uint]` — exit 65, the gap in
 ; draft/ruby-cddl-inline-composite-control-arg-gap.md), and a spec-parse failure poisons every
-; rule in its fixture for the `ir_conformance_corpus` ruby sweep. These transparent top-level
-; aliases mint no standalone conformance cases (no wire API of their own), so isolating them here
-; keeps cbor_in_bytes' rules ruby-judgeable while this fixture stays compile/snapshot-gated only.
+; rule in its fixture for the `ir_conformance_corpus` ruby sweep — isolating them here keeps
+; cbor_in_bytes' rules ruby-judgeable. Since the force-wrap these rules DO mint standalone
+; conformance cases (each has a wire API of its own now), which the gem then cannot judge, so
+; both ride RUBY_EXPECTED_FAIL with this justification instead of being silently skipped.
 wrapped_nonempty = bytes .cbor [+ uint]
 wrapped_nonempty_map = bytes .cbor { + tstr => uint }

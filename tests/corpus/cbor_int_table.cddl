@@ -1,0 +1,18 @@
+; The table-VALUE leg of int_alias.cddl's descent: `Int` nested as a table value under a `.cbor`
+; bytes wrapper (`Map(_, Rust(Int))`). Split out of int_alias.cddl so THAT fixture stays
+; ruby-judgeable: the ruby `cddl` gem (0.12.14) cannot PARSE an inline composite type2 controller
+; (`bytes .cbor { … }` — exit 65, the gap in draft/ruby-cddl-inline-composite-control-arg-gap.md),
+; and a spec-parse failure poisons every rule in its fixture for the `ir_conformance_corpus` ruby
+; sweep. Isolated here, the poison reaches only this fixture's own rule, which rides
+; RUBY_EXPECTED_FAIL with that justification; int_alias's `bare_int` and `cbor_int` are judged.
+;
+; Same discipline as int_alias.cddl, for the same reason — deliberately holder-FREE: `Int` is a
+; crate-global extern emitted once per crate, so any record member referencing this rule would
+; register `Int` through the record's field walk and MASK the alias/wrapper-only reference this
+; leg exists to pin (`generate_int` gated on `is_referenced("Int")`, whose walk must reach an
+; `int`-bearing base with no rust-struct reference to it).
+;
+; Since the `.cbor` rule-body force-wrap, this rule mints a WRAPPER struct (its standalone codec
+; writes/checks the byte-string framing), so it dumps standalone conformance cases — which the
+; gem then cannot judge, hence the ledger row rather than a silent skip.
+cbor_int_table = bytes .cbor { * tstr => int }

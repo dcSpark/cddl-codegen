@@ -2351,16 +2351,21 @@ fn handle_rust_name_pin(
 /// trailing slot; it is written as a merge for the same reason `parse_type` merges its two slots —
 /// the cddl parser chooses where to bind, and a directive found in either counts.
 ///
-/// Two spellings put a group rule's trailing comment beyond ANY slot: a closing paren on its own
-/// line (`grp = (\n a: uint\n) ; @x`), and a last entry whose slot is already occupied by a
-/// field-position `@name`. In both, the parser discards the comment — every AST comment slot is
-/// `None` (verified by dumping the AST), so no extraction here can recover it. `Rule::Group`'s own
-/// `comments_after_rule` is not an escape hatch either: the parser we pin has exactly two
-/// construction sites for it (`pest_bridge.rs`) and BOTH hardcode `None`, so reading it would be
-/// dead code. Both directives are silently dropped in those spellings; use the single-line form.
-/// Lifting this restriction needs an upstream parser fix — upstream here is the **dcSpark fork** of
-/// `cddl` pinned by git rev in `Cargo.toml` (version 0.10.6 at the pinned rev), not the crates.io
-/// crate. Tracked in `tests/TESTING_ROADMAP.md`.
+/// ONE spelling puts a group rule's trailing comment beyond any slot this fn reads: a closing paren
+/// on its own line (`grp = (\n a: uint\n) ; @x`). At the pinned fork rev the comment is NOT
+/// discarded — the pest bridge's comment binding is a source-position trivia merge, and with no
+/// trailing anchor of the group rule's own on that line, the merge binds the comment to the
+/// FOLLOWING rule's `comments_before_rule` (or orphans it when the group rule is last). Nothing
+/// reads that position, so the directive is silently lost; use the single-line form.
+/// `Rule::Group`'s own `comments_after_rule` is not an escape hatch at this pin: the merge emits no
+/// anchor for it (the construction sites' `None`s are pre-merge defaults, not the mechanism), so
+/// reading it here is dead code until the fork-side fix is adopted. There is NO second lossy
+/// spelling: a last entry's slot cannot be "contended" by a rule-trailing comment on one line,
+/// because a CDDL comment runs to end of line — that spelling comments out the closing paren and
+/// fails to parse. The fork-side fix (an additive `RuleTrailing` merge fallback) exists on the
+/// dcSpark fork's `local-fixes` branch, unadopted by maintainer ruling; state and design
+/// constraints are tracked in `tests/TESTING_ROADMAP.md` ("A rule-position directive is still
+/// silently LOST in the multi-line group-rule spelling").
 fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments>) -> RuleMetadata {
     let mut metadata = RuleMetadata::from(comments_after_group);
     if let Some((entry, optional_comma)) = group

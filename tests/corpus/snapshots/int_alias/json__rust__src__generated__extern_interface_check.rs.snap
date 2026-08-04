@@ -27,6 +27,4 @@ use crate::generated::BareInt as _;
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::CborInt>();
     _assert_deserialize::<crate::generated::CborInt>();
-    _assert_serialize::<crate::generated::CborIntTable>();
-    _assert_deserialize::<crate::generated::CborIntTable>();
 }

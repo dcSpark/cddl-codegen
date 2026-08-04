@@ -868,10 +868,15 @@ inst = gset<uint> ; @no_json_schema_export   ; correct — the instance is the t
 ```
 
 On a plain group, write the directive on the same line as the closing paren
-(`grp = (a: uint) ; @no_json_schema_export`). Two other spellings put a group rule's trailing comment
-where the CDDL parser discards it entirely — a closing paren on its own line, and a last entry whose
-own trailing comment is already a field-position `@name` — so the directive (like `@rust_name`) is
-silently dropped there.
+(`grp = (a: uint) ; @no_json_schema_export`). The MULTI-LINE spelling — closing paren on its own
+line — silently loses the directive (like `@rust_name`): the pinned CDDL parser binds that trailing
+comment to the *following* rule's leading-comment slot (or drops it as an orphan when the group rule
+is last), a position nothing reads, so the directive has no effect and nothing is reported. Use the
+single-line form. (There is no third lossy spelling: a comment runs to end of line, so putting a
+field-position comment before the closing paren on one line comments the paren out and the spec does
+not parse at all — a loud failure, not a drop.) A parser-side fix exists but is not adopted; the
+tracking entry in `tests/TESTING_ROADMAP.md` ("A rule-position directive is still silently LOST in
+the multi-line group-rule spelling") records its state.
 
 ### A suppressed type still has a wasm `to_json_value()`, so the JSON → TypeScript scripts fail on it
 

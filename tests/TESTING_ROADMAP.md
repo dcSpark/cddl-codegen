@@ -1874,36 +1874,60 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `*-spec.md` files for id-like tokens (the probe-index/ruling tables are structured enough to
   extract) and fail if any harvested id is matched by NO ephemeral pattern — lockstep with the
   authority exactly where the authority is present.
-- **A rule-position directive can still be SILENTLY DROPPED in the group-rule spellings the PARSER
-  discards, which no sweep can reach.** The directive×rule-shape reachability product itself is
-  swept (`cddl-matrix/no_silent_directive.ts`, `local` tier — see `tests/README.md` § "The
-  directive×rule-shape sweep"), so a shape whose parse path carries no marking site now fails a
-  gate instead of waiting for a human to hand-probe it. What the sweep cannot see is a directive the
-  AST never recorded: the CDDL parser leaves EVERY comment slot `None` for a group rule whose closing
-  paren is on its own line (`grp = (\n a: uint\n) ; @x`), and for a last group entry whose own
-  trailing slot is already occupied by a field-position `@name` — the two positions share that slot
-  and only one comment survives. No extraction in `parsing.rs` can recover what the parser never
-  recorded, so a sweep cell for those spellings could only ever be an allowlisted inert entry
-  carrying this pointer. Owned meanwhile by `group_rule_pin_metadata`'s doc comment and the
-  `@no_json_schema_export` docs section, both of which name the single-line spelling as the supported
-  one.
-  The fix is upstream — and upstream here is the **dcSpark fork** of `cddl` pinned by git rev in
-  `Cargo.toml` (version 0.10.6 at that rev), not the crates.io crate, so the patch lands in a repo we
-  control. It would have the parser bind the comment to `Rule::Group`'s `comments_after_rule`, which
-  today has exactly two construction sites (`pest_bridge.rs`) and both hardcode `None` — which is why
-  reading that field from `parsing.rs` is dead code rather than a workaround. Design constraint the
-  fix must respect, so it is not rediscovered: for the SUPPORTED single-line spelling the comment
-  already binds to the last group entry's trailing slot, so populating `comments_after_rule` must be
-  ADDITIVE — only for the spellings nothing else captures — or `group_rule_pin_metadata`
-  double-counts, a field-position `@name` on the last entry stops renaming its field, and the
-  never-spliced-group refusal starts naming directives the author wrote at a field. Adopting the bump
-  also needs a vector per affected directive, since a spec relying on today's silence starts behaving
-  differently (correctly) after it. Build a LOCAL workaround only if a consumer spec cannot use the
-  single-line form — a pre-parse source scan attributing a trailing comment to the group rule by line
-  position would be a second, drift-prone comment parser, so it needs a real consumer to justify it.
-  Reopening signal for taking the upstream bump now: a consumer reports a directive silently dropped
-  in a multi-line group spelling their generator cannot reformat, or the fork is bumped for another
-  reason anyway (at which point the additive constraint above is the whole design).
+- **A rule-position directive is still silently LOST in the multi-line group-rule spelling — the
+  fix is built and reviewed on both sides, and adoption is blocked on a maintainer push of the fork
+  rev (ruled against 2026-08-04).** Current behavior at the pinned fork rev (`ac1b98ec`): for
+  `grp = (\n a: uint\n) ; @x` the trailing comment is MISBOUND to the *following* rule's
+  `comments_before_rule` (orphaned when the group rule is last) — a position nothing reads — so the
+  directive silently does nothing. Two mechanism corrections established by the fork work, which
+  earlier versions of this entry (and `parsing.rs`'s doc blocks) had wrong: the pest-bridge's
+  `comments_after_rule: None` literals are PRE-MERGE defaults (comment binding is a source-position
+  trivia merge that runs afterwards — the slot stays empty at the pinned rev because the merge emits
+  no anchor for it, not because of the hardcode), and the supposed second lossy spelling (a last
+  entry whose trailing slot is "already occupied" by a field-position `@name`) DOES NOT EXIST — a
+  CDDL comment runs to end of line, so that one-line form comments out the closing paren and fails
+  to parse; slot contention is unrepresentable. The fix: fork commit
+  `a7ed0784e89689784ff78ed0e85c7434a3528937` (branch `local-fixes`, UNPUSHED — the durable carrier)
+  emits a `RuleTrailing` anchor filled as a strict fallback, so population is ADDITIVE by
+  construction (the single-line spelling keeps binding to the last entry's slot; nothing
+  double-counts); the codegen side (reader merge in `group_rule_pin_metadata`, per-directive
+  vectors both spellings, `no_silent_directive` cells) is prepared and verified both ways — green
+  under a local path override, red at the committed pin exactly on the multi-line halves — in the
+  re-parked burndown row (T1-09, `draft/burndown2/`; NB `draft/` is checkout-local). Owned
+  meanwhile by `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs
+  section, both naming the single-line spelling as the supported one. Reopening signal, unchanged
+  in substance: a consumer reports a directive lost in a multi-line group spelling their generator
+  cannot reformat, or the fork is bumped for any other reason (at which point adopting `a7ed0784`
+  and the prepared codegen side is the whole work).
+
+- **On a SPLICED plain group, the rule slot accepts-and-ignores the thirteen directives with a
+  field-position meaning.** Found 2026-08-04 while preparing the multi-line group sweep cells: the
+  rule-position slot of a spliced group rule is consumed by exactly the four directives with NO
+  field-position meaning (`@rust_name`, `@no_json_schema_export`, `@custom_json`, `@used_as_key`);
+  the other thirteen (`@doc`, `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`,
+  `@duplicates`, `@raw_bytes_flavor`, the custom-codec family, `@extern_companions`) are accepted
+  and inert there — a probe sweep produced 13 genuine silent-drop cells, which were NOT allowlisted
+  (an allowlist absorbing real drops is the dishonesty the sweep exists to prevent). The honest fix
+  is a refusal at the slot for directives the group-rule position cannot honor — a new rejection
+  seam with its own message and vectors, not a sweep entry. The never-spliced flavor already
+  refuses loudly (`finalize`'s never-spliced report); this is the SPLICED flavor's gap. Reopening
+  signal: an author reports writing one of the thirteen on a spliced group rule and being surprised
+  by the silence — or the multi-line sweep cells land (with the fork bump above), at which point
+  the sweep shape that measured the 13 drops can be committed as the red-first vector set.
+
+- **The recombination member-kind table does not span the tagged-optional shape, and one exit-0
+  uncompilable crate escaped through the gap.** The `#6.n(T / null)`-under-`--preserve-encodings`
+  emitter bug (2-binder pattern against the 3-element tuple a crossed tag contributes — E0308 in
+  the generated crate at generator exit 0; fixed in `60ed8bb1`, record: burndown2 T2-23) was
+  reachable at its parent through `inner = uint / null` + `t = #6.10(inner)` — the exact remedy
+  the anonymous-choice-under-preserve refusal advertises — yet no committed fixture and no
+  recombination composition spelled it, so `feature_corpus_roundtrips_nondefault_profiles` and the
+  preserve layer-2 sweep were both blind to it. The cheap systematic layer: add the tagged-optional
+  member kind (a tag head over a `T / null` collapse, spelled via the named-rule remedy) to the
+  recombination ingredient table so the layer-2 preserve sweep compiles it per profile. Reopening
+  signal, on the axis the cost grows along: a SECOND exit-0-uncompilable crate in a supported
+  composition the member-kind table does not span (each instance is a loud build failure for
+  whoever generates the shape, so the reporter exists by construction).
 
 - **The referencing-context axis is measured one wrapping DEEP and at one honored base shape per
   directive; stacked wrappings and second base shapes are not.** The sweep that closed the

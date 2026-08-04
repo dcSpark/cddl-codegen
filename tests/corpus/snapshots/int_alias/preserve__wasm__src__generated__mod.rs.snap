@@ -12,7 +12,6 @@ expression: content
 )]
 pub mod collections;
 
-use cddl_lib::ordered_hash_map::OrderedHashMap;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 pub type BareInt = Int;
@@ -56,49 +55,6 @@ impl From<CborInt> for cddl_lib::CborInt {
 
 impl AsRef<cddl_lib::CborInt> for CborInt {
     fn as_ref(&self) -> &cddl_lib::CborInt {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct CborIntTable(pub(crate) cddl_lib::CborIntTable);
-
-#[wasm_bindgen]
-impl CborIntTable {
-    pub fn to_cbor_bytes(&self) -> Vec<u8> {
-        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
-    }
-
-    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborIntTable, JsError> {
-        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
-            .map(Self)
-            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
-    }
-
-    pub fn new(inner: &MapTextToInt) -> Self {
-        Self(cddl_lib::CborIntTable::new(inner.clone().into()))
-    }
-
-    pub fn get(&self) -> MapTextToInt {
-        self.0.get().clone().into()
-    }
-}
-
-impl From<cddl_lib::CborIntTable> for CborIntTable {
-    fn from(native: cddl_lib::CborIntTable) -> Self {
-        Self(native)
-    }
-}
-
-impl From<CborIntTable> for cddl_lib::CborIntTable {
-    fn from(wasm: CborIntTable) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<cddl_lib::CborIntTable> for CborIntTable {
-    fn as_ref(&self) -> &cddl_lib::CborIntTable {
         &self.0
     }
 }
@@ -168,48 +124,3 @@ impl AsRef<cddl_lib::Int> for Int {
 }
 
 pub type IntError = JsError;
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct MapTextToInt(pub(crate) OrderedHashMap<String, cddl_lib::Int>);
-
-#[wasm_bindgen]
-impl MapTextToInt {
-    pub fn new() -> Self {
-        Self(OrderedHashMap::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn insert(&mut self, key: String, value: &Int) -> Option<Int> {
-        self.0.insert(key, value.clone().into()).map(Into::into)
-    }
-
-    pub fn get(&self, key: String) -> Option<Int> {
-        self.0.get(&key).map(|v| v.clone().into())
-    }
-
-    pub fn keys(&self) -> Vec<String> {
-        self.0.keys().cloned().collect::<Vec<_>>()
-    }
-}
-
-impl From<OrderedHashMap<String, cddl_lib::Int>> for MapTextToInt {
-    fn from(native: OrderedHashMap<String, cddl_lib::Int>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<MapTextToInt> for OrderedHashMap<String, cddl_lib::Int> {
-    fn from(wasm: MapTextToInt) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<OrderedHashMap<String, cddl_lib::Int>> for MapTextToInt {
-    fn as_ref(&self) -> &OrderedHashMap<String, cddl_lib::Int> {
-        &self.0
-    }
-}
