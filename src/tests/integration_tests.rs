@@ -20119,17 +20119,34 @@ fn decode_conformance_replay() {
     // no longer decodes Ok fails the gate. `trunc_head` mutants are ill-formed by construction and can
     // NEVER decode Ok — a `trunc_head` entry here is a hard error (asserted below), not a legitimate
     // skip.
-    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[(
-        "prelude.any",
-        "wrong_major",
-        "the row is `x = any` — the `any` rule accepts every well-formed CBOR data item regardless \
-         of major type (that IS its semantics; it lowers to the AnyCbor runtime type whose \
-         deserializer reads any major), so a wrong_major flip of a payload head yields bytes the \
-         spec genuinely accepts. The committed accept vectors all sample text payloads (the mint's \
-         shape), so the flipped majors are unevidenced by construction, and every vector of this row \
-         is ambiguous in this sense — the (row, label)-wide entry is exact, not a suppression. \
-         Surfaced by the first full-tier run after the A2-era vector mint (A3 close-out).",
-    )];
+    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[
+        (
+            "prelude.any",
+            "wrong_major",
+            "the row is `x = any` — the `any` rule accepts every well-formed CBOR data item regardless \
+             of major type (that IS its semantics; it lowers to the AnyCbor runtime type whose \
+             deserializer reads any major), so a wrong_major flip of a payload head yields bytes the \
+             spec genuinely accepts. The committed accept vectors all sample text payloads (the mint's \
+             shape), so the flipped majors are unevidenced by construction, and every vector of this row \
+             is ambiguous in this sense — the (row, label)-wide entry is exact, not a suppression. \
+             Surfaced by the first full-tier run after the A2-era vector mint (A3 close-out).",
+        ),
+        (
+            "contain.choice-member.prelude.any.last",
+            "wrong_major",
+            "the row is `a = tstr / any` — the accepting spec arm is the LAST-position bare `any` \
+             catch-all, which admits every well-formed CBOR data item the `tstr` arm declines \
+             (forced-backtracking dispatch; the cell's own note spells it). The committed accepts all \
+             sample the `tstr` arm (major 3, the mint's shape), so every wrong_major flip lands on an \
+             unevidenced major that the `any` arm then accepts — probed at ledgering time on the \
+             generated crate: all seven non-text major shapes decode to the `A::Any(AnyCbor)` variant \
+             (never `A::Text`, which would be a tstr mis-dispatch and a real finding), and the \
+             major-3 control still lands on `A::Text`. Same class as the `prelude.any` entry above, \
+             at the choice-arm position; the (row, label)-wide entry is exact, not a suppression. \
+             Surfaced by the row's first full-tier appearance (cycle 13) — the registration cost of a \
+             new `any`-typed row, owed by every future such cell.",
+        ),
+    ];
     // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test REJECTS the
     // mutated bytes but the error Display carries NO location naming the decoding type. EMPTY at HEAD:
     // the newtype-wrapper container reads (3a) and embedded/plain-group deserialize() header
