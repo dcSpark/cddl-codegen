@@ -1819,15 +1819,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.cbor-payload.type2.tag",
         "status": "supported"
       },
@@ -2859,15 +2859,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "ctl.cbor",
         "status": "supported"
       },
