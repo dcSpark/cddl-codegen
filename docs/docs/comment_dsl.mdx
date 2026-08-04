@@ -568,6 +568,15 @@ foo = uint ; @newtype @custom_json
 
 Avoids generating and/or deriving json-related traits under the assumption that the user will supply their own implementation to be used in the generated library.
 
+**The generated crate does not compile until you write them.** That is the trade the directive
+makes, not an oversight: the tool stops deriving the JSON traits but keeps emitting every JSON
+surface over the type, because those surfaces — a containing type's own derives, the wasm wrapper's
+`to_json`/`to_json_value`/`from_json`, and the `--json-schema-export` registration row — are the
+whole point of owning the JSON form by hand. Until your impls exist, each of them is an `E0277`
+naming the trait and your type: `serde::Serialize` and `serde::Deserialize` under
+`--json-serde-derives`, plus `schemars::JsonSchema` under `--json-schema-export`. Those three are
+the complete list; the two sections below cover the serde pair and the schema impl in turn.
+
 It works on any rule shape that mints a **type of its own** — newtypes, record structs (map/array
 group rules), and sum types.
 On a type-choice rule, rule-level directives attach via the trailing comment of the LAST variant:

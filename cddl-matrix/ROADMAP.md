@@ -710,19 +710,34 @@ ledgered here (that's what the probe/gate error messages point at).
   `prelude.number` / `prelude.time` and the two float-range wrapper rows
   `rangeop.{inclusive,exclusive}.float`, and by `EXPECTED_GENERATION_FAIL` in the wasm API parity
   sweep, which pins `tests/core`'s `tagged_type_choice` on the preserve leg.
-- **A `@custom_json` type produces a non-compiling json/wasm surface standalone (the same
-  can't-compile-standalone class as `dsl_custom`).** `@custom_json` intentionally omits the serde
-  derives on the rust type (the user is expected to supply custom json (de)serialize code), but the
-  generated code still assumes serde is present on the json/wasm surfaces: the wasm wrapper emits
-  `to_json` / `from_json` gated only on `--json-serde-derives` (`create_base_wasm_struct`), which
-  require `T: serde::Serialize + Deserialize`, so a `--wasm --json-serde-derives` build fails
-  `E0277` (`cddl_lib::Cj: serde::Serialize is not satisfied`); and any `serde_json::to_string(&T)` over
-  the rust type likewise won't compile. Surfaced by the json/wasm decode-surface legs on the
-  `dsl.custom_json` matrix row (`cj = uint ; @newtype @custom_json`), which is on both `JSON_SURFACE_SKIP`
-  and `WASM_SURFACE_SKIP` citing this entry. Candidate fix: gate the wasm `to_json`/`from_json` emission
-  (and treat the rust json boundary) on whether the type actually carries serde derives, delegating to
-  the user's custom-json hook otherwise — the json analogue of how `@custom_serialize` is already
-  threaded. Until then it is a standalone-compile limitation, not a round-trip bug.
+- **A `@custom_json` type's crate does not compile until the impls the directive promises exist —
+  the contract, not a defect (the can't-compile-standalone class `dsl_custom` and
+  `_CDDL_CODEGEN_EXTERN_TYPE_` are in).** The directive suppresses the serde/schemars derives on the
+  type it names precisely so the spec author owns its JSON form, and the JSON surfaces the tool
+  emits over that type therefore resolve to traits the author is on the hook for: a derived
+  container holding it re-demands `serde::Serialize`/`serde::Deserialize` on the member, the wasm
+  wrapper's `to_json`/`to_json_value`/`from_json` door demands the same pair, and (under
+  `--json-schema-export`) json-gen's registration row demands `schemars::JsonSchema`. Those three
+  impls are the WHOLE demand — every emission site that names a `@custom_json` type does so through
+  one of them, so a build failure is always the named trait on the named type — and supplying them
+  makes the whole surface build: `tests/json` splices the hand-written impls of
+  `tests/external_json_impls` into the generated rust crate and builds the rust crate, the wasm
+  crate and the json-gen crate green under `--json-serde-derives --json-schema-export` with wasm
+  default-on, standalone type and derived container (`custom_holder = [c: custom_wrapper]`) alike,
+  pinned by `custom_wrapper_in_derived_container`. So emitting those surfaces unconditionally is the
+  design: gating them on "does this type carry serde derives" would delete a door a consumer
+  honoring the contract uses, and that door is what makes the directive worth having — a hand-owned
+  JSON form the wasm and schema faces can still publish. What the matrix records is the
+  can't-compile-STANDALONE class, and the `dsl.custom_json` row (`cj = uint ; @newtype
+  @custom_json`) sitting on both `JSON_SURFACE_SKIP` and `WASM_SURFACE_SKIP` is the right record of
+  it: those legs compile the row's generated crate with no hand-written impls anywhere, which is
+  exactly the state the contract says cannot build. The consumer-facing failure is loud and local
+  (`E0277` naming the trait and the type at their first build) and the promise it enforces is stated
+  where the directive is documented (`docs/docs/comment_dsl.mdx` § "@custom_json"). Reopening
+  signal: a `@custom_json` type whose emitted JSON surface demands anything BEYOND those three impls
+  — a bound no hand impl can discharge, or a reference the consumer could only satisfy by editing a
+  generated file — which reaches a consumer as a build failure naming something other than
+  `Serialize`/`Deserialize`/`JsonSchema` on the tagged type.
 - **A NON-STRING map key can't cross the `--json-serde-derives` json boundary.** JSON object keys must
   be strings; `serde_json` stringifies integer keys but hard-errors on a byte-string or composite
   (array/map) key (`serde_json::to_string` returns `Err`, "key must be a string"). So a map keyed by
