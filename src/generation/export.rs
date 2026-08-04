@@ -531,6 +531,180 @@ fn collect_rs_files(
     Ok(())
 }
 
+/// `package.name` of a manifest's text, or `None` if it has none (or does not parse — this is a
+/// diagnostic reader, and a manifest the tool itself just wrote always parses).
+fn manifest_package_name(contents: &str) -> Option<String> {
+    contents
+        .parse::<toml_edit::DocumentMut>()
+        .ok()?
+        .get("package")?
+        .get("name")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// How many member manifests the workspace scan will read before it stops. The scan is an
+/// approximation of cargo's own membership resolution, and a bound is what keeps an approximation
+/// from becoming a cost: an umbrella whose globs cover a huge tree gets a partial answer (fewer
+/// candidate names, so at worst a missed warning) rather than a slow generation.
+const WORKSPACE_SCAN_MANIFEST_BUDGET: usize = 512;
+
+/// Diagnostic-only workspace scan: a generated crate's `package.name` that an EXISTING member of the
+/// surrounding cargo workspace already claims.
+///
+/// Why it is owed at all: cargo adopts in-workspace path dependencies as members, so a name a
+/// hand-written crate already holds does not surface during generation at all — it surfaces at the
+/// consumer's next `cargo metadata` as `error: two packages named X in this workspace`, after the
+/// run reported success with an empty stderr. The tool is the only party that knows, at the moment
+/// it decides the name, that the name is taken.
+///
+/// Why a WARNING and never a refusal: detecting this means reading the SURROUNDING workspace, which
+/// is legitimate as an INPUT, and a warning is what keeps it structurally incapable of changing
+/// emitted bytes. A refusal would make an emitted-output decision depend on a directory the run does
+/// not own. That also sets the accuracy bar: workspace membership (globs, `exclude`, nested
+/// workspaces, `default-members`) is cargo's own resolution and this only approximates it, which a
+/// warning tolerates and a refusal would not.
+fn warn_on_workspace_package_name_collisions(
+    crate_root: &std::path::Path,
+    generated_packages: &[(String, String)],
+) {
+    if generated_packages.is_empty() {
+        return;
+    }
+    let Some((ws_manifest, ws_doc)) = nearest_workspace_manifest(crate_root) else {
+        return;
+    };
+    let Some(ws_dir) = ws_manifest.parent() else {
+        return;
+    };
+    let members = workspace_member_packages(ws_dir, &ws_doc);
+    for (rel_manifest, name) in generated_packages {
+        let ours = crate_root.join(rel_manifest);
+        let ours_canonical = std::fs::canonicalize(&ours).unwrap_or(ours);
+        let Some(other) = members
+            .iter()
+            .find(|(path, member_name)| member_name == name && *path != ours_canonical)
+        else {
+            continue;
+        };
+        // LOAD-BEARING MESSAGE: it must name BOTH manifests (the user has to know which crate to
+        // rename) and the flag that renames ours, because the failure it predicts happens in a
+        // different tool, later, and quotes neither path.
+        crate::warn!(
+            "warning: the generated package `{name}` ({}) has the same name as {}, which is \
+             already a member of the cargo workspace rooted at {}. Cargo refuses a workspace \
+             holding two packages of one name, so the next `cargo metadata`/`cargo build` over \
+             this tree fails with \"two packages named `{name}` in this workspace\" — generation \
+             itself cannot see that. Remedy: pass --lib-name to give this crate a name the \
+             workspace does not already use, or rename the other crate.",
+            ours_canonical.display(),
+            other.0.display(),
+            ws_manifest.display(),
+        );
+    }
+}
+
+/// The nearest ancestor `Cargo.toml` (starting at `from` itself) carrying a `[workspace]` table,
+/// with its parsed document. `None` when the output is not inside a workspace at all — the common
+/// standalone case, which must stay silent.
+fn nearest_workspace_manifest(
+    from: &std::path::Path,
+) -> Option<(std::path::PathBuf, toml_edit::DocumentMut)> {
+    let start = std::fs::canonicalize(from).unwrap_or_else(|_| from.to_path_buf());
+    for dir in start.ancestors() {
+        let manifest = dir.join("Cargo.toml");
+        let Ok(contents) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        let Ok(doc) = contents.parse::<toml_edit::DocumentMut>() else {
+            continue;
+        };
+        if doc.get("workspace").is_some() {
+            return Some((manifest, doc));
+        }
+    }
+    None
+}
+
+/// `(canonical manifest path, package name)` for every member of the workspace this scan can
+/// resolve: the root's own package if it has one, plus each `workspace.members` entry — literal
+/// paths directly, and a `*` entry by scanning the directory before the first `*` one level deep.
+/// Entries under `workspace.exclude` and anything under a `target/` directory are dropped.
+///
+/// Deliberately an approximation, per the warning's accuracy bar: cargo also adopts path
+/// dependencies it finds transitively, which would mean resolving the whole dependency graph.
+/// Under-reading costs a missed warning; it never invents one, because every name reported here was
+/// read out of a real manifest on disk.
+fn workspace_member_packages(
+    ws_dir: &std::path::Path,
+    ws_doc: &toml_edit::DocumentMut,
+) -> Vec<(std::path::PathBuf, String)> {
+    let string_list = |key: &str| -> Vec<String> {
+        ws_doc
+            .get("workspace")
+            .and_then(|w| w.get(key))
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let excluded: Vec<std::path::PathBuf> = string_list("exclude")
+        .iter()
+        .map(|e| ws_dir.join(e))
+        .filter_map(|p| std::fs::canonicalize(&p).ok())
+        .collect();
+
+    let mut candidate_dirs: Vec<std::path::PathBuf> = vec![ws_dir.to_path_buf()];
+    for entry in string_list("members") {
+        match entry.find('*') {
+            None => candidate_dirs.push(ws_dir.join(&entry)),
+            Some(star) => {
+                // A bounded glob expansion: the literal prefix's directory, one level deep. That
+                // covers the `crates/*` spelling workspaces overwhelmingly use, and a deeper or
+                // odder pattern simply contributes nothing.
+                let prefix = &entry[..star];
+                let base = ws_dir.join(prefix.trim_end_matches('/'));
+                if let Ok(read) = std::fs::read_dir(&base) {
+                    for child in read.flatten() {
+                        if child.path().is_dir() {
+                            candidate_dirs.push(child.path());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    let mut read_budget = WORKSPACE_SCAN_MANIFEST_BUDGET;
+    for dir in candidate_dirs {
+        if read_budget == 0 {
+            break;
+        }
+        let Ok(dir) = std::fs::canonicalize(&dir) else {
+            continue;
+        };
+        if dir.components().any(|c| c.as_os_str() == "target")
+            || excluded.iter().any(|e| dir.starts_with(e))
+        {
+            continue;
+        }
+        let manifest = dir.join("Cargo.toml");
+        let Ok(contents) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        read_budget -= 1;
+        if let Some(name) = manifest_package_name(&contents) {
+            out.push((manifest, name));
+        }
+    }
+    out
+}
+
 /// Prepend the codegen header onto a (already rustfmt'd) generated file's content. The header is
 /// pure `//` comments, so it leads the file verbatim regardless of whether the body opens with an
 /// inner `#![…]` attribute (both orderings are valid Rust; a comment may precede an inner attr).
@@ -954,6 +1128,18 @@ impl GenerationScope {
                 files.insert((*rel_path).to_owned(), merged);
             }
         }
+        // The package names this run ships, read back off the manifests it just decided rather than
+        // re-derived from `--lib-name` — the changeset is what actually names the packages, so
+        // reading it is the only way the collision scan below cannot drift from them. Collected
+        // HERE (the manifests are final; the overlay below touches `.rs` only) and used at the very
+        // end, after every write.
+        let generated_packages: Vec<(String, String)> = manifest_ops
+            .iter()
+            .filter_map(|(rel_path, _)| {
+                let name = manifest_package_name(files.get(*rel_path)?)?;
+                Some(((*rel_path).to_owned(), name))
+            })
+            .collect();
 
         // Comment/code-preservation overlay over the in-memory file map, then a post-overlay import
         // re-prune. This is the third bounded exception to the no-prior-output invariant. For each
@@ -1364,6 +1550,12 @@ impl GenerationScope {
                 );
             }
         }
+
+        // Workspace package-name collision scan. Same diagnostic class as the two above and the
+        // legacy-root check: it runs AFTER every write, reads only the SURROUNDING workspace (an
+        // input, not this run's output), and its whole effect is `warn!` lines. No emitted byte can
+        // depend on it — delete the call and every written file is identical.
+        warn_on_workspace_package_name_collisions(&rust_dir, &generated_packages);
 
         Ok(())
     }

@@ -143,17 +143,8 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-1. **Two uncovered surfaces around `export()`, both measured while probing the aggregate-package
-   deferral above.** Neither depends on that feature ever shipping.
-   - **A generated crate's `package.name` can collide with an existing workspace member and nothing
-     says so.** The tool writes `rust/Cargo.toml` with `package.name` derived from `--lib-name`,
-     and cargo adopts in-workspace path dependencies as members, so a name a hand-written crate
-     already claims surfaces only as `error: two packages named X in this workspace` at the
-     consumer's next `cargo metadata` — after generation reported success. Reproduced in scratch
-     with a synthetic umbrella crate. What to build: a vector generating into a workspace that
-     already holds the name, asserting whatever diagnosis we decide the tool owes (a generation-time
-     refusal is one option; the collision is only detectable if the tool reads the surrounding
-     workspace, which is an input, not prior output).
+1. **An uncovered surface around `export()`, measured while probing the aggregate-package
+   deferral above.** It does not depend on that feature ever shipping.
    - **`export()`'s write tail has no coverage independent of a full spec-bearing run.** The
      snapshot corpus goes through `generated_strings`, which stops at the file map; the manifest
      merge, comment-preservation overlay, post-overlay import re-prune, seed-once write loop and
