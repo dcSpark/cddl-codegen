@@ -737,7 +737,11 @@ ledgered here (that's what the probe/gate error messages point at).
   the cost of a non-obvious wire mapping — decide before building. The tree now carries a decided
   precedent for one position that went the OTHER way: an open struct-map rest row's typed key domain
   images text/uint/nint keys as natural strings and STRICT-FAILS bytes/composite keys at `to_json`
-  (`docs/docs/output_format.mdx` § "Typed key domains in JSON"), refusing a lossy encoding for the
+  (`docs/docs/output_format.mdx` § "Typed key domains in JSON"; surfaced at catalog breadth by
+  `decode_conformance_replay`'s json legs on
+  `contain.occurrence-target.memberkey.type1.open_struct_bytes_key`, on that gate's
+  `JSON_SURFACE_SKIP` citing this entry — its `nint`-domain sibling crosses the boundary fine),
+  refusing a lossy encoding for the
   same injectivity reason the natural walk refuses bytes — so building the hex/base64 mitigation for
   tables means either overturning that rationale or accepting that the two map positions publish
   different key conventions.
