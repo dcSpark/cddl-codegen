@@ -738,20 +738,19 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   Mechanical layer on a SECOND instance: a per-suite anchor-completeness check (each
   round-tripped type's public fields ⊆ the fields its suite's asserts mention — buildable as a
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
-- **The corpus-wide regen-over-prior-output sweep runs ONE emission profile, so a comment the
-  generator emits only under another one is unwatched.** `regen_over_prior_output_corpus` (and its
-  compile sibling) generate with `--wasm=true` and nothing else, which is the profile whose emitters
-  the overlay's two known trap instances lived in. Under `--preserve-encodings` a whole file exists
-  that the sweep never sees (`cbor_encodings.rs`), and the json profile adds derive attributes and a
-  `json-gen` tree; a comment emitted on a deletable row in any of those is exactly the class the
-  sweep exists to catch, in a place it does not look. The cost of closing it is a multiple of the
-  sweep's measured wall per added profile, paid on every `local` tier run, which is why one profile
-  shipped rather than three. **Owner meanwhile:** the emitter invariant itself — no generated comment
-  on a row a spec change can delete — plus the sweep's static floor, which is profile-independent in
-  its REASONING even where it is single-profile in its reach. **Trigger:** a second trap instance
-  (a `cddl-codegen:unpreserved-comment` sentinel reported against a regenerated tree, by a consumer
-  or by any gate) in a file the default profile does not emit — at which point the profile that
-  produced it is the one to add, not all of them.
+- **The corpus-wide regen-over-prior-output sweep reaches two emission profiles of four, and its
+  user-EDIT leg reaches one.** `regen_over_prior_output_corpus` sweeps the static floor and the
+  rule-DELETION variant under the default and `--preserve-encodings` profiles (the latter for
+  `cbor_encodings.rs`, a per-rule surface the default never emits); the `json` profile's `json-gen`
+  tree and derive attributes, and the `component` face's WIT-side glue, are unswept, as is the
+  user-EDIT leg outside the default profile. Each added profile costs one more generation per fixture
+  for legs 1-2 (measured ~15 s on the delivering machine) and THREE for the edit leg, plus nested
+  cargo for its compile gate — paid on every `local` tier run. **Owner meanwhile:** the emitter
+  invariant itself (no generated comment on a row a spec change can delete), which is
+  profile-independent in its reasoning even where the sweep is not in its reach, plus the two swept
+  profiles' floors. **Trigger:** a `cddl-codegen:unpreserved-comment` sentinel reported against a
+  regenerated tree — by a consumer or by any gate — in a file neither swept profile emits; the
+  profile that produced it is then the one to add, not all of them.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in
