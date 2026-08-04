@@ -1380,6 +1380,17 @@ export const REGISTRY: Gate[] = [
   // at `full` where the JS face would go unchecked in the tier run dozens of times a day.
   { id: "component_jco", tier: "local", kind: "fn", run: runJcoCheck,
     desc: "component face: JS host — jco-transpiled components driven from node (surface + cross-crate + the wac-composed known-broken pin)" },
+  // The one gate that regenerates OVER prior output at corpus breadth — the only path on which the
+  // comment-preservation overlay runs at all, and the home of two shipped classes (a comment stranded
+  // by a rule deletion into a self-perpetuating `compile_error!` sentinel; a `cddl-codegen:replace`
+  // block orphaning an import). `#[ignore]`d because it is 5 generator runs x 91 fixtures rather than
+  // because it is fragile, and `local` rather than `full` because it is measured at 40 s: no cargo,
+  // no network, six worker threads over generator subprocesses. `--exact` on the full module path so
+  // it does not sweep in its `_compiles` sibling, which is `full` and pays nested cargo.
+  { id: "regen_over_prior_output_corpus", tier: "local", kind: "cmd",
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "tests::regen_over_prior_tests::regen_over_prior_output_corpus", "--", "--exact", "--ignored", "--nocapture"],
+    ignoredTest: "regen_over_prior_output_corpus",
+    desc: "corpus-wide regen over prior output: trailing-comment floor + rule-DELETION and user-EDIT regen variants (manual, #[ignore]d)" },
   { id: "insta_orphan", tier: "local", kind: "cmd",
     cmd: ["cargo", "insta", "test", "--unreferenced=reject", "--", "snapshot_tests", "robustness"],
     desc: "snapshot orphan check" },
@@ -1536,6 +1547,17 @@ export const REGISTRY: Gate[] = [
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_corpus_compiles", "--", "--ignored", "--nocapture"],
     ignoredTest: "component_corpus_compiles",
     desc: "component face at corpus breadth: cargo check --target wasm32-wasip2 per fixture (manual, #[ignore]d)" },
+  // The compile half of the corpus-wide user-EDIT regen leg, split from its `local` sibling because
+  // its cost class is nested cargo per fixture rather than a generator subprocess. It is the only
+  // gate that asks whether a crate regenerated over a `cddl-codegen:replace` block still BUILDS
+  // warning-clean — the orphaned-`use` class is a rustc WARNING, invisible to any assertion about
+  // generation exiting 0. Gate-cached per generated-crate content hash, and a member of the batch on
+  // the same terms as its neighbours: `#[ignore]`d, `cmd`-shaped, owner of a flocked scratch root
+  // nothing else touches.
+  { id: "regen_over_prior_output_corpus_compiles", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "regen_over_prior_output_corpus_compiles", "--", "--ignored", "--nocapture"],
+    ignoredTest: "regen_over_prior_output_corpus_compiles",
+    desc: "regen over a user EDIT at corpus breadth: cargo check the regenerated rust+wasm crates, unused-import/variable clean (manual, #[ignore]d)" },
   { id: "verify", tier: "full", kind: "fn", run: runVerify, script: "verify.ts",
     desc: "cddl-matrix mechanical verify gate (oracle preflight + probe every feature)" },
   // Registered AFTER `verify` so a `full --cache-transparency` run warms the cache via `verify` first,

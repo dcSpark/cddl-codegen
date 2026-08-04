@@ -756,6 +756,12 @@
       ]
     },
     {
+      "gate": "regen_over_prior_output_corpus"
+    },
+    {
+      "gate": "regen_over_prior_output_corpus_compiles"
+    },
+    {
       "gate": "rust_oracle_fingerprint",
       "warm_ms": 24000,
       "n": 20,
