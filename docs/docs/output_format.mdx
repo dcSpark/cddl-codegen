@@ -152,6 +152,47 @@ name, so it names no value class and accepts the literal at any width — the pe
 are the separate rule in [Floats](current_capacities#types), and the canonical narrowing is under
 [`--canonical-form`](command_line_flags).
 
+## Optional members whose type is nullable
+
+A member that is **both** optional and nullable (`[pre: uint, ? field0: (uint / null)]` — the `?`
+makes it optional, the `/ null` makes its type nullable) carries **three** states, and the rust field
+is a nested `Option`:
+
+```rust
+pub struct NullableOptionalField {
+    pub pre: u64,
+    #[serde(with = "crate::generated::double_option")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field0: Option<Option<u64>>,
+}
+```
+
+| state          | rust            | CBOR              | JSON              |
+|----------------|-----------------|-------------------|-------------------|
+| absent         | `None`          | member not written| key **omitted**   |
+| present, null  | `Some(None)`    | `null` written    | `"field0": null`  |
+| present, value | `Some(Some(v))` | value written     | `"field0": v`     |
+
+The three serde attributes are what make the JSON column carry all three states: serde's plain
+derive reads a JSON `null` into the **outer** `None` and writes the outer `None` **as** `null`, so
+without them present-null would decode as absent and absent would be indistinguishable from
+present-null in the text. The `double_option` adapter module is emitted into the generated crate
+under `--json-serde-derives` only for specs that have such a member.
+
+:::caution Breaking for producers that wrote `null` to mean absent
+A JSON document whose producer wrote `"field0": null` for an **absent** member now decodes as
+**present-null**, and this crate no longer writes `null` for an absent member. Emit an omitted key
+for absent and reserve `null` for the CDDL `null`.
+:::
+
+Under `--json-schema-export` the member's schema is unchanged (`"type": ["integer", "null"]`, not
+listed in `required`); the emitted `#[schemars(with = …)]` exists only to stop `schemars` reading the
+serde `with` module path as a type. On the **wasm** read side the two `Option`s are flattened into
+one, because `wasm_bindgen` cannot expose `Option<Option<T>>` — the presence bit is restored
+additively by a `has_<field>()` accessor, see
+[Wasm differences](./wasm_differences#nullable--nested-options).
+
 ## Nominal tag-258 set types
 
 A tag-258 set — the two-arm idiom (`my_set = #6.258([* a]) / [* a]`), the single-arm mandatory-tag

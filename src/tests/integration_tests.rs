@@ -6792,6 +6792,169 @@ fn nullable_wasm() {
     run_test("nullable-wasm", &[], None, &[], &[], false, &[]);
 }
 
+/// A member that is BOTH optional and nullable (`? field0: (uint / null)`) carries THREE states —
+/// absent, present-null, present-value — and both decode surfaces must carry all three.
+///
+/// The CBOR surface always did. The JSON surface did not: the rust member is a nested
+/// `Option<Option<u64>>`, and serde's plain derive collapses the two `Option`s in BOTH directions —
+/// a JSON `null` reads back as the OUTER `None` (so present-null decoded as absent, losing the
+/// value), and the outer `None` WRITES as `null` (so absent and present-null produced identical
+/// JSON text, losing the distinction even for a reader who knew about the first half). The
+/// `double_option` adapter plus `default` + `skip_serializing_if` fixes both halves; this pin
+/// asserts the whole three-state table on both surfaces, and the cross-surface agreement that makes
+/// them one codec rather than two.
+///
+/// RED at `cc25aa87`, executed on the emitted crate: `cbor_carries_three_states` PASSED (the CBOR
+/// leg was never the defective one — the recorded finding had the two surfaces the wrong way
+/// round), while `json_carries_three_states` failed with the ABSENT value rendering as
+/// `{"pre":824,"field0":null}` instead of `{"pre":824}`, and `json_detour_preserves_the_cbor_bytes`
+/// failed with the present-null `82190338f6` re-encoding to `81190338` after the json detour.
+///
+/// The absent → OMITTED-KEY half is a BREAKING change for a consumer whose json producer wrote
+/// `"field": null` meaning absent: that text now decodes as present-null. Documented in
+/// `docs/docs/output_format.mdx` § "Optional members whose type is nullable".
+///
+/// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
+/// only `fast`. This gate will not be seen by CI.
+#[test]
+fn optional_nullable_member_keeps_three_states_on_both_surfaces() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_double_option_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    // ONE shared target dir across the legs — the generated crates share every dependency, so only
+    // the first leg pays for them.
+    let target_dir = scratch.join("target");
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "maybe_uint = uint / null\n\
+         nullable_optional_field = [pre: uint, ? field0: maybe_uint]\n",
+    )
+    .unwrap();
+
+    // The three states, as the CBOR the spec admits for each:
+    //   absent         [824]        -> None
+    //   present, null  [824, null]  -> Some(None)
+    //   present, 255   [824, 255]   -> Some(Some(255))
+    // and the JSON each must produce: an omitted key, an explicit `null`, and the bare value.
+    const PIN: &str = r##"
+#[cfg(test)]
+mod __double_option_pin {
+    use super::*;
+    use super::serialization::{Deserialize, ToCBORBytes};
+
+    const ABSENT: &[u8] = &[0x81, 0x19, 0x03, 0x38];
+    const PRESENT_NULL: &[u8] = &[0x82, 0x19, 0x03, 0x38, 0xf6];
+    const PRESENT_VALUE: &[u8] = &[0x82, 0x19, 0x03, 0x38, 0x18, 0xff];
+
+    fn decode(bytes: &[u8]) -> NullableOptionalField {
+        NullableOptionalField::from_cbor_bytes(bytes).expect("the vector must decode")
+    }
+
+    // --- CBOR leg: every state decodes to its own rust value and re-encodes byte-identically ----
+    #[test]
+    fn cbor_carries_three_states() {
+        assert_eq!(decode(ABSENT).field0, None);
+        assert_eq!(decode(PRESENT_NULL).field0, Some(None));
+        assert_eq!(decode(PRESENT_VALUE).field0, Some(Some(255)));
+        for bytes in [ABSENT, PRESENT_NULL, PRESENT_VALUE] {
+            assert_eq!(
+                decode(bytes).to_cbor_bytes(),
+                bytes,
+                "re-encode must be byte-identical for {bytes:?}"
+            );
+        }
+    }
+
+    // --- JSON leg: each state has its OWN json text, and reads back as itself ------------------
+    #[test]
+    fn json_carries_three_states() {
+        let cases: [(&[u8], &str); 3] = [
+            (ABSENT, r#"{"pre":824}"#),
+            (PRESENT_NULL, r#"{"pre":824,"field0":null}"#),
+            (PRESENT_VALUE, r#"{"pre":824,"field0":255}"#),
+        ];
+        for (bytes, expected) in cases {
+            let value = decode(bytes);
+            let json = serde_json::to_string(&value).expect("serialize");
+            assert_eq!(json, expected, "json text for {bytes:?}");
+            let back: NullableOptionalField = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(back.field0, value.field0, "json round-trip for {bytes:?}");
+        }
+        // The distinction the plain derive lost, stated as its own assertion: absent and
+        // present-null are DIFFERENT json texts.
+        assert_ne!(
+            serde_json::to_string(&decode(ABSENT)).unwrap(),
+            serde_json::to_string(&decode(PRESENT_NULL)).unwrap()
+        );
+    }
+
+    // --- cross-surface: a json detour must not change the bytes --------------------------------
+    #[test]
+    fn json_detour_preserves_the_cbor_bytes() {
+        for bytes in [ABSENT, PRESENT_NULL, PRESENT_VALUE] {
+            let json = serde_json::to_string(&decode(bytes)).expect("serialize");
+            let back: NullableOptionalField = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(
+                back.to_cbor_bytes(),
+                bytes,
+                "decode -> json -> decode -> re-encode must be byte-identical for {bytes:?}"
+            );
+        }
+    }
+}
+"##;
+
+    // Both json-bearing profiles: the preserve struct shape differs (an extra `encodings` field the
+    // json face skips), so the attributes must land on the right field in each.
+    for (leg, extra) in [
+        ("plain", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+    ] {
+        let out = scratch.join(leg);
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .arg("--json-serde-derives=true");
+        for arg in extra {
+            cmd.arg(arg);
+        }
+        let gen_out = cmd.output().unwrap();
+        assert!(
+            gen_out.status.success(),
+            "{leg}: generation failed:\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        );
+        let generated_mod = out.join("rust/src/generated/mod.rs");
+        let source = std::fs::read_to_string(&generated_mod).unwrap();
+        assert!(
+            source.contains("#[serde(with = \"crate::generated::double_option\")]"),
+            "{leg}: the optional-nullable member must be steered through the adapter:\n{source}"
+        );
+        std::fs::write(&generated_mod, format!("{source}\n{PIN}")).unwrap();
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .arg("__double_option_pin")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{leg}: the three-state pin must build and pass:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tracked SILENT-WRONG-OUTPUT gaps (compile-green, snapshot-blessed, behaviorally wrong).
 //
@@ -20344,13 +20507,6 @@ fn corpus_decode_replay() {
             "nonempty_nested_positions.holder",
             "a composite (map) map key is not json-serializable — serde_json requires string keys \
              (cddl-matrix/ROADMAP.md § findings)",
-        ),
-        // Present-null optional field: json preserves present-null, the CBOR re-encode drops it — the
-        // to_cbor_bytes fidelity proxy diverges (cddl-matrix/ROADMAP.md § findings).
-        (
-            "nullable_nested.nullable_optional_field",
-            "a present-null optional field round-trips differently through json (preserved) than the \
-             direct CBOR re-encode (dropped) (cddl-matrix/ROADMAP.md § findings)",
         ),
         // `@custom_json` omits serde derives, so the json test module's serde_json usage won't compile
         // standalone (references user-supplied custom-json code) — cddl-matrix/ROADMAP.md § findings.

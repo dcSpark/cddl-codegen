@@ -2437,10 +2437,7 @@ pub(super) fn codegen_struct(
                                 false,
                             ),
                         );
-                    } else if matches!(
-                        field.rust_type.conceptual_type.resolve_alias_shallow(),
-                        ConceptualRustType::Optional(_)
-                    ) {
+                    } else if field.is_double_option() {
                         // A nullable optional field is stored as `Option<Option<T>>`, which
                         // wasm-bindgen can't return. Flatten the presence-`Option` into the value's
                         // `Option` and return a single `Option<T>` (same convention as the map
@@ -2790,6 +2787,28 @@ pub(super) fn codegen_struct(
                     for annotation in super::natural_any_serde_annotations(cli, position) {
                         codegen_field.annotation(annotation);
                     }
+                }
+            }
+            // A member that is BOTH optional and nullable is stored as a nested `Option<Option<…>>`,
+            // which serde's plain derive collapses in both directions (present-null reads back as
+            // absent; absent writes as `null`). Steer it through the `double_option` adapter so the
+            // JSON surface carries the same three states the CBOR surface does. Disjoint from the
+            // natural-`any` block above by construction: that one matches on the field's OUTER
+            // conceptual type being `Any`/`Array`/`Map`, this one on its being `Optional`.
+            //
+            // `manual_json` excludes the two hand-owned JSON faces, and neither is a silent gap: an
+            // open table has NO declared fields at all (`is_open_table` requires `fields.is_empty()`),
+            // so the shape is unreachable there by construction; and under `@custom_json` the spec
+            // author owns both serde impls, so the tool steers nothing.
+            if !manual_json && field.is_double_option() {
+                // The member type verbatim, spelled exactly as the field declaration above spells
+                // it — it is what the `schemars` neutralizer hands back to the derive.
+                let member_type = format!(
+                    "Option<{}>",
+                    field.rust_type.for_rust_member(types, false, cli)
+                );
+                for annotation in super::double_option_serde_annotations(cli, &member_type) {
+                    codegen_field.annotation(annotation);
                 }
             }
             native_struct.push_field(codegen_field);

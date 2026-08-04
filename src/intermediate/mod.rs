@@ -581,6 +581,26 @@ impl<'a> IntermediateTypes<'a> {
         )
     }
 
+    /// Whether ANY generated record carries a member that is BOTH optional and nullable
+    /// (`? f: (T / null)`), whose rust member is therefore a nested `Option<Option<T>>`. Gates the
+    /// standalone `double_option` runtime module (the `#[serde(with)]` adapter that keeps the JSON
+    /// surface's absent / present-null / present-value distinction) under `--json-serde-derives`.
+    ///
+    /// The struct-field position is the WHOLE reachable universe for a nested `Option`: every other
+    /// spelling collapses one of the two `Option`s before it reaches a serde surface — a table value
+    /// / array element carries no presence-`Option` of its own (container membership is the presence
+    /// bit), a wrapper body and a type-choice arm hold the nullable directly, and a group-choice arm
+    /// either becomes a record of its own (this position) or is inlined into an enum variant, where
+    /// the variant tag IS the presence bit (`can_embed_fields`, ≤1 non-fixed field). A member with a
+    /// `@default` is not `Option`-wrapped at all, so it is excluded here exactly as it is at the
+    /// emission site.
+    pub fn uses_double_option(&self) -> bool {
+        self.rust_structs.values().any(|rs| {
+            matches!(rs.variant(), RustStructType::Record(record)
+                if record.fields.iter().any(RustField::is_double_option))
+        })
+    }
+
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {
         &self.rust_structs
     }

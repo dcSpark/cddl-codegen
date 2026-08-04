@@ -1313,6 +1313,13 @@ impl GenerationScope {
             if (cli.json_serde_derives || cli.json_schema_export) && types.uses_open_struct_rest() {
                 self.rust_lib().raw("pub mod open_struct_rest_json;");
             }
+            // only crates with an optional-AND-nullable member pull in the double-`Option` serde
+            // adapter — keeps every other crate's output byte-identical. Serde-only (unlike the
+            // module above): `--json-schema-export` adds no annotation for the shape, because the
+            // schema the derive already produces for it is the honest one.
+            if cli.json_serde_derives && types.uses_double_option() {
+                self.rust_lib().raw("pub mod double_option;");
+            }
             // the honest `serde_json::Value`/`Number` serializer walk. Flag-gated, never spec-gated
             // (like `json_schema_gen` below, unlike the runtimes above): it is a published API for
             // hand-written `Serialize` impls on extern / `@custom_json` types, which need it whether
@@ -3721,6 +3728,47 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
         out.push(format!(
             "#[schemars(schema_with = \"{base}::{schema_fn}\")]"
         ));
+    }
+    out
+}
+
+/// The serde field annotations for a member that is BOTH optional and nullable
+/// (`? f: (T / null)` → a nested `Option<Option<T>>` — `RustField::is_double_option`). serde's plain
+/// derive collapses the two `Option`s in both directions: a JSON `null` reads back as the OUTER
+/// `None` (absent), and an absent member WRITES as `null` — so the JSON surface loses the
+/// present-null value AND cannot distinguish absent from present-null, while the CBOR surface keeps
+/// all three states. The three attributes restore them: `with` supplies the adapter (present `null`
+/// → `Some(None)`), `default` restores the missing-key ⇒ outer `None` reading a `with` field
+/// otherwise loses (a `#[serde(with)]` field is REQUIRED on read), and `skip_serializing_if` writes
+/// absent as an OMITTED key rather than `null`. Returns empty without `--json-serde-derives` — a
+/// `#[serde(…)]` attribute with no serde derive in scope does not compile.
+///
+/// The `schemars` half is a NEUTRALIZER, not a schema change. `schemars`' derive reads
+/// `#[serde(with = …)]` as its OWN `with`, whose argument is a TYPE — so the adapter's module path
+/// reaches it as `expected type, found module` (E0573, a crate that does not compile) whenever both
+/// json flags are on. `#[schemars(with = "<the field's own rust type>")]` takes precedence and hands
+/// it back exactly the type it would have read without the serde attribute, so the emitted schema is
+/// byte-for-byte the one the plain derive produced: nullable-`T`, non-required (`schemars` reads the
+/// `default` / `skip_serializing_if` pair for required-ness, which `with` does not affect). Emitted
+/// only when BOTH flags are on — there is no `#[serde(with)]` to neutralize otherwise.
+///
+/// The adapter module lives in the `double_option` runtime module, reached through the same common-
+/// import glue as the other runtimes (`common_import_rust`) so `--common-import-override` split
+/// crates spell the shared-core path.
+pub fn double_option_serde_annotations(cli: &Cli, member_type: &str) -> Vec<String> {
+    if !cli.json_serde_derives {
+        return Vec::new();
+    }
+    let mut out = vec![
+        format!(
+            "#[serde(with = \"{}::double_option\")]",
+            cli.common_import_rust()
+        ),
+        "#[serde(default)]".to_owned(),
+        "#[serde(skip_serializing_if = \"Option::is_none\")]".to_owned(),
+    ];
+    if cli.json_schema_export {
+        out.push(format!("#[schemars(with = \"{member_type}\")]"));
     }
     out
 }

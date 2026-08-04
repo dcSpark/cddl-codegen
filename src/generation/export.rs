@@ -228,8 +228,22 @@ fn composed_runtime_static_files(
     include_any_cbor: bool,
     include_open_struct_rest_json: bool,
     include_open_table_json: bool,
+    include_double_option: bool,
 ) -> std::io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
+
+    // double_option.rs (the `#[serde(with)]` adapter for a member that is both optional and
+    // nullable — a nested `Option<Option<T>>`). Its own module rather than a fragment of one of the
+    // json runtimes below: it is `any`-free and rest-row-free, so neither `any_cbor.rs` nor
+    // `open_struct_rest_json.rs` is gated on a property it shares. Serde-only — the schema
+    // `schemars` derives for the shape needs no adapter.
+    if include_double_option && cli.json_serde_derives {
+        let content = std::fs::read_to_string(cli.static_dir.join("double_option_json.rs"))?;
+        out.push((
+            "double_option.rs".to_owned(),
+            rustfmt_generated_string(&content)?.into_owned(),
+        ));
+    }
 
     // open_struct_rest_json.rs (the flatten JSON helpers for open struct-map rest rows).
     // JSON-only and `any`-free — a fully-typed `* uint => text` rest row needs it without the AnyCbor
@@ -1132,6 +1146,7 @@ impl GenerationScope {
                 types.uses_any_cbor(),
                 types.uses_open_struct_rest(),
                 types.uses_open_table(),
+                types.uses_double_option(),
             )?;
             for (filename, content) in &runtime_files {
                 let rel_path = format!("rust/src/generated/{filename}");
@@ -1213,7 +1228,7 @@ impl GenerationScope {
             let export_dir = export_crate.join("src");
             std::fs::create_dir_all(&export_dir)?;
             let runtime_files =
-                composed_runtime_static_files(cli, true, true, true, true, true, true, true)?;
+                composed_runtime_static_files(cli, true, true, true, true, true, true, true, true)?;
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
                 let is_new = !path.exists();

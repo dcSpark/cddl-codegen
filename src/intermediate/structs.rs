@@ -289,6 +289,23 @@ impl RustField {
         }
     }
 
+    /// Whether this member's rust type is a nested `Option<Option<…>>`: an OPTIONAL member
+    /// (`? f: …`, which the struct stores behind a presence-`Option`) whose own type is NULLABLE
+    /// (`T / null` → `Option<T>`). The single source of truth for that shape — the serde
+    /// `double_option` adapter's emission condition, the runtime module's usage gate and the wasm
+    /// face's flatten condition are all the same predicate, so they cannot drift.
+    ///
+    /// A member with a `@default` is NOT stored behind a presence-`Option` (the default fills the
+    /// absent case), so it is excluded: its rust type is the nullable's single `Option`.
+    pub fn is_double_option(&self) -> bool {
+        self.optional
+            && self.rust_type.config.default.is_none()
+            && matches!(
+                self.rust_type.conceptual_type.resolve_alias_shallow(),
+                ConceptualRustType::Optional(_)
+            )
+    }
+
     pub fn to_embedded_rust_type(&self) -> Cow<'_, RustType> {
         if self.optional {
             Cow::Owned(RustType::new(ConceptualRustType::Optional(Box::new(

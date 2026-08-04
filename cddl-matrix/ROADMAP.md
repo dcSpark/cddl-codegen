@@ -707,17 +707,6 @@ ledgered here (that's what the probe/gate error messages point at).
   same injectivity reason the natural walk refuses bytes — so building the hex/base64 mitigation for
   tables means either overturning that rationale or accepting that the two map positions publish
   different key conventions.
-- **A present-null OPTIONAL field round-trips differently through json than through CBOR re-encode.**
-  For `[pre: uint, ? field0: (uint / null)]`, the accept vector `[0, [824, null]]` (the optional field
-  PRESENT and null) decodes fine, but the direct CBOR re-encode DROPS the null (`v.to_cbor_bytes()` =
-  `[0, [824]]` — present-null normalized to absent), while the json round-trip PRESERVES it
-  (`serde_json` → `from_str` → `[0, [824, null]]`). The two decode surfaces disagree about the
-  present-null-vs-absent distinction for an optional field whose inner type is itself nullable. Surfaced
-  by the json/wasm decode-surface legs of `corpus_decode_replay` on
-  `nullable_nested.nullable_optional_field` (on that gate's `JSON_SURFACE_SKIP` citing this entry). The
-  candidate fix needs a call on which representation is canonical (a faithful codec should preserve the
-  distinction — the CBOR re-encode dropping the present null is the likelier defect) and a matching
-  serde/serialize alignment; until then the row's json round-trip can't assert `to_cbor_bytes` fidelity.
 - **Extern compile coverage at BREADTH — every extern corpus/matrix cell is still compile-exempt.**
   Every extern corpus row is compile-gate-exempt (`COMPILE_GATE_EXEMPT` — extern references
   user-supplied code) and the multifile matrix carries the same permanent extern exclusion. The
