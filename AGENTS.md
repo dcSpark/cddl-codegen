@@ -21,7 +21,7 @@ Pipeline — `CDDL text → AST → IR → emitted source`:
 1. The `cddl` crate parses the spec to an AST.
 2. `parsing.rs` walks the AST and builds the intermediate representation
 3. `intermediate/` has the IR data structures that everything else works against — split into `mod.rs` (`IntermediateTypes` + scopes), `idents.rs`, `rust_type.rs` (`RustType`/`ConceptualRustType`), and `structs.rs` (`RustStruct`/`RustRecord`/`EnumVariant`/generics).
-3. `generation/` walks the IR and emits the per-type Rust/WASM/JSON/WIT source (Rust built with the `codegen` builder crate). It's the largest area of the codebase — split by concern into `mod.rs` (the `GenerationScope` orchestration) plus `serialize`, `deserialize`, `records`, `enums`, `wrappers`, `collections`, `requests`, `bounds`, `export`, `no_std_check` (the always-emitted `no-std-check/` shim crate), `wit` (the IR→WIT projection for the `--component` face) and `component` (the wit-bindgen guest glue over the rust crate).
+3. `generation/` walks the IR and emits the per-type Rust/WASM/JSON/WIT source (Rust built with the `codegen` builder crate). It's the largest area of the codebase — split by concern into `mod.rs` (the `GenerationScope` orchestration) plus `serialize`, `deserialize`, `records`, `enums`, `wrappers`, `collections`, `requests`, `bounds`, `export`, `write_tail` (the disk-writing tail of `export()` — the one module that reads prior output), `no_std_check` (the always-emitted `no-std-check/` shim crate), `wit` (the IR→WIT projection for the `--component` face) and `component` (the wit-bindgen guest glue over the rust crate).
 4. `api.rs` orchestrates the pipeline; `main.rs` is the CLI entry, `lib.rs` the library entry.
 5. Other modules:
     1. `cli.rs` (flags)
