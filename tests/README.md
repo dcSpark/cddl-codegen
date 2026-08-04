@@ -3980,7 +3980,11 @@ where the class is always fixed — emitter-side (`generation/wrappers.rs`); the
 the generator's own source, which is where a maintainer note belongs.
 
 Three legs, all over the tool-owned trees (`rust/src/generated`, `wasm/src/generated`,
-`wasm/json-gen/src/generated`) under the default `--wasm=true` profile:
+`wasm/json-gen/src/generated`). Legs 1 and 2 sweep TWO emission profiles — the default and
+`--preserve-encodings`, which emits a file the default does not (`cbor_encodings.rs`, one struct per
+rule that carries encodings: a per-rule surface is exactly where a deletable-row comment would live).
+Leg 3 stays on the default profile, because an injected replace block costs three generations plus,
+for its compile gate, nested cargo, where a floor-and-deletion profile costs one generation each:
 
 1. **The static floor.** Every generated `.rs` of a FRESH generation, scanned for a comment that
    shares its row with code — the trap SOURCE, catchable before any deletion exists. Lexer-grade via
@@ -4006,6 +4010,10 @@ is the only leg that pays nested cargo, and it is the one that catches the orpha
 `feature_corpus_compiles`' scans and `COMPILE_SKIP`, and is gate-cached per generated-crate content
 hash with its own `regen-edit=v1` verdict-logic marker.
 
+A secondary profile's GENERATION verdict is deliberately not this gate's: a fixture that does not
+generate under `--preserve-encodings` is recorded as a skip, because `feature_corpus_compiles` owns
+that question both ways through `EXPECTED_GENERATION_FAIL` (today, `dsl_ignore`).
+
 **Vacuity floors**, in the module and asserted from the summed run: files scanned, deletion cells,
 deletion cells that delete a `@used_as_key` rule, edit cells, edit cells landing in a per-type
 surface (rather than in a composed static runtime file, whose bytes are the same for every fixture),
@@ -4013,7 +4021,7 @@ and edit cells that orphan an import. The last is the one that is genuinely low 
 conservative — whether a `self`-only body happens to hold a same-file import's last use is a
 property of what the corpus emits, not something the sweep can arrange.
 
-**Measured on the delivering machine:** the generation sweep **40 s** (six worker THREADS over
+**Measured on the delivering machine:** the generation sweep **55 s** (six worker THREADS over
 generator subprocesses — threads rather than sibling `#[test]` shards because every `#[ignore]`d
 test needs its own registry entry, and six shards would be six gates for one question), which is
 what places it at `local`; the compile gate **159 s cold / ~90 s fully cache-hit** — a warm run

@@ -34,6 +34,9 @@
 //! * **Leg 2 — the rule-DELETION variant.** Derive a variant spec with one rule (and its referrers)
 //!   removed, regenerate IN PLACE over the fresh output, and fail on any
 //!   `cddl-codegen:unpreserved-comment` anywhere in the tool-owned trees.
+//!
+//! Legs 1 and 2 sweep both [`FLOOR_AND_DELETION_PROFILES`] rows; leg 3 stays on the default one
+//! (see that constant for the cost asymmetry).
 //! * **Leg 3 — the user-EDIT variant.** Inject one canonical `cddl-codegen:replace` block that
 //!   REMOVES a function body, regenerate in place (the block must apply, not strand), and regenerate
 //!   once more (the trees must reach a byte-identical fixed point). The compile half — does the
@@ -72,6 +75,20 @@ const TOOL_OWNED_TREES: &[&str] = &[
     "rust/src/generated",
     "wasm/src/generated",
     "wasm/json-gen/src/generated",
+];
+
+/// The emission profiles legs 1 and 2 sweep. Leg 3 (and its compile gate) stay on the first row
+/// alone: an injected replace block's cost is three generations plus, for the compile gate, nested
+/// cargo, while the two legs here cost one generation each per added profile.
+///
+/// `--preserve-encodings` is the second row because it emits a FILE the default profile does not
+/// (`cbor_encodings.rs`, one struct per rule that carries encodings) — a per-rule surface is exactly
+/// where a deletable-row comment would live, and no other gate looks for one there. The `json` and
+/// `component` profiles are not swept; see `tests/TESTING_ROADMAP.md` for the residual and the
+/// observable that would add one.
+const FLOOR_AND_DELETION_PROFILES: &[(&str, &[&str])] = &[
+    ("default", &[]),
+    ("preserve", &["--preserve-encodings=true"]),
 ];
 
 /// The sentinel the overlay emits for a payload it could not re-place. Its presence anywhere in a
@@ -591,18 +608,19 @@ const REGEN_WORKERS: usize = 6;
 /// going structurally silent (an emitter stops writing a tree, the chooser stops finding candidates)
 /// fails loudly.
 ///
-/// Measured at the delivering run over the 91 corpus fixtures: 577 files scanned; 89 deletion cells
-/// (`dsl_copy` and `extern_generic_raw_bytes` do not parse standalone — they name user-supplied
-/// idents, the same reason both sit in `COMPILE_SKIP`), 6 of them deleting a `@used_as_key` rule;
-/// 91 edit cells, 89 of them in a per-type surface, 5 of them orphaning an import.
+/// Measured at the delivering run over the 91 corpus fixtures x 2 profiles: 1320 files scanned;
+/// 177 deletion cells (`dsl_copy` and `extern_generic_raw_bytes` do not parse standalone — they name
+/// user-supplied idents, the same reason both sit in `COMPILE_SKIP`; `dsl_ignore` deliberately does
+/// not generate under `--preserve-encodings`), 12 of them deleting a `@used_as_key` rule; 91 edit
+/// cells (default profile only), 89 of them in a per-type surface, 5 of them orphaning an import.
 ///
 /// The orphan floor is the one that is LOW rather than merely conservative: whether a `self`-only
 /// function body happens to hold the last use of a same-file import is a property of what the
 /// corpus happens to emit, not something the sweep can arrange. Five is what this corpus offers;
 /// the floor guards against that becoming zero (which is what a regression in the site chooser, or
 /// an emitter that stops importing anything into the per-type surfaces, would look like).
-const MIN_SCANNED_FILES: usize = 450;
-const MIN_DELETION_CELLS: usize = 80;
+const MIN_SCANNED_FILES: usize = 1000;
+const MIN_DELETION_CELLS: usize = 150;
 const MIN_EDIT_CELLS: usize = 80;
 const MIN_EDIT_ORPHAN_CELLS: usize = 3;
 const MIN_EDIT_PER_TYPE_CELLS: usize = 80;
@@ -748,74 +766,87 @@ fn sweep_fixtures(root: &Path, entries: &[&PathBuf]) -> SweepTally {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         let cell = root.join(stem);
         std::fs::create_dir_all(&cell).unwrap();
-        // Generate from a COPY at a stable scratch path: the deletion variant must be generated from
-        // the same `--input` path as the fresh run, or the two runs would differ by more than the
-        // deleted rule.
-        let spec = cell.join("spec.cddl");
         let text = std::fs::read_to_string(input).unwrap();
-        std::fs::write(&spec, &text).unwrap();
-        let out = cell.join("out");
 
-        if let Err(stderr) = generate(&spec, &out, &[]) {
-            failures.push(format!("{stem}: fresh generation failed\n{stderr}"));
-            continue;
-        }
+        for (profile, extra) in FLOOR_AND_DELETION_PROFILES {
+            let label = format!("{stem}/{profile}");
+            // Generate from a COPY at a stable scratch path: the deletion variant must be generated from
+            // the same `--input` path as the fresh run, or the two runs would differ by more than the
+            // deleted rule.
+            let spec = cell.join(format!("{profile}.cddl"));
+            std::fs::write(&spec, &text).unwrap();
+            let out = cell.join(format!("out-{profile}"));
 
-        // ---- Leg 1: the static floor over the FRESH trees --------------------------------------
-        let fresh = read_tool_owned(&out);
-        scanned_files += fresh.len();
-        for (rel, content) in &fresh {
-            match crate::comment_preserve::comments_sharing_a_code_row(content) {
-                Ok(hits) => {
-                    for (line, text) in hits {
-                        failures.push(format!(
-                            "{stem}: {}:{line}: a generated comment shares its row with code: `{text}`\n  \
+            if let Err(stderr) = generate(&spec, &out, extra) {
+                if *profile == FLOOR_AND_DELETION_PROFILES[0].0 {
+                    failures.push(format!("{label}: fresh generation failed\n{stderr}"));
+                } else {
+                    // A SECONDARY profile's generation verdict is not this gate's to own:
+                    // `feature_corpus_compiles` gates it both ways through `EXPECTED_GENERATION_FAIL`
+                    // (a listed pair that starts generating fails as a stale pin). Recording the skip
+                    // keeps that ownership single, and the cell still counts nowhere.
+                    skips.push(format!(
+                    "{label}: does not generate under this profile (owned by feature_corpus_compiles)"
+                ));
+                }
+                continue;
+            }
+
+            // ---- Leg 1: the static floor over the FRESH trees --------------------------------------
+            let fresh = read_tool_owned(&out);
+            scanned_files += fresh.len();
+            for (rel, content) in &fresh {
+                match crate::comment_preserve::comments_sharing_a_code_row(content) {
+                    Ok(hits) => {
+                        for (line, text) in hits {
+                            failures.push(format!(
+                            "{label}: {}:{line}: a generated comment shares its row with code: `{text}`\n  \
                              A comment on a row a spec change can DELETE is stranded into a \
                              self-perpetuating `compile_error!` sentinel on the next in-place regen. \
                              Fix the EMITTER (move the comment into a fixed banner or drop it), the way \
                              `extern_interface_check.rs` and `key_demand_assertions.rs` were fixed.",
                             rel.display()
                         ));
+                        }
                     }
+                    Err(e) => failures.push(format!(
+                        "{label}: {}: generated file does not lex: {e}",
+                        rel.display()
+                    )),
                 }
-                Err(e) => failures.push(format!(
-                    "{stem}: {}: generated file does not lex: {e}",
-                    rel.display()
-                )),
             }
-        }
-        let had_key_demand = fresh.keys().any(|rel| {
-            rel.file_name()
-                .is_some_and(|n| n == "key_demand_assertions.rs")
-        });
+            let had_key_demand = fresh.keys().any(|rel| {
+                rel.file_name()
+                    .is_some_and(|n| n == "key_demand_assertions.rs")
+            });
 
-        // ---- Leg 2: the rule-DELETION variant, regenerated IN PLACE ----------------------------
-        match rule_spans(&text) {
-            None => skips.push(format!("{stem}: leg2 — fixture does not parse standalone")),
-            Some(spans) if spans.is_empty() => {
-                skips.push(format!("{stem}: leg2 — no rules to delete"))
-            }
-            Some(spans) => {
-                let candidates = deletion_candidates(&text, &spans);
-                let mut exercised = None;
-                for candidate in &candidates {
-                    let variant = deletion_variant(&text, &spans, candidate);
-                    std::fs::write(&spec, &variant).unwrap();
-                    if generate(&spec, &out, &[]).is_err() {
-                        continue;
-                    }
-                    let after = read_tool_owned(&out);
-                    if after == fresh {
-                        // Vacuous: the deletion changed no emitted byte, so nothing was stranded and
-                        // the cell proves nothing. Try the next candidate.
-                        continue;
-                    }
-                    exercised = Some((candidate.clone(), after));
-                    break;
+            // ---- Leg 2: the rule-DELETION variant, regenerated IN PLACE ----------------------------
+            match rule_spans(&text) {
+                None => skips.push(format!("{label}: leg2 — fixture does not parse standalone")),
+                Some(spans) if spans.is_empty() => {
+                    skips.push(format!("{label}: leg2 — no rules to delete"))
                 }
-                match exercised {
+                Some(spans) => {
+                    let candidates = deletion_candidates(&text, &spans);
+                    let mut exercised = None;
+                    for candidate in &candidates {
+                        let variant = deletion_variant(&text, &spans, candidate);
+                        std::fs::write(&spec, &variant).unwrap();
+                        if generate(&spec, &out, extra).is_err() {
+                            continue;
+                        }
+                        let after = read_tool_owned(&out);
+                        if after == fresh {
+                            // Vacuous: the deletion changed no emitted byte, so nothing was stranded and
+                            // the cell proves nothing. Try the next candidate.
+                            continue;
+                        }
+                        exercised = Some((candidate.clone(), after));
+                        break;
+                    }
+                    match exercised {
                     None => skips.push(format!(
-                        "{stem}: leg2 — no candidate rule yields a generating, output-changing variant"
+                        "{label}: leg2 — no candidate rule yields a generating, output-changing variant"
                     )),
                     Some((candidate, after)) => {
                         deletion_cells += 1;
@@ -832,7 +863,7 @@ fn sweep_fixtures(root: &Path, entries: &[&PathBuf]) -> SweepTally {
                         for (rel, content) in &after {
                             if content.contains(TRAP_MARKER) {
                                 failures.push(format!(
-                                    "{stem}: deleting rule `{candidate}` and regenerating IN PLACE left a \
+                                    "{label}: deleting rule `{candidate}` and regenerating IN PLACE left a \
                                      `{TRAP_MARKER}` sentinel in {} — a comment on a deleted row was \
                                      stranded, and every further regen carries the resulting \
                                      `compile_error!` forward. The fix is emitter-side.",
@@ -841,6 +872,7 @@ fn sweep_fixtures(root: &Path, entries: &[&PathBuf]) -> SweepTally {
                             }
                         }
                     }
+                }
                 }
             }
         }
