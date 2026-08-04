@@ -2865,8 +2865,9 @@ Two consumers run it:
   fixture `--wasm=true --emit-tests=true` and `cargo test`s the **wasm** crate (alongside the
   hand-written `tests_wasm.rs` as a plausibility cross-check), with emitted-test count floors. It
   `cargo test`s only the wasm crate: `core` is not `--emit-tests`-clean on the *rust* side (two
-  hand-written source-inspection tests truncate `lib.rs` at the first `#[cfg(test)]`, and its
-  wire-ambiguous `TypeChoice` trips the rust value-equality oracle), but the wasm crate builds the rust
+  hand-written source-inspection tests truncate `lib.rs` at the first `#[cfg(test)]`; its
+  wire-ambiguous `TypeChoice` also tripped the value-equality oracle until the emitted round-trip
+  learned the first-match assertion), but the wasm crate builds the rust
   crate as a *non-test* dependency, so none of that compiles here.
 - **`integration_tests::wasm_matrix_roundtrips`** (`#[ignore]`d, manual — the round-trip upgrade of the
   wasm-ABI matrix compile gate, swept across `ALL_PROFILES` minus the component row — so default /
@@ -4201,9 +4202,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   sweep's two preserve-only compile classes (tag/`.cbor`-wrapped constrained-int deserialize tuple
   arity; composite map-key move-then-reuse) are fixed, with their preserve compile + round-trip
   pinned by the `tagged_constrained_int` / `composite_map_key` corpus fixtures — so a preserve-only
-  compile failure surfaces as a NEW finding. Observed baseline: 1544 classified compositions
-  (`ok=856`, `graceful=203`, `panic=485`), 24 batches / 827 executed / 29 shared known-bad
-  exclusions in ~45 s. NAMING GOTCHA: the name deliberately does NOT contain the
+  compile failure surfaces as a NEW finding. Observed baseline (full run at `78aab6d3`; the shared
+  `LAYER2_KNOWN_BAD` is empty of rows there): 1544 classified compositions
+  (`ok=921`, `graceful=605`, `panic=18`), 27 batches / 921 executed / 0 shared known-bad
+  exclusions in ~111 s. NAMING GOTCHA: the name deliberately does NOT contain the
   `recombination_crates_execute` needle, and both check.ts gate cmds pass `--exact` on the full test
   path so cargo's substring selection can't cross-select.
 - `recombination_json_crates_execute` (`#[ignore]`, check.ts full tier): the JSON escalation of
@@ -4215,8 +4217,8 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   crate to the existing json profile compile/schema gates rather than running it per batch. Both
   json-only ledgers (`JSON_ONLY_PANIC_CLASSES`, `LAYER2_JSON_KNOWN_BAD`) are empty at HEAD — json
   derives do not rewire the panic surface, so classification matches the default profile exactly.
-  Observed baseline: 1544 classified compositions (`ok=927`, `graceful=197`, `panic=420`),
-  26 batches / 897 executed / 30 shared known-bad exclusions in ~54 s.
+  Observed baseline (full run at `78aab6d3`): 1544 classified compositions (`ok=921`,
+  `graceful=605`, `panic=18`), 27 batches / 921 executed / 0 shared known-bad exclusions in ~172 s.
 - `recombination_wasm_crates_check` (`#[ignore]`, check.ts full tier): the WASM escalation of
   layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
   generation. It does not pass `--emit-tests`: the oracle is `cargo check` on the generated `wasm/`
@@ -4224,9 +4226,9 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   through the same command. Both wasm-only ledgers (`WASM_ONLY_PANIC_CLASSES`,
   `LAYER2_WASM_KNOWN_BAD`) are empty at HEAD — tagged tables and alias-only-reachable table wrappers
   generate and check (pinned by the `tagged_table` / `cbor_bignint_table` corpus fixtures) — so a
-  wasm-only panic or compile class surfaces as a NEW finding. Observed baseline: 1544 classified
-  compositions (`ok=926`, `graceful=197`, `panic=421`), 26 batches / 897 checked / 29 known-bad
-  exclusions in ~50 s. This is
+  wasm-only panic or compile class surfaces as a NEW finding. Observed baseline (full run at
+  `78aab6d3`): 1544 classified compositions (`ok=921`, `graceful=605`, `panic=18`), 27 batches /
+  921 checked / 0 known-bad exclusions in ~89 s. This is
   a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains the
   systematic per-shape wasm surface owner.
 
