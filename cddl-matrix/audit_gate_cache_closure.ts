@@ -24,6 +24,17 @@
  *   | /sys /dev /opt /run /bin /sbin, plus    | same accepted class as glibc/the linker. /mnt/wsl is the |
  *   | /mnt/wsl — see the comment at           | WSL-kernel tmpfs `/etc/resolv.conf` resolves into (the   |
  *   | SYSTEM_PREFIXES)                        | audit records kernel-resolved paths)                     |
+ *   | the repo's own `.cargo/config(.toml)?`   | HASHED into the gate-cache key (`cargoConfigDigest` in  |
+ *   | — EXACTLY those files, never the        | `lib.ts`, folded in by `gateCacheKey` so every cached    |
+ *   | `.cargo/` directory                     | site keys on it by construction). Unlike the git-config  |
+ *   |                                         | class, this is not a "cannot affect what is built"       |
+ *   |                                         | argument — `rustflags`/`build.target` plainly can — it   |
+ *   |                                         | is "a change to it changes the key", which preflight 2   |
+ *   |                                         | PROVES by varying the digest and requiring the key to    |
+ *   |                                         | move. Empirical: nested `cargo generate-lockfile` runs   |
+ *   |                                         | with cwd = the repo (its --manifest-path points at the   |
+ *   |                                         | scratch tree, but discovery walks up from cwd), so this  |
+ *   |                                         | read is unavoidable, not incidental.                     |
  *   | user git config — EXACTLY the two files | cargo consults git config for URL rewriting/transport    |
  *   | $HOME/.gitconfig and $XDG_CONFIG_HOME   | during registry/git-dep access, so it can affect whether |
  *   | (default ~/.config)/git/config — NOT a  | FETCHING succeeds, but not WHAT is built: the key hashes |
@@ -53,8 +64,12 @@
  * sites, the TS-side verify.ts sites) is CONFIGURATION via CLOSURE_AUDIT_GATE, not code. NOT yet
  * traced in v1: everything but the configured gate — notably the TS-side cached sites in verify.ts
  * (whose nested cargo runs with cwd = the repo, so a repo cargo config would be an unhashed input);
- * the static `.cargo/config` assert below is the standing guard for that TS-side hole until the
- * strace leg covers it.
+ * the cargo-config KEYING assert below is the standing guard for that TS-side hole until the strace
+ * leg covers it. That assert demanded ABSENCE until the repo grew a `[build] jobs` floor (unbounded
+ * nested cargo having frozen a developer machine); absence was only ever a proxy for "a cached
+ * verdict cannot survive a config change", so it now varies the config digest and requires the key
+ * to move — which also catches a config hashed at some call sites but not the shared one, a state
+ * absence-checking cannot distinguish from correct.
  *
  * Mechanics: the trace forces every cell to MISS (fresh `GATE_CACHE_DIR` mkdtemp) so the nested work
  * — incl. the lockfile preflight — actually RUNS and is auditable, without touching the real
@@ -78,7 +93,7 @@
  * not flagged. Deterministic output: offenders and per-class census are sorted.
  *
  * Exit: 0 PASS · 1 FAIL (a nested-subtree read in no allowed class) · 2 HARNESS (strace absent —
- * visible SKIPPED — / trace died / a repo cargo config exists / ZERO nested-cargo subtrees traced,
+ * visible SKIPPED — / trace died / a repo cargo config is not keyed on / ZERO nested-cargo subtrees traced,
  * the vacuity floor: the audit must refuse to pass if it traced nothing).
  *
  * Run from cddl-matrix/:  bun run audit_gate_cache_closure.ts   (or CLOSURE_AUDIT_GATE=<test>).
@@ -87,6 +102,8 @@
 import { existsSync, mkdtempSync, readdirSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+
+import { cargoConfigDigest, gateCacheKey } from "./lib.ts";
 
 const ROOT = import.meta.dir;
 const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script lives in
@@ -245,6 +262,12 @@ export interface Boundaries {
   // EXACT file paths (not prefixes): $HOME/.gitconfig + $XDG_CONFIG_HOME(default ~/.config)/git/config.
   // Deliberately NOT a widened $HOME class; soundness argument in the header allow-table.
   userGitConfig: string[];
+  // EXACT file paths (not prefixes): the repo's own `.cargo/config(.toml)?`. Allowed ONLY because it
+  // is hashed into the gate-cache key — see the header allow-table and preflight 2, which proves the
+  // key depends on it rather than asserting so. Never widen this to the `.cargo/` directory: a
+  // sibling file there (e.g. a vendored-sources registry) would be an unhashed input wearing an
+  // allowed path.
+  repoCargoConfig: string[];
 }
 // `/mnt/wsl` is in the system class because the audit records KERNEL-RESOLVED paths: on WSL2,
 // `/etc/resolv.conf` is a distro-managed symlink into the WSL-kernel-managed tmpfs mount at
@@ -264,6 +287,7 @@ export function classifyPath(path: string, b: Boundaries): PathClass {
   if (underAny(path, b.cargoHome)) return { allowed: true, label: "cargo_home" };
   if (underAny(path, b.rustupHome)) return { allowed: true, label: "rustup_home" };
   if (b.userGitConfig.includes(path)) return { allowed: true, label: "user_git_config" };
+  if (b.repoCargoConfig.includes(path)) return { allowed: true, label: "repo_cargo_config" };
   if (underAny(path, b.repo)) return { allowed: false, label: "REPO_CHECKOUT" };
   if (underAny(path, SYSTEM_PREFIXES)) return { allowed: true, label: "system" };
   if (underAny(path, b.home)) return { allowed: false, label: "HOME_OUTSIDE_CARGO_RUSTUP" };
@@ -380,6 +404,7 @@ function selfTest(): void {
     tmp: ["/tmp"], cargoHome: ["/home/u/.cargo"], rustupHome: ["/home/u/.rustup"],
     repo: ["/home/u/git/cddl-codegen"], home: ["/home/u"],
     userGitConfig: ["/home/u/.gitconfig", "/home/u/.config/git/config"],
+    repoCargoConfig: ["/home/u/git/cddl-codegen/.cargo/config.toml"],
   };
   eq(classifyPath("/tmp/cddl_codegen_x/y", b).allowed, true, "tmp allowed");
   eq(classifyPath("/home/u/.cargo/registry/z", b).allowed, true, "cargo_home allowed");
@@ -393,6 +418,12 @@ function selfTest(): void {
   eq(classifyPath("/home/u/.gitconfig.bak", b).label, "HOME_OUTSIDE_CARGO_RUSTUP", "gitconfig sibling NOT allowed (exact match only)");
   eq(classifyPath("/home/u/.config/git/config.d/x", b).label, "HOME_OUTSIDE_CARGO_RUSTUP", "git config subpath NOT allowed (exact match only)");
   eq(classifyPath("/home/u/git/cddl-codegen/README.md", b), { allowed: false, label: "REPO_CHECKOUT" }, "repo FAIL");
+  eq(classifyPath("/home/u/git/cddl-codegen/.cargo/config.toml", b),
+    { allowed: true, label: "repo_cargo_config" }, "repo cargo config allowed (hashed into the key)");
+  // The allowance is EXACT-file: a sibling under .cargo/ is still a finding, or the class would
+  // launder any unhashed input that happened to be filed next to the config.
+  eq(classifyPath("/home/u/git/cddl-codegen/.cargo/credentials.toml", b),
+    { allowed: false, label: "REPO_CHECKOUT" }, "a .cargo/ sibling is NOT laundered by the class");
   eq(classifyPath("/home/u/secrets", b).label, "HOME_OUTSIDE_CARGO_RUSTUP", "home-outside FAIL");
   eq(classifyPath("/var/random", b).label, "UNCLASSIFIED", "unknown FAIL");
 
@@ -459,14 +490,34 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Preflight 2: static repo cargo-config assert.
+  // Preflight 2: the repo cargo config must be KEYED ON, not absent.
+  //
+  // This assert used to demand the checkout contain no `.cargo/config(.toml)?` at all, which was
+  // true when it was written and stopped being true when the repo grew one (a `[build] jobs` floor,
+  // after unbounded nested cargo froze a developer machine). Absence was only ever a proxy for the
+  // property that matters — that a cached verdict cannot survive a config change — so the assert now
+  // checks that property directly, by VARYING the config digest and requiring the key to move.
+  // Strictly stronger than the old form: it would have caught a config that existed AND was hashed
+  // at some call sites but not the shared one, which absence-checking cannot distinguish.
   const configs: string[] = [];
   findRepoCargoConfigs(CODEGEN_DIR, configs);
   if (configs.length) {
-    console.error("HARNESS FAILURE: the repo checkout contains a cargo config, an unhashed verdict-affecting input for the TS-side cached sites (nested cargo runs with cwd = the repo):");
-    for (const c of configs.sort()) console.error(`  - ${c}`);
-    console.error("Fix: hash the config into the gate-cache key at ALL call sites — do NOT allowlist it here.");
-    process.exit(2);
+    const base = { gate: "audit.cargo-config-keying", argv: [] as string[], tree: "t" };
+    const a = gateCacheKey({ ...base, cargoConfig: "digest-A" }).key;
+    const b = gateCacheKey({ ...base, cargoConfig: "digest-B" }).key;
+    const real = cargoConfigDigest();
+    if (a === b) {
+      console.error("HARNESS FAILURE: the repo checkout contains a cargo config, and the gate-cache key does NOT depend on it — a cached verdict would survive an rustflags/target change:");
+      for (const c of configs.sort()) console.error(`  - ${c}`);
+      console.error("Fix: hash the config into the gate-cache key at ALL call sites — do NOT allowlist it here.");
+      process.exit(2);
+    }
+    if (real === "absent") {
+      console.error(`HARNESS FAILURE: ${configs.length} cargo config(s) found by the walk, but cargoConfigDigest() reports 'absent' — the digest is looking somewhere the walk is not, so the key is keyed on nothing:`);
+      for (const c of configs.sort()) console.error(`  - ${c}`);
+      process.exit(2);
+    }
+    console.log(`repo cargo config present and keyed on (${configs.length} file(s), digest ${real.slice(0, 24)}…) — a config change invalidates cached verdicts.`);
   }
 
   // Is the traced gate #[ignore]d? (cargo lists an ignored test only under `-- --ignored --list`.)
@@ -544,6 +595,10 @@ async function main(): Promise<void> {
     userGitConfig: [
       ...boundaryPrefixes(join(homedir(), ".gitconfig")),
       ...boundaryPrefixes(join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "git", "config")),
+    ],
+    repoCargoConfig: [
+      ...boundaryPrefixes(join(CODEGEN_DIR, ".cargo", "config.toml")),
+      ...boundaryPrefixes(join(CODEGEN_DIR, ".cargo", "config")),
     ],
   };
   // /tmp is also a valid scratch root even when TMPDIR points elsewhere (the Rust gates use
