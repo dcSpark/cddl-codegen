@@ -517,37 +517,12 @@ ledgered here (that's what the probe/gate error messages point at).
   non-final `?` (`[ ? f0: uint, f1: tstr ]`) works today. Real support shares ONE design with the
   middle-position `*` occurrence entry above: add the remaining definite-length COUNT to the
   existing PEEK signal (repeats = len − fixed), decide the genuinely ambiguous residue (count+peek
-  admitting ≥2 assignments — the same information-the-wire-does-not-carry loss as the
-  wire-ambiguity family below, so the two policies should be decided once), and decide the
+  admitting ≥2 assignments — the wire does not carry WHICH assignment produced the bytes, the same
+  loss a type choice's overlapping arms have; that one is settled as first match, and this residue
+  should settle the same way), and decide the
   indefinite-length story (no count signal there; peek-only makes acceptance encoding-dependent).
   **Reopening signal:** a spec author reports a rule they cannot decode at all — i.e. the refusal
   reaches a type they need on the wire, not merely a shape a fuzzer composed.
-- **One compile/round-trip-class family remaining from the recombination fuzzer's layer-2 sweeps**
-  (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
-  under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so the
-  class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed; NB the vacuity guard
-  fires only when a composition stops REACHING layer 2 — a class fixed AT layer 2 stays silently
-  excluded, so a fixing commit must delete its ledger entries itself, in the same commit) with
-  THIS entry as its pin; it is a candidate cddl-codegen fix:
-  - **Wire-ambiguous type-choice arms cannot round-trip variant identity — a property of the
-    wire, not a decoder bug.** RFC 8610 defines a choice as matching when ANY arm matches; arm
-    identity does not exist on the wire and neither oracle emits one, so first-match decoding is
-    not wrong. What fails is the emitted round-trip's variant-identity assertion
-    (default-profile-only by construction — preserve mode sets no value-equality leg), which
-    asserts something the wire cannot represent for duplicate/equivalent arms (`tstr / tstr`,
-    `text / tstr`), subsuming arms (`uint / tstr / bytes / tstr`, `int .ne 0 / tstr / tstr`,
-    `[ ga: -10...10 / tstr // tstr ]`), and payload/type overlap (`bytes .cbor uint / tstr /
-    bytes` — a valid-CBOR byte string matches the `.cbor` arm first). The two obvious fixes each
-    have a known flaw: generation-time duplicate-arm rejection reaches only literally-identical
-    arms (value-dependent overlap is undecidable at generation) and breaks a legitimate source of
-    collapsed duplicates — generic instantiation (`either<a,b> = a / b` at `<tstr, tstr>`);
-    skipping the identity assert needs an ambiguity analysis whose cheap form (`cbor_types`
-    overlap) over-flags content-distinguishable same-major-type choices, silently weakening tests
-    with teeth. The third option avoids both: assert FIRST-MATCH semantics itself (decoded
-    variant index ≤ minted index; equal ⇒ values equal), which degenerates to today's exact
-    assertion for unambiguous choices and pins the documented contract for ambiguous ones —
-    complemented by IR-level dedup of literally identical arms (`tstr / tstr` today mints
-    `Text`/`Text2` variants — pure API noise, and the shape generic collapse produces).
 - **Make a SAME-CHAIN nested `bytes .cbor` payload GENERATE.** A `.cbor` payload whose own target
   carries a second `.cbor` control in the SAME op chain — `bytes .cbor (bytes .cbor uint)`, and
   equally the named-alias spelling `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the
@@ -1028,8 +1003,8 @@ consolidation — are recorded in the code + git history; not re-litigated here.
 Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
 against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
 
-Hand-counted prose lists in this doc — today the findings ledger's layer-2
-compile/round-trip-class family-count header, plus any future sibling; cited here count-free on
+Hand-counted prose lists in this doc — a family-count header over a findings-ledger list, and any
+sibling of one; cited here count-free and instance-free on
 purpose, since a hard-coded example count is itself this rot class and one went stale exactly that
 way — are maintained by review: pruning or adding a
 family must update the count and keep the entry in the list whose framing matches its failure

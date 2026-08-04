@@ -1375,7 +1375,8 @@ fn parse_type_choices(
         // an arm (`foo = #6.258([* #6.258([* uint])]) / …`) carry no registry default here — the single
         // post-collapse seam (`nominalize_inline_sets`, run in `finalize`) nominalizes them on the
         // registered product, so a discarded arm never mints a spurious nominal.
-        let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
+        let variants =
+            create_variants_from_type_choices(types, parent_visitor, type_choices, Some(name), cli);
         // A BARE `any` type-choice arm (conceptual `Any`, no CBOR encoding operations) accepts every
         // CBOR item, so it overlaps every other arm and can only ever be a LAST catch-all: any earlier
         // position leaves the arms after it unreachable. We allow it last and reject it
@@ -3401,35 +3402,101 @@ pub fn create_variants_from_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
     type_choices: &[TypeChoice],
+    // The owning rule, for the duplicate-arm diagnostics. `None` at the member-position site
+    // (`rust_type_from_type` builds an ANONYMOUS choice whose name is derived from the arms), where
+    // no rule name exists to blame.
+    owner: Option<&RustIdent>,
     cli: &Cli,
 ) -> Vec<EnumVariant> {
+    let owner_desc = match owner {
+        Some(name) => format!("rule `{name}`"),
+        None => "an inline type choice".to_owned(),
+    };
     let mut variant_names_used = BTreeMap::<String, u32>::new();
-    type_choices
-        .iter()
-        .map(|choice| {
-            let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1, cli);
-            // The cddl parser attaches a type-choice element's trailing comment to
-            // TypeChoice.comments_after_type, not Type1.comments_after_type, so merge both — otherwise
-            // @name/@doc on a variant is silently dropped. Mirrors parse_type's merge for single types.
-            let rule_metadata = merge_metadata(
-                &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
-                &RuleMetadata::from(choice.comments_after_type.as_ref()),
+    let mut variants: Vec<EnumVariant> = Vec::new();
+    // What each kept variant was built from, plus the 1-based SOURCE arm ordinal it came from — the
+    // dedup key and what the diagnostics name. Parallel to `variants` (an `EnumVariant` built here
+    // always carries a `RustType`, but reading it back through `rust_type()` would panic on the
+    // inlined flavor other builders produce, so the types are kept beside it instead).
+    let mut kept: Vec<(RustType, usize)> = Vec::new();
+    for (arm_idx, choice) in type_choices.iter().enumerate() {
+        let rejections_before = types.rejection_count();
+        let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1, cli);
+        // An arm the walk REJECTED carries the inert `Fixed(Null)` placeholder every graceful
+        // rejection returns, not the type it spelled — so it is neither a dedup candidate nor a
+        // dedup key (`[int] / [tstr]`, two rejected anonymous groups, would otherwise read as one
+        // arm twice and get a diagnostic that says something false about a spec that is already on
+        // its way to a graceful `Err`).
+        let rejected = types.rejection_count() > rejections_before;
+        // The cddl parser attaches a type-choice element's trailing comment to
+        // TypeChoice.comments_after_type, not Type1.comments_after_type, so merge both — otherwise
+        // @name/@doc on a variant is silently dropped. Mirrors parse_type's merge for single types.
+        let rule_metadata = merge_metadata(
+            &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
+            &RuleMetadata::from(choice.comments_after_type.as_ref()),
+        );
+        // Two arms that build the SAME `RustType` are one arm on the wire: the dispatch tries arms in
+        // order and always first-matches the earlier one, so every later twin mints a variant no
+        // decode can ever produce (`c = tstr / tstr` minted `C::Text` + an undecodable `C::Text2`,
+        // and `--emit-tests` then asserted a round-trip identity the wire cannot carry). Drop the
+        // twin — loudly, never silently, because dropping an arm changes the generated API.
+        //
+        // An explicitly `@name`d twin is KEPT: naming a variant is a deliberate API request, and the
+        // emitted round-trip stays honest about it via the first-match assertion (`emit_tests.rs`'s
+        // `choice_roundtrip`), which asserts wire fidelity rather than variant identity when the
+        // decoder first-matches an earlier arm. It is still announced, since "constructible but
+        // never decoded" is not what the spelling suggests.
+        //
+        // A BARE `any` arm is never collapsed, and not as a special case for its own sake: a bare
+        // `any` accepts every CBOR item, so it can only ever be the LAST arm and `parse_type_choices`
+        // rejects it anywhere else. Two `any` arms therefore always put one in a non-last position —
+        // a spec error the tool already refuses loudly — and collapsing them would ERASE that
+        // refusal, leaving a one-armed `any` enum whose all-8-major-types span silently selects the
+        // wrong deserializer strategy (the `debug_assert!` on the backtracking form in
+        // `generation/enums.rs`). Dedup must never be able to delete a rejection. A TAGGED `any`
+        // (`#6.5(any)`) is not a catch-all and collapses normally.
+        let bare_any = rust_type.encodings.is_empty()
+            && matches!(
+                rust_type.conceptual_type.resolve_alias_shallow(),
+                ConceptualRustType::Any
             );
-            let base_name = match &rule_metadata {
-                RuleMetadata {
-                    name: Some(name), ..
-                } => convert_to_camel_case(name),
-                _ => rust_type.for_variant().to_string(),
-            };
-            let variant_name = append_number_if_duplicate(&mut variant_names_used, base_name);
-            EnumVariant::new(
-                VariantIdent::new_custom(variant_name),
-                rust_type,
-                false,
-                rule_metadata.comment.clone(),
-            )
-        })
-        .collect()
+        let dup_of = (!rejected && !bare_any)
+            .then(|| {
+                kept.iter()
+                    .find(|(ty, _)| *ty == rust_type)
+                    .map(|(_, o)| *o)
+            })
+            .flatten();
+        let base_name = match &rule_metadata {
+            RuleMetadata {
+                name: Some(name), ..
+            } => convert_to_camel_case(name),
+            _ => rust_type.for_variant().to_string(),
+        };
+        if let Some(dup_ordinal) = dup_of {
+            let arm_ordinal = arm_idx + 1;
+            if rule_metadata.name.is_none() {
+                crate::warn!(
+                    "Dropping arm {arm_ordinal} of {owner_desc}: it has the same representation as arm {dup_ordinal}, so the decoder first-matches arm {dup_ordinal} and the variant it would have minted (`{base_name}`) could never be decoded. Write `; @name <Name>` on it to keep it anyway."
+                );
+                continue;
+            }
+            crate::warn!(
+                "Arm {arm_ordinal} of {owner_desc} (`@name {base_name}`) has the same representation as arm {dup_ordinal}: the variant is kept because it is explicitly named, but the decoder first-matches arm {dup_ordinal}, so nothing on the wire ever decodes to it."
+            );
+        }
+        let variant_name = append_number_if_duplicate(&mut variant_names_used, base_name);
+        variants.push(EnumVariant::new(
+            VariantIdent::new_custom(variant_name),
+            rust_type.clone(),
+            false,
+            rule_metadata.comment.clone(),
+        ));
+        if !rejected {
+            kept.push((rust_type, arm_idx + 1));
+        }
+    }
+    variants
 }
 
 /// Possible special cases for groups that can be handled to generate much nicer code
@@ -4737,7 +4804,7 @@ fn rust_type(
             }
         }
         let variants =
-            create_variants_from_type_choices(types, parent_visitor, &t.type_choices, cli);
+            create_variants_from_type_choices(types, parent_visitor, &t.type_choices, None, cli);
         let mut combined_name = String::new();
         // one caveat: nested types can leave ambiguous names and cause problems like
         // (a / b) / c and a / (b / c) would both be AOrBOrC
