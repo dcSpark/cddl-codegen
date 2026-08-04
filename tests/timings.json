@@ -276,6 +276,9 @@
       ]
     },
     {
+      "gate": "fuzz_bounded_run"
+    },
+    {
       "gate": "fuzz_compile_rot",
       "warm_ms": 100,
       "n": 20,
