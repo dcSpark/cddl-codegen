@@ -11,7 +11,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~41s<!-- /gen:sh:tests-tier-fast --> |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~32s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~6.4 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~33 min<!-- /gen:sh:tests-tier-full --> |
 
@@ -4016,7 +4016,9 @@ property of what the corpus emits, not something the sweep can arrange.
 **Measured on the delivering machine:** the generation sweep **40 s** (six worker THREADS over
 generator subprocesses — threads rather than sibling `#[test]` shards because every `#[ignore]`d
 test needs its own registry entry, and six shards would be six gates for one question), which is
-what places it at `local`; the compile gate **159 s** on a cold scratch root.
+what places it at `local`; the compile gate **159 s cold / ~90 s fully cache-hit** — a warm run
+still pays the per-cell generation, the injection and the lockfile preflight, which is most of what
+is left.
 
 **Residual, a property of this corpus:** no fixture carries two `@used_as_key` tags, so "a
 `key_demand_assertions.rs` ROW disappears while the file survives" is not expressible here —
