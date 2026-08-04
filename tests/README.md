@@ -13,7 +13,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 |------|---------|--------------|------------------|
 | `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~32s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~6.4 min<!-- /gen:sh:tests-tier-local --> |
-| `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~33 min<!-- /gen:sh:tests-tier-full --> |
+| `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~41 min<!-- /gen:sh:tests-tier-full --> |
 
 Those three are **sliding-window medians (up to 20 runs) on the dev machine**, projected off
 `tests/timings.json` by generated spans (`project_status_headers.ts` — hand-corrected stale twice
