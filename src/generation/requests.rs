@@ -22,11 +22,19 @@ impl GenerationScope {
     ///
     /// Determinism: everything is keyed/sorted (`BTreeMap`/`BTreeSet`), so the union and the emission
     /// order depend on neither the flag order nor the consumers' regen order.
-    pub(super) fn emit_requested_collections(&mut self, types: &IntermediateTypes, cli: &Cli) {
+    ///
+    /// The sidecar READERS' refusals come back as `Err` (they travel to `generate_to_disk`'s caller,
+    /// so `--config`'s mid-run wrapper can name the crates already regenerated); the W2 diagnostics
+    /// this function owns itself still abort.
+    pub(super) fn emit_requested_collections(
+        &mut self,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> Result<(), String> {
         let request_files = cli.wrapper_requests();
         if request_files.is_empty() {
             // No flag => no file, byte-identical to today (acceptance criterion 10 analog).
-            return;
+            return Ok(());
         }
         let my_lib = cli.lib_name_code();
 
@@ -41,12 +49,15 @@ impl GenerationScope {
         let mut union: BTreeMap<String, Unioned> = BTreeMap::new();
 
         for (consumer, path) in &request_files {
-            let Some(contents) =
-                crate::wrapper_requests::read_request_sidecar("--wrapper-requests", consumer, path)
+            let Some(contents) = crate::wrapper_requests::read_request_sidecar(
+                "--wrapper-requests",
+                consumer,
+                path,
+            )?
             else {
                 continue;
             };
-            let entries = crate::wrapper_requests::parse_sidecar(&contents, path);
+            let entries = crate::wrapper_requests::parse_sidecar(&contents, path)?;
             for entry in entries {
                 // Entries addressed to OTHER deps (dep column != this crate's normalized lib name)
                 // are silently skipped — a shared sidecar can name several deps.
@@ -331,6 +342,7 @@ impl GenerationScope {
             scope_content.push_import(path.clone(), "PairMap", None);
             scope_content.push_import(path, "NonEmptyPairMap", None);
         }
+        Ok(())
     }
 }
 

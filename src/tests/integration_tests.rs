@@ -14886,6 +14886,94 @@ fn workspace_requests_hard_errors() {
     );
 }
 
+/// The two sidecar-READER refusals with no other coverage, each pinned on the EXIT CODE as well as
+/// the text: a refusal must leave through the generator's error channel (exit 1), never as an abort.
+///
+/// The exit code is the assertion that matters here, not the message. The refusals themselves have
+/// always been loud; what an abort loses is everything the error channel adds around them — under
+/// `--config`, the statement of which crates the run had already regenerated
+/// (`config_tests::a_mid_run_sidecar_refusal_names_the_crates_already_regenerated` pins that end),
+/// and here, the ordinary "failed run" contract a caller can act on.
+///
+/// The STALE BORROWED KEY case is the one refusal in `wrapper_requests.rs` reachable from committed
+/// state alone — a dep whose spec dropped a type its consumer's committed sidecar still borrows, no
+/// hand edit anywhere — so it is the one whose exit contract a real workspace can hit.
+#[test]
+fn sidecar_reader_refusals_exit_through_the_error_channel() {
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_sidecar_err_channel_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    // The dep defines `kept` and does NOT define `dropped` — the committed-state shape of the stale
+    // borrow: a type the dep's spec no longer has.
+    std::fs::write(&input, "kept = [a: uint]\n").unwrap();
+
+    let run = |sidecar: &std::path::Path, tag: &str| -> std::process::Output {
+        let out = scratch.join(tag);
+        let _ = std::fs::remove_dir_all(&out);
+        codegen_cmd()
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .arg(format!(
+                "--static-dir={}",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/static")
+            ))
+            .arg(format!(
+                "--key-requests=some-consumer={}",
+                sidecar.to_str().unwrap()
+            ))
+            .output()
+            .unwrap()
+    };
+
+    // A well-formed sidecar borrowing a key type this dep does not define.
+    let stale = scratch.join("stale_borrowed_key_types.rs");
+    std::fs::write(
+        &stale,
+        "// This file was code-generated using an experimental CDDL to rust tool:\n\
+         // https://github.com/dcSpark/cddl-codegen\n\
+         #[allow(dead_code)]\n\
+         pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[(\"cddl_lib\", \"dropped\")];\n",
+    )
+    .unwrap();
+    let o = run(&stale, "out_stale");
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a stale borrowed key type is a failed RUN through the error channel, not an abort\n\
+         stderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("dropped")
+            && stderr.contains("is not a type this dep defines")
+            && stderr.contains("regenerate the consumer"),
+        "and the refusal must still name the type and both remedies, got:\n{stderr}"
+    );
+
+    // A sidecar that EXISTS but cannot be read as text. Distinct from the absent-file case, which is
+    // the cold-workspace bootstrap and only warns.
+    let unreadable = scratch.join("unreadable_borrowed_key_types.rs");
+    std::fs::write(&unreadable, [0xffu8, 0xfe, 0xfd, 0x00]).unwrap();
+    let o = run(&unreadable, "out_unreadable");
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a sidecar this run cannot read is a failed RUN, not an abort\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("cannot read the sidecar") && stderr.contains("--key-requests"),
+        "and it must name the flag and the file, got:\n{stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// REQUEST-09 under Phase 2.3 (nominal-per-instantiation): a collapsed-set shape produced through a
 /// generic instance (`[pool_owners: set<key_hash>]`) now NOMINALIZES — `set<key_hash>` mints its own
 /// `SetKeyHash` wasm class rather than lowering to a passthrough alias of the structural

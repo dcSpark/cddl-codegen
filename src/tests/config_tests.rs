@@ -7144,6 +7144,86 @@ fn a_mid_run_generation_failure_names_the_crates_already_regenerated() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The mid-run contract above holds for a CROSS-CRATE SIDECAR refusal too, not only for a spec the
+/// parser refuses.
+///
+/// The sidecar readers (`--wrapper-requests` / `--key-requests`) are the one family that used to
+/// end the process instead of returning through `generate_to_disk`'s `Result`, and the wrapper that
+/// names the crates already regenerated sits on exactly that `Result`. A refusal that aborts is
+/// therefore invisible to it: the user gets a panic-shaped message and no statement of what the run
+/// had already rewritten — which is the whole question a partial run leaves. This is the sibling
+/// vector of [`a_mid_run_generation_failure_names_the_crates_already_regenerated`], same shape, with
+/// the failure moved onto the sidecar channel.
+///
+/// Binary-level for the same two reasons: the message is what a caller reads on stderr, and the
+/// claim that the earlier crate really was rewritten is only checkable on disk.
+#[test]
+fn a_mid_run_sidecar_refusal_names_the_crates_already_regenerated() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_midrun_sidecar_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    // Both specs generate; the failure comes from `zzz`'s consumed sidecar, not from its CDDL.
+    std::fs::write(dir.join("specs/aaa.cddl"), "aaa_rec = [a: uint]\n").unwrap();
+    std::fs::write(dir.join("specs/zzz.cddl"), "zzz_rec = [a: uint]\n").unwrap();
+    // A TRAPPED sidecar: what the comment-preservation overlay leaves in a generated file it could
+    // not carry forward. It must never be silently consumed, so reading it is a refusal.
+    std::fs::create_dir_all(dir.join("sidecars")).unwrap();
+    let sidecar = dir.join("sidecars/borrowed_key_types.rs");
+    std::fs::write(
+        &sidecar,
+        "// This file was code-generated using an experimental CDDL to rust tool:\n\
+         compile_error!(\"a comment could not be preserved here\");\n\
+         pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.aaa]\ninput = \"specs/aaa.cddl\"\noutput = \"gen/aaa\"\nlib-name = \"aaa-lib\"\n\n\
+             [crates.zzz]\ninput = \"specs/zzz.cddl\"\noutput = \"gen/zzz\"\nlib-name = \"zzz-lib\"\n\
+             [crates.zzz.key-requests]\nsome-consumer = \"{}\"\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+            sidecar.to_str().unwrap(),
+        ),
+    )
+    .unwrap();
+
+    let out = super::integration_tests::codegen_cmd()
+        .arg("--config")
+        .arg(&config_path)
+        .output()
+        .expect("the generator binary must be spawnable");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a sidecar the run refuses is a failed RUN — it must come out of the error channel, not \
+         out of an abort\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("already regenerated in this run before this failure: aaa"),
+        "the sidecar refusal must reach the mid-run wrapper and name what was already rewritten, \
+         got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("compile_error!") && stderr.contains("--key-requests"),
+        "and the refusal's own diagnostic must survive the trip through the error channel (the \
+         flag and what is wrong with the file), got:\n{stderr}"
+    );
+    assert!(
+        dir.join("gen/aaa/rust/src/generated/lib.rs").exists()
+            || dir.join("gen/aaa/rust/src/lib.rs").exists(),
+        "the earlier crate must actually have been written before the failure"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// `--with-deps` settles in ONE command what the plain selector reports and leaves for a second.
 ///
 /// The workflow this is for: a consumer's spec gains a borrow, and the user regenerates the

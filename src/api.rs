@@ -969,7 +969,7 @@ pub fn with_types<R>(
         //     sidecar seeds nothing, leaving strict diagnosis to `emit_requested_collections`);
         //   - the `--key-requests` sidecar rows (strict: an unknown ident is a hard error).
         crate::wrapper_requests::seed_used_as_key_from_wrapper_requests(&mut types, cli);
-        crate::wrapper_requests::seed_used_as_key_from_key_requests(&mut types, cli);
+        crate::wrapper_requests::seed_used_as_key_from_key_requests(&mut types, cli)?;
         types.finalize(&pv, cli)?;
         let verdict = crate::recursion_boundary::classify(&types, &auto_newtype_rules);
         if verdict
@@ -1014,7 +1014,7 @@ pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
             "\n-----------------------------------------\n- Generating code...\n------------------------------------"
         );
         let mut gen_scope = GenerationScope::new();
-        gen_scope.generate(types, cli);
+        gen_scope.generate(types, cli)?;
         // `finalize` short-circuits on pending rejections before this closure runs, then drains
         // again on exit. Per tests/README.md § "Design rules", keep this emission-site assertion
         // outside guarded branches; every snapshot-corpus fixture exercises this seam.
@@ -1044,7 +1044,11 @@ pub fn generated_strings(
 ) -> Result<std::collections::BTreeMap<String, String>, Box<dyn std::error::Error>> {
     with_types(cli, |types, raw_bytes| {
         let mut gen_scope = GenerationScope::new();
-        gen_scope.generate(types, cli);
+        // This closure's error channel is `io::Error` (the file-map producer's); a sidecar refusal
+        // is a `String`, so it is carried as an `Error::other` rather than reworded.
+        gen_scope
+            .generate(types, cli)
+            .map_err(std::io::Error::other)?;
         // `finalize` short-circuits on pending rejections before this closure runs, then drains
         // again on exit. Per tests/README.md § "Design rules", keep this emission-site assertion
         // outside guarded branches; every snapshot-corpus fixture exercises this seam.
