@@ -3206,6 +3206,20 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   snippet-extraction harness; its reopening signal is now concrete: a docs example invalid for a
   reason the narrow spelling ban cannot see (any non-directive syntax error class recurring in an
   illustration).
+  A THIRD instance class on record (2026-08-04), counted against the decline without reopening
+  it: a FALSE UNIVERSAL. `current_capacities.mdx`'s tag-rule section claimed the auto-wrap holds
+  for "*every* single-type inner" while the collection and `T / null` inners registered
+  transparent aliases (the T1-13 standalone-tag-drop defect, per the tier-1 close-out's board
+  record) — a false claim that SHIPPED past review and stood until the `register_type_alias`
+  wire-facts assert's carve-out enumeration falsified it mechanically. It does NOT reopen the
+  snippet harness because that harness could not have caught it either: the counterexamples were
+  unenumerated instances of a universal quantifier, never spelled as snippets — snippet
+  extraction validates the examples a doc gives, not the quantifier over the ones it doesn't.
+  The layer that actually catches this class is a behavior-side seam assert whose domain IS the
+  quantifier's (the wire-facts assert enumerates every registration, so the doc's "every"
+  now has a mechanical counterpart), which is where such universals should be anchored: a doc
+  universal about generated-code behavior earns a seam assert or a sweep whose axis is the
+  quantified domain, and the prose then describes the mechanism rather than substituting for it.
 - **Full `2^N` flag powerset / PICT pairwise** — the curated named profiles cover the flag
   *combinations* worth testing, so the full powerset stays out of scope. Escaped interactions earn
   their own standing cells rather than the whole powerset — four so far (the Fourth is recorded
