@@ -366,7 +366,21 @@ for (const r of rows) {
 // `.unsigned` therefore read {6, int} (nint covers int, tagged bignum covers 6) and do NOT flag on their
 // unsampled plain-uint side.
 const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
+  // The `any`-arm POSITION cells. A bare `any` arm has no wire class of its own (it accepts every
+  // major), so the resolver sees only the `tstr` sibling and the floor asks for a major-3 accept —
+  // which is the honest ask: no vector can witness "the catch-all was reached" from the outside,
+  // that evidence is the content-fallthrough fixture's (tests/any-choice). The TAGGED arm DOES have
+  // a class (major 6, which is exactly why it is not a catch-all and may sit non-last), so its row
+  // owes an accept per arm and carries both.
+  "contain.choice-member.prelude.any.last": ["3"],
+  "contain.choice-member.type2.tag.any_non_last": ["3", "6"],
   "contain.choice-member.prelude.null": ["3", "7"],
+  // The same-major-type (brute-force) fixed-arm row: `true` and `null` BOTH resolve to major 7, so
+  // the two-class floor {3, 7} is satisfied by a single major-7 accept and cannot, by construction,
+  // demand one per fixed arm. That is the arm floor's known blind spot on this shape rather than a
+  // gap in the row — the per-arm evidence is the emitted round-trip (`fixed_special_type_choice_brute`
+  // in tests/preserve-encodings), and the row carries `f5` AND `f6` anyway.
+  "contain.choice-member.prelude.true.same_major_brute": ["3", "7"],
   "contain.choice-member.type2.tag": ["6"],
   // The tag-set idiom rows spell the two WIRE arms (`#6.258([..]) → major 6`, `[..] → major 4`)
   // regardless of whether codegen collapses (set_idiom) or retains the enum (set_idiom_near_miss), so
