@@ -1005,18 +1005,21 @@ impl<'a> IntermediateTypes<'a> {
     /// using scope, root included, since the class no longer lives locally. Empty for the rust pass
     /// and whenever `--extern-wrapper-index` is unused, so output is byte-identical without the flag.
     ///
-    /// `requested` (wasm pass, `--wrapper-requests` host side) is every collection wrapper hosted into
-    /// `requested_scope` this run as `(structural class ident, requested RustType)`. Those wrappers are
+    /// `requested` (wasm pass, `--wrapper-requests` host side) is every explicitly requested collection
+    /// wrapper actually hosted into `requested_scope` this run as `(structural class ident, requested
+    /// RustType)`. Those wrappers are
     /// NOT IR structs, so the struct walk below never sees them; after it runs, each is walked as if it
     /// were a rule emitted at `requested_scope` (mirroring the Array/Table struct-walk arms) so its body
     /// imports EXACTLY the cross-scope element / scoped-extern wasm classes it names. Empty (and
     /// `requested_scope` `None`) for the rust pass and whenever `--wrapper-requests` is unused, so output
-    /// is byte-identical without the flag.
+    /// is byte-identical without the flag. `requested_hosted` is the full actual-mint ident set at that
+    /// scope, including recursive support mints; all requested-scope same-file decisions use it.
     pub fn scope_references(
         &self,
         wasm: bool,
         deferred: &BTreeMap<RustIdent, ModuleScope>,
         requested: &[(RustIdent, RustType)],
+        requested_hosted: &BTreeSet<RustIdent>,
         requested_scope: Option<&ModuleScope>,
     ) -> BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>> {
         // we only want to mark TOP-LEVEL references without recursing into those types
@@ -1956,8 +1959,6 @@ impl<'a> IntermediateTypes<'a> {
         // being (un)reached by the ROOT-only `use super::*;`. Empty `requested` (rust pass / flag unused)
         // makes this a no-op, so output is byte-identical without the flag.
         if wasm && let Some(req_scope) = requested_scope {
-            let requested_idents: BTreeSet<RustIdent> =
-                requested.iter().map(|(id, _)| id.clone()).collect();
             // Mark the ref a hosted wrapper's body names for one member (element / key / value). A member
             // that is ITSELF a hosted requested collection lives in `requested_scope` too (same file):
             // its wasm class is named bare with nothing to import, and its own body is walked when the
@@ -1969,7 +1970,7 @@ impl<'a> IntermediateTypes<'a> {
                  member: &RustType| {
                     if let Some((wrapper, _)) =
                         self.wasm_collection_wrapper(member, &table_shape_sole_owners)
-                        && requested_idents.contains(&wrapper)
+                        && requested_hosted.contains(&wrapper)
                     {
                         return;
                     }
@@ -1996,7 +1997,7 @@ impl<'a> IntermediateTypes<'a> {
                             );
                             let loose =
                                 RustIdent::new(CDDLIdent::new(elem.name_as_wasm_array(self)));
-                            if !requested_idents.contains(&loose) {
+                            if !requested_hosted.contains(&loose) {
                                 register_root_non_empty_list_source(
                                     &mut refs,
                                     self,
@@ -2024,7 +2025,7 @@ impl<'a> IntermediateTypes<'a> {
                         register_deferred_keys_list(&mut refs, self, deferred, req_scope, key);
                         let keys_ident =
                             RustIdent::new(CDDLIdent::new(key.name_as_wasm_array(self)));
-                        if !requested_idents.contains(&keys_ident) {
+                        if !requested_hosted.contains(&keys_ident) {
                             register_root_keys_list(
                                 &mut refs, self, wasm, deferred, req_scope, key,
                             );
@@ -2047,7 +2048,7 @@ impl<'a> IntermediateTypes<'a> {
                                 value,
                                 rt.is_preserve_pair_map(),
                             );
-                            if !requested_idents.contains(&loose) {
+                            if !requested_hosted.contains(&loose) {
                                 register_root_non_empty_map_source(
                                     &mut refs,
                                     self,

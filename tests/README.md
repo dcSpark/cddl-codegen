@@ -1116,7 +1116,10 @@ the index and workspace columns against the committed wasm-clean dep pair — GR
 `extern_wrapper_index_defers_to_dep`'s RED leg already demonstrates that a non-deferring consumer
 duplicate-symbols; and `wrapper_participation_requested_host_floor` (gate
 `wrapper_participation_host_floor`) checks the HOST crate a `--wrapper-requests` run emits, whose
-mints come from a sidecar rather than from its own spec. What the link legs add over the incident
+mints come from a sidecar rather than from its own spec, including both NonEmpty twins. Its import
+walk follows each support class's actual emission home: co-hosted classes stay local, own-spec
+classes come from their real root/module, and deferred classes come from the dependency collections
+surface. What the link legs add over the incident
 cells is the POSITION crossing: a named-rule declaration, a by-name reference and a non-root
 declaring scope had never reached a wasm32 link, and an import routed into the wrong module is
 exactly the class every host-target check survives.

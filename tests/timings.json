@@ -340,14 +340,18 @@
     },
     {
       "gate": "generated_local_out_of_scope_crates_compile",
-      "warm_ms": 7000,
-      "n": 1,
-      "measured": "2026-08-01",
+      "warm_ms": 9000,
+      "n": 17,
+      "measured": "2026-08-05",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-08-01",
           "warm_ms": 7000
+        },
+        {
+          "date": "2026-08-05",
+          "warm_ms": 9000
         }
       ]
     },
@@ -804,9 +808,9 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 24000,
-      "n": 20,
-      "measured": "2026-07-28",
+      "warm_ms": 29000,
+      "n": 19,
+      "measured": "2026-08-05",
       "machine": "86216c55",
       "history": [
         {
@@ -824,6 +828,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 24000
+        },
+        {
+          "date": "2026-08-05",
+          "warm_ms": 29000
         }
       ]
     },
@@ -993,7 +1001,17 @@
       "gate": "wrapper_participation_floors"
     },
     {
-      "gate": "wrapper_participation_host_floor"
+      "gate": "wrapper_participation_host_floor",
+      "warm_ms": 837,
+      "n": 3,
+      "measured": "2026-08-05",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-05",
+          "warm_ms": 837
+        }
+      ]
     }
   ],
   "tiers": [

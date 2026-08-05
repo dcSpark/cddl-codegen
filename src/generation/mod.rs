@@ -213,9 +213,9 @@ pub struct GenerationScope {
     /// the requested wrappers are not in the dep's IR, so they have no natural scope. Set only around
     /// the requested-wrapper emission in `emit_requested_collections`; `None` everywhere else.
     requested_scope_override: Option<ModuleScope>,
-    /// W2 dep side (`--wrapper-requests`): every requested collection wrapper actually hosted this run,
-    /// as `(structural class ident, requested RustType)`. The hosted wrappers are emitted into the
-    /// `requested_collections` scope but are NOT in the dep's IR, so the per-scope wasm import walk
+    /// W2 dep side (`--wrapper-requests`): every explicitly requested collection wrapper actually
+    /// hosted this run, as `(structural class ident, requested RustType)`. The hosted wrappers are
+    /// emitted into the `requested_collections` scope but are NOT in the dep's IR, so the per-scope wasm import walk
     /// (`scope_references`, which walks IR structs) never marks the element/key/value wasm classes each
     /// wrapper body names — a bare `use super::*;` reaches only the generated ROOT, not a non-root scope
     /// module nor a scoped extern's re-export glue. `scope_references` consumes this to mark those refs
@@ -1675,7 +1675,8 @@ impl GenerationScope {
         // imports for generated structs from other files (struct files)
         // The rust pass registers no collection-wrapper class imports (those are wasm-only), so
         // deferral never applies here — pass an empty map so rust output is untouched by the flag.
-        let rust_imports = types.scope_references(false, &BTreeMap::new(), &[], None);
+        let rust_imports =
+            types.scope_references(false, &BTreeMap::new(), &[], &BTreeSet::new(), None);
         // Record every cross-scope ident these imports push, so the usage-derived prune can name-scan
         // away the ones a referencing module never uses (`scope_references` over-approximates).
         for per_scope in rust_imports.values() {
@@ -1849,10 +1850,21 @@ impl GenerationScope {
             // in the IR; hand `scope_references` the hosted set + its scope so their element/key/value
             // wasm classes are imported at that scope (a bare `use super::*;` reaches only the root).
             let requested_scope = ModuleScope::from(vec!["requested_collections".to_owned()]);
+            // This is the actual home set, not the requested candidate set: recursive support mints
+            // (a NonEmpty wrapper's loose try_from source and a map keys-list) share this file too.
+            // Same-file references to any of them must stay bare rather than importing a nonexistent
+            // crate-root class. `record_collection_wrapper` is the shared actual-mint seam.
+            let requested_hosted: BTreeSet<RustIdent> = self
+                .wasm_collection_wrappers
+                .iter()
+                .filter(|(_, scope)| **scope == requested_scope)
+                .map(|(ident, _)| ident.clone())
+                .collect();
             let wasm_imports = types.scope_references(
                 true,
                 &self.deferred_wrappers,
                 &self.requested_wrapper_types,
+                &requested_hosted,
                 Some(&requested_scope),
             );
             for per_scope in wasm_imports.values() {
