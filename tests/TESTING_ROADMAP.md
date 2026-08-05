@@ -1376,21 +1376,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   so an emission rename flips the liveness half red instead of leaving the negative half
   vacuous. Meanwhile the working rule when renaming emitted text: grep the test tree for needles
   pinning the old spelling in the same change.
-- **Requested-hosted co-hosted NonEmpty SOURCE self-import — exit 0 over a HOST crate that does not
-  compile (DUE).** A `--wrapper-requests` run that hosts a NonEmpty wrapper whose loose `try_from`
-  SOURCE is itself co-hosted emits, in `wasm/src/generated/requested_collections.rs`,
-  `use crate::generated::{…, <Source>};` for a class DEFINED IN THAT SAME FILE — `E0432`, in a run
-  that exits 0 with empty stderr. Reproduced 2026-08 by the wrapper-participation grid's host floor
-  (probe scope: default profile, `--wasm=true`, a dep whose own spec produces neither the requested
-  restricted wrapper nor its loose source; not probed under preserve/json or with `--workspace-dep`
-  also set). It is the co-hosted self-import class `workspace_requests_cohosted_keys_list_no_self_import`
-  closed for the synthesized KEYS-LIST, still open for this second co-hosted companion — and the
-  committed request cells cannot see it, because in each of them the dep's own spec PRODUCES the
-  loose source, which makes the same import path correct. Until it is fixed,
-  `wrapper_participation_requested_host_floor` asserts the shapes that do compile and names this
-  entry for the ones it excludes; the fix belongs at the same seam the keys-list one took (a
-  co-hosted class is referenced from the requested scope, never re-imported from the crate root),
-  and its test is the excluded rows returning to that floor.
 - **The wrapper-participation grid is single-PROFILE: every row's expected outcome is probed at the
   default profile only.** The grid (`src/tests/wrapper_participation_tests.rs`;
   `tests/README.md` § "The wrapper-participation grid") sweeps emission MODE × wrapper SHAPE ×

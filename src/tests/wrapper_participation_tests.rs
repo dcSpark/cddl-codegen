@@ -1028,56 +1028,232 @@ fn wrapper_participation_requested_mode() {
         .collect();
     let (root, sidecar_path) = write_request_fixture("sweep", &rows);
 
-    let cli = crate::cli::Cli::parse_from([
-        "cddl-codegen",
-        "--input",
-        root.join("lib.cddl").to_str().unwrap(),
-        "--output",
-        "wrapper_participation_unused",
-        "--lib-name",
-        "wp-dep",
-        "--wasm=true",
-        &format!("--wrapper-requests=wpc={}", sidecar_path.to_str().unwrap()),
-    ]);
-    let files = crate::api::generated_strings(&cli)
-        .unwrap_or_else(|e| panic!("the dep must host every requested wrapper: {e}"));
-    let _ = std::fs::remove_dir_all(&root);
-
-    let hosted = files
-        .get("wasm/src/generated/requested_collections.rs")
-        .expect("a dep with requests emits requested_collections.rs");
-    let index = files
-        .get("wasm/src/generated/collections.rs")
-        .expect("wasm collections index");
-    for row in &rows {
-        assert!(
-            hosted.contains(&format!("pub struct {}(", row.class)),
-            "{} ({:?}) must be HOSTED — {}\n{hosted}",
-            row.class,
-            row.shape,
-            row.why
-        );
-        assert!(
-            index.contains(&format!(
-                "pub use crate::generated::requested_collections::{};",
-                row.class
-            )),
-            "a hosted wrapper is re-exported from the dep's own index so the consumer resolves it: {}",
-            row.class
-        );
-        // Companion: hosting a restricted wrapper obliges its loose source in the same crate, or the
-        // generated `try_from` names a type the crate does not have.
-        if let Some(source) = loose_source_class(row) {
+    for (profile, extra) in [
+        ("default", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+        (
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"][..],
+        ),
+    ] {
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            root.join("lib.cddl").display().to_string(),
+            "--output".to_owned(),
+            "wrapper_participation_unused".to_owned(),
+            "--lib-name".to_owned(),
+            "wp-dep".to_owned(),
+            "--wasm=true".to_owned(),
+            format!("--wrapper-requests=wpc={}", sidecar_path.display()),
+        ];
+        args.extend(extra.iter().map(|flag| (*flag).to_owned()));
+        let cli = crate::cli::Cli::parse_from(args);
+        let files = crate::api::generated_strings(&cli)
+            .unwrap_or_else(|e| panic!("the {profile} dep must host every requested wrapper: {e}"));
+        let hosted = files
+            .get("wasm/src/generated/requested_collections.rs")
+            .expect("a dep with requests emits requested_collections.rs");
+        let index = files
+            .get("wasm/src/generated/collections.rs")
+            .expect("wasm collections index");
+        for row in &rows {
             assert!(
-                hosted.contains(&format!("pub struct {source}("))
-                    || files
-                        .get("wasm/src/generated/mod.rs")
-                        .is_some_and(|m| m.contains(&format!("pub struct {source}("))),
-                "the loose source {source} of the hosted {} must exist in this crate:\n{hosted}",
+                hosted.contains(&format!("pub struct {}(", row.class)),
+                "{profile}: {} ({:?}) must be HOSTED — {}\n{hosted}",
+                row.class,
+                row.shape,
+                row.why
+            );
+            assert!(
+                index.contains(&format!(
+                    "pub use crate::generated::requested_collections::{};",
+                    row.class
+                )),
+                "{profile}: a hosted wrapper is re-exported from the dep's own index: {}",
                 row.class
             );
+            // The restricted rows' loose source is a recursive support mint, not an explicit request.
+            // It shares requested_collections.rs, so it must be defined and named locally — never
+            // imported from the generated root where it does not exist.
+            if let Some(source) = loose_source_class(row) {
+                assert!(
+                    hosted.contains(&format!("pub struct {source}(")),
+                    "{profile}: the loose source {source} of hosted {} must be co-hosted:\n{hosted}",
+                    row.class
+                );
+                assert!(
+                    !hosted.lines().any(|line| {
+                        line.contains("use crate::generated::") && line.contains(&source)
+                    }),
+                    "{profile}: the co-hosted loose source {source} of {} must not self-import:\n{hosted}",
+                    row.class
+                );
+            }
         }
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A requested restricted wrapper still needs a REAL root-owned loose source when the dependency's
+/// own spec emits that source. The actual-hosted set is precise: it suppresses only same-file imports.
+#[test]
+fn wrapper_participation_requested_non_empty_root_sources_stay_imported() {
+    use clap::Parser;
+    let root = scratch_root("requested_root_sources");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("lib.cddl"),
+        "req_nel = [x: uint]\nreq_nem = [x: uint]\nroot = [list: [* req_nel], map: {* uint => req_nem}]\n",
+    )
+    .unwrap();
+    let sidecar = root.join("borrowed.rs");
+    std::fs::write(
+        &sidecar,
+        "#[allow(dead_code)]\npub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n\
+         (\"wp_dep\", \"NonEmptyReqNelList\", \"[+ req_nel]\"),\n\
+         (\"wp_dep\", \"NonEmptyMapU64ToReqNem\", \"{+ uint => req_nem}\"),\n];\n",
+    )
+    .unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen".to_owned(),
+        "--input".to_owned(),
+        root.display().to_string(),
+        "--output".to_owned(),
+        "wrapper_participation_unused".to_owned(),
+        "--lib-name".to_owned(),
+        "wp-dep".to_owned(),
+        "--wasm=true".to_owned(),
+        format!("--wrapper-requests=wpc={}", sidecar.display()),
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    let requested = &files["wasm/src/generated/requested_collections.rs"];
+    for source in ["ReqNelList", "MapU64ToReqNem"] {
+        assert!(
+            !requested.contains(&format!("pub struct {source}(")),
+            "the own-spec source stays at the generated root, not requested_collections:\n{requested}"
+        );
+        assert!(
+            requested
+                .lines()
+                .any(|line| { line.contains("use crate::generated::") && line.contains(source) }),
+            "the root-owned loose source {source} remains a real requested-scope import:\n{requested}"
+        );
+    }
+}
+
+/// `--workspace-dep` validation and wasm mapping do not change requested-host ownership: its host
+/// still defines a recursive loose source locally while retaining a genuine mapped extern import.
+#[test]
+fn wrapper_participation_requested_workspace_dep_keeps_local_and_extern_homes() {
+    use clap::Parser;
+    let root = scratch_root("requested_workspace_dep");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("_CDDL_CODEGEN_EXTERN_DEPS_DIR_").join("other")).unwrap();
+    std::fs::write(
+        root.join("lib.cddl"),
+        "own_ty = [x: uint]\nroot = [local: own_ty, external: other_ty]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/other/mod.cddl"),
+        "other_ty = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    )
+    .unwrap();
+    let sidecar = root.join("borrowed.rs");
+    std::fs::write(
+        &sidecar,
+        "#[allow(dead_code)]\npub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n\
+         (\"wp_dep\", \"NonEmptyOwnTyList\", \"[+ own_ty]\"),\n];\n",
+    )
+    .unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen".to_owned(),
+        "--input".to_owned(),
+        root.display().to_string(),
+        "--output".to_owned(),
+        "wrapper_participation_unused".to_owned(),
+        "--lib-name".to_owned(),
+        "wp-dep".to_owned(),
+        "--wasm=true".to_owned(),
+        "--workspace-dep=other".to_owned(),
+        "--extern-wasm-crate=other=other_wasm".to_owned(),
+        format!("--wrapper-requests=wpc={}", sidecar.display()),
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    let requested = &files["wasm/src/generated/requested_collections.rs"];
+    assert!(requested.contains("pub struct OwnTyList("));
+    assert!(
+        !requested
+            .lines()
+            .any(|line| line.contains("use crate::generated::") && line.contains("OwnTyList")),
+        "the recursive loose source is co-hosted even with --workspace-dep:\n{requested}"
+    );
+    let root_wasm = &files["wasm/src/generated/mod.rs"];
+    assert!(
+        root_wasm
+            .lines()
+            .any(|line| line.contains("use other_wasm::") && line.contains("OtherTy")),
+        "the valid workspace-dep mapping's genuine extern import must survive:\n{root_wasm}"
+    );
+}
+
+/// A requested restricted map can be hosted while its primitive-only loose source is indexed by a
+/// different dependency. Unlike a co-hosted source, that class has no local body and must retain the
+/// dependency collections import at the requested scope.
+#[test]
+fn wrapper_participation_requested_non_empty_map_source_can_defer() {
+    use clap::Parser;
+    let root = scratch_root("requested_deferred_map_source");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("_CDDL_CODEGEN_EXTERN_DEPS_DIR_").join("other")).unwrap();
+    std::fs::write(root.join("lib.cddl"), "root = [x: uint]\n").unwrap();
+    std::fs::write(
+        root.join("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/other/mod.cddl"),
+        "unused = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    )
+    .unwrap();
+    let index = root.join("other_collections.rs");
+    std::fs::write(&index, "pub use crate::generated::MapU64ToU64;\n").unwrap();
+    let sidecar = root.join("borrowed.rs");
+    std::fs::write(
+        &sidecar,
+        "#[allow(dead_code)]\npub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n\
+         (\"wp_dep\", \"NonEmptyMapU64ToU64\", \"{+ uint => uint}\"),\n];\n",
+    )
+    .unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen".to_owned(),
+        "--input".to_owned(),
+        root.display().to_string(),
+        "--output".to_owned(),
+        "wrapper_participation_unused".to_owned(),
+        "--lib-name".to_owned(),
+        "wp-dep".to_owned(),
+        "--wasm=true".to_owned(),
+        "--extern-wasm-crate=other=other_wasm".to_owned(),
+        format!("--extern-wrapper-index=other={}", index.display()),
+        format!("--wrapper-requests=wpc={}", sidecar.display()),
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    let requested = &files["wasm/src/generated/requested_collections.rs"];
+    assert!(requested.contains("pub struct NonEmptyMapU64ToU64("));
+    assert!(
+        !requested.contains("pub struct MapU64ToU64("),
+        "the indexed loose source must not be minted in requested_collections:\n{requested}"
+    );
+    let root_wasm = &files["wasm/src/generated/mod.rs"];
+    assert!(
+        root_wasm.lines().any(|line| {
+            line.contains("use other_wasm::collections::") && line.contains("MapU64ToU64")
+        }),
+        "the deferred loose source must retain its dependency collections import (which the requested \
+         module reaches through `use super::*;`):\n{root_wasm}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1383,23 +1559,12 @@ fn wrapper_participation_requested_host_floor() {
         "cddl_codegen_wrapper_participation_floor_requests_{:016x}",
         checkout_hash()
     ));
-    // NARROWED, and the narrowing is a FINDING rather than a convenience: a requested NonEmpty
-    // wrapper whose loose `try_from` SOURCE is itself co-hosted makes `requested_collections.rs`
-    // emit `use crate::generated::{…, <Source>};` for a class it DEFINES IN THAT SAME FILE — E0432,
-    // in a run that exits 0. It is the co-hosted self-import class
-    // `workspace_requests_cohosted_keys_list_no_self_import` closed for the synthesized KEYS-LIST,
-    // unclosed for this second co-hosted companion; the committed request cells never saw it because
-    // their dep spec produces the loose source itself, which makes the same import path correct.
-    // Tracked as "Requested-hosted co-hosted NonEmpty SOURCE self-import" in
-    // `tests/TESTING_ROADMAP.md`; until it is fixed this floor asserts the shapes that do compile,
-    // rather than asserting a failure as if it were the contract.
+    // The requested rows include restricted NonEmpty wrappers and their recursive loose sources.
+    // Every class that actually mints in requested_collections.rs is named locally; genuine root and
+    // deferred homes retain their respective imports.
     let rows: Vec<&Row> = PARTICIPATION_TABLE
         .iter()
-        .filter(|r| {
-            r.mode == Mode::RequestedHosted
-                && r.pinned_by.is_none()
-                && !matches!(r.shape, Shape::NonEmptyList | Shape::NonEmptyMap)
-        })
+        .filter(|r| r.mode == Mode::RequestedHosted && r.pinned_by.is_none())
         .collect();
     let (root, sidecar_path) = write_request_fixture("floor", &rows);
     let export = root.join("export");
