@@ -1908,7 +1908,19 @@ spliced into generated trees: `tests/custom_serialization` (core), `tests/custom
 - **Named record rule, direct + embedded** — `custom_record` and `custom_record_holder` in BOTH
   `tests/core` and `tests/preserve-encodings`: the pair writes text instead of the record's declared
   array, so exact direct and holder bytes plus generated-array rejection prove that both API doors
-  use the same whole-record codec. `core_with_wasm` also compiles its wasm surface.
+  use the same whole-record codec. `core_with_wasm` also compiles its wasm surface. The
+  `single_half_custom_codec_on_record_rule_rejects_gracefully` robustness test covers the verdict
+  seam that byte vectors alone cannot: a complete pair over an ambiguous record, and over a record
+  containing an undecodable field, retains `Deserialize` for the record and holder plus their
+  extern-interface and wasm decode surfaces, beside unannotated controls that retain the refusal.
+  `a_custom_record_pair_keeps_from_cbor_bytes_despite_ambiguous_fields` separately pins the WIT and
+  component-glue doors. This closes the review-found class where generated-field decode verdicts
+  leaked through a complete-item custom reader.
+- **Named collection boundary (remaining product finding)** —
+  `single_half_custom_codec_on_record_rule_rejects_gracefully` also pins that a pair on
+  `items = [* uint]` remains inert in both directions, so record delegation cannot accidentally
+  widen into a writer-only collection change. This is not support evidence: the accepted-but-dead
+  position remains in `cddl-matrix/ROADMAP.md` § "Findings — open" until it is honored or refused.
 - **Table key/value positions** — `custom_table_positions` (+ `_sidecar_shape`,
   `_reject_default_shape`) in `tests/preserve-encodings`: a width sweep byte-exact through the
   custom fns in both positions, the decoded-key sidecar keying, and the reject-default-shape

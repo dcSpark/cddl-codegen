@@ -1205,8 +1205,12 @@ Under `--preserve-encodings` the split follows the same line: the framing a wrap
 
 The positions below are accepted and unhonored. Honoring or refusing each needs a design decision rather than a call-site fix, so treat the current silence as unspecified rather than as a guarantee.
 
-* **On the row of an *inline* anonymous map** — the pair in the row-entry comment slot of a `{ * k => v }` map written directly in a member position (`f: { … }`) rather than as a named table rule. The named-rule form of the same slot is rejected (above); the inline form is not reached and stays silent. (Spelling it inline would also trip the end-of-line comment trap — the comment swallows the closing `}` — one more reason the slot has no valid use.) Name the map as its own rule to get the diagnostic, and put the pair on its key or value rule.
-* **BOTH halves on a named record rule.** Unlike the single-half spellings (rejected, above), this one is accepted and does something specific: the type's generated `Serialize` and `Deserialize` impls are suppressed for you to write by hand, while every embed site's *deserialize* is rewritten to call the named reader and every embed site's *serialize* goes through your hand-written impl — so the serialize function you named is never called by generated code. This is unspecified and may change; `_CDDL_CODEGEN_EXTERN_TYPE_` is the supported road for hand-owning a whole type.
+* **On a named collection rule** — `items = [* uint] ; @custom_serialize write_items
+  @custom_deserialize read_items` is accepted, but a named collection lowers to a transparent
+  collection typedef rather than a record with generated trait impls. The pair therefore reaches
+  neither the collection's standalone codec nor a holder's field call sites. Put the pair on the
+  element rule if the element wire is what changes; to own the whole collection's wire, declare it
+  `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write that type.
 
 For more examples see `tests/custom_serialization` (used in the `core` and `core_no_wasm` tests), `tests/custom_serialization_preserve` (used in the `preserve-encodings` test, including the table key/value positions above) and `tests/custom_serialization_canonical` (used in the `custom-serialize-canonical-e2e` test, for the `force_canonical` signatures).
 
