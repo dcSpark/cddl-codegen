@@ -3781,8 +3781,8 @@ json-schema-export = true
 
 /// `flavor-from` overrides the derivation, fires no warning (the user declared this, and a warning
 /// that fires on every run of the motivating consumer trains people to ignore warnings), and states
-/// once what was accepted: which crates are at a flavor the runtime does not match, and the two
-/// constructs that would break them.
+/// once what was accepted: which crates are at a flavor the runtime does not match, the two
+/// reduced-consumer bridges it carries, and the remaining explicit mismatch contract.
 #[test]
 fn runtime_flavor_from_overrides_the_derivation_and_states_the_gap() {
     let config = parse(
@@ -3818,12 +3818,16 @@ output = "gen/cip25"
         "the accepted gap must NAME the crates it applies to, got:\n{notes}"
     );
     assert!(
-        notes.contains("{+ K => V}") && notes.contains("NonEmptyMap"),
-        "the accepted gap must name the map construct that breaks it, got:\n{notes}"
+        notes.contains("{+ K => V}") && notes.contains("NonEmptyMap") && notes.contains("BTreeMap"),
+        "the accepted mismatch must name the map compatibility bridge, got:\n{notes}"
     );
     assert!(
-        notes.contains("`any`") && notes.contains("AnyCbor"),
-        "…and the `any` construct, got:\n{notes}"
+        notes.contains("`any`") && notes.contains("AnyCbor") && notes.contains("one-argument"),
+        "…and the `any` compatibility bridge, got:\n{notes}"
+    );
+    assert!(
+        notes.contains("automatic carrier derivation still requires identical"),
+        "the closed equality-axis derivation must remain explicit, got:\n{notes}"
     );
     assert!(
         !notes.to_lowercase().contains("warning"),
@@ -4061,10 +4065,10 @@ fn runtime_flavor_from_without_an_export_is_an_error() {
 /// `common-import`), hand-writes the target crate's `lib.rs` exactly as the tool's new-static-file
 /// notice instructs, and compiles the whole workspace.
 ///
-/// The MUTATION leg at the end is what makes the run's accepted-gap statement a tested claim rather
-/// than prose: adding a `{+ K => V}` to the reduced crate's spec — one of the two constructs that
-/// statement names — must break the build, because under `--preserve-encodings` the runtime's
-/// `NonEmptyMap` is backed by `OrderedHashMap` while the reduced crate builds a `BTreeMap`.
+/// The isolated reduced-consumer legs make the shared runtime's two accommodations compile-proven:
+/// ordinary shapes are the control, `{+ K => V}` proves the BTreeMap bridge, and `any` proves the
+/// upstream one-argument Serialize bridge. Each changes only one reduced spec construct, so either
+/// static fragment can be removed and its own cargo-check leg fails for the reason it owns.
 #[test]
 fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
     let dir = std::env::temp_dir().join(format!(
@@ -4213,47 +4217,55 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
     add_runtime_dep("gen/reduced/rust");
 
     let target_dir = dir.join("target");
-    let check = crate::tests::integration_tests::tool_cmd("cargo")
-        .arg("check")
-        .arg("--workspace")
-        .current_dir(&dir)
-        .env("CARGO_TARGET_DIR", &target_dir)
-        .output()
-        .unwrap();
+    let check_workspace = || {
+        crate::tests::integration_tests::tool_cmd("cargo")
+            .arg("check")
+            .arg("--workspace")
+            .current_dir(&dir)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap()
+    };
+    let check = check_workspace();
     assert!(
         check.status.success(),
-        "the exported runtime must compile BOTH flavors that import it:\n{}\n{}",
+        "the ordinary reduced control must compile against the exported runtime:\n{}\n{}",
         String::from_utf8_lossy(&check.stdout),
         String::from_utf8_lossy(&check.stderr)
     );
 
-    // The mutation leg: the accepted gap the run stated is real. `{+ K => V}` in the reduced crate's
-    // spec is `NonEmptyMap<_, BTreeMap-backed>` there and `OrderedHashMap`-backed in the runtime the
-    // full-flavor crate exported, so the same workspace must now FAIL.
+    // The preserve bridge: this reduced crate stages its `{+ K => V}` member in a BTreeMap, then
+    // reaches the preserve runtime's OrderedHashMap-backed NonEmptyMap through TryFrom.
     std::fs::write(
         dir.join("specs/reduced.cddl"),
         "reduced_rec = [x: uint, nm: {+ uint => text}]\n",
     )
     .unwrap();
     config::generate(&config_path, &["reduced".to_owned()], None, None)
-        .expect("the reduced crate must still GENERATE — the gap is a compile-time one");
-    let mutated = crate::tests::integration_tests::tool_cmd("cargo")
-        .arg("check")
-        .arg("--workspace")
-        .current_dir(&dir)
-        .env("CARGO_TARGET_DIR", &target_dir)
-        .output()
-        .unwrap();
+        .expect("the reduced map leg must generate");
+    let non_empty_map = check_workspace();
     assert!(
-        !mutated.status.success(),
-        "a `{{+ K => V}}` in the reduced crate must break against a preserve-encodings runtime — \
-         that is the hazard `flavor-from` makes the user accept, and if it stopped being real the \
-         accepted-gap statement is now telling users something false"
+        non_empty_map.status.success(),
+        "a reduced `{{+ K => V}}` must compile through the preserve runtime's BTreeMap bridge:\n{}\n{}",
+        String::from_utf8_lossy(&non_empty_map.stdout),
+        String::from_utf8_lossy(&non_empty_map.stderr)
     );
+
+    // The canonical bridge: this reduced crate calls cbor_event's one-argument Serialize impl for
+    // AnyCbor, while the shared runtime retains its local two-argument impl for canonical callers.
+    std::fs::write(
+        dir.join("specs/reduced.cddl"),
+        "reduced_rec = [x: uint, a: any]\n",
+    )
+    .unwrap();
+    config::generate(&config_path, &["reduced".to_owned()], None, None)
+        .expect("the reduced any leg must generate");
+    let any = check_workspace();
     assert!(
-        String::from_utf8_lossy(&mutated.stderr).contains("NonEmptyMap"),
-        "the failure must be the one the statement names, got:\n{}",
-        String::from_utf8_lossy(&mutated.stderr)
+        any.status.success(),
+        "a reduced `any` must compile through the canonical runtime's upstream Serialize bridge:\n{}\n{}",
+        String::from_utf8_lossy(&any.stdout),
+        String::from_utf8_lossy(&any.stderr)
     );
 
     let _ = std::fs::remove_dir_all(&dir);

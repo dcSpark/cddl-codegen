@@ -13,3 +13,15 @@ impl Serialize for AnyCbor {
         self.serialize_ref(serializer, force_canonical)
     }
 }
+
+// A preserve + canonical shared runtime also serves a reduced (non-canonical) consumer, whose
+// generated code calls cbor_event's one-argument trait. Replay stored encodings there; the local
+// two-argument impl above remains the canonical caller's dispatch point.
+impl cbor_event::se::Serialize for AnyCbor {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        self.serialize_ref(serializer, false)
+    }
+}
