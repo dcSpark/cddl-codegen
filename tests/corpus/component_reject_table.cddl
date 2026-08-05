@@ -1,0 +1,10 @@
+; Component regression: an explicit `@duplicates reject` is the documented key-unique default for
+; loose tables. Both the named and inline table must cross WIT as plain list<tuple<key, value>> maps,
+; never through the reject-set `TryFrom<Vec<_>>` door that a BTreeMap does not implement.
+named_table = { * uint => text } ; @duplicates reject
+
+holder = [
+  named: named_table,
+  inline: { * uint => text ; @duplicates reject
+  }
+]

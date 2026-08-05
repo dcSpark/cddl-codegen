@@ -321,13 +321,14 @@ pub struct RustTypeSerializeConfig {
     pub default: Option<FixedValue>,
     /// Bounds to check. Relevant to primitives + arrays + maps
     pub bounds: Option<(Option<i128>, Option<i128>)>,
-    /// Per-rule `@duplicates` policy for an array-shaped collection member (`[* a]` / `[+ a]`,
-    /// including the tag-258 set idiom). `None` (or `Some(Preserve)`) keeps the historical
-    /// `Vec`/`NonEmptyVec` representation; `Some(Reject)` swaps the member to the uniqueness twin
-    /// (`OrderedSet`/`NonEmptyOrderedSet`) whose single `TryFrom` door refuses duplicates. This
-    /// rides the transparent alias `RustType` the same way `bounds` does — attached POST-arm at the
-    /// `register_rust_struct` collection arms, never on the raw arm types the tag-set collapse
-    /// recognizer compares for structural equality (see `parsing::recognize_optional_tag_set`).
+    /// Per-rule `@duplicates` policy for an array or table collection member. On arrays (`[* a]` /
+    /// `[+ a]`, including the tag-258 set idiom), `Some(Reject)` swaps to the uniqueness twin
+    /// (`OrderedSet`/`NonEmptyOrderedSet`) whose single `TryFrom` door refuses duplicates. On loose
+    /// tables it is the explicit, accepted default: the `BTreeMap` representation is already
+    /// key-unique. This rides the transparent alias `RustType` the same way `bounds` does — attached
+    /// POST-arm at the `register_rust_struct` collection arms, never on the raw arm types the
+    /// tag-set collapse recognizer compares for structural equality (see
+    /// `parsing::recognize_optional_tag_set`).
     pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
     /// Float value window to check (NaN-safe). Mutually exclusive with `bounds`; only ever set on
     /// a float primitive member (`float64 .le 10.5`, `[f: 0.5..10.5]`).

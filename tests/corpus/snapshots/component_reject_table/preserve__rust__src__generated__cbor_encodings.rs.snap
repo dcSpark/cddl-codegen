@@ -1,0 +1,21 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct HolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub named_encoding: LenEncoding,
+    pub named_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+    pub named_value_encodings: BTreeMap<u64, StringEncoding>,
+    pub inline_encoding: LenEncoding,
+    pub inline_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+    pub inline_value_encodings: BTreeMap<u64, StringEncoding>,
+}

@@ -574,10 +574,10 @@ fn reject_custom_codec_on_row_entry(
 /// is where the policy has to live; a named table has one, so its row REJECTS the directive and
 /// points there. `@duplicates preserve` here swaps the member to the `PairMap`/`NonEmptyPairMap`
 /// vec-of-pairs twin, the same representation a named table's rule slot selects. An explicit
-/// `reject` is that policy's accepted default (a
-/// loose table is key-unique by construction) and is deliberately NOT stored: `duplicates_reject()`
-/// reads the flag without looking at the container, and a `Map` carrying it reads as DESPECIALIZED
-/// at the WIT boundary — a `TryFrom<Vec<(K, V)>>` door `BTreeMap` has not got.
+/// `reject` is that policy's accepted default (a loose table is key-unique by construction), but
+/// is still stored exactly as a named table stores it. The WIT boundary decides whether a reject
+/// policy carries an invariant from both policy and resolved container shape, so a table remains a
+/// plain map rather than being mistaken for an `OrderedSet` despecialization.
 ///
 /// Every other directive the slot can carry declares something a row entry has no place for, so it
 /// is rejected with the spelling that works: nothing written here is accepted-and-inert.
@@ -618,6 +618,9 @@ fn apply_inline_table_row_metadata(
     match metadata.duplicates {
         Some(DuplicatesPolicy::Preserve) => {
             map_type.with_duplicates_policy(Some(DuplicatesPolicy::Preserve))
+        }
+        Some(DuplicatesPolicy::Reject) => {
+            map_type.with_duplicates_policy(Some(DuplicatesPolicy::Reject))
         }
         _ => map_type,
     }

@@ -79,8 +79,8 @@ pub(crate) const ALL_PROFILES: &[Profile] = &[
     //  3. It costs no WIT coverage: the emitted `component/wit/**` is byte-identical between the
     //     two wasm postures — asserted on this face's fixtures by
     //     `component_tests::component_wit_is_wasm_posture_independent`, and confirmed at corpus
-    //     scale (0 of 89 fixtures differ).
-    //  4. Every corpus fixture generates under it (89 of 89).
+    //     scale (0 of 92 fixtures differ).
+    //  4. Every corpus fixture generates under it (92 of 92).
     //
     // Not every ALL_PROFILES consumer sweeps this row: the ones whose subject is the rust↔wasm
     // boundary, or which compile for the HOST, filter it out by [`COMPONENT_PROFILE`] with their

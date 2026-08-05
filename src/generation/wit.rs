@@ -2303,8 +2303,21 @@ fn map_primitive(p: Primitive) -> WitType {
 /// consuming door — the argument is arbitrary caller-supplied bytes carrying no type-system
 /// invariant, so that decode IS the re-check and it has to be able to fail. A plain table is NOT in
 /// this class: a `BTreeMap` carries no invariant a `list<tuple<K, V>>` can violate.
+///
+/// `RustType::duplicates_reject` intentionally answers the policy-only IR question: generic and
+/// alias convergence callers need that fact after the conceptual shape has been rewrapped. The WIT
+/// boundary has the narrower question instead — whether that policy selected the ARRAY-only
+/// `OrderedSet` representation whose invariant projection erased.
+fn wit_param_is_reject_set(ty: &RustType) -> bool {
+    ty.duplicates_reject()
+        && matches!(
+            ty.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Array(_)
+        )
+}
+
 fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
-    if ty.has_value_bounds() || ty.is_type_enforced_non_empty() || ty.duplicates_reject() {
+    if ty.has_value_bounds() || ty.is_type_enforced_non_empty() || wit_param_is_reject_set(ty) {
         return true;
     }
     // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the
@@ -2353,7 +2366,7 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
 /// worse: `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>` at all, so the same conflation emitted glue
 /// that did not compile.
 pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) -> bool {
-    if ty.is_type_enforced_non_empty() || ty.duplicates_reject() {
+    if ty.is_type_enforced_non_empty() || wit_param_is_reject_set(ty) {
         return true;
     }
     // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the

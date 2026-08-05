@@ -7,6 +7,8 @@
 //! (1.231-era) rejects the fallible constructors this face emits for every bounds-validating type.
 
 use crate::cli::Cli;
+use crate::comment_ast::DuplicatesPolicy;
+use crate::intermediate::RustStructType;
 use crate::tests::gate_cache;
 use clap::Parser;
 use std::collections::BTreeMap;
@@ -848,6 +850,85 @@ fn component_glue_routes_only_despecialized_params_through_the_try_from_door() {
             && !ctor.contains("try_into")
             && !ctor.contains("RangeCheck"),
         "the mandatory bounded field is no longer left to the rust constructor's own check:\n{ctor}"
+    );
+}
+
+/// `@duplicates reject` is an explicit, accepted no-op for loose tables: a `BTreeMap` is already
+/// key-unique. The component projection still lowers both named and inline tables through
+/// `list<tuple<K, V>>`, but neither table has an `OrderedSet`-style `TryFrom` invariant to restore.
+/// The inline IR assertion matters independently: output-only coverage would let the parser silently
+/// drop the explicit directive again and pass by accident.
+#[test]
+fn component_reject_tables_stay_plain_maps_while_reject_sets_reenter_try_from() {
+    const CDDL: &str = "named = { * uint => text } ; @duplicates reject\n\
+                        unique = [* uint] ; @duplicates reject\n\
+                        holder = [named: named, inline: { * uint => text ; @duplicates reject\n\
+                                  }]\n\
+                        set_holder = [unique: unique]\n";
+
+    let glue = component_glue_for_spec(CDDL, &[]);
+    let constructor = glue
+        .split("impl wit_types::GuestHolder for WitHolder {")
+        .nth(1)
+        .and_then(|rest| rest.split("    fn named(").next())
+        .unwrap_or_else(|| panic!("the component glue carries no holder constructor:\n{glue}"));
+    for table in ["named", "inline"] {
+        assert!(
+            constructor.contains(&format!("let {table} = {table}.into_iter().collect();")),
+            "the reject table `{table}` no longer materializes directly as a map:\n{constructor}"
+        );
+    }
+    assert!(
+        !constructor.contains("named.try_into") && !constructor.contains("inline.try_into"),
+        "a plain reject table still routes through a nonexistent TryFrom door:\n{constructor}"
+    );
+    assert!(
+        constructor.contains(") -> Self {") && !constructor.contains(") -> Result<Self, String> {"),
+        "reject tables alone made the holder constructor fallible even though maps carry no dropped \
+         uniqueness invariant:\n{constructor}"
+    );
+    let reject_set_constructor = glue
+        .split("impl wit_types::GuestSetHolder for WitSetHolder {")
+        .nth(1)
+        .and_then(|rest| rest.split("    fn unique(").next())
+        .unwrap_or_else(|| {
+            panic!("the component glue carries no reject-set holder constructor:\n{glue}")
+        });
+    assert!(
+        reject_set_constructor.contains("unique.try_into().map_err(err)?")
+            && reject_set_constructor.contains(") -> Result<Self, String> {"),
+        "the reject-set control no longer re-enters OrderedSet's fallible TryFrom door:\n\
+         {reject_set_constructor}"
+    );
+
+    let dir = scratch_dir("reject-table-ir");
+    let input = dir.join("input.cddl");
+    std::fs::write(&input, CDDL).unwrap();
+    let cli = cli_for(input.to_str().unwrap(), &[]);
+    let inline_policy = crate::api::with_types(&cli, |types, _| {
+        let holder = types
+            .rust_structs()
+            .values()
+            .find(|rust_struct| rust_struct.ident().to_string() == "Holder")
+            .expect("the holder record was not registered");
+        let RustStructType::Record(record) = holder.variant() else {
+            panic!("holder did not lower to a record: {holder:?}");
+        };
+        record
+            .fields
+            .iter()
+            .find(|field| field.name == "inline")
+            .expect("the inline table field was not retained")
+            .rust_type
+            .config
+            .duplicates
+    })
+    .unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        inline_policy,
+        Some(DuplicatesPolicy::Reject),
+        "the inline table parser silently dropped its explicit @duplicates reject policy"
     );
 }
 
@@ -1846,6 +1927,11 @@ const BUILD_SMOKE_FIXTURES: &[BuildSmokeRow] = &[
     // or not, and the two despecialization controls decide between a `TryFrom` door and an inline
     // check whose wrong choice is either a silent no-op or a trait impl that does not exist.
     ("tests/component-bounds/input.cddl", &[], None),
+    // An explicit reject policy on a loose table is a component-specific type error when the
+    // policy-only predicate routes its `BTreeMap` through the reject-set TryFrom door. Keep this
+    // small corpus cell in the representative wasip2 smoke as well as the corpus-wide full gate:
+    // the WIT itself remains valid when the guest Rust does not compile.
+    ("tests/corpus/component_reject_table.cddl", &[], None),
     // The BRIDGING classes. Every other row here compiles a crate the tool wrote alone; these two
     // compile the glue that reaches types the tool does NOT define, which is a different failure
     // class entirely — the bridge names a TRAIT on a user-owned type, so naming the wrong one is a

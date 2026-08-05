@@ -230,35 +230,6 @@ ledgered here (that's what the probe/gate error messages point at).
   here because it is an API-surface move a consumer regenerating across this change will see with no
   wire change to explain it.
 
-- **`@duplicates reject` on a TABLE rule emits a `--component` guest crate that cannot compile.**
-  The generated component glue lowers a WIT `list<tuple<k, v>>` parameter back to the rust member
-  through `try_into()` whenever `wit::wit_param_despecialized` says the projection dropped a
-  `TryFrom` door. That predicate reads `RustType::duplicates_reject()`, which inspects the policy
-  flag WITHOUT looking at the container — so a MAP carrying `reject` (a policy that is a documented
-  accepted no-op for tables: a loose table is key-unique by construction) reads as despecialized and
-  the guest gets `cddl_lib::Holder::new(f.try_into().map_err(err)?)` for a plain `BTreeMap`.
-  Probed: `tbl = { * uint => text } ; @duplicates reject` + `holder = [f: tbl]` under
-  `--component=true`, generation exit 0 with empty stderr; `BTreeMap<u64, String>: TryFrom<Vec<(u64,
-  String)>>` is unsatisfied (rustc E0277, `From<[(u64, String); _]>` is the only near miss it
-  offers). The sibling predicate `wit_param_validates` reads the same flag one function above and
-  its own doc comment already states the correct rule — "A plain table is NOT in this class: a
-  `BTreeMap` carries no invariant a `list<tuple<K, V>>` can violate" — so the fix is to make BOTH
-  predicates' `duplicates_reject()` reading container-aware (the `reject` twin is an ARRAY shape;
-  `is_reject_ordered_set` already carries exactly that guard) rather than to special-case the glue.
-  Two-seams context, because it decides how far the fix reaches: the ANONYMOUS inline table's row
-  slot (`parsing::apply_inline_table_row_metadata`) deliberately does NOT store an explicit `reject`
-  for this reason, so the inline spelling is clean today and only the NAMED table's rule slot
-  (`register_rust_struct`'s `HomogenousMap` arm, which stores whatever the policy says) reaches the
-  defect — a fix at the predicates lets the inline seam store the policy faithfully and drop that
-  carve-out. This is the ships-noncompiling-output class, so it takes no reopening signal: the
-  tool must not emit a crate that cannot build, and an exit-0/empty-stderr run that does is the
-  exact thing the honesty invariants exist to make loud. What is owed is fix-or-refuse now (the
-  refusal being a loud rejection of `@duplicates reject` on a table under `--component`), with the
-  feature-shaped half — honoring a WIT projection of the preserve/reject twins generally — parked
-  only if its own signal is honest. No gate covers it: `component_corpus_compiles` builds the
-  component corpus, and no corpus spec pairs a table with `@duplicates reject`, so the fixing
-  commit owes that fixture.
-
 - **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
