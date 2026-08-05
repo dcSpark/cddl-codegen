@@ -1570,6 +1570,38 @@ fn a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes() {
     );
 }
 
+/// A complete record-level custom pair owns decoding without consulting the generated record-field
+/// decoder. Even when the declared array members are structurally ambiguous, its seeded verdict
+/// stays deserializable, so the WIT and guest glue retain the same from-CBOR seam as Rust/wasm.
+#[test]
+fn a_custom_record_pair_keeps_from_cbor_bytes_despite_ambiguous_fields() {
+    const SPEC: &str = "custom_record = [? ignored: uint, value: uint] ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: custom_record]\n";
+    let dir = scratch_dir("customnodeser");
+    let path = dir.join("input.cddl");
+    std::fs::write(&path, SPEC).unwrap();
+    let files = crate::api::generated_strings(&cli_for(path.to_str().unwrap(), &[])).unwrap();
+    let wit = files["component/wit/world.wit"].clone();
+    let glue = files["component/src/generated/mod.rs"].clone();
+    std::fs::remove_dir_all(&dir).ok();
+
+    for resource in ["custom-record", "holder"] {
+        let body = wit
+            .split(&format!("resource {resource} {{"))
+            .nth(1)
+            .and_then(|rest| rest.split('}').next())
+            .unwrap_or_else(|| panic!("missing {resource} resource:\n{wit}"));
+        assert!(
+            body.contains("to-cbor-bytes") && body.contains("from-cbor-bytes"),
+            "the complete pair's {resource} surface lost one CBOR bridge:\n{wit}"
+        );
+    }
+    assert!(
+        glue.contains("cddl_lib::CustomRecord as cddl_lib::serialization::Deserialize")
+            && glue.contains("cddl_lib::Holder as cddl_lib::serialization::Deserialize"),
+        "the component glue lost a pair-owned decode bridge:\n{glue}"
+    );
+}
+
 /// The strong-uniqueness detector consults the REAL no-deserialize verdict, which is why it runs at
 /// GENERATION time rather than at IR finalization beside the cycle detector. Projected against an
 /// empty no-deserialize set it would see the SUPERSET of members and reject this spec for a

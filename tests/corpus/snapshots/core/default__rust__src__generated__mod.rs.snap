@@ -478,12 +478,16 @@ pub type CustomBytes = Vec<u8>;
 
 #[derive(Clone, Debug)]
 pub struct CustomRecord {
+    pub ignored: Option<u64>,
     pub value: u64,
 }
 
 impl CustomRecord {
     pub fn new(value: u64) -> Self {
-        Self { value }
+        Self {
+            ignored: None,
+            value,
+        }
     }
 }
 
