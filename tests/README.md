@@ -656,7 +656,11 @@ incidentally, so this is where the write path's own contracts are pinned: the se
 roots, the manifest changeset merge, the family-wide post-overlay import re-prune, never-silent
 comment handling, run-twice = run-once over a replace-block-bearing prior, the no-prior-output
 bound, the stale-file scan's report-never-delete rule, and the byte-inertness of every diagnostic
-prior-output read.
+prior-output read. It also covers the per-file preservation and fixed point of composed runtime
+statics, plus hand-owned `--export-static-crate` `src/` writes: their untouched root, manifest
+merge, fixed point, and existence-gated new-file notice. Larger integration cases still assert the
+generation-level flag sets that select those writes; the direct cases complement rather than replace
+that coverage.
 
 **CI policy — fast tier only.** CI (`.github/workflows/build.yml`) runs exactly
 `bun run check.ts fast` and nothing else (CI minutes cost real money — sole maintainer, AI-velocity

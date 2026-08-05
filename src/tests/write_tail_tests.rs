@@ -18,13 +18,16 @@
 //!   * the tail reads no prior output that could change what is written (W6);
 //!   * the stale-file scan reports and never deletes (W7);
 //!   * the diagnostics are byte-inert — with both of them FIRING, the tree is identical (W8).
+//!   * composed runtime statics preserve per-file user material and reach a fixed point (W9);
+//!   * hand-owned static-crate writes preserve their root, merge their manifest, and issue
+//!     existence-gated module notices (W10).
 //!
 //! Deliberately not here: what a given CDDL spec generates. That is the snapshot corpus's job.
 
 use crate::cargo_manifest::{KeyPath, ManifestOp};
 use crate::generation::rustfmt_generated_string;
 use crate::generation::write_tail::{
-    WriteTailPlan, stale_orphans, workspace_package_name_collisions,
+    StaticCrateWrite, WriteTailPlan, stale_orphans, workspace_package_name_collisions,
 };
 use crate::tests::integration_tests::checkout_hash;
 use std::collections::BTreeMap;
@@ -152,6 +155,62 @@ fn seed_once_op(path: &[&str], value: &str) -> (KeyPath, ManifestOp) {
         path.iter().map(|s| (*s).to_owned()).collect(),
         ManifestOp::SeedOnce(toml_edit::value(value)),
     )
+}
+
+const STATIC_CRATE_NOTICE_DIR: &str = "CDDL_CODEGEN_WRITE_TAIL_STATIC_CRATE_NOTICE_DIR";
+const STATIC_CRATE_NOTICE_SENTINEL: &str = "cddl-codegen static-crate notice helper ran";
+
+/// The direct `StaticCrateWrite` fixture shared by the parent assertions and the child that
+/// captures the write-tail warning stream. Its generated-output root is deliberately distinct
+/// from `target`: `--export-static-crate` must never treat the hand-owned target as output.
+fn static_crate_plan(output: &Path, target: &Path) -> WriteTailPlan {
+    let mut p = plan(output, BTreeMap::new());
+    p.static_crate = Some(StaticCrateWrite {
+        dir: target.to_path_buf(),
+        runtime_files: vec![
+            (
+                "existing.rs".to_owned(),
+                "pub struct ExistingFresh;\n".to_owned(),
+            ),
+            (
+                "new_runtime.rs".to_owned(),
+                "pub struct NewRuntime;\n".to_owned(),
+            ),
+        ],
+        serialization: "pub struct SerializationPrelude;\n".to_owned(),
+        manifest_ops: vec![set_op(&["dependencies", "cbor_event"], "2.4")],
+    });
+    p
+}
+
+/// Run the one-shot child and, only after its exit status has proved the exact helper ran
+/// successfully, return its stderr for notice assertions.
+fn static_crate_notice_stderr(dir: &Path) -> String {
+    let exe = std::env::current_exe().expect("the running test binary must have a path");
+    let output = std::process::Command::new(&exe)
+        .args([
+            "--exact",
+            "tests::write_tail_tests::write_tail_static_crate_notice_helper",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(STATIC_CRATE_NOTICE_DIR, dir)
+        .output()
+        .unwrap_or_else(|e| panic!("could not spawn {exe:?} for {dir:?}: {e}"));
+    assert!(
+        output.status.success(),
+        "the static-crate notice child failed (status {:?})\\nstdout:\\n{}\\nstderr:\\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains(STATIC_CRATE_NOTICE_SENTINEL),
+        "the child exited successfully but did not run the exact static-crate helper; its test \\
+         filter may be stale\\nstdout:\\n{}",
+        String::from_utf8_lossy(&output.stdout),
+    );
+    String::from_utf8(output.stderr).expect("the test binary's stderr must be UTF-8")
 }
 
 /// W1. The seed-once crate roots are written when ABSENT and never again — an existence check, not
@@ -640,5 +699,177 @@ fn write_tail_diagnostic_reads_change_no_written_byte() {
         snapshot(&quiet),
         snapshot(&loud),
         "a diagnostic read may emit stderr and nothing else — no written byte may depend on it"
+    );
+}
+
+/// W9. Composed runtime files are outside the map-level overlay/re-prune, so this directly pins
+/// their per-file `write_rs_with_preserve` route: the expected relative file is written, a kept
+/// comment survives, and a second regeneration is byte-for-byte identical. The small
+/// preservation-off control proves this is not merely an accidental fresh-content fixed point.
+#[test]
+fn write_tail_composed_runtime_files_preserve_per_file_and_fix_point() {
+    let dir = scratch("composed_runtime");
+    let rel = "rust/src/generated/runtime_piece.rs";
+    let fresh = rustfmt("pub struct RuntimePiece;\n");
+    std::fs::create_dir_all(dir.join("rust/src/generated")).unwrap();
+
+    let composed = |preserve_comments| {
+        let mut p = plan(&dir, BTreeMap::new());
+        p.preserve_comments = preserve_comments;
+        p.composed_runtime_files = vec![(rel.to_owned(), fresh.clone())];
+        p
+    };
+    composed(true).run().unwrap();
+    assert_eq!(
+        read(&dir, rel),
+        fresh,
+        "the composed relative path is written"
+    );
+
+    edit_prior(
+        &dir,
+        rel,
+        "pub struct RuntimePiece;",
+        "// cddl-codegen:keep runtime rationale\npub struct RuntimePiece;",
+    );
+    composed(true).run().unwrap();
+    let preserved = read(&dir, rel);
+    assert!(
+        preserved.contains("// cddl-codegen:keep runtime rationale"),
+        "the per-file route must carry a valid preserved comment:\n{preserved}"
+    );
+    composed(true).run().unwrap();
+    assert_eq!(
+        read(&dir, rel),
+        preserved,
+        "the per-file preservation route is a fixed point on its own prior output"
+    );
+
+    let clobber = scratch("composed_runtime_no_preserve");
+    std::fs::create_dir_all(clobber.join("rust/src/generated")).unwrap();
+    let mut no_preserve = plan(&clobber, BTreeMap::new());
+    no_preserve.preserve_comments = false;
+    no_preserve.composed_runtime_files = vec![(rel.to_owned(), fresh.clone())];
+    no_preserve.run().unwrap();
+    edit_prior(
+        &clobber,
+        rel,
+        "pub struct RuntimePiece;",
+        "// cddl-codegen:keep discarded by no-preserve\npub struct RuntimePiece;",
+    );
+    let mut no_preserve = plan(&clobber, BTreeMap::new());
+    no_preserve.preserve_comments = false;
+    no_preserve.composed_runtime_files = vec![(rel.to_owned(), fresh.clone())];
+    no_preserve.run().unwrap();
+    assert_eq!(
+        read(&clobber, rel),
+        fresh,
+        "without preservation, the same composed file clobbers back to fresh content"
+    );
+}
+
+/// W10 child helper. It is inert in ordinary discovery/execution; the parent invokes this exact
+/// fully-qualified name with `--nocapture` and a task-specific scratch dir to capture `warn!`'s
+/// stderr without changing the production logging contract.
+#[test]
+fn write_tail_static_crate_notice_helper() {
+    let Ok(dir) = std::env::var(STATIC_CRATE_NOTICE_DIR) else {
+        return;
+    };
+    let dir = PathBuf::from(dir);
+    static_crate_plan(&dir.join("generated-output"), &dir.join("static-target"))
+        .run()
+        .unwrap();
+    println!("{STATIC_CRATE_NOTICE_SENTINEL}");
+}
+
+/// W10. `--export-static-crate` writes only the hand-owned target's `src/` files and merged
+/// manifest. Its root remains byte-untouched, all writes become a fixed point, and existence just
+/// before each write is the sole input to the new-static-file notice.
+#[test]
+fn write_tail_static_crate_preserves_hand_root_merges_manifest_and_gates_notices() {
+    let dir = scratch("static_crate");
+    let target = dir.join("static-target");
+    let hand_root = "// hand-owned root\npub mod existing;\n";
+    std::fs::create_dir_all(target.join("src")).unwrap();
+    std::fs::write(target.join("src/lib.rs"), hand_root).unwrap();
+    // This runtime file predates the export, so the first child must update it silently while it
+    // reports both files that are genuinely new.
+    std::fs::write(target.join("src/existing.rs"), "pub struct Old;\n").unwrap();
+    std::fs::write(
+        target.join("Cargo.toml"),
+        "[package]\nname = \"hand-static\"\nversion = \"9.9.9\"\n\n\
+         [dependencies]\nhand_dep = \"1\"\ncbor_event = \"old\"\n",
+    )
+    .unwrap();
+
+    let first_stderr = static_crate_notice_stderr(&dir);
+    assert_eq!(
+        read(&target, "src/lib.rs"),
+        hand_root,
+        "the hand-owned root is untouched"
+    );
+    assert_eq!(
+        read(&target, "src/existing.rs"),
+        "pub struct ExistingFresh;\n",
+        "an existing runtime file is still refreshed"
+    );
+    assert_eq!(
+        read(&target, "src/new_runtime.rs"),
+        "pub struct NewRuntime;\n"
+    );
+    assert_eq!(
+        read(&target, "src/serialization.rs"),
+        "pub struct SerializationPrelude;\n"
+    );
+    let manifest = read(&target, "Cargo.toml");
+    assert!(
+        manifest.contains("name = \"hand-static\"")
+            && manifest.contains("version = \"9.9.9\"")
+            && manifest.contains("hand_dep = \"1\""),
+        "package and hand-owned dependency keys survive the manifest changeset:\n{manifest}"
+    );
+    assert!(
+        manifest.contains("cbor_event = \"2.4\""),
+        "the tool-owned dependency is reasserted:\n{manifest}"
+    );
+    assert!(
+        !first_stderr.contains(&crate::generation::export::new_static_file_notice(
+            "existing.rs"
+        )),
+        "an already-present runtime file is silent:\n{first_stderr}"
+    );
+    for filename in ["new_runtime.rs", "serialization.rs"] {
+        let notice = crate::generation::export::new_static_file_notice(filename);
+        assert!(
+            first_stderr.contains(&notice),
+            "each newly-created static file warns with its pub-mod guidance ({filename}):\n{first_stderr}"
+        );
+    }
+
+    let first_tree = snapshot(&target);
+    let second_stderr = static_crate_notice_stderr(&dir);
+    assert!(
+        !second_stderr.contains("NEW static file"),
+        "the immediate second static export is notice-silent:\n{second_stderr}"
+    );
+    assert_eq!(
+        snapshot(&target),
+        first_tree,
+        "the hand-owned static target is a byte-for-byte fixed point on the second run"
+    );
+
+    std::fs::remove_file(target.join("src/new_runtime.rs")).unwrap();
+    let reintroduced_stderr = static_crate_notice_stderr(&dir);
+    assert_eq!(
+        reintroduced_stderr.matches("NEW static file").count(),
+        1,
+        "deleting exactly one runtime file produces exactly one new-static-file notice:\n{reintroduced_stderr}"
+    );
+    assert!(
+        reintroduced_stderr.contains(&crate::generation::export::new_static_file_notice(
+            "new_runtime.rs"
+        )),
+        "the reintroduced file is the one named by the notice:\n{reintroduced_stderr}"
     );
 }
