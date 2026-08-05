@@ -1070,6 +1070,16 @@ loose source defers). Both floor on the generated CONSUMER wasm crate's `cargo c
 `extern_wrapper_index_defers_to_dep`'s RED leg already demonstrates that failure mode.
 `inputs_sources` generates at the preserve profile because its cross-crate MAP conversion resolves
 against the hand pair's `OrderedHashMap`-flavored wrapper contract.
+`extern_wrapper_index_local_mint_under_indexed_name_warns` (`inputs_nested`) is the third cell and
+covers the two `try_defer_wrapper` arms that decline BEFORE any index is consulted, so the class
+they mint collides with a dep-indexed name that the defer seam never saw: the ident≠structural
+screen (`arr_idx_foo_list = [* idx_foo_list]` derives `IdxFooListList` but emits `ArrIdxFooList`)
+and the R3c constituent screen (`idx_hash_list = [* idx_hash]` over a consumer-owned element, ident
+and structural name both `IdxHashList`). Both mint exactly as before — the cell asserts the classes
+and their own-index rows — and both are now announced by the mint-seam backstop
+(`warn_local_mint_shadows_index`, keyed on the EMITTED ident rather than on the arm that declined),
+whose text is pinned verbatim beside the deferring rule's unification warning to prove the shared
+once-per-ident set lets all three coexist.
 
 ### Hand-vector suites (`tests/<dir>/tests.rs`) — the assertions no other layer can make
 

@@ -1471,14 +1471,13 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   batched per (mode, floor), whose value — grid completeness — is not a property of any cell
   subset, with the per-mode floors above and the compile/link floors at full tier. The first cut
   de-risked its design (it forced both the participation table and the DECISION), so the sweep
-  starts from a settled grid rather than a cold one. One probe-seeded cell the first cut surfaced
-  and did NOT close, because it is a different branch than the one ruled on: a rule-declared
-  wrapper whose constituents include a CONSUMER-owned type takes the R3c "mixed → local, silent"
-  path BEFORE any rule-declared consideration, so a nested rule like
-  `arr_idx_foo_list = [* idx_foo_list]` mints locally and silently under a name the dep's index
-  also lists — the same duplicate-symbol configuration the table flavor now warns about, reached
-  by a path that warns nothing (probe scope: default profile, root scope, index mode; not probed
-  under workspace mode). (The cross-crate
+  starts from a settled grid rather than a cold one. The silent-local-mint cell the first cut
+  surfaced is CLOSED: every local wrapper mint whose emitted ident a dependency's index also lists
+  is announced at the one seam all four emitters pass (`warn_local_mint_shadows_index` at
+  `record_collection_wrapper`), which covers the R3c constituent screen, the ident≠structural
+  screen, and any future arm that declines before consulting the index — pinned by
+  `extern_wrapper_index_local_mint_under_indexed_name_warns` over
+  `tests/extern-deps-index-named/inputs_nested/lib.cddl`. (The cross-crate
   duplicate-symbol flavor of the synthesized-name interaction class stays owned HERE: the
   duplicate-ident backstop scans one crate's own files and
   `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`

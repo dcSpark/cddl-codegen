@@ -1,0 +1,30 @@
+; Consumer spec for the LOCAL-MINT-UNDER-A-DEP-INDEXED-NAME backstop: both arms of
+; `try_defer_wrapper` that return before any index is consulted, each minting a class whose name the
+; dependency's index also lists. The class emitted is the same duplicate-`#[wasm_bindgen]`-symbol
+; configuration the rule-declared table flavor warns about, reached by paths that used to warn
+; nothing — which is why the honesty check lives at the mint seam (`record_collection_wrapper`)
+; rather than on any one `return false`.
+;
+;   * IDENT≠STRUCTURAL arm (`arr_idx_foo_list`): its element is the RULE `idx_foo_list`, so the
+;     structurally-derived name is `IdxFooListList` while the emitted class is the rule's own
+;     `ArrIdxFooList` — a name the dep's index lists. The screen at the top of `try_defer_wrapper`
+;     declines on the structural name and never looks at the emitted one.
+;   * R3c CONSTITUENT arm (`idx_hash_list`): ident and structural name coincide (`IdxHashList`,
+;     which the dep's index also lists), but the element `idx_hash` is CONSUMER-owned, so the
+;     all-one-dep screen returns local-and-silent. That is right about the DEFERRAL — the consumer
+;     genuinely owns the element — and says nothing about the NAME.
+;
+; `idx_foo_list` itself is the already-pinned unification cell (it defers, and warns that it does),
+; kept here deliberately: it is what makes `arr_idx_foo_list`'s element a named consumer rule, and it
+; proves the two warnings coexist without either suppressing the other through the shared
+; once-per-ident set.
+idx_foo_list = [* idx_foo]
+
+arr_idx_foo_list = [* idx_foo_list]
+
+; Consumer-owned element whose structural list name the dep's index lists.
+idx_hash = [a: uint]
+
+idx_hash_list = [* idx_hash]
+
+holder = [a: arr_idx_foo_list, b: idx_hash_list]
