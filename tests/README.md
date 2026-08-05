@@ -4616,6 +4616,20 @@ that starts writing one fails there rather than silently making the edit redunda
 asserted absent for exactly that reason until `--rust-dep` derived it; it is now asserted PRESENT,
 which is the inversion that assertion was built to force.
 
+The rust-only shared-runtime sibling,
+`a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against`, checks the deliberately
+directional flavor accommodation rather than carrier derivation. It exports one preserve +
+canonical runtime selected explicitly with `[runtime].flavor-from`, wires a reduced crate to that
+hand-owned runtime, and `cargo check`s three isolated reduced specs against it: an ordinary-shape
+control, `{+ uint => text}` (the preserve runtime's `BTreeMap` → `NonEmptyMap` bridge), and `any`
+(the canonical runtime's one-argument `cbor_event::se::Serialize` bridge). Keeping the two feature
+legs separate means removing either shim fails for its own compiler reason. The integration-level
+composition assertions pin the other half of the contract on both callers of
+`composed_runtime_static_files`: preserve `NonEmptyMap` still stores an `OrderedHashMap`, and both
+the in-crate and `--export-static-crate` files append the intentional `BTreeMap` bridge. They assert
+those two facts positively rather than treating the mere presence of the token `BTreeMap` as proof
+that preserve storage regressed.
+
 **The acceptance proof.** Two tests pin "config = flag expansion, nothing more" at the level of
 emitted bytes rather than at the `Cli` struct.
 `config_expansion_generates_byte_identical_output_to_the_flag_invocation` does it for ONE crate
