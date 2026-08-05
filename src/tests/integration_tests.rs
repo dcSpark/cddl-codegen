@@ -20002,6 +20002,123 @@ fn preserve_unsupported_rows_carry_a_preserve_skip_entry() {
     );
 }
 
+/// Group replay-gate failures by their leading `"{source}: "` prefix (every per-row failure is
+/// formatted `"{row.id}: …"`; ledger stale-guard messages have no such prefix and group under
+/// their own first line). Display-only: a mis-grouped entry still appears in full below.
+///
+/// Why it exists: both replay gates ALREADY aggregate every per-row, per-leg failure into one
+/// end-of-gate panic, so a failing run names its whole obligation set once. What the panic lacked
+/// is an INVENTORY: each problem embeds its full captured `cargo test` output, so a 26-problem
+/// panic spans thousands of lines, and a reader who discharges only the family they scrolled to
+/// pays another full-tier run to meet the rest (measured: a 26-problem run whose 10 same-row
+/// header-mutant problems occupied ~1600 lines before the second family's first line). The
+/// summary block puts the row × count inventory in the panic's first screen; it changes no
+/// pass/fail semantics and is reachable only on an already-failing run.
+fn replay_failure_summary(failures: &[String]) -> String {
+    // Longest plausible `{row.id}: ` prefix. Past it the leading text is prose (a stale-guard
+    // message that happens to carry a late `": "`), so the whole first line keys the group instead.
+    const MAX_KEY: usize = 120;
+    let mut order: Vec<String> = Vec::new();
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for failure in failures {
+        let first_line = failure.lines().next().unwrap_or_default();
+        let key = match first_line.find(": ") {
+            Some(idx) if idx <= MAX_KEY => first_line[..idx].to_string(),
+            _ => {
+                let mut key: String = first_line.chars().take(MAX_KEY).collect();
+                if key.len() < first_line.len() {
+                    key.push('…');
+                }
+                key
+            }
+        };
+        let count = counts.entry(key.clone()).or_insert(0);
+        if *count == 0 {
+            order.push(key);
+        }
+        *count += 1;
+    }
+    order
+        .iter()
+        .map(|key| format!("  {key} — {}", counts[key]))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Pins `replay_failure_summary` on the exact failure shape cycle 13's full-tier
+/// `decode_conformance_replay` run produced (26 problems over two rows: 10 `wrong_major`
+/// header-mutant problems on `contain.choice-member.prelude.any.last`, then the same
+/// `…open_struct_bytes_key` row's 8 json-leg + 8 wasm-leg problems), plus one ledger stale-guard
+/// message — the shape with no `"{row}: "` prefix. Pins the three properties the summary exists to
+/// deliver: one group per source, counts, first-appearance (row-walk) order, and that no captured
+/// `cargo test` output leaks into a summary line.
+///
+/// NAMING: deliberately contains neither `decode_conformance_replay` nor `corpus_decode_replay` —
+/// check.ts runs both of those full-tier gates by SUBSTRING filter, and a name carrying either
+/// would be swept into that gate's `--ignored` run.
+#[test]
+fn replay_failure_summary_groups_by_row() {
+    let mut failures: Vec<String> = Vec::new();
+    for i in 0..10 {
+        failures.push(format!(
+            "contain.choice-member.prelude.any.last: header mutant `wrong_major` on accept vector \
+             {i} DECODED Ok (expected rejection). Captured output:\nrunning 1 test\ntest \
+             header_mutant_{i}_wrong_major ... FAILED\nfailures:\n    header_mutant_{i}_wrong_major\n"
+        ));
+    }
+    for i in 0..8 {
+        failures.push(format!(
+            "contain.occurrence-target.memberkey.type1.open_struct_bytes_key: json round-trip of \
+             accept vector {i} failed. Captured output:\nrunning 1 test\ntest json_accept_{i} ... \
+             FAILED\nfailures:\n    json_accept_{i}\n"
+        ));
+    }
+    for i in 0..8 {
+        failures.push(format!(
+            "contain.occurrence-target.memberkey.type1.open_struct_bytes_key: wasm accept of \
+             accept vector {i} failed. Captured output:\nrunning 1 test\ntest wasm_accept_{i} ... \
+             FAILED\nfailures:\n    wasm_accept_{i}\n"
+        ));
+    }
+    failures.push(
+        "JSON_SURFACE_SKIP names `dsl.custom_json` but its json boundary no longer fails to \
+         round-trip — the gap closed; remove the entry (stale pin)"
+            .to_string(),
+    );
+
+    let summary = replay_failure_summary(&failures);
+    let lines: Vec<&str> = summary.lines().collect();
+    assert_eq!(
+        lines.len(),
+        3,
+        "expected one summary line per distinct source, got:\n{summary}"
+    );
+    assert_eq!(
+        lines[0], "  contain.choice-member.prelude.any.last — 10",
+        "the first-walked row must come first with its count"
+    );
+    assert_eq!(
+        lines[1], "  contain.occurrence-target.memberkey.type1.open_struct_bytes_key — 16",
+        "the second row's json and wasm legs share one group (16), in first-appearance order"
+    );
+    assert!(
+        lines[2].starts_with("  JSON_SURFACE_SKIP names `dsl.custom_json` but its json boundary")
+            && lines[2].ends_with(" — 1"),
+        "a prefix-less stale-guard message groups under its own (truncated) first line, got: {}",
+        lines[2]
+    );
+    for line in &lines {
+        assert!(
+            line.chars().count() <= 130,
+            "summary lines must stay short — no captured output may leak in: {line}"
+        );
+        assert!(
+            !line.contains("Captured output"),
+            "captured `cargo test` output leaked into the summary: {line}"
+        );
+    }
+}
+
 /// Deterministic decode-direction replay of the committed `tests/decode_conformance/catalog.toml`
 /// corpus (no oracles — the bytes were spec-cross-validated at mint time). Per active row: generate
 /// the crate from `spec`, replay every vector through the generated decoder (accept => Ok, reject
@@ -21105,10 +21222,15 @@ fn decode_conformance_replay() {
                 .join(", ")
         );
     }
+    // The summary block heads the details so the row × count inventory is readable without
+    // scrolling past every problem's captured `cargo test` output (see `replay_failure_summary`).
+    let summary = replay_failure_summary(&failures);
     assert!(
         failures.is_empty(),
-        "decode-conformance replay found {} problem(s):\n\n{}",
+        "decode-conformance replay found {} problem(s) across {} source(s):\n{}\n\n{}",
         failures.len(),
+        summary.lines().count(),
+        summary,
         failures.join("\n\n")
     );
 }
@@ -22093,10 +22215,14 @@ fn corpus_decode_replay() {
                 .join(", ")
         );
     }
+    // Same summary block as the matrix replay gate: the row × count inventory heads the details.
+    let summary = replay_failure_summary(&failures);
     assert!(
         failures.is_empty(),
-        "corpus decode-conformance replay found {} problem(s):\n\n{}",
+        "corpus decode-conformance replay found {} problem(s) across {} source(s):\n{}\n\n{}",
         failures.len(),
+        summary.lines().count(),
+        summary,
         failures.join("\n\n")
     );
 }
