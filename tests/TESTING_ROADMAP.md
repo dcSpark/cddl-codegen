@@ -3163,24 +3163,26 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 - **Checking `[runtime] flavor-from`'s safety condition rather than stating it.** The `[runtime]`
   carrier derivation is a maintainer-CLOSED area (`AGENTS.md`), so this records the one build that
   would be defensible IF that area reopens — not an intent to build it. Shape: error only on a
-  VIOLATED condition in a flavor-mismatched crate (a `{+ K => V}` or `any` construct in its spec, a
-  `--deserialize-depth-limit` divergence), never on the mismatch itself, which the once-per-run
-  carrier note already describes. The depth-limit divergence is the sharp one — it compiles, and
-  silently guards one crate's `any` values at another crate's limit. Cost the check carries: the
-  flag→poisoned-construct map becomes load-bearing and a stale map yields a false "safe", so it owes
-  a lockstep guard tying its construct list to the runtime's flavor-conditional surface. The same
-  divergence class is reachable WITHOUT config mode — hand invocations pairing
+  VIOLATED semantic condition in a flavor-mismatched crate, never on the mismatch itself, which the
+  once-per-run carrier note already describes. The remaining known condition is a
+  `--deserialize-depth-limit` divergence when the consumer uses `any`: it compiles, and silently
+  guards one crate's values at another crate's limit. The former compile-time conditions are current
+  coverage, not remaining work: a preserve + canonical carrier now compile-serves an isolated
+  reduced `{+ K => V}` and an isolated reduced `any`, pinned by
+  `a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against`. Do not rebuild a
+  flag→poisoned-construct map from those retired gaps; compatibility outside the pinned direction
+  remains spec-dependent and explicit through `flavor-from`. The same depth-limit divergence is
+  reachable WITHOUT config mode — hand invocations pairing
   `--export-static-crate` with `--common-import-override` consumers — and there it has less signage
   still: no carrier note exists, only the MATCH contract on the flag's own doc. A check on that path
   is a structurally different build, not a scope extension of the config-mode one: no single hand
   invocation sees both flag sets (the consumer knows only the runtime's path, used verbatim), so it
   would need the exported runtime to carry a machine-readable flavor record that consumer generation
   reads as an explicit cross-crate input (the `--extern-import` class — another crate's committed
-  export, not this run's prior output). That half is not behind the maintainer-CLOSED gate (it never
-  touches the carrier derivation) but carries the same lockstep-map cost. Reopening signal: a
-  consumer report of the silent depth-limit mis-guarding in a shared-runtime workspace — reached via
-  `flavor-from` or via hand-flag `--export-static-crate` — or of a mismatched crate's spec gaining a
-  poisoned construct with the resulting failure attributed downstream as a consumer bug.
+  export, not this run's prior output). That half is not behind the maintainer-CLOSED gate because it
+  never touches the carrier derivation. Reopening signal: a consumer report of the silent
+  depth-limit mis-guarding in a shared-runtime workspace, reached via `flavor-from` or via hand-flag
+  `--export-static-crate`.
 
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
