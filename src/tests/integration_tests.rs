@@ -18094,7 +18094,7 @@ fn encoding_variants_copy_float_heads_verbatim() {
 }
 
 /// One catalog `[[row]]` vector, distilled to what the replay needs: the `hex` bytes, whether it must
-/// decode (`accept`), and — for `class="constraint"` reject vectors — the `expect_err` substring the
+/// decode (`accept`), and — for `class="constraint"` / `class="policy-rejected"` reject vectors — the `expect_err` substring the
 /// generated decoder's error Display must contain when it rejects. `expect_err` is `None` for accept
 /// vectors and for bug/limitation reject pins (which only assert `is_err`); the drift gate enforces
 /// that it is present exactly on the constraint vectors, so `Some` here IS "constraint vector".
@@ -18107,6 +18107,10 @@ struct ReplayVector {
     /// NOT spec-valid — the base/encoding-variant/header-mutation/preserve legs must exclude it, and it
     /// replays as its own `over_accept_{i}` test asserting the decoder STILL accepts it.
     over_acceptance: bool,
+    /// `class="policy-rejected"`: spec-VALID CBOR intentionally rejected by a documented library
+    /// policy. Unlike bug/limitation pins it must remain rejected under both profiles, but unlike a
+    /// constraint it is not authored-CDDL enforcement evidence.
+    policy_rejected: bool,
     expect_err: Option<String>,
 }
 
@@ -18670,6 +18674,8 @@ fn rust_str_literal(s: &str) -> String {
 /// the needle that attributes it cannot drift apart.
 const MARKER_CONSTRAINT_DECODED_OK: &str = "CONSTRAINT_DECODED_OK";
 const MARKER_CONSTRAINT_WRONG_REASON: &str = "CONSTRAINT_WRONG_REASON";
+const MARKER_POLICY_DECODED_OK: &str = "POLICY_DECODED_OK";
+const MARKER_POLICY_WRONG_REASON: &str = "POLICY_WRONG_REASON";
 const MARKER_VARIANT_REJECTED: &str = "VARIANT_REJECTED";
 const MARKER_VARIANT_VALUE_MISMATCH: &str = "VARIANT_VALUE_MISMATCH";
 const MARKER_VAR_ORIG_DECODE_FAILED: &str = "VAR_ORIG_DECODE_FAILED";
@@ -18732,6 +18738,53 @@ fn classify_constraint_failure(output: &str, test_name: &str) -> ConstraintFailu
     } else {
         ConstraintFailureKind::Unattributed
     }
+}
+
+/// How a FAILED `class="policy-rejected"` reject vector's replay test attributed its cause.
+#[derive(Debug, PartialEq)]
+enum PolicyFailureKind {
+    DecodedOk,
+    WrongReason,
+    DoubledLocation,
+    Unattributed,
+}
+
+/// Policy pins have their own markers so a narrowed-library-policy regression cannot be reported as
+/// authored-CDDL constraint enforcement. The trailing ':' retains the decimal-suffix guard.
+fn classify_policy_failure(output: &str, test_name: &str) -> PolicyFailureKind {
+    if output.contains(&format!("{MARKER_POLICY_DECODED_OK} {test_name}:")) {
+        PolicyFailureKind::DecodedOk
+    } else if output.contains(&format!("{MARKER_POLICY_WRONG_REASON} {test_name}:")) {
+        PolicyFailureKind::WrongReason
+    } else if output.contains(&format!("{MARKER_DOUBLED_LOCATION} {test_name}:")) {
+        PolicyFailureKind::DoubledLocation
+    } else {
+        PolicyFailureKind::Unattributed
+    }
+}
+
+#[test]
+fn classify_policy_failure_disambiguates_prefix_colliding_names() {
+    let output = "\
+        POLICY_WRONG_REASON reject_1: wrong reason\n\
+        POLICY_DECODED_OK reject_10: decoded ok\n\
+        DOUBLED_LOCATION reject_100: duplicate location\n";
+    assert_eq!(
+        classify_policy_failure(output, "reject_1"),
+        PolicyFailureKind::WrongReason
+    );
+    assert_eq!(
+        classify_policy_failure(output, "reject_10"),
+        PolicyFailureKind::DecodedOk
+    );
+    assert_eq!(
+        classify_policy_failure(output, "reject_100"),
+        PolicyFailureKind::DoubledLocation
+    );
+    assert_eq!(
+        classify_policy_failure(output, "reject_2"),
+        PolicyFailureKind::Unattributed
+    );
 }
 
 /// How a FAILED encoding-variant replay test (`accept_{i}_var_{label}`) attributed its cause.
@@ -19358,17 +19411,33 @@ fn decode_replay_run(
             (name, body)
         } else {
             let name = format!("reject_{i}");
-            // DEFAULT leg + constraint vector => assert the rejection REASON, not just is_err.
+            // DEFAULT leg + durable constraint/policy vector => assert the rejection REASON, not just is_err.
             let body = match (preserve, &vector.expect_err) {
                 (false, Some(expect_err)) => {
                     let expect_lit = rust_str_literal(expect_err);
+                    let (decoded_marker, wrong_reason_marker, class, contract) =
+                        if vector.policy_rejected {
+                            (
+                                MARKER_POLICY_DECODED_OK,
+                                MARKER_POLICY_WRONG_REASON,
+                                "policy-rejected",
+                                "the documented narrowing policy",
+                            )
+                        } else {
+                            (
+                                MARKER_CONSTRAINT_DECODED_OK,
+                                MARKER_CONSTRAINT_WRONG_REASON,
+                                "constraint",
+                                "the constraint",
+                            )
+                        };
                     format!(
                         "match {type_name}::from_cbor_bytes(BYTES) {{\n\
-                         \x20           Ok(_) => panic!(\"{MARKER_CONSTRAINT_DECODED_OK} {name}: a class=constraint vector decoded Ok — the generated decoder does NOT enforce the constraint\"),\n\
+                         \x20           Ok(_) => panic!(\"{decoded_marker} {name}: a class={class} vector decoded Ok — the generated decoder does NOT enforce {contract}\"),\n\
                          \x20           Err(e) => {{\n\
                          \x20               let disp = e.to_string();\n\
                          \x20               assert_no_adjacent_duplicate_location(\"{MARKER_DOUBLED_LOCATION}\", \"{name}\", &disp);\n\
-                         \x20               assert!(disp.contains({expect_lit}), \"{MARKER_CONSTRAINT_WRONG_REASON} {name}: rejected but Display did not contain {{:?}} — got: {{}}\", {expect_lit}, disp);\n\
+                         \x20               assert!(disp.contains({expect_lit}), \"{wrong_reason_marker} {name}: rejected but Display did not contain {{:?}} — got: {{}}\", {expect_lit}, disp);\n\
                          \x20           }}\n\
                          \x20       }}"
                     )
@@ -19385,8 +19454,11 @@ fn decode_replay_run(
             // reason-asserting form.
             if !preserve && vector.expect_err.is_some() {
                 assert!(
-                    body.contains(MARKER_CONSTRAINT_WRONG_REASON)
-                        && body.contains(MARKER_DOUBLED_LOCATION),
+                    body.contains(if vector.policy_rejected {
+                        MARKER_POLICY_WRONG_REASON
+                    } else {
+                        MARKER_CONSTRAINT_WRONG_REASON
+                    }) && body.contains(MARKER_DOUBLED_LOCATION),
                     "decode_replay_run built a body missing a marker for a default-leg vector with \
                      expect_err ({name}) — the constraint match arm regressed"
                 );
@@ -20501,6 +20573,7 @@ fn decode_conformance_replay() {
                     hex,
                     accept: expect == "accept",
                     over_acceptance: expect == "accept" && class == Some("over-acceptance"),
+                    policy_rejected: expect == "reject" && class == Some("policy-rejected"),
                     expect_err,
                 }
             })
@@ -20660,6 +20733,7 @@ fn decode_conformance_replay() {
     // Display contained the pinned `expect_err`). A vacuity floor below guards against this collapsing
     // to near-zero (a broken match body, or the corpus losing its constraint vectors).
     let mut constraint_reason_asserts = 0usize;
+    let mut policy_reason_asserts = 0usize;
     // How many `over_accept_{i}` tests were emitted (default leg). A completeness guard below asserts
     // this equals the catalog's over-acceptance vector count, so an emission arm that mislabels an
     // over-acceptance vector as a plain accept is caught even though the per-crate count is unchanged.
@@ -20668,6 +20742,11 @@ fn decode_conformance_replay() {
         .iter()
         .flat_map(|r| &r.vectors)
         .filter(|v| v.over_acceptance)
+        .count();
+    let policy_catalog_total: usize = rows
+        .iter()
+        .flat_map(|r| &r.vectors)
+        .filter(|v| v.policy_rejected)
         .count();
 
     for row in &rows {
@@ -20807,7 +20886,9 @@ fn decode_conformance_replay() {
                     if passed {
                         // A constraint vector that passed did so via the `expect_err` REASON assert
                         // (its test body is the `contains(..)` match) — count it for the vacuity floor.
-                        if !vector.accept && vector.expect_err.is_some() {
+                        if vector.policy_rejected {
+                            policy_reason_asserts += 1;
+                        } else if !vector.accept && vector.expect_err.is_some() {
                             constraint_reason_asserts += 1;
                         }
                         continue;
@@ -20837,6 +20918,35 @@ fn decode_conformance_replay() {
                              decoder is over-strict (the exact class this gate exists to catch)",
                             row.id
                         ));
+                    } else if vector.policy_rejected {
+                        let expect = vector.expect_err.as_deref().unwrap_or("");
+                        match classify_policy_failure(&combined, &name) {
+                            PolicyFailureKind::DecodedOk => failures.push(format!(
+                                "{}: policy-rejected vector {hex} DECODED Ok — cddl-codegen no longer \
+                                 applies the documented narrowing policy; expected rejection whose \
+                                 Display contains {expect:?}",
+                                row.id
+                            )),
+                            PolicyFailureKind::WrongReason => failures.push(format!(
+                                "{}: policy-rejected vector {hex} was rejected for the WRONG reason — \
+                                 its error Display did NOT contain the pinned {expect:?}. Captured \
+                                 Display in the run output below:\n{combined}",
+                                row.id
+                            )),
+                            PolicyFailureKind::DoubledLocation => {
+                                failures.push(format!(
+                                    "{}: policy-rejected vector {hex} rejected with an adjacent-duplicate \
+                                     error location segment — generator double-annotation regression; \
+                                     triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
+                                    row.id
+                                ));
+                            }
+                            PolicyFailureKind::Unattributed => failures.push(format!(
+                                "{}: policy-rejected vector {hex} failed its reason assert but emitted \
+                                 no known marker — unexpected; full output:\n{combined}",
+                                row.id
+                            )),
+                        }
                     } else if vector.expect_err.is_some() {
                         // A constraint vector failed: distinguish "decoded Ok" (enforcement gap) from
                         // "rejected for the WRONG reason" via the grep-stable markers the test emits.
@@ -21042,13 +21152,13 @@ fn decode_conformance_replay() {
         }
         let _ = std::fs::remove_dir_all(&out);
 
-        // ---- preserve profile: SPEC-VALID ACCEPT vectors only, decode-Ok AND byte-identity ----
+        // ---- preserve profile: SPEC-VALID accepts (byte-identity) plus policy rejects (Err only) ----
         // Over-acceptance vectors are excluded — the pin is exactly one assertion on the default leg (one
         // flip signal, no preserve-leg noise), and byte-identity of a spec-invalid instance is meaningless.
         let accepts: Vec<ReplayVector> = row
             .vectors
             .iter()
-            .filter(|v| v.spec_valid_accept())
+            .filter(|v| v.spec_valid_accept() || v.policy_rejected)
             .cloned()
             .collect();
         let skip_reason = preserve_skip.get(row.id.as_str()).copied();
@@ -21255,6 +21365,11 @@ fn decode_conformance_replay() {
         "emitted {over_acceptance_tests_emitted} over_accept_* test(s) but the catalog holds \
          {over_acceptance_catalog_total} class=\"over-acceptance\" vector(s) — the over-acceptance \
          emission arm regressed (a vector mislabeled as a plain accept, or the catalog parse drifted)"
+    );
+    assert_eq!(
+        policy_reason_asserts, policy_catalog_total,
+        "only {policy_reason_asserts} policy-rejected vectors had their rejection REASON asserted, but \
+         the catalog holds {policy_catalog_total} — the policy replay arm regressed"
     );
     // Variant-test floor: the DEFAULT-leg encoding-variant leg must actually emit its tests (4487 from
     // the 1052 accept vectors when the floor was set — an observed baseline, not a current count).
@@ -21580,6 +21695,7 @@ fn corpus_decode_replay() {
                     hex,
                     accept: expect == "accept",
                     over_acceptance: expect == "accept" && class == Some("over-acceptance"),
+                    policy_rejected: expect == "reject" && class == Some("policy-rejected"),
                     expect_err,
                 }
             })
@@ -21718,6 +21834,7 @@ fn corpus_decode_replay() {
     let mut variant_tests_total = 0usize;
     let mut header_tests_total = 0usize;
     let mut constraint_reason_asserts = 0usize;
+    let mut policy_reason_asserts = 0usize;
     let mut over_acceptance_tests_emitted = 0usize;
     // json/wasm decode-surface leg counters (third generation). Floors below guard vacuity.
     let mut json_accept_tests_total = 0usize;
@@ -21729,6 +21846,11 @@ fn corpus_decode_replay() {
         .iter()
         .flat_map(|r| &r.vectors)
         .filter(|v| v.over_acceptance)
+        .count();
+    let policy_catalog_total: usize = rows
+        .iter()
+        .flat_map(|r| &r.vectors)
+        .filter(|v| v.policy_rejected)
         .count();
 
     for row in &rows {
@@ -21838,7 +21960,9 @@ fn corpus_decode_replay() {
                     }
                     let passed = results.get(&name).copied().unwrap_or(false);
                     if passed {
-                        if !vector.accept && vector.expect_err.is_some() {
+                        if vector.policy_rejected {
+                            policy_reason_asserts += 1;
+                        } else if !vector.accept && vector.expect_err.is_some() {
                             constraint_reason_asserts += 1;
                         }
                         continue;
@@ -21866,6 +21990,33 @@ fn corpus_decode_replay() {
                              decoder is over-strict (the exact class this gate exists to catch)",
                             row.id
                         ));
+                    } else if vector.policy_rejected {
+                        let expect = vector.expect_err.as_deref().unwrap_or("");
+                        match classify_policy_failure(&combined, &name) {
+                            PolicyFailureKind::DecodedOk => failures.push(format!(
+                                "{}: policy-rejected vector {hex} DECODED Ok — cddl-codegen no longer \
+                                 applies the documented narrowing policy; expected rejection whose \
+                                 Display contains {expect:?}",
+                                row.id
+                            )),
+                            PolicyFailureKind::WrongReason => failures.push(format!(
+                                "{}: policy-rejected vector {hex} was rejected for the WRONG reason — \
+                                 its error Display did NOT contain the pinned {expect:?}. Captured \
+                                 Display in the run output below:\n{combined}",
+                                row.id
+                            )),
+                            PolicyFailureKind::DoubledLocation => failures.push(format!(
+                                "{}: policy-rejected vector {hex} rejected with an adjacent-duplicate \
+                                 error location segment — generator double-annotation regression; \
+                                 triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
+                                row.id
+                            )),
+                            PolicyFailureKind::Unattributed => failures.push(format!(
+                                "{}: policy-rejected vector {hex} failed its reason assert but emitted \
+                                 no known marker — unexpected; full output:\n{combined}",
+                                row.id
+                            )),
+                        }
                     } else if vector.expect_err.is_some() {
                         let expect = vector.expect_err.as_deref().unwrap_or("");
                         match classify_constraint_failure(&combined, &name) {
@@ -22064,11 +22215,11 @@ fn corpus_decode_replay() {
         }
         let _ = std::fs::remove_dir_all(&out);
 
-        // ---- preserve profile: SPEC-VALID ACCEPT vectors only, decode-Ok AND byte-identity ----
+        // ---- preserve profile: SPEC-VALID accepts (byte-identity) plus policy rejects (Err only) ----
         let accepts: Vec<ReplayVector> = row
             .vectors
             .iter()
-            .filter(|v| v.spec_valid_accept())
+            .filter(|v| v.spec_valid_accept() || v.policy_rejected)
             .cloned()
             .collect();
         let skip_reason = preserve_skip.get(row.id.as_str()).copied();
@@ -22253,6 +22404,11 @@ fn corpus_decode_replay() {
         "emitted {over_acceptance_tests_emitted} over_accept_* test(s) but the catalog holds \
          {over_acceptance_catalog_total} class=\"over-acceptance\" vector(s) — the over-acceptance \
          emission arm regressed (a vector mislabeled as a plain accept, or the catalog parse drifted)"
+    );
+    assert_eq!(
+        policy_reason_asserts, policy_catalog_total,
+        "only {policy_reason_asserts} policy-rejected vectors had their rejection REASON asserted, but \
+         the catalog holds {policy_catalog_total} — the policy replay arm regressed"
     );
     // The corpus carries no `class="constraint"` vectors at HEAD (the enforcement axis is matrix-owned),
     // so there is no constraint-reason floor: `constraint_reason_asserts` is 0 by construction. Reference

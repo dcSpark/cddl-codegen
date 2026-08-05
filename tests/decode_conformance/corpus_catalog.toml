@@ -27,6 +27,13 @@
 #           `expect_err`: a substring the generated decoder's error Display must contain when it
 #           rejects the vector — the rust replay gate pins the rejection REASON, not just that it
 #           rejects (a stray length check / unrelated error path would decode-reject but mis-name).
+#         policy-rejected = spec-VALID CBOR (source="hand") that both reference oracles accept,
+#           but cddl-codegen intentionally rejects under a documented narrowing policy. It is kept
+#           verbatim and must DURABLY reject under both default and --preserve-encodings profiles;
+#           acceptance is a policy regression, never a bug-fixed/unpin flow. It ALSO carries
+#           `expect_err`, pinning the policy rejection reason. Policy evidence is NOT authored-CDDL
+#           constraint enforcement: it contributes to neither Q4 enforce-constraint nor accept/
+#           encoding/header/JSON evidence. The tag-258 duplicate-set default is the exemplar.
 #       An accept vector may ALSO carry a class, but ONLY class="over-acceptance": spec-INVALID CBOR
 #       (source="hand") that the generated decoder CURRENTLY (wrongly) ACCEPTS — a certified silent-
 #       acceptance bug with no fix yet. Both oracles REJECT it (re-validated spec-INVALID at each mint,
@@ -8526,52 +8533,63 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820081190c4a"
+hex = "820080"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200831906861908dd1908f7"
+hex = "8200820101"
+source = "hand"
+expect = "reject"
+class = "policy-rejected"
+reason = "The untagged [1, 1] decodes under the authored [* uint] arm, but cddl-codegen's tag-258 set default rejects duplicate key 1."
+expect_err = "Duplicate key:"
+
+[[row.vector]]
+hex = "82008419038c190cb6185c190f78"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008419068019014d190c9c1909de"
+hex = "82008419062919022a190f46186b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200d9010280"
+hex = "8200d90102820101"
+source = "hand"
+expect = "reject"
+class = "policy-rejected"
+reason = "The tag-258 [1, 1] decodes under the authored #6.258([* uint]) arm, but cddl-codegen's tag-258 set default rejects duplicate key 1."
+expect_err = "Duplicate key:"
+
+[[row.vector]]
+hex = "8200d9010282190fe5190682"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200d9010281190978"
+hex = "8200d901028319058f1861191084"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200d9010281190f4b"
+hex = "8200d90102831909d9190935190545"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200d901028219089b190154"
+hex = "8200d9010284183519089f19030e190238"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200d9010283190dd5190f4a190f89"
+hex = "8200d9010284190194190e0c19030b190d51"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200d90102841907b31906491907eb189f"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200d901028419111f19104c1909d3190f31"
+hex = "8200d901028419041f1911d6190bfd190bff"
 source = "ruby-generate"
 expect = "accept"
 

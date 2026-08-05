@@ -1076,6 +1076,13 @@ export function composeCatalog(rows: CatalogRow[], intro: string[] = DEFAULT_CAT
     "#           `expect_err`: a substring the generated decoder's error Display must contain when it",
     "#           rejects the vector — the rust replay gate pins the rejection REASON, not just that it",
     "#           rejects (a stray length check / unrelated error path would decode-reject but mis-name).",
+    "#         policy-rejected = spec-VALID CBOR (source=\"hand\") that both reference oracles accept,",
+    "#           but cddl-codegen intentionally rejects under a documented narrowing policy. It is kept",
+    "#           verbatim and must DURABLY reject under both default and --preserve-encodings profiles;",
+    "#           acceptance is a policy regression, never a bug-fixed/unpin flow. It ALSO carries",
+    "#           `expect_err`, pinning the policy rejection reason. Policy evidence is NOT authored-CDDL",
+    "#           constraint enforcement: it contributes to neither Q4 enforce-constraint nor accept/",
+    "#           encoding/header/JSON evidence. The tag-258 duplicate-set default is the exemplar.",
     "#       An accept vector may ALSO carry a class, but ONLY class=\"over-acceptance\": spec-INVALID CBOR",
     "#       (source=\"hand\") that the generated decoder CURRENTLY (wrongly) ACCEPTS — a certified silent-",
     "#       acceptance bug with no fix yet. Both oracles REJECT it (re-validated spec-INVALID at each mint,",
@@ -1109,7 +1116,8 @@ export function composeCatalog(rows: CatalogRow[], intro: string[] = DEFAULT_CAT
         L.push(`hex = ${foreignTomlStr(v.hex)}`);
         L.push(`source = ${foreignTomlStr(v.source)}`);
         L.push(`expect = ${foreignTomlStr(v.expect)}`);
-        // class/reason/expect_err are emitted whenever present — reject pins (bug/limitation/constraint)
+        // class/reason/expect_err are emitted whenever present — reject pins (bug/limitation/constraint/
+        // policy-rejected)
         // AND class="over-acceptance" accept vectors both carry them. A plain accept vector has none, so
         // its output is unchanged. (Guarding on `expect === "reject"` would silently strip the class and
         // reason from an over-acceptance vector on re-mint.)

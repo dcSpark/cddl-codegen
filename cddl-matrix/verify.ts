@@ -1102,6 +1102,44 @@ function derive(featureId: string, profile: string, rubySpecValid: boolean, rust
 // live in ./lib so the drift gate can round-trip the catalog without importing this whole gate module.
 interface ForeignOutcome { accepts_foreign?: boolean; foreign_vectors?: number }
 interface ReplayVec { hex: string; name: string; expectOk: boolean }
+interface ReplayResult { verdicts: Map<string, boolean>; output: string }
+const MINT_ACCEPT_REJECTED = "MINT_ACCEPT_REJECTED";
+
+// Recover the Display captured by replayInDir's deliberately per-test marker. `name:` (not merely
+// `name`) is load-bearing: a candidate test `row_a1` must not borrow `row_a10`'s failure reason.
+// Keeping this small parser here, next to the emitted marker, makes policy classification reviewable
+// without depending on cargo's surrounding panic formatting.
+function markedReplayRejectDisplay(output: string, name: string): string | null {
+  const needle = `${MINT_ACCEPT_REJECTED} ${name}: `;
+  const start = output.indexOf(needle);
+  if (start < 0) return null;
+  const from = start + needle.length;
+  const end = output.indexOf("\n", from);
+  return output.slice(from, end < 0 ? undefined : end);
+}
+
+// A random oracle-valid candidate is redundant policy evidence ONLY when its own decoder Display
+// matches an already two-oracle-validated hand policy pin. Unknown rejection reasons stay class-less
+// triage: this never turns a newly-discovered decoder bug into an invisible policy exemption.
+function isKnownPolicyReject(result: ReplayResult, name: string, pins: CatalogVector[]): boolean {
+  const display = markedReplayRejectDisplay(result.output, name);
+  return display !== null && pins.some(p =>
+    p.class === "policy-rejected" && typeof p.expect_err === "string" && p.expect_err.length > 0 &&
+    display.includes(p.expect_err!),
+  );
+}
+
+// Cheap pure control for the marker grammar: a longer decimal suffix must not donate its Display to
+// a prefix candidate, while the exact candidate matches only the validated policy door.
+{
+  const pins: CatalogVector[] = [{ hex: "00", source: "hand", expect: "reject", class: "policy-rejected", reason: "synthetic", expect_err: "Duplicate key:" }];
+  const output = `${MINT_ACCEPT_REJECTED} row_a10: Duplicate key: 2\n${MINT_ACCEPT_REJECTED} row_a2: unrelated failure\n`;
+  const result: ReplayResult = { verdicts: new Map(), output };
+  if (markedReplayRejectDisplay(output, "row_a1") !== null ||
+      !isKnownPolicyReject(result, "row_a10", pins) ||
+      isKnownPolicyReject(result, "row_a2", pins))
+    throw new Error("policy mint classifier self-check failed (test-name delimiter or policy reason matching regressed)");
+}
 
 // A matrix row id (`occur.optional`, `ctl.size`) -> a valid, unique Rust test-fn ident fragment.
 function foreignIdent(id: string): string { return id.replace(/[^A-Za-z0-9]/g, "_"); }
@@ -1144,7 +1182,7 @@ function crateHasDeserialize(outDir: string, typeName: string): boolean {
 // Runs `cargo test` (shared warm target) and parses per-test pass/fail. Returns null on a COMPILE failure
 // (no test result lines) so callers can tell "decoder rejected a vector" (a verdict) from "crate didn't
 // build" (a harness/detection problem).
-function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType: string): Map<string, boolean> | null {
+function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType: string): ReplayResult | null {
   const libPath = join(outDir, "rust", "src", "generated", "mod.rs");
   const fns = vecs.map(v => {
     const bytes = (v.hex.match(/../g) ?? []).map(b => `0x${b}`).join(", ");
@@ -1152,7 +1190,7 @@ function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType
     // REASON assert (catalog `expect_err`) lives in the rust replay gate
     // (src/tests/integration_tests.rs::decode_conformance_replay), which owns the durable pin.
     const body = v.expectOk
-      ? `${decodeType}::from_cbor_bytes(BYTES).expect("accept vector must decode");`
+      ? `match ${decodeType}::from_cbor_bytes(BYTES) { Ok(_) => {}, Err(e) => panic!("${MINT_ACCEPT_REJECTED} ${v.name}: {}", e) }`
       : `assert!(${decodeType}::from_cbor_bytes(BYTES).is_err(), "reject vector must NOT decode");`;
     return `    #[test]\n    fn ${v.name}() {\n        const BYTES: &[u8] = &[${bytes}];\n        ${body}\n    }`;
   }).join("\n");
@@ -1175,7 +1213,7 @@ function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType
       console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
       // replay stdout is consumed only to recover per-test pass/fail. A cached PASS means libtest
       // reached every appended replay test and they all passed, so the success-path map is exact.
-      return new Map(vecs.map(v => [v.name, true]));
+      return { verdicts: new Map(vecs.map(v => [v.name, true])), output: "" };
     }
   }
 
@@ -1197,7 +1235,7 @@ function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType
   if ((r.exitCode ?? -1) === 0 && res.size === vecs.length && vecs.every(v => res.get(v.name) === true) && key && entryBase)
     writeGateCacheEntry(key, { ...entryBase, cell, created: new Date().toISOString() }, CODEGEN_DIR);
   if (res.size !== vecs.length) return null;  // compile error / missing tests -> not a verdict
-  return res;
+  return { verdicts: res, output: out };
 }
 
 // ruby `cddl <spec> generate 1` emits ONE diagnostic-notation instance on stdout; diag2cbor.rb converts
@@ -1297,7 +1335,7 @@ function decodeForeignProbe(id: string, matrixExample: string): ForeignOutcome {
     console.error(`[decode-foreign] ${id}: replay produced no per-test verdict (compile error or transient registry glitch) — regenerating + retrying once.`);
     if (foreignGenCrate(nextForeignOut(), row.spec) === 0) res = replayInDir(id, ccOutForeign, vecs, row.type_name);
   }
-  return { accepts_foreign: res !== null && vecs.every(v => res.get(v.name) === true), foreign_vectors: accepts.length };
+  return { accepts_foreign: res !== null && vecs.every(v => res.verdicts.get(v.name) === true), foreign_vectors: accepts.length };
 }
 // Evidence suffix (wasmEvidence twin). "" when opted out so an opted-out run's annotations are unchanged.
 function decodeForeignEvidence(fo?: ForeignOutcome): string {
@@ -1435,6 +1473,9 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
 //     oracle gaps"). A
   //     constraint vector must be BASE-TYPE-VALID (only the constraint rejects it) — a type-violation
   //     vector is not enforcement evidence. `.size`, `.cbor`, and cut qualify on that standard.
+  //   policy-rejected — spec-VALID CBOR both oracles accept, but the documented generated-decoder
+  //     policy intentionally rejects. Keep iff BOTH oracles still ACCEPT; decoder acceptance is a
+  //     policy regression, never the bug-fixed/unpin flow.
   //   bug/limitation — spec-VALID CBOR our decoder wrongly rejects. Keep iff BOTH oracles still ACCEPT.
   const validatedRejectPins: CatalogVector[] = [];
   for (const p of rejectPins) {
@@ -1489,7 +1530,10 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
 
   const outVecs: CatalogVector[] = [];
   validatedAccept.forEach((c, i) => {
-    if (res.get(`${foreignIdent(id)}_a${i}`) === true) outVecs.push({ hex: c.hex, source: c.source, expect: "accept" });
+    const name = `${foreignIdent(id)}_a${i}`;
+    if (res.verdicts.get(name) === true) outVecs.push({ hex: c.hex, source: c.source, expect: "accept" });
+    else if (isKnownPolicyReject(res, name, validatedRejectPins))
+      dropped.push(`${id}/${c.hex} (spec-valid generated candidate rejected by the validated policy door; redundant policy evidence omitted)`);
     else {
       outVecs.push({ hex: c.hex, source: c.source, expect: "reject" });  // class-less: triage-pending
       triage.push(`${id}/${c.hex} (mode=${mode}, type=${decodeType}): spec-valid but decoder REJECTED`);
@@ -1497,14 +1541,16 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   });
   validatedRejectPins.forEach((p, i) => {
     outVecs.push(p);  // keep the row either way (re-confirmed pin, or kept for human re-triage)
-    if (res.get(`${foreignIdent(id)}_r${i}`) !== true)
+    if (res.verdicts.get(`${foreignIdent(id)}_r${i}`) !== true)
       pinBreak.push(p.class === "constraint"
         ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in ROADMAP § findings`
-        : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
+        : p.class === "policy-rejected"
+          ? `${id}/${p.hex}: policy-rejected vector now DECODES cleanly — cddl-codegen no longer applies the documented narrowing policy; investigate the policy regression (do NOT re-triage/unpin as a bug fix)`
+          : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
   });
   validatedOverAccept.forEach((p, i) => {
     outVecs.push(p);  // committed VERBATIM (class="over-acceptance", reason, source preserved)
-    if (res.get(`${foreignIdent(id)}_o${i}`) !== true)
+    if (res.verdicts.get(`${foreignIdent(id)}_o${i}`) !== true)
       pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err), move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, and update the ROADMAP § findings entry`);
   });
   return { id, axis, example, spec, mode, type_name: decodeType, vectors: outVecs };
@@ -1526,7 +1572,7 @@ function runMintDecodeForeign(): never {
     }
     if (foreignGenCrate(nextOut(), spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
     const res = replayInDir("mint.neg_control", ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
-    if (res === null || res.get("neg_control") !== true) {
+    if (res === null || res.verdicts.get("neg_control") !== true) {
       console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
       process.exit(2);
     }
@@ -1734,7 +1780,8 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
     }
   }
 
-  // Class-aware reject re-validation (inverse gates) — identical to mintRow.
+  // Class-aware reject re-validation (inverse gates) — policy-rejected is the spec-VALID-but-
+  // intentionally-rejected sibling of bug/limitation, while constraint remains spec-invalid.
   const validatedRejectPins: CatalogVector[] = [];
   for (const p of rejectPins) {
     const { ruby, rust } = validateBoth(spec, p.hex);
@@ -1782,7 +1829,10 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
 
   const outVecs: CatalogVector[] = [];
   validatedAccept.forEach((c, i) => {
-    if (res.get(`${foreignIdent(id)}_a${i}`) === true) outVecs.push({ hex: c.hex, source: c.source, expect: "accept" });
+    const name = `${foreignIdent(id)}_a${i}`;
+    if (res.verdicts.get(name) === true) outVecs.push({ hex: c.hex, source: c.source, expect: "accept" });
+    else if (isKnownPolicyReject(res, name, validatedRejectPins))
+      dropped.push(`${id}/${c.hex} (spec-valid generated candidate rejected by the validated policy door; redundant policy evidence omitted)`);
     else {
       outVecs.push({ hex: c.hex, source: c.source, expect: "reject" });  // class-less: triage-pending
       triage.push(`${id}/${c.hex} (mode=${mode}, type=${decodeType}): spec-valid but decoder REJECTED`);
@@ -1790,14 +1840,16 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   });
   validatedRejectPins.forEach((p, i) => {
     outVecs.push(p);
-    if (res.get(`${foreignIdent(id)}_r${i}`) !== true)
+    if (res.verdicts.get(`${foreignIdent(id)}_r${i}`) !== true)
       pinBreak.push(p.class === "constraint"
         ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in ROADMAP § findings`
-        : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
+        : p.class === "policy-rejected"
+          ? `${id}/${p.hex}: policy-rejected vector now DECODES cleanly — cddl-codegen no longer applies the documented narrowing policy; investigate the policy regression (do NOT re-triage/unpin as a bug fix)`
+          : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
   });
   validatedOverAccept.forEach((p, i) => {
     outVecs.push(p);
-    if (res.get(`${foreignIdent(id)}_o${i}`) !== true)
+    if (res.verdicts.get(`${foreignIdent(id)}_o${i}`) !== true)
       pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err) and update the ROADMAP § findings entry`);
   });
   return { id, axis, example, fixture, rule: rule.name, spec, mode, type_name: decodeType, vectors: outVecs };
@@ -1821,7 +1873,7 @@ function runMintDecodeCorpus(): never {
     }
     if (foreignGenCrate(nextOut(), spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
     const res = replayInDir("mint-corpus.neg_control", ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
-    if (res === null || res.get("neg_control") !== true) {
+    if (res === null || res.verdicts.get("neg_control") !== true) {
       console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
       process.exit(2);
     }

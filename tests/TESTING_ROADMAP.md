@@ -104,27 +104,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   internal-error class, so the exit-contract tripwire it leans on stops being where formatter
   surprises surface).
 
-- **Mint decode-conformance + confirm matrix coverage for the tag-258 reject-default flip.** The
-  well-known-tag registry (`parsing::well_known_tag_default_duplicates`) defaults a no-directive
-  tag-258 set to `@duplicates reject`. The registry's DEFAULT path (as opposed to an explicit
-  `; @duplicates reject`, already covered by `tag_set_reject`) currently has **no duplicate-REJECT
-  wire-vector coverage** in the decode-conformance catalog: the new `tests/corpus/tag_set_default.cddl`
-  fixture pins the emitted source shape (`feature_corpus` snapshots) and its `cargo check` compiles,
-  but no spec-derived reject vector exists for it yet (accept vectors are minted; the flip's other
-  confirm legs — the `contain.choice-member.type2.tag.set_idiom` matrix cell re-verifying
-  post-flip with a minted wasm surface, and the golden-suite integration gates compiling + KAT-running
-  the `@duplicates preserve` opt-outs — have both run green and are retired from this entry).
-  The remaining piece is the wire-level duplicate-REJECT pin, which is BLOCKED on a catalog-model
-  extension: a duplicate-bearing set is spec-VALID CDDL (`[* uint]` permits duplicates; only
-  the tag-258 registry semantics narrow it), so `class="constraint"`'s re-validated
-  spec-INVALID invariant cannot hold and `class="over-acceptance"` is its inverse. Needs a new
-  vector class (spec-VALID, policy-rejected: both oracles accept, our decoder rejects BY
-  DESIGN, `expect_err` pinning the `DuplicateKey` door) threaded through the mint + replay
-  gate before the hand vector can exist. Until then the reject default's wire behavior is
-  pinned in-process only (`reject_set_duplicate_wire_and_api_identical` covers the shared
-  door). Heavy-tier when reopened: coordinate the run (`/tmp` scratch and disk contention —
-  see the ENOSPC entry — so get an explicit go-ahead while another session is active).
-
 ## Next work items, in priority order
 
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
@@ -239,11 +218,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
        through the named generic `set<a0>`, where the rule-level directive already works). Reopening
        signal: a third-party author who won't restructure a spec to hoist.
 
-     The wire-level duplicate-REJECT decode vector for the 258 reject default (the spec-VALID,
-     policy-rejected vector class blocked on a catalog-model extension) is the separate
-     "Mint decode-conformance + confirm matrix coverage for the tag-258 reject-default flip" entry
-     above; it now applies to the nominal-set inner too, which routes duplicates through the SAME
-     `OrderedSet::try_from` / `DuplicateKey` door, so no second entry is needed.
    - (The per-role wasm-ABI/multifile grid rows for both flavors are delivered — the
      `rset`/`nerset`/`rseta`/`nerseta` and `pmap`/`nepmap`/`pmapa`/`nepmapa` `SHAPES` entries;
      inventory in `tests/README.md` § "Per-rule duplicates policy (`@duplicates`) — test map".

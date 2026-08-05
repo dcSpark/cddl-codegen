@@ -2311,7 +2311,7 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     header mutant reaches it here, so the ledger stays empty). A header-mutant vacuity floor keeps
     the leg live.
   - *Failure attribution* — a FAILED replay test's cause is attributed by pure
-    marker-classification functions (`classify_constraint_failure` / `classify_variant_failure` /
+    marker-classification functions (`classify_constraint_failure` / `classify_policy_failure` / `classify_variant_failure` /
     `classify_header_mutant_failure` / `classify_over_acceptance_failure`) whose needles own the
     trailing ':' that disambiguates prefix-colliding libtest names (`reject_1` vs `reject_10`,
     `over_accept_1` vs `over_accept_10`); that grammar is pinned unit-side (no crate build) by
@@ -2322,8 +2322,12 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     `classify_over_acceptance_failure_disambiguates_prefix_colliding_names`); the header mutator
     itself is pinned by `header_mutants_pin_hand_derived_bytes`.
 
-  Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
-  re-encode **byte-identically** (the preserve contract is itself decode-direction evidence).
+  Finally it regenerates under `--preserve-encodings=true`: spec-valid accept vectors decode AND
+  re-encode **byte-identically** (the preserve contract is itself decode-direction evidence), while
+  `class="policy-rejected"` vectors must still reject (without a byte-identity claim). This is the
+  deliberate three-way reject split: `bug`/`limitation` are wrong rejections that may be unpinned when
+  fixed; `constraint` is spec-invalid authored-CDDL enforcement; policy-rejected is spec-valid input
+  intentionally narrowed by a documented library policy and must never enter Q4 enforcement.
   `PRESERVE_SKIP` (stale-guarded) carries two entry classes: the tag-over-a-type-choice preserve
   gap, and the BY-DESIGN rejection class (`dsl.ignore` — `@ignore` under `--preserve-encodings` is a
   contract rejection, not a gap, so its stale-entry guard is a regression tripwire: that leg starting
@@ -2355,7 +2359,8 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),
-  reject-pin class/reason/`expect_err` shape, accept-vector class (no class, or exactly
+  reject-pin class/reason/`expect_err` shape (including hand-authored policy-rejected vectors, whose
+  source, reason, and error pin are mandatory), accept-vector class (no class, or exactly
   `class="over-acceptance"` with a `reason` and no `expect_err`), the § 6 shape rule extended to
   over-acceptance vectors (same-shape as the row's SPEC-VALID accepts, which now EXCLUDE over-acceptance
   from the shape-class set), and the hard-coded **seeded regression controls** — the
@@ -2466,8 +2471,9 @@ Two gates mirror the matrix legs:
   byte-identity leg, and the json/wasm surface legs below), differing only in the catalog path, its
   own scratch target, its own skip-ledger instances, and vacuity floors pinned from actuals. The corpus carries only plain
   accept vectors at HEAD (the enforcement / over-acceptance axes are matrix-owned), so the
-  constraint-reason and over-acceptance machinery stays armed but idle (the over-acceptance
-  completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds only the by-design
+  constraint-reason and over-acceptance machinery stays armed; policy-rejected vectors use the same
+  default reason assertion and preserve rejection path as their matrix sibling (the tag-258
+  `tag_set_default.default_set` row is the exemplar). `PRESERVE_SKIP` holds only the by-design
   `dsl_ignore.ignored` / `dsl_ignore.ignored_list` rows
   (`@ignore` under `--preserve-encodings` is a contract rejection, so its stale-entry guard is a
   regression tripwire), the
@@ -2487,7 +2493,7 @@ boundary that is over-strict about spec-valid input the rust decoder already acc
 other gate, so each replay gate runs a **third generation per row** — `--wasm=true
 --json-serde-derives=true`, default profile otherwise (NO `--json-schema-export`, NO preserve) — and
 two accept-only legs off it (`decode_replay_json_wasm_legs` in `integration_tests.rs`, shared verbatim
-by both gates). Only the PLAIN accept vectors are replayed: reject / constraint / over-acceptance /
+by both gates). Only the PLAIN accept vectors are replayed: reject / constraint / policy-rejected / over-acceptance /
 encoding-variant / header-mutant vectors evidence nothing about these boundaries (the reject direction
 is rust-decoder territory, and wasm-side is `JsError`-blocked — see below).
 
