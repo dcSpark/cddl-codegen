@@ -2589,28 +2589,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   work item: the next handoff doc's survey section should cite that recipe as its method — a
   survey that instead presents its own grep list as complete is this entry recurring.
 
-- **`lint_doc_citations` crashes rather than reports when a tracked file is deleted but unstaged.**
-  It walks `git ls-files`, which lists a path git still tracks even after the working-tree file is
-  gone, and `readText` is typed `string | null` as though absence were handled while `readFileSync`
-  throws — so the gate dies with a bun stack trace and an ENOENT path instead of a citation verdict.
-  Seen while re-projecting a matrix re-grounding: `project_robustness.ts` moved fifteen fixtures
-  between `tests/matrix_*` directories, and the gate crashed until the moves were staged. Diagnosis
-  only, deliberately not fixed: the recovery is `git add`, the gate is correct once the tree is
-  staged, and it never misreports a verdict — it fails to produce one. The cost is triage time for
-  whoever meets it mid-re-projection and reads an ENOENT on a fixture path as evidence that the
-  re-projection deleted something it should not have. Reopening signal: a second run where the crash
-  is read as a projection defect rather than an unstaged tree, or any use of this gate somewhere a
-  dirty tree is normal (a pre-commit hook), where the crash would be the common case rather than the
-  exception.
-  Second sighting 2026-08-01 (the prelude fixture moves, `matrix_panic` → `matrix_reject`):
-  correctly diagnosed at the cost of triage time, so the signal — the crash being READ AS a
-  projection defect — has still not fired; the sighting is recorded because the burndown's
-  catalog-flipping deliveries now produce cited-fixture moves routinely, which is the dimension
-  the triage cost grows along. Same sighting added one observation the original entry lacks:
-  the citation grammar also rejects GLOB spellings (`prelude.eb*.cddl`), which is why moved-
-  fixture prose cites one fixture "and its siblings" — decide globs on merit at the same touch
-  if the crash is ever promoted to a fix.
-
 - **A shared `CARGO_TARGET_DIR` across same-named scratch crates masks compile failures as
   cached passes.** Proven 2026-08-01 (the same-chain `.cbor` refusal delivery): two scratch
   probes generated crates with the same package name into different directories and
