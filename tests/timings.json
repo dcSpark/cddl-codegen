@@ -226,9 +226,9 @@
     },
     {
       "gate": "decode_conformance_replay",
-      "warm_ms": 637000,
+      "warm_ms": 801000,
       "n": 20,
-      "measured": "2026-08-03",
+      "measured": "2026-08-05",
       "machine": "86216c55",
       "history": [
         {
@@ -242,6 +242,10 @@
         {
           "date": "2026-08-03",
           "warm_ms": 637000
+        },
+        {
+          "date": "2026-08-05",
+          "warm_ms": 801000
         }
       ]
     },
@@ -403,9 +407,9 @@
     },
     {
       "gate": "ir_conformance_corpus",
-      "warm_ms": 199000,
+      "warm_ms": 241000,
       "n": 20,
-      "measured": "2026-08-04",
+      "measured": "2026-08-05",
       "machine": "86216c55",
       "history": [
         {
@@ -419,6 +423,10 @@
         {
           "date": "2026-08-04",
           "warm_ms": 199000
+        },
+        {
+          "date": "2026-08-05",
+          "warm_ms": 241000
         }
       ]
     },
@@ -1002,7 +1010,17 @@
       ]
     },
     {
-      "gate": "wrapper_participation_floors"
+      "gate": "wrapper_participation_floors",
+      "warm_ms": 3000,
+      "n": 3,
+      "measured": "2026-08-05",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-05",
+          "warm_ms": 3000
+        }
+      ]
     },
     {
       "gate": "wrapper_participation_host_floor",
