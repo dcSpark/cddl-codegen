@@ -77,23 +77,26 @@ function readTrackedTextFiles(rels: readonly string[], state: ReadTextState): Tr
   return files;
 }
 
-function missingTrackedFileProblems(state: ReadTextState): string[] {
-  return [...state.missingTrackedRels].sort().map(rel =>
+function appendMissingTrackedFileProblems(problems: string[], state: ReadTextState): void {
+  problems.push(...[...state.missingTrackedRels].sort().map(rel =>
     `${rel}: tracked by git but absent from the working tree; restore the file, or stage the deletion`,
-  );
+  ));
 }
 
-// This exercises the same tracked-entry read and missing-file diagnostic seam as production without
-// modifying the checkout. Reading the canary twice mirrors a tracked hand doc's two read sites.
+// This exercises the same read and diagnostic seam as production without modifying the checkout.
+// The canary is read only after a successful initial scan, mirroring a hand doc disappearing before
+// its second read; it is repeated to prove the path remains deduplicated.
 function missingTrackedFileSelfTestProblem(): string | null {
   const rel = "cddl-matrix/.lint_doc_citations_missing_file_selftest_canary_DO_NOT_CREATE";
   const state = newReadTextState();
-  const files = readTrackedTextFiles([rel], state);
-  const repeatedRead = readText(rel, state);
+  const initialFiles = readTrackedTextFiles(["cddl-matrix/lint_doc_citations.ts"], state);
+  const lateRead = readText(rel, state);
+  const repeatedLateRead = readText(rel, state);
   const expected = `${rel}: tracked by git but absent from the working tree; restore the file, or stage the deletion`;
-  const diagnostics = missingTrackedFileProblems(state);
-  if (files.length !== 0 || repeatedRead !== null)
-    return "missing-file self-test: nonexistent synthetic tracked entry did not read as null";
+  const diagnostics: string[] = [];
+  appendMissingTrackedFileProblems(diagnostics, state);
+  if (initialFiles.length !== 1 || lateRead !== null || repeatedLateRead !== null)
+    return "missing-file self-test: late nonexistent synthetic tracked entry did not read as null";
   if (state.missingTrackedRels.size !== 1 || !state.missingTrackedRels.has(rel))
     return "missing-file self-test: repeated missing read did not produce exactly one tracked path";
   if (diagnostics.length !== 1 || diagnostics[0] !== expected)
@@ -305,14 +308,16 @@ const handDocs = [...handDocSet].sort();
 const problems: string[] = [];
 const missingHandDocs = handDocs.filter(rel => !trackedRels.includes(rel));
 for (const rel of missingHandDocs) problems.push(`${rel}: hand doc is not tracked by git`);
-problems.push(...missingTrackedFileProblems(readTextState));
-const missingFileSelfTestProblem = missingTrackedFileSelfTestProblem();
-if (missingFileSelfTestProblem !== null) problems.push(missingFileSelfTestProblem);
 
 const handDocFiles = handDocs.flatMap(rel => {
   const text = readText(rel, readTextState);
   return text === null ? [] : [{ rel, text }];
 });
+
+// Materialize the read-boundary verdict only after every production call sharing this state.
+appendMissingTrackedFileProblems(problems, readTextState);
+const missingFileSelfTestProblem = missingTrackedFileSelfTestProblem();
+if (missingFileSelfTestProblem !== null) problems.push(missingFileSelfTestProblem);
 
 const handDocExclusions = new Set(handDocs);
 // draft/ is excluded from the RESOLUTION corpus too, not just the ban's scope: scratchpads
