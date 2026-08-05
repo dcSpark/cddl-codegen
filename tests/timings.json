@@ -247,9 +247,9 @@
     },
     {
       "gate": "feature_corpus_roundtrips_nondefault_profiles",
-      "warm_ms": 465000,
+      "warm_ms": 598000,
       "n": 20,
-      "measured": "2026-07-29",
+      "measured": "2026-08-05",
       "machine": "86216c55",
       "history": [
         {
@@ -263,6 +263,10 @@
         {
           "date": "2026-07-29",
           "warm_ms": 465000
+        },
+        {
+          "date": "2026-08-05",
+          "warm_ms": 598000
         }
       ]
     },
@@ -786,7 +790,17 @@
       ]
     },
     {
-      "gate": "regen_over_prior_output_corpus_compiles"
+      "gate": "regen_over_prior_output_corpus_compiles",
+      "warm_ms": 100000,
+      "n": 3,
+      "measured": "2026-08-05",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-05",
+          "warm_ms": 100000
+        }
+      ]
     },
     {
       "gate": "rust_oracle_fingerprint",
