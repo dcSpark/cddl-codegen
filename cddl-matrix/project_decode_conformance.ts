@@ -8,10 +8,16 @@
  *   2. Staleness    — every catalog row id is still `supported` in matrix.json, and the catalog
  *      `example` string-equals the matrix row's `example` (a drifted example means the vectors were
  *      validated against a spec the matrix no longer describes — re-mint).
- *   3. Shape        — every `expect="reject"` vector has `class` ∈ {bug, limitation, constraint} AND a
- *      nonempty `reason` (a class-less pin is the mint's triage-pending state — RED); a class="constraint"
- *      vector additionally carries a nonempty `expect_err` (the rejection-reason substring the rust replay
- *      gate asserts), which is forbidden on every other vector. An `expect="accept"` vector carries EITHER
+ *   3. Shape        — every `expect="reject"` vector has `class` ∈ {bug, limitation, constraint,
+ *      policy-rejected} AND a nonempty `reason` (a class-less pin is the mint's triage-pending state — RED).
+ *      A class="constraint" vector additionally carries a nonempty `expect_err` (the rejection-reason
+ *      substring the rust replay gate asserts), which is forbidden on every other vector except a
+ *      class="policy-rejected" vector. Policy-rejected vectors are hand-authored, spec-VALID CBOR that BOTH
+ *      reference oracles accept but cddl-codegen deliberately rejects under a documented narrowing policy;
+ *      their nonempty `reason` names that policy and their nonempty `expect_err` pins its durable generated
+ *      rejection reason. They are not authored-CDDL enforcement/Q4 evidence and are excluded from
+ *      accept-derived encoding-variant, header-mutation, JSON, and preserve byte-identity evidence;
+ *      their preserve-profile reject assertion remains live. An `expect="accept"` vector carries EITHER
  *      no class (spec-VALID, correctly accepted) OR exactly `class="over-acceptance"` (spec-INVALID CBOR
  *      the decoder wrongly accepts — a certified silent-acceptance pin) with a nonempty `reason` and NO
  *      `expect_err`; any other class on an accept vector is a schema error. Every hex is well-formed (nonempty, even
@@ -73,7 +79,8 @@
  *      left to § 2 so the drift is not double-reported. A `FAILED (N)` clause is count-checked only;
  *      the replay gate owns whether decode actually succeeds.
  *
- * CORPUS half (composition-depth leg) — the same contract re-derived against the sibling
+ * CORPUS half (composition-depth leg) — the same vector contract, including policy-rejected semantics,
+ * is re-derived against the sibling
  * `tests/decode_conformance/corpus_catalog.toml`, whose obligation set is `tests/corpus/*.cddl` ×
  * the SHARED rule enumerator (lib.ts `enumerateCorpusRules` — never a hand list; a fixture rule
  * name colliding with a prelude name fails loud here AND at the mint):
@@ -1015,7 +1022,10 @@ if (problems.length) {
 }
 const corpusActive = corpusRows.filter(r => (r.vector ?? []).length > 0);
 const corpusPinned = corpusRows.filter(r => typeof r.pinned_reason === "string" && (r.pinned_reason as string).length > 0);
-const corpusVectorCount = corpusActive.reduce((n, r) => n + (r.vector ?? []).length, 0);
+const corpusAllVectors = corpusActive.flatMap(r => r.vector ?? []);
+const corpusVectorCount = corpusAllVectors.length;
+const corpusPolicy = corpusAllVectors.filter(v => v.class === "policy-rejected").length;
+const corpusPolicyWithExpectErr = corpusAllVectors.filter(v => v.class === "policy-rejected" && typeof v.expect_err === "string" && v.expect_err.length > 0).length;
 console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
     `${accepts} accept [${overAccepts} over-acceptance], ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
@@ -1026,6 +1036,7 @@ console.log(
 console.log(
   `corpus decode-conformance OK — ${corpusFixtureStems.size} fixtures enumerated / ${corpusEnum.size} obligation rows · ` +
     `${corpusRows.length} catalog rows (${corpusActive.length} active / ${corpusVectorCount} vectors · ${corpusPinned.length} pinned) · ` +
+    `${corpusPolicy} policy-rejected (${corpusPolicyWithExpectErr} with expect_err; ${rejectPolicy + corpusPolicy} total across matrix + corpus) · ` +
     `${Object.keys(corpusFloorScope).length} arm-coverage-floor rows (${Object.keys(CORPUS_DECODE_FLOOR_ARM_EXEMPT).length} ledgered-exempt arm class)`,
 );
 process.exit(0);

@@ -2148,17 +2148,21 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   evidence clause with the catalog's spec-valid accept-vector count, excluding
   `class="over-acceptance"`; this catches the proven scoped-mint-after-probe drift where
   `record_array_tagged` minted vectors while its evidence still claimed none. A spec-valid vector the
-  decoder rejects is written as a **class-less
-  `expect = "reject"` pin and the mint exits 1**; the drift gate stays red until a human triages it
-  into `class = "bug"` (ledger it in `cddl-matrix/ROADMAP.md` § findings) or
-  `class = "limitation"` (cite `current_capacities.mdx` / the overlay note). `source = "hand"`
+  decoder rejects is normally written as a **class-less `expect = "reject"` pin and the mint exits 1**;
+  the drift gate stays red until a human triages it into `class = "bug"` (ledger it in
+  `cddl-matrix/ROADMAP.md` § findings) or `class = "limitation"` (cite `current_capacities.mdx` / the
+  overlay note). The sole narrow exception deduplicates an already-proven policy rejection: the mint
+  omits a generated candidate only when its marked generated-error Display matches an existing
+  same-row `class = "policy-rejected"` pin's `expect_err` (that pin is hand-authored and already
+  both-oracle-validated). An unmatched rejection reason remains class-less and RED for triage.
+  `source = "hand"`
   supplement vectors survive re-mints and are re-validated like any candidate. The catalogs are
   **writer-canonical** (machine-rewritten wholesale: no in-row `#` comments, each row's vectors in
   ascending hex order) — a hand-authored corpus row in any other form fails the
   `project_decode_conformance.ts` drift gate, and a hand comment in either file is dropped by the
   next mint's rewrite — so put per-vector rationale in the surrounding docs/test map, not in the
   TOML, and let vector order fall where the sort puts it.
-- **Reject vectors split by class** — two opposite spec-validity claims live under `expect="reject"`:
+- **Reject vectors split by class** — three distinct contracts live under `expect="reject"`:
   - `class = "bug" | "limitation"` — spec-VALID CBOR the decoder WRONGLY rejects (the wrong-rejection
     pins above). Re-validated **spec-VALID** (both oracles accept) at each mint; PRUNED when the gap
     closes.
@@ -2171,7 +2175,8 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     generated decoder's error Display must contain — the replay gate asserts it, so a decoder that
     rejects for a subtly WRONG reason (a stray length check, an unrelated error path) fails the gate
     instead of passing as it would under a bare `is_err` check. The drift gate REQUIRES `expect_err`
-    on `class="constraint"` and forbids it elsewhere; a mint round-trips both fields verbatim.
+    on `class="constraint"` and `class="policy-rejected"`, and forbids it elsewhere; a mint
+    round-trips both fields verbatim.
     Authoring `reason`: describe the violating instance hex-free (decoded values plus what was
     mutated — "`[false, 68]` with only the constant byte flipped"), never by citing a sibling
     ACCEPT vector's hex — `--only` re-mints regenerate the ruby accepts (the reference generator
@@ -2210,13 +2215,24 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     accept and reject vectors must share their outer CBOR shape. § 6 enforces this mechanically
     (leading major-type class vs the row's accepts, majors 0/1 merged; the holder preamble banned on
     accept-less standalone rows).
+  - `class = "policy-rejected"` — hand-authored, spec-VALID CBOR (`source = "hand"`) that BOTH
+    reference oracles accept but the generated decoder must durably reject under a documented library
+    narrowing policy. `reason` names that policy for humans; `expect_err` pins the generated error
+    Display's durable reason. These vectors are re-validated spec-VALID at mint, never become Q4
+    authored-CDDL enforcement evidence, and never enter accept-derived replay legs; under preserve they
+    still reject, without a byte-identity claim.
 - **The vector-class 2×2 (current decoder behavior × spec validity).** `expect` always pins CURRENT
   behavior (what the replay asserts); `class` carries the spec-validity/triage label:
 
   | | spec-VALID bytes | spec-INVALID bytes |
   |---|---|---|
   | decoder **accepts** | plain `expect="accept"` (no class) | `expect="accept"` + `class="over-acceptance"` |
-  | decoder **rejects** | `expect="reject"` + `class="bug"\|"limitation"` | `expect="reject"` + `class="constraint"` (+ `expect_err`) |
+  | decoder **rejects** | `expect="reject"` + `class="bug"\|"limitation"`, or intentional hand `class="policy-rejected"` (+ `reason`, `expect_err`) | `expect="reject"` + `class="constraint"` (+ `expect_err`) |
+
+  `policy-rejected` deliberately shares the spec-VALID/reject cell with bug/limitation, but is not a
+  decoder gap: both reference oracles accept it and the library's documented policy intentionally
+  rejects it. That is why it is hand-authored and durable rather than auto-pruned, while never counting
+  as Q4 enforcement or accept-derived evidence.
 
   The fourth cell is `class="over-acceptance"` — certified-spec-INVALID CBOR (both oracles reject at
   mint, the same inverse gate as `class="constraint"`) that the generated decoder CURRENTLY (wrongly)
@@ -2250,7 +2266,7 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   (§ "json/wasm surface legs" below). Oracle-free and deterministic — the bytes were spec-cross-validated
   at mint time, so the gate replays commitments, never re-derives them. Three assertion legs run on
   the DEFAULT-profile build, sharing one failure-attribution grammar. Shared across every leg body
-  that captures an error Display (the constraint and header-mutant Err arms, both profiles): an
+  that captures an error Display (the constraint/policy and header-mutant Err arms, both profiles): an
   emitted helper asserts the displayed location chain has no adjacent-duplicate segment — a doubled
   location ("Foo.Foo", the generator double-annotation class) *satisfies* a bare `failed in {name}`
   contains, so without this check the location asserts below cannot see it. Justified exceptions go
@@ -2259,9 +2275,10 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   vanish. The legs:
   - *Base replay* — every accept vector decodes Ok and every reject pin still Errs (**a pin that
     starts decoding green FAILS the gate** — a re-bless can't silently launder a bug). Each
-    `class="constraint"` vector additionally asserts the error Display CONTAINS the catalog's
-    `expect_err`, pinning the rejection REASON — a wrong-reason rejection fails the gate with the
-    captured Display (a vacuity floor keeps ≥ 40 reason asserts live). A `class="over-acceptance"`
+    `class="constraint"` or `class="policy-rejected"` vector additionally asserts the error Display
+    CONTAINS the catalog's `expect_err`, pinning the rejection REASON — a wrong-reason rejection fails
+    the gate with the captured Display (a vacuity floor keeps ≥ 40 constraint reason asserts live, with
+    policy pins counted separately). A `class="over-acceptance"`
     vector emits its own `over_accept_N` test asserting the decoder STILL (wrongly) decodes it Ok; a
     rejection is the pin FLIP (the fix landed), attributed by `classify_over_acceptance_failure` with a
     marker naming the promotion flow, and a completeness guard asserts the emitted `over_accept_*` count
