@@ -40,13 +40,15 @@ tier is where it must fail), `no_std_check` (the no_std drift gate — see its s
 spawns `cargo build` plus generator runs) and `timings_digest_check` live here, NOT in CI. The
 doc-citation gate
 checks that gap prose's cited pins still exist, reports each path that is still tracked by git but
-absent from the working tree with restore-or-stage-deletion remedies, rejects positional roadmap/list citations, bans
-ephemeral plan-internal references (delivery-phase probe/ruling id spellings, spec-file names, the
-plan scratchpad path — matched phase-generically so a new delivery phase's letter is covered by
-construction), bans user-doc examples that put a `; @<directive>` comment on the same line as the
-container's closing `}`/`]` (a CDDL comment runs to end of line and swallows the closer, so such an
-illustration parses differently than the doc describes; the warning bullet's deliberate
-counterexamples are allowlisted by exact span text), and enforces
+absent from the working tree with restore-or-stage-deletion remedies, and rejects positional
+roadmap/list citations. An always-run pure canary models a successful initial scan followed by a
+missing hand-doc reread, then repeats that read to pin one deduplicated path-bearing verdict. The
+gate also bans ephemeral plan-internal references (delivery-phase probe/ruling id spellings,
+spec-file names, the plan scratchpad path — matched phase-generically so a new delivery phase's
+letter is covered by construction), bans user-doc examples that put a `; @<directive>` comment on
+the same line as the container's closing `}`/`]` (a CDDL comment runs to end of line and swallows the
+closer, so such an illustration parses differently than the doc describes; the warning bullet's
+deliberate counterexamples are allowlisted by exact span text), and enforces
 blank lines before headings in the hand docs. The conventions it backs: gap-tracking prose names its
 pin by exact identifier ("pinned by/tracked by/gated by `name`") — the resolvable spelling for a
 test is its bare fn name; a module-qualified `config_tests::name` does not resolve and fails the
@@ -951,7 +953,10 @@ row in a fresh test-binary child process. The parent owns the four snapshot labe
 catalog's verdict instead of terminating it. Each ordinary child exit must print the helper
 sentinel before the parent accepts its label; an exact helper filter that goes stale can therefore
 not silently bless every row as `ok`. The catalog deliberately tests generation only, not emitted
-crate compilation.
+crate compilation. A Unix-only synthetic child abort keeps the signal-classification branch live
+even though every current fixture exits normally, gracefully, or through an unwinding panic. The
+snapshot owns only the outcome category: whenever a row flips, review its fixture header in the same
+change so a former failure explanation does not survive as a current claim.
 
 ## Integration tests (`integration_tests.rs`)
 
