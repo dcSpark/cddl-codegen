@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Config file | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/config_file"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Config file | cddl-codegen"><meta data-rh="true" name="description" content="A project that generates one crate is well served by command line flags. A"><meta data-rh="true" property="og:description" content="A project that generates one crate is well served by command line flags. A"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/config_file"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/config_file" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/config_file" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.60142d20.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.2e067908.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -293,7 +293,7 @@ so a name the index does not re-export is a workspace that does not build. That 
 <div class="language-text codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-text codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">Error: &quot;the committed workspace does not build: `core` does not host `MapU64ToCoreThing` borrowed by</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">`ledger`. … Run `cddl-codegen --config codegen.toml core` to host them: a dependency-alone regen</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">reads its consumers&#x27; committed sidecars, and is always safe.&quot;</span><br></div></code></pre></div></div>
 <p><strong>Nonzero, and its own code.</strong> The exit status distinguishes the two failures, because they ask for
 different things:</p>
-<table><thead><tr><th>exit</th><th>what it means</th></tr></thead><tbody><tr><td><code>0</code></td><td>the run did what it was asked, and nothing it can see says the workspace is inconsistent (the convergence warning, if it fires, is here — it is an instruction about the run, and re-running satisfies it)</td></tr><tr><td><code>1</code></td><td>the <strong>run</strong> failed: a config that would not expand, a spec that would not generate. Fix the input and run it again</td></tr><tr><td><code>2</code></td><td>the run <strong>succeeded</strong> — every crate it was asked to generate is generated — and the committed <strong>tree</strong> does not build: the verdict above. Repeating the command changes nothing; the message names the dependency to regenerate</td></tr></tbody></table>
+<table><thead><tr><th>exit</th><th>what it means</th></tr></thead><tbody><tr><td><code>0</code></td><td>the run did what it was asked, and nothing it can see says the workspace is inconsistent (the convergence warning, if it fires, is here — it is an instruction about the run, and re-running satisfies it)</td></tr><tr><td><code>1</code></td><td>the <strong>run</strong> failed: a config that would not expand, a spec that would not generate, a cross-crate sidecar a crate consumes that it refuses. Fix the input and run it again</td></tr><tr><td><code>2</code></td><td>the run <strong>succeeded</strong> — every crate it was asked to generate is generated — and the committed <strong>tree</strong> does not build: the verdict above. Repeating the command changes nothing; the message names the dependency to regenerate</td></tr></tbody></table>
 <p>A CI job wants those apart: <code>1</code> is &quot;this commit&#x27;s inputs are broken&quot;, <code>2</code> is &quot;this commit&#x27;s generated
 output and its committed dependency have drifted apart&quot;, and the second one names its own remedy.</p>
 <p>The two are not two strengths of one signal. &quot;I rewrote a sidecar something had already read&quot; is
@@ -476,7 +476,9 @@ document assembly and reference-closure check a generated one performs. The regi
 yours to choose there, and the reasoning is the one above — register the crate whose names you would
 rather keep stable <strong>first</strong>.</p><p>The blocker is not the document. An input-less run already emits the right <code>add_schemas</code>; it also
 emits a vestigial rust crate that the json-gen manifest then depends on, whose package name collides
-with the umbrella crate you are trying to serve.</p></div></div>
+with the umbrella crate you are trying to serve — a collision generation now names on stderr when
+that umbrella crate is a workspace member (see <a class="" href="/cddl-codegen/command_line_flags"><code>--lib-name</code></a>), rather than
+leaving it for cargo to report at the next build.</p></div></div>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="order-and-which-crate-a-collision-blames">Order, and which crate a collision blames<a href="#order-and-which-crate-a-collision-blames" class="hash-link" aria-label="Direct link to Order, and which crate a collision blames" title="Direct link to Order, and which crate a collision blames" translate="no">​</a></h3>
 <p><code>--json-schema-dep</code> is order-significant: flag order is registration order, and registration order
 decides which of two crates publishing one schema name keeps it. Dependency calls are emitted before
@@ -697,8 +699,10 @@ hoist it to <code>[runtime].export-static-crate</code> and let the config
 </ul>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="generation-itself-is-not-transactional-across-crates">Generation itself is not transactional across crates<a href="#generation-itself-is-not-transactional-across-crates" class="hash-link" aria-label="Direct link to Generation itself is not transactional across crates" title="Direct link to Generation itself is not transactional across crates" translate="no">​</a></h3>
 <p>What is checked up front is the <strong>config</strong>. Once the first crate starts generating, the run is a
-sequence of independent regenerations, and a crate whose CDDL spec fails to generate stops the run
-where it stands: the crates ordered before it are on disk in their regenerated form, the failing
+sequence of independent regenerations, and a crate that fails to generate stops the run
+where it stands — whether its own CDDL spec is what the tool refuses, or a cross-crate sidecar it
+consumes (<code>wrapper-requests</code> / <code>key-requests</code>) is: the crates ordered before it
+are on disk in their regenerated form, the failing
 crate&#x27;s own output may be partly written, and the crates after it are untouched. This is not a
 rollback the tool can perform — each crate&#x27;s output is a committed directory it clobbers in place.</p>
 <p>So the failure says exactly that instead, naming the crate that failed and listing the crates the run

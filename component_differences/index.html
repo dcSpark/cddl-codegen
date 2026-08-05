@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Component Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/component_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Component Differences | cddl-codegen"><meta data-rh="true" name="description" content="--component emits a third face beside the rust and wasm crates: a"><meta data-rh="true" property="og:description" content="--component emits a third face beside the rust and wasm crates: a"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/component_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.60142d20.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.2e067908.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -376,7 +376,11 @@ extern-type bridges, both of which have nothing else to cross on.
 <code>--preserve-encodings --canonical-form</code>, the one posture whose composed runtime declares it.</li>
 <li class=""><strong><code>--json-serde-derives</code></strong> adds a fallible <code>to-json</code> / <code>from-json</code> pair to each type the tool
 defines, plus the <code>cbor-to-json</code> / <code>cbor-from-json</code> free functions. They are strings only; there
-is no <code>JsValue</code> equivalent to mirror the wasm face&#x27;s <code>to_json_value()</code>.</li>
+is no <code>JsValue</code> equivalent to mirror the wasm face&#x27;s <code>to_json_value()</code>. The pair goes to the types
+the tool defines because their serde impls exist by contract: derived here, or — on a rule
+carrying <a class="" href="/cddl-codegen/comment_dsl#custom_json"><code>@custom_json</code></a> — hand-written by you, which this face publishes
+exactly as the wasm door does (the directive is refused on an extern, so no bridging type is ever
+asked for impls it need not have).</li>
 <li class=""><strong><code>--json-schema-export</code> and the json-gen crate are orthogonal and untouched.</strong> They are gated on
 their own flag and exist even under <code>--wasm=false</code>, so a <code>--component --wasm=false</code> user loses
 nothing.</li>

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Wasm Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/wasm_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Wasm Differences | cddl-codegen"><meta data-rh="true" name="description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><meta data-rh="true" property="og:description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/wasm_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.60142d20.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.2e067908.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -112,7 +112,10 @@ clones</strong>: cloning sidesteps the ownership hazard entirely, so the JS-side
 valid after the conversion. The throw happens at <code>try_from</code>, right where the mistake is — not deep
 inside a parent constructor. When the element&#x27;s loose form is directly exposable (<code>[+ uint]</code> →
 <code>Vec&lt;u64&gt;</code>, <code>[+ text]</code> → <code>Vec&lt;String&gt;</code>), no loose wrapper exists and <code>try_from</code> takes the bare
-<code>Vec&lt;...&gt;</code> <strong>by value</strong> instead (boundary copies, no ownership hazard).</li>
+<code>Vec&lt;...&gt;</code> <strong>by value</strong> instead (boundary copies, no ownership hazard). The test is the LOOSE
+FORM&#x27;s exposability, not the element&#x27;s own: <code>bytes</code> and <code>bool</code> cross the boundary fine as single
+values but have no bare-<code>Vec</code> form at all (see above), so <code>[+ bytes]</code> / <code>[+ bool]</code> take
+<code>&amp;BytesList</code> / <code>&amp;BoolList</code> like any other wrapper-needing element.</li>
 <li class=""><strong>Parent constructors and setters take the pre-checked restricted wrapper by reference</strong>
 (<code>Foo.new(…, tags: &amp;NonEmptyBarList)</code>), so <code>Foo.new</code> stops being a throw site for the container
 bound — the same infallibility win as the rust side. Getters return a clone of the restricted
@@ -141,7 +144,9 @@ reject <code>[* uint]</code>, <code>NonEmptyFooOrderedSet</code> for <code>[+ fo
 <li class="">Construction is via <strong><code>try_from</code></strong>, exactly like the non-empty restricted wrapper:
 <code>try_from(list: &amp;FooList) -&gt; Result&lt;Self, JsError&gt;</code> for a wrapper-needing element (borrows and
 clones, so the loose <code>FooList</code> stays valid), or <code>try_from(elements: Vec&lt;T&gt;)</code> by value when the
-element&#x27;s loose form is directly exposable (<code>[* uint]</code> → <code>Vec&lt;u64&gt;</code>).</li>
+element&#x27;s loose form is directly exposable (<code>[* uint]</code> → <code>Vec&lt;u64&gt;</code>) — the same loose-form test as
+the non-empty wrapper, so a reject set over <code>bytes</code> or <code>bool</code> also enters through <code>&amp;BytesList</code> /
+<code>&amp;BoolList</code>.</li>
 <li class=""><strong>The one JS-visible difference from the non-empty wrappers: <code>add</code> is fallible.</strong> A non-empty
 wrapper&#x27;s <code>add</code> is infallible (a push can never violate a <em>minimum</em> bound), but a reject wrapper&#x27;s
 <code>add</code> returns <strong><code>Result&lt;(), JsError&gt;</code></strong> and <strong>throws when the element is already present</strong> — the
@@ -287,7 +292,7 @@ it is unrepresentable;</li>
 applies only when wasm bindings are generated — a rust-only crate has no such class).</li>
 </ul>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="nullable--nested-options">Nullable / nested Options<a href="#nullable--nested-options" class="hash-link" aria-label="Direct link to Nullable / nested Options" title="Direct link to Nullable / nested Options" translate="no">​</a></h2>
-<p><code>wasm_bindgen</code> cannot expose a doubly-nested <code>Option&lt;Option&lt;T&gt;&gt;</code> (<code>Option&lt;T&gt;</code> does not implement <code>OptionIntoWasmAbi</code>), the same way it can&#x27;t expose a nested <code>Vec</code>. This happens when a nullable value (<code>T / null</code> → <code>Option&lt;T&gt;</code>) sits in a position that adds its own presence-<code>Option</code>: a <strong>map value</strong> (<code>get</code>/<code>insert</code> return <code>Option&lt;value&gt;</code>) or an <strong>optional struct field</strong> (its getter returns <code>Option&lt;field&gt;</code>). In those spots the accessor flattens to a single <code>Option&lt;T&gt;</code>, so a read returns <code>None</code> for <strong>both</strong> an absent entry and a present-but-<code>null</code> one (the same convention the c-style enum <code>as_*()</code> getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.</p>
+<p><code>wasm_bindgen</code> cannot expose a doubly-nested <code>Option&lt;Option&lt;T&gt;&gt;</code> (<code>Option&lt;T&gt;</code> does not implement <code>OptionIntoWasmAbi</code>), the same way it can&#x27;t expose a nested <code>Vec</code>. This happens when a nullable value (<code>T / null</code> → <code>Option&lt;T&gt;</code>) sits in a position that adds its own presence-<code>Option</code>: a <strong>map value</strong> (<code>get</code>/<code>insert</code> return <code>Option&lt;value&gt;</code>) or an <strong>optional struct field</strong> (its getter returns <code>Option&lt;field&gt;</code>). In those spots the accessor flattens to a single <code>Option&lt;T&gt;</code>, so a read returns <code>None</code> for <strong>both</strong> an absent entry and a present-but-<code>null</code> one (the same convention the c-style enum <code>as_*()</code> getters use). The underlying rust type keeps all three states (absent / present-null / present-value), and both the CBOR and the JSON surfaces keep them distinct (<a class="" href="/cddl-codegen/output_format#optional-members-whose-type-is-nullable">Optional members whose type is nullable</a>) — only the wasm read side conflates absent with null.</p>
 <p>To recover the three states on the <strong>read</strong> side without changing any existing getter signature, additive presence accessors are emitted right beside the flattening getter. Use these read protocols:</p>
 <ul>
 <li class=""><strong>Optional-nullable struct field</strong> — the getter <code>field0()</code> is joined by <code>has_field0() -&gt; bool</code> (outer presence):<!-- -->
