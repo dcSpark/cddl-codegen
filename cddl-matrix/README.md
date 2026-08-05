@@ -245,10 +245,11 @@ what "certified" means per vector family (§ Q4 above) and what the prunes in `R
 § "Upstream close-outs (waiting on external releases)" wait on. The sibling checkout's
 `local-fixes` branch (`~/Documents/git/cddl`, commit
 `ac1b98e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–7 and 9–10 (gaps 8 and 11 are OPEN at
-that rev — gap 8 keeps one containment row's decode-foreign minting `pinned_reason`-vectorless, and
-gap 11 keeps three corpus decode rows empty-instance-only); `RUST_CDDL` defaults to that build,
-giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
+cddl-codegen's own parser share it) carries the fixes whose entries below read FIXED; the entries
+that read OPEN remain open at that rev. In particular, the tag-typed and named-rule map-key gaps
+keep affected decode-foreign rows vectorless or empty-instance-only, while the float-class and
+typed-tag gaps need narrow one-oracle certification. `RUST_CDDL` defaults to that build, giving
+`verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
 version string cannot tell the pinned build apart from a wrong-branch rebuild, so the shared
 behavioral fingerprint in `cddl-matrix/oracle_fingerprint.json` refuses wrong oracles: `verify.ts`
 checks the `RUST_CDDL` binary at startup (const `ORACLE_FINGERPRINT`), and
@@ -462,6 +463,20 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     the two-oracle gate), and it inherits gap #11's lossy-re-mint hazard: a re-mint drawing only
     zero-rest-entry candidates would pin the row `pinned_reason`-vectorless. No upstream issue
     filed yet.
+
+14. **typed tag number and wrapped fixed payload both accepted against the wrong declaration**
+    (OPEN at the pinned oracle behavior): against
+    `t = [ v: #6.11(true) // label: tstr ]`, rust accepts both `81cbf4`
+    (`[#6.11(false)]`, wrong wrapped fixed value) and `81ccf5` (`[#6.12(true)]`, wrong tag number),
+    while ruby rejects both; both validators accept the declared tag-11/true arm and the text arm.
+    The catalog needs only the first vector to prove fixed-selector arm enforcement, and the
+    generated decoder rejects it with `Expected fixed value true found false`, but rust cannot join
+    its spec-invalidity consensus. The exact
+    `contain.group-choice-arm.type2.tag.fixed_array/81cbf4` vector therefore carries a
+    `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry naming rust; `81ccf5` is an adjacent diagnostic, not a
+    second catalog exemption. The reversible RFC 8610 §3.6 argument, four discriminating probes,
+    complete commands, and careful binary-provenance statement are in the committed paste-ready
+    `upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md`. No upstream issue filed yet.
 
 ## Gotchas (read before touching the support seam or probe examples)
 
