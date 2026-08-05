@@ -496,25 +496,36 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     (`tests/core/tests.rs`). Reopening signal: the maintainer takes the ruling, or a consumer
     reports the panic from production data (measurable by the party holding the inexact value).
 
-14. **A registration-class base axis for the reference-context sweep family — generation floor,
-    not directive preservation.** Rule classes differ in what their ident REGISTERS (a struct
+14. **Build the registration-class base axis for the reference-context sweep family — its second
+    escape has made the system due.** Rule classes differ in what their ident REGISTERS (a struct
     under its own name; an alias to an instantiation canonical, as the named set-nominal binding;
-    an extern; a transparent collection alias), and a reference context that assumes one class
-    aborts on another: the twice-aliased set-idiom instance panicked at a member site because the
-    set-nominal binding is the one class whose ident names no struct, and the repair walk looked
-    one `Alias` box too shallow (fixed and pinned by
-    `generic_collection_tests::alias_of_instance_chains_generate`, 30 cells). No existing sweep
-    could have seen it: `directive_referencing_context_sweep`'s bases are DIRECTIVE families (a
-    directive-less instance binding is not a base), and the recombination roles include a
-    generic-arg position but no rule-level alias hop. The system this asks for is the sweep
-    sibling with bases = registration classes, contexts = the existing reference-context rows
-    (member, element, re-alias hop, map value, tag head, …), verdict = generation succeeds and
-    the crate compiles — the 30-cell pin is one row of it, hand-built. Reopening signal, on the
-    dimension the cost grows along: a SECOND generation abort on a directive-less shape whose
-    trigger is a reference context over a registration class those cells do not span — the abort
-    is exit-101-loud and belongs to whoever generates the shape, so the reporter exists by
-    construction (the first member of the class is the one already fixed, so the signal is not
-    met by this entry's own record).
+    an extern; a parse-time transparent alias; or a forward alias whose use site precedes its alias
+    registration), and a reference context that assumes one class aborts on another. Two
+    distinct directive-less classes have now escaped the hand coverage:
+    - A twice-aliased set-idiom instance panicked at a member site because the set-nominal binding
+      is the one class whose ident names no struct, and the repair walk looked one `Alias` box too
+      shallow. `generic_collection_tests::alias_of_instance_chains_generate` pins its 30
+      flavor × position × profile generation cells and
+      `integration_tests::alias_of_instance_chain_member_compiles` supplies the compile half.
+    - An alias-first recursive collection (`hop_alias = hop_arr`,
+      `hop_arr = [* hop_alias]`) first lost the declared `HopAlias -> HopArr` edge when alias
+      registration stripped the target wrapper, shrinking the SCC to a false self-cycle. Restoring
+      that edge exposed a second-pass `Rust(HopAlias)` leaf that panicked in rust serialization and
+      wasm naming because the alias, not a struct, owned that ident. The exact spelling is now pinned
+      on both faces and against the collection-first order by
+      `recursive_alias_cycle_auto_newtype_matches_the_hand_written_directive`; the generated-crate
+      half is `recursive_type_boundary_shapes_compile`.
+
+    No existing sweep could have found either escape:
+    `directive_referencing_context_sweep`'s bases are DIRECTIVE families (these bindings carry no
+    directive), and the recombination roles include a generic-arg position but no rule-level alias
+    hop. Build their sweep sibling with bases = registration classes and contexts = the existing
+    reference-context rows (member, element, re-alias hop, map value, tag head, …). The base table
+    must distinguish at least own-ident structs, parse-time transparent aliases, forward aliases,
+    named generic-instance bindings whose canonical owns the struct, externs, and the recursive
+    collection alias hop in both naming orders. Each legal cell must generate and its emitted crate
+    must compile under rust-only and wasm-bearing profiles; refusal cells state their diagnostic.
+    The two incident pins above remain controls, not substitutes for the cross-product.
 
 15. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
     it.** Skip-listed gate rows are ledgered with citations and stale-guards; an eviction — a

@@ -984,6 +984,30 @@ collection wrappers plus the non-root `nested::NestedHolder`), round-trips to by
 value-anchors every getter through the dep's `From`/`AsRef` boundary impls, so a semantically wrong
 cross-crate conversion fails rather than merely building.
 
+### Recursive-type boundary — test map
+
+The boundary is tested as a verdict, an emitted API, and a generated-crate build; none of those
+layers substitutes for the others:
+
+- `input_robustness_catalog` keeps the alias-first hop
+  `recursive_alias_hop_collection_entry.cddl` classified `ok` under the default wasm-bearing
+  profile. This is generate-only evidence.
+- `recursive_type_boundary_refuses_uncompilable_cycles` pins the E0391/E0072 refusal classes under
+  both rule permutations, including identical cycle membership and diagnostics.
+- `recursive_alias_cycle_auto_newtype_matches_the_hand_written_directive` compares every repaired
+  shape byte-for-byte with the same spec carrying explicit `@newtype`, under both `--wasm=false`
+  and `--wasm=true`. Its alias-hop pair includes both the collection-first and alias-first naming
+  orders, so losing the declared alias target or a late alias leaf fails generation rather than
+  being blessed as a different API.
+- `recursive_alias_cycle_auto_newtype_announces_itself_on_stderr` pins the user-visible repair
+  notice, while `recursive_type_boundary_shapes_compile` batches the repaired and supported cycle
+  classes and `cargo check`s the rust-only crate plus both rust and wasm crates from the
+  wasm-bearing run. That compile floor catches a generator exit 0 whose late alias spelling still
+  names a type with no struct or impl.
+
+The supported/refused boundary and its remedies are documented for users in
+[Current capacities](../docs/docs/current_capacities.mdx#recursive-types).
+
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every
 workspace-style build enables the feature through the wasm crate's path dep (cargo feature
