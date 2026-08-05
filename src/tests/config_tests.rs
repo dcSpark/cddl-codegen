@@ -3662,9 +3662,9 @@ fn runtime_carrier_ties_break_deterministically() {
     }
 }
 
-/// The CML shape, which is exactly the configuration this table exists to make honest: one crate at
-/// a reduced flavor and one at the full one cannot share a runtime, and the refusal names the axis
-/// and which crates hold which value.
+/// The CML shape, which is exactly the configuration this table keeps explicit: one crate at a
+/// reduced flavor and one at the full one need `flavor-from` rather than automatic carrier
+/// derivation, and the refusal names the axis and which crates hold which value.
 #[test]
 fn runtime_equality_axis_disagreement_is_an_error_naming_the_axis() {
     let err = expand_error(
@@ -3694,6 +3694,11 @@ output = "gen/cip25"
     assert!(
         err.contains("flavor-from"),
         "the refusal must name the remedy, got:\n{err}"
+    );
+    assert!(
+        err.contains("cannot DERIVE") && err.contains("spec-dependent flavor compatibility"),
+        "the refusal must preserve the closed derivation contract without claiming every mixed \
+         spec fails to compile, got:\n{err}"
     );
 }
 
@@ -4087,8 +4092,8 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
         "bw = bytes ; @newtype\nfull_rec = [ne: [+ uint], nm: {+ uint => text}, m: {* uint => text}, a: any, b: bw]\n",
     )
     .unwrap();
-    // The REDUCED-flavor crate: none of those flags, and a spec that avoids the two constructs the
-    // accepted-gap statement names.
+    // The REDUCED-flavor crate: none of those flags, and an ordinary-shape control before the two
+    // isolated compatibility legs below.
     std::fs::write(
         dir.join("specs/reduced.cddl"),
         "reduced_rec = [x: uint, m: {* uint => text}, s: text]\n",
