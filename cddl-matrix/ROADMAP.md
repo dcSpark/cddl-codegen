@@ -349,23 +349,6 @@ ledgered here (that's what the probe/gate error messages point at).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-- **A wasm-face alias-hop cycle ENTERED at the plain-typename rule panics.** `hop_alias = hop_arr`
-  with `hop_arr = [* hop_alias]` aborts generation under `--wasm=true` at `is_enum`'s
-  registered-or-generic assertion (`intermediate/mod.rs`); with `--wasm=false` the same spec
-  generates and compiles. Rule ORDERING is the ingredient, not the shape: spelling the same cycle so
-  the collection sorts first (`x = [* y]` with `y = x`) generates on both faces, because the
-  collection's element reference then resolves through the alias table instead of staying a nominal
-  `Rust(ident)` naming an `Array` struct. That is the same ingredient
-  `tests/robustness/collection_rule_cycle_entry.cddl` isolates on the TABLE side, where the three
-  generation sites that dispatch on such a reference were taught to recurse into the collection's
-  structural type — the wasm NAME derivation is a fourth site the same fix never reached. Pinned as
-  a tracked-known `PANIC` row by `tests/robustness/recursive_alias_hop_collection_entry.cddl`;
-  flipping that row to `ok` is the fix, and it is independent of the recursive-type boundary (it
-  reproduces identically with `; @newtype` written by hand, and reproduced before the boundary
-  existed). **Reopening signal**, on the magnitude axis: a consumer's committed spec contains ≥1
-  alias-hop cycle whose plain-typename rule sorts first — i.e. the count of rules its owner must
-  reorder or rename to generate a wasm face reaches 1. Today that count is 0 in every consumer spec;
-  the repro is a synthetic probe.
 - **A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member
   REPRESENTATION, so a spec that pins one arm of a nullable to a constant must be hand-rewritten.**
   A two-arm choice with a null arm never becomes an enum: the collapse lowers it to an `Option<T>`

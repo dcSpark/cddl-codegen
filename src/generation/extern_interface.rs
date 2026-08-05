@@ -1026,10 +1026,10 @@ fn project_extern_interface(
                 extra_annotations,
                 BTreeSet::new(),
             ))
-        } else if let Some(target) = &alias_info.wasm_alias_target {
+        } else if let Some(target) = &alias_info.stripped_alias_target {
             // A `ptm = mp` rule whose `Alias(mp, …)` wrapper was stripped to inline the type keeps a
-            // `wasm_alias_target`; spell it truthfully as a reference to that target's original ident
-            // rather than re-inlining the whole collection shape.
+            // `stripped_alias_target`; spell it truthfully as a reference to that target's original
+            // ident rather than re-inlining the whole collection shape.
             render_rust_ref(source, target, types).map(|body| {
                 let mut refs = BTreeSet::new();
                 if types.source_rule_name(target).is_some() {
@@ -1053,8 +1053,8 @@ fn project_extern_interface(
             })
         };
         // A transparent alias materializes a named rust surface (a `pub type`) only when
-        // `gen_rust_alias` is set. A `@no_alias` rule (and a `wasm_alias_target` inline) generates no
-        // rust type — nothing for the self-check to `use`, so it asserts nothing (`None`). The opaque
+        // `gen_rust_alias` is set. A `@no_alias` rule (and a `stripped_alias_target` inline) generates
+        // no rust type — nothing for the self-check to `use`, so it asserts nothing (`None`). The opaque
         // set-nominal row asserts `Serialize` on the concrete `pub type` (the same bound the pass-1
         // Wrapper arm uses), since the alias resolves to a Serialize-implementing nominal.
         let kind = if set_nominal_ref && alias_info.gen_rust_alias {

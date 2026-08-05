@@ -63,7 +63,7 @@ prelude_biguint            ok
 rangeop_typename_end       error (graceful)
 rangeop_typename_start     error (graceful)
 recursive_alias_hop        ok
-recursive_alias_hop_collection_entry PANIC
+recursive_alias_hop_collection_entry ok
 recursive_collection_holder ok
 recursive_collection_plus  ok
 recursive_collection_self  ok

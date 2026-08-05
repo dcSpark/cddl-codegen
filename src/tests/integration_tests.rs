@@ -25231,6 +25231,8 @@ plusarr = [+ plusarr]
 selfmap = {* text => selfmap}
 hop_b = hop_a
 hop_a = [* hop_b]
+hop_alias = hop_arr
+hop_arr = [* hop_alias]
 cross_map = {* text => cross_arr}
 cross_arr = [* cross_map]
 ; supported cycles the boundary must leave alone
@@ -25241,36 +25243,41 @@ nom_map = { * text => nom_val }
 ",
     )
     .unwrap();
-    let out = scratch.join("crate");
-    let generated = codegen_cmd()
-        .args([
-            "--input",
-            input.to_str().unwrap(),
-            "--output",
-            out.to_str().unwrap(),
-            "--wasm=true",
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        generated.status.success(),
-        "the boundary's supported+repaired shapes must generate; stderr:\n{}",
-        String::from_utf8_lossy(&generated.stderr)
-    );
     let target_dir = scratch.join("target");
-    for face in ["rust", "wasm"] {
-        let check = tool_cmd("cargo")
-            .args(["check"])
-            .current_dir(out.join(face))
-            .env("CARGO_TARGET_DIR", &target_dir)
+    for (profile, wasm, faces) in [
+        ("rust-only", "--wasm=false", &["rust"][..]),
+        ("wasm-bearing", "--wasm=true", &["rust", "wasm"][..]),
+    ] {
+        let out = scratch.join(profile);
+        let generated = codegen_cmd()
+            .args([
+                "--input",
+                input.to_str().unwrap(),
+                "--output",
+                out.to_str().unwrap(),
+                wasm,
+            ])
             .output()
             .unwrap();
         assert!(
-            check.status.success(),
-            "the generated {face} crate must build — an exit-0 crate that fails `cargo check` is \
-             exactly the defect the boundary exists to remove; stderr:\n{}",
-            String::from_utf8_lossy(&check.stderr)
+            generated.status.success(),
+            "{profile}: the boundary's supported+repaired shapes must generate; stderr:\n{}",
+            String::from_utf8_lossy(&generated.stderr)
         );
+        for face in faces {
+            let check = tool_cmd("cargo")
+                .args(["check"])
+                .current_dir(out.join(face))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            assert!(
+                check.status.success(),
+                "{profile}: the generated {face} crate must build — an exit-0 crate that fails \
+                 `cargo check` is exactly the defect the boundary exists to remove; stderr:\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            );
+        }
     }
     let _ = std::fs::remove_dir_all(&scratch);
 }
