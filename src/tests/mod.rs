@@ -41,6 +41,7 @@ pub(crate) mod rust_name_tests;
 pub(crate) mod snapshot_tests;
 pub(crate) mod timing_cells;
 pub(crate) mod wasm_parity_tests;
+pub(crate) mod wrapper_participation_tests;
 pub(crate) mod write_tail_tests;
 
 pub(crate) type Profile = (&'static str, &'static [&'static str]);

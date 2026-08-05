@@ -573,9 +573,9 @@ over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is buil
 section's recur-first premise stays honest.** Cited count-free and by exact title, because a
 hand-maintained tally of this list is itself the rot class `cddl-matrix/ROADMAP.md` § Maintenance
 records — this one went stale twice in a single day of deliveries before the number came out. The
-full record of each stays in place below: "A "no gate demands this" premise probed against ONE gate
+full record stays in place below: "A "no gate demands this" premise probed against ONE gate
 is not evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
-`check.ts` itself); and "`--extern-wrapper-index` deferral-boundaries".
+`check.ts` itself).
 
 - **A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of
   gates disagrees with the registry — no mechanism ties the two.** Two instances, so the trigger has
@@ -1141,8 +1141,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   escalate to a scoped generation-time invariant — "every synthesized wrapper name an emitter
   references must be in the minted set" — the reference-side complement of the emission-side
   duplicate-ident backstop. (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
-  `--extern-wrapper-index`, invisible to any in-crate layer — is owned by that flag's
-  deferral-boundaries entry below.)
+  `--extern-wrapper-index`, invisible to any in-crate layer — is owned by the wrapper-participation
+  grid's per-mode wasm32 link floors, `tests/README.md`
+  § "The wrapper-participation grid".)
 - **Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position
   still missing.** Two cross-module import bugs were invisible to `tests/matrix_multifile` because
   its field-embedding modes (`named`/`anon`/`anonb`/`unref`) all reference the shape as a `bholder`
@@ -1388,96 +1389,37 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   so an emission rename flips the liveness half red instead of leaving the negative half
   vacuous. Meanwhile the working rule when renaming emitted text: grep the test tree for needles
   pinning the old spelling in the same change.
-- **`--extern-wrapper-index` deferral-boundaries — build the deferral-profile leg (DUE):
-  per-wrapper emission MODE × wrapper shape × reference POSITION, with a per-mode compile floor.**
-  The axis: every wrapper a spec implies has an emission MODE (local vs index-deferred vs
-  workspace-borrowed under `--workspace-dep` vs requested-hosted under `--wrapper-requests`)
-  crossed with the wrapper-shape space, and no existing honesty rule sweeps it — established by
-  enumerating the registries, not by grep (scope: the full check.ts gate registry — no gate
-  generates with any mode flag except `test` via the hand fixtures; `ALL_PROFILES` names no mode;
-  the wasm-ABI/multifile SHAPES×ROLES pass only `--wasm=true`; and the rust↔wasm parity
-  differential scopes out directory-input fixtures, which every dep-owning mode configuration
-  requires — so parity is structurally unable to observe any of it). The ~20 committed mode pins
-  are incident-shaped, not enumeration-shaped: each pins the exact cell of a past escape, and the
-  seam the leg fills is the difference between that list and the grid. Leg spec: each
-  extern-capable shape probed once per mode, crossed with reference POSITION (inline-anonymous vs
-  NAMED-rule declaration vs named-rule REFERENCE from another rule's member — the flavor that
-  takes `set_ref`, which inline pins never touch — plus non-root declaring scopes), asserting the
-  mode outcome AND the shape row's IMPLIED COMPANIONS per mode (a table's synthesized keys-list:
-  imported-from-dep vs root-minted vs co-hosted; a restricted wrapper's loose `try_from` source,
-  list and MAP flavors; nested inner wrappers; the sole-owner structural alias), floored per mode:
-  consumer wasm `cargo check` for local; + wasm32-unknown-unknown link with the dep wasm crate
-  for the deferring modes (duplicate `#[wasm_bindgen]` symbols are visible ONLY at wasm32 link —
-  the `extern_wrapper_index_defers_to_dep` RED leg proves check/test alone cannot see them);
-  `cargo check` of the HOST crate for requested-hosted (one arming instance was observable only
-  there). Two participation facts the grid must encode rather than assume: the grid is NOT a full
-  cross-product — `@duplicates reject` set wrappers can be HOSTED but can never DEFER
-  (`generate_reject_ordered_set_type` consults no defer seam, and no consumer generation path can
-  record a reject borrow — so two consumers of one dep both mint the set class and would
-  duplicate-symbol in one cdylib, the exact class workspace mode closes for lists/maps; inference
-  from call-site enumeration, no fixture), while a reject rule's loose `try_from` SOURCE is
-  defer-capable — "reject wrapper local + loose source deferred" is a live uncelled combination;
-  and the index is NAME-only, which is flavor-SAFE rather than flavor-blind, because the structural
-  name carries the container (`PairMapKToV` vs `MapKToV`) — a cross-flavor index match is
-  unrepresentable, not merely unlikely, so the grid needs no hazard cell for it. The flavor's two
-  cross-crate carriers are each pinned end to end (the sidecar shape column by
-  `workspace_requests_hosts_preserve_pair_map_twins`; the paste-able manual-override rule line by
-  `preserve_map_defer_hint_is_paste_able`), which makes a preserve table an ordinary SHAPE ROW of
-  this grid, owed one cell per mode like any other shape. Arming evidence — the recur-first trigger is over-met,
-  and every instance was found by reading the emitters, reported by a consumer, or found by a
-  probe, never by a gate: (1) NAMED-table × workspace-borrowed (a synthesized keys-list whose
-  deferred import only the inline-map reference position ever registered: E0412 stranding plus a
-  false criterion-9 shadow warning; pinned by `workspace_dep_named_table_deferred_keys_list`);
-  (2) requested-hosted × co-hosted-keys-list (the host importing from root a class it mints
-  itself: E0432; pinned by `workspace_requests_cohosted_keys_list_no_self_import`); (3) a RED
-  found by probing the named-REFERENCE position under index mode, closed by this entry's first
-  cut (see the ruling below) — probe scope: default
-  profile, root scope, array + table flavors; not probed: preserve/json, non-root scopes, the
-  wasm32 link): a user rule whose ident equals a dep-indexed structural name
-  (`idx_foo_list = [* idx_foo]`), referenced ONLY by rule name from a record field, generates at
-  exit 0 with EMPTY stderr and a wasm crate that fails `cargo check` with E0425 (twice, exit
-  101) — the mint side records the deferral, but a named-rule reference routes through the
-  alias-suppression arm and plain `set_ref`, which never consult the deferred map, so no import
-  is ever routed; the same probe's TABLE flavor (`map_u64_to_idx_foo = {* uint => idx_foo}`) is
-  screened by `exists_in_rust`, mints locally, and silently re-exports a name the dep's index
-  also lists — the duplicate-symbol-at-link configuration. Instances (1)–(3) are ALL failures of
-  a companion or a position, never of the primary wrapper — which is why the leg crosses POSITION
-  and asserts COMPANIONS rather than probing primary shapes alone, and why it doubles as the
-  regression net for accidental-provider removals ("who else relied on this walk path?" answered
-  mechanically). Closed context the leg builds on — the NonEmpty defer boundary:
-  `generate_non_empty_array_type` / `generate_non_empty_map_type` consult `try_defer_wrapper`,
-  their loose `try_from`-source mints defer normally, and the source's conversion-internal import
-  is routed at the restricted class's emission scope
-  (`register_deferred_non_empty_{list,map}_source`, the same follow-the-class pattern as the R3d
-  keys-list registration); pinned by `extern_wrapper_index_defers_to_dep`'s
-  `[+ idx_foo]`/`NonEmptyIdxFooList` cell plus its order-hostile deferred-source cells
-  (`abc_bars = [+ idx_bar]` walked first; the inline `only_nb_baz: [+ idx_baz]` twin); the
-  MAP-side source routing is the same helper pattern but has no dedicated cell in any mode
-  (the map-side source and the reject-set combination now have cells — see the first cut below).
-  The DECISION this entry rode — USER rules claiming a dep-indexed structural name — is RULED and
-  SHIPPED as **honest defer**: the named-reference path consults the deferred map exactly as the
-  inline path already did, so the two reference positions agree and the exit-0/E0425 branch is
-  gone; the array/defer flavor warns that the authored rule and the dependency's class are
-  UNIFIED on the wasm surface (the consumer's rule name now resolves to the dep's class, with the
-  rust-side alias kept); and the table flavor — screened by `exists_in_rust`, so it keeps the
-  consumer's own class — warns that both crates then export the same `#[wasm_bindgen]` name.
-  Delivered as this entry's FIRST CUT, pinned by
-  `extern_wrapper_index_named_rule_reference_unifies_with_dep` (both flavors, both warning texts,
-  consumer wasm `cargo check` floor) and `extern_wrapper_index_deferred_try_from_sources` (the
-  map-side deferred source, its sole-owner-screened variant, and the reject-set × deferred-loose-
-  source combination), over `tests/extern-deps-index-named/inputs_named/lib.cddl` and
-  `tests/extern-deps-index-named/inputs_sources/lib.cddl`.
-  **What remains of this entry is the sweep proper**: the table-driven, participation-aware grid,
-  batched per (mode, floor), whose value — grid completeness — is not a property of any cell
-  subset, with the per-mode floors above and the compile/link floors at full tier. The first cut
-  de-risked its design (it forced both the participation table and the DECISION), so the sweep
-  starts from a settled grid rather than a cold one. The silent-local-mint cell the first cut
-  surfaced is CLOSED: every local wrapper mint whose emitted ident a dependency's index also lists
-  is announced at the one seam all four emitters pass (`warn_local_mint_shadows_index` at
-  `record_collection_wrapper`), which covers the R3c constituent screen, the ident≠structural
-  screen, and any future arm that declines before consulting the index — pinned by
-  `extern_wrapper_index_local_mint_under_indexed_name_warns` over
-  `tests/extern-deps-index-named/inputs_nested/lib.cddl`. (The cross-crate
+- **Requested-hosted co-hosted NonEmpty SOURCE self-import — exit 0 over a HOST crate that does not
+  compile (DUE).** A `--wrapper-requests` run that hosts a NonEmpty wrapper whose loose `try_from`
+  SOURCE is itself co-hosted emits, in `wasm/src/generated/requested_collections.rs`,
+  `use crate::generated::{…, <Source>};` for a class DEFINED IN THAT SAME FILE — `E0432`, in a run
+  that exits 0 with empty stderr. Reproduced 2026-08 by the wrapper-participation grid's host floor
+  (probe scope: default profile, `--wasm=true`, a dep whose own spec produces neither the requested
+  restricted wrapper nor its loose source; not probed under preserve/json or with `--workspace-dep`
+  also set). It is the co-hosted self-import class `workspace_requests_cohosted_keys_list_no_self_import`
+  closed for the synthesized KEYS-LIST, still open for this second co-hosted companion — and the
+  committed request cells cannot see it, because in each of them the dep's own spec PRODUCES the
+  loose source, which makes the same import path correct. Until it is fixed,
+  `wrapper_participation_requested_host_floor` asserts the shapes that do compile and names this
+  entry for the ones it excludes; the fix belongs at the same seam the keys-list one took (a
+  co-hosted class is referenced from the requested scope, never re-imported from the crate root),
+  and its test is the excluded rows returning to that floor.
+- **The wrapper-participation grid is single-PROFILE: every row's expected outcome is probed at the
+  default profile only.** The grid (`src/tests/wrapper_participation_tests.rs`;
+  `tests/README.md` § "The wrapper-participation grid") sweeps emission MODE × wrapper SHAPE ×
+  reference POSITION with always-on generation assertions and per-(mode, floor) compile/link gates,
+  and its per-row `expect` is established at the default profile with root scope except where the
+  POSITION says otherwise. What no row asserts is that the same participation holds under
+  `--preserve-encodings` or `--json-serde-derives`: those change the wrapper's INNER container
+  (`OrderedHashMap` vs `BTreeMap`) and its derives, both of which the cross-crate conversions and
+  the request sidecar's shape column resolve against — the reason `extern_wrapper_index_defers_to_dep`
+  and `extern_wrapper_index_deferred_try_from_sources` generate preserve while the grid does not.
+  Deferred because a profile axis multiplies every row's cost by the profile count for a question
+  that is about the CONTAINER rather than the placement, and because no reported instance yet
+  distinguishes the two. Reopening signal: a placement decision (defer / borrow / host / local) that
+  differs between two profiles for one row — the observable a consumer sees as "it deferred in my
+  rust crate and minted in my preserve one", which is measurable by anyone regenerating one spec
+  under two profiles and diffing the two `collections.rs` indexes. (The cross-crate
   duplicate-symbol flavor of the synthesized-name interaction class stays owned HERE: the
   duplicate-ident backstop scans one crate's own files and
   `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`

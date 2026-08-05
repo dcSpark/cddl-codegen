@@ -1668,6 +1668,21 @@ export const REGISTRY: Gate[] = [
   // generation exiting 0. Gate-cached per generated-crate content hash, and a member of the batch on
   // the same terms as its neighbours: `#[ignore]`d, `cmd`-shaped, owner of a flocked scratch root
   // nothing else touches.
+  // The wrapper-participation grid's compile/link floors. Two gates rather than one because their
+  // SUBJECTS differ: the first links a CONSUMER (plus the committed wasm-clean dep pair) for
+  // wasm32-unknown-unknown, which is the only place two `#[wasm_bindgen]` classes of one name fail;
+  // the second checks the HOST crate a `--wrapper-requests` run produces, whose mints come from a
+  // sidecar rather than from its own spec. Both are `#[ignore]`d, `cmd`-shaped, gate-cached per
+  // generated-crate content hash, and own flocked scratch roots nothing else touches — the batch's
+  // membership terms.
+  { id: "wrapper_participation_floors", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "wrapper_participation_mode_floors", "--", "--ignored", "--nocapture"],
+    ignoredTest: "wrapper_participation_mode_floors",
+    desc: "wrapper-participation grid: per-mode compile/link floors (local cargo check + index/workspace wasm32 link) (manual, #[ignore]d)" },
+  { id: "wrapper_participation_host_floor", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "wrapper_participation_requested_host_floor", "--", "--ignored", "--nocapture"],
+    ignoredTest: "wrapper_participation_requested_host_floor",
+    desc: "wrapper-participation grid: requested-hosted floor — cargo check of the HOST crate a --wrapper-requests run emits (manual, #[ignore]d)" },
   { id: "regen_over_prior_output_corpus_compiles", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "regen_over_prior_output_corpus_compiles", "--", "--ignored", "--nocapture"],
     ignoredTest: "regen_over_prior_output_corpus_compiles",
