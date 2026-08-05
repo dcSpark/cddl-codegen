@@ -254,8 +254,8 @@ pub struct Runtime {
     /// for the crates it reaches, which is the exotic case (a crate importing a different runtime)
     /// this key is sugar for the common one of.
     pub common_import: Option<String>,
-    /// Name the carrier by hand instead of deriving it, accepting the flavor gap that made the
-    /// derivation refuse. See [`Config::runtime_carrier`].
+    /// Name the carrier by hand instead of deriving it, accepting the remaining unsupported
+    /// flavor/depth-limit contract that made the derivation refuse. See [`Config::runtime_carrier`].
     pub flavor_from: Option<String>,
     /// The cargo PACKAGE name of the co-owned runtime crate `export-static-crate` writes into — the
     /// same vocabulary a `[crates.<name>]` table's `lib-name` uses.
@@ -288,13 +288,15 @@ pub struct Runtime {
 /// interchangeable — see [`Config::runtime_carrier`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct RuntimeFlavor {
-    // --- EQUALITY axes: a runtime exported at one value does not compile a crate generated at
-    // another, in EITHER direction. `preserve-encodings` swaps `NonEmptyMap`'s inner table for
-    // `OrderedHashMap` and re-types `CBORReadLen`; `canonical-form` changes the arity of `fit_sz`,
-    // `LenEncoding::to_len_sz` and `SerializeEmbeddedGroup`, and moves `Serialize` between the
-    // runtime and `cbor_event`; `deserialize-depth-limit` bakes its VALUE into the exported
-    // `AnyCbor` recursion guard, so a mismatch compiles cleanly while silently guarding one crate's
-    // `any` values at another crate's limit.
+    // --- EQUALITY axes: carrier derivation requires EXACT agreement. A preserve + canonical
+    // runtime carries narrow bridges for a reduced `{+ K => V}` and `any`, but that accommodation
+    // does not make arbitrary flavor mixtures derivable. `preserve-encodings` swaps
+    // `NonEmptyMap`'s inner table for `OrderedHashMap` and re-types `CBORReadLen`;
+    // `canonical-form` changes the arity of `fit_sz`, `LenEncoding::to_len_sz` and
+    // `SerializeEmbeddedGroup`, and moves `Serialize` between the runtime and `cbor_event`;
+    // `deserialize-depth-limit` bakes its VALUE into the exported `AnyCbor` recursion guard, so a
+    // mismatch compiles cleanly while silently guarding one crate's `any` values at another crate's
+    // limit.
     preserve_encodings: bool,
     canonical_form: bool,
     deserialize_depth_limit: Option<u32>,
@@ -2485,8 +2487,8 @@ impl Config {
     ///
     /// Declaring the carrier by hand skips both refusals. It fires no per-run warning — the user has
     /// said they know, and a warning that fires forever trains people to ignore warnings — but the
-    /// run states once which crates are generated at a flavor the runtime does not match, and which
-    /// two constructs would break them.
+    /// run states once which crates are generated at a flavor the runtime does not match and reminds
+    /// them that the remaining flavor/depth-limit contract is unsupported.
     fn runtime_carrier(
         &self,
         ungraphed: &BTreeMap<String, Cli>,
@@ -2518,11 +2520,13 @@ impl Config {
                 .collect();
             if !mismatched.is_empty() {
                 notes.push(format!(
-                    "[runtime] Generated at a flavor the shared runtime does not match: {}. They \
-                     compile against it only while their specs hold no `{{+ K => V}}` (whose \
-                     `NonEmptyMap` is backed by `OrderedHashMap` under --preserve-encodings) and no \
-                     `any` (whose `AnyCbor` serialize arity follows --canonical-form), and a crate \
-                     whose --deserialize-depth-limit differs has its `any` values guarded at `{}`'s \
+                    "[runtime] Generated at a flavor the shared runtime does not match: {}. A \
+                     preserve + canonical runtime carries reduced-consumer bridges for `{{+ K => \
+                     V}}` (`NonEmptyMap` from `BTreeMap`) and `any` (the one-argument \
+                     `AnyCbor::serialize`), but this remains an explicitly accepted mismatch: \
+                     automatic carrier derivation still requires identical \
+                     preserve-encodings/canonical-form values, and a crate whose \
+                     --deserialize-depth-limit differs has its `any` values guarded at `{}`'s \
                      limit rather than its own.",
                     quoted(mismatched.iter().copied()),
                     from

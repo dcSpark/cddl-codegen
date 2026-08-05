@@ -927,7 +927,7 @@ errors behind each rule are spelled out under `--export-static-crate` in
 
 | key | rule | why |
 |---|---|---|
-| `preserve-encodings` | must be **identical** in every crate | the preserve runtime's `NonEmptyMap` is backed by `OrderedHashMap`, so a non-preserve crate holding a `{+ K => V}` cannot build against it |
+| `preserve-encodings` | must be **identical** in every crate | the preserve + canonical runtime carries a narrow `{+ K => V}` `BTreeMap` bridge for a reduced consumer, but that does not make arbitrary flavor mixtures derivable |
 | `canonical-form` | must be **identical** in every crate | the canonical and non-canonical preludes differ in the arity of `fit_sz` / `to_len_sz` / `SerializeEmbeddedGroup`, and in which crate defines `Serialize` |
 | `deserialize-depth-limit` | must be **identical**, and *unset* counts as a value | the limit is baked **by value** into the exported `AnyCbor` guard, so a mismatch compiles cleanly while guarding one crate's `any` values at another crate's limit |
 | `json-serde-derives` | the **maximum** wins | the serde companions are appended to the runtime types, so a runtime carrying them serves a crate that does not |
@@ -960,9 +960,10 @@ runtime:
 
 ### `flavor-from`, when you know
 
-A workspace can legitimately want one runtime for crates that do not all agree — a reduced-flavor
-crate whose spec happens to use none of the constructs that would break. Naming the carrier by hand
-accepts that:
+A workspace can legitimately want one runtime for crates that do not all agree. A preserve +
+canonical carrier includes reduced-consumer bridges for `{+ K => V}` and `any`, but mixed equality
+axes and depth limits remain an explicit unsupported contract. Naming the carrier by hand accepts
+that:
 
 ```toml
 [runtime]
@@ -979,10 +980,10 @@ accepted:
 ```
 [runtime] `chain` carries --export-static-crate, declared by `flavor-from`.
 [runtime] Generated at a flavor the shared runtime does not match: `cip25`. They compile against it
-only while their specs hold no `{+ K => V}` (whose `NonEmptyMap` is backed by `OrderedHashMap` under
---preserve-encodings) and no `any` (whose `AnyCbor` serialize arity follows --canonical-form), and a
-crate whose --deserialize-depth-limit differs has its `any` values guarded at `chain`'s limit rather
-than its own.
+through the preserve + canonical runtime's `{+ K => V}` `BTreeMap` bridge and `any`
+one-argument `AnyCbor::serialize` bridge, but automatic carrier derivation still requires identical
+preserve-encodings/canonical-form values; a crate whose --deserialize-depth-limit differs has its
+`any` values guarded at `chain`'s limit rather than its own.
 ```
 
 That is the substantive difference from placing the flag by hand: the same single declaration, plus
@@ -1279,10 +1280,11 @@ cannot use. `flavor-from` is that comment turned into a declaration — the thir
 `[runtime]` table above.
 
 What the declaration asserts is narrower than "chain is the right crate". It asserts that you accept
-generating `cip25` against a runtime built at `chain`'s flavor, and the run states the accepted gap
-back to you by name — that `cip25` compiles against that runtime only while its spec holds no
-`{+ K => V}` and no `any`. It is a claim about cip25's *spec*, and one that a future spec change can
-falsify; the statement is what makes that visible on the run that introduces it.
+generating `cip25` against a runtime built at `chain`'s flavor. The run states the two
+reduced-consumer bridges back by name, while preserving the stronger rule: automatic derivation does
+not accept a mixed `preserve-encodings`/`canonical-form` configuration, and a depth-limit mismatch
+still guards `cip25` values at `chain`'s limit. It is a claim about cip25's contract, and one that a
+future incompatible use can falsify; the statement makes that visible on the run that introduces it.
 
 ### The workspace edge
 

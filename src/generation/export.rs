@@ -143,7 +143,8 @@ pub(crate) const DEPTH_LIMIT_REQUIRES_STD: &str = "--deserialize-depth-limit out
 /// `non_empty_map.rs`) shared by the in-crate static export and the `--export-static-crate` path so
 /// the two can't drift. Each returned entry is (bare filename, rustfmt'd content). The content
 /// COMPOSITION (file concatenation, json/schemars companions, the preserve-encodings
-/// BTreeMap→OrderedHashMap substitution for non_empty_map) is identical between the two callers —
+/// BTreeMap→OrderedHashMap substitution plus its post-rewrite reduced-consumer bridge for
+/// non_empty_map) is identical between the two callers —
 /// only WHICH files appear differs: `include_non_empty_vec`/`include_non_empty_map` gate the two
 /// NonEmpty runtimes on spec usage in-crate but are forced true for the exported dir (a pure
 /// function of the flag set, not of the spec that happened to be run). `ordered_hash_map.rs` is
@@ -317,6 +318,13 @@ fn composed_runtime_static_files(
                 )
                 .replace("K: Ord", "K: Ord + core::hash::Hash + Eq")
                 .replace("BTreeMap", "OrderedHashMap");
+            // The compatibility bridge must append AFTER the rewrite above: it deliberately names
+            // BTreeMap because a reduced consumer stages `{+ K => V}` there, and placing it in the
+            // base file would rewrite that bridge away. This shared composition seam feeds both
+            // in-crate statics and --export-static-crate, keeping the accommodation identical.
+            non_empty_map_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("non_empty_map_preserve.rs"),
+            )?);
         }
         out.push((
             "non_empty_map.rs".to_owned(),
@@ -371,7 +379,9 @@ fn composed_runtime_static_files(
     // `super::…` imports the standalone serialization prelude uses — in-crate `super` is
     // `generated`, and under `--export-static-crate` it is the target crate's flat module dir.
     // The mode split follows the serialization prelude's own: preserve carries the encoding-bearing
-    // base + exactly one canonical fragment; non-preserve is the plain structural variant.
+    // base + exactly one canonical fragment; non-preserve is the plain structural variant. The
+    // preserve+canonical fragment additionally carries the upstream Serialize bridge a reduced
+    // consumer needs, alongside its local two-argument canonical implementation.
     if include_any_cbor {
         let mut any_cbor_rs = String::from(
             "use super::error::{DeserializeError, DeserializeFailure};\n\

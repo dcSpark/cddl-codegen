@@ -22931,8 +22931,9 @@ fn comment_preservation_replace_in_descendant_orphans_parent_import() {
 ///   (a) `<dir>/src/` holds error.rs / serialization.rs / ordered_hash_map.rs / non_empty.rs /
 ///       non_empty_map.rs with the expected composed content — serialization.rs is the PRELUDE ONLY
 ///       (a prelude trait present, raw_bytes always included, and NO generated per-type impl for the
-///       distinctively-named spec type); non_empty_map.rs carries OrderedHashMap not BTreeMap under
-///       preserve; and a fresh `<dir>/Cargo.toml` is seeded with the flavor's dep set (cbor_event,
+///       distinctively-named spec type); non_empty_map.rs carries OrderedHashMap storage plus its
+///       post-rewrite BTreeMap reduced-consumer bridge under preserve; and a fresh
+///       `<dir>/Cargo.toml` is seeded with the flavor's dep set (cbor_event,
 ///       hex, hashlink, serde, serde_json — and NOT schemars, since json-schema-export is
 ///       off);
 ///   (b) a `cddl-codegen:insert` block hand-added to an exported file survives a re-export
@@ -23048,9 +23049,11 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         "non_empty_map.rs must ALWAYS be exported regardless of spec usage:\n{non_empty_map_rs}"
     );
     assert!(
-        non_empty_map_rs.contains("OrderedHashMap") && !non_empty_map_rs.contains("BTreeMap"),
-        "non_empty_map.rs must carry the OrderedHashMap flavor (not BTreeMap) under \
-         --preserve-encodings:\n{non_empty_map_rs}"
+        non_empty_map_rs.contains(
+            "pub struct NonEmptyMap<K: Ord + core::hash::Hash + Eq, V>(OrderedHashMap<K, V>);"
+        ) && non_empty_map_rs.contains("TryFrom<BTreeMap<K, V>> for NonEmptyMap<K, V>"),
+        "non_empty_map.rs must keep OrderedHashMap storage and append the reduced-consumer \
+         BTreeMap bridge under --preserve-encodings:\n{non_empty_map_rs}"
     );
     // No module wiring is written — the target crate owns its declarations.
     assert!(
@@ -23671,6 +23674,13 @@ fn comment_preservation_static_files_rustfmt_stable() {
              second unchanged regen"
         );
     }
+    let non_empty_map = std::fs::read_to_string(out.join("rust/src/generated/non_empty_map.rs"))
+        .expect("the in-crate preserve composition must include non_empty_map.rs");
+    assert!(
+        non_empty_map.contains("TryFrom<BTreeMap<K, V>> for NonEmptyMap<K, V>"),
+        "the shared in-crate composition path must append the same BTreeMap bridge as \
+         --export-static-crate:\n{non_empty_map}"
+    );
     let _ = std::fs::remove_dir_all(&scratch);
 }
 

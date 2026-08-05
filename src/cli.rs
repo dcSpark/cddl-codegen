@@ -915,14 +915,17 @@ pub struct Cli {
     /// which spec was run must not change the output. Flavor selection (preserve-encodings /
     /// canonical / json / schemars / depth-guard) is identical to the in-crate composer. Which
     /// OTHER crates that runtime can COMPILE is not symmetric across those flags, so a workspace
-    /// sharing one runtime must pick the exporting flag set deliberately: preserve-encodings /
-    /// canonical-form / deserialize-depth-limit must MATCH (the canonical and non-canonical
-    /// preludes differ in the arity of fit_sz/to_len_sz/SerializeEmbeddedGroup and in which crate
-    /// defines Serialize; the preserve accommodation stops at `{+ K => V}`'s OrderedHashMap-backed
-    /// NonEmptyMap and at canonical `AnyCbor::serialize`; the depth limit is baked BY VALUE into
-    /// the exported AnyCbor guard, so a mismatch compiles while silently guarding one crate's `any`
-    /// values at the exporting crate's limit), while json-serde-derives and json-schema-export
-    /// genuinely nest (a runtime carrying them serves a crate that does not). The config file's
+    /// sharing one runtime must pick the exporting flag set deliberately: automatic carrier
+    /// derivation requires preserve-encodings / canonical-form / deserialize-depth-limit to MATCH.
+    /// A preserve + canonical runtime carries narrow reduced-consumer shims for `{+ K => V}`
+    /// (`NonEmptyMap` from BTreeMap) and `any` (cbor_event's one-argument `AnyCbor::serialize`),
+    /// but they do not reclassify either flag as a maximum axis or remove explicit `flavor-from`
+    /// from a mixed-flavor config. The canonical/non-canonical preludes still differ in the arity
+    /// of fit_sz/to_len_sz/SerializeEmbeddedGroup and in which crate defines Serialize; the depth
+    /// limit is baked BY VALUE into the exported AnyCbor guard, so a mismatch compiles while
+    /// silently guarding one crate's `any` values at the exporting crate's limit. Meanwhile,
+    /// json-serde-derives and json-schema-export genuinely nest (a runtime carrying them serves a
+    /// crate that does not). The config file's
     /// `[runtime]` table derives the exporting crate from exactly those rules — see
     /// docs/config_file. EXACTLY ONE invocation may export into a given dir: two at differing
     /// flavors ACCUMULATE rather than overwrite, and the run stops being idempotent (the other
