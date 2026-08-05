@@ -1133,12 +1133,12 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   meanwhile the working rule for new rejection work is the float_table_key header comment: check
   which existing reject fixtures the new guard can reach, and respell or reason-assert them.
 - **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind
-  gate branches) have untested first-use paths — three same-review instances recorded, no
+  gate branches) have untested first-use paths — six review-caught instances recorded, no
   machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents
   that don't exist at HEAD (the over-acceptance flow, the exempt ledgers, the stale guards), so a
   scoping or preservation bug in such an arm is invisible to every gate until the first real
-  resident arrives — and then fires as a false red or a silent data loss. Three instances, all in
-  the corpus-decode-leg delivery, all caught by in-session diff review and none by a gate, all
+  resident arrives — and then fires as a false red or a silent data loss. The first three instances,
+  all in the corpus-decode-leg delivery, were caught by in-session diff review and none by a gate, all
   since fixed: (1) the matrix arm-floor stale-exempt guard iterated a SHARED exempt ledger
   against only the MATRIX uncovered set, so the first corpus-keyed entry — which the corpus
   error messages direct users to add — would have falsely failed the matrix gate (fixed:
@@ -1165,11 +1165,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the gate") while the leg driver consumed entries WITHOUT running the leg — the guard was
   asserted, never wired; the `WASM_SURFACE_SKIP` sibling in the same change had the real guard.
   Caught by in-session diff review (the review walked the arm — the working rule holding), fixed
-  in the same series. Two consequences for the mechanical layer: the flavor to detect is "ledger
+  in the same series. The first `policy-rejected` residents exposed two further review catches:
+  (5) the matrix report counted policy vectors but the corpus report printed only its total vector
+  count, obscuring its policy evidence; fixed with separate corpus policy/reason counts and the
+  matrix+corpus total; (6) `PolicyFailureKind::DoubledLocation` advertised
+  `DOUBLED_LOCATION_SKIP` but unconditionally failed instead of consuming the stale-guarded ledger,
+  in both matrix and corpus replay loops; fixed by sharing the constraint branch's lookup and
+  still-failing insertion. Two consequences for the mechanical layer: the flavor to detect is "ledger
   entry consumed with zero reproduction attempt", and the layer as sketched above is
   DRIFT-gate-scoped — the replay gates' rust-side skip ledgers need a sibling arm (a synthetic
   always-passing resident driven through the leg driver, asserting exactly the stale-pin failure
-  fires and no other). Count: four review-caught instances, zero escapes; the build trigger stays
+  fires and no other). Count: six review-caught instances, zero escapes; the build trigger stays
   the first instance that survives review, with the layer owing BOTH homes when built. Related,
   smaller catch from the same review with its own
   trivial layer: a machine-written catalog `pinned_reason` cited a run artifact ("see mint
