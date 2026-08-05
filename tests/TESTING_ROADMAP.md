@@ -421,23 +421,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       counterpart they can point at), and the count of silently-missing members is the dimension
       along which a hand-listed vocabulary stops being maintainable.
 
-11. **Run the WHOLE input-robustness catalog out of process, not only a listed abort-prone subset.**
-    Today `input_robustness_catalog` spawns a process per input named in `ABORT_PRONE_INPUTS` and
-    runs every other input in-process inside `catch_unwind`. That list is hand-maintained, so an
-    input whose generation newly starts to abort — a non-unwinding crash `catch_unwind` cannot see —
-    takes the test binary down instead of recording an `ABORTED (signal <n>)` row, and the failure
-    reads as an unexplained harness death rather than as the catalog's own finding. The breadth is
-    not built because a spawn per input costs a process launch each across the whole catalog, on the
-    `local` tier, to cover a class that has produced exactly one member.
-    - **Reopening signal**: a second aborting input found by any route OTHER than that list — a user
-      or a fuzz run reporting exit 134 with no diagnostic, from a spec the list does not contain.
-      The exit code is the observable and it belongs to whoever ran the tool, and the count of abort
-      shapes a hand-list misses is the dimension along which the subset-versus-everything choice
-      actually costs. The one shape that motivated the lane
-      (`tests/robustness/recursive_collection_holder.cddl`) no longer aborts — the recursive-type
-      boundary repairs it — so the signal is not met by the catalog's own contents.
-
-12. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
+11. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
     serialize error into a panic.** A `float16` member's carrier is `f32`, and a carrier value that
     is not f16-exact cannot be written at the one head the type declares — so `Serialize` returns
     `Err` (`InvalidLenPassed`, the declared-width refusal working as designed: rounding to fit
@@ -453,7 +437,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     (`tests/core/tests.rs`). Reopening signal: the maintainer takes the ruling, or a consumer
     reports the panic from production data (measurable by the party holding the inexact value).
 
-13. **Build the registration-class × reference-position sweep — the second escape makes it due.**
+12. **Build the registration-class × reference-position sweep — the second escape makes it due.**
     The shipped incident pins and their exact coverage live in `tests/README.md` § “Recursive-type
     boundary — test map”; they are controls, not a substitute for this enumeration. Build a sibling
     to `directive_referencing_context_sweep` whose bases distinguish at least own-ident structs,
@@ -466,7 +450,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     and an alias-first recursive collection. Neither the directive sweep (wrong base axis) nor the
     recombination roles (no rule-level alias hop) could enumerate them.
 
-14. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
+13. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
     it.** Skip-listed gate rows are ledgered with citations and stale-guards; an eviction — a
     shape REMOVED from a fixture because it trips a known bug — is recorded only in prose, which
     nothing re-probes. Proven cost: `tests/corpus/tag_set_generic.cddl` dropped its bytes
