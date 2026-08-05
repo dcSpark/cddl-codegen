@@ -1119,7 +1119,15 @@ duplicate-symbols; and `wrapper_participation_requested_host_floor` (gate
 mints come from a sidecar rather than from its own spec, including both NonEmpty twins. Its import
 walk follows each support class's actual emission home: co-hosted classes stay local, own-spec
 classes come from their real root/module, and deferred classes come from the dependency collections
-surface. What the link legs add over the incident
+surface. The always-on controls pin each non-local branch rather than relying on the host compile to
+infer it: `wrapper_participation_requested_non_empty_root_sources_stay_imported` covers the list/map
+root homes, `wrapper_participation_requested_non_empty_map_source_can_defer` covers the reachable
+primitive-map case whose loose source stays in a dependency index, and
+`wrapper_participation_requested_workspace_dep_keeps_local_and_extern_homes` composes one co-hosted
+source with a genuine mapped extern import. In the deferred control the dependency import lives in
+generated root and `requested_collections.rs` reaches it through `use super::*;`; asserting both the
+absent local body and that import is what keeps a future ownership refactor honest. What the link
+legs add over the incident
 cells is the POSITION crossing: a named-rule declaration, a by-name reference and a non-root
 declaring scope had never reached a wasm32 link, and an import routed into the wrong module is
 exactly the class every host-target check survives.
@@ -2522,6 +2530,15 @@ pin a specific shipped regression or placement control and are kept.
 The gate renders three placements: the rule slot, an arm's trailing comment (`armPlacement`), and the
 ROW-ENTRY slot of an inline table (`rowEntryPlacement`) — a comment *inside* the braces, which the
 other two structurally cannot reach and which was where the inline-table `@duplicates` drop hid.
+
+One parser boundary is deliberately not called a fourth placement yet. For a single-line spliced
+plain group (`grp = (a: uint) ; @x`), the pinned cddl AST binds `@x` to the last entry's trailing
+slot, indistinguishable from field metadata inside the parens. The product therefore measures the
+real field/rule effects, targeted rejections and justified redundant no-ops of that shared slot; it
+has no separate rule-only position to sweep. The unpublished parser fix tracked in
+`tests/TESTING_ROADMAP.md` adds a `RuleTrailing` anchor for the multi-line spelling. Adopting it must
+add that placement and its rule-only honor/reject classification to this gate in the same delivery,
+not reinterpret the working last-entry slot ahead of the parser change.
 
 ### Sibling-crate companion classes (`@extern_companions`) — test map
 
