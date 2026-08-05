@@ -3594,10 +3594,12 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > `Attribution::ContextOwned`, excluded with the control's own verdict RECORDED and re-checked every
 > run (`every_context_owned_exclusion_is_still_context_owned`), so an exclusion goes stale loudly the
 > day its underlying defect is fixed. Findings are pinned in `KNOWN_CLOSURE_BREACH` with their KIND
-> (exit-0 or panic) and an evidence substring, on the sibling sweeps' terms. The pin list is NOT
-> empty: the ten `<refused name> .default 1` cells abort at `RustType::default`, destroying a refusal
-> `new_type` had already recorded — that plus two name-independent control-operator aborts the
-> context enumeration turned up are pinned as `PANIC` rows of the input-robustness catalog.
+> (exit-0 or panic) and an evidence substring, on the sibling sweeps' terms. The pin list is EMPTY
+> at HEAD: its founding residents — the ten `<refused name> .default 1` cells that aborted at
+> `RustType::default`, destroying a refusal `new_type` had already recorded, plus two
+> name-independent control-operator aborts the context enumeration turned up — were all converted
+> to graceful refusals in the same delivery, so their robustness-catalog rows record
+> `error (graceful)` and a new entry here is a new finding.
 
 ### Synthesized-name interaction sweep + duplicate-ident backstop
 

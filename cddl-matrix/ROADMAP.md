@@ -217,23 +217,6 @@ ledgered here (that's what the probe/gate error messages point at).
   before it, any spec in this repo that spells a tagged preserve table and uses it standalone rather
   than only from a holder.
 
-- **Three control-operator arms ABORT (exit 101) where every sibling refuses gracefully.** Found
-  2026-08-03 by the refused-name × resolution-context closure sweep
-  (`src/tests/refused_name_closure_tests.rs`) enumerating the control-operator arms as separate
-  contexts. `x = <name> .default 1` aborts at `RustType::default` for any head that did not resolve
-  to a rust primitive matching the default's value class — which includes `tdate` (a SUPPORTED
-  prelude name with no primitive) and, more sharply, every REFUSED prelude name, whose inert
-  `Fixed(Null)` placeholder means a graceful rejection the walk had already RECORDED is destroyed by
-  the abort before `finalize` can report it. `x = uint..10` (a typename as a range bound) and
-  `x = uint .cbor uint` (`.cbor` on a non-`bytes` head) abort for every head, supported names
-  included — refusing both shapes is right, but with a message, not a panic. Consumer-visible as an
-  unexplained exit 101 on an ordinary spec typo. Each is a `PANIC` row of the input-robustness
-  catalog (`tests/robustness/ctl_default_unmapped_head.cddl`,
-  `tests/robustness/rangeop_typename_start.cddl`, `tests/robustness/ctl_cbor_non_bytes_head.cddl`)
-  and the ten `.default` cells are pinned in that sweep's `KNOWN_CLOSURE_BREACH`. The matrix's own
-  `ctl.cbor` / `ctl.default` / `rangeop.*` cells all spell heads that work, so the grid cannot see
-  this boundary today.
-
 - **A type-choice ARM or member declared as `bytes .cbor <alias>` changes NAME, not wire, once the
   alias survives to the arm.** Measured 2026-08-03 while fixing the wire half of the same seam (the
   alias's `@custom_serialize`/`@custom_deserialize` pair, which the arm now routes through in both
