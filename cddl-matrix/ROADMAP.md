@@ -738,6 +738,17 @@ remains is deleting the notes that explain why we do not have it yet.
   itself. If instead the answer is that all six names denote the same set, the exemptions are wrong
   rather than stale: the shortest-form partition reopens, and the writeup's own closing section
   says exactly what moves.
+- File the prepared typed-tag report for README gap #14:
+  `cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md` is committed and
+  paste-ready, but no upstream issue has been filed. The catalog exemption remains deliberately
+  exact: when rust begins rejecting `81cbf4`, remove
+  `contain.group-choice-arm.type2.tag.fixed_array/81cbf4` from
+  `DECODE_REJECT_ORACLE_GAP_EXEMPT`, re-mint that row so the hand vector returns to ordinary
+  two-oracle certification, run the normal probe/fold, and prune README gap #14 plus the Q4
+  family-(d) exception and the report. If only the adjacent `81ccf5` wrong-tag probe changes, update
+  the report but keep the payload exemption until its own mint stale guard fires. If upstream rules
+  the current acceptance correct, follow the report's explicit reversal branch instead of retaining
+  the exemption.
 
 ## wasm-ABI & multifile placement matrices — remaining work
 
