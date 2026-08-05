@@ -1784,30 +1784,38 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `a7ed0784e89689784ff78ed0e85c7434a3528937` (branch `local-fixes`, UNPUSHED — the durable carrier)
   emits a `RuleTrailing` anchor filled as a strict fallback, so population is ADDITIVE by
   construction (the single-line spelling keeps binding to the last entry's slot; nothing
-  double-counts); the codegen side (reader merge in `group_rule_pin_metadata`, per-directive
-  vectors both spellings, `no_silent_directive` cells) is prepared and verified both ways — green
-  under a local path override, red at the committed pin exactly on the multi-line halves — in the
-  re-parked burndown row (T1-09, `draft/burndown2/`; NB `draft/` is checkout-local). Owned
+  double-counts). That new anchor is also the FIRST AST position that distinguishes a genuine
+  group-rule comment from last-field metadata: adoption must therefore land together with the
+  downstream rule-only classification below — honor the four directives with rule meaning and
+  reject the field-semantics directives there — rather than introducing a newly readable slot that
+  accepts and ignores them. The codegen reader merge in `group_rule_pin_metadata`, per-directive
+  vectors for both spellings and `no_silent_directive` cells were prepared and probed under a local
+  path override; with those prepared vectors the pinned parser is red exactly on the multi-line
+  halves. Owned
   meanwhile by `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs
   section, both naming the single-line spelling as the supported one. Reopening signal, unchanged
   in substance: a consumer reports a directive lost in a multi-line group spelling their generator
   cannot reformat, or the fork is bumped for any other reason (at which point adopting `a7ed0784`
-  and the prepared codegen side is the whole work).
+  plus the downstream slot classification is the whole work).
 
-- **On a SPLICED plain group, the rule slot accepts-and-ignores the thirteen directives with a
-  field-position meaning.** Found 2026-08-04 while preparing the multi-line group sweep cells: the
-  rule-position slot of a spliced group rule is consumed by exactly the four directives with NO
-  field-position meaning (`@rust_name`, `@no_json_schema_export`, `@custom_json`, `@used_as_key`);
-  the other thirteen (`@doc`, `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`,
-  `@duplicates`, `@raw_bytes_flavor`, the custom-codec family, `@extern_companions`) are accepted
-  and inert there — a probe sweep produced 13 genuine silent-drop cells, which were NOT allowlisted
-  (an allowlist absorbing real drops is the dishonesty the sweep exists to prevent). The honest fix
-  is a refusal at the slot for directives the group-rule position cannot honor — a new rejection
-  seam with its own message and vectors, not a sweep entry. The never-spliced flavor already
-  refuses loudly (`finalize`'s never-spliced report); this is the SPLICED flavor's gap. Reopening
-  signal: an author reports writing one of the thirteen on a spliced group rule and being surprised
-  by the silence — or the multi-line sweep cells land (with the fork bump above), at which point
-  the sweep shape that measured the 13 drops can be committed as the red-first vector set.
+- **The SPLICED-group rule-only rejection for the field-semantics directives is BLOCKED on the
+  `RuleTrailing` parser adoption above — the committed AST exposes no separate rule-only slot.** A
+  fresh pickup at the pinned parser revision disproved this entry's earlier premise: in the only
+  observable single-line spelling (`grp = (a: uint) ; @x`), cddl binds the comment to the LAST group
+  entry's trailing slot. It is AST-indistinguishable from an in-paren field comment, so the
+  field-semantics directives legitimately affect/reject at that field position (with the deliberate
+  redundant no-ops classified), while the four directives with no field meaning (`@rust_name`,
+  `@no_json_schema_export`, `@custom_json`, `@used_as_key`) are also read as group metadata. The
+  committed `no_silent_directive` product is green over this spelling; stealing the last-entry
+  metadata now would reject working field behavior rather than close a drop. The never-spliced
+  flavor remains a separate, already-loud refusal in `finalize`.
+
+  Once the fork's `RuleTrailing` anchor is adopted, its multi-line comment is a genuinely
+  distinguishable RULE position. At that same delivery, honor the four rule-meaning directives and
+  reject `@doc`, `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`, `@duplicates`,
+  `@raw_bytes_flavor`, the custom-codec family and `@extern_companions` at that slot with one
+  site-bearing diagnostic plus per-directive vectors. Do not take this item before (or separately
+  from) the parser adoption: no current AST seam can implement it honestly.
 
 - **The recombination member-kind table does not span the tagged-optional shape, and one exit-0
   uncompilable crate escaped through the gap.** The `#6.n(T / null)`-under-`--preserve-encodings`
