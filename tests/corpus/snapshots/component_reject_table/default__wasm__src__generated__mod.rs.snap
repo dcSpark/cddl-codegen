@@ -1,0 +1,113 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn named(&self) -> NamedTable {
+        self.0.named.clone().into()
+    }
+
+    pub fn inline(&self) -> MapU64ToText {
+        self.0.inline.clone().into()
+    }
+
+    pub fn new(named: &NamedTable, inline: &MapU64ToText) -> Self {
+        Self(cddl_lib::Holder::new(
+            named.clone().into(),
+            inline.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+pub type MapU64ToText = NamedTable;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NamedTable(pub(crate) cddl_lib::NamedTable);
+
+#[wasm_bindgen]
+impl NamedTable {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::NamedTable> for NamedTable {
+    fn from(native: cddl_lib::NamedTable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NamedTable> for cddl_lib::NamedTable {
+    fn from(wasm: NamedTable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NamedTable> for NamedTable {
+    fn as_ref(&self) -> &cddl_lib::NamedTable {
+        &self.0
+    }
+}

@@ -1,0 +1,97 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        serializer.write_map(cbor_event::Len::Len(self.named.len() as u64))?;
+        for (key, value) in self.named.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        serializer.write_map(cbor_event::Len::Len(self.inline.len() as u64))?;
+        for (key, value) in self.inline.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let named = (|| -> Result<_, DeserializeError> {
+                let mut named_table = BTreeMap::new();
+                let named_len = raw.map()?;
+                while match named_len {
+                    cbor_event::Len::Len(n) => (named_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(named_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let named_key = raw.unsigned_integer()?;
+                    let named_value = raw.text()?;
+                    if named_table.insert(named_key, named_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Uint(named_key)).into());
+                    }
+                }
+                Ok(named_table)
+            })()
+            .map_err(|e| e.annotate("named"))?;
+            let inline = (|| -> Result<_, DeserializeError> {
+                let mut inline_table = BTreeMap::new();
+                let inline_len = raw.map()?;
+                while match inline_len {
+                    cbor_event::Len::Len(n) => (inline_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(inline_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let inline_key = raw.unsigned_integer()?;
+                    let inline_value = raw.text()?;
+                    if inline_table.insert(inline_key, inline_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Uint(inline_key)).into());
+                    }
+                }
+                Ok(inline_table)
+            })()
+            .map_err(|e| e.annotate("inline"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder { named, inline })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}

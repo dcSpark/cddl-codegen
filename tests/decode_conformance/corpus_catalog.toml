@@ -1687,6 +1687,121 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "component_reject_table.holder"
+axis = "corpus"
+example = "named_table = { * uint => text } ; @duplicates reject\nholder = [\n  named: named_table,\n  inline: { * uint => text ; @duplicates reject\n  }\n]"
+fixture = "component_reject_table"
+rule = "holder"
+spec = "__probe_holder = [0, holder]\nnamed_table = { * uint => text } ; @duplicates reject\nholder = [\n  named: named_table,\n  inline: { * uint => text ; @duplicates reject\n  }\n]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820082a0a1190424696173746f756e646564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a0a219022a6a4d61726f6e6974652773190b5f686368616d70696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a0a31903d367746970736965721901e9676c65616368656419047c6662696c6c6f77"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a0a3190d2e6743656c65737465190da1667365677565641906b46c74657263656e74656e617279"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a11902d86464756c79a4190bf16478696969190b276854616f69737427731904ce69686572697461676573190a456742656c6d6f6e74"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a1190dc76a656e646561766f726564a319039e6c6879737465726963616c6c791908a267646563696465731910d866737572726579"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a1190e356a6465636c656e73696f6ea21904176967617272756c6f75731903ce6772616469616e74"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a119125867626173736f2773a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a21910f265746f6e65721904af6a707265706f7373657373a3190db56a737079676c6173732773190a926d756e707265636564656e74656419092e69616d6f756e74696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a4190522675069726165757319041e6c646973617374726f75736c79190abd6863726f7373657374190c02664665726e2773a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "component_reject_table.named_table"
+axis = "corpus"
+example = "named_table = { * uint => text } ; @duplicates reject"
+fixture = "component_reject_table"
+rule = "named_table"
+spec = "__probe_holder = [0, named_table]\nnamed_table = { * uint => text } ; @duplicates reject"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a11907e3674c6f75656c6c61"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1190a05687265756e69746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1190b846c756e7175656e636861626c65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1190fe56a7265666c657869766573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2190f1567626f6e616e7a6119104166636861736573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a219110f66556e696f6e731902f66873706f696c657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a41905696a48616d696c746f6e277319091f686269766f7561637319101364626169741905b7686675737469657374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a41911a7696d6167617a696e657319089b6b626c61636b62697264277319091e68776561706f6e72791905006767756c6c792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "composite_map_key.holder"
 axis = "corpus"
 example = "t = { * [+ uint] => uint }\n; holder: embed the table so it also emits in member position.\nholder = [table: t]"
