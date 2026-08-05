@@ -919,11 +919,9 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("@custom_deserialize alone on `Myrec`"),
     },
-    // 23o. STILL ACCEPTED (not a pin — an `Effect` cell, which only passes on a SUCCESSFUL
-    //      generation): BOTH halves on a record rule suppress the generated impls for the author to
-    //      hand-own. That posture is unspecified and at risk, so this cell is doing two jobs — it is
-    //      the regression guard that 23m/23n did not swallow the both-set spelling, and it pins what
-    //      the spelling does TODAY so a change to it cannot land silently.
+    // 23o. HONORED: BOTH halves on a record rule generate thin trait impls that delegate to the
+    //      named pair. The record owns its complete item, so its ordinary field walk must not leak
+    //      into either direction; a holder reaches the same pair through its named reference.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "record-rule-both-set",
@@ -931,8 +929,14 @@ const GRID: &[Cell] = &[
         flags: &[],
         wasm: false,
         expect: Expect::Effect {
-            must: &["pub struct Myrec", "my_deser(raw)"],
-            must_not: &["Serialize for Myrec", "Deserialize for Myrec"],
+            must: &[
+                "pub struct Myrec",
+                "Serialize for Myrec",
+                "Deserialize for Myrec",
+                "my_ser(serializer, self)",
+                "my_deser(raw)",
+            ],
+            must_not: &["serializer.write_unsigned_integer(self.a"],
         },
     },
     // ---- @custom_encodings -------------------------------------------------------------------

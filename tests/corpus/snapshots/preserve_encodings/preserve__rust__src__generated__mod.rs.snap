@@ -90,13 +90,14 @@ use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
-    CborNestedPayloadsEncoding, CustomFieldHolderEncoding, CustomTablePositionsEncoding,
-    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FloatHeadsEncoding,
-    FooBytesEncoding, FooEncoding, HashEncoding, MapStructWithCustomSerializationEncoding,
-    MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding,
-    OptFixedArrEncoding, OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding,
-    PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding, SecondEncoding,
-    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
+    CborNestedPayloadsEncoding, CustomFieldHolderEncoding, CustomRecordEncoding,
+    CustomRecordHolderEncoding, CustomTablePositionsEncoding, DeeplyNestedEncoding, EdEncoding,
+    EeEncoding, EnumsEncoding, FirstEncoding, FloatHeadsEncoding, FooBytesEncoding, FooEncoding,
+    HashEncoding, MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding,
+    NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
+    OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding,
+    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
+    SignedIntsEncoding, String64Encoding, String1632Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
     TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
@@ -472,6 +473,36 @@ pub struct CustomFieldHolder {
 
 impl CustomFieldHolder {
     pub fn new(nested: StructWithCustomSerialization) -> Self {
+        Self {
+            nested,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomRecord {
+    pub value: u64,
+    pub encodings: Option<CustomRecordEncoding>,
+}
+
+impl CustomRecord {
+    pub fn new(value: u64) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomRecordHolder {
+    pub nested: CustomRecord,
+    pub encodings: Option<CustomRecordHolderEncoding>,
+}
+
+impl CustomRecordHolder {
+    pub fn new(nested: CustomRecord) -> Self {
         Self {
             nested,
             encodings: None,
