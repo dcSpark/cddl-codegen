@@ -201,11 +201,13 @@ const onlyArg = process.argv.find(a => a.startsWith("--only="));
 const MINT_ONLY = onlyArg
   ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
   : null;
+const MINT_ACCEPT_REJECTED = "MINT_ACCEPT_REJECTED";
 
-// ASSERT-AT-STARTUP self-tests for the two pure evidence-vocabulary deciders. Both run on EVERY
-// invocation before any oracle work, because both fail SILENTLY in production — a wrong verdict token
-// or a wrong stage name reads as a plausible annotation, not as an error. `--selftest` runs ONLY these
-// blocks and exits, for a sub-second red/green check without the multi-minute pipeline.
+// ASSERT-AT-STARTUP self-tests for the three pure evidence-vocabulary deciders. They run on EVERY
+// invocation before any oracle work, because all three fail SILENTLY in production — a wrong verdict
+// token, stage name, or policy classification reads as a plausible annotation or hidden triage
+// exemption, not as an error. `--selftest` runs ONLY these blocks and exits, for a sub-second
+// red/green check without the multi-minute pipeline.
 const SELFTEST = process.argv.includes("--selftest");
 // (1) The ruby-generate Bernoulli classifier (Change A's deterministic verdict source): a
 // mis-classification would silently route a Bernoulli row back onto the flaky `generate` verdict (or a
@@ -266,6 +268,11 @@ const SELFTEST = process.argv.includes("--selftest");
   }
   if (SELFTEST) console.log(`wasm-evidence stage-taxonomy self-test OK (${cases.length} fixtures)`);
 }
+// (3) A random spec-valid candidate may be rejected by the documented duplicate-key policy. It is
+// redundant only when its OWN marked Display matches a validated hand policy pin; an unknown reason
+// must remain class-less red triage. This must share `--selftest`, not wait for a random mint draw.
+policyMintClassifierSelfTest();
+if (SELFTEST) console.log("policy mint classifier self-test OK (delimiter + matched/unmatched reason)");
 if (SELFTEST) process.exit(0);
 // K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
 const FOREIGN_K = 10;
@@ -1103,7 +1110,6 @@ function derive(featureId: string, profile: string, rubySpecValid: boolean, rust
 interface ForeignOutcome { accepts_foreign?: boolean; foreign_vectors?: number }
 interface ReplayVec { hex: string; name: string; expectOk: boolean }
 interface ReplayResult { verdicts: Map<string, boolean>; output: string }
-const MINT_ACCEPT_REJECTED = "MINT_ACCEPT_REJECTED";
 
 // Recover the Display captured by replayInDir's deliberately per-test marker. `name:` (not merely
 // `name`) is load-bearing: a candidate test `row_a1` must not borrow `row_a10`'s failure reason.
@@ -1131,7 +1137,7 @@ function isKnownPolicyReject(result: ReplayResult, name: string, pins: CatalogVe
 
 // Cheap pure control for the marker grammar: a longer decimal suffix must not donate its Display to
 // a prefix candidate, while the exact candidate matches only the validated policy door.
-{
+function policyMintClassifierSelfTest(): void {
   const pins: CatalogVector[] = [{ hex: "00", source: "hand", expect: "reject", class: "policy-rejected", reason: "synthetic", expect_err: "Duplicate key:" }];
   const output = `${MINT_ACCEPT_REJECTED} row_a10: Duplicate key: 2\n${MINT_ACCEPT_REJECTED} row_a2: unrelated failure\n`;
   const result: ReplayResult = { verdicts: new Map(), output };

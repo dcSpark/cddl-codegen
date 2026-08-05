@@ -35,8 +35,8 @@ before considering work done" — the heavy correctness gates (full
 `cddl-matrix/` once; the runtime stays dependency-free — which is also why it is NOT in the class
 above: CI cannot install it without a second `run:` step), `verify_selftest` (`verify.ts`'s
 assert-at-startup deciders, run standalone in ~30 ms — their own gate is `full`-tier, and a wrong
-verdict token or evidence-stage name is silent in production, so the cheap tier is where it must
-fail), `no_std_check` (the no_std drift gate — see its section below), `no_silent_directive` (which
+verdict token, evidence-stage name, or policy-mint classifier is silent in production, so the cheap
+tier is where it must fail), `no_std_check` (the no_std drift gate — see its section below), `no_silent_directive` (which
 spawns `cargo build` plus generator runs) and `timings_digest_check` live here, NOT in CI. The
 doc-citation gate
 checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, bans
