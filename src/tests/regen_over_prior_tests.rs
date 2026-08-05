@@ -358,7 +358,8 @@ struct Injection {
     orphans_import: bool,
     /// Whether the site is in a PER-TYPE surface ([`PER_TYPE_FILES`]) rather than in a composed
     /// static runtime file, whose bytes are the same for every fixture. Counted because a sweep that
-    /// injects into the same static file 92 times is one cell wearing a corpus's clothes.
+    /// injects into the same static file once per corpus fixture is one cell wearing a corpus's
+    /// clothes.
     per_type: bool,
 }
 
@@ -608,17 +609,12 @@ const REGEN_WORKERS: usize = 6;
 /// going structurally silent (an emitter stops writing a tree, the chooser stops finding candidates)
 /// fails loudly.
 ///
-/// Measured after the corpus grew to 92 fixtures x 2 profiles: 1334 files scanned; 179 deletion
-/// cells (`dsl_copy` and `extern_generic_raw_bytes` do not parse standalone — they name
-/// user-supplied idents, the same reason both sit in `COMPILE_SKIP`; `dsl_ignore` deliberately does
-/// not generate under `--preserve-encodings`), 12 of them deleting a `@used_as_key` rule; 92 edit
-/// cells (default profile only), 90 of them in a per-type surface, 6 of them orphaning an import.
-///
 /// The orphan floor is the one that is LOW rather than merely conservative: whether a `self`-only
 /// function body happens to hold the last use of a same-file import is a property of what the
-/// corpus happens to emit, not something the sweep can arrange. Five is what this corpus offers;
-/// the floor guards against that becoming zero (which is what a regression in the site chooser, or
-/// an emitter that stops importing anything into the per-type surfaces, would look like).
+/// corpus happens to emit, not something the sweep can arrange. The floor guards against that
+/// becoming zero (which is what a regression in the site chooser, or an emitter that stops
+/// importing anything into the per-type surfaces, would look like); the test prints every current
+/// tally so the source does not carry a second, hand-maintained live count.
 const MIN_SCANNED_FILES: usize = 1000;
 const MIN_DELETION_CELLS: usize = 150;
 const MIN_EDIT_CELLS: usize = 80;
@@ -642,7 +638,7 @@ struct SweepTally {
 /// Legs 1-3 over every corpus fixture. See the module docs for what each leg asserts and why the
 /// compile half is a separate gate.
 #[test]
-#[ignore = "corpus-wide regen sweep: 92 fixtures x 5 generator runs (check.ts local)"]
+#[ignore = "corpus-wide regen sweep: every fixture x 5 generator runs (check.ts local)"]
 fn regen_over_prior_output_corpus() {
     let all = feature_corpus_entries();
     let scratch_name = format!("cddl_codegen_regen_prior_{:016x}", checkout_hash());

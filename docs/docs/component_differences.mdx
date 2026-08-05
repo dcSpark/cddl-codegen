@@ -65,11 +65,18 @@ gaps second; the borrow-parameter rule above covers the ownership half, and WIT'
 neither of the gaps (nested lists, lists of handles and nested `option`s are all expressible).
 
 The consequence is that **constraints move from the type to the door**. A `[+ t]` non-empty
-container, a `@duplicates reject` set and a `@duplicates preserve` pair-map all despecialize to a
-plain `list<…>`, and the invariant is re-checked where the list is *consumed* — the constructor or
-setter that takes it returns `result<…, string>` and reports the same refusal the rust crate's own
-`TryFrom` door would. Nothing is lost; the check simply happens at the call that would have
-violated it.
+container and a `@duplicates reject` **set** both despecialize to a plain `list<…>`, so the invariant
+is re-checked where the list is *consumed*: the constructor or setter returns
+`result<…, string>` and reports the same refusal as the rust crate's `TryFrom` door.
+
+Tables are different. A `@duplicates preserve` pair-map also projects as
+`list<tuple<k, v>>`, but that list already represents every ordered, duplicate-bearing entry the
+pair-map can hold, so collecting it is infallible unless another constraint such as `{+ …}` applies.
+A plain table — including an explicit `@duplicates reject`, the accepted table default — likewise
+collects directly into its rust map and does **not** make the door fallible merely because of that
+policy. Repeated keys supplied in the WIT list therefore follow the rust map's ordinary collection
+semantics rather than returning the reject-set `DuplicateKey` error; `reject` on a table documents
+the already-key-unique map representation, not an `OrderedSet`-style validation door.
 
 **Access granularity is coarser than the wasm face's.** A map-typed field's only read is the
 whole-map getter: it materializes every entry and mints a fresh handle per resource-typed entry on

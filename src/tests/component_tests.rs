@@ -2198,8 +2198,8 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
 /// `integration_tests::feature_corpus_compiles` structurally cannot: it hardcodes
 /// `crate_subs = ["rust", "wasm"]` and runs a HOST `cargo check` with no `--target` anywhere, so the
 /// component crate is invisible to it — which is why the `ALL_PROFILES` component row filters out of
-/// that gate rather than flowing into it. The build smoke above compiles five representative
-/// fixtures; this one asks the same question of all 89, and the answer differs, which is the whole
+/// that gate rather than flowing into it. The build smoke above compiles a representative subset;
+/// this one asks the same question of the whole corpus, and the answer differs, which is the whole
 /// argument for it.
 ///
 /// **`check`, not `build`.** The link is already asserted on representative fixtures by the build

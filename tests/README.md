@@ -1963,6 +1963,16 @@ idiom above, verified across the same layers as the idiom plus the cross-crate o
   `duplicates_directive_accepts_live_and_default_noops` (live set/array `reject` plus the accepted
   default no-ops).
 
+The table-side explicit `reject` default has a separate component regression floor because it
+changes no rust representation and therefore cannot ride the set fixtures above:
+`tests/corpus/component_reject_table.cddl` embeds both a named and an anonymous-inline reject table.
+Its IR snapshot proves the inline spelling retains `Some(Reject)` rather than passing by silently
+dropping the directive; its component snapshot proves both maps collect directly and leave the
+constructor infallible; and
+`component_reject_tables_stay_plain_maps_while_reject_sets_reenter_try_from` keeps a named reject
+set beside them as the positive fallible control. The local representative wasip2 smoke compiles
+this fixture, while full-tier `component_corpus_compiles` owns the same claim at corpus breadth.
+
 The **`@duplicates preserve` flavor** (tables — user doc:
 `docs/docs/output_format.mdx` § "Preserve-duplicates tables", `docs/docs/current_capacities.mdx`
 § "Preserve-mode tables", `docs/docs/wasm_differences.mdx` § "Preserve-duplicates tables",

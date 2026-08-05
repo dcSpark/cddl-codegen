@@ -307,11 +307,12 @@ Notes:
 
 :::note Status
 `@duplicates reject` is **live for set/array collection rules** (`[* a]` / `[+ a]`, including the
-tag-258 set idiom), across the Rust, JSON, and **wasm** boundaries: the rule's transparent alias
-becomes an order-preserving, duplicate-free set on every target. `@duplicates preserve` is **live for
-table rules** (`{ * k => v }` and `{ + k => v }`) across the Rust, JSON, and **wasm** boundaries: the
-alias becomes a byte-exact, duplicate-keyed pair-map — `PairMap<K, V>`, or `NonEmptyPairMap<K, V>` for
-the non-empty `{+ …}` flavor (its single `try_from` door composes the min-1 check). A **tag-258** set
+tag-258 set idiom), across the Rust, JSON, wasm-bindgen, and **component/WIT** boundaries: the rule's
+rust representation becomes an order-preserving, duplicate-free set and each boundary preserves
+that invariant. `@duplicates preserve` is **live for table rules** (`{ * k => v }` and
+`{ + k => v }`) across the Rust, JSON, wasm-bindgen, and **component/WIT** boundaries: the rust alias
+becomes a byte-exact, duplicate-keyed pair-map — `PairMap<K, V>`, or `NonEmptyPairMap<K, V>` for the
+non-empty `{+ …}` flavor (its single `try_from` door composes the min-1 check). A **tag-258** set
 now defaults to `reject` (see *Defaults* below); every other set defaults to `preserve` and tables to
 `reject`. Writing the effective default explicitly is accepted for self-documentation (a no-op). A
 preserve table and a non-preserve map/table of the *identical* key/value **coexist** under `--wasm`:
@@ -407,6 +408,10 @@ tmd = { * transaction_metadatum => transaction_metadatum ; @duplicates preserve
 slot is **inline shapes only**: a table written as its own rule and *referenced* by name takes its
 policy from that rule, never from the reference site, so one shared type can never end up with two
 duplicate stances depending on who embeds it.
+
+On the [component face](component_differences#collections-are-plain-lists), both a named and an
+anonymous-inline table project as `list<tuple<k, v>>`. An explicit table `reject` is still the
+infallible map default there; only array/set `reject` re-enters a fallible uniqueness door.
 
 The named spelling remains available and is the better one whenever the same table is used twice:
 `metadata_map = { * metadatum => metadatum } ; @duplicates preserve`, referenced from the union. It

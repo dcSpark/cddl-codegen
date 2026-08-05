@@ -215,7 +215,8 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 3. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
-   preserve-encodings, canonical, JSON/schemars, wasm, extern-interface projection, and the
+   preserve-encodings, canonical, JSON/schemars, wasm-bindgen, component/WIT, extern-interface
+   projection, and the
    `dsl.duplicates.{reject,preserve}` matrix feature rows. Current state lives in
    `tests/README.md` § "Per-rule duplicates policy (`@duplicates`) — test map" (the per-layer
    pin inventory) and the user docs (`docs/docs/output_format.mdx`, `current_capacities.mdx`,

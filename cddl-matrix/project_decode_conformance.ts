@@ -751,12 +751,17 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "tag_set_default.opt_out": ["4", "6"],
   "type_choice.type_choice": ["2", "3", "int"],
 };
-const CORPUS_MIN_FIXTURES = 55;   // ≥ 55 corpus fixtures enumerated (adjust to actuals; 60 at HEAD)
-const CORPUS_MIN_ROWS = 120;      // ≥ 120 (fixture, rule) obligation rows (≈ 134 at HEAD)
+const CORPUS_MIN_FIXTURES = 55;   // Conservative decay floor; the exact current count prints below.
+const CORPUS_MIN_ROWS = 120;      // Same for the derived (fixture, rule) obligation set.
 
 const CORPUS_CATALOG_REL = "tests/decode_conformance/corpus_catalog.toml";
 const CORPUS_DIR = `${HERE}/../tests/corpus`;
 const corpusProblems: string[] = [];
+
+function missingCorpusRowProblem(id: string, fixture: string): string {
+  return `enumerated corpus (fixture, rule) \`${id}\` has no catalog row (mint it or pin it) — ` +
+    `run \`bun run verify.ts --mint-decode-corpus --only=${fixture}\``;
+}
 
 // --- self-checks for the shared enumerator / closure builder (mirrors the § 8/§ 9 pattern):
 // a synthetic multi-rule sample exercising strings, comments, generics, and hyphens, so a regression in
@@ -778,6 +783,10 @@ const corpusProblems: string[] = [];
   const closure = dependencyClosure("lit-holder", rules).map(r => r.name).join(",");
   if (closure !== "lit-holder,gen")  // fixture order; `unref` excluded (never referenced), string content ignored
     selfProblems.push(`closure drifted: got ${JSON.stringify(closure)} (want "lit-holder,gen" — string content must not add a ref, unref must be excluded)`);
+  const missingHint = missingCorpusRowProblem("new-fixture.rule", "new-fixture");
+  if (!missingHint.includes("--mint-decode-corpus --only=new-fixture") ||
+      missingHint.includes("--mint-decode-corpus`") || missingHint.includes("--only=new-fixture.rule"))
+    selfProblems.push(`missing-row diagnostic lost its fixture-scoped mint command: ${JSON.stringify(missingHint)}`);
   for (const p of selfProblems) corpusProblems.push(`corpus enumerator/closure self-test: ${p}`);
 }
 
@@ -965,10 +974,12 @@ for (const r of corpusRows) {
       corpusProblems.push(`CORPUS_DECODE_FLOOR_ARM_EXEMPT names \`${key}\` which is no longer a genuinely-uncovered in-scope arm class (covered now, or the row left the floor's scope) — stale ledger entry, remove it`);
 }
 
-// §1 completeness: every enumerated (fixture, rule) has a catalog row.
+// §1 completeness: every enumerated (fixture, rule) has a catalog row. The repair command scopes
+// to the missing fixture: an additive full-catalog mint re-rolls every random vector and is both
+// slower and destructive of committed evidence diversity.
 for (const id of [...corpusEnum.keys()].sort())
   if (!corpusById.has(id))
-    corpusProblems.push(`enumerated corpus (fixture, rule) \`${id}\` has no catalog row (mint it or pin it) — run \`bun run verify.ts --mint-decode-corpus\``);
+    corpusProblems.push(missingCorpusRowProblem(id, corpusEnum.get(id)!.fixture));
 
 // §5 vacuity floors: implausibly small enumeration/catalog reads must fail loud, not pass empty.
 if (corpusFixtureStems.size < CORPUS_MIN_FIXTURES)
