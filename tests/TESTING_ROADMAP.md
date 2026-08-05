@@ -496,36 +496,18 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     (`tests/core/tests.rs`). Reopening signal: the maintainer takes the ruling, or a consumer
     reports the panic from production data (measurable by the party holding the inexact value).
 
-14. **Build the registration-class base axis for the reference-context sweep family — its second
-    escape has made the system due.** Rule classes differ in what their ident REGISTERS (a struct
-    under its own name; an alias to an instantiation canonical, as the named set-nominal binding;
-    an extern; a parse-time transparent alias; or a forward alias whose use site precedes its alias
-    registration), and a reference context that assumes one class aborts on another. Two
-    distinct directive-less classes have now escaped the hand coverage:
-    - A twice-aliased set-idiom instance panicked at a member site because the set-nominal binding
-      is the one class whose ident names no struct, and the repair walk looked one `Alias` box too
-      shallow. `generic_collection_tests::alias_of_instance_chains_generate` pins its 30
-      flavor × position × profile generation cells and
-      `integration_tests::alias_of_instance_chain_member_compiles` supplies the compile half.
-    - An alias-first recursive collection (`hop_alias = hop_arr`,
-      `hop_arr = [* hop_alias]`) first lost the declared `HopAlias -> HopArr` edge when alias
-      registration stripped the target wrapper, shrinking the SCC to a false self-cycle. Restoring
-      that edge exposed a second-pass `Rust(HopAlias)` leaf that panicked in rust serialization and
-      wasm naming because the alias, not a struct, owned that ident. The exact spelling is now pinned
-      on both faces and against the collection-first order by
-      `recursive_alias_cycle_auto_newtype_matches_the_hand_written_directive`; the generated-crate
-      half is `recursive_type_boundary_shapes_compile`.
-
-    No existing sweep could have found either escape:
-    `directive_referencing_context_sweep`'s bases are DIRECTIVE families (these bindings carry no
-    directive), and the recombination roles include a generic-arg position but no rule-level alias
-    hop. Build their sweep sibling with bases = registration classes and contexts = the existing
-    reference-context rows (member, element, re-alias hop, map value, tag head, …). The base table
-    must distinguish at least own-ident structs, parse-time transparent aliases, forward aliases,
-    named generic-instance bindings whose canonical owns the struct, externs, and the recursive
-    collection alias hop in both naming orders. Each legal cell must generate and its emitted crate
-    must compile under rust-only and wasm-bearing profiles; refusal cells state their diagnostic.
-    The two incident pins above remain controls, not substitutes for the cross-product.
+14. **Build the registration-class × reference-position sweep — the second escape makes it due.**
+    The shipped incident pins and their exact coverage live in `tests/README.md` § “Recursive-type
+    boundary — test map”; they are controls, not a substitute for this enumeration. Build a sibling
+    to `directive_referencing_context_sweep` whose bases distinguish at least own-ident structs,
+    parse-time transparent aliases, forward aliases, named generic-instance bindings whose
+    canonical owns the struct, externs, and recursive collection alias hops in both naming orders.
+    Cross those bases with member, element, re-alias hop, map value, tag head, and the existing
+    reference-context rows. Every legal cell must generate and its emitted crate must compile under
+    rust-only and wasm-bearing profiles; refusal cells must pin their diagnostic. The system is due
+    because two directive-less classes escaped the hand coverage: a twice-aliased set-idiom binding
+    and an alias-first recursive collection. Neither the directive sweep (wrong base axis) nor the
+    recombination roles (no rule-level alias hop) could enumerate them.
 
 15. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
     it.** Skip-listed gate rows are ledgered with citations and stale-guards; an eviction — a
@@ -1387,26 +1369,16 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   so an emission rename flips the liveness half red instead of leaving the negative half
   vacuous. Meanwhile the working rule when renaming emitted text: grep the test tree for needles
   pinning the old spelling in the same change.
-- **The wrapper-participation grid is single-PROFILE: every row's expected outcome is probed at the
-  default profile only.** The grid (`src/tests/wrapper_participation_tests.rs`;
-  `tests/README.md` § "The wrapper-participation grid") sweeps emission MODE × wrapper SHAPE ×
-  reference POSITION with always-on generation assertions and per-(mode, floor) compile/link gates,
-  and its per-row `expect` is established at the default profile with root scope except where the
-  POSITION says otherwise. What no row asserts is that the same participation holds under
-  `--preserve-encodings` or `--json-serde-derives`: those change the wrapper's INNER container
-  (`OrderedHashMap` vs `BTreeMap`) and its derives, both of which the cross-crate conversions and
-  the request sidecar's shape column resolve against — the reason `extern_wrapper_index_defers_to_dep`
-  and `extern_wrapper_index_deferred_try_from_sources` generate preserve while the grid does not.
-  Deferred because a profile axis multiplies every row's cost by the profile count for a question
-  that is about the CONTAINER rather than the placement, and because no reported instance yet
-  distinguishes the two. Reopening signal: a placement decision (defer / borrow / host / local) that
-  differs between two profiles for one row — the observable a consumer sees as "it deferred in my
-  rust crate and minted in my preserve one", which is measurable by anyone regenerating one spec
-  under two profiles and diffing the two `collections.rs` indexes. (The cross-crate
-  duplicate-symbol flavor of the synthesized-name interaction class stays owned HERE: the
-  duplicate-ident backstop scans one crate's own files and
-  `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`
-  § "Synthesized-name interaction sweep + duplicate-ident backstop".)
+- **Add a PROFILE axis to the wrapper-participation grid only when participation differs across
+  profiles.** The current default-profile table and its focused preserve controls are documented in
+  `tests/README.md` § “The wrapper-participation grid”. A full preserve/JSON multiplication is
+  deferred because it multiplies every row to test container/derive changes rather than placement,
+  and no reported row changes its `Defer` / `Borrow` / `Host` / `Local` outcome by profile.
+  Reopening signal: one spec whose `collections.rs` indexes show a different participation outcome
+  under two profiles. At that point add `--preserve-encodings` and `--json-serde-derives` profiles
+  to the data table and its compile floors. The cross-crate duplicate-symbol flavor remains owned
+  here: the duplicate-ident backstop scans one crate's own files, while
+  `synthesized_name_interaction_sweep` has no dependency-index cells.
 - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
   The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
   generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
@@ -1779,54 +1751,24 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `*-spec.md` files for id-like tokens (the probe-index/ruling tables are structured enough to
   extract) and fail if any harvested id is matched by NO ephemeral pattern — lockstep with the
   authority exactly where the authority is present.
-- **A rule-position directive is still silently LOST in the multi-line group-rule spelling — the
-  fix is built and reviewed on both sides, and adoption is blocked on a maintainer push of the fork
-  rev (ruled against 2026-08-04).** Current behavior at the pinned fork rev (`ac1b98ec`): for
-  `grp = (\n a: uint\n) ; @x` the trailing comment is MISBOUND to the *following* rule's
-  `comments_before_rule` (orphaned when the group rule is last) — a position nothing reads — so the
-  directive silently does nothing. Two mechanism corrections established by the fork work, which
-  earlier versions of this entry (and `parsing.rs`'s doc blocks) had wrong: the pest-bridge's
-  `comments_after_rule: None` literals are PRE-MERGE defaults (comment binding is a source-position
-  trivia merge that runs afterwards — the slot stays empty at the pinned rev because the merge emits
-  no anchor for it, not because of the hardcode), and the supposed second lossy spelling (a last
-  entry whose trailing slot is "already occupied" by a field-position `@name`) DOES NOT EXIST — a
-  CDDL comment runs to end of line, so that one-line form comments out the closing paren and fails
-  to parse; slot contention is unrepresentable. The fix: fork commit
-  `a7ed0784e89689784ff78ed0e85c7434a3528937` (branch `local-fixes`, UNPUSHED — the durable carrier)
-  emits a `RuleTrailing` anchor filled as a strict fallback, so population is ADDITIVE by
-  construction (the single-line spelling keeps binding to the last entry's slot; nothing
-  double-counts). That new anchor is also the FIRST AST position that distinguishes a genuine
-  group-rule comment from last-field metadata: adoption must therefore land together with the
-  downstream rule-only classification below — honor the four directives with rule meaning and
-  reject the field-semantics directives there — rather than introducing a newly readable slot that
-  accepts and ignores them. The codegen reader merge in `group_rule_pin_metadata`, per-directive
-  vectors for both spellings and `no_silent_directive` cells were prepared and probed under a local
-  path override; with those prepared vectors the pinned parser is red exactly on the multi-line
-  halves. Owned
-  meanwhile by `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs
-  section, both naming the single-line spelling as the supported one. Reopening signal, unchanged
-  in substance: a consumer reports a directive lost in a multi-line group spelling their generator
-  cannot reformat, or the fork is bumped for any other reason (at which point adopting `a7ed0784`
-  plus the downstream slot classification is the whole work).
+- **Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery —
+  blocked on publishing the reviewed fork revision.** At the pinned cddl revision (`ac1b98ec`), a
+  multi-line spliced group comment (`grp = (\n a: uint\n) ; @x`) is misbound to the following rule
+  or orphaned, while the observable single-line spelling binds to the last entry's trailing slot.
+  That single-line slot is real field metadata and is correctly covered by `no_silent_directive`;
+  it must not be reinterpreted as a rule-only position. The current boundary is documented in
+  `tests/README.md` § “The directive×rule-shape sweep”.
 
-- **The SPLICED-group rule-only rejection for the field-semantics directives is BLOCKED on the
-  `RuleTrailing` parser adoption above — the committed AST exposes no separate rule-only slot.** A
-  fresh pickup at the pinned parser revision disproved this entry's earlier premise: in the only
-  observable single-line spelling (`grp = (a: uint) ; @x`), cddl binds the comment to the LAST group
-  entry's trailing slot. It is AST-indistinguishable from an in-paren field comment, so the
-  field-semantics directives legitimately affect/reject at that field position (with the deliberate
-  redundant no-ops classified), while the four directives with no field meaning (`@rust_name`,
-  `@no_json_schema_export`, `@custom_json`, `@used_as_key`) are also read as group metadata. The
-  committed `no_silent_directive` product is green over this spelling; stealing the last-entry
-  metadata now would reject working field behavior rather than close a drop. The never-spliced
-  flavor remains a separate, already-loud refusal in `finalize`.
-
-  Once the fork's `RuleTrailing` anchor is adopted, its multi-line comment is a genuinely
-  distinguishable RULE position. At that same delivery, honor the four rule-meaning directives and
-  reject `@doc`, `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`, `@duplicates`,
-  `@raw_bytes_flavor`, the custom-codec family and `@extern_companions` at that slot with one
-  site-bearing diagnostic plus per-directive vectors. Do not take this item before (or separately
-  from) the parser adoption: no current AST seam can implement it honestly.
+  Fork commit `a7ed0784e89689784ff78ed0e85c7434a3528937` (`local-fixes`, unpushed) adds the
+  `RuleTrailing` source-position anchor without disturbing the single-line binding. When that
+  revision is published and adopted, land the prepared `group_rule_pin_metadata` reader and both
+  spellings' `no_silent_directive` vectors in the same change. At the new rule-only slot, honor
+  `@rust_name`, `@no_json_schema_export`, `@custom_json`, and `@used_as_key`; reject `@doc`,
+  `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`, `@duplicates`,
+  `@raw_bytes_flavor`, the custom-codec family, and `@extern_companions` with one site-bearing
+  diagnostic plus per-directive vectors. The path override was already green with the prepared
+  codegen side and the committed pin is red exactly on the multi-line halves. Reopening signal: the
+  fork is bumped for any reason, or a consumer cannot reformat a lossy multi-line group spelling.
 
 - **The recombination member-kind table does not span the tagged-optional shape, and one exit-0
   uncompilable crate escaped through the gap.** The `#6.n(T / null)`-under-`--preserve-encodings`

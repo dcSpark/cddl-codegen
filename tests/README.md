@@ -1008,6 +1008,13 @@ layers substitutes for the others:
 The supported/refused boundary and its remedies are documented for users in
 [Current capacities](../docs/docs/current_capacities.mdx#recursive-types).
 
+This map closes the known recursive alias-hop escape and, together with
+`generic_collection_tests::alias_of_instance_chains_generate`, the known generic-instance alias
+escape. It is not a cross-product over every kind of ident registration and reference position:
+that broader generation-and-compile sweep is the due item in `TESTING_ROADMAP.md` § 14. Keeping the
+incident pins here and the unbuilt enumeration there makes the present verdict explicit without
+describing planned breadth as shipped coverage.
+
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every
 workspace-style build enables the feature through the wasm crate's path dep (cargo feature
@@ -1155,6 +1162,12 @@ legs add over the incident
 cells is the POSITION crossing: a named-rule declaration, a by-name reference and a non-root
 declaring scope had never reached a wasm32 link, and an import routed into the wrong module is
 exactly the class every host-target check survives.
+
+The grid's table and compile floors currently establish those participation decisions at the
+default profile. Preserve-profile behavior has focused incident controls (including deferred map
+sources), but there is no preserve/JSON profile cross-product over every row. That is a measured
+scope boundary of the current system; `TESTING_ROADMAP.md` records the signal that would justify
+multiplying the grid by profiles.
 
 ### Hand-vector suites (`tests/<dir>/tests.rs`) — the assertions no other layer can make
 
