@@ -64,22 +64,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Pending maintainer action
 
-- **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
-  invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
-  scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
-  "kills" measure text-sensitivity, not whether wrong emission is caught behaviorally), but only a
-  ~3% sample has been swept (33/1040 mutants; a full sweep is a measured ~30 h unattended job).
-  Remaining: run `cargo mutants --iterate` to completion (overnight chunks; resumes from
-  `mutants.out/`, skipping already-caught/unviable mutants), then triage every miss into one of
-  (a) a missing behavioral assertion → add the test, (b) a roadmap entry naming the uncovered
-  emit logic, or (c) behaviorally-equivalent-by-construction → exclude via config with a comment.
-  The sample's 6 misses were all class (c) (style-only: the clippy-appeasement arity branch in
-  `container_encoding_lookup`, redundant-`.clone()` emission from `encoding_var_is_copy ->
-  false`), so if that class dominates the full survivor list, add `exclude_re` entries for those
-  functions to keep the score meaningful. Whether a scoped variant (e.g. `--in-diff`) earns a
-  `full`-tier check.ts gate is a decision to make AFTER the first complete sweep establishes the
-  baseline survivor map.
-
 - **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
   churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
   transitively via the proc-macro derives). No longer just a churn mitigation: shelling to rustfmt
@@ -694,13 +678,14 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   was not. Confirmed by simulating `schemars`' `encode_ref_name` against both orders, then closed by
   making the name carry a literal `~1` (`Odd<K>/~1name` → `Odd%3CK%3E~1~01name`, which the wrong
   order decodes to `Odd<K>//name`), which costs no new nested-cargo cell. Why no standing layer sees
-  the class: the `cargo-mutants` sweep (§ "Pending maintainer action") is scoped to the tool's own
-  functions, and logic living inside an emitted string constant is not a function it can mutate —
-  so mutation scoring structurally cannot measure emitted-runtime behaviour, and the emitted surface
-  is growing (the three name-injectivity panics, the closure walk, the decode). Working rule
-  meanwhile: a hand vector for emitted logic states which WRONG implementation it distinguishes, and
-  a comment that justifies an ordering or precedence choice names the vector that would fail without
-  it. Mechanical layer on a SECOND instance: mutation testing for the emitted runtime — perturb each
+  the class: the permanently-declined full `cargo-mutants` sweep (§ Declined) would not cover it
+  anyway — that sweep is scoped to the tool's own functions, while logic living inside an emitted
+  string constant is not a function it can mutate — so mutation scoring structurally cannot measure
+  emitted-runtime behaviour, and the emitted surface is growing (the three name-injectivity panics,
+  the closure walk, the decode). Working rule meanwhile: a hand vector for emitted logic states
+  which WRONG implementation it distinguishes, and a comment that justifies an ordering or
+  precedence choice names the vector that would fail without it. Mechanical layer on a SECOND
+  instance: mutation testing for the emitted runtime — perturb each
   emitted-source constant textually (swap adjacent `.replace` calls, invert a comparison, drop a
   branch), regenerate one fixture per mutant, and require some gate to go red; expensive enough
   (a nested cargo run per mutant) that it earns its cost only once the class has recurred.
@@ -714,8 +699,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   states the discipline ("decode-accepts alone proved nothing — pin every field") — kept passing
   without asserting the new fields or exercising their serialize side in that long-optional-chain
   shape; closed by extending the sweep's anchors + round-trip in the review commit. The
-  pending `cargo-mutants` sweep (§ "Pending maintainer action") covers this class only PARTIALLY:
-  a generator mutant breaking the new behavior dies to any OTHER fixture asserting the same arm
+  permanently-declined full `cargo-mutants` sweep (§ Declined) would have covered this class only
+  PARTIALLY: a generator mutant breaking the new behavior dies to any OTHER fixture asserting the
+  same arm
   (here the corpus fixture's emitted tests), so mutation scoring cannot see that one hand suite's
   anchors went vacuous for its own distinct shape. The working rule is current state in
   `tests/README.md` § "Hand-vector suites", as the fourth of that section's assertion shapes.
@@ -3040,7 +3026,15 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `corpus_detect.ts` and the fuzz `cargo check` are seconds), and claim the tier green only by
   COMPLETE gate enumeration — never from the partial log.
 
-## Declined (decided, with the reopening signal)
+## Declined (decided, with a reopening signal unless explicitly permanent)
+
+- **The complete `cargo-mutants` sweep will never be run.** The configured ~3% experiment
+  (33/1040 mutants) was enough to establish its value profile: all six survivors were
+  behaviorally-equivalent style-only mutations, while the work needed to finish and triage the
+  sweep is roughly 30 hours of machine time plus review. The full sweep is permanently declined,
+  not deferred: do not schedule it, add it to a later burndown, or invent a reopening signal. The
+  existing config and partial results may remain as historical/probing machinery, but they create
+  no completion obligation.
 
 - **Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm
   path does.** The two enum-producing paths now differ in policy: two group-choice arms of one rule
