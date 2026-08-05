@@ -671,6 +671,7 @@ export interface RejectOracleGapExemption {
   writeup: string;
 }
 const FLOAT_CLASS_WRITEUP = "cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md";
+const TAG_FIXED_PAYLOAD_WRITEUP = "cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md";
 const RUST_FLOAT_NAME_BLIND =
   "the pinned rust oracle (local-fixes @ ac1b98e) collapses all six float prelude names into a single " +
   "\"is this a float\" test — every major-7 float instance validates against every float name, so it " +
@@ -679,6 +680,15 @@ const RUBY_AGREES =
   "the ruby `cddl` gem 0.12.14 — written by the RFC's author — REJECTS these bytes, implementing the " +
   "same shortest-form partition head-independently, so the divergence is rust's alone";
 export const DECODE_REJECT_ORACLE_GAP_EXEMPT: Record<string, RejectOracleGapExemption> = {
+  // RFC 8610 §3.6 makes the type after `#6.11(...)` a constraint on the tagged data item, not
+  // documentation attached to the tag number. Ruby rejects this exact false-for-true payload while
+  // the pinned rust oracle accepts it; the report carries the four discriminating probes and the
+  // reversal branch. Keep this exemption vector-specific: unrelated tag behavior is not certified.
+  "contain.group-choice-arm.type2.tag.fixed_array/81cbf4": {
+    oracles: ["rust"],
+    reason: "`#6.11(false)` against the declared `#6.11(true)`: the tag number remains 11, but RFC 8610 §3.6 requires the tagged data item to satisfy the wrapped fixed `true` type. Ruby rejects the bytes; the pinned rust oracle accepts them without enforcing that fixed payload (see the cited report).",
+    writeup: TAG_FIXED_PAYLOAD_WRITEUP,
+  },
   // The CDDL float names partition the float VALUES by their shortest lossless form (RFC 8610 §2.2.3:
   // the `#7.x` notation "is about a set of values at the data model level"; §3.3: "representable as"),
   // so every vector below is a value whose class is NOT the row's name — at any head, since reads are

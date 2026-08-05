@@ -1877,7 +1877,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.prelude.null",
         "status": "supported"
       },
@@ -1892,7 +1892,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 4 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.prelude.true.same_major_brute",
         "status": "supported"
       },
@@ -2172,7 +2172,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.type2.tag.fixed_array",
         "status": "supported"
       },
@@ -2202,7 +2202,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 5 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.type2.value.nint_array",
         "status": "supported"
       },

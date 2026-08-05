@@ -165,7 +165,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->49 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->70 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -176,16 +176,26 @@ rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.
 rows `value.number.{hexfloat,hex,bin}` (wrong-value instances against the fixed 3.0 / 16 / 10,
 rejected as FixedValueMismatch — hex/bin carry hand pins including `[0]`, the silent-zero
 radix-conversion trap from `draft/rust-cddl-radix-int-literal-gap.md` § post-implementation
-findings), and the 16 fixed-value MEMBER cells
-(`contain.{array-element,map-value,occurrence-target}.…` — the `prelude.{true,false,null}`,
-`type2.value{,.bare_exactly_once}`, `value.{number,text}`, the nint sign variation
-`value.number.nint`, and the two optional
-`type2.value.optional_keyed_{array,map}` cells: each carries one wrong-constant instance derived
-from one of its own accepts by mutating ONLY the constant's byte(s), so the constant is the sole
-difference and the row's green tests the CONSTANT rather than just the shape — rejected as
-FixedValueMismatch, except the two `prelude.null` cells, which pin `ExpectedNull` because for null
-the constant IS the type; the optional cells' instances are present-wrong, since absence is a legal
-accept shape). Upstream rust-oracle
+findings), the fixed-selector MEMBER-equality family
+(`contain.{array-element,map-value,occurrence-target}.…` — literal `prelude.{true,false,null}` and
+`type2.value`/`value.*` members, including nint and present-wrong optional forms, plus explicit
+`type2.tag.fixed_{bool,null}` array/map members). Each preserves the outer container, tag where
+present, key order, and siblings while changing only the fixed payload. The optional cells are
+PRESENT-wrong — absence is a legal accept shape — and the `null` cells pin `ExpectedNull`; the other
+fixed values pin `FixedValueMismatch`.
+
+The remaining fixed selectors use different, equally enforceable rejection semantics: the
+ARM-selection family covers group-choice arms (bareword/fixed map keys, fixed map/array members,
+and the explicit tag-11 fixed-payload arm) plus `tstr / null` and the same-major `true / null /
+tstr` choice. Their wrong selector leaves no legal alternative; `tstr / null` remains an
+arm-selection constraint even though the Rust lowering uses `Option`. The REQUIRED-KEY lookup family
+covers single/multi `memberkey.value` colon uint/text rows and their literal `memberkey.type1` arrow
+counterparts. Its hand vectors omit only the required key: an indefinite map retains the valid
+sibling where one exists, bypassing the definite-cardinality precheck so the decoder reaches
+`MandatoryFieldMissing` rather than an unrelated unknown-key or length error. The
+tag-11 arm vector is rejected by Ruby but accepted by the pinned rust oracle; its exact narrow rust
+exemption and reversible RFC 8610 §3.6 argument are in
+`upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md`. Upstream rust-oracle
 gaps shape what "certified" means per family
 (`query_q4_directional.ts --check` pins the exact green set — and the now-empty unverified set — so
 a decay fails loudly rather than
@@ -205,14 +215,15 @@ an array entry — gap #4 below; that fork fix is also what let the row's accept
 **What counts as enforcement-bearing is classified, not inferred from the green set.** A row with no
 reject vector reads `unverified (no reject vector)` when it carries a constraint and `n/a (no
 constraint)` when it does not, and the difference is what makes a missing vector visible instead of
-looking like "nothing to enforce here". For CONTAINMENT cells the classification is by the cell's own
-role × feature out of `matrix.json` — every fixed-value feature (`prelude.{true,false,null}`,
-`type2.value`, `value.*`) in every position EXCEPT `role.map-key`, `role.group-choice-arm` and
-`role.choice-member`, whose rejection story is key lookup or arm selection rather than value equality
-(see ROADMAP § Matrix-side work). Because the rule is role × feature rather than an id list, a newly
-enumerated fixed-value member cell — the nint member cell, or a fixed value under a tag head — is
-classified the moment it exists, so landing it supported-and-vectorless drifts the unverified-set pin
-instead of passing silently.
+looking like "nothing to enforce here". For CONTAINMENT cells Q4 classifies three semantic kinds by
+the cell's own role × feature out of `matrix.json`: member equality for ordinary fixed-value member
+features, arm selection for fixed group-/type-choice alternatives, and required-key lookup for
+supported literal map keys. These role/feature families are automatic, so a new supported vectorless
+selector drifts the exact unverified-set pin. The tagged `type2.tag` rows and literal-arrow map-key
+rows are coarse-feature exceptions: their explicit inventories are stale-checked for their current
+role and feature, rather than inferred from an id suffix or example text. That guard deliberately
+catches moved/deleted known exceptions; it does not pretend to auto-discover a future unrelated
+exception.
 
 **A certified over-acceptance projects `enforce = no (over-accepts: M)`** — the fifth enforce value,
 dominating `yes`/`unverified`/`n/a`. Its evidence is a `class="over-acceptance"` accept vector:

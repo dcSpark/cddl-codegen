@@ -475,52 +475,60 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "82cbf51901cd"
+hex = "82cbf41901cd"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "tag 11 still wraps the first array member, but its payload is false instead of the declared fixed true; the second uint member and array shape are unchanged"
+expect_err = "Expected fixed value true found false"
+
+[[row.vector]]
+hex = "82cbf5190403"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf5190208"
+hex = "82cbf5190419"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf519031f"
+hex = "82cbf51904e2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf51903bc"
+hex = "82cbf51905e8"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf519045a"
+hex = "82cbf5190609"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf5190807"
+hex = "82cbf519081b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf519086a"
+hex = "82cbf5190982"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf519096a"
+hex = "82cbf5190c74"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf5190b1a"
+hex = "82cbf5190e45"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82cbf5190eed"
+hex = "82cbf5190f0b"
 source = "ruby-generate"
 expect = "accept"
 
@@ -533,52 +541,60 @@ mode = "standalone"
 type_name = "A"
 
 [[row.vector]]
-hex = "82c1f61856"
+hex = "82c1f51856"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "tag 1 still wraps the first array member, but its payload is true instead of the declared fixed null; the second uint member and array shape are unchanged"
+expect_err = "Expected null, found other type"
+
+[[row.vector]]
+hex = "82c1f618d2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f61903cb"
+hex = "82c1f619016d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f61908dd"
+hex = "82c1f6190316"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f61908fa"
+hex = "82c1f61903d6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f6190a59"
+hex = "82c1f61905df"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f6190b57"
+hex = "82c1f619090c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f6190b7d"
+hex = "82c1f6190964"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f6190d14"
+hex = "82c1f6190b27"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f6190dbd"
+hex = "82c1f6190e28"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82c1f619106a"
+hex = "82c1f6190fbe"
 source = "ruby-generate"
 expect = "accept"
 
@@ -960,27 +976,30 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82006467656c64"
+hex = "820000"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the holder remains [0, a], but a is uint 0 instead of either allowed selector arm (text or null) in `tstr / null`"
+expect_err = "expected `Text' byte received `UnsignedInteger'"
+
+[[row.vector]]
+hex = "82006772616d6d696e67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820067636c65726b2773"
+hex = "8200686f7267616e697a65"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82006941636865736f6e2773"
+hex = "820068756e747275746873"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82006a68756e63686261636b73"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "82006d6469736372696d696e61746564"
+hex = "82006d696e636c696e6174696f6e2773"
 source = "ruby-generate"
 expect = "accept"
 
@@ -998,24 +1017,22 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "684e69636165612773"
+hex = "67656d61696c6564"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "69657175697070696e67"
+hex = "6977696e746572697a65"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "6a72617463686574696e67"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "6f6174726f63696f75736e6573732773"
-source = "ruby-generate"
-expect = "accept"
+hex = "f4"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "false has the same CBOR special major as the fixed true and null arms, but matches neither fixed selector nor the text arm"
+expect_err = "No variant matched. Failures:"
 
 [[row.vector]]
 hex = "f5"
@@ -1669,54 +1686,62 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "a16161189c"
+hex = "a161611902f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16161190480"
+hex = "a16161190462"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16161190d40"
+hex = "a16161190a06"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616263457661"
+hex = "a16161190aea"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626857696e7468726f70"
+hex = "a16161190f49"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16162686e65776c79776564"
+hex = "a1616266437261746572"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626962617262617269616e"
+hex = "a1616266637572622773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626964696e6f7361757273"
+hex = "a161626764726162626572"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616269736170706869726573"
+hex = "a1616269766163616e63696573"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626a6f766572636173742773"
+hex = "a161626b6578617370657261746564"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a16163189c"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the one-entry map still carries a uint, but fixed arm key a is mutated to c, so neither the a:uint nor b:tstr arm matches"
+expect_err = "No variant matched. Failures:"
 
 [[row]]
 id = "contain.group-choice-arm.memberkey.bareword.record_map"
@@ -1727,54 +1752,62 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "a1616182146d67656e75696e656e6573732773"
+hex = "a16161821904196b657874656e756174696e67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616182190b71664575726f7065"
+hex = "a16161821907676b6d6963726f73636f706573"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616182190d36657369782773"
+hex = "a1616182190855657363726f67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616182190f5c674a696464612773"
+hex = "a16161821909fc6b7261696e6d616b65722773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16161821910c16b776865656c626172726f77"
+hex = "a1616182190c0469747769737465722773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16161821910e96f74656c656d61726b6574696e672773"
+hex = "a1616182190e7c6767726965662773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16162657765657079"
+hex = "a1616269706564616c6c696e67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626b43696e646572656c6c6173"
+hex = "a161626977616c6b6f75742773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626b646f776e6c6f6164696e67"
+hex = "a161626b696d6d6f7274616c697479"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626c6f75746d616e6f6575767265"
+hex = "a161626c62616e6b7275707463792773"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a1616382146d67656e75696e656e6573732773"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the map and nested [uint, text] record remain unchanged, but fixed arm key a is mutated to c, leaving no selectable arm"
+expect_err = "No variant matched. Failures:"
 
 [[row]]
 id = "contain.group-choice-arm.memberkey.value.map"
@@ -1785,52 +1818,60 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "a101190226"
+hex = "a10119030c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190460"
+hex = "a1011904ca"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011904c5"
+hex = "a10119098a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190732"
+hex = "a101190aa9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011907be"
+hex = "a101190e6e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190b3b"
+hex = "a101190fef"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011911b9"
+hex = "a10119107a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616266636172626f6e"
+hex = "a102190226"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the one-entry map still carries the uint value, but fixed uint arm key 1 is mutated to 2, leaving no selectable arm"
+expect_err = "Expected fixed value 1 found 2"
+
+[[row.vector]]
+hex = "a161626673706f747479"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616266776562626564"
+hex = "a161626761756765722773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16162676a69746e657973"
+hex = "a16162676261707469736d"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1843,54 +1884,62 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "a161626748616d70746f6e"
+hex = "a16162644f72656d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16162674c6f72656e2773"
+hex = "a161626468797065"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626763616e6f6e2773"
+hex = "a161626c6d617468656d61746963616c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16162684275646170657374"
+hex = "a1616b190266"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626b746f77656c6c696e672773"
+hex = "a1616b1904d7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626d66727569746c6573736e657373"
+hex = "a1616b190551"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b1901d1"
+hex = "a1616b190c23"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b1908e1"
+hex = "a1616b190d5b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190c64"
+hex = "a1616b190fde"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b19104e"
+hex = "a1616b1910e9"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "a1617800"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the one-entry map still carries a uint, but fixed text arm key k is mutated to x, leaving no selectable arm"
+expect_err = "No variant matched. Failures:"
 
 [[row]]
 id = "contain.group-choice-arm.type2.tag.fixed_array"
@@ -1901,34 +1950,37 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "81676379636c6f6e65"
+hex = "8162414d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "81676e656967686564"
+hex = "816664656c696e74"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8167706f7274656e64"
+hex = "816854616977616e2773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "81696469676e6966696573"
+hex = "8168666572766f722773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "816b7265766572656e63652773"
+hex = "816c53746f6e6568656e67652773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "817273656d6970726f66657373696f6e616c2773"
-source = "ruby-generate"
-expect = "accept"
+hex = "81cbf4"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the array still selects tag-11 arm v, but its tagged payload is false instead of the declared fixed true; the tag number and one-element array shape are unchanged"
+expect_err = "Expected fixed value true found false"
 
 [[row.vector]]
 hex = "81cbf5"
@@ -1949,27 +2001,35 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626773696e6e657273"
+hex = "a1616101"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the map's a key and one-entry shape remain unchanged, but its fixed member value 0 is mutated to 1, leaving no matching arm"
+expect_err = "No variant matched. Failures:"
+
+[[row.vector]]
+hex = "a161626563616d7073"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a16162696e69747069636b6564"
+hex = "a161626864656e6965722773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616269796f64656c6c696e67"
+hex = "a161626a6d65616765726e657373"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626b696e646972656374696f6e"
+hex = "a161626a736174656c6c69746564"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a161626b74656d706f726172696573"
+hex = "a161626b7265617373656d626c6564"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1987,22 +2047,40 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8165686f706573"
+hex = "8121"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the one-element nint array remains on the fixed-value arm's wire kind, but its selector -1 is mutated to -2"
+expect_err = "Expected fixed value -1 found -2"
+
+[[row.vector]]
+hex = "8166647279696e67"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8169626974636f696e2773"
+hex = "81676d61726974616c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "816d707265706f6e64657261746564"
+hex = "816974726964656e742773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "816f6f766572636f6d70656e7361746564"
+hex = "816b696e74726176656e6f7573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "816b7265717569736974696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "816c53616e64696e697374612773"
 source = "ruby-generate"
 expect = "accept"
 
@@ -2015,54 +2093,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616b19020801190650"
+hex = "a2616b1902bd01190155"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b19021e01190749"
+hex = "a2616b190354011904f4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b19032c01190f55"
+hex = "a2616b1905d201190a93"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b19038201190413"
+hex = "a2616b19070801190745"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b190988011910c0"
+hex = "a2616b19089201190777"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b1909fe01190ff8"
+hex = "a2616b19096e011909eb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b190cce01190814"
+hex = "a2616b190d5801190797"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b190e8e01190a65"
+hex = "a2616b191058011906e1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b1910af011906e0"
+hex = "a2616b19105b01190b3c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b1910f201190e9c"
+hex = "a2616b19124301190dbe"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bf0100ff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the indefinite map retains unchanged sibling 1:0 but omits required arrow key k; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field \"k\" not found"
 
 [[row]]
 id = "contain.map-key.memberkey.type1.text_arrow_single"
@@ -2073,54 +2159,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a1616b1903d1"
+hex = "a1616b19033d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190599"
+hex = "a1616b1907b7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b19060e"
+hex = "a1616b1908b5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b1906f6"
+hex = "a1616b19099c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190842"
+hex = "a1616b190ac1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190abd"
+hex = "a1616b190c6e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190ac9"
+hex = "a1616b190c7c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190af6"
+hex = "a1616b190cac"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190c57"
+hex = "a1616b190ff3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b1910d1"
+hex = "a1616b1910f5"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bfff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the empty indefinite map omits its sole required arrow key k; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field \"k\" not found"
 
 [[row]]
 id = "contain.map-key.memberkey.type1.uint_arrow_multi"
@@ -2131,54 +2225,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a20219038b011904b7"
+hex = "a2021902b401190717"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2021903a201190134"
+hex = "a20219031f011858"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2021904a401190e71"
+hex = "a202190545011903ec"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2021908c7011904d6"
+hex = "a20219059101190c62"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190b5e0119078a"
+hex = "a20219064b0119090c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190db60119088b"
+hex = "a20219066a01190e58"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190f30011908f3"
+hex = "a202190a710119062f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190f6601190f95"
+hex = "a202190be6011905dc"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a20219106a01190514"
+hex = "a202190ccc011902c0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a20219124a011907c5"
+hex = "a202190d2701190858"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bf0100ff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the indefinite map retains unchanged sibling 1:0 but omits required arrow key 2; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field 2 not found"
 
 [[row]]
 id = "contain.map-key.memberkey.type1.uint_arrow_single"
@@ -2189,54 +2291,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a101188d"
+hex = "a101190521"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011901cb"
+hex = "a101190775"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011902a3"
+hex = "a1011907d4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a10119034d"
+hex = "a101190992"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a10119067b"
+hex = "a101190af8"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011906aa"
+hex = "a101190d8c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190b4c"
+hex = "a101190d95"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190bd8"
+hex = "a101190e03"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190f43"
+hex = "a101190fff"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011911f8"
+hex = "a101191201"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bfff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the empty indefinite map omits its sole required arrow key 1; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field 1 not found"
 
 [[row]]
 id = "contain.map-key.memberkey.value.text_colon_multi"
@@ -2247,54 +2357,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616b1904d401190955"
+hex = "a2616b183b01190795"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b1906f90119063c"
+hex = "a2616b19041d01190b64"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b190b5a0119122b"
+hex = "a2616b19062d011905c2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b190d9801190b9c"
+hex = "a2616b190677011904b1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b190eb7011902cb"
+hex = "a2616b1908660119064a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b190f29011901cc"
+hex = "a2616b1908c301190bb3"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b19102501191258"
+hex = "a2616b190b4301190551"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b19105401190237"
+hex = "a2616b190b43011906db"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b19118c01190464"
+hex = "a2616b190ba801190714"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616b1911eb0119025f"
+hex = "a2616b190c4a01190b45"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bf0100ff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the indefinite map retains unchanged sibling 1:0 but omits required colon key k; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field \"k\" not found"
 
 [[row]]
 id = "contain.map-key.memberkey.value.text_colon_single"
@@ -2305,54 +2423,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a1616b19030c"
+hex = "a1616b19026e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b1903ab"
+hex = "a1616b190337"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b1908fa"
+hex = "a1616b19045c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190971"
+hex = "a1616b19056c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190ba0"
+hex = "a1616b1908f1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190e56"
+hex = "a1616b190ca0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190e79"
+hex = "a1616b190dc5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b190f61"
+hex = "a1616b190f65"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b19107b"
+hex = "a1616b19108e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1616b1910c6"
+hex = "a1616b19117f"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bfff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the empty indefinite map omits its sole required colon key k; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field \"k\" not found"
 
 [[row]]
 id = "contain.map-key.memberkey.value.uint_colon_multi"
@@ -2363,54 +2489,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a20219021f01190e05"
+hex = "a2021901ed011903a8"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2021902c701190c97"
+hex = "a20219039d01190e20"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a20219065901190d84"
+hex = "a20219046c01190370"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190a2d01190e1d"
+hex = "a2021906380119107c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190be101190a82"
+hex = "a2021907d6011904c6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190c31011908cc"
+hex = "a202190d4f011910de"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190d700119099a"
+hex = "a202190e5b01190aaa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190f06011911b6"
+hex = "a202190f19011906c6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a202190fe00119065a"
+hex = "a2021911eb01190a56"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a20219107901190c19"
+hex = "a202191220011903f3"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bf0100ff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the indefinite map retains unchanged sibling 1:0 but omits required colon key 2; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field 2 not found"
 
 [[row]]
 id = "contain.map-key.memberkey.value.uint_colon_single"
@@ -2421,54 +2555,62 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a10119017e"
+hex = "a1011901e0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011901fc"
+hex = "a10119040f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011902c4"
+hex = "a10119059b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a10119037d"
+hex = "a101190ad2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a1011908ba"
+hex = "a101190c7f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190ac0"
+hex = "a101190cc6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190dbe"
+hex = "a101190e9a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101190dde"
+hex = "a101190ee2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101191111"
+hex = "a10119118d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a101191265"
+hex = "a101191263"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "bfff"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the empty indefinite map omits its sole required colon key 1; indefinite framing bypasses only the definite-cardinality precheck and reaches required-key lookup without an unknown key"
+expect_err = "Mandatory field 1 not found"
 
 [[row]]
 id = "contain.map-key.type2.tag"
@@ -2799,52 +2941,60 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616bcbf5616a190136"
+hex = "a2616bcbf4616a190136"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "tag 11 still wraps map value k, but its payload is false instead of the declared fixed true; sibling key j and both values' base shapes are unchanged"
+expect_err = "Expected fixed value true found false"
+
+[[row.vector]]
+hex = "a2616bcbf5616a18b0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a1904ef"
+hex = "a2616bcbf5616a18ca"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a19070e"
+hex = "a2616bcbf5616a190232"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a190a34"
+hex = "a2616bcbf5616a190525"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a190c2a"
+hex = "a2616bcbf5616a190b19"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a190cab"
+hex = "a2616bcbf5616a190d1d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a19101c"
+hex = "a2616bcbf5616a190e39"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a191042"
+hex = "a2616bcbf5616a190e41"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a19118b"
+hex = "a2616bcbf5616a190f8e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bcbf5616a191226"
+hex = "a2616bcbf5616a1911f3"
 source = "ruby-generate"
 expect = "accept"
 
@@ -2857,52 +3007,60 @@ mode = "standalone"
 type_name = "M"
 
 [[row.vector]]
-hex = "a2616bc1f6616a184a"
+hex = "a2616bc1f5616a184a"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "tag 1 still wraps map value k, but its payload is true instead of the declared fixed null; sibling key j and both values' base shapes are unchanged"
+expect_err = "Expected null, found other type"
+
+[[row.vector]]
+hex = "a2616bc1f6616a18be"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a190469"
+hex = "a2616bc1f6616a19014b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a1905e8"
+hex = "a2616bc1f6616a1902b1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a190794"
+hex = "a2616bc1f6616a190419"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a19081c"
+hex = "a2616bc1f6616a190623"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a190895"
+hex = "a2616bc1f6616a190999"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a190ad9"
+hex = "a2616bc1f6616a19100f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a190b66"
+hex = "a2616bc1f6616a191135"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a190ce0"
+hex = "a2616bc1f6616a1911b4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "a2616bc1f6616a190f0c"
+hex = "a2616bc1f6616a1911d6"
 source = "ruby-generate"
 expect = "accept"
 
