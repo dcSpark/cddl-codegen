@@ -66,12 +66,12 @@ pub struct AliasInfo {
     pub rule_metadata: Option<RuleMetadata>,
     /// The named ident this alias was resolved from, when a plain-typename rule (`ptm = mp`) had its
     /// `Alias(mp, …)` wrapper stripped to inline the type for serialization. The rust `base_type` is
-    /// the correct transparent representation, but the WASM alias must instead point at the target's
-    /// wrapper struct when it has one (`has_wasm_wrapper`) — a named collection is a transparent
-    /// `pub type` in rust but a `#[wasm_bindgen]` wrapper in wasm, so `for_wasm_member` on the stripped
-    /// (bare `Map`/`Vec`) `base_type` would mint the inline-only `MapU64To…`/`…List` name that only
-    /// exists for anonymous members. `None` = emit `for_wasm_member(base_type)` as before.
-    pub wasm_alias_target: Option<RustIdent>,
+    /// the correct transparent representation. This preserves the original named source edge after
+    /// the strip: the wasm alias can target the collection wrapper when it has one, and the
+    /// recursive-type boundary can reconstruct the declared alias graph rather than mistaking a
+    /// structural self-edge for the source edge. `None` = the rule body was not a stripped named
+    /// alias.
+    pub stripped_alias_target: Option<RustIdent>,
     /// `true` only for a generator-SYNTHESIZED collection wrapper's rust alias — currently the
     /// keys-list array a table rule mints (`create_and_register_array_type`). Distinguishes it from
     /// an authored `foo_list = [* foo]` / `tbl = { * a => b }`, which reach the same `new_manual`
@@ -99,7 +99,7 @@ impl AliasInfo {
             gen_rust_alias,
             gen_wasm_alias,
             rule_metadata: None,
-            wasm_alias_target: None,
+            stripped_alias_target: None,
             synthesized_collection: false,
             wire_metadata_inherited_from: None,
         }
@@ -113,7 +113,7 @@ impl AliasInfo {
             gen_rust_alias,
             gen_wasm_alias,
             rule_metadata: Some(rule_metadata),
-            wasm_alias_target: None,
+            stripped_alias_target: None,
             synthesized_collection: false,
             wire_metadata_inherited_from: None,
         }
@@ -126,8 +126,8 @@ impl AliasInfo {
         self
     }
 
-    pub fn with_wasm_alias_target(mut self, target: Option<RustIdent>) -> Self {
-        self.wasm_alias_target = target;
+    pub fn with_stripped_alias_target(mut self, target: Option<RustIdent>) -> Self {
+        self.stripped_alias_target = target;
         self
     }
 
@@ -140,7 +140,7 @@ impl AliasInfo {
     /// directly exposable — an exposable named array's wrapper is bypassed at the boundary
     /// (`Vec<T>`), so aliasing to the wrapper would desync (E0308).
     pub fn resolved_wasm_alias_target(&self, types: &IntermediateTypes) -> Option<&RustIdent> {
-        self.wasm_alias_target.as_ref().filter(|target| {
+        self.stripped_alias_target.as_ref().filter(|target| {
             types.has_wasm_wrapper(target) && !self.base_type.directly_wasm_exposable(types)
         })
     }
@@ -2677,23 +2677,6 @@ impl<'a> IntermediateTypes<'a> {
             .insert(rust_struct.ident().clone(), rust_struct);
     }
 
-    /// Re-resolve fields typed as a generic COLLECTION instance's transparent alias.
-    ///
-    /// A non-generic collection rule (`foo = #6.258([* uint])`) registers its transparent alias in
-    /// `type_aliases` at PARSE time, so a use-site field referencing it resolves through `new_type`
-    /// to the structural `Alias(Foo, Array(..))` conceptual type right where the field is built. A
-    /// generic instance's alias (`xs_int = xs<uint>`) is instead registered only in `finalize` (the
-    /// `GenericResolved::Resolved` → [`Self::register_rust_struct`] Array/Table arms), AFTER every
-    /// use-site field was already built — so such a field keeps an unresolved `Rust(xs_int)`
-    /// conceptual type, which generation turns into `self.field.serialize(..)` /
-    /// `XsInt::deserialize(..)` method calls a bare `Vec`/`BTreeMap` alias has no impls for.
-    ///
-    /// Now that the late aliases exist, re-run alias substitution on the affected field leaves so the
-    /// generic path converges on the SAME `Alias(ident, Array/Map)` field type the non-generic path
-    /// gets — one collection code path (inline serialize, per-field len/elem/tag encoding vars), not
-    /// a parallel one. Scoped to instances whose alias base is a structural `Array`/`Map`: generic
-    /// EXTERN instances (alias base `Rust(real_ident)`, registered above with the same
-    /// `gen_rust_alias=true`) resolve to a `Rust` type, are excluded here, and stay byte-identical.
     /// Converge each SYNTHESIZED anonymous generic-collection instance onto the anonymous INLINE
     /// collection path for the wasm boundary. Wasm only.
     ///
@@ -2715,7 +2698,7 @@ impl<'a> IntermediateTypes<'a> {
     /// transparent `pub type SetKeyHash = Vec<KeyHash>;` alias and every rust reference to it stay
     /// byte-identical. NAMED instance rules (`named_set = set<key_hash>`, ident from the author's rule)
     /// are NOT anonymous, keep their own wasm class, and keep the criterion-8 `--wrapper-requests`
-    /// contract. Runs alongside `resolve_generic_collection_instance_fields` (both after the late
+    /// contract. Runs alongside `resolve_late_alias_product_leaves` (both after the late
     /// instance aliases exist); order between them does not matter — this only edits alias flags.
     fn converge_anonymous_collection_instance_wasm(&mut self, cli: &Cli) {
         if !cli.wasm {
@@ -2763,7 +2746,7 @@ impl<'a> IntermediateTypes<'a> {
             // STRUCTURAL wrapper (`pub type SetKeyHash = KeyHashList;` for the loose case, or
             // `pub type OsetU64 = U64OrderedSet;` for a `@duplicates reject` set — `for_wasm_member`
             // on the alias base picks the twin name). The exposable
-            // subset needs no alias: `resolve_generic_collection_instance_fields` lowers its field to
+            // subset needs no alias: `resolve_late_alias_product_leaves` lowers its field to
             // the bare inline collection (`Vec<u64>`), so the wasm boundary crosses by value exactly
             // like an inline `[* uint]` — no wrapper class, no `&Vec` ctor param (no `RefFromWasmAbi`).
             if gets_wrapper
@@ -2775,7 +2758,33 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    fn resolve_generic_collection_instance_fields(&mut self) {
+    /// Re-resolve finalized product leaves whose transparent alias registered after the parse-time
+    /// use-site was built.
+    ///
+    /// A non-generic collection rule (`foo = #6.258([* uint])`) registers its transparent alias in
+    /// `type_aliases` at PARSE time, so a use-site field referencing it resolves through `new_type`
+    /// to the structural `Alias(Foo, Array(..))` conceptual type right where the field is built. A
+    /// generic instance's alias (`xs_int = xs<uint>`) is instead registered only in `finalize` (the
+    /// `GenericResolved::Resolved` → [`Self::register_rust_struct`] Array/Table arms), AFTER every
+    /// use-site field was already built — so such a field keeps an unresolved `Rust(xs_int)`
+    /// conceptual type, which generation turns into `self.field.serialize(..)` /
+    /// `XsInt::deserialize(..)` method calls a bare `Vec`/`BTreeMap` alias has no impls for.
+    ///
+    /// Now that the late aliases exist, re-run alias substitution on the affected product leaves so
+    /// the generic path converges on the SAME `Alias(ident, Array/Map)` type the non-generic path
+    /// gets — one collection code path (inline serialize, per-field len/elem/tag encoding vars), not
+    /// a parallel one. Scoped to instances whose alias base is a structural `Array`/`Map`: generic
+    /// EXTERN instances (alias base `Rust(real_ident)`, registered above with the same
+    /// `gen_rust_alias=true`) resolve to a `Rust` type, are excluded here, and stay byte-identical.
+    ///
+    /// An ordinary forward alias needs the same one-step repair when auto-`@newtype` turns its target
+    /// into a wrapper: the wrapper's parse-time `Rust(Alias)` leaf otherwise names no struct even
+    /// though the finalized alias table can resolve it. Include every emitted rust alias with no
+    /// `RustStruct`, using `resolve_alias` exactly as `new_type` would have if registration had
+    /// preceded the use. The walk intentionally does not rewrite alias-table bases or recurse into a
+    /// replacement in this pass: one `Alias` node is the terminating named boundary, and alias cycles
+    /// remain the recursive-type boundary's responsibility.
+    fn resolve_late_alias_product_leaves(&mut self) {
         // Snapshot the resolved alias `RustType` for each generic-collection instance (base resolves
         // to Array/Map), cloned out first so the field walk can borrow `rust_structs` mutably. The
         // snapshot value is exactly what `new_type` would have returned at parse time: the alias's
@@ -2836,28 +2845,44 @@ impl<'a> IntermediateTypes<'a> {
                 resolved.insert(ident, replacement);
             }
         }
+        // Rules are normally resolved when their use-site parses. The exception here is a forward
+        // alias whose target becomes a wrapper only after the recursive-type boundary asks for an
+        // auto-`@newtype` re-pass: its earlier leaf stayed `Rust(Alias)` because no alias existed at
+        // that point. Add every finalized emitted alias with no struct owner through the SAME
+        // `resolve_alias` path, while leaving the generic-specific convergence decisions above in
+        // charge when they already supplied a replacement.
+        for (alias_ident, alias_info) in &self.type_aliases {
+            let AliasIdent::Rust(ident) = alias_ident else {
+                continue;
+            };
+            if !alias_info.gen_rust_alias || self.rust_struct(ident).is_some() {
+                continue;
+            }
+            if let Some(replacement) = self.resolve_alias(alias_ident) {
+                resolved.entry(ident.clone()).or_insert(replacement);
+            }
+        }
         if resolved.is_empty() {
             return;
         }
-        // The DANGLING subset of `resolved`: instance idents that name NO registered struct, so a
-        // surviving `Rust(<instance>)` leaf spelling one of them refers to nothing generation can
-        // look up. Today that is exactly the NAMED set-nominal binding (`xs_int = xs<uint>` over a
-        // tag-258 set idiom): its resolution mints the struct under the INSTANTIATION canonical
-        // (`XsU64`) and gives the binding ident only a transparent `pub type XsInt = XsU64;` alias.
+        // The DANGLING, encoding-free subset of `resolved`: aliases that name no registered struct,
+        // so a surviving `Rust(<alias>)` leaf refers to nothing generation can look up. This includes
+        // a NAMED set-nominal binding (`xs_int = xs<uint>` over a tag-258 set idiom), whose resolution
+        // mints the struct under the INSTANTIATION canonical (`XsU64`) and gives the binding ident
+        // only a transparent `pub type XsInt = XsU64;` alias, plus the ordinary forward alias above.
         // A transparent-collection instance and a generic EXTERN instance both DO register a struct
         // under their own ident, so their leaves are well-formed and stay untouched — which is why
         // the `Alias`-box descent below is restricted to this subset rather than run over all of
         // `resolved`: repairing only what dangles keeps every already-working shape's emitted bytes
         // identical. The conceptual type alone is carried because an `Alias` box holds a
         // `ConceptualRustType` with nowhere to put encodings; the filter demands the resolved type
-        // have none, so nothing can be dropped silently (a set-nominal binding's alias base is a
-        // bare `Rust(canonical)` and never carries any).
+        // have none, so nothing can be dropped silently.
         let dangling: BTreeMap<RustIdent, ConceptualRustType> = resolved
             .iter()
             .filter(|(ident, rt)| self.rust_struct(ident).is_none() && rt.encodings.is_empty())
             .map(|(ident, rt)| (ident.clone(), rt.conceptual_type.clone()))
             .collect();
-        // Replace a `Rust(instance)` leaf with the resolved collection alias, keeping any
+        // Replace a `Rust(alias)` leaf with the one-step resolved alias, keeping any
         // reference-site encodings (`#6.24(xs_int)`-style outer wraps) OUTSIDE the alias's own by
         // appending them. Recurses into structural children first so `[* xs_int]` / `? xs_int` reach
         // the leaf.
@@ -2961,7 +2986,7 @@ impl<'a> IntermediateTypes<'a> {
     /// 1. A not-yet-resolved GENERIC-COLLECTION instance is still a bare `Rust(<instance>)` here (its
     ///    transparent alias is registered only in `finalize`), so naming the wrapper now bakes the
     ///    INSTANCE-ident name (`GcollU64List` for `gcoll<uint>`). `finalize`'s
-    ///    `resolve_generic_collection_instance_fields` then rewrites the domain to its resolved
+    ///    `resolve_late_alias_product_leaves` then rewrites the domain to its resolved
     ///    collection (`Array(u64)` for an exposable element) and the wasm `keys()` accessor names the
     ///    wrapper from THAT — the structural `ArrU64List`, an E0425 against the instance-named mint.
     /// 2. A RECURSIVELY-registered named domain: rooting a `{ * u_val => u_val }` cycle at the UNION
@@ -3003,7 +3028,7 @@ impl<'a> IntermediateTypes<'a> {
     /// Mint the keys-list array wrapper for each exported table whose domain was not final when the
     /// table registered (deferred from `register_rust_struct`; the two classes are
     /// `table_keys_list_mint_must_defer`'s). Runs in `finalize` AFTER
-    /// `resolve_generic_collection_instance_fields` has rewritten each generic-instance domain to its
+    /// `resolve_late_alias_product_leaves` has rewritten each generic-instance domain to its
     /// resolved collection, and after every rule in the spec has registered — so the wrapper name
     /// derives from the FINAL domain and matches the wasm `keys()` accessor. Wasm-only (rust maps use
     /// native `.keys()`; the wrapper exists only to cross the wasm boundary). Guarded by "not already
@@ -3486,7 +3511,7 @@ impl<'a> IntermediateTypes<'a> {
         // subset), so the field re-resolution below can see the classification and lower the
         // directly-exposable subset onto the bare inline collection. Wasm-only; non-wasm untouched.
         self.converge_anonymous_collection_instance_wasm(cli);
-        self.resolve_generic_collection_instance_fields();
+        self.resolve_late_alias_product_leaves();
         // Mint the wasm keys-list wrappers whose owning table had a GENERIC-COLLECTION-instance
         // domain — deferred from `register_rust_struct` until now, so they name from the resolved
         // domain (see the deferral comment there). Idempotent by the not-yet-registered guard: a

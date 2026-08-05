@@ -477,7 +477,7 @@ fn named_collapsed_set_instance_rule_aliases_the_instantiation_nominal() {
 ///
 /// The second hop is what makes this its own cell. A one-hop use site is built as a bare
 /// `Rust(XsInt)` leaf at parse time (the instance's transparent alias is registered only in
-/// `finalize`), and `resolve_generic_collection_instance_fields` repairs those leaves. A SECOND hop
+/// `finalize`), and `resolve_late_alias_product_leaves` repairs those leaves. A SECOND hop
 /// registers `Bar`'s own alias base as that same bare leaf, so the use site is built as
 /// `Alias(Bar, Rust(XsInt))` — the leaf sits INSIDE an `Alias` box. For a def whose instance
 /// resolves to a TRANSPARENT collection the leaf is harmless (the instance ident is itself a

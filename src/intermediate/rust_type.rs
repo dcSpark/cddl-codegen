@@ -1288,13 +1288,49 @@ impl ConceptualRustType {
     }
 
     pub fn directly_wasm_exposable_ct(&self, types: &IntermediateTypes) -> bool {
+        self.directly_wasm_exposable_ct_with_aliases(types, &mut BTreeSet::new())
+    }
+
+    /// Whether a named transparent alias resolves to a directly wasm-exposable structural type.
+    ///
+    /// `finalize` can register an alias after an earlier use-site retained its nominal `Rust(ident)`
+    /// spelling. Follow that late alias here, at the shared naming seam, rather than making each
+    /// wrapper/collision caller guess how to resolve it. The per-query set is intentionally a path
+    /// guard, not a memo: revisiting an alias means a recursive collection would cross the wasm
+    /// boundary as a bare vector, which wasm-bindgen cannot expose, so `false` is the safe answer.
+    ///
+    /// An ident in neither the struct nor alias registries is NOT this case. It must still reach
+    /// `is_enum` below so the registered-or-generic assertion catches genuinely dangling names.
+    fn directly_wasm_exposable_ct_with_aliases(
+        &self,
+        types: &IntermediateTypes,
+        aliases_being_followed: &mut BTreeSet<RustIdent>,
+    ) -> bool {
         match self {
             Self::Fixed(_) => false,
             Self::Primitive(_) => true,
             // `AnyCbor` is a static-runtime type exposed through a wasm wrapper class, not directly
             // wasm-bindgen-exposable — like a Rust wrapper struct.
             Self::Any => false,
-            Self::Rust(ident) => types.is_enum(ident),
+            Self::Rust(ident) => match types.rust_struct(ident).map(|rs| rs.variant()) {
+                Some(RustStructType::CStyleEnum { .. }) => true,
+                Some(_) => false,
+                None => {
+                    if let Some(alias) = types.type_aliases().get(&AliasIdent::Rust(ident.clone()))
+                    {
+                        Self::follow_alias_for_wasm_exposability(
+                            ident,
+                            &alias.base_type,
+                            types,
+                            aliases_being_followed,
+                        )
+                    } else {
+                        // Keep `is_enum`'s generic-instance assertion live for a genuinely unknown
+                        // `Rust(ident)`; only a registered alias is legal to resolve structurally.
+                        types.is_enum(ident)
+                    }
+                }
+            },
             // wasm_bindgen doesn't support nested vecs, even if the inner vec would be supported
             Self::Array(ty) => {
                 let inner = match &ty.conceptual_type {
@@ -1333,14 +1369,20 @@ impl ConceptualRustType {
                         Primitive::Str => true,
                     },
                     Self::Array(_) => false,
-                    _ => ty.conceptual_type.directly_wasm_exposable_ct(types),
+                    _ => ty
+                        .conceptual_type
+                        .directly_wasm_exposable_ct_with_aliases(types, aliases_being_followed),
                 }
             }
-            Self::Optional(ty) => ty.conceptual_type.directly_wasm_exposable_ct(types),
+            Self::Optional(ty) => ty
+                .conceptual_type
+                .directly_wasm_exposable_ct_with_aliases(types, aliases_being_followed),
             Self::Map(_, _) => false,
             Self::Alias(ident, ty) => match ident {
                 // reserved aliases (uint→u64, …) generate no wrapper — they ARE the raw type, unwrap
-                AliasIdent::Reserved(_) => ty.directly_wasm_exposable_ct(types),
+                AliasIdent::Reserved(_) => {
+                    ty.directly_wasm_exposable_ct_with_aliases(types, aliases_being_followed)
+                }
                 // Whether a named alias is directly exposable turns on whether `ident` is emitted as a
                 // `#[wasm_bindgen]` WRAPPER struct (a generated `RustStruct`, e.g. `nums = [* uint]`)
                 // or a transparent `pub type` alias (no generated struct — a passthrough `arr2 = arr`,
@@ -1352,14 +1394,49 @@ impl ConceptualRustType {
                 // `Vec<u64>`) and `foo_bytes` (→ the wrapper `Foo`, not exposable) each resolve right.
                 AliasIdent::Rust(rust_ident) => {
                     match types.rust_struct(rust_ident).map(|rs| rs.variant()) {
-                        Some(RustStructType::CStyleEnum { .. }) | None => {
-                            ty.directly_wasm_exposable_ct(types)
-                        }
+                        Some(RustStructType::CStyleEnum { .. }) => ty
+                            .directly_wasm_exposable_ct_with_aliases(types, aliases_being_followed),
                         Some(_) => false,
+                        None => types
+                            .type_aliases()
+                            .get(&AliasIdent::Rust(rust_ident.clone()))
+                            .map(|alias| {
+                                Self::follow_alias_for_wasm_exposability(
+                                    rust_ident,
+                                    &alias.base_type,
+                                    types,
+                                    aliases_being_followed,
+                                )
+                            })
+                            // An `Alias` node normally originates from the alias registry. Retain
+                            // the old inlined-base behavior if an internal caller supplied one that
+                            // has no registered owner; only a bare `Rust(ident)` may reach `is_enum`.
+                            .unwrap_or_else(|| {
+                                ty.directly_wasm_exposable_ct_with_aliases(
+                                    types,
+                                    aliases_being_followed,
+                                )
+                            }),
                     }
                 }
             },
         }
+    }
+
+    fn follow_alias_for_wasm_exposability(
+        ident: &RustIdent,
+        base_type: &RustType,
+        types: &IntermediateTypes,
+        aliases_being_followed: &mut BTreeSet<RustIdent>,
+    ) -> bool {
+        if !aliases_being_followed.insert(ident.clone()) {
+            return false;
+        }
+        let result = base_type
+            .conceptual_type
+            .directly_wasm_exposable_ct_with_aliases(types, aliases_being_followed);
+        aliases_being_followed.remove(ident);
+        result
     }
 
     pub fn is_fixed_value(&self) -> bool {

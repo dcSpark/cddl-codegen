@@ -246,6 +246,18 @@ pub fn classify(types: &IntermediateTypes, already_forced: &BTreeSet<RustIdent>)
         .map(|(ident, body)| {
             let mut named = BTreeSet::new();
             named_idents(&body.conceptual_type, &mut named);
+            // The transparent-alias registration seam strips `Alias(Target, …)` to store the
+            // structural body. That representation is right for emission, but an alias-expansion
+            // graph must also preserve the source rule edge: otherwise `hop_alias = hop_arr` can
+            // look like a self-edge after `hop_arr`'s collection base is inlined and the SCC loses
+            // the collection the existing auto-`@newtype` repair needs.
+            if let Some(target) = types
+                .type_aliases()
+                .get(&AliasIdent::Rust(ident.clone()))
+                .and_then(|info| info.stripped_alias_target.as_ref())
+            {
+                named.insert(target.clone());
+            }
             named.retain(|target| aliases.contains_key(target));
             (ident.clone(), named)
         })

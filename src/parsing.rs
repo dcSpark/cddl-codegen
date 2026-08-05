@@ -3014,16 +3014,17 @@ fn parse_type(
                     }
                     None => {
                         let concrete_type = types.new_type(&cddl_ident, cli).tag_if(outer_tag);
-                        // Remember the aliased ident so the WASM alias can point at its wrapper struct
-                        // if it has one (resolved at emission via `has_wasm_wrapper`, so forward
-                        // references work) — otherwise `for_wasm_member` on the stripped bare
-                        // `Map`/`Vec` would emit the inline-only `MapU64To…`/`…List` name (E0425).
-                        // Read-only: the strip itself belongs to the ALIAS branch alone (see there).
-                        let mut wasm_alias_target = None;
+                        // Remember the aliased ident after stripping its `Alias` wrapper. The wasm
+                        // alias can point at its wrapper struct if it has one (resolved at emission
+                        // via `has_wasm_wrapper`, so forward references work), while the recursive
+                        // boundary retains the original source edge instead of only its structural
+                        // base. Read-only: the strip itself belongs to the ALIAS branch alone (see
+                        // there).
+                        let mut stripped_alias_target = None;
                         if let ConceptualRustType::Alias(AliasIdent::Rust(rust_ident), _) =
                             &concrete_type.conceptual_type
                         {
-                            wasm_alias_target = Some(rust_ident.clone());
+                            stripped_alias_target = Some(rust_ident.clone());
                         }
                         match &generic_params {
                             Some(_params) => {
@@ -3179,7 +3180,7 @@ fn parse_type(
                                                     concrete_type,
                                                     alias_metadata,
                                                 )
-                                                .with_wasm_alias_target(wasm_alias_target)
+                                                .with_stripped_alias_target(stripped_alias_target)
                                                 .with_inherited_wire_metadata(inherited_from),
                                             );
                                         }

@@ -5034,6 +5034,14 @@ fn recursive_alias_cycle_auto_newtype_matches_the_hand_written_directive() {
             "y = x\nx = [* y]\n",
             "y = x\nx = [* y] ; @newtype\n",
         ),
+        // Same alias hop entered through the alias-first spelling: its source edge is stripped from
+        // the first-pass alias base, so auto-`@newtype` must reconstruct it before either face names
+        // the collection.
+        (
+            "alias_first_hop",
+            "hop_alias = hop_arr\nhop_arr = [* hop_alias]\n",
+            "hop_alias = hop_arr\nhop_arr = [* hop_alias] ; @newtype\n",
+        ),
         // two collection-backed members: BOTH are nominalized, because the repair set is a property
         // of the cycle rather than of whichever member a traversal reached first
         (
