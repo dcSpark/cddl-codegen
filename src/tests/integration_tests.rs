@@ -18097,7 +18097,8 @@ fn encoding_variants_copy_float_heads_verbatim() {
 /// decode (`accept`), and — for `class="constraint"` / `class="policy-rejected"` reject vectors — the `expect_err` substring the
 /// generated decoder's error Display must contain when it rejects. `expect_err` is `None` for accept
 /// vectors and for bug/limitation reject pins (which only assert `is_err`); the drift gate enforces
-/// that it is present exactly on the constraint vectors, so `Some` here IS "constraint vector".
+/// that it is present exactly on constraint and policy-rejected vectors, so `Some` here identifies a
+/// durable-reason reject vector.
 #[derive(Clone)]
 struct ReplayVector {
     hex: String,
@@ -19333,7 +19334,8 @@ impl FooBar {\n\
 /// encoding-variant / header-mutation / preserve legs (`ReplayVector::spec_valid_accept`), since a
 /// spec-invalid instance evidences nothing about the spec's shape.
 ///
-/// On the DEFAULT leg a reject vector WITH `expect_err` (a `class="constraint"` vector) does more than
+/// On the DEFAULT leg a reject vector WITH `expect_err` (a `class="constraint"` or
+/// `class="policy-rejected"` vector) does more than
 /// assert `is_err`: it `match`es the Result (generated types don't uniformly derive Debug, so
 /// `.expect_err()` on the Result won't compile) and asserts the error Display CONTAINS the pinned
 /// substring — pinning the rejection REASON, not just that it rejects. Two distinct grep-stable panic
@@ -19387,7 +19389,7 @@ fn decode_replay_run(
                  \x20           Err(e) => panic!(\"{MARKER_OVER_ACCEPT_NOW_REJECTED} {name}: a class=over-acceptance vector was REJECTED — the decoder no longer wrongly accepts this spec-INVALID CBOR (the fix landed): promote this vector to class=\\\"constraint\\\" with an expect_err, move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, update the ROADMAP finding, re-mint — err: {{}}\", e),\n\
                  \x20       }}"
             );
-            // Vacuity guard at the emission site (the constraint arm's CONSTRAINT_WRONG_REASON body
+            // Vacuity guard at the emission site (the durable-reject arm's wrong-reason body
             // assert twin): the built body must carry the marker, so a drifted match can't silently emit
             // a body that never exercises the still-accepts contract while the count floor stays green.
             assert!(
@@ -19448,9 +19450,9 @@ fn decode_replay_run(
             };
             // Guard the reason-assert against a silent arm regression: the caller's vacuity floor
             // counts vectors whose CATALOG carries `expect_err`, not what this function emitted, so
-            // a drifted match pattern above (constraint vectors falling into the plain-`is_err`
+            // a drifted match pattern above (durable-reason vectors falling into the plain-`is_err`
             // fallback) would keep that floor green while the reason pin went vacuous. Assert here —
-            // OUTSIDE the match — that a default-leg constraint vector's body really is the
+            // OUTSIDE the match — that a default-leg durable-reason vector's body really is the
             // reason-asserting form.
             if !preserve && vector.expect_err.is_some() {
                 assert!(
@@ -19460,7 +19462,7 @@ fn decode_replay_run(
                         MARKER_CONSTRAINT_WRONG_REASON
                     }) && body.contains(MARKER_DOUBLED_LOCATION),
                     "decode_replay_run built a body missing a marker for a default-leg vector with \
-                     expect_err ({name}) — the constraint match arm regressed"
+                     expect_err ({name}) — the durable-reason match arm regressed"
                 );
             }
             (name, body)
@@ -20290,15 +20292,18 @@ fn replay_failure_summary_groups_by_row() {
 /// corpus (no oracles — the bytes were spec-cross-validated at mint time). Per active row: generate
 /// the crate from `spec`, replay every vector through the generated decoder (accept => Ok, reject
 /// pin => Err), then regenerate under `--preserve-encodings=true` and replay the ACCEPT vectors
-/// asserting decode-Ok AND `to_cbor_bytes()` byte-identity. A reject pin that now decodes Ok fails
-/// the gate (re-bless protection); a `PRESERVE_SKIP` row that starts working fails it (stale-entry
-/// guard, mirroring `all_supported_constructs_generate_all_profiles`'s EXPECTED_FAIL).
+/// asserting decode-Ok AND `to_cbor_bytes()` byte-identity. `class="policy-rejected"` vectors also
+/// replay under preserve, where they must still reject without a byte-identity claim. A reject pin
+/// that now decodes Ok fails the gate (re-bless protection); a `PRESERVE_SKIP` row that starts
+/// working fails it (stale-entry guard, mirroring
+/// `all_supported_constructs_generate_all_profiles`'s EXPECTED_FAIL).
 ///
-/// A `class="constraint"` reject vector additionally pins its rejection REASON: on the default leg its
-/// error Display must CONTAIN the catalog's `expect_err` substring. This catches a decoder that rejects
-/// the vector for a subtly WRONG reason (a stray length check, an unrelated error path) — which a bare
-/// `is_err` assert would pass. A wrong-reason rejection fails the gate with the captured Display in the
-/// output; a constraint vector that decodes Ok fails it as an enforcement gap.
+/// A `class="constraint"` or `class="policy-rejected"` reject vector additionally pins its rejection
+/// REASON: on the default leg its error Display must CONTAIN the catalog's `expect_err` substring. This
+/// catches a decoder that rejects the vector for a subtly WRONG reason (a stray length check, an
+/// unrelated error path) — which a bare `is_err` assert would pass. A wrong-reason rejection fails the
+/// gate with the captured Display in the output; a constraint vector that decodes Ok is an enforcement
+/// gap, while a policy-rejected vector that decodes Ok has lost the documented narrowing policy.
 ///
 /// A `class="over-acceptance"` accept vector is the inverse pin: spec-INVALID CBOR the decoder CURRENTLY
 /// (wrongly) accepts (a certified silent-acceptance bug, no fix yet). Its own `over_accept_{i}` test on
@@ -20326,7 +20331,8 @@ fn replay_failure_summary_groups_by_row() {
 /// `uint / tstr / bytes` arm), and derivation-time skipping keeps the row's non-ambiguous mutants live
 /// where a (row, label)-wide ledger entry would swallow them. Each emitted mutant must be REJECTED,
 /// and the error Display must carry a location naming the decoding type
-/// (`disp.contains("failed in {type_name}")` — the annotation analogue of the constraint leg's
+/// (`disp.contains("failed in {type_name}")` — the annotation analogue of the durable-reason reject
+/// leg's
 /// `expect_err` reason pin; NOT a bare `type_name` contains, which single-letter type names like `T`
 /// would vacuously match against words like "TagMismatch"). Two stale-guarded ledgers cover the honest
 /// exceptions: `HEADER_MUTANT_ACCEPT_SKIP` (a mutant the row's spec genuinely accepts WITHOUT any
@@ -20884,8 +20890,8 @@ fn decode_conformance_replay() {
                     }
                     let passed = results.get(&name).copied().unwrap_or(false);
                     if passed {
-                        // A constraint vector that passed did so via the `expect_err` REASON assert
-                        // (its test body is the `contains(..)` match) — count it for the vacuity floor.
+                        // A durable-reason reject vector that passed did so via the `expect_err` REASON
+                        // assert (its test body is the `contains(..)` match) — count it for the vacuity floor.
                         if vector.policy_rejected {
                             policy_reason_asserts += 1;
                         } else if !vector.accept && vector.expect_err.is_some() {
@@ -20934,12 +20940,19 @@ fn decode_conformance_replay() {
                                 row.id
                             )),
                             PolicyFailureKind::DoubledLocation => {
-                                failures.push(format!(
-                                    "{}: policy-rejected vector {hex} rejected with an adjacent-duplicate \
-                                     error location segment — generator double-annotation regression; \
-                                     triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
-                                    row.id
-                                ));
+                                if doubled_location_skip
+                                    .contains_key(&(row.id.as_str(), name.as_str()))
+                                {
+                                    doubled_location_skip_still_failing
+                                        .insert((row.id.clone(), name.clone()));
+                                } else {
+                                    failures.push(format!(
+                                        "{}: policy-rejected vector {hex} rejected with an adjacent-duplicate \
+                                         error location segment — generator double-annotation regression; \
+                                         triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
+                                        row.id
+                                    ));
+                                }
                             }
                             PolicyFailureKind::Unattributed => failures.push(format!(
                                 "{}: policy-rejected vector {hex} failed its reason assert but emitted \
@@ -21348,9 +21361,9 @@ fn decode_conformance_replay() {
     // Reason-assert floor: the corpus holds 44 `class="constraint"` vectors at HEAD, each asserting its
     // rejection REASON (not just is_err). Floor set just under so ordinary churn doesn't false-fail,
     // while a corpus (or a catalog parse) that lost its constraint vectors still trips the gate. The
-    // OTHER vacuity channel — decode_replay_run's constraint arm regressing to the plain-is_err body
-    // while the catalog field stays present — is guarded at the emission site itself (the
-    // CONSTRAINT_WRONG_REASON body assert in decode_replay_run), which this count cannot see.
+    // OTHER vacuity channel — decode_replay_run's durable-reason match arm regressing to the
+    // plain-is_err body while the catalog field stays present — is guarded at the emission site
+    // itself (the wrong-reason-marker body assert in decode_replay_run), which this count cannot see.
     assert!(
         constraint_reason_asserts >= 40,
         "only {constraint_reason_asserts} constraint vectors had their rejection REASON asserted \
@@ -21456,13 +21469,15 @@ fn decode_conformance_replay() {
 /// member/field-decode path the composition depth exercises.
 ///
 /// It reuses `decode_replay_generate` / `decode_replay_run` and ALL of `decode_conformance_replay`'s legs
-/// verbatim (base accept/reject with the `expect_err` reason assert + doubled-location helper, the
+/// verbatim (base accept/reject with the constraint/policy `expect_err` reason assert + doubled-location helper, the
 /// `cddl_encoding_fidelity::variants` encoding-variant leg, the `header_mutants` header-mutation leg at
 /// holder offset 2, over-acceptance completeness, and the `--preserve-encodings` byte-identity leg) — only
 /// the catalog path, the scratch ident, the skip ledgers, and the vacuity floors differ. At HEAD the
-/// corpus carries only plain accept vectors (no `class="constraint"` / `class="over-acceptance"` — the
-/// enforcement axis is matrix-owned), so the constraint-reason and over-acceptance machinery stays armed
-/// but idle (the over-acceptance completeness `assert_eq` holds at 0 == 0).
+/// corpus carries hand-authored `class="policy-rejected"` vectors: their default-leg `expect_err` reason
+/// pins and preserve-profile rejection are live, but they remain outside the accept-derived variant,
+/// header-mutation, JSON, and WASM legs and do not count as authored-CDDL enforcement. The corpus has no
+/// `class="constraint"` or `class="over-acceptance"` vectors, so those two mechanisms stay armed but
+/// idle (the over-acceptance completeness `assert_eq` holds at 0 == 0).
 ///
 /// Its own scratch dir + `cddl_codegen_corpus_decode_replay` target keeps it from colliding with the
 /// matrix replay / corpus / wasm gates when `cargo test` runs in parallel; `acquire_scratch_lock`
@@ -22005,12 +22020,21 @@ fn corpus_decode_replay() {
                                  Display in the run output below:\n{combined}",
                                 row.id
                             )),
-                            PolicyFailureKind::DoubledLocation => failures.push(format!(
-                                "{}: policy-rejected vector {hex} rejected with an adjacent-duplicate \
-                                 error location segment — generator double-annotation regression; \
-                                 triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
-                                row.id
-                            )),
+                            PolicyFailureKind::DoubledLocation => {
+                                if doubled_location_skip
+                                    .contains_key(&(row.id.as_str(), name.as_str()))
+                                {
+                                    doubled_location_skip_still_failing
+                                        .insert((row.id.clone(), name.clone()));
+                                } else {
+                                    failures.push(format!(
+                                        "{}: policy-rejected vector {hex} rejected with an adjacent-duplicate \
+                                         error location segment — generator double-annotation regression; \
+                                         triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
+                                        row.id
+                                    ));
+                                }
+                            }
                             PolicyFailureKind::Unattributed => failures.push(format!(
                                 "{}: policy-rejected vector {hex} failed its reason assert but emitted \
                                  no known marker — unexpected; full output:\n{combined}",
