@@ -237,7 +237,15 @@ Rules:
   `tests/TESTING_ROADMAP.md` § the verify warm-up -15 entry). Before killing "orphans": derive the
   candidate PIDs from the stopped task's own process tree / scratch paths (the task output names
   them), confirm the parent is dead, and kill by PID — and treat an unexplained exit -15 in any
-  log as possible cross-session kill before suspecting the harness.
+  log as possible cross-session kill before suspecting the harness. **When agents share one
+  harness, ANCESTRY cannot attribute a run at all** (proven 2026-08-04: an orchestrator, its
+  sub-agent's shell, and a main-session `check.ts full` all traced to the same harness parent, and
+  a tier run was nearly killed on a wrong ancestry read — the sub-agent refused the kill on
+  better evidence). The precondition above ("confirm the parent is dead") is then unsatisfiable:
+  attribute by the INVOCATION RECORD instead — the run's self-log name class (`check-only-*` vs
+  `check-(fast|local|full)-*` are disjoint by construction), the live log's own banner
+  (tier/jobs/`--only`), and which party actually issued the command — and if ancestry is shared,
+  do not kill at all: identify, then coordinate.
 - **A fresh worktree/clone needs two setup steps before its first tier run** (both proven
   2026-07-20, REQUEST-08 worktree; each is gitignored state present only in a checkout that has
   run before): (1) `./fuzz/generate.sh` — the workspace manifest references the gitignored
