@@ -50,25 +50,12 @@
  * the base type), durably rejected by the generated decoder. Spec-invalidity is normally certified by
  * BOTH oracles at mint time; an oracle that does not implement the rule at all cannot join that
  * consensus, so a vector may instead be certified by the remaining oracle plus a per-vector
- * `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry (lib.ts) citing a committed spec argument — the float
- * value-class rows are the only residents, and both halves of that ledger are stale-guarded.
- * Three rows carry one today and project `enforce = yes (bounded-reject)`: `ctl.size` (over- AND
- * under-size strings — valid bstrs, only `.size 4` rejects them), `ctl.cbor` (`h'f6'` is a valid bstr
- * whose payload is CBOR null, not a uint — only `.cbor uint` rejects it), and `memberkey.cut` (a
- * cut-violating map value; scoped to the row's single-member example, where the value-type check IS the
- * constraint surface). The numeric range/equality ops (`.le/.lt/.gt/.eq/.ne/.ge`) do NOT — deliberately:
- * cddl-codegen's decoder DOES enforce them (it emits a RangeCheck), but the rust corroborating oracle
- * (`cddl` 0.10.x) does NOT enforce numeric control ops over a `uint` target in validation (the
- * committed probe examples are all uint-based; `int`-target controls ARE enforced — see
- * `draft/rust-cddl-uint-control-op-gap.md`) — it accepts a boundary violation
- * like `11` for `uint .le 10` — so an in-type boundary-violating vector cannot pass the two-oracle
- * spec-invalid gate the catalog requires (ruby rejects it, rust does not). Rather than engineer green
- * with a type-violation vector (a negative for `uint .ge 0` — which tests the uint base type, not the
- * bound; that example's bound is vacuous over its base type, so NO in-type violation even exists),
- * those rows honestly read `unverified (no reject vector)`; the oracle-coverage gap is recorded in
- * README.md § "Upstream oracle gaps". The `--check` vacuity floor asserts the EXACT green set so neither an
- * accidental widening (a numeric row engineered green via a type violation) nor a narrowing slips
- * through.
+ * `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry (lib.ts) citing a committed spec argument. The tag-payload
+ * and float-value families each have narrow rust-only entries; both halves of every entry are
+ * stale-guarded. The detailed vacuity ledger below names the exact current vector families and the
+ * pinned green set. Control operators, fixed selectors, and the remaining constraint-bearing rows all
+ * follow the same rule: an in-base-type violation needs a reason-pinned generated rejection, while
+ * `ctl.default` remains non-rejectable because it governs an absent field.
  *
  * Run from cddl-matrix/:
  *   bun run query_q4_directional.ts            -> the full Q4 table (grouped by axis) + the asymmetry footnote
@@ -226,37 +213,87 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // arrow widening — took the other branch: closed by graceful rejection at generation, so its row left
 // the supported set and the catalog.)
 /**
- * The fixed-value CELLS: a literal in a member position is a rejectable equality constraint, so a
- * supported one without a reject vector must read `unverified (no reject vector)` rather than
- * `n/a (no constraint)` — the two are indistinguishable to a reader, and n/a is the state the
- * classification exists to make impossible for something that IS enforced.
+ * Fixed-selector CELLS have three rejection semantics. A supported selector without a reject vector
+ * must read `unverified (no reject vector)` rather than `n/a (no constraint)` — n/a would erase the
+ * distinction the exact unverified-set pin exists to make loud:
+ *   - member equality — a fixed member's decoded value differs from its constant;
+ *   - arm selection — a fixed member/key selects a group- or type-choice alternative and no arm
+ *     accepts the mutated selector; and
+ *   - required-key lookup — a fixed map key is absent from an indefinite map whose valid siblings
+ *     remain, so decoding reaches required-key lookup rather than a definite-length precheck.
  *
- * Classification is by (role, feature), and the role half is the load-bearing half. Three positions
- * are excluded because their rejection story is not value equality:
- *   - `role.map-key` — a fixed key is looked UP; the wrong key rejects as a missing required member,
- *     which is a different vector class and is not evidence about `.size`-style value enforcement.
- *   - `role.group-choice-arm` / `role.choice-member` — a fixed value SELECTS an alternative, so the
- *     rejection is "no arm matched" rather than "this member's value is wrong". The arm position is
- *     its own axis, tracked by cddl-matrix's "The fixed-value ARM position has no enforcement
- *     classification, and no evidence that would justify one." work item, whose reopening signal is
- *     the first arm-position reject vector landing in the catalog; classifying it here today would
- *     assert enforcement evidence nobody holds.
- * Everything else is an INCLUSION by default — a fixed value under a tag head or a `.cbor` payload
- * constrains its own instance exactly as an array element's does, so a cell landing in one of those
- * positions classifies without this predicate being touched, which is the forcing function's point.
+ * Classification is by (role, feature) wherever that grammar-level relation is sufficient. The tagged
+ * `type2.tag` cells below are the deliberate exceptions: `type2.tag` normally means an arbitrary
+ * tagged TYPE, while these rows' authored examples wrap a fixed value. Keep their ids explicit and
+ * self-checked rather than guessing from an id suffix or an example substring.
  */
-const FIXED_VALUE_NON_MEMBER_ROLES = new Set([
-  "role.map-key", "role.group-choice-arm", "role.choice-member",
-]);
 const isFixedValueFeature = (f: string): boolean =>
   f === "type2.value" || f.startsWith("value.") ||
   f === "prelude.true" || f === "prelude.false" || f === "prelude.null";
 
-function cellCarriesConstraint(id: string): boolean {
+type FixedSelectorKind = "member-equality" | "arm-selection" | "required-key-lookup";
+
+const TAGGED_FIXED_MEMBER_ROLES = new Map([
+  ["contain.array-element.type2.tag.fixed_bool", "role.array-element"],
+  ["contain.array-element.type2.tag.fixed_null", "role.array-element"],
+  ["contain.map-value.type2.tag.fixed_bool", "role.map-value"],
+  ["contain.map-value.type2.tag.fixed_null", "role.map-value"],
+]);
+const TAGGED_FIXED_MEMBER_IDS = new Set(TAGGED_FIXED_MEMBER_ROLES.keys());
+const TAGGED_FIXED_ARM_ROLES = new Map([
+  ["contain.group-choice-arm.type2.tag.fixed_array", "role.group-choice-arm"],
+]);
+const TAGGED_FIXED_ARM_IDS = new Set(TAGGED_FIXED_ARM_ROLES.keys());
+// `1 => uint` and `"k" => uint` share a required-key decode path with the colon spelling but are
+// represented in the model as `memberkey.type1`, so the supported literal-arrow cells are an
+// explicit inventory rather than a feature-wide classification of arbitrary type-domain arrow keys.
+const FIXED_LITERAL_MAP_KEY_ARROW_IDS = new Set([
+  "contain.map-key.memberkey.type1.uint_arrow_single",
+  "contain.map-key.memberkey.type1.uint_arrow_multi",
+  "contain.map-key.memberkey.type1.text_arrow_single",
+  "contain.map-key.memberkey.type1.text_arrow_multi",
+]);
+
+function fixedSelectorKind(id: string): FixedSelectorKind | undefined {
   const role = cellRole.get(id);
   const feature = cellFeature.get(id);
-  if (role === undefined || feature === undefined) return false; // not a containment cell
-  return isFixedValueFeature(feature) && !FIXED_VALUE_NON_MEMBER_ROLES.has(role);
+  if (role === undefined || feature === undefined) return undefined; // not a containment cell
+  if (role === "role.map-key") {
+    if (feature === "memberkey.value" || FIXED_LITERAL_MAP_KEY_ARROW_IDS.has(id))
+      return "required-key-lookup";
+    return undefined;
+  }
+  if (role === "role.group-choice-arm") {
+    if (feature === "memberkey.bareword" || feature === "memberkey.value" ||
+        feature === "type2.value" || TAGGED_FIXED_ARM_IDS.has(id))
+      return "arm-selection";
+    return undefined;
+  }
+  if (role === "role.choice-member")
+    return isFixedValueFeature(feature) ? "arm-selection" : undefined;
+  return isFixedValueFeature(feature) || TAGGED_FIXED_MEMBER_IDS.has(id)
+    ? "member-equality"
+    : undefined;
+}
+
+function exceptionalSelectorInventoryProblems(): string[] {
+  const problems: string[] = [];
+  const expect = (ids: Map<string, string>, name: string) => {
+    for (const [id, role] of ids) {
+      if (cellRole.get(id) !== role || cellFeature.get(id) !== "type2.tag")
+        problems.push(`${name} id \`${id}\` is no longer a \`${role}\` / \`type2.tag\` containment cell — update the explicit fixed-selector inventory`);
+    }
+  };
+  expect(TAGGED_FIXED_MEMBER_ROLES, "tagged fixed member");
+  expect(TAGGED_FIXED_ARM_ROLES, "tagged fixed arm");
+  for (const id of FIXED_LITERAL_MAP_KEY_ARROW_IDS)
+    if (cellRole.get(id) !== "role.map-key" || cellFeature.get(id) !== "memberkey.type1")
+      problems.push(`fixed literal arrow id \`${id}\` is no longer a \`role.map-key\` / \`memberkey.type1\` containment cell — update the explicit fixed-selector inventory`);
+  return problems;
+}
+
+function cellCarriesConstraint(id: string): boolean {
+  return fixedSelectorKind(id) !== undefined;
 }
 
 function carriesConstraint(id: string): boolean {
@@ -414,18 +451,20 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       `value.number.{hex,bin}` carry hand wrong-fixed-value violations ([0] — the silent-zero
   //       radix-conversion trap — plus an off-by-one/truncated-digit guard each), rejected as
   //       FixedValueMismatch; both oracles certify.
-  //   (d) The fixed-value MEMBER cells — the 15 supported `contain.{array-element,map-value,
-  //       occurrence-target}` cells whose member is a constant (`v: 5`, `k: "x"`, `v: true/false/null`,
-  //       the bare unkeyed `5`, and the two OPTIONAL `? v: 5` forms). Each carries one WRONG-CONSTANT
-  //       instance derived from one of the row's own accepts by mutating ONLY the constant's byte(s),
-  //       so the constant is the sole difference (same outer head, same key order, same siblings) — the
-  //       vector that makes the row's green test the CONSTANT and not just the shape. The uint/text/bool
-  //       cells reject as FixedValueMismatch (`Expected fixed value 5 found 6`, `… "x" found "y"`,
-  //       `… true found false`); the two null cells pin `ExpectedNull` instead, because for null the
-  //       constant IS the type, so the member's check is a type check — the vector still catches a
-  //       decoder that stops checking the member. The optional cells' instances are PRESENT-wrong
-  //       (absence is a legal accept shape), which routes through the optional peek path and still
-  //       lands on the constant check. Both oracles certify every one.
+  //   (d) The fixed-selector containment cells, in their three rejection semantics. MEMBER equality
+  //       covers literal members plus the explicit tagged-fixed members: each vector changes ONLY the
+  //       fixed payload while retaining its tag, outer head, keys, and siblings. ARM selection covers
+  //       group-choice selectors (bareword/fixed keys and fixed members) plus `tstr / null` and the
+  //       same-major `true / null / tstr` choice; a wrong selector leaves no legal alternative. REQUIRED
+  //       KEY lookup covers supported literal colon and literal-arrow spellings: each vector omits the
+  //       target from an indefinite map, retaining a valid sibling when applicable, so it bypasses only
+  //       the definite-cardinality precheck and reaches MandatoryFieldMissing. Ordinary vectors are
+  //       spec-invalid per BOTH oracles; the exact tag-11 fixed-payload arm is the narrow exception
+  //       (Ruby rejects, the pinned rust oracle accepts) named by DECODE_REJECT_ORACLE_GAP_EXEMPT with a
+  //       reversible RFC 8610 §3.6 report. Each has a generated-error pin, so a future vectorless
+  //       supported selector appears in the exact unverified set rather than reading n/a. The explicit
+  //       tagged/arrow inventories are stale-checked for the current coarse-feature exceptions;
+  //       role/feature-derived families remain automatic.
   //   (e) The value-class-constrained float prelude names. The six names PARTITION the float values by
   //       their shortest lossless form (RFC 8610 § 2.2.3 / § 3.3): `float16` is the values whose
   //       shortest form is `#7.25`, `float32` `#7.26`, `float64` `#7.27`, with `float16-32` and
@@ -434,22 +473,39 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       float head and judge the decoded value (`prelude.float64` carries the same 1.5 at two
   //       different heads precisely to make that head-independence observable). `prelude.float` spans
   //       all three classes and so has no excludable value — vectorless by definition, not an
-  //       enforcement blind spot. These five are the only rows certified WITHOUT a two-oracle
-  //       consensus: the pinned rust oracle collapses all six names into a single is-float test, so it
-  //       accepts every one. The ruby gem implements the same partition and REJECTS every one, so each
-  //       vector carries a DECODE_REJECT_ORACLE_GAP_EXEMPT entry naming `rust` alone and citing
+  //       enforcement blind spot. Their certification, like the tag-11 arm above, is a narrow
+  //       rust-only exception: the pinned rust oracle collapses the names into an is-float test while
+  //       the ruby gem rejects the out-of-class values. Each vector carries a
+  //       DECODE_REJECT_ORACLE_GAP_EXEMPT entry citing
   //       cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md, which states the spec
-  //       reading and the branch that would retract it. Both halves of that ledger are stale-guarded,
-  //       so an oracle fix pulls these rows back onto the ordinary consensus route rather than leaving
-  //       a permanent carve-out.
+  //       reading and the branch that would retract it. Both halves of the ledger are stale-guarded,
+  //       so an oracle fix pulls these vectors back onto the ordinary consensus route rather than
+  //       leaving a permanent carve-out.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
     "contain.array-element.prelude.false", "contain.array-element.prelude.null",
     "contain.array-element.prelude.true", "contain.array-element.type2.value",
+    "contain.array-element.type2.tag.fixed_bool", "contain.array-element.type2.tag.fixed_null",
     "contain.array-element.type2.value.bare_exactly_once", "contain.array-element.value.number",
     "contain.array-element.value.number.nint", "contain.array-element.value.text",
+    "contain.choice-member.prelude.null", "contain.choice-member.prelude.true.same_major_brute",
+    "contain.group-choice-arm.memberkey.bareword.map",
+    "contain.group-choice-arm.memberkey.bareword.record_map",
+    "contain.group-choice-arm.memberkey.value.map",
+    "contain.group-choice-arm.memberkey.value.text_map",
+    "contain.group-choice-arm.type2.tag.fixed_array", "contain.group-choice-arm.type2.value.map",
+    "contain.group-choice-arm.type2.value.nint_array",
+    "contain.map-key.memberkey.type1.text_arrow_multi",
+    "contain.map-key.memberkey.type1.text_arrow_single",
+    "contain.map-key.memberkey.type1.uint_arrow_multi",
+    "contain.map-key.memberkey.type1.uint_arrow_single",
+    "contain.map-key.memberkey.value.text_colon_multi",
+    "contain.map-key.memberkey.value.text_colon_single",
+    "contain.map-key.memberkey.value.uint_colon_multi",
+    "contain.map-key.memberkey.value.uint_colon_single",
     "contain.map-value.prelude.false", "contain.map-value.prelude.null",
     "contain.map-value.prelude.true", "contain.map-value.type2.value",
+    "contain.map-value.type2.tag.fixed_bool", "contain.map-value.type2.tag.fixed_null",
     "contain.map-value.value.number", "contain.map-value.value.text",
     "contain.occurrence-target.memberkey.type1.plus_table",
     "contain.occurrence-target.type2.value.optional_keyed_array",
@@ -489,7 +545,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     const greenSet = rs.filter(r => r.enforce.startsWith("yes")).map(r => r.id).sort();
     const want = [...EXPECTED_ENFORCE_YES].sort();
     if (JSON.stringify(greenSet) !== JSON.stringify(want))
-      problems.push(`enforce=yes green set drifted:\n    got : ${JSON.stringify(greenSet)}\n    want: ${JSON.stringify(want)}\n    (numeric range/eq ops stay unverified — the rust oracle does not enforce them; see the header note)`);
+      problems.push(`enforce=yes green set drifted:\n    got : ${JSON.stringify(greenSet)}\n    want: ${JSON.stringify(want)}\n    (the exact pin requires a conscious update for any deliberate classification change)`);
     const unverifiedSet = rs.filter(r => r.enforce.startsWith("unverified")).map(r => r.id).sort();
     const wantUnverified = [...EXPECTED_ENFORCE_UNVERIFIED].sort();
     if (JSON.stringify(unverifiedSet) !== JSON.stringify(wantUnverified))
@@ -518,7 +574,12 @@ const isCheck = process.argv.slice(2).includes("--check");
 const positional = process.argv.slice(2).filter(a => !a.startsWith("--"));
 
 if (isCheck) {
-  const problems = [...invariantProblems(rows), ...vacuityProblems(rows), ...vocabularyProblems()];
+  const problems = [
+    ...invariantProblems(rows),
+    ...exceptionalSelectorInventoryProblems(),
+    ...vacuityProblems(rows),
+    ...vocabularyProblems(),
+  ];
   if (problems.length) {
     console.log(`Q4 directional-support gate: ${problems.length} problem(s)`);
     for (const p of problems) console.log(`  FAIL ${p}`);

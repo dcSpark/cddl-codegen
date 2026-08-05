@@ -14,7 +14,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->69 `class="constraint"` enforcement reject vectors over 49 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->90 `class="constraint"` enforcement reject vectors over 70 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — the widened-occurrence-marker table
 class is CLOSED (`+`/`1*` is honored as a non-empty container and the other count-permitting markers
@@ -45,24 +45,6 @@ matrix's own side — as opposed to in the generator, which is the findings ledg
 kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
 (deferred, so each names the observable that would reopen it).
 
-- **The fixed-value ARM position has no enforcement classification, and no evidence that would
-  justify one.** `query_q4_directional.ts` classifies a fixed value in a MEMBER position as
-  enforcement-bearing (`cellCarriesConstraint`, by the cell's role × feature), so a supported member
-  cell landing without a reject vector reads `unverified (no reject vector)` and trips the
-  unverified-set pin. Three roles are deliberately outside that classification because their
-  rejection story is not value equality: `role.map-key` (a fixed key is looked up; the wrong key
-  rejects as a missing required member), and `role.group-choice-arm` / `role.choice-member` (a fixed
-  value selects an alternative, so the rejection is "no arm matched"). The arm cells themselves are
-  now enumerated (`contain.group-choice-arm.type2.value.nint_array`,
-  `contain.group-choice-arm.type2.tag.fixed_array`,
-  `contain.choice-member.prelude.true.same_major_brute`, beside the fixed-key and fixed-member arm
-  cells that predate them), and every one of them carries accept vectors only: enumerating the
-  positions was never the same act as going and getting the rejection evidence, so classifying the
-  two arm roles today would still assert evidence nobody holds.
-  - **Reopening signal:** an arm-position reject vector landing in the catalog — the moment one
-    exists, the arm rejection HAS a vector class, and leaving the role unclassified would let the
-    next arm cell land vectorless with no pin drifting, which is the member-side defect all over
-    again.
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -928,16 +910,6 @@ where the quantity is structural (`MULTIFILE_MATRIX_SKIP`'s count and enumeratio
 self-measuring datum where it is measured (the shape `tests/timings.json` already uses for
 durations; the recombination sweep's own datum is DELIVERED as `tests/recombination-counts.json`,
 held exactly by `recombination_generation_sweep` — see `tests/README.md`'s recombination section).
-
-One deliberate NON-firing on record, so the next delivery inherits the judgement instead of
-re-deriving it: the Q4 enforce-green enumeration (`README.md` § "Directional support evidence
-(Q4)") absorbed the 2026-07-28 fixed-value member-cell growth (28 → 43 rows) as ONE grouped family
-clause — the TOTAL lives in the generated `gen:sh:readme-enforce-green` span, and no existing hand
-count had to be corrected, so by this section's own trigger the enumeration stays hand prose: each
-family clause carries certification rationale (which oracle gaps shape "certified" for that
-family) that no generated span can derive. The quantities to watch there are the family-INTERNAL
-counts ("the 15 fixed-value MEMBER cells", "the eight `rangeop` rows"): the first delivery that
-must hand-correct one of those is this trigger firing for that enumeration.
 
 ## Related
 
