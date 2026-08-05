@@ -35,6 +35,7 @@ const ROOT = `${HERE}/..`;
 interface TrackedFile { rel: string; text: string }
 interface Citation { doc: string; line: number; kind: string; raw: string; expanded: string[] }
 interface TitleCitation { doc: string; line: number; title: string }
+interface ReadTextState { missingTrackedRels: Set<string> }
 
 function gitLsFiles(): string[] {
   const r = Bun.spawnSync(["git", "ls-files", "-z"], { cwd: ROOT, stdout: "pipe", stderr: "inherit" });
@@ -45,10 +46,59 @@ function gitLsFiles(): string[] {
   return (r.stdout?.toString("utf8") ?? "").split("\0").filter(Boolean).sort();
 }
 
-function readText(rel: string): string | null {
-  const buf = readFileSync(`${ROOT}/${rel}`);
+function newReadTextState(): ReadTextState {
+  return { missingTrackedRels: new Set<string>() };
+}
+
+function isEnoent(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT";
+}
+
+function readText(rel: string, state: ReadTextState): string | null {
+  let buf: Buffer;
+  try {
+    buf = readFileSync(`${ROOT}/${rel}`);
+  } catch (error) {
+    if (!isEnoent(error)) throw error;
+    state.missingTrackedRels.add(rel);
+    return null;
+  }
   if (buf.includes(0)) return null;
   return buf.toString("utf8");
+}
+
+function readTrackedTextFiles(rels: readonly string[], state: ReadTextState): TrackedFile[] {
+  const files: TrackedFile[] = [];
+  for (const rel of rels) {
+    const text = readText(rel, state);
+    if (text !== null) files.push({ rel, text });
+  }
+  return files;
+}
+
+function missingTrackedFileProblems(state: ReadTextState): string[] {
+  return [...state.missingTrackedRels].sort().map(rel =>
+    `${rel}: tracked by git but absent from the working tree; restore the file, or stage the deletion`,
+  );
+}
+
+// This exercises the same tracked-entry read and missing-file diagnostic seam as production without
+// modifying the checkout. Reading the canary twice mirrors a tracked hand doc's two read sites.
+function missingTrackedFileSelfTestProblem(): string | null {
+  const rel = "cddl-matrix/.lint_doc_citations_missing_file_selftest_canary_DO_NOT_CREATE";
+  const state = newReadTextState();
+  const files = readTrackedTextFiles([rel], state);
+  const repeatedRead = readText(rel, state);
+  const expected = `${rel}: tracked by git but absent from the working tree; restore the file, or stage the deletion`;
+  const diagnostics = missingTrackedFileProblems(state);
+  if (files.length !== 0 || repeatedRead !== null)
+    return "missing-file self-test: nonexistent synthetic tracked entry did not read as null";
+  if (state.missingTrackedRels.size !== 1 || !state.missingTrackedRels.has(rel))
+    return "missing-file self-test: repeated missing read did not produce exactly one tracked path";
+  if (diagnostics.length !== 1 || diagnostics[0] !== expected)
+    return "missing-file self-test: missing tracked path did not produce its exact one-path diagnostic";
+  return null;
 }
 
 function lineOf(text: string, offset: number): number {
@@ -242,11 +292,8 @@ function directiveSwallowedCloserProblems(file: TrackedFile): string[] {
 }
 
 const trackedRels = gitLsFiles();
-const allFiles: TrackedFile[] = [];
-for (const rel of trackedRels) {
-  const text = readText(rel);
-  if (text !== null) allFiles.push({ rel, text });
-}
+const readTextState = newReadTextState();
+const allFiles = readTrackedTextFiles(trackedRels, readTextState);
 
 const handDocSet = new Set<string>([
   ...trackedRels.filter(rel => rel.endsWith(".md") && rel.includes("ROADMAP") && !rel.startsWith("draft/")),
@@ -258,9 +305,12 @@ const handDocs = [...handDocSet].sort();
 const problems: string[] = [];
 const missingHandDocs = handDocs.filter(rel => !trackedRels.includes(rel));
 for (const rel of missingHandDocs) problems.push(`${rel}: hand doc is not tracked by git`);
+problems.push(...missingTrackedFileProblems(readTextState));
+const missingFileSelfTestProblem = missingTrackedFileSelfTestProblem();
+if (missingFileSelfTestProblem !== null) problems.push(missingFileSelfTestProblem);
 
 const handDocFiles = handDocs.flatMap(rel => {
-  const text = readText(rel);
+  const text = readText(rel, readTextState);
   return text === null ? [] : [{ rel, text }];
 });
 

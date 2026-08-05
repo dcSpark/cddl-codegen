@@ -39,7 +39,8 @@ verdict token, evidence-stage name, or policy-mint classifier is silent in produ
 tier is where it must fail), `no_std_check` (the no_std drift gate — see its section below), `no_silent_directive` (which
 spawns `cargo build` plus generator runs) and `timings_digest_check` live here, NOT in CI. The
 doc-citation gate
-checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, bans
+checks that gap prose's cited pins still exist, reports each path that is still tracked by git but
+absent from the working tree with restore-or-stage-deletion remedies, rejects positional roadmap/list citations, bans
 ephemeral plan-internal references (delivery-phase probe/ruling id spellings, spec-file names, the
 plan scratchpad path — matched phase-generically so a new delivery phase's letter is covered by
 construction), bans user-doc examples that put a `; @<directive>` comment on the same line as the
