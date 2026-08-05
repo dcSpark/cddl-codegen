@@ -2435,9 +2435,11 @@ vector must survive the boundary.*
 **Skip ledgers** (per gate, both REPRODUCTION-guarded like `WASM_SURFACE_SKIP`'s compile check — a
 skip row's leg still RUNS, and the entry is consumed only if the leg still fails; a run where every
 emitted test passes fails the gate as a stale pin): a row skipped on one leg still runs the other.
-`JSON_SURFACE_SKIP` — rows whose json boundary legitimately can't round-trip; each resident cites a
-`cddl-matrix/ROADMAP.md` finding, and it also suppresses the wasm `from_json` sub-leg (same serde
-path). Resident classes at HEAD (ledgered in § findings):
+`JSON_SURFACE_SKIP` — rows whose json boundary legitimately can't round-trip; each resident cites
+its owning record — a decided posture in `cddl-matrix/README.md` § Gotchas, or a
+`cddl-matrix/ROADMAP.md` finding for a defect — and it also suppresses the wasm `from_json` sub-leg
+(same serde path). Resident classes at HEAD (both decided postures, recorded in
+`cddl-matrix/README.md` § Gotchas):
 **`@custom_json`** omitting the serde derives the leg's serde_json usage needs (`dsl.custom_json` /
 `dsl_custom.custom_newtype` — can't compile standalone); and **non-string map keys** serde_json
 can't serialize (`bytes_map_key.*`, `composite_map_key.holder`, corpus). `WASM_SURFACE_SKIP` — rows whose `--wasm`
