@@ -3,10 +3,10 @@ source: src/tests/robustness_tests.rs
 expression: catalog
 ---
 # generator outcome per malformed/edge input
-# A NEW panic is a regression: malformed input must error gracefully. A committed PANIC entry
-# is a tracked-known rejection (see the fixture's comments); flipping it to `error (graceful)` is a fix.
-# An `ABORTED (signal n)` entry is a non-unwinding crash, observed by running that input out of
-# process (`ABORT_PRONE_INPUTS`); it is a defect exactly as `PANIC` is, and flipping it is a fix.
+# Every row runs in a fresh child process, so a non-unwinding crash is classified as `ABORTED (signal n)`
+# instead of killing this catalog. A NEW panic is a regression: malformed input must error gracefully. A
+# committed PANIC entry is a tracked-known rejection (see the fixture's comments); flipping it to `error
+# (graceful)` is a fix. The parent requires a child sentinel before accepting any ordinary exit status.
 
 any_control_op             error (graceful)
 any_member                 ok

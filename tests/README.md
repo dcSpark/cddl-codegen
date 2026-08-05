@@ -942,6 +942,16 @@ header), insert-block survival across a re-export in that dir, flag-off leaving 
 untouched, the fresh-manifest seed, and the hand-manifest merge (identity/hand deps survive, a
 stale `cbor_event` pin is bumped to what the exported source requires).
 
+## Input robustness catalog (`robustness_tests::input_robustness_catalog`)
+
+The generate-only malformed/edge-input catalog (`tests/robustness/*.cddl`) runs **every** sorted
+row in a fresh test-binary child process. The parent owns the four snapshot labels — `ok`,
+`error (graceful)`, `PANIC`, and `ABORTED (signal n)` — so a future non-unwinding crash becomes the
+catalog's verdict instead of terminating it. Each ordinary child exit must print the helper
+sentinel before the parent accepts its label; an exact helper filter that goes stale can therefore
+not silently bless every row as `ok`. The catalog deliberately tests generation only, not emitted
+crate compilation.
+
 ## Integration tests (`integration_tests.rs`)
 
 Each test generates a crate via the CLI (`cargo run`), appends hand-written round-trip tests

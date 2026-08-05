@@ -1,15 +1,15 @@
 //! Input panic-robustness catalog.
 //!
-//! Feeds malformed / edge-case spec inputs (`tests/robustness/*.cddl`) to the generator inside
-//! `catch_unwind` and snapshots the OUTCOME of each — `ok` / `error (graceful)` / `PANIC`. This is
+//! Feeds malformed / edge-case spec inputs (`tests/robustness/*.cddl`) to a fresh child process and
+//! snapshots the OUTCOME of each — `ok` / `error (graceful)` / `PANIC`. This is
 //! a robustness scorecard, not an output-regression test: it catches a refactor that makes a
 //! previously-graceful input newly panic (shows up as a snapshot diff), and when a current panic
 //! is fixed its entry flips (re-bless then).
 //!
-//! A fourth outcome, `ABORTED (signal <n>)`, exists for the inputs `ABORT_PRONE_INPUTS` names.
-//! `catch_unwind` cannot observe a non-unwinding crash (a stack overflow aborts), so those inputs
-//! run OUT of process — the generator's exit status is read instead of its return value — and the
-//! crash becomes a snapshot-able row rather than the death of the test binary.
+//! A fourth outcome, `ABORTED (signal <n>)`, records a non-unwinding crash (such as a stack
+//! overflow). `catch_unwind` cannot observe one, so every input runs out of process: the parent
+//! reads the child's exit status and the crash becomes a snapshot-able row rather than the death of
+//! the catalog test binary.
 //!
 //! NB: a NEW `PANIC` is a regression — the generator must reject malformed input with a clean
 //! error, never `panic!`/`assert!`. A committed `PANIC` entry is a tracked-known rejection whose
@@ -26,12 +26,11 @@
 use crate::cli::Cli;
 use clap::Parser;
 
-/// The global panic hook is process-wide, so every test that silences it (`input_robustness_catalog`,
-/// `unsupported_construct_panic_catalog`, and the identifier-hazard sweep's generation catalog) must
-/// not run their take/set/restore concurrently — an interleave could leave the silent hook installed
-/// for the rest of the run. Serialize them on this lock (poison-tolerant: a panic mid-section only
-/// means the *other* caller re-silences, which is harmless). The lock is per-fn-internal, so any
-/// caller of `with_thread_silenced_panics` participates — including callers in other test modules.
+/// The global panic hook is process-wide, so every test that silences it must not run its
+/// take/set/restore concurrently — an interleave could leave the silent hook installed for the rest
+/// of the run. Serialize them on this lock (poison-tolerant: a panic mid-section only means the
+/// *other* caller re-silences, which is harmless). The lock is per-fn-internal, so any caller of
+/// `with_thread_silenced_panics` participates — including callers in other test modules.
 static PANIC_HOOK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Silence panic output from THIS test's thread for the duration of `f` (the deliberate
@@ -4733,25 +4732,15 @@ fn encoding_companion_field_collision_rejects_gracefully() {
     }
 }
 
-/// The catalog inputs whose generation can end in a NON-UNWINDING crash — today only a stack
-/// overflow, which the runtime turns into `SIGABRT` rather than a panic. `catch_unwind` cannot see
-/// one, so running such an input in-process would take the whole test binary down instead of
-/// recording a row. Each name here is run OUT of process instead (see
-/// [`out_of_process_catalog_outcome`]) and can therefore report the fourth outcome label,
-/// `ABORTED (signal <n>)`, beside `ok` / `error (graceful)` / `PANIC`.
-///
-/// A hand-maintained LIST rather than the whole catalog on purpose: a spawn per input costs a
-/// process launch each, and every other input is provably unwind-safe by having run in-process for
-/// its whole life. The breadth deliberately not built — every input out of process — is tracked in
-/// `tests/TESTING_ROADMAP.md`; the observable that would buy it is an aborting input found by any
-/// route other than this list.
-const ABORT_PRONE_INPUTS: &[&str] = &["recursive_collection_holder"];
-
 /// Environment variable that turns a run of [`robustness_out_of_process_generation_helper`] into a
 /// one-shot generator invocation over the named input. Set only by
 /// [`out_of_process_catalog_outcome`]; absent in every ordinary test run, where the helper is a
 /// no-op.
 const ROBUSTNESS_SUBPROCESS_INPUT: &str = "CDDL_CODEGEN_ROBUSTNESS_SUBPROCESS_INPUT";
+
+/// Test-only switch for [`robustness_out_of_process_generation_helper`]. The abort-classification
+/// self-test sets it for one child; normal test discovery never does, so the helper stays inert.
+const ROBUSTNESS_SUBPROCESS_ABORT: &str = "CDDL_CODEGEN_ROBUSTNESS_SUBPROCESS_ABORT";
 
 /// Printed by the helper before it exits, and required by the parent. Without it a child that
 /// matched NO test would exit 0 and read as an `ok` row — the one way this lane could silently
@@ -4771,6 +4760,9 @@ fn robustness_out_of_process_generation_helper() {
     let Ok(input) = std::env::var(ROBUSTNESS_SUBPROCESS_INPUT) else {
         return;
     };
+    if std::env::var_os(ROBUSTNESS_SUBPROCESS_ABORT).is_some() {
+        std::process::abort();
+    }
     // The child's whole job is the exit code; a panic's own output would only interleave with the
     // parent's test output, and an abort's runtime message is likewise noise here.
     std::panic::set_hook(Box::new(|_| {}));
@@ -4799,15 +4791,30 @@ fn robustness_out_of_process_generation_helper() {
 /// The four labels are the same vocabulary the in-process lane uses, plus `ABORTED (signal <n>)`
 /// for a death by signal — the outcome `catch_unwind` structurally cannot report.
 fn out_of_process_catalog_outcome(path: &std::path::Path) -> String {
+    out_of_process_catalog_outcome_with_abort(path, false)
+}
+
+/// Shared child-status classifier. The abort switch exists only for the Unix self-test; catalog
+/// rows always invoke this through [`out_of_process_catalog_outcome`] with it disabled.
+fn out_of_process_catalog_outcome_with_abort(path: &std::path::Path, abort: bool) -> String {
     let exe = std::env::current_exe().expect("the running test binary must have a path");
-    let output = std::process::Command::new(&exe)
+    let mut command = std::process::Command::new(&exe);
+    command
         .args([
             "--exact",
             "tests::robustness_tests::robustness_out_of_process_generation_helper",
             "--nocapture",
             "--test-threads=1",
         ])
-        .env(ROBUSTNESS_SUBPROCESS_INPUT, path)
+        .env(ROBUSTNESS_SUBPROCESS_INPUT, path);
+    if abort {
+        command.env(ROBUSTNESS_SUBPROCESS_ABORT, "1");
+    } else {
+        // Never inherit this test-only switch from an enclosing test invocation into real catalog
+        // rows, where it would turn every child into a synthetic abort.
+        command.env_remove(ROBUSTNESS_SUBPROCESS_ABORT);
+    }
+    let output = command
         .output()
         .unwrap_or_else(|e| panic!("could not spawn {exe:?} for {path:?}: {e}"));
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -4836,6 +4843,26 @@ fn out_of_process_catalog_outcome(path: &std::path::Path) -> String {
     }
 }
 
+/// A synthetic non-unwinding child must become the parent-owned fourth catalog label instead of
+/// terminating this test binary. Its exact helper filter is the ordinary one, which retains the
+/// sentinel check for every non-signal child exit.
+#[cfg(unix)]
+#[test]
+fn robustness_out_of_process_abort_is_classified() {
+    let outcome = out_of_process_catalog_outcome_with_abort(
+        std::path::Path::new("tests/robustness/empty.cddl"),
+        true,
+    );
+    let signal = outcome
+        .strip_prefix("ABORTED (signal ")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .and_then(|signal| signal.parse::<i32>().ok());
+    assert!(
+        matches!(signal, Some(signal) if signal > 0),
+        "abort helper must be classified as its actual Unix signal, got {outcome:?}"
+    );
+}
+
 #[test]
 fn input_robustness_catalog() {
     let dir = std::path::Path::new("tests/robustness");
@@ -4846,47 +4873,14 @@ fn input_robustness_catalog() {
         .collect();
     inputs.sort();
     assert!(!inputs.is_empty(), "no robustness inputs in {:?}", dir);
-    // The list names inputs, so a fixture rename that leaves the list behind must fail loudly rather
-    // than silently move an abort-prone input back in-process (where it would kill the binary).
-    for name in ABORT_PRONE_INPUTS {
-        assert!(
-            inputs
-                .iter()
-                .any(|p| p.file_stem().and_then(|s| s.to_str()) == Some(name)),
-            "ABORT_PRONE_INPUTS names `{name}`, which is not a fixture in {dir:?}"
-        );
-    }
-
     let mut catalog = String::from(
-        "# generator outcome per malformed/edge input\n# A NEW panic is a regression: malformed input must error gracefully. A committed PANIC entry\n# is a tracked-known rejection (see the fixture's comments); flipping it to `error (graceful)` is a fix.\n# An `ABORTED (signal n)` entry is a non-unwinding crash, observed by running that input out of\n# process (`ABORT_PRONE_INPUTS`); it is a defect exactly as `PANIC` is, and flipping it is a fix.\n\n",
+        "# generator outcome per malformed/edge input\n# Every row runs in a fresh child process, so a non-unwinding crash is classified as `ABORTED (signal n)`\n# instead of killing this catalog. A NEW panic is a regression: malformed input must error gracefully. A\n# committed PANIC entry is a tracked-known rejection (see the fixture's comments); flipping it to `error\n# (graceful)` is a fix. The parent requires a child sentinel before accepting any ordinary exit status.\n\n",
     );
-    // hook restored (and lock released) before the possibly-panicking snapshot assertion below
-    with_thread_silenced_panics(|| {
-        for path in &inputs {
-            let name = path.file_stem().unwrap().to_str().unwrap();
-            if ABORT_PRONE_INPUTS.contains(&name) {
-                let label = out_of_process_catalog_outcome(path);
-                catalog.push_str(&format!("{name:26} {label}\n"));
-                continue;
-            }
-            let cli = Cli::parse_from([
-                "cddl-codegen",
-                "--input",
-                path.to_str().unwrap(),
-                "--output",
-                "robustness_unused",
-            ]);
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                crate::api::generated_strings(&cli)
-            }));
-            let label = match outcome {
-                Ok(Ok(_)) => "ok",
-                Ok(Err(_)) => "error (graceful)",
-                Err(_) => "PANIC",
-            };
-            catalog.push_str(&format!("{:26} {}\n", name, label));
-        }
-    });
+    for path in &inputs {
+        let name = path.file_stem().unwrap().to_str().unwrap();
+        let label = out_of_process_catalog_outcome(path);
+        catalog.push_str(&format!("{name:26} {label}\n"));
+    }
 
     let mut settings = insta::Settings::clone_current();
     settings.set_snapshot_path(
