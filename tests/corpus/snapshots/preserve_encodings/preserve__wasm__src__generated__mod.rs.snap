@@ -922,6 +922,14 @@ impl CustomRecord {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
+    pub fn set_ignored(&mut self, ignored: u64) {
+        self.0.ignored = Some(ignored)
+    }
+
+    pub fn ignored(&self) -> Option<u64> {
+        self.0.ignored
+    }
+
     pub fn value(&self) -> u64 {
         self.0.value
     }

@@ -2873,22 +2873,30 @@ impl GenerationScope {
             for (ident, rust_struct) in types.rust_structs() {
                 match rust_struct.variant() {
                     RustStructType::Record(record) => {
-                        for field in &record.fields {
-                            if !self
-                                .deserialize_generated_for_type(&field.rust_type.conceptual_type)
-                            {
-                                self.dont_generate_deserialize(
-                                    ident,
-                                    format!(
-                                        "field {}: {} couldn't generate deserialize",
-                                        field.name,
-                                        field.rust_type.for_rust_member(types, false, cli)
-                                    ),
-                                );
+                        // A complete custom pair owns the entire item. Its reader neither calls a
+                        // field decoder nor observes this record's structural array/map shape, so
+                        // those generated-code refusals cannot decide the pair's public decoder
+                        // surface (which wasm, WIT, extern checks, and emitted tests all share).
+                        if rust_struct.config().custom_serialize.is_none()
+                            || rust_struct.config().custom_deserialize.is_none()
+                        {
+                            for field in &record.fields {
+                                if !self.deserialize_generated_for_type(
+                                    &field.rust_type.conceptual_type,
+                                ) {
+                                    self.dont_generate_deserialize(
+                                        ident,
+                                        format!(
+                                            "field {}: {} couldn't generate deserialize",
+                                            field.name,
+                                            field.rust_type.for_rust_member(types, false, cli)
+                                        ),
+                                    );
+                                }
                             }
-                        }
-                        for reason in Self::record_shape_refusals(types, record, cli) {
-                            self.dont_generate_deserialize(ident, reason);
+                            for reason in Self::record_shape_refusals(types, record, cli) {
+                                self.dont_generate_deserialize(ident, reason);
+                            }
                         }
                     }
                     RustStructType::TypeChoice { variants } => {

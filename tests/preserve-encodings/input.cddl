@@ -229,8 +229,10 @@ enum_opt_embed_fields = [
 custom_bytes = bytes ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes
 
 ; A named record's pair owns the whole item, not just a member: this deliberately writes TEXT
-; instead of the declared one-element array, and the holder reaches the identical custom wire.
-custom_record = [ value: uint ] ; @custom_serialize write_custom_record @custom_deserialize read_custom_record
+; instead of the structurally ambiguous optional-array record, and the holder reaches the identical
+; custom wire. The generated field decoder cannot decide whether `ignored` is present; the custom
+; reader supersedes that refusal and constructs only the mandatory `value`.
+custom_record = [? ignored: uint, value: uint] ; @custom_serialize write_custom_record @custom_deserialize read_custom_record
 custom_record_holder = [ nested: custom_record ]
 
 struct_with_custom_serialization = [

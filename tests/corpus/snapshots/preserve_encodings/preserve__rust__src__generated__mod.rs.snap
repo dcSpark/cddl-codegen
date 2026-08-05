@@ -482,6 +482,7 @@ impl CustomFieldHolder {
 
 #[derive(Clone, Debug)]
 pub struct CustomRecord {
+    pub ignored: Option<u64>,
     pub value: u64,
     pub encodings: Option<CustomRecordEncoding>,
 }
@@ -489,6 +490,7 @@ pub struct CustomRecord {
 impl CustomRecord {
     pub fn new(value: u64) -> Self {
         Self {
+            ignored: None,
             value,
             encodings: None,
         }

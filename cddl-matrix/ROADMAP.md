@@ -189,10 +189,14 @@ ledgered here (that's what the probe/gate error messages point at).
   and the extern-interface seam already treats such an alias as hazardous (`; unexported:` row). The
   invariant assert added with the `.cbor` fix therefore scopes to the `RustType`'s OWN `encodings`
   vec, never to `AliasInfo`-carried codec metadata. Documented as a caution in `comment_dsl.mdx`
-  § "Reaching an annotated alias through another rule". **Reopening signal:** a consumer reporting
-  that a pair-carrying alias's standalone `to_cbor_bytes`/`from_cbor_bytes` produced or accepted the
-  built-in wire where their spec says the pair's — i.e. someone calling the standalone entry point at
-  all, which is what nothing yet says anyone does.
+  § "Reaching an annotated alias through another rule". The accepted named-collection form is an
+  additional inert carrier: `items = [* uint] ; @custom_serialize cs @custom_deserialize cd`
+  lowers to a transparent collection typedef, and the pair reaches neither emitted alias metadata
+  nor holder call sites (both targets are absent). **Reopening signal:** a consumer reporting that a
+  pair-carrying alias's standalone `to_cbor_bytes`/`from_cbor_bytes` produced or accepted the
+  built-in wire where their spec says the pair's, or observing the named collection's hooks absent
+  at holder sites — i.e. a caller reaching either currently inert public seam, which is what
+  nothing yet says anyone does.
 
 - **A tagged PRESERVE table's standalone codec drops the tag.** The narrowed remnant of the class
   T1-13 closed (recorded 2026-08-04, narrowed the same day). Every tagged rule body now force-wraps

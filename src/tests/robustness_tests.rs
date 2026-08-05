@@ -7634,6 +7634,55 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
         "the both-set record spelling must generate thin symmetric delegation, without the ordinary \
          record field walk while retaining the opaque extern-interface trait contract, got:\n{src}"
     );
+    // A complete pair owns the whole item, including a record shape whose generated field decoder
+    // is ambiguous. Its no-deserialize verdict must stay clear so the direct, holder, extern, and
+    // wasm from-CBOR surfaces all agree with the thin impl.
+    let src = expect_custom_codec_source(
+        "custom_ambiguous_record_both_set_control",
+        "myrec = [? ignored: uint, value: uint] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [f: myrec]\n",
+    );
+    assert!(
+        src.contains("impl Deserialize for Myrec")
+            && src.contains("impl Deserialize for Holder")
+            && src.contains("_assert_deserialize::<crate::generated::Myrec>();")
+            && src.contains("_assert_deserialize::<crate::generated::Holder>();")
+            && src.contains("Result<Myrec, JsError>")
+            && src.contains("Result<Holder, JsError>"),
+        "a complete custom record pair must supersede generated-only decoder refusals across every \
+         shared no-deserialize consumer, got:\n{src}"
+    );
+    // Control: the same ambiguous shape with no complete pair still has no generated decoder, so
+    // the verdict bypass is not a blanket relaxation of record safety.
+    let src = expect_custom_codec_source(
+        "ambiguous_record_no_pair_control",
+        "ambiguous = [? ignored: uint, value: uint]\nholder = [f: ambiguous]\n",
+    );
+    assert!(
+        !src.contains("impl Deserialize for Ambiguous")
+            && !src.contains("impl Deserialize for Holder"),
+        "an unannotated ambiguous record must retain its no-deserialize verdict, got:\n{src}"
+    );
+    // The pair also owns a record whose FIELD type has no generated decoder. The nested Inner
+    // verdict must remain true for Inner itself, while it must not propagate through the pair to
+    // Myrec or its holder.
+    let src = expect_custom_codec_source(
+        "custom_record_undecodable_field_both_set_control",
+        "inner = [? ignored: uint, value: uint]\n\
+         myrec = [i: inner] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [f: myrec]\n",
+    );
+    assert!(
+        !src.contains("impl Deserialize for Inner")
+            && src.contains("impl Deserialize for Myrec")
+            && src.contains("impl Deserialize for Holder")
+            && src.contains("_assert_deserialize::<crate::generated::Myrec>();")
+            && src.contains("_assert_deserialize::<crate::generated::Holder>();")
+            && src.contains("Result<Myrec, JsError>")
+            && src.contains("Result<Holder, JsError>"),
+        "a complete custom record pair must block an undecodable field verdict from propagating \
+         to its direct, holder, extern, and wasm decode surfaces, got:\n{src}"
+    );
     // The map-representation sibling reaches the same `codegen_struct` path. Its ordinary key/value
     // walk must be absent too, while both standalone traits still delegate to the complete-item pair.
     let src = expect_custom_codec_source(

@@ -122,6 +122,7 @@ pub struct CustomFieldHolderEncoding {
 #[derive(Clone, Debug, Default)]
 pub struct CustomRecordEncoding {
     pub len_encoding: LenEncoding,
+    pub ignored_encoding: Option<cbor_event::Sz>,
     pub value_encoding: Option<cbor_event::Sz>,
 }
 
