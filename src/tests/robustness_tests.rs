@@ -7553,10 +7553,8 @@ fn custom_codec_pair_on_enum_rule_rejects_gracefully() {
 ///   seam (verified: it exports as a `_CDDL_CODEGEN_EXTERN_TYPE_` row, so `CustomSerializeTransparent`
 ///   never fires), carrying the divergence to consumers.
 ///
-/// The BOTH-SET spelling is deliberately NOT rejected — it suppresses the generated impls for the
-/// author to hand-own. That posture is unspecified and at risk, so the control below pins what it
-/// does TODAY (generates; no impls for the type; embed sites call the named reader) and is the
-/// regression guard that this rejection did not swallow it.
+/// The BOTH-SET spelling is deliberately NOT rejected — it gets thin generated impls delegating to
+/// the named pair, so standalone APIs and embed sites own the same complete-item wire contract.
 #[test]
 fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
     let err = expect_graceful_rejection(
@@ -7617,9 +7615,8 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
         );
     }
 
-    // CONTROL 1 (the ruling's regression guard): BOTH halves on a record rule is NOT rejected, and
-    // still does exactly what it did before — generates, emits no `Serialize`/`Deserialize` impl for
-    // the type, and rewrites embed sites to the named reader.
+    // CONTROL 1: BOTH halves on a record rule are NOT rejected; both thin trait impls delegate to
+    // the named pair and the ordinary record field walk is absent.
     let src = expect_custom_codec_source(
         "custom_record_both_set_control",
         "myrec = [a: uint] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
@@ -7627,11 +7624,64 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
     );
     assert!(
         src.contains("pub struct Myrec")
-            && !src.contains("Serialize for Myrec")
-            && !src.contains("Deserialize for Myrec")
-            && src.contains("my_deser(raw)"),
-        "the both-set record spelling must still generate with its impls suppressed and its embed \
-         sites rewritten, got:\n{src}"
+            && src.contains("Serialize for Myrec")
+            && src.contains("Deserialize for Myrec")
+            && src.contains("my_ser(serializer, self)")
+            && src.contains("my_deser(raw)")
+            && !src.contains("serializer.write_unsigned_integer(self.a")
+            && src.contains("_assert_serialize::<crate::generated::Myrec>();")
+            && src.contains("_assert_deserialize::<crate::generated::Myrec>();"),
+        "the both-set record spelling must generate thin symmetric delegation, without the ordinary \
+         record field walk while retaining the opaque extern-interface trait contract, got:\n{src}"
+    );
+    // The map-representation sibling reaches the same `codegen_struct` path. Its ordinary key/value
+    // walk must be absent too, while both standalone traits still delegate to the complete-item pair.
+    let src = expect_custom_codec_source(
+        "custom_map_record_both_set_control",
+        "myrec = { a: uint } ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [f: myrec]\n",
+    );
+    assert!(
+        src.contains("pub struct Myrec")
+            && src.contains("Serialize for Myrec")
+            && src.contains("Deserialize for Myrec")
+            && src.contains("my_ser(serializer, self)")
+            && src.contains("my_deser(raw)")
+            && !src.contains("serializer.write_text(\"a\")?;"),
+        "the map-rep both-set record spelling must generate thin symmetric delegation, without the \
+         ordinary map field walk, got:\n{src}"
+    );
+    // A generic RECORD DEFINITION carries its config into each concrete record it mints. The
+    // instance binding itself owns no config slot, but its Foo struct still takes this shared path.
+    let src = expect_custom_codec_source(
+        "custom_generic_record_definition_both_set_control",
+        "base<T> = [x: T] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         foo = base<uint>\n\
+         holder = [f: foo]\n",
+    );
+    assert!(
+        src.contains("pub struct Foo")
+            && src.contains("Serialize for Foo")
+            && src.contains("Deserialize for Foo")
+            && src.contains("my_ser(serializer, self)")
+            && src.contains("my_deser(raw)")
+            && src.contains("my_ser(serializer, &self.f)")
+            && !src.contains("serializer.write_unsigned_integer(self.x"),
+        "a generic record definition's concrete instance must get thin delegation and route its \
+         holder through the same pair, got:\n{src}"
+    );
+    // Scope boundary: named collections are not records and own no generated class impl. Their
+    // existing pair is silently dropped at both directions; B3-031 must not newly claim only the
+    // writer by routing their Root(Rust) reference through `my_ser`.
+    let src = expect_custom_codec_source(
+        "custom_named_array_nonrecord_boundary",
+        "items = [* uint] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [f: items]\n",
+    );
+    assert!(
+        !src.contains("my_ser(") && !src.contains("my_deser(raw)"),
+        "a named collection is outside whole-record delegation; B3-031 must not alter its existing \
+         silent-drop boundary, got:\n{src}"
     );
     // CONTROL 2: a PLAIN GROUP rule's trailing comment binds to its LAST MEMBER's slot (the
     // `@name plain-group-trailing` seam), where the pair is a FIELD-level directive and IS honored.

@@ -3059,8 +3059,29 @@ pub(super) fn codegen_struct(
     native_new.push_block(native_new_block);
     native_impl.push_fn(native_new);
 
-    // Serialization (via rust traits) - includes Deserialization too
-    if config.custom_serialize.is_none() || config.custom_deserialize.is_none() {
+    // A whole-record custom pair owns the complete CBOR item. Generate only the shared-contract
+    // trait shells: root references dispatch to the same free functions before their kind-specific
+    // path, so direct and embedded APIs have one wire form. No embedded-group trait belongs here.
+    if let (Some(custom_serialize), Some(custom_deserialize)) =
+        (&config.custom_serialize, &config.custom_deserialize)
+    {
+        let mut ser_impl = make_serialization_impl(name.as_ref(), cli);
+        let mut ser_func = make_serialization_function("serialize", cli);
+        ser_func.line(format!(
+            "{}(serializer, self{})",
+            custom_serialize,
+            canonical_param(cli)
+        ));
+        ser_impl.push_fn(ser_func);
+        gen_scope.rust_serialize(types, name).push_impl(ser_impl);
+
+        let mut deser_impl = codegen::Impl::new(name.to_string());
+        deser_impl.impl_trait("Deserialize");
+        let mut deser_func = make_deserialization_function("deserialize", cli);
+        deser_func.line(format!("{}(raw)", custom_deserialize));
+        deser_impl.push_fn(deser_func);
+        gen_scope.rust_serialize(types, name).push_impl(deser_impl);
+    } else {
         let (ser_func, mut ser_impl, mut ser_embedded_impl) = create_serialize_impls(
             name,
             Some(record.rep),

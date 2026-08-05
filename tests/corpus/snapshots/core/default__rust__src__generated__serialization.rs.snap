@@ -1777,6 +1777,54 @@ impl Deserialize for CborPayloadNestedPayloads {
     }
 }
 
+impl cbor_event::se::Serialize for CustomRecord {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        write_custom_record(serializer, self)
+    }
+}
+
+impl Deserialize for CustomRecord {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        read_custom_record(raw)
+    }
+}
+
+impl cbor_event::se::Serialize for CustomRecordHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        write_custom_record(serializer, &self.nested)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for CustomRecordHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let nested =
+                read_custom_record(raw).map_err(|e: DeserializeError| e.annotate("nested"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CustomRecordHolder { nested })
+        })()
+        .map_err(|e| e.annotate("CustomRecordHolder"))
+    }
+}
+
 impl cbor_event::se::Serialize for Docs {
     fn serialize<'se>(
         &self,

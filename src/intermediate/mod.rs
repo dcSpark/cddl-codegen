@@ -4146,8 +4146,8 @@ impl<'a> IntermediateTypes<'a> {
                     }
                 }
             }
-            // BOTH halves on a record rule is the one accepted rule-position pair (it suppresses the
-            // generated impls for the author to hand-own the type), and it is the one place a
+            // BOTH halves on a record rule is the one accepted rule-position pair (it gets thin
+            // generated impls delegating to the named functions), and it is the one place a
             // `@custom_encodings` declaration would be read into a rule's metadata and then have
             // nowhere to go: a struct carries its encoding metadata INSIDE itself, so no
             // codec-visible tuple crosses the boundary. Every other struct-minting rule kind already
@@ -4162,7 +4162,7 @@ impl<'a> IntermediateTypes<'a> {
                 custom_codec_rejections.insert(format!(
                     "@custom_encodings on `{ident}`: this rule mints a STRUCT, whose encoding \
                      metadata lives inside the struct itself (its `encodings` member) — the custom \
-                     pair on a record rule suppresses the generated impls for you to hand-own, and \
+                     pair on a record rule delegates through generated thin impls, and \
                      hands no encoding tuple across the call, so there is nothing for a declaration \
                      to describe. Put the declaration where the pair takes encoding arguments: \
                      beside a FIELD's pair, or on a transparent alias rule's pair \

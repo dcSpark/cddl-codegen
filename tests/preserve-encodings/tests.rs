@@ -1551,6 +1551,32 @@ mod tests {
         assert_eq!(back.overridden, vec![0xAB; 16]);
     }
 
+    // The named record's declared form is `[uint]`, but its pair owns a text item. It carries no
+    // external encoding tuple: record sidecars stay self-carrying while both direct and holder APIs
+    // delegate to the same pair. The generated array wire must remain unacceptable to the reader.
+    #[test]
+    fn custom_record_rule_delegates_direct_and_embedded() {
+        let record = CustomRecord::new(42);
+        let direct = cbor_string("42");
+        assert_eq!(record.to_cbor_bytes(), direct);
+        assert_eq!(CustomRecord::from_cbor_bytes(&direct).unwrap().value, 42);
+        assert!(
+            CustomRecord::from_cbor_bytes(&[arr_def(1), cbor_int(42, Sz::One)].concat()).is_err(),
+            "the custom reader must reject the record's generated array wire"
+        );
+
+        let holder = CustomRecordHolder::new(record);
+        let embedded = [arr_def(1), cbor_string("42")].concat();
+        assert_eq!(holder.to_cbor_bytes(), embedded);
+        assert_eq!(
+            CustomRecordHolder::from_cbor_bytes(&embedded)
+                .unwrap()
+                .nested
+                .value,
+            42
+        );
+    }
+
     // The MAP-rep twin of `custom_serialization`. A map-rep field's serialize is built from ONE
     // config that also serves the member-key write, and that config used to be built WITHOUT the
     // field's @custom_serialize — so the custom WRITER was dropped while @custom_deserialize kept

@@ -944,6 +944,25 @@ There are two ways to attach this comment DSL:
 * Type level: e.g. `custom_bytes`. This will replace the (de)serialization everywhere you use this type.
 * Field level: e.g. `struct_with_custom_serialization.field`. This will entirely replace the (de)serialization logic for the entire field, including other encoding operations like tags, `.cbor`, etc.
 
+A **named record rule** honors the pair only when both halves appear on the rule. The generated
+record keeps its constructor/accessor API and receives thin `Serialize` and `Deserialize` impls
+that delegate to the named writer and reader with `self` / `raw`; a field that names the record
+dispatches to that same pair before record-kind handling. The pair therefore owns one complete CBOR
+item through both direct (`to_cbor_bytes` / `from_cbor_bytes`) and embedded doors. Record encoding
+metadata remains self-carrying, so this whole-record spelling takes no external encoding tuple.
+
+```cddl
+custom_record = [ value: uint ] ; @custom_serialize write_custom_record @custom_deserialize read_custom_record
+holder = [ nested: custom_record ]
+```
+
+The writer may intentionally use a wire form unlike `[uint]` (for example a text item), provided
+the reader accepts exactly that complete form. This spelling is supported for array- and map-rep
+records, including a concrete record minted from a generic record **definition**; its definition's
+pair becomes the concrete type's pair. A comment on the separate generic-instance **binding** still
+has no config slot and is rejected. A plain group's field slot likewise remains field metadata and
+follows the ordinary field splicing rules.
+
 Example function signatures for `--preserve-encodings=false` for `custom_serialize_bytes` / `custom_deserialize_bytes` above:
 
 ```rust
@@ -1141,10 +1160,10 @@ The pair parses in the positions below but cannot be honored there, so each one 
 * **Together with `@no_alias`.** `@no_alias` removes the alias node the override is keyed on, so the pair would go with it and both directions would fall back to the default wire format.
 * **Together with `@newtype`.** A `@newtype` wrapper writes through its own generated `Serialize` impl while the deserialize call sites do route through the custom reader, so the pair would make the wrapper read one wire format and write another. Use the plain alias spelling, or declare the type `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write it in full.
 * **On a rule that mints a TAGGED wrapper without the directive** — a tag-head rule (`foo = #6.42(uint)`) and the tag-258 set idiom (`foo = #6.258([* uint]) / [* uint]`, which nominalizes into a set wrapper). Structurally the `@newtype` case above, minus the directive: the same generated-`Serialize`/custom-reader asymmetry, so either half is refused. Put the pair on the **alias the tag rule wraps** (`inner = uint ; @custom_serialize …` beside `foo = #6.42(inner)`), which keeps the tag framing generated and overrides only the payload — see [Reaching an annotated alias through another rule](#reaching-an-annotated-alias-through-another-rule) below. Or, to own the whole wire yourself, declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the type, or give it a body that resolves to a transparent alias and write the wire framing (the tag included) in your own codec.
-* **On a rule that binds a generic instantiation** — `foo = base<uint>`, and the named-binding-to-a-set-nominal form of the same shape. The type is built during generic resolution from the **definition's** config, so a pair written on the binding never reaches generation and both directions keep the definition's generated codec. Moving it to the definition does not work either (a generic definition names no concrete type and is refused for that reason): give the rule a CDDL body of its own, or declare it `_CDDL_CODEGEN_EXTERN_TYPE_`.
+* **On a rule that binds a generic instantiation** — `foo = base<uint>`, and the named-binding-to-a-set-nominal form of the same shape. The type is built during generic resolution from the **definition's** config, so a pair written on the binding never reaches generation and both directions keep the definition's generated codec. For a generic definition that mints a record, put a complete pair on that definition: each concrete record then gets thin delegation. Other generic-definition kinds have no concrete record codec slot; give the rule a CDDL body of its own, or declare it `_CDDL_CODEGEN_EXTERN_TYPE_`.
 * **On an enum rule** — a type choice (`a / b`), a group choice (`{ … } // { … }`), or a fixed-value C-style enum (`0 / 1`) — in *every* spelling, one half or both. The enum's serialize side is generated unconditionally while the deserialize call sites do route through the custom reader: the same read-one-format/write-another asymmetry as `@newtype`. Put the pair on the rule of the variant type that needs the custom format.
-* **A single half on a named record rule.** `@custom_serialize` alone emits no `Serialize` impl and never calls the named function, so the generated crate does not compile; `@custom_deserialize` alone keeps the type's own generated `Deserialize` impl while rewriting every embed site, so `Foo::from_cbor_bytes` and a field of type `Foo` decode the same bytes differently — a divergence that also travels to consumers, since such a rule projects opaquely across the [extern-interface](integration-other.mdx) seam. Move the pair to the field, or to the type rule of the member that needs it.
-* **On a table rule** — `t = { * k => v } ; @custom_serialize …`, the pair on the rule rather than on the row (which is the separate rejection above). A table lowers to a transparent map alias that owns no codec for the directive to override, so — unlike a record rule, where both halves together suppress the generated impls for you to hand-own — there is nothing for either half to displace and *any* presence is refused, one half or both. Put it on the key or value rule (see [Table key and value positions](#table-key-and-value-positions)) instead, or declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the whole type. On a generic table def the refusal names the *instantiated* type (`ptbl<uint, bytes>` → `PtblU64Bytes`), since that is where the struct materializes.
+* **A single half on a named record rule.** `@custom_serialize` alone emits no `Serialize` impl and never calls the named function, so the generated crate does not compile; `@custom_deserialize` alone keeps the type's own generated `Deserialize` impl while rewriting every embed site, so `Foo::from_cbor_bytes` and a field of type `Foo` decode the same bytes differently — a divergence that also travels to consumers, since such a rule projects opaquely across the [extern-interface](integration-other.mdx) seam. Move the pair to the field, or write both halves on the named record rule.
+* **On a table rule** — `t = { * k => v } ; @custom_serialize …`, the pair on the rule rather than on the row (which is the separate rejection above). A table lowers to a transparent map alias that owns no codec for the directive to override, so — unlike a record rule, where both halves together generate thin delegating impls — there is nothing for either half to displace and *any* presence is refused, one half or both. Put it on the key or value rule (see [Table key and value positions](#table-key-and-value-positions)) instead, or declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the whole type. On a generic table def the refusal names the *instantiated* type (`ptbl<uint, bytes>` → `PtblU64Bytes`), since that is where the struct materializes.
 
 The `@custom_encodings` declaration is refused in three further places, each because it would otherwise be read and then dropped:
 

@@ -908,6 +908,92 @@ impl AsRef<cddl_lib::CustomFieldHolder> for CustomFieldHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct CustomRecord(pub(crate) cddl_lib::CustomRecord);
+
+#[wasm_bindgen]
+impl CustomRecord {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CustomRecord, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> u64 {
+        self.0.value
+    }
+
+    pub fn new(value: u64) -> Self {
+        Self(cddl_lib::CustomRecord::new(value))
+    }
+}
+
+impl From<cddl_lib::CustomRecord> for CustomRecord {
+    fn from(native: cddl_lib::CustomRecord) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CustomRecord> for cddl_lib::CustomRecord {
+    fn from(wasm: CustomRecord) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CustomRecord> for CustomRecord {
+    fn as_ref(&self) -> &cddl_lib::CustomRecord {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CustomRecordHolder(pub(crate) cddl_lib::CustomRecordHolder);
+
+#[wasm_bindgen]
+impl CustomRecordHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CustomRecordHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn nested(&self) -> CustomRecord {
+        self.0.nested.clone().into()
+    }
+
+    pub fn new(nested: &CustomRecord) -> Self {
+        Self(cddl_lib::CustomRecordHolder::new(nested.clone().into()))
+    }
+}
+
+impl From<cddl_lib::CustomRecordHolder> for CustomRecordHolder {
+    fn from(native: cddl_lib::CustomRecordHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CustomRecordHolder> for cddl_lib::CustomRecordHolder {
+    fn from(wasm: CustomRecordHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CustomRecordHolder> for CustomRecordHolder {
+    fn as_ref(&self) -> &cddl_lib::CustomRecordHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct CustomTablePositions(pub(crate) cddl_lib::CustomTablePositions);
 
 #[wasm_bindgen]

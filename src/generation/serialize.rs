@@ -1106,6 +1106,26 @@ impl GenerationScope {
                     ));
                 }
                 SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
+                    // A named record with a whole-record custom pair owns its complete CBOR item.
+                    // Dispatch before the kind walk so an embed site calls the same free writer as
+                    // the record's thin Serialize impl; in particular, do not route a plain group
+                    // through SerializeEmbeddedGroup or fall back to the ordinary record fields.
+                    if matches!(
+                        types.rust_struct(t).unwrap().variant(),
+                        RustStructType::Record(_)
+                    ) && let Some(custom_serialize) =
+                        &types.rust_struct(t).unwrap().config().custom_serialize
+                    {
+                        body.line(&format!(
+                            "{}({}, {}{}){}",
+                            custom_serialize,
+                            serializer_pass,
+                            expr_ref,
+                            canonical_param(cli),
+                            line_ender
+                        ));
+                        return;
+                    }
                     match &types.rust_struct(t).unwrap().variant() {
                         RustStructType::CStyleEnum { variants } => {
                             let mut enum_body = Block::new(format!("match {expr_ref}"));

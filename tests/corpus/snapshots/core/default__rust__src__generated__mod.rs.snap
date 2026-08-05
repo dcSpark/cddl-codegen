@@ -476,6 +476,28 @@ impl CborPayloadNestedPayloads {
 
 pub type CustomBytes = Vec<u8>;
 
+#[derive(Clone, Debug)]
+pub struct CustomRecord {
+    pub value: u64,
+}
+
+impl CustomRecord {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomRecordHolder {
+    pub nested: CustomRecord,
+}
+
+impl CustomRecordHolder {
+    pub fn new(nested: CustomRecord) -> Self {
+        Self { nested }
+    }
+}
+
 pub type DefaultUint = u64;
 
 /// struct documentation here

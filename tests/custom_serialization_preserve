@@ -35,6 +35,25 @@ pub fn custom_deserialize_bytes(
     }
 }
 
+// A whole-record codec deliberately uses a text item rather than the record's declared array.
+// Record encoding sidecars are self-carrying, so this complete-item pair takes no external tuple.
+pub fn write_custom_record<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &CustomRecord,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_text(value.value.to_string())
+}
+
+pub fn read_custom_record(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<CustomRecord, DeserializeError> {
+    let text = raw.text()?;
+    let value = text
+        .parse()
+        .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)))?;
+    Ok(CustomRecord::new(value))
+}
+
 // writes as hex text
 pub fn write_hex_string<'se>(
     serializer: &'se mut cbor_event::se::Serializer,

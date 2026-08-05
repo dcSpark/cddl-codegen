@@ -2267,22 +2267,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     version finding, while a failure at 1.26.1 on node 22 is a regression the gate should already
     have caught.
 
-- **Make the BOTH-set custom pair on a named struct rule mean "generated impls that delegate to
-  the named functions" (symmetric delegation).** Today the record-rule both-set spelling
-  suppresses the type's generated impls, rewrites embed-site deserializes to the named reader,
-  and never references the named writer — accepted, pinned as-is by the `record-rule-both-set`
-  control cell in `dsl_position_tests`, and documented as unspecified. The coherent end-state is
-  thin generated `Serialize`/`Deserialize` impls delegating to the two named fns plus the missing
-  serialize-side `Root(Rust(ident))` arm (the deserialize side already has one), applied to every
-  named struct kind — then the pair means the same thing on a record as on an alias,
-  `from_cbor_bytes` agrees with embed sites, and the opaque extern-interface projection stays
-  sound. Deferred rather than shipped because it changes public behavior for a spelling with zero
-  known users; the single-half spellings (which were outright broken) already reject.
-  - **Reopening signal:** a consumer asks for a tool-generated struct with hand-owned wire logic
-    without going full `_CDDL_CODEGEN_EXTERN_TYPE_` (losing the generated struct/API is the cost
-    that makes them ask) — the request itself is the signal, and it names the type shape to
-    design against.
-
 - **Let a TABLE rule's own comment slot carry the custom pair.** The pair on
   `t = { * k => v }` is refused today (the `table-rule` cells in `dsl_position_tests`; the
   comment-DSL rejected-positions list), because a table lowers to a transparent map alias with no

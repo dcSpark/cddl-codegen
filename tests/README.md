@@ -1893,7 +1893,7 @@ row; user docs: `docs/docs/output_format.mdx` § "Open arrays", `docs/docs/comme
 ### Custom (de)serializer pairs (`@custom_serialize`/`@custom_deserialize`) — test map
 
 User doc: `docs/docs/comment_dsl.mdx` § `@custom_serialize`/`@custom_deserialize` — the honored
-positions (type-level alias, record field, table key/value), the signature contracts (including
+positions (type-level alias, named record rule, record field, table key/value), the signature contracts (including
 the `force_canonical` trailing argument and the by-value table-position encoding), and the
 "Positions that are rejected" / "Positions that are still silent" boundary. Hand-fn fragments
 spliced into generated trees: `tests/custom_serialization` (core), `tests/custom_serialization_preserve`
@@ -1905,6 +1905,10 @@ spliced into generated trees: `tests/custom_serialization` (core), `tests/custom
   The map-rep twin is the regression pin for the field-config carry (a dropped custom WRITER fails
   its byte-exact vector, and its reader rejects the default writer's shape, so writer/reader
   drift cannot pass as cosmetic).
+- **Named record rule, direct + embedded** — `custom_record` and `custom_record_holder` in BOTH
+  `tests/core` and `tests/preserve-encodings`: the pair writes text instead of the record's declared
+  array, so exact direct and holder bytes plus generated-array rejection prove that both API doors
+  use the same whole-record codec. `core_with_wasm` also compiles its wasm surface.
 - **Table key/value positions** — `custom_table_positions` (+ `_sidecar_shape`,
   `_reject_default_shape`) in `tests/preserve-encodings`: a width sweep byte-exact through the
   custom fns in both positions, the decoded-key sidecar keying, and the reject-default-shape
