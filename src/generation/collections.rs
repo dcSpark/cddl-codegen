@@ -27,6 +27,9 @@ impl GenerationScope {
             self.own_wrapper_shapes
                 .insert(shape.to_owned(), ident.clone());
         }
+        // The one seam every LOCAL wrapper mint passes, which is why the index-shadowing honesty
+        // check lives here rather than on any individual `try_defer_wrapper` decline.
+        self.warn_local_mint_shadows_index(ident, shape);
     }
 
     /// Record that structural wrapper `ident` was deferred to workspace dependency `dep` this run
@@ -62,9 +65,14 @@ impl GenerationScope {
     /// `use <dep_wasm>::collections::<Name>;` into every referencing module (R3b) and the keys()
     /// accessors construct via `.into()` cross-crate (R3d). Returns `false` (mint locally) when: the
     /// flag is unused; the ident is not the structural name of these constituents (a rule-declared
-    /// wrapper — never suppressed); the constituents are mixed / not all one dependency (R3c, silent);
-    /// or an all-extern-of-one-dep candidate is absent from that dep's index (local + one stderr
-    /// warning naming the wrapper).
+    /// wrapper — never suppressed); the constituents are mixed / not all one dependency (R3c); or an
+    /// all-extern-of-one-dep candidate is absent from that dep's index (local + one stderr warning
+    /// naming the wrapper).
+    ///
+    /// The first three `false` arms are silent HERE and stay so: each is a correct verdict about the
+    /// DEFERRAL. Whether the name the resulting class is emitted under collides with a dependency's
+    /// index is a separate question, answered once for every local mint by
+    /// `warn_local_mint_shadows_index` at the `record_collection_wrapper` seam.
     #[allow(clippy::too_many_arguments)]
     fn try_defer_wrapper(
         &mut self,
@@ -240,7 +248,7 @@ impl GenerationScope {
         } else {
             // Has named constituents: a defer candidate only if they ALL resolve to extern types of
             // the SAME dependency (R3c: any consumer-owned or cross-dependency constituent -> local,
-            // silent).
+            // silent here — the mint-seam backstop is what speaks if the emitted NAME is dep-indexed).
             let mut single: Option<String> = None;
             for d in &constituent_deps {
                 match d {
@@ -367,6 +375,64 @@ impl GenerationScope {
              class, so both crates export a #[wasm_bindgen] {name} and the two duplicate-symbol \
              when linked into one cdylib. Remedy: rename the rule, or give it a distinct @name, or \
              drop the rule and let {dep} own the type."
+        );
+    }
+
+    /// The uniform backstop for the same duplicate-`#[wasm_bindgen]`-symbol configuration
+    /// `warn_rule_declared_table_shadows_index` covers, keyed on the EMITTED IDENT rather than on
+    /// the reason a particular arm declined to defer. Every local wrapper mint passes
+    /// `record_collection_wrapper`, while only some of them consult `try_defer_wrapper` — and of
+    /// those, two arms return `false` before any index is consulted:
+    ///
+    /// * the ident≠structural screen — `arr_idx_foo_list = [* idx_foo_list]` derives the structural
+    ///   name `IdxFooListList` from its element, so the rule's own ident `ArrIdxFooList` is not a
+    ///   defer candidate at all, yet `ArrIdxFooList` is the name of the class actually emitted;
+    /// * the R3c constituent screen — a wrapper whose constituents include a CONSUMER-owned type
+    ///   (or types of two different dependencies) is local-and-silent by design, which is right
+    ///   about the DEFERRAL and says nothing about the NAME.
+    ///
+    /// In both, the emitted class collides with a dep-indexed name and nothing at the defer seam
+    /// can see it. Closing the family at the mint seam covers those two arms and any future one,
+    /// instead of chasing `return false` sites.
+    ///
+    /// Sibling of `warn_rule_declared_table_shadows_index` (the rule-declared LOOSE table, which
+    /// reaches no defer seam at all): that one is emitted BEFORE its mint and both share
+    /// `deferred_warned`, so a table warns exactly once, with the more specific text.
+    ///
+    /// Callers: `record_collection_wrapper` only, i.e. the four wrapper emitters' local-mint paths.
+    /// A DEFERRED wrapper never reaches it (the emitters return before recording). A wrapper minted
+    /// under `requested_scope_override` — dep-side `--wrapper-requests` hosting — is excluded by
+    /// intent, not by the accident that such runs carry no index flag: that class exists because a
+    /// CONSUMER asked this crate to host the shape, so the name is not this spec's choice and the
+    /// arbitration belongs to the request sidecar rather than to this crate's own honesty warning.
+    /// Emits nothing when the index flag is unused, and never changes an emitted byte.
+    fn warn_local_mint_shadows_index(&mut self, ident: &RustIdent, shape: &str) {
+        if self.extern_wrapper_index.is_empty() || self.requested_scope_override.is_some() {
+            return;
+        }
+        let name = ident.as_ref();
+        // Several deps listing one name is its own warned condition on the defer path; here the
+        // collision is the same whichever dep hosts it, so name the first (BTreeMap order, so the
+        // choice is deterministic) rather than reciting the set — as the table sibling does.
+        let Some(dep) = self
+            .extern_wrapper_index
+            .iter()
+            .find(|(_, names)| names.contains(name))
+            .map(|(dep, _)| dep.clone())
+        else {
+            return;
+        };
+        if !self.deferred_warned.insert(ident.clone()) {
+            return;
+        }
+        crate::warn!(
+            "warning: collection wrapper {name} is minted locally from this crate's {shape}, but \
+             dependency {dep:?} also lists {name} in its --extern-wrapper-index; this mint reached \
+             no deferral decision (its ident is not the structural name of its own constituents, \
+             or those constituents are not all extern types of one dependency), so both crates \
+             export a #[wasm_bindgen] {name} and the two duplicate-symbol when linked into one \
+             cdylib. Remedy: rename the rule, or give it a distinct @name, or settle the name on \
+             one owner — declare this shape in {dep}'s spec, or drop {name} from {dep}."
         );
     }
 

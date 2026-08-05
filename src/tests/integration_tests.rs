@@ -13720,6 +13720,101 @@ fn extern_wrapper_index_deferred_try_from_sources() {
     index_named_wasm_check("extern_wrapper_index_deferred_try_from_sources", &export);
 }
 
+/// The LOCAL-MINT-UNDER-A-DEP-INDEXED-NAME backstop: the two `try_defer_wrapper` arms that decline
+/// BEFORE any index is consulted, so the emitted class collides with a dep-indexed name and nothing
+/// at the defer seam can see it. Both arms are batched into one generated crate (one compile floor):
+/// their stderr texts name different idents, so they do not contend for isolation.
+///
+/// * IDENT≠STRUCTURAL (`arr_idx_foo_list = [* idx_foo_list]`): probed at HEAD before the fix — the
+///   structural name derived from the element is `IdxFooListList`, so the screen at the top of
+///   `try_defer_wrapper` declines on a name that is NOT the one emitted; the class actually minted is
+///   the rule's own `ArrIdxFooList`, which the dep's index lists. (The roadmap recorded this cell as
+///   the R3c constituent screen; the probe showed this spelling never reaches R3c. The seam-level
+///   backstop covers both, which is why the recorded spelling still exercises the recorded defect.)
+/// * R3c CONSTITUENT (`idx_hash_list = [* idx_hash]`, `idx_hash` consumer-owned): ident and
+///   structural name coincide as `IdxHashList` — also dep-indexed — and the all-one-dep screen
+///   returns local-and-silent because the element is the consumer's. That verdict is correct about
+///   the DEFERRAL and says nothing about the NAME, which is what the backstop supplies.
+///
+/// The emitted output is unchanged in both arms (asserted: the classes ARE minted and DO appear in
+/// this crate's own index) — the warning is the whole delivery, so its load-bearing fragments are
+/// pinned verbatim. `idx_foo_list` rides along as the already-pinned unification cell, proving the
+/// three warnings coexist through the shared once-per-ident set without suppressing each other.
+///
+/// Bespoke harness for the same reason as its two siblings above: the stderr texts are the contract.
+#[test]
+fn extern_wrapper_index_local_mint_under_indexed_name_warns() {
+    let (export, gen_stderr) = generate_index_named_fixture("inputs_nested", "nested", &[]);
+
+    // IDENT≠STRUCTURAL arm: named ident, named shape, named dep, and the duplicate-symbol
+    // consequence — the four things a reader needs to act on it.
+    assert!(
+        gen_stderr.contains(
+            "warning: collection wrapper ArrIdxFooList is minted locally from this crate's \
+             [* idx_foo_list], but dependency \"index_dep_crate\" also lists ArrIdxFooList in its \
+             --extern-wrapper-index"
+        ),
+        "expected the local-mint backstop warning for ArrIdxFooList, got stderr:\n{gen_stderr}"
+    );
+    // R3c CONSTITUENT arm: same text, its own ident and shape.
+    assert!(
+        gen_stderr.contains(
+            "warning: collection wrapper IdxHashList is minted locally from this crate's \
+             [* idx_hash], but dependency \"index_dep_crate\" also lists IdxHashList in its \
+             --extern-wrapper-index"
+        ),
+        "expected the local-mint backstop warning for IdxHashList, got stderr:\n{gen_stderr}"
+    );
+    assert_eq!(
+        gen_stderr
+            .matches("so both crates export a #[wasm_bindgen]")
+            .count(),
+        2,
+        "each local mint under a dep-indexed name warns exactly once (shared once-per-ident set):\n{gen_stderr}"
+    );
+    assert!(
+        gen_stderr.contains(
+            "settle the name on one owner — declare this shape in index_dep_crate's spec, or drop"
+        ),
+        "the backstop warning must carry the remedy naming the dependency:\n{gen_stderr}"
+    );
+    // The already-pinned unification warning still fires beside them: the deferring arm and the
+    // minting arms share `deferred_warned`, and neither swallows the other.
+    assert!(
+        gen_stderr.contains("warning: rule-declared type IdxFooList names the collection wrapper"),
+        "the deferred rule's unification warning must still fire alongside the backstop:\n{gen_stderr}"
+    );
+
+    let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
+    let wasm_index =
+        std::fs::read_to_string(export.join("wasm/src/generated/collections.rs")).unwrap();
+    // Warn-only: the shipped emission is unchanged in BOTH arms — the classes are minted and
+    // re-exported from this crate's own index, exactly as before the backstop existed.
+    for minted in ["pub struct ArrIdxFooList", "pub struct IdxHashList"] {
+        assert!(
+            wasm_mod.contains(minted),
+            "the backstop must not suppress the local mint: `{minted}` missing:\n{wasm_mod}"
+        );
+    }
+    assert!(
+        wasm_index.contains("pub use crate::generated::ArrIdxFooList;")
+            && wasm_index.contains("pub use crate::generated::IdxHashList;"),
+        "a locally-minted wrapper stays in this crate's own collections.rs index:\n{wasm_index}"
+    );
+    // The deferred element wrapper is still deferred (no local class, dep import routed) — the
+    // control that keeps this fixture honest about which arm did what.
+    assert!(
+        !wasm_mod.contains("pub struct IdxFooList")
+            && wasm_mod.contains("use index_dep_crate_wasm::collections::IdxFooList;"),
+        "the nested element's wrapper must still defer to the dep:\n{wasm_mod}"
+    );
+
+    index_named_wasm_check(
+        "extern_wrapper_index_local_mint_under_indexed_name_warns",
+        &export,
+    );
+}
+
 /// The not-in-index warning's rule line is documented as the exact PASTE-ABLE manual override, and a
 /// FLAVORED shape is where that contract earns its keep: a `@duplicates preserve` table's structural
 /// wasm name encodes its container (`PairMapKToV`), so a rule declared in the dep WITHOUT the

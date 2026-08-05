@@ -1,0 +1,4 @@
+; The dependency's extern type. Its wasm face lives in `index_dep_crate_wasm` (via
+; --extern-wasm-crate) and its collection wrappers (IdxFooList / MapU64ToIdxFoo) are listed in that
+; crate's `collections` index — the index this consumer defers to.
+idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_
