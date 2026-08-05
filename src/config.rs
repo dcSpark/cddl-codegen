@@ -2469,15 +2469,15 @@ impl Config {
     ///
     /// # The two kinds of axis
     ///
-    /// [`RuntimeFlavor`]'s equality axes must be IDENTICAL across every crate. This is measured, not
-    /// assumed: a runtime exported with `canonical-form` fails to compile a crate generated without
-    /// it (and vice versa) on the arity of `fit_sz`/`to_len_sz`/`SerializeEmbeddedGroup`; a
-    /// `preserve-encodings` runtime fails a crate generated without it as soon as that crate's spec
-    /// holds a `{+ K => V}`; and a depth limit is a contract about which documents are ACCEPTED,
-    /// baked by value into the exported `AnyCbor` guard, which is worse than a compile error because
-    /// it compiles. The max axes (`json-serde-derives`, `json-schema-export`) genuinely nest: the
-    /// json/schemars companions are appended to the runtime types, so carrying them serves a crate
-    /// that does not.
+    /// [`RuntimeFlavor`]'s equality axes must be IDENTICAL across every crate. This is a config
+    /// contract, not a claim that every mixed pair fails on every spec: a preserve + canonical
+    /// runtime deliberately accommodates a reduced crate's `{+ K => V}` and `any`. The remaining
+    /// canonical/non-canonical calling conventions differ at `fit_sz`/`to_len_sz`/
+    /// `SerializeEmbeddedGroup`, and the depth limit is a contract about which documents are
+    /// ACCEPTED, baked by value into the exported `AnyCbor` guard — worse than a compile error
+    /// because it compiles while guarding at another crate's limit. The max axes
+    /// (`json-serde-derives`, `json-schema-export`) genuinely nest: the json/schemars companions
+    /// are appended to the runtime types, so carrying them serves a crate that does not.
     ///
     /// So the carrier is the first crate — in crate-name order, the order this config's tables are
     /// held in — whose flavor equals the agreed equality axes plus the OR of the max axes. Any crate
@@ -2565,13 +2565,14 @@ impl Config {
         }
         if !disagreements.is_empty() {
             return Err(format!(
-                "`[runtime].export-static-crate` cannot write one runtime for these crates: they \
-                 disagree on {}, and a shared runtime must match {} EXACTLY. A runtime exported at \
-                 one value does not compile a crate generated at another — the preserve/canonical \
-                 serialize signatures differ in arity and in which crate defines `Serialize`, and \
-                 the depth limit is baked by value into the exported `AnyCbor` guard, so a mismatch \
-                 there compiles while guarding one crate's `any` values at another's limit. Give \
-                 every crate the same value, or accept the gap explicitly with \
+                "`[runtime].export-static-crate` cannot DERIVE one runtime for these crates: they \
+                 disagree on {}, and automatic carrier selection requires {} to match EXACTLY. A \
+                 preserve + canonical runtime has narrow bridges for a reduced crate's `{{+ K => \
+                 V}}` and `any`, but config derivation does not infer arbitrary spec-dependent \
+                 flavor compatibility; canonical/non-canonical calling conventions still differ, \
+                 and the depth limit is baked by value into the exported `AnyCbor` guard, so a \
+                 mismatch there compiles while guarding one crate's `any` values at another's \
+                 limit. Give every crate the same value, or accept the gap explicitly with \
                  `[runtime].flavor-from = \"<crate>\"`.",
                 disagreements.join("; "),
                 if disagreements.len() == 1 {
