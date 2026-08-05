@@ -61,7 +61,7 @@ not interchangeable: a nominal reference to a collection typedef needed an `enco
 fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 17 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 19 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `wrapper_participation_mode_floors` / `wrapper_participation_requested_host_floor` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the two byte-fuzzer gates (`fuzz_compile_rot`, the compile-rot check, and `fuzz_bounded_run`, a time-boxed live libFuzzer walk of both targets — `fuzz/README.md`), `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
 didn't run is always
@@ -1080,6 +1080,46 @@ and their own-index rows — and both are now announced by the mint-seam backsto
 (`warn_local_mint_shadows_index`, keyed on the EMITTED ident rather than on the arm that declined),
 whose text is pinned verbatim beside the deferring rule's unification warning to prove the shared
 once-per-ident set lets all three coexist.
+
+#### The wrapper-participation grid (`src/tests/wrapper_participation_tests.rs`)
+
+The three cells above and their ~20 siblings elsewhere are INCIDENT-shaped — each records the exact
+configuration of one past escape. `wrapper_participation_tests` is the ENUMERATION beside them:
+`PARTICIPATION_TABLE` is the grid AS DATA over emission MODE (`Local` control / `IndexDeferred` /
+`WorkspaceBorrowed` / `RequestedHosted`) × wrapper SHAPE (loose list, loose map, NonEmpty list,
+NonEmpty map, named table rule, `@duplicates reject` set, `@duplicates preserve` pair map) ×
+reference POSITION (inline-anonymous member, named-rule DECLARATION whose ident equals the structural
+name, named-rule REFERENCE, non-root declaring scope). Each row states its expected `Outcome`
+(`Defer` / `Borrow` / `Host` / `LocalWarned(<which warning>)` / `LocalSilent(<why silence is
+correct>)`), and a row an existing test already pins carries that test in a `pinned_by` column and is
+REFERENCED rather than rebuilt — so the module's generated crates cover exactly the rows nothing else
+did, and a new shape or mode is one table row rather than a new function. Each row's CDDL is DERIVED
+from its axes, and each owns a distinct element ident, so one generated crate carries a whole mode.
+
+Two participation facts the grid encodes rather than assumes: a reject set can be HOSTED but can
+never DEFER (its emitter reaches no defer seam — so under `--extern-wrapper-index` an indexed name
+is a collision only the mint-seam backstop can announce), while its loose `try_from` source IS
+defer-capable; and the name-only index is flavor-SAFE by construction, because the structural name
+carries the container (`PairMapKToV` vs `MapKToV`), which makes a preserve table an ordinary shape
+row rather than a hazard cell. `wrapper_participation_table_is_complete_and_live` is the grid's own
+guard: rows are unique, every mode covers every shape that participates in it (the one documented
+gap — a table RULE cannot be requested — is spelled, not left as a silent absence), and every
+`pinned_by` resolves to a test that still exists, so a referenced row cannot go on reading as
+coverage after its pin is renamed away.
+
+The four per-mode sweeps are always-on and GENERATION-only (emitted source, this crate's own
+collection index, the workspace sidecar, and the run's stderr). The compile/link floors are
+`#[ignore]`d and batched per (mode, floor), each memoized by `gate_cache::run_cached`:
+`wrapper_participation_mode_floors` (check.ts gate `wrapper_participation_floors`) does a `cargo
+check` of the standalone `Local` column plus a real `cargo build --target wasm32-unknown-unknown` of
+the index and workspace columns against the committed wasm-clean dep pair — GREEN only, since
+`extern_wrapper_index_defers_to_dep`'s RED leg already demonstrates that a non-deferring consumer
+duplicate-symbols; and `wrapper_participation_requested_host_floor` (gate
+`wrapper_participation_host_floor`) checks the HOST crate a `--wrapper-requests` run emits, whose
+mints come from a sidecar rather than from its own spec. What the link legs add over the incident
+cells is the POSITION crossing: a named-rule declaration, a by-name reference and a non-root
+declaring scope had never reached a wasm32 link, and an import routed into the wrong module is
+exactly the class every host-target check survives.
 
 ### Hand-vector suites (`tests/<dir>/tests.rs`) — the assertions no other layer can make
 

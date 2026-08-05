@@ -956,14 +956,12 @@ composition-space cross-check that complements this matrix's curated per-shape g
   mechanism they extend only exists under directory input. (`--no-synthesized-rust-collection-aliases`
   is emission-only alias suppression with no per-module placement logic; its pin is single-file,
   a deliberate posture.) A SIBLING axis with the same silent-hole character — per-wrapper emission
-  MODE (local vs index-deferred vs workspace-borrowed vs requested-hosted) × wrapper shape, which
-  neither SHAPES/ROLES nor this input-mode rule enumerates — is recorded in
-  `tests/TESTING_ROADMAP.md`'s `--extern-wrapper-index` deferral-boundaries entry, whose
-  mechanical layer (a deferral-profile leg over the extern-capable shapes) is now DUE: its
-  recur-first trigger is over-met on three arming instances — the consumer-reported
-  companion-wrapper pair (the named-table workspace keys-list and the co-hosted requested
-  keys-list) plus a probed named-reference-position red — details, the participation table, and
-  the leg's axis refinements live in that entry.
+  MODE (local vs index-deferred vs workspace-borrowed vs requested-hosted) × wrapper shape ×
+  reference POSITION, which neither SHAPES/ROLES nor this input-mode rule enumerates — is swept in
+  the rust suite instead, by the wrapper-participation grid (`tests/README.md`
+  § "The wrapper-participation grid"): a table-driven grid with always-on generation assertions and
+  per-(mode, floor) compile/link gates. It stays there rather than moving here because every mode
+  configuration requires directory input, which this differential scopes out by construction.
 
 ## Explicitly out of scope (decided, not overlooked)
 

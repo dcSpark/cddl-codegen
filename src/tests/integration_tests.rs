@@ -1265,7 +1265,7 @@ fn append_raw_bytes_defs(out: &std::path::Path, json: bool) {
 /// snippet may hold one or more `name = spec` lines (a leading/trailing blank line is tolerated).
 /// Falls back to seeding a fresh `[dependencies]` table if the manifest has none. These are throwaway
 /// test-scaffolding deps (never asserted byte-wise), so the reordering is immaterial to what's tested.
-fn append_manifest_deps(manifest: &std::path::Path, dep_snippets: &[&str]) {
+pub(crate) fn append_manifest_deps(manifest: &std::path::Path, dep_snippets: &[&str]) {
     let content = std::fs::read_to_string(manifest).unwrap();
     let mut block = String::new();
     for snippet in dep_snippets {
