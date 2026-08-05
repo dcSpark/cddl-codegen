@@ -302,19 +302,21 @@ for (const r of rows) {
         problems.push(`${where}: class="over-acceptance" vector needs a nonempty \`reason\` (cite the ledgered finding + the promotion flow: flips to class="constraint" with an expect_err when the fix lands)`);
     }
     if (expect === "reject") {
-      if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")
-        problems.push(`${where}: reject vector \`class\` must be "bug", "limitation" or "constraint" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
+      if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint" && v.class !== "policy-rejected")
+        problems.push(`${where}: reject vector \`class\` must be "bug", "limitation", "constraint" or "policy-rejected" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
       if (typeof v.reason !== "string" || v.reason.length === 0)
         problems.push(`${where}: reject vector needs a nonempty \`reason\` (the ledgered bug / doc citation, or the violated constraint for class="constraint")`);
+      if (v.class === "policy-rejected" && v.source !== "hand")
+        problems.push(`${where}: class="policy-rejected" must set \`source\` to "hand" (documented policy evidence is deliberately authored, never a generated sample)`);
     }
     // Shape §3: `expect_err` — the rejection-reason substring the rust replay gate asserts. REQUIRED on
-    // class="constraint" (that gate names the violated constraint, not just that it rejects); FORBIDDEN
-    // everywhere else, so its meaning stays tight to durable-reject enforcement evidence.
-    if (v.class === "constraint" && expect === "reject") {
+    // class="constraint" and class="policy-rejected" name their durable rejection reason; FORBIDDEN
+    // everywhere else.
+    if ((v.class === "constraint" || v.class === "policy-rejected") && expect === "reject") {
       if (typeof v.expect_err !== "string" || v.expect_err.length === 0)
-        problems.push(`${where}: class="constraint" vector needs a nonempty \`expect_err\` (a substring the generated decoder's error Display must contain — pins the rejection reason, asserted by the rust replay gate)`);
+        problems.push(`${where}: class=${JSON.stringify(v.class)} vector needs a nonempty \`expect_err\` (a substring the generated decoder's error Display must contain — pins the rejection reason, asserted by the rust replay gate)`);
     } else if (v.expect_err !== undefined) {
-      problems.push(`${where}: only class="constraint" reject vectors may carry \`expect_err\` (got ${JSON.stringify(v.expect_err)}) — it pins the constraint-rejection reason and is meaningless elsewhere`);
+      problems.push(`${where}: only class="constraint" or class="policy-rejected" reject vectors may carry \`expect_err\` (got ${JSON.stringify(v.expect_err)}) — it pins their durable rejection reason and is meaningless elsewhere`);
     }
   });
 
@@ -532,6 +534,7 @@ if (supported.size < 80)
         { hex: "02", source: "spec", expect: "reject", class: "bug", reason: "synthetic bug — spec-valid wrongly rejected" },
         { hex: "03", source: "spec", expect: "reject", class: "limitation", reason: "synthetic limitation — known gap" },
         { hex: "04", source: "hand", expect: "reject", class: "constraint", reason: "synthetic constraint — violated bound", expect_err: "out of range" },
+        { hex: "06", source: "hand", expect: "reject", class: "policy-rejected", reason: "synthetic policy — documented narrowing", expect_err: "policy rejection" },
         { hex: "05", source: "hand", expect: "accept" },
       ],
     },
@@ -925,16 +928,18 @@ for (const r of corpusRows) {
         corpusProblems.push(`${where}: class="over-acceptance" vector needs a nonempty \`reason\``);
     }
     if (expect === "reject") {
-      if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")
-        corpusProblems.push(`${where}: reject vector \`class\` must be "bug", "limitation" or "constraint" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
+      if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint" && v.class !== "policy-rejected")
+        corpusProblems.push(`${where}: reject vector \`class\` must be "bug", "limitation", "constraint" or "policy-rejected" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
       if (typeof v.reason !== "string" || (v.reason as string).length === 0)
         corpusProblems.push(`${where}: reject vector needs a nonempty \`reason\``);
+      if (v.class === "policy-rejected" && v.source !== "hand")
+        corpusProblems.push(`${where}: class="policy-rejected" must set \`source\` to "hand"`);
     }
-    if (v.class === "constraint" && expect === "reject") {
+    if ((v.class === "constraint" || v.class === "policy-rejected") && expect === "reject") {
       if (typeof v.expect_err !== "string" || (v.expect_err as string).length === 0)
-        corpusProblems.push(`${where}: class="constraint" vector needs a nonempty \`expect_err\``);
+        corpusProblems.push(`${where}: class=${JSON.stringify(v.class)} vector needs a nonempty \`expect_err\``);
     } else if (v.expect_err !== undefined) {
-      corpusProblems.push(`${where}: only class="constraint" reject vectors may carry \`expect_err\` (got ${JSON.stringify(v.expect_err)})`);
+      corpusProblems.push(`${where}: only class="constraint" or class="policy-rejected" reject vectors may carry \`expect_err\` (got ${JSON.stringify(v.expect_err)})`);
     }
   });
 
@@ -999,7 +1004,9 @@ const rejects = allVectors.filter(v => v.expect === "reject");
 const rejectBug = rejects.filter(v => v.class === "bug").length;
 const rejectLimitation = rejects.filter(v => v.class === "limitation").length;
 const rejectConstraint = rejects.filter(v => v.class === "constraint").length;
+const rejectPolicy = rejects.filter(v => v.class === "policy-rejected").length;
 const constraintWithExpectErr = rejects.filter(v => v.class === "constraint" && typeof v.expect_err === "string" && v.expect_err.length > 0).length;
+const policyWithExpectErr = rejects.filter(v => v.class === "policy-rejected" && typeof v.expect_err === "string" && v.expect_err.length > 0).length;
 
 if (problems.length) {
   console.log(`decode-conformance drift gate: ${problems.length} problem(s)`);
@@ -1012,7 +1019,7 @@ const corpusVectorCount = corpusActive.reduce((n, r) => n + (r.vector ?? []).len
 console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
     `${accepts} accept [${overAccepts} over-acceptance], ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
-    `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err) · ` +
+    `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err), ${rejectPolicy} policy-rejected (${policyWithExpectErr} with expect_err) · ` +
     `${Object.keys(floorScope).length} arm-coverage-floor rows (${Object.keys(DECODE_FLOOR_ARM_EXEMPT).length} ledgered-exempt arm class) · ` +
     `evidence↔catalog clauses coherent on ${evidenceCatalogChecked} supported rows · ${supported.size} supported matrix rows`,
 );
