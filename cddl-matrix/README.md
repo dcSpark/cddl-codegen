@@ -518,6 +518,48 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   mis-enforce. The last two route through `record_rejection` and are pinned alongside the float-window
   enforcement in the `tests/core` `float_bounds` fixtures. Everything else in this section's
   neighbourhood is a candidate fix, and lives in `ROADMAP.md` § findings.
+- **`@custom_json` is a CONTRACT, and its can't-compile-STANDALONE class is the correct record of
+  it.** The directive suppresses the serde/schemars derives on the type it names precisely so the
+  spec author owns its JSON form, while every JSON surface the tool emits over that type keeps
+  being emitted — a derived container's own derives, the wasm wrapper's
+  `to_json`/`to_json_value`/`from_json` door, the `--component` guest's `to-json`/`from-json`
+  members, and (under `--json-schema-export`) json-gen's registration row. Each resolves to one of
+  exactly three impls the author is on the hook for (`serde::Serialize`, `serde::Deserialize`,
+  `schemars::JsonSchema`), so a build failure is always the named trait on the named type
+  (`E0277`, loud and local at the first build), and supplying them builds the whole surface green:
+  `tests/json` splices the hand-written impls of `tests/external_json_impls` into the generated
+  crate and builds the rust, wasm and json-gen crates, standalone type and derived container
+  alike (pinned by `custom_wrapper_in_derived_container`). Gating those surfaces on "does this
+  type carry serde derives" would delete the door the directive exists to publish — a hand-owned
+  JSON form the wasm and schema faces can still expose. So the `dsl.custom_json` row
+  (`cj = uint ; @newtype @custom_json`) sitting on both `JSON_SURFACE_SKIP` and
+  `WASM_SURFACE_SKIP` is the right record: those legs compile the row's crate with no hand-written
+  impls anywhere, which is exactly the state the contract says cannot build. The promise is stated
+  where the directive is documented (`docs/docs/comment_dsl.mdx` § "@custom_json"). The boundary
+  would stop being a contract — and go back to `ROADMAP.md` § findings as a defect — if a
+  `@custom_json` type's emitted JSON surface ever demanded anything BEYOND those three impls: a
+  bound no hand impl can discharge, or a reference only an edit to a generated file could satisfy.
+- **A NON-STRING map key does not cross the `--json-serde-derives` json boundary — a kept
+  boundary, not a pending fix.** JSON object keys must be strings; `serde_json` stringifies
+  integer keys but hard-errors on a byte-string or composite (array/map) key
+  (`serde_json::to_string` returns `Err`, "key must be a string"), so a map keyed by `bytes` or a
+  composite type — spec-valid CBOR the decoder accepts — is not json-serializable through the
+  generated derives. The same class reaches an open table's typed row and an open struct-map's
+  rest row through their own hand-written JSON faces, where the posture is decided: text/uint/nint
+  keys image as natural strings and bytes/composite keys STRICT-FAIL loudly at `to_json`
+  (`OpenTableKeyImageError`, and the rest-row strict failure —
+  `docs/docs/output_format.mdx` § "Open tables (a typed row plus a catch-all)" and § "Typed key
+  domains in JSON"), refusing a lossy encoding on injectivity grounds. The affected replay rows
+  sit on the two replay gates' `JSON_SURFACE_SKIP` ledgers citing this entry (which also
+  suppresses their wasm `from_json` sub-leg, the same serde path), and the bare-`bstr` cells stay
+  in the catalog as the pin for the un-remedied spelling's loud error. The remedy a real consumer
+  takes is a key type with a string-producing `Serialize` (a `@newtype`/raw-bytes hex impl —
+  `tests/open-table-json-e2e` executes exactly this). A generated hex/base64 key stringification
+  was considered and not built: it is a lossy, non-obvious wire mapping, and the strict-fail
+  posture above refuses lossy key encodings for the same injectivity reason — building it means
+  overturning that rationale, or accepting that two map positions publish different key
+  conventions, which is a consumer-driven decision to make before any code, not a fix this
+  boundary is waiting on.
 - **Execution-gate exemptions.** 7 user-code features stay `supported` via the documented
   `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code (or pin a dependency-crate
   name), so they can't compile (or test) standalone: `ext.extern`, `ext.raw_bytes`,
@@ -745,8 +787,9 @@ cost six fail-fast tier iterations. In order:
    arithmetic), and the `--check` trio (`q6`, `decode_conformance`, `build_matrix`).
 7. Expect the cells' examples to meet the REPLAY oracles for the first time on the next full
    tier, and route each finding to its designed ledger rather than a weakened contract:
-   `JSON_SURFACE_SKIP` (a value class that cannot cross the json boundary — cite the findings
-   entry), `RUST_ORACLE_SKIP` (a rust-validator gap, ruby keeps judging — cite the gap number),
+   `JSON_SURFACE_SKIP` (a value class that cannot cross the json boundary — cite its owning
+   record: the non-string-map-key gotcha above for the kept boundary, a `ROADMAP.md` § findings
+   entry for a defect), `RUST_ORACLE_SKIP` (a rust-validator gap, ruby keeps judging — cite the gap number),
    `ENCODING_VARIANT_SKIP` (a real DECODER gap over a genuinely spec-equal re-encoding — cite the
    findings entry). All three are stale-guarded. A reordering variant whose value-equality premise
    is false for the TYPE is not ledgered at all: an `@duplicates preserve` pair-map's exemption is

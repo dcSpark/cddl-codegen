@@ -20373,34 +20373,35 @@ fn decode_conformance_replay() {
     // json/wasm decode-surface legs (third generation, `--wasm=true --json-serde-derives=true`).
     // JSON_SURFACE_SKIP: rows whose json boundary legitimately can't round-trip (a value the CBOR
     // decoder accepts that serde_json can't serialize / re-accept / round-trip bit-for-bit). Each
-    // resident cites a cddl-matrix/ROADMAP.md finding. Stale-guarded (a listed row that now round-trips
+    // resident cites its owning record — a decided posture in cddl-matrix/README.md § Gotchas, or a
+    // cddl-matrix/ROADMAP.md finding for a defect. Stale-guarded (a listed row that now round-trips
     // fails the gate). A row skipped here still runs the wasm accept + cbor differential leg (only its
     // wasm from_json sub-leg is suppressed too, since that shares the same serde parse path).
     const JSON_SURFACE_SKIP: &[(&str, &str)] = &[
         // `@custom_json` omits serde derives on the rust type, so `serde_json::to_string(&T)` in the
         // json test module won't compile standalone — the user is expected to supply custom json code
-        // (cddl-matrix/ROADMAP.md § findings, the `@custom_json` json/wasm-surface entry).
+        // (cddl-matrix/README.md § Gotchas, the `@custom_json` contract entry).
         (
             "dsl.custom_json",
             "`@custom_json` omits the serde derives the json leg's serde_json usage needs — references \
-             user-supplied custom-json code, can't compile standalone (cddl-matrix/ROADMAP.md § findings)",
+             user-supplied custom-json code, can't compile standalone (cddl-matrix/README.md § Gotchas)",
         ),
         // A bare-`bstr` typed row: its serde image is a JSON array, so the open table's hand-written
         // `to_json` errors LOUDLY (OpenTableKeyImageError — the documented member-name contract) on
         // every vector holding a typed entry. The loud error IS the contract; the remedied spelling
         // (a string-producing key serde impl) is executed in tests/open-table-json-e2e
-        // (cddl-matrix/ROADMAP.md § findings, the non-string-map-key entry).
+        // (cddl-matrix/README.md § Gotchas, the non-string-map-key entry).
         (
             "contain.occurrence-target.memberkey.type1.open_table",
             "a bare-bstr typed key has no JSON member-name image, so to_json errors loudly on every \
              typed entry — the documented open-table contract; remedied spellings are executed in \
-             tests/open-table-json-e2e (cddl-matrix/ROADMAP.md § findings)",
+             tests/open-table-json-e2e (cddl-matrix/README.md § Gotchas)",
         ),
         (
             "contain.occurrence-target.memberkey.type1.open_table_plus",
             "a bare-bstr typed key has no JSON member-name image, so to_json errors loudly on every \
              typed entry — the documented open-table contract; remedied spellings are executed in \
-             tests/open-table-json-e2e (cddl-matrix/ROADMAP.md § findings)",
+             tests/open-table-json-e2e (cddl-matrix/README.md § Gotchas)",
         ),
         // The open STRUCT-map rest row's `bytes` key domain: same class as the open-table entries
         // above through the rest row's own hand-written face — the delivered posture images
@@ -20414,23 +20415,24 @@ fn decode_conformance_replay() {
             "contain.occurrence-target.memberkey.type1.open_struct_bytes_key",
             "a `bytes` rest-row key domain has no JSON member-name image, so to_json strict-fails \
              loudly on every captured entry — the decided open-struct rest-row posture \
-             (docs/docs/output_format.mdx § \"Typed key domains in JSON\"; cddl-matrix/ROADMAP.md \
-             § findings, the non-string-map-key entry)",
+             (docs/docs/output_format.mdx § \"Typed key domains in JSON\"; cddl-matrix/README.md \
+             § Gotchas, the non-string-map-key entry)",
         ),
     ];
     // WASM_SURFACE_SKIP: rows whose `--wasm` generation or wasm-crate compile legitimately fails. Each
-    // resident cites a finding. Distinct from a MECHANICAL skip — a type with no `from_cbor_bytes`
+    // resident cites its owning record (decided posture in cddl-matrix/README.md § Gotchas, or a
+    // finding). Distinct from a MECHANICAL skip — a type with no `from_cbor_bytes`
     // wrapper surface is classified by `wasm_impl_has_fn` and NOT hand-listed (a hand list would rot).
     // Stale-guarded (a listed row that now compiles + passes fails the gate).
     const WASM_SURFACE_SKIP: &[(&str, &str)] = &[
         // `@custom_json` omits the type's serde derives, but the wasm wrapper still emits
         // to_json/from_json (gated only on --json-serde-derives), which require `T: Serialize +
-        // Deserialize` → the wasm crate fails E0277 (cddl-matrix/ROADMAP.md § findings, the
-        // `@custom_json` json/wasm-surface entry).
+        // Deserialize` → the wasm crate fails E0277 (cddl-matrix/README.md § Gotchas, the
+        // `@custom_json` contract entry).
         (
             "dsl.custom_json",
             "`@custom_json` omits serde derives, but the wasm wrapper's to_json/from_json require them → \
-             the wasm crate fails to compile standalone (cddl-matrix/ROADMAP.md § findings)",
+             the wasm crate fails to compile standalone (cddl-matrix/README.md § Gotchas)",
         ),
     ];
 
@@ -21429,24 +21431,25 @@ fn corpus_decode_replay() {
     // MECHANICAL no-`from_cbor_bytes` skip (classified by `wasm_impl_has_fn`, never hand-listed). Every
     // corpus row is holder mode (`type_name = ProbeHolder`, a generated array struct that always has a
     // decode surface), so no mechanical wasm skips are expected here. Both stale-guarded; each resident
-    // cites a cddl-matrix/ROADMAP.md finding.
+    // cites its owning record — a decided posture in cddl-matrix/README.md § Gotchas, or a
+    // cddl-matrix/ROADMAP.md finding for a defect.
     const JSON_SURFACE_SKIP: &[(&str, &str)] = &[
         // Non-string map keys don't cross the json boundary (serde_json errors on byte-string / composite
-        // keys) — cddl-matrix/ROADMAP.md § findings, the non-string-map-key entry.
+        // keys) — cddl-matrix/README.md § Gotchas, the non-string-map-key entry.
         (
             "bytes_map_key.bkeys",
             "a `bytes`-keyed map is not json-serializable — serde_json requires string keys \
-             (cddl-matrix/ROADMAP.md § findings)",
+             (cddl-matrix/README.md § Gotchas)",
         ),
         (
             "bytes_map_key.bytes_key_holder",
             "a `bytes`-keyed map is not json-serializable — serde_json requires string keys \
-             (cddl-matrix/ROADMAP.md § findings)",
+             (cddl-matrix/README.md § Gotchas)",
         ),
         (
             "composite_map_key.holder",
             "a composite (array) map key is not json-serializable — serde_json requires string keys \
-             (cddl-matrix/ROADMAP.md § findings)",
+             (cddl-matrix/README.md § Gotchas)",
         ),
         // The open-table corpus fixture's three rules all carry a bare-`bstr` TYPED row, whose serde
         // image is a JSON array — the open table's hand-written to_json errors loudly on every typed
@@ -21456,17 +21459,17 @@ fn corpus_decode_replay() {
         (
             "open_table.open_table",
             "a bare-bstr typed-row key has no JSON member-name image — the open table's to_json \
-             errors loudly by contract (cddl-matrix/ROADMAP.md § findings)",
+             errors loudly by contract (cddl-matrix/README.md § Gotchas)",
         ),
         (
             "open_table.open_table_dup",
             "a bare-bstr typed-row key has no JSON member-name image — the open table's to_json \
-             errors loudly by contract (cddl-matrix/ROADMAP.md § findings)",
+             errors loudly by contract (cddl-matrix/README.md § Gotchas)",
         ),
         (
             "open_table.open_table_non_empty",
             "a bare-bstr typed-row key has no JSON member-name image — the open table's to_json \
-             errors loudly by contract (cddl-matrix/ROADMAP.md § findings)",
+             errors loudly by contract (cddl-matrix/README.md § Gotchas)",
         ),
         // The non-empty-walker position pins keep a NonEmpty map in map-KEY position (that placement
         // IS what the fixture pins), so their json legs hit the same non-string-key class as
@@ -21474,28 +21477,28 @@ fn corpus_decode_replay() {
         (
             "nonempty_nested_positions.dom_nonempty_map",
             "a composite (map) map key is not json-serializable — serde_json requires string keys \
-             (cddl-matrix/ROADMAP.md § findings)",
+             (cddl-matrix/README.md § Gotchas)",
         ),
         (
             "nonempty_nested_positions.holder",
             "a composite (map) map key is not json-serializable — serde_json requires string keys \
-             (cddl-matrix/ROADMAP.md § findings)",
+             (cddl-matrix/README.md § Gotchas)",
         ),
         // `@custom_json` omits serde derives, so the json test module's serde_json usage won't compile
-        // standalone (references user-supplied custom-json code) — cddl-matrix/ROADMAP.md § findings.
+        // standalone (references user-supplied custom-json code) — cddl-matrix/README.md § Gotchas.
         (
             "dsl_custom.custom_newtype",
             "`@custom_json` omits the serde derives the json leg needs — references user-supplied \
-             custom-json code, can't compile standalone (cddl-matrix/ROADMAP.md § findings)",
+             custom-json code, can't compile standalone (cddl-matrix/README.md § Gotchas)",
         ),
     ];
     const WASM_SURFACE_SKIP: &[(&str, &str)] = &[
         // `@custom_json` omits serde derives, but the wasm wrapper still emits to_json/from_json requiring
-        // them → the wasm crate fails E0277 standalone (cddl-matrix/ROADMAP.md § findings).
+        // them → the wasm crate fails E0277 standalone (cddl-matrix/README.md § Gotchas).
         (
             "dsl_custom.custom_newtype",
             "`@custom_json` omits serde derives, but the wasm wrapper's to_json/from_json require them → \
-             the wasm crate fails to compile standalone (cddl-matrix/ROADMAP.md § findings)",
+             the wasm crate fails to compile standalone (cddl-matrix/README.md § Gotchas)",
         ),
     ];
 
