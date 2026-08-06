@@ -2552,6 +2552,22 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   spec carrying a construct no `tests/*/input.cddl` fixture has (a hand-written `JsonSchema` impl of
   its own, a cross-crate threaded row whose key is not an identifier), which is when its document
   stops being a simplification of a projected one.
+- **Check the merged `.d.ts` for name collisions BETWEEN its two halves.** `json-ts-types.js`
+  appends the `<key>JSON` declarations to the wasm-pack bindings under the claim that the suffix
+  cannot collide with a wasm class name — an assumption, not a check: `@name` can mint a wasm
+  class literally called `FooJSON` (and a contrived rule spelling that camelizes to one can too),
+  and TypeScript merges a class with a same-named `interface` silently and LEGALLY, so the merged
+  file's `tsc --noEmit` leg structurally cannot say so and the shipped type is the merge of two
+  unrelated shapes with nothing said. `run-json2ts.js`'s duplicate-declaration guard covers only
+  its own half, for the same reason it exists at all (`tsc` is not the oracle for declaration
+  merging). This is the missing TS sibling of the wasm wrapper-name collision-detector family:
+  per that family's ruling, a per-kind check with its own message rather than a generalization of
+  an existing one. The cheap mechanical layer sits where both halves are in hand —
+  `json-ts-types.js` already walks every `export class` line to place the splice, so collecting
+  those names and refusing an appended declaration equal to one is a set intersection plus a
+  diagnostic naming both the class and the `$defs` key, same fatal-and-file-untouched shape as
+  its existing failures; the vector is an `@name FooJSON` fixture through `js_d_ts_merge`'s
+  hand-laid harness.
 - **Propagating a deliberately-unpublished type's intent to the JSON → TS scripts.** A type whose
   CDDL rule carries `@no_json_schema_export` still mints a wasm class with `to_json_value(): any`
   (the directive removes the registration row, not the derives), so when nothing published
