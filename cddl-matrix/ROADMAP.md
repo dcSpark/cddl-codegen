@@ -182,27 +182,24 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
-- **A plain group SPLICED into a MAP-representation slot emits non-conformant CBOR at exit 0 — the
-  table roles are now refused, the keyed struct-map member is not.** A CBOR map entry holds exactly
-  one item per slot, so splicing a group's members in flat writes N items where the map header
-  promised one; an ARRAY container absorbs the same splice because its emitted length scales with
-  the group's arity (`write_array(Len(2 * len))`), which is why `[* coords]` is supported and the
-  map roles are not. The two TABLE roles are closed (`plain_group_table_domain_rejects_gracefully_at_both_spellings`,
-  `tests/robustness/table_domain_plain_group.cddl`): both spellings refuse, naming the role, the
-  group and the array-wrapping remedy. What remains open is the KEYED struct-map member whose type
-  is a plain group of keyed members — `kv = (a: uint, b: uint)` + `t = { c: kv }` generates at
-  exit 0 (deserialize is skipped with the documented `Map with plain group field` notice, so the
-  crate is serialize-only) and its serializer emits `a1 6163 6161 07 6162 08`, which `cbor2` reads
-  as `{'c': 'a'}` with four trailing bytes — the map declared one entry and five items followed.
-  Silent, unlike everything above it: exit 0, a crate that compiles, and bytes only this crate
-  could interpret. Scope of the probe: default profile, `--wasm=false`, serialize path only (there
-  is no decoder to round-trip against); not probed: `--preserve-encodings`, json/wasm faces,
-  nested/tagged spellings. The neighbouring keyless spellings are already graceful — `t = { a: coords }`
-  and the bare splice `t = { kv }` both reject with the `map field has no key` message — so the
-  hazard is specifically the KEYED member over a keyed group, the one shape that passes that check
-  and still cannot fit its slot. Fix shape, matching the table-role ruling: refuse it, naming the
-  construct and the array-wrapping remedy — a serialize-only surface that emits unreadable bytes is
-  worse than a refusal, and `{ c: [kv] }` already spells the conformant intent.
+- **An OPTIONAL plain-group field in an ARRAY-representation record aborts generation on
+  `assertion failed: !config.optional_field`.** `kv = (a: uint, b: uint)` + `t = [ c: uint, ? kv ]`
+  panics at `src/generation/deserialize.rs`' embedded-group deserialize branch. The branch's own
+  comment states the reason: an embedded read length-checks only the fields it consumed, so an
+  OPTIONAL splice would need either a second embedded deserialize method or an optionality
+  parameter that tells it to charge the group's mandatory member count to the enclosing `read_len`.
+  The assert IS the refusal, and being a panic it names neither the construct nor a remedy. Scope
+  of the probe (2026-08-06): array-representation record, `--wasm=false` default,
+  `--wasm=false --preserve-encodings=true` and `--wasm=true` — exit 101 on all three —
+  generate-only; the remedy below was verified to generate at exit 0 on the first two. The
+  MAP-representation sibling of the same spelling (`t = { ? c: kv }`) reached the same assert and is
+  now refused gracefully at parse
+  (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`), which is what left this one
+  visible on its own. Not probed: the json/component faces, an optional plain group as a
+  group-choice arm, or a group whose own members are all optional. Fix shape is a choice, not a
+  detail: either pass the optionality down so the embedded read charges the mandatory count, or make
+  the assert a graceful rejection naming the array-wrapped remedy (`w = [kv]`,
+  `t = [ c: uint, ? w ]`) the way the map sibling now does.
 - **A `.cbor` payload over a TAGGED fixed value (`bytes .cbor #6.1(42)`) emits unparseable Rust
   under the default profile — exit 1 with a rustfmt "generator bug" abort and zero files written,
   but no refusal naming the construct.** Probed 2026-08-06 while delivering default-profile support

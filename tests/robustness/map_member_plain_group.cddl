@@ -1,0 +1,49 @@
+; A KEYED map member whose type is a plain group. The key claims one map entry, and that entry's
+; VALUE slot holds exactly ONE item — but a keyless group has no single-item form, so the only
+; emission available is splicing its members in flat. The named spelling used to do exactly that at
+; exit 0: `t = { c: kv }` wrote `a1 6163 6161 07 6162 08`, five items after a one-entry map header,
+; which an interoperating decoder reads as `{'c': 'a'}` plus four trailing bytes — and no decoder
+; was generated at all (`map_record_deser_refusals` declined the record, since a map's members may
+; arrive in any order and `deserialize_as_embedded_group` reads a fixed sequence). A serialize-only
+; crate emitting bytes only itself can interpret is worse than a refusal: exit 0, it compiles, and
+; nothing tells the author the wire is wrong.
+; Every KEYED spelling reaches the same splice, so the guard is on the member's RESOLVED type
+; rather than on any one of them:
+;   - `t`  the bare named member.
+;   - `u`  a TAG around it — a tag is an encoding operation, so the member type is still the group,
+;          and the serializer wrote the tag head and then spliced.
+;   - `v`  `?` on it, which aborted on `assertion failed: !config.optional_field` instead.
+;   - `al` an ALIAS to the group, caught through shallow alias resolution (it panicked at
+;          generation on a struct that was never materialized).
+;   - `x`  a single-entry map GROUP-CHOICE arm carrying the member, which reaches the refusal
+;          through the enum seam instead of the record one — its serializer and deserializer did
+;          not even agree with each other.
+;   - `y`  a multi-entry map group-choice arm, which reaches it through the record seam.
+; Green neighbours, kept here so a refactor that over-widens the guard shows up as a message flip:
+;   - `remedy` (with `rk`/`rk_arr`) is what the message names — a NAMED array rule gives the slot
+;     the one nested item it needs and generates a FULL codec, deserialize included.
+;   - `arr_rep` (with `ck`) is the ARRAY-representation placement of a plain group, supported
+;     because an array's emitted length scales with the group's arity, so splicing there IS
+;     conformant.
+;   - `q` is a KEYLESS single-entry map group-choice arm (`{ n: uint // kv }`), supported because
+;     the referenced struct owns its own keys and writes a conformant 2-entry map.
+; The inline array member (`{ c: [kv] }`) is deliberately NOT here and is NOT the remedy: it
+; collapses the group to Array rep and is refused by the conflicting-representations guard, whose
+; own message owns that shape.
+; Each family gets its own group so the reps stay consistent within one file — a group used both as
+; a map member and as an array element would earn the conflicting-representations rejection instead
+; and mask what these rows are here to hold.
+kv = (a: uint, b: uint)
+kv_alias = kv
+t = { c: kv }
+u = { c: #6.1(kv) }
+v = { ? c: kv }
+al = { c: kv_alias }
+x = { n: uint // c: kv }
+y = { n: uint // c: kv, d: uint }
+q = { n: uint // kv }
+rk = (m: uint, n: uint)
+rk_arr = [rk]
+remedy = { c: rk_arr }
+ck = (uint, uint)
+arr_rep = [ c: uint, ck ]

@@ -4375,6 +4375,197 @@ fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
     }
 }
 
+/// The struct-map twin of `plain_group_table_domain_rejects_gracefully_at_both_spellings`: a KEYED
+/// map-record member whose type resolves to a plain group.
+///
+/// The key claims one map entry and that entry's value slot holds exactly one item, so the only
+/// emission available — `serialize_as_embedded_group` — writes the group's members in flat and
+/// overruns the header. `t = { c: kv }` used to do that at exit 0 with NO decoder at all
+/// (`map_record_deser_refusals` declined the record), so the crate compiled, round-tripped against
+/// nothing, and shipped bytes an interoperating decoder reads as `{'c': 'a'}` plus trailing bytes.
+/// The other spellings failed louder but no better: `?` on the member hit
+/// `assertion failed: !config.optional_field`, an alias to the group panicked on a struct that was
+/// never materialized, and a single-entry group-choice arm emitted a serializer and a deserializer
+/// that disagreed with each other.
+///
+/// Pins the message (rule, member, group source name, named-array remedy) across every keyed
+/// spelling and every profile, that the two loud spellings no longer panic, and — the part that
+/// keeps the refusal honest — that the remedy the message names actually generates, alongside the
+/// three neighbours the guard must not widen into.
+#[test]
+fn plain_group_keyed_map_member_rejects_gracefully_at_every_spelling() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_groupmapmember_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "groupmapmember_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "kv = (a: uint, b: uint)\n";
+
+    // The bare named member — the silent one. Names the rule by its SOURCE spelling, the member,
+    // the group, why the splice cannot fit, and the NAMED-array remedy (not the inline `c: [kv]`,
+    // which is a different, separately-refused shape).
+    let named = run(&format!("{GROUP}t = {{ c: kv }}\n"), "named", &[])
+        .expect_err("a keyed map member whose type is a plain group must reject gracefully");
+    assert!(
+        named.contains("rule `t`: map field `c` uses the plain group `kv` as its type"),
+        "rejection should name the rule, member and group, got: {named}"
+    );
+    assert!(
+        named.contains("a CBOR map entry holds exactly one item in its value slot"),
+        "rejection should explain why the splice is impossible, got: {named}"
+    );
+    assert!(
+        named.contains("`w = [kv]`, then `c: w`"),
+        "rejection should name the NAMED-array remedy, got: {named}"
+    );
+    assert!(
+        named.contains("Writing the array inline (`c: [kv]`) is not the remedy"),
+        "rejection should rule the inline array OUT as the remedy, got: {named}"
+    );
+
+    // Every other keyed spelling reaches the same seam and carries the same body. The two marked
+    // PANICKED are the reason this is a refusal and not a warning.
+    for (spec, tag, needle) in [
+        // a TAG around the member: an encoding operation, so the member type is still the group.
+        (
+            format!("{GROUP}t = {{ c: #6.1(kv) }}\n"),
+            "tagged",
+            "map field `c` uses the plain group `kv`",
+        ),
+        // PANICKED on `assertion failed: !config.optional_field`.
+        (
+            format!("{GROUP}t = {{ ? c: kv }}\n"),
+            "optional",
+            "map field `c` uses the plain group `kv`",
+        ),
+        // PANICKED on an unmaterialized struct; caught through shallow alias resolution.
+        (
+            format!("{GROUP}kv_alias = kv\nt = {{ c: kv_alias }}\n"),
+            "alias",
+            "map field `c` uses the plain group `kv`",
+        ),
+        // a single-entry map group-choice arm: the ENUM seam, not the record one.
+        (
+            format!("{GROUP}t = {{ n: uint // c: kv }}\n"),
+            "choice_arm",
+            "rule `t`: map field `c` uses the plain group `kv`",
+        ),
+        // a multi-entry arm, which builds a record and reaches the record seam (cited by the
+        // synthesized arm-struct name, which is the struct the member actually lives on).
+        (
+            format!("{GROUP}t = {{ n: uint // c: kv, d: uint }}\n"),
+            "choice_arm_multi",
+            "rule `T1`: map field `c` uses the plain group `kv`",
+        ),
+        // rule ORDER must not matter: the plain-group registry is settled in a pre-pass over every
+        // rule before any of them is parsed.
+        (
+            "t = { c: kv }\nkv = (a: uint, b: uint)\n".to_owned(),
+            "reversed",
+            "map field `c` uses the plain group `kv`",
+        ),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} spelling should reject with `{needle}`, got: {msg}"
+        );
+    }
+
+    // Profile independence: the refusal is at parsing, so no flag combination reaches an emission
+    // that could differ. (Under `--preserve-encodings` the group-choice spelling used to abort on a
+    // variant-arity `assert_eq!` instead, and `--wasm=true` on a generic-instance assert.)
+    for (extra, tag) in [
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        run(&format!("{GROUP}t = {{ c: kv }}\n"), tag, &extra)
+            .expect_err("the refusal must fire on every profile");
+        run(&format!("{GROUP}t = {{ n: uint // c: kv }}\n"), tag, &extra)
+            .expect_err("the group-choice-arm refusal must fire on every profile too");
+    }
+
+    // The remedy must actually work — otherwise the message sends the author into another wall.
+    // A NAMED array rule gives the slot one nested item and generates a FULL codec.
+    for (spec, tag, extra) in [
+        (
+            format!("{GROUP}w = [kv]\nt = {{ c: w }}\n"),
+            "remedy",
+            vec![],
+        ),
+        (
+            format!("{GROUP}w = [kv]\nt = {{ c: w }}\n"),
+            "remedy_preserve",
+            vec!["--preserve-encodings=true"],
+        ),
+    ] {
+        assert!(
+            run(&spec, tag, &extra).is_ok(),
+            "the remedy `{}` must generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &extra).err()
+        );
+    }
+
+    // Neighbours the guard must NOT widen into: the ARRAY-representation placement of the same
+    // group (an array's emitted length scales with the group's arity, so a splice there IS
+    // conformant), a KEYLESS single-entry map group-choice arm (the referenced struct owns its own
+    // keys, so it writes a conformant 2-entry map), a single-element parenthesized rule (a
+    // transparent alias, not a group at all), and a member whose target is a real map RULE.
+    for (spec, tag) in [
+        (
+            format!("{GROUP}t = [ c: uint, kv ]\n"),
+            "array_rep_placement",
+        ),
+        (format!("{GROUP}t = {{ n: uint // kv }}\n"), "keyless_arm"),
+        (
+            "one = (uint)\nt = { c: one }\n".to_owned(),
+            "single_elem_alias",
+        ),
+        ("kv = {a: uint}\nt = { c: kv }\n".to_owned(), "map_rule"),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // The already-refused neighbours keep their OWN messages: the inline array member is a
+    // conflicting representation on the group, and the keyless member has no key at all.
+    let inline_arr = run(&format!("{GROUP}t = {{ c: [kv] }}\n"), "inline_arr", &[])
+        .expect_err("the inline array member must keep its own refusal");
+    assert!(
+        inline_arr.contains("used with conflicting representations (both array and map)"),
+        "the inline array member should keep the conflicting-representations message, got: {inline_arr}"
+    );
+    let keyless = run(&format!("{GROUP}t = {{ n: uint, kv }}\n"), "keyless", &[])
+        .expect_err("a keyless plain-group member must keep its own refusal");
+    assert!(
+        keyless.contains("map field `kv` has no key"),
+        "the keyless member should keep the no-key message, got: {keyless}"
+    );
+}
+
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
 /// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
 /// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because

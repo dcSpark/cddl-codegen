@@ -288,6 +288,14 @@ pub(super) fn array_record_deser_refusals(
 /// solution would be to take all fields into one big map, either in generation to begin with, or
 /// just for deserialization then constructing at the end with locals like `a`, `b`, `bar_c`,
 /// `bar_d`.
+///
+/// A KEYED plain-group member no longer reaches this: `record_plain_group_map_member_rejection`
+/// refuses it in the parse walk, because declining only the DESERIALIZE left a serialize-only crate
+/// whose serializer spliced the group's members in flat after a one-entry map header. The branch
+/// below is kept as the backstop for anything that still builds a Map-rep record around a
+/// plain-group field without passing that seam (a field carrying `basic_override`, which the seam's
+/// `is_basic` predicate deliberately excludes) — if it ever fires, the parse-time seam is the thing
+/// to widen, not this.
 pub(super) fn map_record_deser_refusals(
     types: &IntermediateTypes,
     record: &RustRecord,
