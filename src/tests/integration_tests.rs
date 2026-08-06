@@ -20069,6 +20069,24 @@ const DECODE_CONFORMANCE_PRESERVE_SKIP: &[(&str, &str)] = &[
          docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
          not a generator gap; default-profile decode fully replays this row's vectors",
     ),
+    // A live DEFECT, unlike the refusal and the by-design rejection above: generation exits 0
+    // under --preserve-encodings but the emitted crate does not compile (E0533 — the same-major
+    // group-choice BRUTE-FORCE deserialize returns unit-variant constructions, `Ok(T::Flag)`,
+    // for arms preserve makes STRUCT variants carrying `len_encoding`). The disjoint-major
+    // pairing (`contain.group-choice-arm.type2.value.float_array`, type-match dispatch) is green
+    // under preserve, so the skip is exactly this row. Candidate fix is ledgered in
+    // cddl-matrix/ROADMAP.md § findings ("A same-major group-choice arm pairing under
+    // `--preserve-encodings` emits a crate that does not compile"); the stale-entry guard is the
+    // tripwire for when that fix lands. Default-profile decode of this row fully replays,
+    // including its hand constraint vector.
+    (
+        "contain.group-choice-arm.type2.value.float_same_major_array",
+        "the same-major float/bool pairing generates an UNCOMPILABLE crate under \
+         --preserve-encodings (E0533: brute-force deserialize constructs unit variants where \
+         preserve makes them struct variants) — a live generator defect, ledgered in \
+         cddl-matrix/ROADMAP.md § findings; only the preserve leg is skipped, the \
+         default-profile decode fully replays this row's vectors",
+    ),
 ];
 
 /// Every catalog row the matrix annotations call preserve-UNSUPPORTED must already carry a
