@@ -5,10 +5,20 @@
 ; `* kv`, `+ kv` and `2*3 kv` each generated output BYTE-IDENTICAL to the unmarked `// kv`, at exit
 ; 0 — and the codec that output carries then rejects the counts the spec admits: the empty encoding
 ; a `?` / `*` / `0*n` arm allows comes back as `No variant matched … Definite length mismatch:
-; found 0`, and every 2-or-more encoding a `*` / `+` / `n*m` arm allows fails the same way. The
-; defect is not group-specific — `[ x: uint // ? a: tstr ]` was byte-identical to its unmarked twin
-; too — so the guard reads the ENTRY's occurrence and covers a plain group, an alias to one, a
-; tagged one, and a plain keyed or bare member alike, in BOTH representations.
+; found 0`, and (in an ARRAY) every 2-or-more encoding a `*` / `+` / `n*m` arm allows fails the
+; same way. The defect is not group-specific — `[ x: uint // ? a: tstr ]` was byte-identical to its
+; unmarked twin too — so the guard reads the ENTRY's occurrence and covers a plain group, an alias
+; to one, a tagged one, and a plain keyed or bare member alike, in BOTH representations.
+; What it does NOT cover is where dropping the marker is SOUND, which is not this guard's judgment
+; to make twice: it asks `inline_group_occurrence_flattens`, the same predicate the inline-group
+; splice asks. In a MAP that predicate carves out every lower-bound-≥1 marker (`+`, `2*3`, `2*`),
+; because unique map keys mean a second repetition of a fixed-key alternative would duplicate its
+; keys — so those admit count 1 and nothing else, dropping them is the HONORED semantics, and
+; `{ x: uint // + kv }` keeps emitting the unmarked arm's bytes exactly (pinned as byte identity,
+; not as "it generates"). Refusing them would have removed correct surface and would have had to
+; claim a 2-or-more encoding a map does not have, which is why the message is rep-scoped: the array
+; text names `?` / `*` / `+` / `n*m`, the map text only the zero-permitting `?` / `*` / `0*n` /
+; `*n`.
 ; Honoring the marker is not a guard's work: a zero-case variant has to be TELLABLE on the wire,
 ; which means the sibling arms' own length checks must exclude the empty form — the occurrence/
 ; bounds program's scope (the queue's "unify non-final optional/repeated array decoding").
@@ -17,10 +27,11 @@
 ; empty` for `?`, with `kvs = [* kv]` in place of `kvarr` for `*`. The named-array WRAPPER
 ; (`w = [kv]` referenced from the arm) is deliberately NOT that remedy: it nests the group in an
 ; array of its own and so cannot express the empty case at all.
-; Two deliberate non-firings: an absent marker and the pedantic `1*1` already mean exactly once, so
-; dropping them narrows nothing (the same carve-out the array record-field loop's `narrows` guard
-; makes); and an inline-group entry (`? (a: uint, b: uint)`) is already refused in entry position
-; for EVERY marker including none, so it keeps that message — one message per problem.
+; Three deliberate non-firings: an absent marker and the pedantic `1*1` already mean exactly once in
+; either rep, so dropping them narrows nothing (the same carve-out the array record-field loop's
+; `narrows` guard makes); the map-side collapse above; and an inline-group entry
+; (`? (a: uint, b: uint)`) is already refused in entry position for EVERY marker including none, so
+; it keeps that message — one message per problem.
 ; Message identity, the per-marker × per-rep matrix, the profile independence and the neighbouring
 ; guards that must not be shadowed are pinned by
 ; `occurrence_on_single_entry_group_choice_arm_rejects_gracefully`.

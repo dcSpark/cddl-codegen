@@ -86,12 +86,19 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   (`occurrence_on_single_entry_group_choice_arm_rejects_gracefully`): honoring it needs a zero-case
   variant the sibling arms' length checks can tell apart on the wire, which is the queue's
   occurrence/bounds scope. That delivery also marks where this grid STOPS being the instrument.
-  Probing widened the defect twice past the cell: to EVERY occurrence marker (`*`, `+`, `n*m`, both
-  reps, all byte-identical to the unmarked arm at exit 0, not just `?`), and off the named-group
-  reference kind entirely — an ordinary keyed member arm (`[ x: uint // ? a: tstr ]`) dropped its
-  marker byte-identically too. So the guard reads the ENTRY's occurrence rather than its type, and
-  the grid would have minted one cell of a defect whose real denominator is arm × marker over every
-  entry kind. NB this defect class is also one synthetic instance shy of the
+  Probing widened the defect twice past the cell: to every occurrence marker an ARRAY arm can carry
+  (`*`, `+`, `n*m`, all byte-identical to the unmarked arm at exit 0, not just `?`), and off the
+  named-group reference kind entirely — an ordinary keyed member arm (`[ x: uint // ? a: tstr ]`)
+  dropped its marker byte-identically too. So the guard reads the ENTRY's occurrence rather than its
+  type, and the grid would have minted one cell of a defect whose real denominator is arm × marker
+  over every entry kind. It also narrowed in one direction the finding did not anticipate: in a MAP
+  arm the byte identity is CORRECT for every lower-bound-≥1 marker, since unique keys mean a second
+  repetition of a fixed-key alternative would duplicate its keys, so `+` / `2*3` / `2*` admit count
+  1 and nothing else. Those keep generating — the f18d764 collapse boundary, asked of the one shared
+  predicate (`inline_group_occurrence_flattens`) rather than restated, so the arm seam and the
+  inline-group splice cannot come to disagree — and only the zero-permitting markers refuse there.
+  A grid row must therefore carry the REP, not just the marker. NB this defect class is also one
+  synthetic instance shy of the
   grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
