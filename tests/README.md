@@ -1729,9 +1729,12 @@ directives) is verified across the layers:
 - **JSON e2e** — `tests/open-struct-map-json-e2e` (compiled): flatten round-trip, declared-names-
   bind-first loose read, and the write-error postures (declared-name collision, identical
   stringifications — which is also how a pair-list holding real duplicates errors — complex `any`
-  keys/values). It is also the fixture carrying the **TS-projection leg**
-  (`assert_schema_projects_to_legal_ts`, § "JSON-schema → TypeScript JS-side pipeline"), because its
-  rest rows cover both open-region spellings with declared members the range does not admit.
+  keys/values). The **TS-projection leg** (`assert_schema_projects_to_legal_ts`, § "JSON-schema →
+  TypeScript JS-side pipeline") runs for every `--json-schema-export` fixture from `run_test`
+  itself; what distinguishes this fixture is the extra SHAPE pins its test adds on the projected
+  `.d.ts` — its rest rows cover both open-region spellings with declared members the range does
+  not admit, so it asserts the emitted index signatures are the widened unions, not just that the
+  file compiles.
 - **Snapshots** — `open_struct_map_default` / `open_struct_map_preserve` profiles over
   `tests/open-struct-map`, which also rides the wasm-parity sweep (the e2e fixtures stay off that
   axis: their integration gates generate `--wasm=false`, so they emit no wasm surface to
