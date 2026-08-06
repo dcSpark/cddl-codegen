@@ -1730,19 +1730,22 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   codegen side. Reopening signal: the
   fork is bumped for any reason, or a consumer cannot reformat a lossy multi-line group spelling.
 
-- **The recombination member-kind table does not span the tagged-optional shape, and one exit-0
-  uncompilable crate escaped through the gap.** The `#6.n(T / null)`-under-`--preserve-encodings`
-  emitter bug (2-binder pattern against the 3-element tuple a crossed tag contributes — E0308 in
-  the generated crate at generator exit 0; fixed in `60ed8bb1`, record: burndown2 T2-23) was
-  reachable at its parent through `inner = uint / null` + `t = #6.10(inner)` — the exact remedy
-  the anonymous-choice-under-preserve refusal advertises — yet no committed fixture and no
-  recombination composition spelled it, so `feature_corpus_roundtrips_nondefault_profiles` and the
-  preserve layer-2 sweep were both blind to it. The cheap systematic layer: add the tagged-optional
-  member kind (a tag head over a `T / null` collapse, spelled via the named-rule remedy) to the
-  recombination ingredient table so the layer-2 preserve sweep compiles it per profile. Reopening
-  signal, on the axis the cost grows along: a SECOND exit-0-uncompilable crate in a supported
-  composition the member-kind table does not span (each instance is a loud build failure for
-  whoever generates the shape, so the reporter exists by construction).
+- **Extend the recombination member-kind table to the OPTIONAL-FIXED shape.** `MEMBER_KINDS` now
+  carries a per-kind aux-rule slot (`%A%`), so a kind that needs a named rule of its own is a one-row
+  edit rather than a mechanism change — the `tagged_optional` row (`%K%: #6.10(%A%)` over
+  `uint / null`) is the worked example, and `optional_fixed_member.cddl` /
+  `optional_fixed_float.cddl` name the shape the table still cannot compose: `? %K%: 5`, an optional
+  member whose type is a fixed value, which mints a `bool` presence field instead of a value and so
+  reaches a deserialize seam the `optional` and `fixed_*` kinds each only half touch.
+  It is one row, and the reason it is not simply built is that a kind addition is not free: it
+  RESHUFFLES every seeded draw downstream of the table, so each one re-samples the triples and
+  depth-2 fillers onto different compositions and can surface unrelated pre-existing defects that
+  must be fixed or promoted before the row can land. Adding `tagged_optional` cost two emitter fixes
+  and one promoted panic class; budget the next row the same way rather than as a table edit.
+  Reopening signal, on the axis the cost grows along and unchanged by this delivery: a SECOND exit-0
+  uncompilable-or-wrong-bytes crate in a supported composition the member-kind table does not span
+  (each instance is a loud build or round-trip failure for whoever generates the shape, so the
+  reporter exists by construction).
 
 - **The referencing-context axis is measured one wrapping DEEP and at one honored base shape per
   directive; stacked wrappings and second base shapes are not.** The sweep that closed the
