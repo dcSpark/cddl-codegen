@@ -464,6 +464,37 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     rather than restructuring the fixture — measurable by its author at the moment of eviction,
     which is when the ledger row would be written anyway.
 
+14. **A minted-identifier spellability floor: every identifier the generator emits verbatim must
+    satisfy `is_spellable_variant_name`'s two string properties, asserted at the emission side
+    rather than per-minter.** The class this closes: a name-minting path whose output is not a
+    spellable Rust identifier ships the bad token to rustfmt, which dies with an error naming its
+    own confusion instead of the construct — loud, zero files, and misattributed. Three instances
+    in one 2026-08-06 cycle, each found by hand probing rather than by any gate: fixed float/nint
+    choice arms minted `F1.5`/`U-1` (variant idents), the anonymous nested choice minted the RULE
+    ident `F1.5OrText` from the same lexemes, and a fixed-text arm camel-cased `"self"` into the
+    keyword `Self` — identifier-shaped, still unspellable. The delivered repair guards the two
+    arm-naming SEAMS (`reject_unnameable_arm_variant_name`, predicate on the minted string), which
+    covers every minter those seams consume — but other emit-verbatim name families (rule idents
+    from `combined_name`, field names, wasm wrapper names) have no floor, and absence of a fourth
+    instance is currently established by nothing. What to build: a check over the finalized IR's
+    emitted-name surface (idents, variant names, field names) that fails naming the MINT SITE when
+    a name is unspellable, so the next bad minter is a diagnosed refusal rather than a rustfmt
+    autopsy. Enumerate the name families from the IR types (`RustIdent`, `VariantIdent`, field
+    name storage) rather than grepping for minters — a negative claim ("no other minter emits bad
+    names") needs the registry, not a keyword search.
+
+15. **A rejection message's remedy string is an executable claim — pin each one with a
+    generates-green vector.** Proven valuable twice in one delivery: the plain-group table-domain
+    refusal's first predicate (`is_plain_group`) refused the exact remedy its own message named
+    (`{ * uint => [coords] }` — the registry keeps materialized plain groups, so the lookup
+    over-matched), caught only because the delivery e2e-probed its printed remedy; and the tagged
+    domain's remedy spelling was imprecise (`[#6.5(coords)]` for the faithful `#6.5([coords])`)
+    until a pin asserted the printed remedy generates. The `*_rejects_gracefully` family already
+    pins message TEXT; this extends the convention so the remedy half of the contract is executed,
+    not just spelled. Sweep the existing family for remedies that are only text-pinned and add the
+    generate leg where one is missing; new refusals adopt the pattern from the start (the
+    table-domain and tagged-domain tests are the templates).
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
@@ -2564,6 +2595,22 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   it would unblock.
 
 ## Operational watches
+
+- **A working-tree gate run concurrent with a live implementation agent measures a hybrid tree that
+  exists in no commit — and a gate that REWRITES committed files on pass launders that hybrid into
+  plausible-looking state.** Proven 2026-08-06: an orchestrator launched `check.ts --only verify`
+  while an implementation sub-agent was mid-edit in `src/generation/deserialize.rs`; verify built
+  the generator from the working tree, probed dozens of fixed-value cells through the half-edited
+  binary (every one exit-101), PASSED its own gate contract, and rewrote
+  `cddl-matrix/annotations/cddl_codegen.toml` with the garbage verdicts. Nothing failed loudly: the
+  banner's `-dirty` marker was the only trace, and the damage was caught by reading the diff, not
+  by any guard. Working rule: gates that read `src/` are serialized against anything editing
+  `src/` — an orchestrator running implementation agents runs NO gates until the agent commits and
+  reports (the same session later ran the identical gate on the quiet tree: PASS with a
+  byte-identical annotation rewrite, which is what validation looks like). Mechanical layer on a
+  second instance: `verify.ts` refusing to REWRITE annotations when the tree is dirty under
+  `src/` or `static/` (probing dirty is fine; publishing verdicts from a tree no commit names is
+  the hazard — the `-dirty` marker it already prints is the predicate).
 
 - **A stale-pin guard cannot distinguish "the gap closed" from "the vector that proved the gap went
   blunt" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting
