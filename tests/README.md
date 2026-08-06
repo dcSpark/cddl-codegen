@@ -2822,7 +2822,18 @@ product value of `--json-schema-export` is realized, and every way they can be w
 from the Rust side. So each failure mode gets its own vector, and the three that are silent get one
 that pins the LOUD behaviour (a non-zero exit) rather than just the happy path — a silently-wrong
 script produces a `.d.ts` that looks plausible and a build that exits 0. Four tests cover it,
-cheapest-in-isolation first:
+cheapest-in-isolation first.
+
+Every leg below that needs npm packages resolves them through ONE install (`shared_ts_toolchain`),
+not one per call: the effective manifest is the shipped `static/package_json_schemas.json` plus a
+test-only `typescript` pin, and the install root under the gitignored `/.ts-toolchain/` is keyed by a
+hash of exactly those bytes — so a pin bump lands in a new root and reinstalls rather than silently
+reusing the old tree, and nothing needs to remember to invalidate it. The install is serialized on
+`acquire_scratch_lock` (`cargo test` runs the legs as parallel threads, and separate checkouts run
+concurrently), and its `.installed` stamp is written only after `npm install` exits 0, which is what
+lets every later caller skip the lock entirely. Each work dir gets a `node_modules` symlink into it;
+`tsc` is invoked by explicit path. Sharing it is what makes the projection leg affordable per
+fixture rather than per opt-in.
 
 - **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over the committed schema document
   (`tests/json2ts/schemas`) using the pinned `json-schema-to-typescript`, asserting the emitted
@@ -2847,8 +2858,13 @@ cheapest-in-isolation first:
   type-checks the emitted file with `tsc --noEmit --strict --target esnext`, the oracle the substring
   asserts cannot be. `--skipLibCheck` stays off (it would make the check vacuous over a `.d.ts`) and
   `--strict` is what makes the optional-property case fail at all; `typescript` is injected into the
-  work dir's manifest by the test, so the shipped `static/package_json_schemas.json` keeps pinning
-  only what a consumer's package actually needs. It then bridges the two shipped scripts once, over
+  shared install's manifest rather than the shipped one, so `static/package_json_schemas.json` keeps
+  pinning only what a consumer's package actually needs. A `$defs` key that is also REFERENCED
+  (`Odd<K>/~1name`, the spelling `tests/json-extern` really emits) pins the pointer escaping: a
+  `#/$defs/...` token carries the JSON-Pointer escapes under the URI-fragment percent-encoding, and
+  matching it against a key without decoding both layers leaves the reference pointing at the
+  pre-rename key — which kills the whole document inside json2ts's resolver, not just that one type.
+  It then bridges the two shipped scripts once, over
   the defs file that run just produced: the declaration-name guarantee only pays off where
   `json-ts-types.js` keys the splice on that exact name, and `js_d_ts_merge`'s hand-written defs
   cannot see whether the two agree, and asserts a second run over the same document is
@@ -2861,9 +2877,13 @@ cheapest-in-isolation first:
   nothing in the build output saying so. The last one cannot be delegated to `tsc`: TypeScript merges
   same-named `interface` declarations without a diagnostic.)
 - **`assert_schema_projects_to_legal_ts`** is the same two steps over a fixture's REAL emitted
-  document, and is a helper rather than a test of its own: a `--json-schema-export` fixture opts in by
-  calling it after `run_test`, which hands it the document the json-gen crate just wrote (today:
-  `open_struct_map_json_e2e`). What it adds over `js_schema_to_ts` is the only thing a hand-written
+  document, and is a helper rather than a test of its own: `run_test`'s json-gen block calls it for
+  EVERY fixture whose json-gen crate ran, so the oracle needs no registration and a future
+  `--json-schema-export` fixture inherits it by existing. There is deliberately no exclusion list —
+  a fixture whose real document does not project is the finding the leg exists to produce, not a
+  cell to opt out of. (It is memoized per fixture, so the two callers that additionally pin shapes
+  of the emitted `.d.ts` — `open_struct_map_json_e2e`, `open_table_json_e2e` — read `run_test`'s
+  projection instead of paying a second `node` + `tsc`.) What it adds over `js_schema_to_ts` is the only thing a hand-written
   document cannot supply — that the GENERATOR still emits the shapes that document mimics — and the
   class it exists for is invisible everywhere else: a schema can be exactly right, with every
   `tests/*/tests.rs` schema assertion passing, and still project to TypeScript that does not compile,
@@ -2872,7 +2892,10 @@ cheapest-in-isolation first:
   otherwise surfaces. The json-e2e fixture carries both spellings and both failing directions (a
   typed key domain's `additionalProperties` under a numeric declared member, and a `text` domain's
   under a string one), and the caller pins that each open type's index signature is the union form
-  rather than the bare range.
+  rather than the bare range. Running it at breadth is what found the pointer-escaping gap
+  `js_schema_to_ts` now pins: `tests/json-extern`'s hand-written `JsonSchema` impl publishes a
+  `$defs` key holding `<`, `>` and `/`, and it was the only REFERENCED non-identifier key anywhere
+  in the tree.
 - **`js_d_ts_merge`** runs `json-ts-types.js` in isolation over hand-written fixtures — no
   wasm-pack/json2ts needed — laid out in the shipped `<root>/scripts/*.js` shape the script resolves
   its own paths from. Five cases, one per failure mode: the happy path (specialize + append); a class
@@ -2915,6 +2938,17 @@ cheapest-in-isolation first:
   at all: a record mints one, while a collection wrapper and a c-style enum do not, so the fixture's
   table, list and enum rules are outside the check by construction and only `foo` (rowed) and
   `inner_no_row` (in `$defs` by reference) have to be typed.
+  The merged file is then TYPE-CHECKED (`tsc --noEmit --strict --target esnext`, `--skipLibCheck`
+  off): the substring asserts can only catch the wrongness they were told to look for, and the
+  merge joins two independently-produced halves — wasm-bindgen's class declarations and json2ts's
+  interfaces — so a name resolving in neither half alone is exactly what a bad merge produces.
+  `--target esnext` is required rather than stylistic, because wasm-bindgen emits `[Symbol.dispose]`
+  members that only TypeScript ≥ 5.2 parses. The compiler comes from the shared install rather than
+  from the generated `package.json`: injecting a dev-dep into the SHIPPED manifest would change what
+  this test's own `npm install` proves. A committed negative case keeps the leg from going vacuous —
+  one reference in the merged file is renamed (the declaration keeps its name, so it dangles) and
+  the same call must reject it, which is what a bad path, a flag typo or a future `--skipLibCheck`
+  would otherwise pass forever.
   It builds the
   generated crate with the user's `+stable` toolchain (faithful to the shipped consumer experience),
   so a `+stable` failure here is a real finding about shipped output, not a test bug. Needs

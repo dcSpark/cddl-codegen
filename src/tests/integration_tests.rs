@@ -1835,6 +1835,14 @@ fn run_test(
             "two runs of export_schemas() must write a byte-identical {:?}",
             written[0]
         );
+        // The TS-projection oracle, over the document this fixture just wrote. It runs for EVERY
+        // fixture that reaches here rather than for a registered few, so the coverage grows with the
+        // fixture set instead of with a list somebody has to remember to extend: the asserts above
+        // check the document AS JSON, and a document can satisfy all of them and still project to
+        // TypeScript that does not compile. `assert_schema_projects_to_legal_ts` memoizes per
+        // fixture, so the callers below that additionally pin shapes of the emitted `.d.ts` reuse
+        // this run rather than paying a second `node` + `tsc`.
+        assert_schema_projects_to_legal_ts(dir, &export_path);
     }
 }
 
@@ -11929,6 +11937,125 @@ fn json_arbitrary_precision() {
     );
 }
 
+/// The `typescript` pin the TypeScript-side legs inject on top of the SHIPPED
+/// `static/package_json_schemas.json`. A consumer's package needs the emitted TYPES, not a
+/// type-checker, so the pin that ships stays the `json-schema-to-typescript` one and the compiler is
+/// a test-only addition. `>= 5.2` is load-bearing wherever wasm-bindgen output is checked
+/// (`Symbol.dispose` members parse only from that version on).
+const TS_COMPILER_PIN: &str = "^5.9.0";
+
+/// The one `npm install` every TypeScript-side leg shares, plus the `node_modules` it produced.
+///
+/// The legs used to install per call, which was affordable while exactly one fixture projected; the
+/// projection now runs for EVERY `--json-schema-export` fixture (and `package_json_pipeline` borrows
+/// the compiler from here too), so a per-call install would dominate the suite. What makes one
+/// install safe to share is that the manifest is a pure function of committed bytes: the install
+/// root is keyed by a hash of the EFFECTIVE manifest (the shipped file plus `TS_COMPILER_PIN`), so a
+/// pin bump lands in a different root and reinstalls instead of silently reusing the old tree.
+///
+/// Concurrency: `cargo test` runs fixtures as parallel threads of one process, and separate
+/// checkouts run concurrently too, so the install is serialized on `acquire_scratch_lock`. The
+/// `.installed` stamp is written only after `npm install` exits 0, which is what makes the
+/// outside-the-lock fast path sound — a partially installed root never carries the stamp, and a root
+/// that carries it is never written again (its content is fixed by its key).
+///
+/// Returns the install root; `node_modules` sits directly inside it.
+fn shared_ts_toolchain() -> std::path::PathBuf {
+    use std::hash::{Hash, Hasher};
+    static ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        let static_dir = std::path::Path::new("static");
+        let mut manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(static_dir.join("package_json_schemas.json")).unwrap(),
+        )
+        .unwrap();
+        manifest
+            .get_mut("devDependencies")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("static/package_json_schemas.json must have a devDependencies object")
+            .insert(
+                "typescript".to_string(),
+                serde_json::Value::String(TS_COMPILER_PIN.to_string()),
+            );
+        let effective = serde_json::to_string_pretty(&manifest).unwrap();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        effective.hash(&mut hasher);
+        let key = format!("{:016x}", hasher.finish());
+
+        // Inside the checkout (gitignored `/.ts-toolchain/`) rather than under `temp_dir()`: the tree
+        // is hundreds of MB of `node_modules` that should die with the checkout, and the legs resolve
+        // it through paths relative to the repo root like every other test asset.
+        let root = std::path::Path::new(".ts-toolchain").join(&key);
+        let stamp = root.join(".installed");
+        if stamp.exists() {
+            return root;
+        }
+        let _lock = acquire_scratch_lock(&format!(
+            "cddl_codegen_ts_toolchain_{:016x}_{key}",
+            checkout_hash()
+        ));
+        if stamp.exists() {
+            return root;
+        }
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("package.json"), &effective).unwrap();
+        let npm = std::process::Command::new("npm")
+            .args(["install", "--silent", "--no-audit", "--no-fund"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        if !npm.status.success() {
+            eprintln!(
+                "npm install stderr:\n{}",
+                String::from_utf8_lossy(&npm.stderr)
+            );
+        }
+        assert!(
+            npm.status.success(),
+            "the shared TypeScript toolchain install failed in {root:?}"
+        );
+        let tsc = root.join("node_modules/typescript/bin/tsc");
+        assert!(
+            tsc.exists(),
+            "the injected `typescript` devDependency must install {}",
+            tsc.display()
+        );
+        std::fs::write(&stamp, &effective).unwrap();
+        root
+    })
+    .clone()
+}
+
+/// Absolute path of the shared `tsc` entry point, for `node <tsc> …`.
+fn shared_tsc_path() -> std::path::PathBuf {
+    std::fs::canonicalize(shared_ts_toolchain().join("node_modules/typescript/bin/tsc")).unwrap()
+}
+
+/// Point `dir`'s `node_modules` at the shared install. Node's `require()` walk-up resolves through
+/// the symlink, so a work dir that holds only the script and the document still finds the pinned
+/// `json-schema-to-typescript`.
+fn link_shared_node_modules(dir: &std::path::Path) {
+    let link = dir.join("node_modules");
+    let _ = std::fs::remove_file(&link);
+    let _ = std::fs::remove_dir_all(&link);
+    let target = std::fs::canonicalize(shared_ts_toolchain().join("node_modules")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(&target, &link).unwrap();
+}
+
+/// Per-process memo for `assert_schema_projects_to_legal_ts`, keyed `<fixture dir>/<export dir>`.
+/// `run_test` projects every `--json-schema-export` fixture now, and the callers that pin extra
+/// shapes ask for the same fixture's `.d.ts` immediately afterwards — without the memo each of those
+/// would pay a second `node` + `tsc` over bytes that cannot have changed (`run_test` regenerates the
+/// document and asserts a rerun is byte-identical before the projection runs).
+fn projected_ts_memo() -> &'static std::sync::Mutex<std::collections::BTreeMap<String, String>> {
+    static MEMO: std::sync::OnceLock<std::sync::Mutex<std::collections::BTreeMap<String, String>>> =
+        std::sync::OnceLock::new();
+    MEMO.get_or_init(Default::default)
+}
+
 /// The TS-PROJECTION leg of a `--json-schema-export` fixture: takes the document the fixture's
 /// json-gen crate actually WROTE, runs the shipped `static/run-json2ts.js` over it with the pinned
 /// `json-schema-to-typescript`, and type-checks the emitted `.d.ts` with `tsc --noEmit --strict`.
@@ -11941,10 +12068,19 @@ fn json_arbitrary_precision() {
 /// does not compile, because a TS index signature ranges over EVERY property while
 /// `additionalProperties` ranges only over the unnamed ones. Nothing but a `tsc` run says so.
 ///
+/// `run_test` calls this for EVERY fixture whose json-gen crate ran, so the oracle is breadth-first
+/// and needs no registration: a future `--json-schema-export` fixture inherits it by existing. There
+/// is deliberately no exclusion list — a fixture whose real document does not project is the finding
+/// this leg exists to produce, not a cell to opt out.
+///
 /// Returns the emitted `.d.ts` so a caller can pin the shapes it cares about. `--strict` and the
 /// absent `--skipLibCheck` are load-bearing for the same reasons as in `js_schema_to_ts`.
 fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> Option<String> {
     use std::str::FromStr;
+    let memo_key = format!("{fixture_dir}/{export_path}");
+    if let Some(dts) = projected_ts_memo().lock().unwrap().get(&memo_key) {
+        return Some(dts.clone());
+    }
     let static_dir = std::path::PathBuf::from_str("static").unwrap();
     let fixture = std::path::PathBuf::from_str("tests")
         .unwrap()
@@ -11982,39 +12118,7 @@ fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> O
     )
     .unwrap();
     std::fs::copy(schemas_in.join(&document), schemas_out.join(&document)).unwrap();
-    // The shipped manifest plus the injected `tsc`, exactly as `js_schema_to_ts` does it: a
-    // consumer's package needs the emitted TYPES, not a type-checker, so the pin that ships stays the
-    // `json-schema-to-typescript` one.
-    let mut manifest: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(static_dir.join("package_json_schemas.json")).unwrap(),
-    )
-    .unwrap();
-    manifest
-        .get_mut("devDependencies")
-        .and_then(serde_json::Value::as_object_mut)
-        .expect("static/package_json_schemas.json must have a devDependencies object")
-        .insert(
-            "typescript".to_string(),
-            serde_json::Value::String("^5.9.0".to_string()),
-        );
-    std::fs::write(
-        work.join("package.json"),
-        serde_json::to_string_pretty(&manifest).unwrap(),
-    )
-    .unwrap();
-
-    let npm = std::process::Command::new("npm")
-        .args(["install", "--silent", "--no-audit", "--no-fund"])
-        .current_dir(&work)
-        .output()
-        .unwrap();
-    if !npm.status.success() {
-        eprintln!(
-            "npm install stderr:\n{}",
-            String::from_utf8_lossy(&npm.stderr)
-        );
-    }
-    assert!(npm.status.success());
+    link_shared_node_modules(&work);
 
     let node = std::process::Command::new("node")
         .arg("scripts/run-json2ts.js")
@@ -12026,21 +12130,15 @@ fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> O
     }
     assert!(
         node.status.success(),
-        "run-json2ts.js must compile {document}"
+        "run-json2ts.js must compile {fixture_dir}'s {document}"
     );
 
     let dts = std::fs::read_to_string(work.join("rust/wasm/json-gen/output/json-types.d.ts"))
         .expect("run-json2ts.js exited 0 without writing json-types.d.ts");
     println!("{fixture_dir} projected json-types.d.ts:\n{dts}");
 
-    let tsc = work.join("node_modules/typescript/bin/tsc");
-    assert!(
-        tsc.exists(),
-        "the injected `typescript` devDependency must install {}",
-        tsc.display()
-    );
     let tsc_run = std::process::Command::new("node")
-        .arg(std::fs::canonicalize(&tsc).unwrap())
+        .arg(shared_tsc_path())
         .args([
             "--noEmit",
             "--strict",
@@ -12062,13 +12160,17 @@ fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> O
         tsc_run.status.success(),
         "{fixture_dir}'s emitted schema document must project to TypeScript that compiles"
     );
+    projected_ts_memo()
+        .lock()
+        .unwrap()
+        .insert(memo_key, dts.clone());
     Some(dts)
 }
 
 /// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over the committed
 /// schema document using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
-/// (installed via `npm install` of that exact file, plus an injected `typescript`), then asserts the
-/// emitted types. This is the only coverage of that script + dependency — a bump there is otherwise
+/// (the shared install of `shared_ts_toolchain`: that exact file, plus an injected `typescript`),
+/// then asserts the emitted types. This is the only coverage of that script + dependency — a bump there is otherwise
 /// invisible to CI, since the rest of the suite only `cargo build`s the json-gen crate and never runs
 /// the JS. See `tests/json2ts/README.md` and `tests/README.md` § "JSON-schema → TypeScript JS-side
 /// pipeline".
@@ -12124,47 +12226,19 @@ fn js_schema_to_ts() {
         work.join("scripts/run-json2ts.js"),
     )
     .unwrap();
-    // The shipped manifest verbatim except for one injected devDependency: the `tsc` this test
-    // type-checks the emitted `.d.ts` with. It is injected here rather than shipped because a
-    // consumer's generated package needs the emitted TYPES, not a type-checker, and the README's
-    // claim that this test runs the *pinned* json2ts only holds while that pin keeps coming from the
-    // shipped file.
-    let mut manifest: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(static_dir.join("package_json_schemas.json")).unwrap(),
-    )
-    .unwrap();
-    manifest
-        .get_mut("devDependencies")
-        .and_then(serde_json::Value::as_object_mut)
-        .expect("static/package_json_schemas.json must have a devDependencies object")
-        .insert(
-            "typescript".to_string(),
-            serde_json::Value::String("^5.9.0".to_string()),
-        );
-    std::fs::write(
-        work.join("package.json"),
-        serde_json::to_string_pretty(&manifest).unwrap(),
-    )
-    .unwrap();
+    // The dependencies come from the shared install, which is the SHIPPED manifest verbatim except
+    // for one injected devDependency: the `tsc` this test type-checks the emitted `.d.ts` with. It is
+    // injected rather than shipped because a consumer's generated package needs the emitted TYPES,
+    // not a type-checker, and the README's claim that this test runs the *pinned* json2ts only holds
+    // while that pin keeps coming from the shipped file — which is what `shared_ts_toolchain` keys
+    // its install on.
+    link_shared_node_modules(&work);
     for entry in std::fs::read_dir(&fixtures).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().and_then(|e| e.to_str()) == Some("json") {
             std::fs::copy(&path, schemas_out.join(path.file_name().unwrap())).unwrap();
         }
     }
-
-    let npm = std::process::Command::new("npm")
-        .args(["install", "--silent", "--no-audit", "--no-fund"])
-        .current_dir(&work)
-        .output()
-        .unwrap();
-    if !npm.status.success() {
-        eprintln!(
-            "npm install stderr:\n{}",
-            String::from_utf8_lossy(&npm.stderr)
-        );
-    }
-    assert!(npm.status.success());
 
     let node = std::process::Command::new("node")
         .arg("scripts/run-json2ts.js")
@@ -12225,6 +12299,15 @@ fn js_schema_to_ts() {
         // (`OrderedHashMap<K, V>` -> `OrderedHashMapKVJSON`). The static runtime publishes exactly
         // this key, and no wasm class can carry such a name, so nothing keys on it.
         "export interface OrderedHashMapKVJSON",
+        // A non-identifier key that is also REFERENCED. `Odd<K>/~1name` is a real emitted spelling
+        // (`tests/json-extern`'s hand-written `JsonSchema` publishes it), and its pointer carries
+        // both escaping layers — `%3C`/`%3E` over `<`/`>`, `~1` for the `/`, `~01` for the literal
+        // `~1` — so matching the pointer TOKEN against the key without decoding silently leaves the
+        // reference behind when the key is renamed, and json2ts's resolver then kills the whole
+        // document with a `MissingPointerError`. Every OTHER non-identifier key in this document is
+        // unreferenced, which is why the gap survived until the projection leg ran at breadth.
+        "export interface OddK1NameJSON",
+        "export interface OddHolderJSON",
     ] {
         assert_eq!(
             dts.matches(declaration).count(),
@@ -12249,6 +12332,9 @@ fn js_schema_to_ts() {
     assert!(dts.contains("nested: NestedJSON"), "{dts}");
     assert!(dts.contains("titled: TitledJSON"), "{dts}");
     assert!(dts.contains("\"x\" | \"y\""), "{dts}");
+    // ...including the escaped pointer at a non-identifier key: the holder's member must be TYPED as
+    // the definition that key names, not left dangling or inlined as `unknown`.
+    assert!(dts.contains("odd: OddK1NameJSON"), "{dts}");
     // A definition's `title` (schemars writes one whenever the Rust doc comment opens with a
     // markdown heading) must NOT become the emitted name — json2ts prefers `title` over the `$defs`
     // key, and an unsuffixed name merges with the wasm class of the same name (TS2300 on every
@@ -12366,14 +12452,8 @@ fn js_schema_to_ts() {
     // absence means every type the file references must resolve inside it). `--strict` is what makes
     // the optional-property case bite at all — without `strictNullChecks` an optional `a?: T` is
     // checked against the index signature as `T` rather than `T | undefined`.
-    let tsc = work.join("node_modules/typescript/bin/tsc");
-    assert!(
-        tsc.exists(),
-        "the injected `typescript` devDependency must install {}",
-        tsc.display()
-    );
     let tsc_run = std::process::Command::new("node")
-        .arg(std::fs::canonicalize(&tsc).unwrap())
+        .arg(shared_tsc_path())
         .args([
             "--noEmit",
             "--strict",
@@ -13642,6 +13722,52 @@ fn package_json_pipeline() {
     assert!(dts.contains("export interface InnerNoRowJSON"), "{dts}");
     assert!(dts.contains("inner: InnerNoRowJSON"), "{dts}");
     assert!(!dts.contains("RenamedByDocCommentJSON"), "{dts}");
+    // The MERGED file is the artifact the consumer's editor actually loads, and the substring asserts
+    // above cannot see whether it is legal TypeScript: the splice joins two independently-produced
+    // halves (wasm-bindgen's class declarations, json2ts's interfaces), so a name that resolves in
+    // neither half alone is exactly what a bad merge produces — and nothing but a type-checker says
+    // so. Same flag choices as the projection leg, for the same reasons: `--skipLibCheck` stays OFF
+    // (the file under test IS a `.d.ts`, so the flag makes the check vacuous, and its absence is what
+    // asserts every referenced type resolves in-file) and `--strict` for parity — the wasm-pack half
+    // passes it as shipped. `--target esnext` is required, not stylistic: wasm-bindgen emits
+    // `[Symbol.dispose]()` members, which parse only from TS 5.2 on (the shared `^5.9` pin covers it).
+    // The compiler comes from the shared install rather than from `export/package.json`: injecting a
+    // dev-dep into the SHIPPED manifest would change what `npm install` above proves.
+    let tsc_merged = |file: &std::path::Path| -> std::process::Output {
+        std::process::Command::new("node")
+            .arg(shared_tsc_path())
+            .args(["--noEmit", "--strict", "--target", "esnext"])
+            .arg(file)
+            .output()
+            .unwrap()
+    };
+    let tsc_run = tsc_merged(&dts_path);
+    if !tsc_run.status.success() {
+        eprintln!(
+            "tsc stdout:\n{}\ntsc stderr:\n{}",
+            String::from_utf8_lossy(&tsc_run.stdout),
+            String::from_utf8_lossy(&tsc_run.stderr)
+        );
+    }
+    assert!(
+        tsc_run.status.success(),
+        "the merged wasm-pack .d.ts must be legal TypeScript:\n{dts}"
+    );
+    // ...and the leg is not vacuous: break ONE reference (the declaration keeps its name, so this is
+    // a dangling name rather than a consistent rename) and the same call must reject it. Without this
+    // a tsc invocation that silently resolved nothing — a bad path, a flag typo, a future
+    // `--skipLibCheck` creeping in — would read as a pass forever.
+    let mutated = export.join("merged-dts-negative-case.d.ts");
+    std::fs::write(
+        &mutated,
+        dts.replace("inner: InnerNoRowJSON", "inner: InnerNoRowJSONMissing"),
+    )
+    .unwrap();
+    assert!(
+        !tsc_merged(&mutated).status.success(),
+        "a dangling name in the merged .d.ts must fail the type-check — the leg is checking nothing"
+    );
+    std::fs::remove_file(&mutated).unwrap();
     // wasm-pack pack ran.
     let has_tgz = std::fs::read_dir(export.join("rust/wasm/pkg"))
         .unwrap()
