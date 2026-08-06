@@ -4106,16 +4106,216 @@ fn occurrence_marker_on_inline_group_rejects_gracefully() {
     // path) — otherwise `is_enum`/`for_rust_member` trip a `generic_instances` assert at generation.
     run("pair = (int, tstr)\na = [* pair]\n", "named_workaround")
         .expect("naming the group (`pair`) is the recommended workaround and must generate");
-    // Siblings that hit the same plain-group-registration gap and must also generate:
-    // single-element group as a `*` array element, and a plain group as a table VALUE (a CBOR map
-    // value can hold only one item, so the group is emitted as a nested-array-encoded struct).
+    // Sibling that hits the same plain-group-registration gap and must also generate: a
+    // single-element group as a `*` array element.
     run("pair = (int)\na = [* pair]\n", "named_single_element")
         .expect("a single-element plain group as a `*` array element must generate");
+    // A plain group as a table VALUE is the one neighbour that does NOT generate: an array element
+    // can absorb a spliced group because the emitted length scales with the group's arity, but a
+    // CBOR map entry holds exactly one item per slot and cannot. It is refused at both spellings —
+    // see `plain_group_table_domain_rejects_gracefully_at_both_spellings`, which owns the message.
     run(
         "pair = (int, tstr)\na = { * int => pair }\n",
         "named_table_value",
     )
-    .expect("a plain group as a table value must register + generate, not panic");
+    .expect_err("a plain group as a table value must reject gracefully, not splice into the slot");
+}
+
+/// A bare plain group in a table's KEY or VALUE domain (`coords = (uint, uint)`,
+/// `{ * uint => coords }`) is unsupported and rejected BY DESIGN via a GRACEFUL `Err`.
+///
+/// A CBOR map entry holds exactly one item per slot and a keyless group has no single-item form, so
+/// the only emission available is splicing its members in flat — which contradicts the map's own
+/// entry count. The NAMED spelling used to do exactly that at exit 0: one entry serialized to
+/// `a2 01 07 08 02 09 0a`, which an interoperating decoder reads as the 2-entry map `{1: 7, 8: 2}`
+/// plus trailing bytes, while the INLINE spelling reached a raw `unwrap` at generation. The refusal
+/// replaces both, so one spelling can no longer pass what the other panics on and neither ships
+/// bytes only this crate can read.
+///
+/// Pins the message (role, group source name, remedy), that both spellings and both roles refuse,
+/// and — the part that keeps the refusal honest — that the remedy the message names actually
+/// generates: an array-WRAPPED group carries `basic_override`, serializes as one nested item, and
+/// must stay green in every profile.
+#[test]
+fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_grouptable_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "grouptable_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "coords = (uint, uint)\n";
+
+    // Named spelling, VALUE role: names the rule by its SOURCE spelling, the entry, the role, the
+    // group, and the array-wrapping remedy.
+    let named_value = run(
+        &format!("{GROUP}t = {{ * uint => coords }}\n"),
+        "named_value",
+        &[],
+    )
+    .expect_err("a plain group as a named table's VALUE domain must reject gracefully");
+    assert!(
+        named_value.contains(
+            "rule `t`: the table entry `uint => coords` uses the bare plain group `coords` as its \
+             VALUE domain"
+        ),
+        "rejection should name the rule, entry, group and role, got: {named_value}"
+    );
+    assert!(
+        named_value.contains("a CBOR map entry holds exactly one item in each slot"),
+        "rejection should explain why the splice is impossible, got: {named_value}"
+    );
+    assert!(
+        named_value.contains("`{ * uint => [coords] }`"),
+        "rejection should name the array-wrapping remedy for this entry, got: {named_value}"
+    );
+
+    // Named spelling, KEY role: same message with the role and the remedy side swapped.
+    let named_key = run(
+        &format!("{GROUP}t = {{ * coords => uint }}\n"),
+        "named_key",
+        &[],
+    )
+    .expect_err("a plain group as a named table's KEY domain must reject gracefully");
+    assert!(
+        named_key.contains("uses the bare plain group `coords` as its KEY domain")
+            && named_key.contains("`{ * [coords] => uint }`"),
+        "the KEY-role rejection should swap the role and the remedy side, got: {named_key}"
+    );
+
+    // Inline spelling — the one that used to panic on a raw unwrap at generation. Role-generic
+    // site wording (`inline map`), same body.
+    let inline_value = run(
+        &format!("{GROUP}t = [{{ * uint => coords }}]\n"),
+        "inline_value",
+        &[],
+    )
+    .expect_err("a plain group as an INLINE table's VALUE domain must reject, not panic");
+    assert!(
+        inline_value.contains(
+            "inline map: the table entry `uint => coords` uses the bare plain group `coords` as \
+             its VALUE domain"
+        ) && inline_value.contains("`{ * uint => [coords] }`"),
+        "the inline rejection should share the named one's body, got: {inline_value}"
+    );
+
+    // Remaining spellings of the same shape: inline key role, both roles at once (which names both
+    // sides), the parenthesized table, an alias to the group, and the `+` cardinality.
+    for (spec, tag, needle) in [
+        (
+            format!("{GROUP}t = [{{ * coords => uint }}]\n"),
+            "inline_key",
+            "as its KEY domain",
+        ),
+        (
+            format!("{GROUP}t = [{{ * coords => coords }}]\n"),
+            "inline_both",
+            "as its VALUE domain",
+        ),
+        (
+            format!("{GROUP}t = {{ * (uint => coords) }}\n"),
+            "paren",
+            "as its VALUE domain",
+        ),
+        (
+            format!("{GROUP}c2 = coords\nt = {{ * uint => c2 }}\n"),
+            "alias",
+            "the bare plain group `coords`",
+        ),
+        (
+            format!("{GROUP}t = {{ + uint => coords }}\n"),
+            "plus",
+            "as its VALUE domain",
+        ),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} spelling should reject with `{needle}`, got: {msg}"
+        );
+    }
+
+    // Profile independence: the refusal is at parsing, so no flag combination reaches an emission
+    // that could differ.
+    for (extra, tag) in [
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=false"], "no_wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        run(&format!("{GROUP}t = {{ * uint => coords }}\n"), tag, &extra)
+            .expect_err("the refusal must fire on every profile");
+    }
+
+    // The remedy must actually work — otherwise the message sends the author into another wall.
+    // An array-WRAPPED group carries `basic_override`, so it serializes as one nested item and is
+    // NOT a bare domain: `{1: Coords(7,8)}` inside a holder emits `81a101820708`, which decodes as
+    // `[{1: [7, 8]}]` with no trailing bytes (verified out of tree; here we pin that it generates).
+    for (spec, tag) in [
+        (
+            format!("{GROUP}t = {{ * uint => [coords] }}\n"),
+            "wrap_value",
+        ),
+        (format!("{GROUP}t = {{ * [coords] => uint }}\n"), "wrap_key"),
+        (
+            format!("{GROUP}arr = [coords]\nt = {{ * uint => arr }}\n"),
+            "wrap_named",
+        ),
+        (
+            format!("{GROUP}t = [{{ * uint => [coords] }}]\n"),
+            "wrap_inline",
+        ),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "the remedy `{}` must generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // Neighbours the guard must NOT widen into: a plain table, the array-element workaround (an
+    // array's emitted length scales with the group's arity, so a splice there IS conformant), a
+    // single-element parenthesized rule (a transparent alias, not a group at all), and a group
+    // reference whose target is a real array/map RULE rather than a plain group.
+    for (spec, tag) in [
+        ("t = { * uint => tstr }\n".to_owned(), "plain_table"),
+        ("pair = (int, tstr)\na = [* pair]\n".to_owned(), "arr_elem"),
+        (
+            "one = (uint)\nt = { * uint => one }\n".to_owned(),
+            "alias_one",
+        ),
+        (
+            "coords = [uint, uint]\nt = { * uint => coords }\n".to_owned(),
+            "array_rule",
+        ),
+        (
+            "coords = {a: uint}\nt = { * uint => coords }\n".to_owned(),
+            "map_rule",
+        ),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
 }
 
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and

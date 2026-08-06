@@ -78,6 +78,7 @@ recursive_pure_alias       error (graceful)
 recursive_union_keyed_table_nominal ok
 self_recursive             error (graceful)
 single_bareword_map_field  ok
+table_domain_plain_group   error (graceful)
 tagged_literal             error (graceful)
 tagged_prelude_constant    error (graceful)
 undefined_generic          error (graceful)
