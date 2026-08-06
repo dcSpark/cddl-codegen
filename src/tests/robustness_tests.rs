@@ -3624,6 +3624,116 @@ fn fixed_inner_null_collapse_rejects_gracefully_at_both_sites() {
     }
 }
 
+/// A choice arm whose variant name is DERIVED from a fixed value's LEXEME (`1.5` → `F1.5`, `-1` →
+/// `U-1`) is unspellable as a Rust identifier. Rejected BY DESIGN via a GRACEFUL `Err` naming the
+/// rule, the arm and the `@name` remedy — previously the invalid name went out to rustfmt, which
+/// failed with an error about its own confusion (`expected item, found 5`) and named neither the
+/// arm nor a way out.
+///
+/// Swept across BOTH naming consumers, because they are different code paths onto the same minter:
+/// the type-choice one (`create_variants_from_type_choices`, reached by a bare rule-level choice,
+/// an all-fixed c-style enum and a nested ANONYMOUS choice) and the group-choice arm loop's
+/// BARE-member fallback (`[ true // 1.5 ]`, where no member key exists to name the variant after).
+/// The positive controls pin that the predicate is on the minted STRING, not on the value's kind:
+/// fixed uint/text arms and any `@name`d arm keep generating.
+#[test]
+fn lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites() {
+    fn run(spec: &str, tag: &str) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_armname_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "armname_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    // Type-choice consumer: rule-level bare choice, naming the rule by its SOURCE spelling (`t`,
+    // not the camel-cased `T`), the arm as written, the minted name and the `@name` remedy.
+    let float_arm = run("t = 1.5 / tstr\n", "float").expect_err(
+        "a fixed float arm minting an invalid variant name must be a graceful Err, not a rustfmt failure",
+    );
+    assert!(
+        float_arm.contains("rule `t`: its arm `1.5` generates the variant name `F1.5`"),
+        "rejection should name the rule, the arm and the minted name, got: {float_arm}"
+    );
+    assert!(
+        float_arm.contains("is not a valid Rust identifier"),
+        "rejection should say why the minted name is refused, got: {float_arm}"
+    );
+    assert!(
+        float_arm.contains("Name the arm with `; @name <new_name>`"),
+        "rejection should name the `@name` remedy, got: {float_arm}"
+    );
+
+    // The nint kind mints from the same lexeme path (`U-1` — the `U`-for-nint prefix is existing
+    // naming behaviour, not part of what this rejects).
+    let nint_arm = run("t = -1 / null / tstr\n", "nint")
+        .expect_err("a fixed nint arm must reject gracefully too");
+    assert!(
+        nint_arm.contains("rule `t`: its arm `-1` generates the variant name `U-1`")
+            && nint_arm.contains("`; @name <new_name>`"),
+        "the nint rejection should share the shape of the float one, got: {nint_arm}"
+    );
+
+    // The all-fixed c-style-enum spelling consumes the same minted variants, so it refuses at the
+    // same seam — once per offending arm.
+    let c_enum =
+        run("t = 1.5 / 2.5\n", "cenum").expect_err("an all-fixed float c-style enum must reject");
+    assert!(
+        c_enum.contains("its arm `1.5` generates the variant name `F1.5`")
+            && c_enum.contains("its arm `2.5` generates the variant name `F2.5`"),
+        "the c-style-enum rejection should name every offending arm, got: {c_enum}"
+    );
+
+    // Nested ANONYMOUS choice: no rule owns the arms, so the wording is role-generic. This spelling
+    // also mints the enclosing RULE ident from the same lexeme (`F1.5OrText`), which is why the
+    // rejection has to land before generation rather than at the variant alone.
+    let nested = run("x = [1.5 / tstr]\n", "nested")
+        .expect_err("a nested anonymous choice with a fixed float arm must reject");
+    assert!(
+        nested.contains("an inline type choice: its arm `1.5` generates the variant name `F1.5`"),
+        "the nested-anonymous rejection should use role-generic wording, got: {nested}"
+    );
+
+    // Group-choice consumer: a BARE member has no key to name the variant after, so the name comes
+    // from the member's TYPE through the same minter.
+    let bare_group_arm = run("t = [ true // 1.5 ]\n", "grparm")
+        .expect_err("a bare fixed-float group-choice member must reject gracefully");
+    assert!(
+        bare_group_arm.contains("rule `t`: its arm `1.5` generates the variant name `F1.5`")
+            && bare_group_arm.contains("`; @name <new_name>`"),
+        "the group-choice rejection should share the type-choice wording, got: {bare_group_arm}"
+    );
+
+    // Positive controls. Every kind whose minted name IS an identifier still generates, the
+    // documented `@name` route still overrides the derived name, and the NAMED-member group-choice
+    // spelling (whose variant comes from the member key, not the lexeme) is untouched.
+    for (supported, tag) in [
+        ("t = 5 / null / tstr\n", "uint_ok"),
+        ("t = \"x\" / null / tstr\n", "text_ok"),
+        ("t = 1.5 ; @name half\n  / tstr\n", "named_float_ok"),
+        ("t = -1 ; @name neg_one\n  / null / tstr\n", "named_nint_ok"),
+        ("t = [ true // v: 1.5 ]\n", "named_group_member_ok"),
+    ] {
+        assert!(
+            run(supported, tag).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            supported.trim(),
+            run(supported, tag).err()
+        );
+    }
+}
+
 /// The `.within` / `.and` control operators are unsupported — rejected BY DESIGN via a GRACEFUL
 /// `Err`, never `todo!()`. Follows the `.size`-on-`int` sibling in `parse_control_operator`
 /// (`record_rejection` + an inert full-range placeholder, drained by `finalize`), including its

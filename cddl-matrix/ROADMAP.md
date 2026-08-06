@@ -61,13 +61,13 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 - **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).**
   Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
   cover the member and group-choice-arm positions, and the B3-013 due-diligence probe of the THIRD
-  arm position found `t = 1.5 / tstr` and `t = -1 / null / tstr` dying at rustfmt on an unsanitized
-  variant identifier (`F1.5`, `F-1` — § findings, "A fixed FLOAT or NINT arm in a bare TYPE
-  choice…") while the uint/text kinds are fine — exactly the known-NON-uniform kind axis measured
-  on two of three positions. Add choice-member cells per fixed kind with truthful verdicts (uint
-  and text as accept rows; float and nint as reject rows carrying the ident-defect evidence until
-  the sanitization scheme or refusal lands), so the kind × position product stops relying on
-  per-delivery diligence for its last column.
+  arm position found `t = 1.5 / tstr` and `t = -1 / null / tstr` refused for an unspellable derived
+  variant identifier (`F1.5`, `U-1` — § findings, "No auto-naming scheme for a DERIVED variant
+  identifier…") while the uint/text kinds are fine — exactly the known-NON-uniform kind axis
+  measured on two of three positions. Add choice-member cells per fixed kind with truthful verdicts
+  (uint and text as accept rows; float and nint as reject rows carrying the graceful-refusal
+  evidence, which is what they stay until a derived-name scheme lands), so the kind × position
+  product stops relying on per-delivery diligence for its last column.
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -219,28 +219,26 @@ ledgered here (that's what the probe/gate error messages point at).
   value-less test the payload arm applies to its child should see THROUGH the encoding operations
   that carry no value of their own under the profile in question, rather than matching only a bare
   fixed root.
-- **A fixed FLOAT or NINT arm in a bare TYPE choice mints an invalid Rust variant identifier and
-  dies at rustfmt — exit 1 and zero files written, but no refusal naming the construct.** Probed
-  2026-08-06 while enumerating the float fixed-value kind (whose group-choice-arm cells
-  `contain.group-choice-arm.type2.value.float_array` / `.float_same_major_array` and member cell
-  `contain.array-element.value.number.float` take different, green paths). `t = 1.5 / tstr` and
-  `t = -1 / null / tstr` mint enum variants named from the literal's LEXEME (`F1.5`, `F-1`) — not a
-  valid identifier — so generation fails only when rustfmt refuses the emitted tokens ("arbitrary
-  expressions are not allowed in patterns" / "expected item, found `5`"), an error that names
-  rustfmt's confusion rather than the arm. The uint and text kinds are unaffected
-  (`t = 5 / null / tstr`, `t = "x" / null / tstr` — their lexemes already form valid identifiers),
-  so the mechanism is the type-choice fixed-arm variant-name minter not sanitizing `.` and `-`.
-  Loud, never silent: no exit-0 output exists to be wrong. Scope of the probe: bare type choices,
-  default profile; the group-choice spelling of the same pairings emits through the arm cells above
-  and is green. Two later probes (2026-08-06, doc-audit pass) sharpen the record: the ALL-FIXED
-  c-style-enum form shares the defect (`t = 1.5 / 2.5` dies identically, so the c-enum variant
-  minter is the same unsanitized site), and a WORKAROUND exists today — an arm-position `@name`
-  (`t = 1.5 ; @name half_and_half` before the `/ tstr` arm) supplies the identifier and generation
-  succeeds (probed at generation, `--wasm=false` default profile; documented in
-  `current_capacities.mdx` § Type choices). Candidate fix, either direction honest: sanitize the
-  minted variant identifier (a public-API naming decision — e.g. `F1_5` / `FNeg1` — so it wants a
-  deliberate scheme, not an ad-hoc escape), or refuse the arm kind gracefully naming the construct
-  and the `@name` workaround until that scheme exists.
+- **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
+  — fixed FLOAT and NINT choice arms are refused instead of named.** A choice arm with no member key
+  takes its variant name from the value's LEXEME (`1.5` → `F1.5`, `-1` → `U-1`), which is not a Rust
+  identifier. Today that is a graceful refusal at parse naming the rule, the arm and the
+  arm-position `@name` remedy (pinned by
+  `lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites`, with
+  `tests/robustness/choice_float_arm_variant_name.cddl` and
+  `choice_nint_arm_variant_name.cddl` holding the catalog outcome), across both naming consumers:
+  bare and c-style type choices, nested anonymous choices, and the bare-member group-choice spelling
+  (`t = [ true // 1.5 ]`). The NAMED-member group-choice spelling is unaffected — its variant comes
+  from the member key, which is what the green cells
+  `contain.group-choice-arm.type2.value.float_array` / `.float_same_major_array` and the member cell
+  `contain.array-element.value.number.float` measure. The missing capability is the scheme itself:
+  a sanitized derived name (`F1_5` / `FNeg1`, or a positional one) is public API of the generated
+  crate, so it wants a deliberate, documented convention rather than an ad-hoc escape, and shipping
+  one retroactively renames variants for anyone who reached the refusal and wrote `@name` instead.
+  Until then `@name` is the supported route and the refusal points at it. Reopening signal: a spec
+  in which the arms needing a hand-written `@name` outnumber the ones that do not, or a single crate
+  carrying more than a handful of them — the hand-naming cost grows with that count inside one
+  consumer, so that is the dimension to watch rather than a second consumer appearing.
 - **A transparent alias carrying a `@custom_serialize`/`@custom_deserialize` PAIR has two wire forms
   in one crate: every embed site routes through the pair, its own standalone codec does not.** Probed
   2026-08-04 while force-wrapping the `.cbor` rule bodies (which closed the structurally identical
