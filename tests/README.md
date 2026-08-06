@@ -2851,7 +2851,9 @@ cheapest-in-isolation first:
   only what a consumer's package actually needs. It then bridges the two shipped scripts once, over
   the defs file that run just produced: the declaration-name guarantee only pays off where
   `json-ts-types.js` keys the splice on that exact name, and `js_d_ts_merge`'s hand-written defs
-  cannot see whether the two agree. Five further phases pin
+  cannot see whether the two agree, and asserts a second run over the same document is
+  byte-identical — the synthetic tokens are index-derived so a consumer's committed `.d.ts` cannot
+  churn between builds. Five further phases pin
   the failure directions, each a non-zero exit that leaves the last-good `json-types.d.ts` on disk: a
   document that cannot compile, a stale per-type schema beside the document, two documents, a
   document with no definitions, and two definitions landing on one declaration name. (Any of them
