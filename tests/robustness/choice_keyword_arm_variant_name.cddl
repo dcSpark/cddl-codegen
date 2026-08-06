@@ -1,0 +1,19 @@
+; The KEYWORD half of the lexeme-derived variant-name refusal whose numeric halves are pinned in
+; choice_float_arm_variant_name.cddl and choice_nint_arm_variant_name.cddl. A fixed TEXT arm's
+; variant name is camel-cased straight from the value, so `"self"` mints `Self` — lexically an
+; identifier, so nothing about its SHAPE is wrong, but a Rust keyword, and the emitter writes
+; minted names verbatim (it never raw-escapes to `r#Self`). It died at the same rustfmt seam
+; ("expected identifier, found keyword `Self`") with the same misattributed error, so it refuses
+; the same way. This is why the guard checks the minted string against the keyword LIST rather
+; than the float/nint kinds: the defect is "this string cannot be emitted here", and the kinds are
+; only how strings happen to reach it.
+;   - `a`  bare rule-level type choice.
+;   - `b`  bare-member GROUP choice — the second naming consumer.
+; Green neighbours: `c` takes the supported `@name` route, and `d` is a text arm that merely
+; CAPITALIZES (`"type"` -> `Type`) without landing on a keyword — Rust's only capitalized keyword
+; is `Self`, so `Type`, `Text` and every other camel-cased word stay green.
+a = "self" / "x" / uint
+b = [ true // "self" ]
+c = "self" ; @name mine
+  / uint
+d = "type" / null / tstr

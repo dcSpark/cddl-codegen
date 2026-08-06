@@ -226,13 +226,17 @@ ledgered here (that's what the probe/gate error messages point at).
   that carry no value of their own under the profile in question, rather than matching only a bare
   fixed root.
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
-  — fixed FLOAT and NINT choice arms are refused instead of named.** A choice arm with no member key
-  takes its variant name from the value's LEXEME (`1.5` → `F1.5`, `-1` → `U-1`), which is not a Rust
-  identifier. Today that is a graceful refusal at parse naming the rule, the arm and the
+  — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
+  arm with no member key takes its variant name from the value's LEXEME, which fails two ways:
+  `1.5` → `F1.5` and `-1` → `U-1` are not identifier-shaped, and `"self"` → `Self` is
+  identifier-shaped but a keyword (the emitter writes minted names verbatim and never raw-escapes,
+  and `Self` is Rust's only capitalized keyword, so it is the sole reachable one today).
+  Today that is a graceful refusal at parse naming the rule, the arm and the
   arm-position `@name` remedy (pinned by
   `lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites`, with
-  `tests/robustness/choice_float_arm_variant_name.cddl` and
-  `choice_nint_arm_variant_name.cddl` holding the catalog outcome), across both naming consumers:
+  `tests/robustness/choice_float_arm_variant_name.cddl`, `choice_nint_arm_variant_name.cddl` and
+  `tests/robustness/choice_keyword_arm_variant_name.cddl` holding the catalog outcome), across both
+  naming consumers:
   bare and c-style type choices, nested anonymous choices, and the bare-member group-choice spelling
   (`t = [ true // 1.5 ]`). The NAMED-member group-choice spelling is unaffected — its variant comes
   from the member key, which is what the green cells
@@ -307,8 +311,13 @@ ledgered here (that's what the probe/gate error messages point at).
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
   a map-value position (`m = { outer: { a: int, c: uint } }`) and the older group-choice rejections
-  print it once. The duplication is positional — the parse walk visits an array-element / `.cbor`-
-  controller type2 twice — and it is not new behaviour: the walk always did this, and the `panic!`
+  print it once. A SINGLE-ELEMENT inline array is the same instance seen from the type-choice side:
+  `x = [1.5 / tstr]` prints its rejection twice and `x = [tstr / tstr]` its arm-dedup warning twice,
+  while the two-entry form `x = [1.5 / tstr, z: uint]` prints once — probed 2026-08-06 on an
+  UNMODIFIED binary (default profile, `--wasm=false`), so it is the pre-existing walk and not
+  anything the rejections converted since. The duplication is positional — the parse walk visits an
+  array-element / `.cbor`-controller type2 twice — and it is not new behaviour: the walk always did
+  this, and the `panic!`
   that used to sit at those sites aborted on the FIRST visit, so nothing ever reached the second.
   Converting them to record-and-continue is what made a pre-existing double-walk observable, which
   is the general shape to expect from any further abort→rejection conversion.
