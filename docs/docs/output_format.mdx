@@ -748,7 +748,11 @@ rest row — structurally simpler because arrays are positional: there are no ke
 policy, no key dispatch, and no ordering machinery. The rest tail must be the array's **last**
 element, must occur exactly `*`, and must follow ≥1 fixed member; other spellings (a bounded/`+`
 occurrence, a non-final `*`, a rest tail in a group-choice arm or a plain group, or a fixed-value
-element type like `* 5`) are graceful rejections naming the supported form.
+element type like `* 5`) are graceful rejections naming the supported form. One element-type
+restriction is not yet graceful: a rest tail whose element is a **plain group**
+(`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) currently **aborts** generation rather than
+rejecting — name the group's array framing instead (`w = [kv]`, `t = [ c: uint, * w ]`), which is
+supported.
 
 **The `rest` field.** A `pub Vec<T>` named `rest` (rename with `@name` on the tail entry), holding
 the captured trailing elements in wire order. It is **excluded from `new()`** and defaults empty, so
