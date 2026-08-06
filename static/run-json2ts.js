@@ -193,6 +193,36 @@ for (const name of Object.keys(sourceDefs)) {
 const ANNOTATION_KEYWORDS =
   ['description', 'title', 'default', 'examples', 'deprecated', 'readOnly', 'writeOnly'];
 
+// A `$defs` KEY and the `$ref` TOKEN that points at it are not the same string. A key is an
+// arbitrary JSON string — `OrderedHashMap<K, V>` is a real one the static runtime publishes, and a
+// key may hold `/` or `~` — while a token inside a `#/$defs/...` pointer carries two layers of
+// escaping: the JSON-Pointer escapes (RFC 6901, `~` -> `~0` and `/` -> `~1`) under the URI-fragment
+// percent-encoding (RFC 3986). schemars writes references through both, so the token is decoded
+// before it is matched against a key and the replacement key is encoded on the way back out.
+//
+// Skipping the decode does not fail loudly, which is why it is written out rather than approximated:
+// an unrecognised token simply does not match a known name, the reference is left pointing at a key
+// this script has just renamed, and the whole document then dies inside json2ts's resolver with a
+// `MissingPointerError` naming a pointer nobody wrote. The Rust side decodes with the same two
+// layers in the same order (`decode_schema_ref_name`, in `static/json_schema_gen.rs` and in the
+// harness's reference-closure assert): `~1` before `~0`, because a name holding a literal `~1`
+// encodes to `~01` and decodes wrong in the other order.
+const decodeRefToken = (token) => {
+  let percentDecoded;
+  try {
+    percentDecoded = decodeURIComponent(token);
+  } catch (e) {
+    // Not valid percent-encoding: take the token as written rather than failing. It cannot match a
+    // known name any better either way, and a malformed reference is the resolver's to report.
+    percentDecoded = token;
+  }
+  return percentDecoded.replace(/~1/g, '/').replace(/~0/g, '~');
+};
+// `encodeURIComponent` leaves `~` alone (it is unreserved), so the pointer escapes must be applied
+// FIRST and survive it intact; `/` is gone by then, so nothing it would escape remains.
+const encodeRefToken = (name) =>
+  encodeURIComponent(name.replace(/~/g, '~0').replace(/\//g, '~1'));
+
 const knownNames = new Set(Object.keys(sourceDefs));
 const rewriteRefs = (node) => {
   if (Array.isArray(node)) {
@@ -201,9 +231,9 @@ const rewriteRefs = (node) => {
   }
   if (node === null || typeof node !== 'object') return;
   if (typeof node.$ref === 'string') {
-    const bare = node.$ref.replace(/^#\/(?:\$defs|definitions)\//, '');
+    const bare = decodeRefToken(node.$ref.replace(/^#\/(?:\$defs|definitions)\//, ''));
     if (knownNames.has(bare)) {
-      node.$ref = `#/$defs/${emittedKey.get(bare)}`;
+      node.$ref = `#/$defs/${encodeRefToken(emittedKey.get(bare))}`;
     }
     for (const keyword of ANNOTATION_KEYWORDS) delete node[keyword];
   }
@@ -335,7 +365,10 @@ const merged = {
   type: 'object',
   additionalProperties: false,
   properties: Object.fromEntries(
-    Object.keys(defs).map((name) => [name, { $ref: `#/$defs/${name}` }])
+    // Same encode as `rewriteRefs`: an emitted key that is not a TypeScript identifier keeps
+    // whatever the source key held, so this pointer needs the escaping just as much as the ones
+    // already in the document.
+    Object.keys(defs).map((name) => [name, { $ref: `#/$defs/${encodeRefToken(name)}` }])
   ),
   $defs: defs,
 };
