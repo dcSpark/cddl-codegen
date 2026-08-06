@@ -378,7 +378,11 @@ re-emits byte-exactly in its original wire order (the set is never sorted).
 
 Under `@duplicates preserve` a **table** rule's transparent alias targets an entry-ordered,
 duplicate-permitting pair-map (`PairMap<K, V>`, or `NonEmptyPairMap<K, V>` for the `{+}` flavor)
-instead of the loose `BTreeMap`/`OrderedHashMap`. A loose map keyed by key value is structurally
+instead of the loose `BTreeMap`/`OrderedHashMap`. A table rule that mints a type of its own — a
+**tagged** body (`#6.n({* k => v})`, the optional-tag idiom included) or a `@newtype` rule — holds
+the same pair-map twin as its **wrapper's inner** rather than through an alias, so the policy
+composes with the tag/`@newtype` wrapper and the rule's own codec owns the tag (see
+[current capacities](current_capacities#type-aliases-and-tagged-rules)). A loose map keyed by key value is structurally
 incapable of holding two entries with the same key, so preserve is the only way to accept AND re-emit
 duplicate-keyed maps byte-exactly — the load-bearing property for Cardano `transaction_metadata`,
 whose auxiliary-data hash is computed over the original bytes. The pair-map's read surface is

@@ -195,6 +195,15 @@ and reject cases (a loose builder plus a restricted `try_from`-door wrapper):
   A **named** rule surfaces under its own identifier (`meta = {* uint => bytes} ; @duplicates
   preserve` → a `Meta` class); a sole-owner rule's structural `PairMap<K>To<V>` name becomes a
   `pub type` alias to it, so anonymous uses of the shape resolve to the same JS class.
+- A **tagged or `@newtype` preserve table rule** is a nominal wrapper (it owns its tag — see
+  [current capacities](current_capacities#type-aliases-and-tagged-rules)), so its own class carries
+  the wrapper surface (`to/from_cbor_bytes`, `new(inner)`, a getter) rather than the map surface,
+  and its boundary types are the flavored structural class: `tagged_meta = #6.24({* uint => bytes})
+  ; @duplicates preserve` emits a `TaggedMeta` class whose `new` takes — and whose getter returns —
+  a `PairMapU64ToBytes` class the crate mints beside it (indexed in `collections.rs` like every
+  structural wrapper; the default-flavored `MapU64ToBytes` is minted beside it too, exactly as a
+  `@newtype` set rule mints both its list and set classes). The `{+}` flavor's boundary is the
+  restricted `NonEmptyPairMap<K>To<V>` class through the same door.
 - **The structural name encodes the container.** A synthesized preserve wrapper is
   `PairMap<K>To<V>` (`PairMapU64ToText` for `{* uint => text} ; @duplicates preserve`) and its
   non-empty flavor is `NonEmptyPairMap<K>To<V>` — the `PairMap` prefix composes with the `NonEmpty`
