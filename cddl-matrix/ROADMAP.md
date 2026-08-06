@@ -45,6 +45,29 @@ matrix's own side — as opposed to in the generator, which is the findings ledg
 kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
 (deferred, so each names the observable that would reopen it).
 
+- **Enumerate the bare named-group REFERENCE kind (`grpent.groupname`) across the table roles.**
+  Buildable now, and the payoff is already in hand: `{ * coords => uint }` and `{ * uint => coords }`
+  (a plain group as table key or value) abort at generation with a raw unwrap in both profiles —
+  found 2026-08-06 by an ad-hoc probe while authoring the rc1459 fixture's map controls, recorded in
+  § findings ("A bare plain group as a table KEY or VALUE aborts…"), and modeled by NO containment
+  cell: the `grpent.groupname` kind has array-element and group-choice-arm cells only, so the two
+  table roles render blank in the coverage grid and the abort was invisible to every projection.
+  Add the two cells with truthful verdicts (reject rows carrying the abort evidence until the
+  refusal-or-support fix lands, per the findings entry's fix shapes), and sweep the remaining roles
+  the kind can legally sit in for the same hole while there. NB this defect is also one synthetic
+  instance shy of the grammar-denominator item's reopening signal below (a generation defect in a
+  grid-BLANK cell): a consumer-reported spec breaking in such a cell fires that signal outright;
+  this entry is the cheap targeted slice that does not wait for it.
+- **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).**
+  Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
+  cover the member and group-choice-arm positions, and the B3-013 due-diligence probe of the THIRD
+  arm position found `t = 1.5 / tstr` and `t = -1 / null / tstr` dying at rustfmt on an unsanitized
+  variant identifier (`F1.5`, `F-1` — § findings, "A fixed FLOAT or NINT arm in a bare TYPE
+  choice…") while the uint/text kinds are fine — exactly the known-NON-uniform kind axis measured
+  on two of three positions. Add choice-member cells per fixed kind with truthful verdicts (uint
+  and text as accept rows; float and nint as reject rows carrying the ident-defect evidence until
+  the sanitization scheme or refusal lands), so the kind × position product stops relying on
+  per-delivery diligence for its last column.
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
