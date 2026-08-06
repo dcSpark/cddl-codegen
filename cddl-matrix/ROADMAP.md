@@ -158,6 +158,22 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
+- **A bare plain group as a table KEY or VALUE aborts at generation with a raw unwrap, not a
+  refusal naming the construct.** Surfaced 2026-08-06 during the rc1459 delivery's map-control
+  probes (found-not-fixed there; the delivered fixture's map controls spell the WRAPPED forms,
+  which are green). `coords = (uint, uint)` + `t = [{ * uint => coords }]` — and equally the key
+  side `{ * coords => uint }` — panic at `src/generation/serialize.rs:301`
+  (`types.rust_struct(ident).unwrap()` inside `encoding_var_is_copy`: a plain group registers no
+  `RustStruct` under its ident, so the lookup is `None`), exit 101 under both the default and
+  `--preserve-encodings` profiles. Loud, never silent — no output is written — but it is an
+  internal unwrap, not a diagnostic: nothing names the rule, the role, or the remedy (wrap the
+  group: `{ * uint => [coords] }`, the delivered green control). The array-element role has no
+  such gap — a bare plain group SPLICES there (`[* coords]`, supported) — so the hole is exactly
+  the two table roles, where splicing has no meaning and a refusal or an auto-wrap must be chosen.
+  Scope of the probes: both table roles, both profiles, `--wasm=false`, generate-only; not probed:
+  struct-map (non-table) member positions, json/wasm faces. Fix shape: either a graceful refusal
+  at the registration seam naming the construct and the wrapping remedy, or real support by
+  promoting the group the way the array wrapper spelling does — accepted-and-aborted is neither.
 - **A `.cbor` payload over a bare fixed value aborts in member position under the default profile,
   and generates under `--preserve-encodings` — the same spec, buildable under one profile only.**
   Surfaced 2026-08-06 by the recombination sweep (`outer=arr_single inner=cbor_payload
