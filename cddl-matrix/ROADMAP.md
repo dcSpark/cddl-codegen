@@ -69,14 +69,20 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   queue's "unify non-final optional/repeated array decoding" scope, and its guard covered a TAGGED
   spelling that had been shipping a codec whose own decoder rejected its own bytes). So enumerate
   the product: placement (array
-  element, array-rep field, struct-map member, table key, table value, map/array group-choice arm)
-  × modifier (bare, keyed, `?`-optional, tagged, alias-indirected), with truthful verdicts —
-  accept rows where the splice is conformant (array placements, including every alias-indirected
-  one) or a wrapping restores it (the named-array remedies), and reject rows carrying the refusal
-  evidence. Every cell whose verdict the 2026-08 cycle settled was settled by ad-hoc probing, which
-  is the argument for the grid: the two cells that probing left behind (a final-position `* kv`
-  rest tail, a plain group in a type-CHOICE arm) are defect rows the enumeration would have found
-  and are now § findings entries. NB this defect class is also one synthetic instance shy of the
+  element, array-rep field, struct-map member, table key, table value, map/array group-choice arm,
+  TYPE-choice arm) × modifier (bare, keyed, `?`-optional, count-permitting rest tail — `*` in
+  final position, distinct from the sole-element homogeneous cell
+  `contain.occurrence-target.grpent.groupname` — tagged, alias-indirected), with truthful
+  verdicts — accept rows where the splice is conformant (array placements, including every
+  alias-indirected one) or a wrapping restores it (the named-array remedies), and reject rows
+  carrying the refusal evidence. The TYPE-choice-arm placement and the rest-tail modifier are the
+  2026-08-07 capture-pass correction: the two defects that cycle's probing left behind (the
+  final-position `* kv` rest-tail panic, the plain group in a TYPE-choice arm — both § findings
+  entries) sat on an axis VALUE the product as first stated did not list, which is this entry's
+  own opening lesson (a defect on an axis the grid does not model) applied to the grid's own
+  draft. The third of that cycle's findings — the group-choice arm's silently dropped `?` — sits
+  INSIDE the stated product (group-choice arm × `?`-optional), which is exactly the cell class
+  the enumeration exists to mint. NB this defect class is also one synthetic instance shy of the
   grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
