@@ -953,6 +953,11 @@ self-documenting no-op. `preserve` swaps the transparent-alias target to a **pai
 - `{ + k => v }` → **`NonEmptyPairMap<K, V>`**, whose single `TryFrom` door composes the min-1 check
   on top of the same vec-of-pairs shape.
 
+A table rule that [owns an encoding operation](#type-spelling-at-member-positions) — a tagged body
+(`#6.n({* k => v})`, the optional-tag idiom included) or a `@newtype` rule — mints a **wrapper
+struct** whose stored inner is the same twin (`pub struct TaggedMeta(pub(crate) PairMap<u64,
+Vec<u8>>)`), so the policy selects the representation while the wrapper's codec owns the tag.
+
 An **anonymous inline table** in type position (a union arm, a field or element type) carries the
 directive on its own row instead — `{ * k => v ; @duplicates preserve` with the closing brace on the
 next line — and gets the same twin at that one use site (the union arm's payload becomes
