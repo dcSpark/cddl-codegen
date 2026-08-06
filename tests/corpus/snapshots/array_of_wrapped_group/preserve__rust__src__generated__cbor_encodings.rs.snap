@@ -1,0 +1,44 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::serialization::LenEncoding;
+use alloc::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct CoordsEncoding {
+    pub len_encoding: LenEncoding,
+    pub index_0_encoding: Option<cbor_event::Sz>,
+    pub index_1_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SplicedGroupArrayEncoding {
+    pub len_encoding: LenEncoding,
+    pub inner_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WrappedGroupArrayEncoding {
+    pub len_encoding: LenEncoding,
+    pub inner_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WrappedGroupMapKeyEncoding {
+    pub len_encoding: LenEncoding,
+    pub inner_encoding: LenEncoding,
+    pub inner_value_encodings: BTreeMap<Coords, Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WrappedGroupMapValueEncoding {
+    pub len_encoding: LenEncoding,
+    pub inner_encoding: LenEncoding,
+    pub inner_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+}

@@ -2013,8 +2013,23 @@ impl GenerationScope {
                     // not inherit the outer member's declared spelling. Same for the map arm's
                     // key/value configs below.
                     let mut elem_config = DeserializeConfig::new(&elem_var_name);
+                    // `is_basic` and NOT a bare `is_plain_group`: a plain group SPLICES into this
+                    // array only while it is still basic. A wrapper promotes it to a struct that
+                    // writes its own array header (`[* [coords]]`), and then the element is ONE
+                    // outer item read through the standalone `deserialize` — which is what the two
+                    // emitters either side of this one already decide with `is_basic`: the element
+                    // READ's embedded-vs-standalone face (the `Rust(ident)` arm's
+                    // `is_plain_group(ident) && !type_cfg.basic_override`) and the SERIALIZE
+                    // length (`expanded_field_count`, which consults `is_basic` internally and so
+                    // writes `1 * n` for the promoted form). Asking the bare predicate here charged
+                    // the group's field count against an outer slot the element did not occupy, so
+                    // the crate emitted bytes its own decoder rejected with `DefiniteLenMismatch` —
+                    // exit 0, compiles, round-trip red. Pinned by
+                    // tests/corpus/array_of_wrapped_group.cddl, which spells both forms plus the
+                    // map key/value controls (a table counts ENTRIES, so no expansion can be
+                    // charged to it and the array arm is the only site with this hazard).
                     let (mut deser_loop, plain_len_check) = match &ty.conceptual_type {
-                        ConceptualRustType::Rust(ty_ident) if types.is_plain_group(ty_ident) => {
+                        ConceptualRustType::Rust(_) if ty.is_basic(types) => {
                             // two things that must be done differently for embedded plain groups:
                             // 1) We can't directly read the CBOR len's number of items since it could be >1
                             // 2) We need a different cbor read len var to pass into embedded deserialize
