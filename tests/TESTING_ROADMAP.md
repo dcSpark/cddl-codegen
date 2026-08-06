@@ -549,6 +549,25 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     manifest to exact versions so it stops resolving fresh — either ends the class; the manual
     `cargo update -p <dep>` tail below stays only until one of them lands.
 
+18. **`no_silent_directive`'s position vocabulary lacks the SINGLE-ENTRY group-choice arm — the
+    one field/member spelling that mints no record.** Proven 2026-08-07 (`cddl-matrix/ROADMAP.md`
+    § findings, the single-entry-arm entry): a directive on
+    `t = [ a: uint // f: bytes ; @custom_serialize ws_only ]` is dropped silently — the whole
+    field-directive family, the COMPLETE pair and `@raw_bytes_flavor` included — because a
+    one-entry arm lowers to an enum variant carrying the member's inline type, so the
+    field-metadata walk that honors or refuses a member's directives never runs. The sweep passed
+    413/413 through it before and after the field-slot single-half refusal landed, which is the
+    measurement that the position is absent from its swept shapes rather than tolerated by them;
+    the directive-effect ROUND-TRIP COHERENCE item above shares the gap (its accepted-placement
+    list carries no arm position, correctly so while the position honors nothing). Mechanical
+    shape: add the one-entry-arm spelling (both reps) to the sweep's position grid, so every
+    directive in `KNOWN_RULE_METADATA_TAGS` is measured at the position and the gate's own
+    definition — effect or rejection, never silence — makes today's drop a FAIL. That makes it
+    the red-first vector for whichever fix shape the findings entry's delivery picks (a metadata
+    seam on the one-entry arm, or a refusal), so land the position WITH that delivery: a standing
+    sweep position that is red on arrival ships a permanently failing gate, which is a tier
+    breakage, not a test.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
