@@ -4914,6 +4914,208 @@ fn alias_to_plain_group_in_array_positions_matches_the_direct_reference() {
     }
 }
 
+/// The one MODIFIER the array placement cannot honour: an OPTIONAL (`?`) plain-group field in an
+/// ARRAY-representation record.
+///
+/// Everywhere else in an array a plain group is welcome — the array's emitted length scales with
+/// the group's arity, so the flat splice is conformant, and that is why the mandatory and
+/// alias-indirected spellings are supported rather than refused. `?` is where that stops: the
+/// splice writes members with no marker of its own, so the ONLY evidence of presence is the
+/// array's length, while an embedded decoder length-checks just the members it consumed. Deciding
+/// present-vs-absent needs the group's mandatory member count charged to the ENCLOSING read length
+/// before the group is read (or a second embedded deserialize method) — which is the
+/// occurrence/bounds program's scope, not a guard's, so this is a refusal and not an
+/// implementation.
+///
+/// It is a refusal that can be made honest, which is the whole reason to prefer it over the
+/// `assertion failed: !config.optional_field` abort it replaces: the array-framed remedy the
+/// message names is asserted here to generate. Pins the message (rule, field, group source name,
+/// remedy) across every spelling the one seam covers — bare, ALIAS, and TAGGED, the last of which
+/// used to exit 0 with a codec whose own decoder rejected its own bytes — on every profile, plus
+/// the neighbours the guard must not widen into: the mandatory splice, the remedy, the pedantic
+/// `1*1`, an optional NON-group field, the inline array-wrapped member, and the map twin's own
+/// message.
+#[test]
+fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_optgrouparr_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "optgrouparr_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "kv = (a: uint, b: uint)\n";
+    const ALIAS: &str = "kv = (a: uint, b: uint)\nkv_alias = kv\n";
+
+    // The bare spelling, in full: names the rule by its SOURCE spelling, the field, the group, why
+    // the optional splice cannot be decoded, and the array-framed remedy.
+    let bare = run(&format!("{GROUP}t = [ c: uint, ? kv ]\n"), "bare", &[])
+        .expect_err("an optional plain-group field in an array record must reject gracefully");
+    assert!(
+        bare.contains(
+            "rule `t`: array field `kv` is an OPTIONAL (`?`) reference to the plain group `kv`"
+        ),
+        "rejection should name the rule, field and group, got: {bare}"
+    );
+    assert!(
+        bare.contains("nothing on the wire marks where the optional group starts"),
+        "rejection should explain why presence cannot be decided, got: {bare}"
+    );
+    assert!(
+        bare.contains("`w = [kv]`, then `? w` in place of `? kv`"),
+        "rejection should name the array-framed remedy, got: {bare}"
+    );
+    assert!(
+        bare.contains("Dropping the `?`"),
+        "rejection should point at the supported mandatory splice, got: {bare}"
+    );
+
+    // Every other spelling reaches the same seam and carries the same body, because the guard reads
+    // the RESOLVED member type rather than its surface shape.
+    for (spec, tag, needle) in [
+        // reachable only since the alias-in-array support landed; before that the alias gap fired
+        // first, at its own (per-profile) site.
+        (
+            format!("{ALIAS}t = [ c: uint, ? kv_alias ]\n"),
+            "alias",
+            "array field `kv_alias` is an OPTIONAL (`?`) reference to the plain group `kv`",
+        ),
+        // a TAG around the member is an encoding operation, so the member type is still the group.
+        // This one used to exit 0 emitting a codec that fails its own round-trip.
+        (
+            format!("{GROUP}t = [ c: uint, ? #6.1(kv) ]\n"),
+            "tagged",
+            "is an OPTIONAL (`?`) reference to the plain group `kv`",
+        ),
+        // POSITION is irrelevant — the seam is the field, not the tail.
+        (
+            format!("{GROUP}t = [ c: uint, ? kv, d: uint ]\n"),
+            "non_final",
+            "array field `kv` is an OPTIONAL (`?`) reference to the plain group `kv`",
+        ),
+        // a group whose own members are ALL optional is reachable and deliberately still refused:
+        // the remedy serves it identically, so a narrower guard would buy nothing.
+        (
+            "kv = (? a: uint, ? b: uint)\nt = [ c: uint, ? kv ]\n".to_owned(),
+            "all_optional_members",
+            "array field `kv` is an OPTIONAL (`?`) reference to the plain group `kv`",
+        ),
+        // rule ORDER must not matter: the plain-group registry is settled in a pre-pass.
+        (
+            "t = [ c: uint, ? kv ]\nkv = (a: uint, b: uint)\n".to_owned(),
+            "reversed",
+            "array field `kv` is an OPTIONAL (`?`) reference to the plain group `kv`",
+        ),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} spelling should reject with `{needle}`, got: {msg}"
+        );
+    }
+
+    // Profile independence: the refusal is at parsing, so no flag combination reaches an emission
+    // that could differ. (All three of these formerly aborted at exit 101.)
+    for (extra, tag) in [
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        for (spec, spelling) in [
+            (format!("{GROUP}t = [ c: uint, ? kv ]\n"), "bare"),
+            (format!("{ALIAS}t = [ c: uint, ? kv_alias ]\n"), "alias"),
+        ] {
+            let msg = run(&spec, &format!("{tag}_{spelling}"), &extra)
+                .expect_err("the refusal must fire on every profile");
+            assert!(
+                msg.contains("is an OPTIONAL (`?`) reference to the plain group `kv`"),
+                "the {spelling} spelling on {tag} should carry the same body, got: {msg}"
+            );
+        }
+    }
+
+    // The remedy must actually work — otherwise the message sends the author into another wall.
+    for (extra, tag) in [
+        (vec![], "remedy"),
+        (vec!["--preserve-encodings=true"], "remedy_preserve"),
+    ] {
+        let spec = format!("{GROUP}w = [kv]\nt = [ c: uint, ? w ]\n");
+        assert!(
+            run(&spec, tag, &extra).is_ok(),
+            "the remedy `{}` must generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &extra).err()
+        );
+    }
+
+    // Neighbours the guard must NOT widen into. The first three are the array placement's supported
+    // core (an array's length scales with the group's arity, so a MANDATORY splice is conformant —
+    // through an alias too, and `1*1` is mandatory however pedantically spelled); the fourth is an
+    // optional NON-group field, which the optionality machinery has always handled; the fifth is the
+    // inline array-wrapped member, which carries `basic_override` and so is not a plain group here.
+    for (spec, tag) in [
+        (format!("{GROUP}t = [ c: uint, kv ]\n"), "mandatory_splice"),
+        (
+            format!("{ALIAS}t = [ c: uint, kv_alias ]\n"),
+            "mandatory_splice_alias",
+        ),
+        (format!("{GROUP}t = [ c: uint, 1*1 kv ]\n"), "pedantic_1x1"),
+        ("t = [ c: uint, ? d: uint ]\n".to_owned(), "optional_scalar"),
+        (
+            format!("{GROUP}t = [ c: uint, ? x: [kv] ]\n"),
+            "inline_array_wrapped",
+        ),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // The MAP twin keeps its OWN message: there the splice is unrepresentable at any optionality,
+    // so the refusal is about the value slot rather than about presence.
+    let map_twin = run(
+        &format!("{GROUP}t = {{ c: uint, ? d: kv }}\n"),
+        "map_twin",
+        &[],
+    )
+    .expect_err("the map twin must keep rejecting");
+    assert!(
+        map_twin.contains("map field `d` uses the plain group `kv` as its type"),
+        "the map twin should keep its own message, got: {map_twin}"
+    );
+
+    // The narrows guard beside this one is untouched: a count-permitting occurrence in NON-final
+    // position still rejects on its own terms, and never with this message.
+    let narrowed = run(
+        &format!("{GROUP}t = [ c: uint, * kv, d: uint ]\n"),
+        "narrows",
+        &[],
+    )
+    .expect_err("a non-final count-permitting occurrence must still reject");
+    assert!(
+        !narrowed.contains("is an OPTIONAL (`?`) reference"),
+        "a non-`?` occurrence must not borrow this message, got: {narrowed}"
+    );
+}
+
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
 /// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
 /// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because

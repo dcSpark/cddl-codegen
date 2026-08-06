@@ -6065,6 +6065,55 @@ fn parse_record_from_group_choice(
                     ));
                     return None;
                 }
+                // An OPTIONAL (`?`) plain-group field in an ARRAY-rep record. A plain group SPLICES
+                // its members flat into the enclosing array, so nothing on the wire marks where the
+                // optional group begins, and the embedded decoder length-checks only the members it
+                // consumed — telling present from absent needs the group's mandatory member count
+                // charged to the ENCLOSING read length before the group is read (either that, or a
+                // second embedded deserialize method). That is the occurrence/bounds program's
+                // territory, not a guard's; until it lands the shape must not reach emission, where
+                // it aborted on `assertion failed: !config.optional_field` naming neither the
+                // construct nor a remedy. The named-array remedy IS verified to generate, which is
+                // what makes a refusal honest here.
+                //
+                // Guarded on `is_basic` over the RESOLVED member type, the same predicate and the
+                // same one-seam placement as the map twin below: that is what makes the bare, the
+                // ALIAS (`? kv_alias`) and the TAGGED (`? #6.1(kv)`) spellings hit ONE message. The
+                // tagged one is not a widening — it exited 0 emitting a codec whose own decoder
+                // rejects its own bytes with a definite-length mismatch. Deliberately blanket over
+                // the group's own shape: a group whose members are ALL optional is reachable and
+                // still refused, because the remedy serves it identically and a narrower guard would
+                // buy a special case nothing has asked for. The array-WRAPPED forms keep their own
+                // verdicts — `w = [kv]` is a Record, not a plain group, and an inline `[kv]` member
+                // carries `basic_override` — so both fall outside `is_basic` untouched.
+                if optional_field
+                    && field_type.is_basic(types)
+                    && let ConceptualRustType::Rust(group_ident) =
+                        field_type.conceptual_type.resolve_alias_shallow()
+                {
+                    let source_name = types
+                        .source_rule_name(name)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| name.to_string());
+                    let group_name = types
+                        .source_rule_name(group_ident)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| group_ident.to_string());
+                    types.record_rejection(format!(
+                        "rule `{source_name}`: array field `{field_name}` is an OPTIONAL (`?`) \
+                         reference to the plain group `{group_name}`, which is unsupported — a plain \
+                         group splices its members flat into the enclosing array, so nothing on the \
+                         wire marks where the optional group starts, and an embedded decoder \
+                         length-checks only the members it consumed. Telling present from absent \
+                         would need the group's mandatory member count charged to the enclosing \
+                         read length before the group is read. Give the group its own array framing \
+                         and reference that, which makes the optional item exactly ONE array element \
+                         the decoder can test for: `w = [{group_name}]`, then `? w` in place of \
+                         `? {group_name}`. (Dropping the `?` — splicing the group as a MANDATORY \
+                         field — is supported as it stands.)"
+                    ));
+                    return None;
+                }
             }
             let key = match rep {
                 Representation::Map => {

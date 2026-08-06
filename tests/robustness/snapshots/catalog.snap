@@ -66,6 +66,7 @@ non_empty_map_wrapper_collision_nested error (graceful)
 non_empty_map_wrapper_name_collision error (graceful)
 non_empty_wrapper_collision_array_element error (graceful)
 non_empty_wrapper_name_collision error (graceful)
+plain_group_optional_array_field error (graceful)
 prelude_biguint            ok
 rangeop_typename_end       error (graceful)
 rangeop_typename_start     error (graceful)

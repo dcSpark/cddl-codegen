@@ -62,14 +62,21 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   (`alias_to_plain_group_in_array_positions_matches_the_direct_reference`), and reaching that
   verdict took four rep-stamp sites plus two emission sites — one of which had been emitting an
   array header counting elements against a body written in items, at exit 0 in a crate that
-  compiles. The ARRAY-rep OPTIONAL field still panics (§ findings, the entry above). So enumerate
+  compiles. The `?`-OPTIONAL modifier completed the sweep in the third direction — refused, because
+  a splice writes no marker of its own and so leaves the array's LENGTH as the only evidence of
+  presence, which an embedded decoder that length-checks just its own members cannot read
+  (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`; real support is the
+  queue's "unify non-final optional/repeated array decoding" scope, and its guard covered a TAGGED
+  spelling that had been shipping a codec whose own decoder rejected its own bytes). So enumerate
   the product: placement (array
   element, array-rep field, struct-map member, table key, table value, map/array group-choice arm)
   × modifier (bare, keyed, `?`-optional, tagged, alias-indirected), with truthful verdicts —
   accept rows where the splice is conformant (array placements, including every alias-indirected
-  one) or a wrapping restores it (the named-array remedies), reject rows carrying the refusal
-  evidence, and the still-panicking optional cell as a defect row that flips when its findings
-  entry closes. NB this defect class is also one synthetic instance shy of the
+  one) or a wrapping restores it (the named-array remedies), and reject rows carrying the refusal
+  evidence. Every cell whose verdict the 2026-08 cycle settled was settled by ad-hoc probing, which
+  is the argument for the grid: the two cells that probing left behind (a final-position `* kv`
+  rest tail, a plain group in a type-CHOICE arm) are defect rows the enumeration would have found
+  and are now § findings entries. NB this defect class is also one synthetic instance shy of the
   grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
@@ -196,24 +203,33 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
-- **An OPTIONAL plain-group field in an ARRAY-representation record aborts generation on
-  `assertion failed: !config.optional_field`.** `kv = (a: uint, b: uint)` + `t = [ c: uint, ? kv ]`
-  panics at `src/generation/deserialize.rs`' embedded-group deserialize branch. The branch's own
-  comment states the reason: an embedded read length-checks only the fields it consumed, so an
-  OPTIONAL splice would need either a second embedded deserialize method or an optionality
-  parameter that tells it to charge the group's mandatory member count to the enclosing `read_len`.
-  The assert IS the refusal, and being a panic it names neither the construct nor a remedy. Scope
-  of the probe (2026-08-06): array-representation record, `--wasm=false` default,
-  `--wasm=false --preserve-encodings=true` and `--wasm=true` — exit 101 on all three —
-  generate-only; the remedy below was verified to generate at exit 0 on the first two. The
-  MAP-representation sibling of the same spelling (`t = { ? c: kv }`) reached the same assert and is
-  now refused gracefully at parse
-  (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`), which is what left this one
-  visible on its own. Not probed: the json/component faces, an optional plain group as a
-  group-choice arm, or a group whose own members are all optional. Fix shape is a choice, not a
-  detail: either pass the optionality down so the embedded read charges the mandatory count, or make
-  the assert a graceful rejection naming the array-wrapped remedy (`w = [kv]`,
-  `t = [ c: uint, ? w ]`) the way the map sibling now does.
+- **A count-permitting occurrence over a plain group in FINAL array position aborts on a raw
+  `Option::unwrap()`.** `kv = (a: uint, b: uint)` + `t = [ c: uint, * kv ]` panics in
+  `src/generation/serialize.rs`. The `*` in final position is classified as an open-array REST TAIL
+  rather than as a narrowed member, so it routes past the record-field guards into a tail emitter
+  that has no splicing form for a group. Every neighbouring spelling of the same intent is already
+  graceful: NON-final `* kv` is refused by the rest tail's position guard, `+ kv` and `n*m kv` by
+  its occurrence guard, and the record path's own narrows guard covers keyed members. Scope of the
+  probe (2026-08-07 at `7a233010`): array-representation record, default profile, `--wasm=false`,
+  generate-only; not probed: the other profiles, the json/component faces, or a rest tail whose
+  group is reached through an alias. Fix shape is a choice, not a detail: give the rest-tail
+  emitter the splicing form (a tail of a 2-member group captures pairs, which is what the CDDL
+  says), or refuse it at the tail seam naming the homogeneous-array remedy (`w = [kv]`,
+  `t = [ c: uint, * w ]`) the way its `+`/`n*m` siblings already are.
+- **A plain group in a TYPE-CHOICE arm is never materialized, so the arm aborts on the missing
+  registration.** `kv = (a: uint, b: uint)` + `t = [ c: uint, x: kv / null ]` panics with
+  `rust struct Kv not found but referenced by …` at `src/intermediate/rust_type.rs`. Same shape as
+  the alias-in-array gap that
+  `alias_to_plain_group_in_array_positions_matches_the_direct_reference` closed — a use site that
+  routes a plain group to the splicing emission without stamping its Array rep first — but reached
+  through the TYPE-choice walk, which that delivery's four rep-stamp sites do not cover. Scope of
+  the probe (2026-08-07 at `7a233010`): array-representation record, `null`-collapsing two-arm
+  choice, default profile, `--wasm=false`, generate-only; not probed: the other profiles, a
+  non-collapsing choice (`kv / tstr`), a MAP-rep placement, or the same arm at rule position. Fix
+  shape is a choice, not a detail: stamp the rep on the choice walk's arms the way the array
+  placements now do (a splice inside a choice arm still has to be told apart from the other arms on
+  the wire, which is the part to establish first), or refuse a plain-group type-choice arm
+  gracefully naming the array-framed remedy (`w = [kv]`, `x: w / null`).
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:
