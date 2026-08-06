@@ -2535,36 +2535,23 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   Mechanical layer: a property over the `AnyCbor` fuzz corpus asserting
   `from_edn(to_edn(x))` byte-identity against the existing span oracle
   (`src/tests/any_cbor_tests.rs`).
-- **Run the TS-projection leg over every `--json-schema-export` fixture, not one.**
-  `assert_schema_projects_to_legal_ts` type-checks the document a fixture's json-gen crate actually
-  wrote, and `open_struct_map_json_e2e` is the only caller — chosen because its rest rows are where
-  a schema that is exactly right still projects to TypeScript that does not compile. Every other
-  `--json-schema-export` fixture is covered for its schema and not for its projection, so a shape
-  none of those rows has (a `oneOf` a consumer's `tsc` chokes on, a `$ref` cycle json2ts unrolls) is
-  invisible until a consumer's npm build finds it. Deferred on cost, not value: the leg is an `npm
-  install` plus a `tsc` run per fixture, and `run_test` has 27 call sites passing that flag. The
-  cheap build when it is worth it is a work dir whose `node_modules` is installed once and shared
-  (under `acquire_scratch_lock`, since `cargo test` runs the fixtures in parallel), leaving each
-  fixture a node + `tsc` run of a few seconds. Reopening signal: a second projection defect reaches a
-  consumer through a fixture the leg does not run on — or the flag's call-site count grows past
-  roughly forty, at which point the shared-install build is cheaper than deciding case by case which
-  fixture deserves the leg.
-- **Type-check the MERGED `.d.ts` with `tsc --noEmit`.** The type-checker oracle covers the json2ts
-  output alone (`js_schema_to_ts`, and `assert_schema_projects_to_legal_ts` over real emitted
-  documents); the merged file — wasm-pack's bindings with the JSON interfaces
-  appended and each `to_json_value()` specialized, produced by `js_d_ts_merge` and
-  `package_json_pipeline` — is still asserted on *substrings* of the emitted TypeScript, so it can
-  only catch the wrongness it was told to look for. A real type-checker over the merged file is the
-  oracle that catches the class as a class: a specialized method naming a type the append step never
-  wrote, a declaration duplicated between the two halves, a malformed union. Deferred on cost, not
-  on value: it adds TypeScript's install weight to `package_json_pipeline`, already the heaviest
-  JS-side gate. Two traps to build it with, so the follow-up does not rediscover them: (1)
-  `--skipLibCheck` makes the check VACUOUS here, because the file under test *is* a `.d.ts` — the
-  flag must stay off, which also means every type the file references must resolve; and (2)
-  TypeScript must be ≥ 5.2 with `--target esnext`, because wasm-bindgen emits `Symbol.dispose`
-  members that earlier targets do not know — a trap specific to this half, since the json2ts output
-  carries no wasm-bindgen surface. Reopening signal: a shipped merged `.d.ts` breaks a consumer's
-  build in a way the substring asserts could not see.
+- **Project the json-gen documents that no `run_test` fixture writes.** The TS-projection oracle
+  runs from `run_test`'s json-gen block, so it covers exactly the documents a `tests/<dir>/export`
+  fixture produces. Six other sites run a generated json-gen crate to a successful document and
+  project none of it: `json_schema_dep_threading`, `json_schema_export_without_serde_derives`,
+  `custom_schema_impl_writes_a_closing_document` and `json_gen_dep_links_a_threaded_dependency` in
+  `integration_tests`, `a_derived_thread_links_and_a_collision_blames_the_consumer` in
+  `config_tests`, and
+  `package_json_pipeline`'s own json-gen step (whose OUTPUT is projected — the merged `.d.ts` is
+  type-checked — but through the shipped script line rather than this leg). Every one of them builds
+  its crate from a one- or two-rule scratch spec (`dep_thing = [x: uint]`), so its document is a
+  strict simplification of what the fixtures already project; that is the whole reason for the
+  deferral, and it is what the build would have to stop being true of. The cheap build is the same
+  helper called with the scratch crate's json-gen dir — the shared install and the memo already make
+  a call a `node` + `tsc` run of a couple of seconds. Reopening signal: one of those sites grows a
+  spec carrying a construct no `tests/*/input.cddl` fixture has (a hand-written `JsonSchema` impl of
+  its own, a cross-crate threaded row whose key is not an identifier), which is when its document
+  stops being a simplification of a projected one.
 - **Propagating a deliberately-unpublished type's intent to the JSON → TS scripts.** A type whose
   CDDL rule carries `@no_json_schema_export` still mints a wasm class with `to_json_value(): any`
   (the directive removes the registration row, not the derives), so when nothing published
