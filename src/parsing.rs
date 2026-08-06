@@ -2467,29 +2467,31 @@ fn multiline_group_trailing_directive_offence(
     if metadata == RuleMetadata::default() {
         return None;
     }
-    let found = metadata
-        .all_directives()
+    let tags = metadata.all_directives();
+    Some(multiline_group_trailing_directive_message(name, &tags))
+}
+
+/// The one multi-line group-rule refusal message. `tags` is the non-empty directive list, in the
+/// stable order `RuleMetadata::all_directives` produces; the first is reused as the example
+/// spelling. Pinned by the `robustness_tests` vectors
+/// (`multiline_group_rule_trailing_directive_is_refused_not_dropped` and the
+/// `KNOWN_RULE_METADATA_TAGS` sweep beside it), which assert the rule ident, the directive spelling
+/// and BOTH remedies as substrings; do not reword it.
+fn multiline_group_trailing_directive_message(name: &str, tags: &[&str]) -> String {
+    let found = tags
         .iter()
         .map(|tag| format!("`{tag}`"))
         .collect::<Vec<_>>()
         .join(", ");
-    Some(multiline_group_trailing_directive_message(name, &found))
-}
-
-/// The one multi-line group-rule refusal message. Pinned by the `robustness_tests` vectors
-/// (`multiline_group_rule_trailing_directive_is_refused_not_dropped` and the
-/// `KNOWN_RULE_METADATA_TAGS` sweep beside it), which assert the rule ident, the directive spelling
-/// and BOTH remedies as substrings; do not reword it.
-fn multiline_group_trailing_directive_message(name: &str, found: &str) -> String {
     format!(
         "group rule `{name}`: a trailing comment on a multi-line group rule's closing-paren line \
          cannot carry a directive — the pinned CDDL parser binds that comment to the FOLLOWING rule \
          (or drops it when the group rule is last), so {found} would be silently lost. Refused \
          rather than dropped. Two spellings put the directive where the parser binds it to this \
-         rule: write the whole group on ONE line (`{name} = (…) ; {found_first} …`), or keep the \
+         rule: write the whole group on ONE line (`{name} = (…) ; {example} …`), or keep the \
          closing paren on the LAST ENTRY's line. A prose (non-directive) trailing comment is \
          accepted in this position.",
-        found_first = found.split(',').next().unwrap_or(found).trim()
+        example = tags.first().copied().unwrap_or("@rust_name")
     )
 }
 
