@@ -158,6 +158,25 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
+- **A `.cbor` payload over a bare fixed value aborts in member position under the default profile,
+  and generates under `--preserve-encodings` — the same spec, buildable under one profile only.**
+  Surfaced 2026-08-06 by the recombination sweep (`outer=arr_single inner=cbor_payload
+  filler=type2.value`, composition `rc1462 = [bytes .cbor 42]`) once the tagged-optional member kind
+  reshuffled its seeded draws onto that composition; confirmed pre-existing by generating the
+  minimal spelling at the parent commit. The value-less `Fixed` deserialize branch asserts its
+  caller wrapped no before/after text around it, and a `.cbor` overload's staging expression is
+  exactly such a wrapper, so the two meet and the `assert_eq!` fires (`generation/deserialize.rs`,
+  both asserts guarded by `if !cli.preserve_encodings` — which is why preserve, taking the fixed
+  branch's encoding-carrying path, exits 0). The asserts stay in place: reaching them means a caller
+  is asking a value-less branch to produce a value, and a silent widening would paper that over.
+  Pinned as a `PANIC` catalog row by `tests/robustness/cbor_fixed_payload.cddl` and keyed in
+  `recombination_tests::KNOWN_PANIC_CLASSES`. Scope of the probes: default and preserve profiles,
+  `--wasm=false`, generate-only; every fixed kind (`42` / `"s"` / `true` / `null`) and both the bare
+  and keyed element spellings reach it, while the rule-BODY spelling `x = bytes .cbor 42` is refused
+  gracefully one seam earlier and never arrives. Not probed: json/wasm/component faces, or whether
+  the same pairing arises through a tag chain rather than a `.cbor` one. Fix shape: the `Fixed`
+  branch needs to accept (and discard) an enclosing payload's staging wrapper the way its
+  preserve-side twin already does, rather than asserting the wrapper away.
 - **A same-major group-choice arm pairing under `--preserve-encodings` emits a crate that does not
   compile: the brute-force deserialize returns unit-variant constructions for arms preserve makes
   STRUCT variants.** Surfaced 2026-08-06 by the new cell

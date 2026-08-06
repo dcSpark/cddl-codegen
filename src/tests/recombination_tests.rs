@@ -318,20 +318,36 @@ const GROUP_TEMPLATES: &[Template] = &[
 ];
 
 // ---- member kinds (the proven multi-member axis) --------------------------------------------------
-/// One member shape inside a composite construct. `%K%`/`%K2%` are field-name slots; `%F%` is a
-/// filler-expression slot (only `filler` uses it). The known-outcome kinds are deliberately kept in
+/// One member shape inside a composite construct: `(name, member template, aux-rule BODY)`.
+/// `%K%`/`%K2%` are field-name slots; `%F%` is a filler-expression slot (only `filler` uses it);
+/// `%A%` is the kind's OWN aux rule's name. The known-outcome kinds are deliberately kept in
 /// (fixed bool = pinned panic, zero-star = pinned graceful reject): the sweep must OBSERVE the
 /// pinned classes, that's the ledger's anti-vacuity floor.
-const MEMBER_KINDS: &[(&str, &str)] = &[
-    ("fixed_uint", "%K%: 5"),
-    ("fixed_text", "%K%: \"x\""),
-    ("fixed_bool", "%K%: true"),
-    ("fixed_null", "%K%: null"),
-    ("scalar", "%K%: uint"),
-    ("optional", "? %K%: uint"),
-    ("zero_star", "* %K%: uint"),
-    ("inline_group", "(%K%: uint, %K2%: tstr)"),
-    ("filler", "%K%: %F%"),
+///
+/// The aux-rule slot is the `filler` mechanism narrowed to a kind's own fixed rule: `filler` DRAWS
+/// its aux rules from the ingredients and renames them for collision-proofing, while a `%A%` kind
+/// spells one rule whose name is built from the composition prefix AND the member index
+/// (`rc0123_ta0`), so the same kind appearing twice in a pair or triple gets two distinct rules
+/// rather than one shared or one colliding. Empty body = no aux rule, which is every other kind.
+const MEMBER_KINDS: &[(&str, &str, &str)] = &[
+    ("fixed_uint", "%K%: 5", ""),
+    ("fixed_text", "%K%: \"x\"", ""),
+    ("fixed_bool", "%K%: true", ""),
+    ("fixed_null", "%K%: null", ""),
+    ("scalar", "%K%: uint", ""),
+    ("optional", "? %K%: uint", ""),
+    ("zero_star", "* %K%: uint", ""),
+    ("inline_group", "(%K%: uint, %K2%: tstr)", ""),
+    ("filler", "%K%: %F%", ""),
+    // A tag head over a NAMED `T / null` rule — the option collapse under a tag, spelled the way
+    // the anonymous-choice-under-a-tag refusal tells a consumer to spell it (name the choice, then
+    // tag the name). It is not reachable by composing the kinds above: the collapse needs a named
+    // rule, and no other kind mints one. The gap was consequential — a `#6.n(T / null)` under
+    // --preserve-encodings dropped the tag head width on the null payload, exit 0 with a red
+    // emitted round-trip, and no composition spelled it, so the preserve layer-2 sweep was blind
+    // to it (fixed with tests/corpus/tagged_nullable.cddl, which pins the shape; this row is what
+    // keeps the whole member-kind cross-product honest about it).
+    ("tagged_optional", "%K%: #6.10(%A%)", "uint / null"),
 ];
 
 /// Construct shapes for the member-kind axis: struct map, array record, and the 2-arm group choice
@@ -379,7 +395,7 @@ struct MemberSink<'a> {
 
 /// Instantiate one member-kind at member position `idx` for composition `prefix`.
 fn member_instance(
-    kind: &(&str, &str),
+    kind: &(&str, &str, &str),
     idx: usize,
     sink: &mut MemberSink<'_>,
     fillers: &[Filler],
@@ -394,6 +410,15 @@ fn member_instance(
         sink.aux.append(&mut fa);
         sink.features.push(f.feature.clone());
         m = m.replace("%F%", &expr);
+    }
+    if !kind.2.is_empty() {
+        // Per-(composition, member index) so the same kind twice in one composition mints two
+        // rules; `rc<num>_*` keeps it inside the aux-rule namespace batching already relies on.
+        // Deterministic (no rng draw), so adding a `%A%` kind cannot re-roll the sampled draws
+        // of the members beside it.
+        let aux_name = format!("{prefix}_ta{idx}");
+        sink.aux.push(format!("{aux_name} = {}", kind.2));
+        m = m.replace("%A%", &aux_name);
     }
     m
 }
@@ -515,7 +540,7 @@ fn compositions() -> Vec<Composition> {
             }
         }
         for _ in 0..TRIPLE_SAMPLES_PER_SHAPE {
-            let ks: Vec<&(&str, &str)> = (0..3)
+            let ks: Vec<&(&str, &str, &str)> = (0..3)
                 .map(|_| &MEMBER_KINDS[(splitmix64(&mut rng) as usize) % MEMBER_KINDS.len()])
                 .collect();
             let prefix = format!("rc{n:04}");
@@ -905,6 +930,15 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "doubly nested tags are not supported",
         "tag directly inside a tag; pinned by tests/matrix_panic/contain.tag-content.type2.tag.cddl",
     ),
+    (
+        "assertion `left == right` failed left: \";\" right: \"\" @ src/generation/deserialize.rs",
+        "a `.cbor` payload over a bare FIXED value in member/element position, under the DEFAULT \
+         profile: the value-less `Fixed` deserialize branch asserts its caller wrapped nothing \
+         around it, and the payload overload's staging expression is exactly such a wrapper; \
+         pinned by tests/robustness/cbor_fixed_payload.cddl (a PANIC catalog row) and ledgered in \
+         cddl-matrix/ROADMAP.md § findings, `A `.cbor` payload over a bare fixed value aborts in \
+         member position under the default profile` entry",
+    ),
     // (retired when the fixed-value group-choice arm gained default-profile SUPPORT) A group-choice
     // arm whose whole content is a fixed value (`t = { a: 0 // b: tstr }`, `t = [ a: 0 // b: tstr ]`,
     // `t = [ 0 // tstr ]`) now generates under every profile instead of aborting under all but
@@ -1133,6 +1167,18 @@ fn recombination_generation_sweep() {
     // the only thing that moves `ok` without an ingredient change: 29 compositions migrated
     // graceful -> ok (634/892 -> 605/921) when the three narrower float prelude names became
     // registrations.
+    //
+    // A MEMBER-KIND addition moves the columns a third way, and the `tagged_optional` row is the
+    // worked example (1544/921/605/18 -> 1624/1001/607/16). Two independent effects, and separating
+    // them is the point of recording it: (1) the table grows the cross-product by exactly
+    // `SHAPES.len()` singles plus `SHAPES.len() * (2*old + 1)` pairs — 4 + 76 = 80 here — and all 80
+    // landed `ok`, which is what put the kind in front of the layer-2 profiles at all; (2) the
+    // seeded draws downstream of the table RESHUFFLE, so the sampled triples and depth-2 leaf
+    // fillers land on different compositions. Effect (2) is why `panic` FELL while a kind was
+    // added: the `non-literal tag heads` class lost 3 (14 -> 11) and one previously-unsampled
+    // composition (`[bytes .cbor 42]`) surfaced a NEW class, now ledgered. A reshuffle can only
+    // re-draw within the same ingredient set, so it moves classes between compositions; it cannot
+    // invent an outcome the generator does not already produce.
     //
     // Earlier panic -> ok movements, kept because each names the fixture that owns the shape:
     // generic INSTANTIATION in bare member position, when the `TypeGroupname` group-entry arm was
