@@ -1,0 +1,3 @@
+; cell: necollrec x rootref (shape defs, module a)
+foo = [a0: uint]
+recs = [+ foo]

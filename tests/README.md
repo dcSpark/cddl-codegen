@@ -4262,7 +4262,9 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
 
 - **The two-module template.** Each cell is a DIRECTORY fixture. `lib.cddl` (file stem `lib` ==
   `ROOT_SCOPE`) is the root — one trivial rule (`rt = [uint]`), constant across cells; `a.cddl` (scope
-  `a`) holds the shape's defs; `b.cddl` (scope `b`) holds the reference. Root-owner direction (shape
+  `a`) holds the shape's defs; `b.cddl` (scope `b`) holds the reference. The `rootref` mode is the one
+  exception and the reason the REFERENCING module is an axis at all: its reference lands in `lib.cddl`
+  beside the root rule and the cell carries no `b.cddl`. Root-owner direction (shape
   in root, referenced from a module) is deliberately NOT enumerated — root-module owners probed fine
   in both directions, so the non-root-owner cells are the discriminating ones.
 - **Axis 1 — type-shape** (`SHAPES`, copied verbatim from `project_wasm_matrix.ts` with a provenance
@@ -4301,6 +4303,18 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   emitting no serialization (`coll`/`collmap`/`nullable`/`necoll`/`nemap`); the other anon shapes'
   module `a` already emits serialization, so nothing masks their b-side verdict and a ballast
   variant adds no discrimination (their `anon` cells are green).
+  `rootref` — the anon spelling placed in the ROOT scope (`rootholder = [field0: <anonForm>]` in
+  `lib.cddl`, no module `b`), which is the REFERENCING-MODULE variation every other mode holds
+  constant at `b`. Root is where `mark_refs` resolves a structural wrapper differently, in two ways a
+  `b`-side reference cannot reach: a wrapper sole-owned by module `a` must be IMPORTED into root
+  (`use a::MapU64ToText;` for `collmap`, `use a::{Foo, MapFooToText};` for `tblrec`), while one the
+  root holder itself owns is minted AT root and named bare with no import (`FooList` for
+  `collrec`/`necollrec`, `MapU64ToText` for `nemap`, and the synthesized `NonEmptyFooList` /
+  `NonEmptyMapU64ToFoo` for `nesyncoll`/`nesynmap`). It applies to exactly those seven
+  WRAPPER-MINTING anon shapes (`EXPECTED_ROOTREF_SHAPES`): a shape whose anon form lowers to a
+  transparent core type (`coll`, `necoll`, `nullable`, `tag`, `bwrap`) or to a plain user-named rule
+  (`cborwrap`) puts nothing structural in root's way, so its rootref cell would only repeat `anon`
+  with the holder moved. All seven probed green.
   The field-embedding modes reference the shape from a record-FIELD position; `aliased` is the
   type-alias-TARGET position (added when its import class escaped to production — the second
   position-keyed escape after the group-ctor one below); other reference POSITIONS are

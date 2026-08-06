@@ -760,15 +760,19 @@ annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer'
 (`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
-- **Enumerate the multifile matrix's referencing-MODULE axis (root-position references).** Every
-  reference mode places the referencing `bholder` in module `b`, so a reference FROM THE ROOT scope
-  (`lib.cddl`) — which takes `mark_refs`' distinct emission-scope/no-import paths — is systematically
-  unenumerated. Proven consequential: before the shared `wasm_collection_wrapper` helper, a
-  root-scope anonymous use of a map shape sole-owned by a scope module named the structural class
-  bare with no import (never witnessed red; corrected incidentally by the shared-helper change, so
-  the root side of that path has no red→green vector). Candidate: a `rootref` mode (the `bholder`
-  lands in `lib.cddl`) over the wrapper-minting shape subset, with the same participation-pin idiom
-  (`EXPECTED_*` lists) the `anon` mode uses.
+- **Carry root-position references into the NON-structural reference positions.** The referencing
+  module is now an axis: the `rootref` mode places the anon spelling in `lib.cddl` over the
+  wrapper-minting shapes (`EXPECTED_ROOTREF_SHAPES`), so both halves of `mark_refs`' root behaviour
+  are gated — a wrapper sole-owned by a scope module IMPORTED into root, and a wrapper the root
+  holder owns minted AT root and named bare. What that leaves unenumerated is the same reference
+  POSITIONS the b-side modes distinguish: a root-position reference to a NAMED rule and a
+  root-position type-ALIAS target. They are deferred rather than built because root resolves a
+  user-named rule through the ordinary scope import the `named`/`aliased` cells already exercise from
+  `b`, so the added rows would repeat a seam rather than reach a new one — whereas the structural
+  wrapper genuinely has a root-only spelling (the bare, import-free one), which is why that subset
+  was the one built. Reopening signal, on the axis that made `aliased` worth adding: a root-position
+  dangling-import class (E0412/E0425/E0432) fixed BY HAND after a consumer's regen — an observable
+  its owner reports by construction, and one the seven green `rootref` cells put at zero today.
 - **Keep EVERY matrix axis honest (periodic).** Grid coverage equals the hand-curated lists the
   projections carry — `SHAPES` × `ROLES` in `project_wasm_matrix.ts`, `SHAPES` × reference MODE in
   `project_multifile_matrix.ts` — and a hole in ANY of them is silent, not a red cell. A wasm

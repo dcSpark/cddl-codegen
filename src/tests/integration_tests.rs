@@ -3197,7 +3197,8 @@ fn wasm_matrix_compiles_shard(shard: usize) {
 /// The multifile-placement matrix compile-gate. `cddl-matrix/project_multifile_matrix.ts` enumerates
 /// {type-shape} × {cross-module reference mode} into two-module DIRECTORY fixtures
 /// `tests/matrix_multifile/<shape>__<mode>/` (`lib.cddl` = root scope, `a.cddl` = the shape's defs,
-/// `b.cddl` = the reference). It's the *placement* counterpart to the construct gates, which all feed
+/// `b.cddl` = the reference — except the `rootref` cells, which put the reference in `lib.cddl` and
+/// carry no `b.cddl`). It's the *placement* counterpart to the construct gates, which all feed
 /// the generator SINGLE-file specs and so only ever verify root-scope placement: multifile emission
 /// branches on scope (`mark_refs`' hard-coded ROOT_SCOPE for the generator-invented structural
 /// wrappers), and that region has no other coverage.
@@ -3349,7 +3350,8 @@ fn multifile_matrix_compiles_shard(shard: usize) {
         }
         let wasm_dir = out.join("wasm");
         if !wasm_dir.exists() {
-            // Every cell's module `b` is a composite record, so a wasm crate is always expected. Treat a
+            // Every cell holds a composite record — module `b`'s, or (for the `rootref` cells, which
+            // carry no `b.cddl`) the root scope's — so a wasm crate is always expected. Treat a
             // missing one symmetrically (like `wasm_matrix_compiles`): a skip cell's red is gone
             // ("resurfaced"); a non-skip cell silently stops being gated — a coverage regression, not a pass.
             if skipped {
@@ -3926,7 +3928,8 @@ fn multifile_matrix_roundtrips() {
             }
             let wasm_dir = out.join("wasm");
             if !wasm_dir.exists() {
-                // Every cell's module `b` is a composite record, so a wasm crate is always
+                // Every cell holds a composite record — module `b`'s, or (for the `rootref` cells,
+                // which carry no `b.cddl`) the root scope's — so a wasm crate is always
                 // expected — a missing one silently de-gates the cell (mirror the compile floor).
                 if skipped {
                     resurfaced.push(format!("{label} (emits no wasm crate)"));

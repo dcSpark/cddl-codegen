@@ -26,7 +26,8 @@
  * the cross-module wiring is EXECUTED (round-tripped) rather than only type-checked; its
  * deliberately-red cells live in `MULTIFILE_ROUNDTRIP_SKIP`/`MULTIFILE_ROUNDTRIP_PROFILE_SKIP`.
  *
- * Deterministic (sorted cell order; no hash-order). Fixtures go to tests/matrix_multifile/<cell>/{lib,a,b}.cddl.
+ * Deterministic (sorted cell order; no hash-order). Fixtures go to tests/matrix_multifile/<cell>/{lib,a,b}.cddl
+ * — except the `rootref` cells, whose reference lives in `lib.cddl` and which therefore carry no `b.cddl`.
  *
  * Run from cddl-matrix/:
  *   bun run project_multifile_matrix.ts          -> (re)writes tests/matrix_multifile/<cell>/*.cddl
@@ -74,12 +75,22 @@ interface Shape {
   // nullable); the other anon shapes' module `a` already emits serialization, so a ballast variant
   // adds no discrimination and they are excluded from `anonb`.
   anonBallast?: boolean;
+  // `rootref` participation: the shape's anon spelling, placed in the ROOT scope instead of module
+  // `b`. Set ONLY on the WRAPPER-MINTING anon shapes — the ones whose root cell actually makes the
+  // root scope resolve a generator-INVENTED structural class (`MapKToV` / `XList` / their
+  // `NonEmpty*` twins), which is the whole subject of the mode; a shape whose anon form lowers to a
+  // transparent core type (`coll` -> `Vec<u64>`, `necoll` -> `NonEmptyVec<u64>`, `nullable` ->
+  // `Option<u64>`, `tag`, `bwrap`) or to a plain user-named rule (`cborwrap`'s `Foo`) puts nothing
+  // structural in root's way, so its rootref cell would duplicate `anon` with the holder moved.
+  // Membership is a PROBE outcome (each participating shape's root `generated/mod.rs` was read for
+  // the structural name it resolves), pinned by EXPECTED_ROOTREF_SHAPES below.
+  rootRef?: boolean;
 }
 const SHAPES: Record<string, Shape> = {
   palias: { defs: ["pa = uint"], ty: "pa" },
   talias: { defs: ["ta = text"], ty: "ta" },
   coll: { defs: ["nums = [* uint]"], ty: "nums", anonForm: "[* uint]", anonBallast: true },
-  collmap: { defs: ["mp = { * uint => text }"], ty: "mp", anonForm: "{ * uint => text }", anonBallast: true },
+  collmap: { defs: ["mp = { * uint => text }"], ty: "mp", anonForm: "{ * uint => text }", anonBallast: true, rootRef: true },
   // RESTRICTED non-empty list over an EXPOSABLE element (`[+ uint]` -> `NonEmptyVec<u64>`, the
   // two-type-constraint feature). Placement mirrors `coll`: the element is transparent, so module `a`
   // is alias-only (no serialization) and the shape needs no cross-module structural element wrapper —
@@ -91,11 +102,11 @@ const SHAPES: Record<string, Shape> = {
   // ROOT_SCOPE hard-code — the remaining issue-138 half; cddl-matrix/ROADMAP.md § findings). Both
   // reference modes are known-red (MULTIFILE_MATRIX_SKIP, citing that finding); the single-file anon
   // control is green (like `collrec`/`cborwrap`, the anon form references the named `foo` cross-module).
-  necollrec: { defs: ["foo = [a0: uint]", "recs = [+ foo]"], ty: "recs", anonForm: "[+ foo]" },
+  necollrec: { defs: ["foo = [a0: uint]", "recs = [+ foo]"], ty: "recs", anonForm: "[+ foo]", rootRef: true },
   // RESTRICTED non-empty map (`{+ k => v}` -> `NonEmptyMap<K, V>`) — the `+` analogue of `collmap`.
   // Placement mirrors `collmap` (the map arm is sole-owner-aware), so both reference modes are green;
   // module `a` is table-alias-only, so it carries `anonBallast` like `collmap`.
-  nemap: { defs: ["mp = { + uint => text }"], ty: "mp", anonForm: "{ + uint => text }", anonBallast: true },
+  nemap: { defs: ["mp = { + uint => text }"], ty: "mp", anonForm: "{ + uint => text }", anonBallast: true, rootRef: true },
   // SYNTHESIZED-NonEmpty facet: an inline `[+ foo]` / `{+ uint => foo}` over a NON-exposable (record)
   // element with NO named collection rule anywhere, so the restricted wrapper synthesizes
   // `NonEmptyFooList` / `NonEmptyMapU64ToFoo` at ROOT (no dedup-to-named — unlike `necollrec`/`nemap`,
@@ -105,8 +116,8 @@ const SHAPES: Record<string, Shape> = {
   // bare (E0425). `ty: foo` (a plain record) drives the named/aliased/unref modes; the discriminating
   // cell is `anon` (the inline synthesized wrapper referenced cross-module). `wasm_collection_wrapper`
   // resolves the wrapper name+home so both compile green.
-  nesyncoll: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "[+ foo]" },
-  nesynmap: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "{ + uint => foo }" },
+  nesyncoll: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "[+ foo]", rootRef: true },
+  nesynmap: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "{ + uint => foo }", rootRef: true },
   // Named NESTED restricted map (the CML issue's "placement half"): the outer `{+ …}` rule's
   // `try_from(&MapU64ToMapU64ToText)` loose source is itself keyed on the inner `{+ …}`'s loose
   // `MapU64ToText` builder, all minted at the rule's emission scope. Witnessed green (the map
@@ -132,7 +143,7 @@ const SHAPES: Record<string, Shape> = {
   // reference modes are known-red (see MULTIFILE_MATRIX_SKIP + the cddl-matrix/ROADMAP.md finding);
   // the shape was enumerated AFTER review found the hole — the single-file anon control is green
   // (like cborwrap, the anon form references the named `foo` cross-module).
-  collrec: { defs: ["foo = [a0: uint]", "recs = [* foo]"], ty: "recs", anonForm: "[* foo]" },
+  collrec: { defs: ["foo = [a0: uint]", "recs = [* foo]"], ty: "recs", anonForm: "[* foo]", rootRef: true },
   // Table keyed by a NON-exposable (record) key (`{ * foo => text }`) in a non-root module. The
   // sole-owner table class is emitted in module `a`, and its `keys()` accessor names the root-minted
   // keys-list wrapper (`FooList`) bare — but that wrapper is minted at ROOT_SCOPE and, until the
@@ -141,7 +152,7 @@ const SHAPES: Record<string, Shape> = {
   // never probe this class. Module `a` emits serialization (the `foo` record), so no anonBallast is
   // needed (like `collrec`); the single-file anon control is green (root scope has no cross-module
   // import to dangle).
-  tblrec: { defs: ["foo = [a0: uint]", "tbl = { * foo => text }"], ty: "tbl", anonForm: "{ * foo => text }" },
+  tblrec: { defs: ["foo = [a0: uint]", "tbl = { * foo => text }"], ty: "tbl", anonForm: "{ * foo => text }", rootRef: true },
   // OPEN TABLE keyed by a NON-exposable (record) typed key — the open-table sibling of `tblrec`, and
   // the placement class its flattening creates. The minted struct's wasm class carries the typed
   // row's `keys()` ITSELF (flattened, not on a container class), so the keys-list wrapper is named
@@ -248,13 +259,23 @@ const SHAPES: Record<string, Shape> = {
 // alias-only-module E0583 regression can't mask the b-side import verdict — see `anonBallast` above);
 // `unref` references nothing (module `a` still declares the shape — the cell where an
 // alias/table-only module would mis-declare `pub mod serialization;` if the E0583 class regressed).
+// `rootref` moves the referencing holder into the ROOT scope (`lib.cddl`) and emits NO module `b` at
+// all — the REFERENCING-MODULE axis every other mode holds constant at `b`. Root is where
+// `mark_refs` resolves a structural wrapper differently: a wrapper sole-owned by module `a` must be
+// imported into root (`use a::MapU64ToText;`), while one the root holder itself owns is minted AT
+// root and named bare with no import. Both halves are unreachable from a `b`-side reference.
 // Root-owner direction (shape in root, referenced from a module) is
 // deliberately NOT enumerated: root-module owners probed fine in BOTH directions, so the
-// non-root-owner cells above are the discriminating ones. `bholder`/`field0`/`bal0` dodge the
-// `R`/`W`/`T` reader/writer/generic letters.
+// non-root-owner cells above are the discriminating ones. `bholder`/`rootholder`/`field0`/`bal0`
+// dodge the `R`/`W`/`T` reader/writer/generic letters.
 interface Mode {
-  // returns module `b`'s content, or null if the shape does not participate in this mode
-  b: (s: Shape) => string | null;
+  // returns module `b`'s content, or null if the shape does not participate in this mode.
+  // EXACTLY ONE of `b` / `root` is set (asserted below): a `root` mode places its reference in the
+  // ROOT scope and the cell carries no `b.cddl` at all.
+  b?: (s: Shape) => string | null;
+  // returns the rules appended to `lib.cddl` (after the constant root rule), or null if the shape
+  // does not participate in this mode.
+  root?: (s: Shape) => string | null;
   aExtra?: (s: Shape) => string[]; // extra rules appended to module `a`'s defs for this mode
 }
 const MODES: Record<string, Mode> = {
@@ -268,8 +289,13 @@ const MODES: Record<string, Mode> = {
     aExtra: () => ["ballast = [bal0: uint]"],
   },
   named: { b: (s) => `bholder = [field0: ${s.ty}]` },
+  // The referencing-MODULE variation of `anon`: same inline anonymous spelling, placed at ROOT.
+  rootref: { root: (s) => (s.rootRef && s.anonForm ? `rootholder = [field0: ${s.anonForm}]` : null) },
   unref: { b: () => `bholder = [field0: uint]` },
 };
+for (const [name, m] of Object.entries(MODES))
+  if (!m.b === !m.root)
+    throw new Error(`MODES.${name}: set EXACTLY one of \`b\` / \`root\` — a mode places its reference in module \`b\` or in the root scope, never both/neither`);
 
 // The anon subset is a reviewed fact (which shapes have a single-file-green anon form): a mis-typed
 // `anonForm` key would silently drop a shape from `anon` (TS excess-property check catches an unknown
@@ -299,6 +325,28 @@ for (const k of anonbShapes)
   if (!SHAPES[k].anonForm)
     throw new Error(`SHAPES.${k}: anonBallast without anonForm — anonb reuses the anon spelling, so it needs one`);
 
+// Same idiom for the `rootref` subset (the WRAPPER-MINTING anon shapes — see `rootRef`). Each entry
+// is a probe outcome, recorded as the structural name its ROOT scope has to resolve:
+//   collmap    `use a::MapU64ToText;`          — sole-owner map wrapper imported from module `a`
+//   collrec    `FooList` minted AT root        — root holder owns the `[* foo]` occurrence
+//   necollrec  `FooList` at root + `use a::{Foo, Recs}`
+//   nemap      `MapU64ToText` at root + `use a::Mp`
+//   nesyncoll  `FooList` + `NonEmptyFooList` minted AT root (the synthesized-wrapper facet)
+//   nesynmap   `MapU64ToFoo` + `NonEmptyMapU64ToFoo` minted AT root
+//   tblrec     `use a::{Foo, MapFooToText};`   — sole-owner table wrapper + its root keys-list
+const EXPECTED_ROOTREF_SHAPES = ["collmap", "collrec", "necollrec", "nemap", "nesyncoll", "nesynmap", "tblrec"];
+const rootrefShapes = Object.keys(SHAPES)
+  .filter((k) => SHAPES[k].rootRef)
+  .sort();
+if (JSON.stringify(rootrefShapes) !== JSON.stringify(EXPECTED_ROOTREF_SHAPES))
+  throw new Error(
+    `rootref shape set is [${rootrefShapes.join(", ")}], expected [${EXPECTED_ROOTREF_SHAPES.join(", ")}] — ` +
+      `if the change is deliberate (a probe outcome changed), update EXPECTED_ROOTREF_SHAPES in the same commit`,
+  );
+for (const k of rootrefShapes)
+  if (!SHAPES[k].anonForm)
+    throw new Error(`SHAPES.${k}: rootRef without anonForm — rootref reuses the anon spelling, so it needs one`);
+
 // lib.cddl is the root scope (file stem `lib` == ROOT_SCOPE); one trivial rule, constant across cells.
 const LIB_CDDL = "rt = [uint]\n";
 
@@ -310,15 +358,22 @@ const cells: Cell[] = [];
 for (const shape of Object.keys(SHAPES).sort()) {
   const s = SHAPES[shape];
   for (const mode of Object.keys(MODES).sort()) {
-    const b = MODES[mode].b(s);
-    if (b === null) continue; // shape does not participate in this mode (anon without a green form)
-    const aRules = [...s.defs, ...(MODES[mode].aExtra?.(s) ?? [])];
+    const m = MODES[mode];
+    // shape does not participate in this mode (anon without a green form; rootref without a
+    // wrapper-minting one)
+    const b = m.b ? m.b(s) : null;
+    const root = m.root ? m.root(s) : null;
+    if (b === null && root === null) continue;
+    const aRules = [...s.defs, ...(m.aExtra?.(s) ?? [])];
     cells.push({
       dir: `${shape}__${mode}`,
       files: {
-        "lib.cddl": LIB_CDDL,
+        "lib.cddl":
+          root === null
+            ? LIB_CDDL
+            : `${LIB_CDDL}; cell: ${shape} x ${mode} (reference from the ROOT scope)\n${root}\n`,
         "a.cddl": `; cell: ${shape} x ${mode} (shape defs, module a)\n${aRules.join("\n")}\n`,
-        "b.cddl": `; cell: ${shape} x ${mode} (reference from module b)\n${b}\n`,
+        ...(b === null ? {} : { "b.cddl": `; cell: ${shape} x ${mode} (reference from module b)\n${b}\n` }),
       },
     });
   }
@@ -326,7 +381,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 147; // 43 shapes × {aliased, named, unref} = 129 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 147
+const EXPECTED_CELLS = 154; // 43 shapes × {aliased, named, unref} = 129 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} + 7 rootref shapes × {rootref} -> 154
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,
