@@ -314,21 +314,43 @@ ledgered here (that's what the probe/gate error messages point at).
   such hand-written standalone wrappers — the hand-maintenance cost grows with that count inside one
   crate, so that is the dimension to watch rather than a second consumer appearing.
 
-- **A field/member directive written on a SINGLE-ENTRY group-choice arm is silently dropped — the
-  whole field-directive family, not one directive.** `t = [ a: uint // f: bytes ; @custom_serialize
-  ws_only ]` generates at exit 0 with the arm's codec fully generated in both directions and
-  `ws_only` never called; the COMPLETE pair and `@raw_bytes_flavor` (rejected at the field slot
-  everywhere else) drop the same way in the same position. The cause is structural: a one-entry arm
-  lowers to an enum variant carrying the member's inline type, so no record is minted and the
-  field-metadata walk that reads (and validates) a member's directives never runs. A MULTI-entry arm
-  does mint a record and behaves exactly like an ordinary field in every respect measured. Probed
-  2026-08-07 at `d240eef3`, default profile, `--wasm=false`, both reps, on `@custom_serialize`
-  alone, the complete pair, and `@raw_bytes_flavor`; not probed: the other directives in the family,
-  preserve/canonical profiles, wasm/json faces. Fix shape: give the one-entry arm's member the same
-  metadata-validation seam the record walk has, so the position either honors a directive or refuses
-  it — a silent drop is the outcome the DSL rejects everywhere else. Reopening-through-delivery
-  signal: this is a candidate card, not a deferral — an author who writes a complete custom pair on
-  such an arm gets the default wire with no diagnostic.
+- **No member position — an ordinary record field included — reads the six RULE-SCOPED directives
+  that have no member meaning, so each is silently dropped there.** `@rust_name`, `@newtype`,
+  `@no_alias`, `@used_as_key`, `@custom_json` and `@no_json_schema_export` are read only at rule
+  position; written on a member's trailing comment they are parsed into the entry's metadata and
+  never looked at. Probed 2026-08-07 at `c950d6c5`, default profile, `--wasm=false`, each of the six
+  at an ordinary array-record field (`u = [a: uint, f: bytes ; @newtype]` and siblings, all exit 0
+  with the directive unread) and at a single-entry group-choice arm's entry slot; not probed: map-rep
+  fields, the row-entry slots, preserve/canonical profiles, wasm/json faces. This is the residue of
+  the member-position directive sweep: the six the field walk DOES refuse (`@copy`,
+  `@raw_bytes_flavor`, `@used_as_elem`, `@extern_companions`, `@duplicates`, `@ignore`) now live in
+  one shared list that both member positions call, so the fix is to extend that list — but doing so
+  also decides what a plain GROUP rule's TRAILING comment means, since that comment binds to the
+  group's LAST MEMBER, and `pg = (…) ; @used_as_key` is a spelling authors plausibly write today.
+  That coupling is why it is filed rather than folded into the single-entry-arm delivery. The
+  single-entry arm's cells for these six are pinned in `no_silent_directive.ts`'s
+  `KNOWN_POSITION_DROPS`, which fails loudly as a stale pin the moment the fix lands.
+  Reopening-through-delivery signal: this is a candidate card, not a deferral — every one of the six
+  ships as silence today.
+
+- **`@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm is half-honored, and
+  which way it should be settled is open.** The slot HAS a reader — `anon_array_member_name` takes
+  the name of a member-position anonymous inline array from exactly it, so
+  `t = [ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner` and generates. Where the
+  member's type is anything else the name is read by nothing: `t = [ a: uint // f: bytes ; @name
+  renamed ]` still emits variant `F`, and `t = [ true // 1.5 ; @name half ]` refuses with a message
+  telling the author to "name the arm with `; @name <new_name>`" — which they just did, in the slot
+  next door. Probed 2026-08-07 at `c950d6c5`, default profile, `--wasm=false`, both reps. Neither
+  obvious disposition is free: REFUSING the slot deletes the anonymous-array naming door the
+  "Anonymous groups not allowed" error advertises, and HONORING it as the variant name renames
+  variants in specs that generate today (`F(Inner)` → `Inner(Inner)`) while giving the variant a
+  second naming slot beside the arm's own `// ; @name <n>`, which is the documented one. A third
+  shape — refuse only where the anon-array reader did not consume it — has to restate that reader's
+  scope at a second site, which is the drift this codebase spends comments preventing. The rest of
+  the family at this position is delivered (honored or refused, `field_directives_on_single_entry_
+  group_choice_arm_reject_gracefully`), so this is the one spelling left. Reopening-through-delivery
+  signal: this is a candidate card, not a deferral — an author whose arm name lands in the wrong slot
+  gets either silence or a rejection that names the remedy they already wrote.
 
 - **A type-choice ARM or member declared as `bytes .cbor <alias>` changes NAME, not wire, once the
   alias survives to the arm.** Measured 2026-08-03 while fixing the wire half of the same seam (the

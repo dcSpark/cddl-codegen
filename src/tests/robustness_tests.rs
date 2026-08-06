@@ -6158,6 +6158,350 @@ fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
     }
 }
 
+/// Every FIELD/MEMBER directive written on a SINGLE-ENTRY group-choice arm's entry is honored or
+/// REFUSED, never dropped. A one-entry arm registers no record — the entry's type goes straight into
+/// the enum variant — so the record field walk that honors or refuses a member's directives never
+/// ran there, and the entry's trailing metadata slot was read by NOTHING: at exit 0,
+/// `[ a: uint // f: bytes ; @custom_serialize ws_only ]` generated the arm's codec in both
+/// directions with `ws_only` called nowhere, and the COMPLETE pair, `@raw_bytes_flavor`, `@doc` and
+/// every other directive the field walk reads behaved identically, in both representations.
+///
+/// The family swept here is CLOSED by code enumeration of the field walk's own `RuleMetadata` reads
+/// — the six rule-scoped ones it refuses (`@raw_bytes_flavor`, `@used_as_elem`, `@copy`,
+/// `@extern_companions`, `@duplicates`, `@ignore`), the custom-codec family it honors as a complete
+/// pair (`@custom_serialize` / `@custom_deserialize`, plus the `@custom_encodings` /
+/// `@custom_wire_major` wire facts that describe their wire), and `@doc` / `@name`, the two it
+/// honors unconditionally. The six go through the SHARED `reject_member_scoped_directives` list the
+/// field walk itself calls, which is what makes "the arm validates like the field walk" a fact
+/// rather than a resemblance.
+///
+/// Two verdicts differ from the field walk's, each for a reason the position forces:
+/// - the custom-codec family refuses on ANY presence, not just a lone half. At a field a lone half
+///   is the defect (two wire forms at one position) and the complete pair is fine; here neither
+///   reaches emission, so splitting the verdict would report a completeness problem the position
+///   does not have. The remedy is asserted below to ROUTE — a complete pair on the member's own type
+///   rule emits the named calls inside this very arm — which is what makes the refusal honest.
+/// - `@doc` refuses rather than being given a second meaning: the ARM's own slot
+///   (`// ; @doc <text>`) already documents the variant and is honored, and that is the remedy.
+///
+/// `@name` is the one member of the family that is NOT a silent drop at this slot and is
+/// deliberately untouched: `anon_array_member_name` reads exactly this slot for a member-position
+/// anonymous inline array, so `[ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner`
+/// — pinned below as the control that this delivery did not delete it.
+#[test]
+fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
+    // Every directive the record field walk READS, at the entry-trailing slot of a one-entry arm,
+    // in BOTH reps. The needle is the directive-naming head of each message; the shared site text
+    // is asserted once per row too, so a message that fires from the wrong seam cannot pass.
+    for (directive, spelling, needle) in [
+        (
+            "raw_bytes_flavor",
+            "@raw_bytes_flavor",
+            "@raw_bytes_flavor on the single-entry group-choice arm `f` of rule `t`: this tag is \
+             only valid on a",
+        ),
+        (
+            "used_as_elem",
+            "@used_as_elem",
+            "@used_as_elem on the single-entry group-choice arm `f` of rule `t`: this directive is \
+             rule-scoped",
+        ),
+        (
+            "copy",
+            "@copy",
+            "@copy on the single-entry group-choice arm `f` of rule `t`: this tag is only valid on \
+             a",
+        ),
+        (
+            "extern_companions",
+            "@extern_companions dep_wasm=FooList",
+            "@extern_companions on the single-entry group-choice arm `f` of rule `t`: this tag is \
+             only valid on a",
+        ),
+        (
+            "duplicates",
+            "@duplicates reject",
+            "@duplicates on the single-entry group-choice arm `f` of rule `t`: this directive is \
+             per-rule",
+        ),
+        (
+            "ignore",
+            "@ignore",
+            "@ignore on the single-entry group-choice arm `f` of rule `t`: this directive is only \
+             valid on an open struct-map rest row",
+        ),
+        (
+            "doc",
+            "@doc explains the member",
+            "@doc on the single-entry group-choice arm `f` of rule `t`: a single-entry arm \
+             registers no record, so there is no field for the entry's doc comment to land on.",
+        ),
+        (
+            "custom_serialize",
+            "@custom_serialize ws_only",
+            "`@custom_serialize` on the single-entry group-choice arm `f` of rule `t`: the custom \
+             (de)serializer pair cannot be honored on a single-entry arm",
+        ),
+        (
+            "custom_deserialize",
+            "@custom_deserialize rd_only",
+            "`@custom_deserialize` on the single-entry group-choice arm `f` of rule `t`: the custom \
+             (de)serializer pair cannot be honored on a single-entry arm",
+        ),
+        // The COMPLETE pair — honored at an ordinary field, refused here, and named in one message
+        // rather than two: it is one problem (the position has no field to carry the pair).
+        (
+            "custom_pair",
+            "@custom_serialize ws_only @custom_deserialize rd_only",
+            "`@custom_serialize` / `@custom_deserialize` on the single-entry group-choice arm `f` \
+             of rule `t`: the custom (de)serializer pair cannot be honored on a single-entry arm",
+        ),
+        (
+            "custom_encodings",
+            "@custom_encodings sz",
+            "`@custom_encodings` on the single-entry group-choice arm `f` of rule `t`: the custom \
+             (de)serializer pair cannot be honored on a single-entry arm",
+        ),
+        (
+            "custom_wire_major",
+            "@custom_wire_major text",
+            "`@custom_wire_major` on the single-entry group-choice arm `f` of rule `t`: the custom \
+             (de)serializer pair cannot be honored on a single-entry arm",
+        ),
+    ] {
+        for (rep, spec) in [
+            (
+                "array",
+                format!("t = [ a: uint\n// f: bytes ; {spelling}\n]\n"),
+            ),
+            (
+                "map",
+                format!("t = {{ a: uint\n// f: bytes ; {spelling}\n}}\n"),
+            ),
+        ] {
+            let err =
+                expect_graceful_rejection(&format!("arm_directive_{directive}_{rep}"), &spec, &[]);
+            assert!(
+                err.contains(needle),
+                "[{directive}/{rep}] the arm-slot directive must be refused by name and by site, \
+                 got:\n{err}"
+            );
+        }
+    }
+
+    // The remedy the custom-codec refusal names is EXECUTABLE, in both spellings it renders: a keyed
+    // member keeps its key (`// f: inner`), a keyless arm references the rule directly (`// inner`).
+    // Both are asserted to route BOTH directions into this very arm's codec — the claim the message
+    // makes, checked rather than assumed.
+    for (tag, spec) in [
+        (
+            "arm_pair_remedy_keyed",
+            "inner = bytes ; @custom_serialize ws_only @custom_deserialize rd_only\n\
+             t = [ a: uint\n// f: inner ]\n",
+        ),
+        (
+            "arm_pair_remedy_keyless",
+            "inner = bytes ; @custom_serialize ws_only @custom_deserialize rd_only\n\
+             t = [ a: uint\n// inner ]\n",
+        ),
+    ] {
+        let src = expect_custom_codec_source(tag, spec);
+        assert!(
+            src.contains("ws_only(serializer, ") && src.contains("rd_only(raw)"),
+            "[{tag}] the remedy the message names must route both directions at the arm, got:\n{src}"
+        );
+    }
+
+    // The keyless arm's message must not fabricate a member key it does not have.
+    let keyless = expect_graceful_rejection(
+        "arm_directive_keyless_remedy",
+        "kv = (p: uint, q: uint)\nt = [ x: uint\n// kv ; @custom_serialize ws_only\n]\n",
+        &[],
+    );
+    assert!(
+        keyless.contains("the single-entry group-choice arm `kv` of rule `t`")
+            && keyless.contains("then `// inner`"),
+        "the keyless arm must be named by its typename and get the keyless remedy, got:\n{keyless}"
+    );
+
+    // The refusal is at PARSE, so no profile reaches an emission that could differ.
+    for flags in [
+        &["--preserve-encodings=true"][..],
+        &["--preserve-encodings=true", "--canonical-form=true"][..],
+        &["--wasm=true"][..],
+    ] {
+        let err = expect_graceful_rejection(
+            "arm_directive_profile",
+            "t = [ a: uint\n// f: bytes ; @custom_serialize ws_only @custom_deserialize rd_only\n]\n",
+            flags,
+        );
+        assert!(
+            err.contains("cannot be honored on a single-entry arm"),
+            "the arm refusal must be profile-independent ({flags:?}), got:\n{err}"
+        );
+    }
+
+    // CONTROLS the delivery must not have broken.
+    //
+    // 1. The ARM's own metadata slot (`comments_before_grpchoice`) is a DIFFERENT slot and keeps
+    //    honoring `@name` and `@doc` — `@name` there is the documented remedy of the
+    //    unnameable-variant refusal, so refusing it would break that remedy.
+    let armname = expect_custom_codec_source(
+        "arm_slot_name_control",
+        "t = [ a: uint\n// ; @name Alt\nf: bytes ]\n",
+    );
+    assert!(
+        armname.contains("Alt(Vec<u8>)"),
+        "the ARM slot must keep naming the variant, got:\n{armname}"
+    );
+    let armdoc = expect_custom_codec_source(
+        "arm_slot_doc_control",
+        "t = [ a: uint\n// ; @doc arm level documentation\nf: bytes ]\n",
+    );
+    assert!(
+        armdoc.contains("/// arm level documentation"),
+        "the ARM slot must keep documenting the variant — it is the `@doc` refusal's remedy, \
+         got:\n{armdoc}"
+    );
+
+    // 2. `@name` at the ENTRY slot is NOT a silent drop here: it is the slot
+    //    `anon_array_member_name` reads for a member-position anonymous inline array. Refusing the
+    //    family must not have deleted that.
+    let anon = expect_custom_codec_source(
+        "arm_entry_slot_anon_array_name_control",
+        "t = [ a: uint\n// f: [x: uint] ; @name Inner\n]\n",
+    );
+    assert!(
+        anon.contains("pub struct Inner") && anon.contains("F(Inner)"),
+        "the entry slot must keep naming a member-position anonymous array, got:\n{anon}"
+    );
+
+    // 3. A MULTI-entry arm mints a record and keeps honoring the family exactly as an ordinary
+    //    field does — the complete pair routes, and the field walk's own refusals (not the arm's)
+    //    are what fire there. This is what isolates the ONE-entry arm as the variable.
+    let multi = expect_custom_codec_source(
+        "multi_entry_arm_pair_control",
+        "t = [ a: uint\n// f: bytes ; @custom_serialize ws_only @custom_deserialize rd_only\n, g: uint ]\n",
+    );
+    assert!(
+        multi.contains("ws_only(serializer, &self.f)") && multi.contains("rd_only(raw)"),
+        "a multi-entry arm must keep honoring the complete pair as an ordinary field, got:\n{multi}"
+    );
+    for (tag, spelling, needle) in [
+        (
+            "multi_entry_lone_half",
+            "@custom_serialize ws_only",
+            "@custom_serialize alone on field `f` of rule `T1`",
+        ),
+        (
+            "multi_entry_raw_bytes_flavor",
+            "@raw_bytes_flavor",
+            "@raw_bytes_flavor on field `f` of rule `T1`: this tag is only valid on a",
+        ),
+    ] {
+        let err = expect_graceful_rejection(
+            tag,
+            &format!("t = [ a: uint\n// f: bytes ; {spelling}\n, g: uint ]\n"),
+            &[],
+        );
+        assert!(
+            err.contains(needle),
+            "[{tag}] a multi-entry arm must keep the FIELD walk's own message, got:\n{err}"
+        );
+        assert!(
+            !err.contains("single-entry group-choice arm"),
+            "[{tag}] the one-entry seam must not reach a multi-entry arm, got:\n{err}"
+        );
+    }
+
+    // 4. The RULE-level spelling — a comment after the closing bracket — binds to the RULE, not to
+    //    the last arm's entry (probed: a rule-trailing comment on a bracketed rule never reaches the
+    //    entry slot). It keeps its own rejection and is not double-reported.
+    for (tag, spelling, needle) in [
+        (
+            "rule_level_pair",
+            "@custom_serialize ws_only",
+            "@custom_serialize on `T`: a group-choice rule",
+        ),
+        (
+            "rule_level_raw_bytes_flavor",
+            "@raw_bytes_flavor",
+            "@raw_bytes_flavor on `T`: this tag is only valid on a",
+        ),
+    ] {
+        let err = expect_graceful_rejection(
+            tag,
+            &format!("t = [ a: uint\n// f: bytes ] ; {spelling}\n"),
+            &[],
+        );
+        assert!(
+            err.contains(needle),
+            "[{tag}] the rule-level spelling must keep its own message, got:\n{err}"
+        );
+        assert!(
+            !err.contains("single-entry group-choice arm"),
+            "[{tag}] the rule slot must not be double-reported by the arm seam, got:\n{err}"
+        );
+    }
+
+    // 5. One message per problem against B3-043's occurrence guard, and the two reps split on the
+    //    shared `inline_group_occurrence_flattens` boundary rather than on this seam:
+    //    - in an ARRAY the arm refuses on the OCCURRENCE first and the directive is never mentioned
+    //      — the arm has to be rewritten wholesale, so a second message about a member that will not
+    //      exist would send the author down a remedy that dies with the arm.
+    //    - in a MAP a lower-bound-≥1 marker is HONORED by collapse, so that arm generates and the
+    //      directive verdict is the only thing left to give.
+    let occ = expect_graceful_rejection(
+        "arm_occurrence_then_directive",
+        "kv = (p: uint, q: uint)\nt = [ x: uint\n// ? kv ; @custom_serialize ws_only\n]\n",
+        &[],
+    );
+    assert!(
+        occ.contains("carries an occurrence marker"),
+        "the array occurrence refusal must fire, got:\n{occ}"
+    );
+    assert!(
+        !occ.contains("single-entry group-choice arm `kv`"),
+        "an occurrence-refused arm must not also be told about its directive, got:\n{occ}"
+    );
+    let collapsed = expect_graceful_rejection(
+        "arm_map_collapse_then_directive",
+        "kv = (p: uint, q: uint)\nt = { x: uint\n// + kv ; @custom_serialize ws_only\n}\n",
+        &[],
+    );
+    assert!(
+        collapsed.contains("`@custom_serialize` on the single-entry group-choice arm `kv`")
+            && !collapsed.contains("occurrence marker"),
+        "a map arm whose marker collapses must get the DIRECTIVE verdict and only that, got:\n{collapsed}"
+    );
+
+    // 6. An INLINE-GROUP entry keeps the entry-position refusal alone — `group_entry_rule_metadata`
+    //    panics on one, so the seam skips it deliberately rather than by accident.
+    let inline = expect_graceful_rejection(
+        "arm_inline_group_directive",
+        "t = [ x: uint\n// (a: uint, b: uint) ; @copy\n]\n",
+        &[],
+    );
+    assert!(
+        inline.contains("in entry position is unsupported")
+            && !inline.contains("single-entry group-choice arm"),
+        "an inline-group arm keeps its own message and never reaches the metadata seam, got:\n{inline}"
+    );
+
+    // 7. A bare arm with no directive at all keeps generating in both reps — the seam reads a slot
+    //    that is empty in every supported spec, and must cost nothing there.
+    for (tag, spec) in [
+        ("bare_arm_array", "t = [ a: uint\n// f: bytes ]\n"),
+        ("bare_arm_map", "t = { a: uint\n// f: bytes }\n"),
+        (
+            "bare_arm_group",
+            "kv = (p: uint, q: uint)\nt = [ a: uint\n// kv ]\n",
+        ),
+    ] {
+        expect_custom_codec_source(tag, spec);
+    }
+}
+
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
 /// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
 /// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because

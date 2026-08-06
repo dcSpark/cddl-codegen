@@ -481,6 +481,85 @@ fn custom_codec_directives(metadata: &RuleMetadata) -> Vec<&'static str> {
     found
 }
 
+/// The RULE-SCOPED directives, refused at a MEMBER position — the one list of "which directives
+/// does a member position refuse, and with what remedy", shared by every member position rather
+/// than restated at each. Two positions call it today: the record field walk
+/// (`parse_record_from_group_choice`) and the SINGLE-ENTRY group-choice arm
+/// (`reject_field_directives_on_single_entry_arm`), which mints no record and so never reaches the
+/// field walk at all. Sharing is what makes "the arm validates a member's directives the way the
+/// field walk does" a fact rather than a resemblance: a directive added to this list is refused at
+/// both, and neither can quietly grow a position-specific verdict for one of them.
+///
+/// `site` names the slot the way that slot's other rejections do (`field \`f\` of rule \`t\``), and
+/// `position_noun` is the phrase the three "…, not X" messages end on — the only text that varies
+/// between positions, because the other three already word themselves position-generically
+/// (`a field/member position`).
+fn reject_member_scoped_directives(
+    types: &mut IntermediateTypes,
+    site: &str,
+    position_noun: &str,
+    metadata: &RuleMetadata,
+) {
+    // `@raw_bytes_flavor` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition, never a
+    // field/member position — reject loudly instead of silently ignoring it.
+    if metadata.raw_bytes_flavor {
+        types.record_rejection(format!(
+            "@raw_bytes_flavor on {site}: this tag is only valid on a {EXTERN_MARKER} rule \
+             definition, not {position_noun}. Remove it from this entry."
+        ));
+    }
+    // `@used_as_elem` names the TYPE whose loose-list wasm wrapper to mint, so it is rule-scoped and
+    // never applies at a field/member position — reject loudly instead of silently dropping it.
+    // Honoring it here would need a sub-ruling per member shape (an optional field, an inline
+    // `[* x]`, a primitive): the tag is only unambiguous when the field's type is a bare named
+    // reference. The remedy is exact and already proven, so refuse and name it.
+    if metadata.used_as_elem {
+        types.record_rejection(format!(
+            "@used_as_elem on {site}: this directive is rule-scoped — it mints the loose-list wasm \
+             wrapper for the TYPE it tags — and does not apply to a field/member position. Put it \
+             on the rule that defines the element type (`<type> = … ; @used_as_elem`)."
+        ));
+    }
+    // `@copy` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule
+    // definition, never a field/member position — reject loudly instead of ignoring it.
+    if metadata.copy {
+        types.record_rejection(format!(
+            "@copy on {site}: this tag is only valid on a {EXTERN_MARKER} or {RAW_BYTES_MARKER} \
+             rule definition, not {position_noun}. Remove it from this entry."
+        ));
+    }
+    // `@extern_companions` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition, never a
+    // field/member position — reject loudly instead of silently ignoring it. This is also the slot a
+    // plain-GROUP rule's TRAILING comment binds to (`grp = (a: uint) ; @extern_companions …`, the
+    // `@name plain-group-trailing` seam), so it covers that spelling too.
+    if metadata.extern_companions.is_some() {
+        types.record_rejection(format!(
+            "@extern_companions on {site}: this tag is only valid on a {EXTERN_MARKER} rule \
+             definition, not {position_noun}. Remove it from this entry."
+        ));
+    }
+    // `@duplicates` is per-rule and never applies at a field/member position — reject loudly instead
+    // of silently ignoring it. The remedy names the collection as its own rule.
+    if metadata.duplicates.is_some() {
+        types.record_rejection(format!(
+            "@duplicates on {site}: this directive is per-rule and does not apply to a field/member \
+             position. Name the collection as its own rule and put `; @duplicates \
+             <preserve|reject>` on that rule. (An inline `#6.258` array in this position already \
+             defaults to `@duplicates reject` via the well-known-tag registry — hoisting it to a \
+             named rule with `; @duplicates preserve` is exactly how to opt out.)"
+        ));
+    }
+    // `@ignore` is the open struct-map rest-row tolerate-and-drop flavor and never applies at a
+    // field/member position — reject loudly instead of silently ignoring it.
+    if metadata.ignore {
+        types.record_rejection(format!(
+            "@ignore on {site}: this directive is only valid on an open struct-map rest row \
+             (`{{ 1: a, * k => v }} ; @ignore`), not at a field/member position. Remove it from \
+             this entry."
+        ));
+    }
+}
+
 /// Reject a `@custom_encodings` declaration that is not accompanied by BOTH halves of the pair it
 /// describes, at the same position. Returns whether anything was rejected.
 ///
@@ -976,7 +1055,7 @@ fn reject_occurrence_on_single_entry_arm(
     name: &RustIdent,
     group_entry: &GroupEntry,
     rep: Representation,
-) {
+) -> bool {
     let occur = match group_entry {
         GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref(),
         GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
@@ -986,7 +1065,7 @@ fn reject_occurrence_on_single_entry_arm(
     // its marker keeps generating, everything else refuses. Never duplicate the match here — two
     // spellings of "is dropping this sound?" is how the seams come to disagree.
     if occur.is_none() || inline_group_occurrence_flattens(occur, rep) {
-        return;
+        return false;
     }
     let site = rejection_site(types, Some(name), "anonymous group choice");
     let source_name = source_rule_name_of(types, name);
@@ -1038,6 +1117,122 @@ fn reject_occurrence_on_single_entry_arm(
          dropped and the emitted codec writes, and accepts, exactly one repetition of it. \
          {consequence} {remedy} {still_supported}"
     ));
+    true
+}
+
+/// The field/member DIRECTIVE validation for the SINGLE-ENTRY group-choice arm — the member
+/// position that mints no record, and therefore never reaches the record field walk that honors or
+/// refuses a member's directives. Without this the whole family was read into the entry's trailing
+/// metadata and dropped at exit 0: `[ a: uint // f: bytes ; @custom_serialize ws_only ]` generated
+/// the arm's codec in both directions with `ws_only` called nowhere, and the COMPLETE pair,
+/// `@raw_bytes_flavor`, `@doc` and the rest behaved identically, in both representations. A silent
+/// drop is the one outcome this DSL refuses everywhere else, so every directive the field walk
+/// READS is either honored here or refused here.
+///
+/// Three groups, from the field walk's own reads (a code enumeration of what
+/// `parse_record_from_group_choice` does with a member's `RuleMetadata`, not a keyword sweep):
+/// - The RULE-SCOPED six go through `reject_member_scoped_directives`, the list the field walk
+///   itself calls — same directives, same remedies, one shared source.
+/// - The custom-codec family (`@custom_serialize` / `@custom_deserialize` and the
+///   `@custom_encodings` / `@custom_wire_major` wire facts that describe their wire) is HONORED at
+///   an ordinary field and cannot be here: the arm registers no `RustField` for the pair to ride,
+///   and the variant's codec is generated by the enum. The remedy is asserted to route — a complete
+///   pair on the member's own TYPE rule emits `ws_only(serializer, f)` / `rd_only(raw)` inside this
+///   very arm's serialize/deserialize — which is what makes the refusal honest rather than a
+///   deferral. ANY presence refuses, one message: at a field a lone half is its own defect (two wire
+///   forms at one position) while the complete pair is fine, but here neither reaches emission, so
+///   splitting the verdict would report a completeness problem the position does not have.
+/// - `@doc` is honored at a field as the field's doc comment; here the arm's own slot
+///   (`// ; @doc <text>`, from `comments_before_grpchoice`) already documents the variant and IS
+///   read, so the entry slot is refused with that slot as the remedy rather than given a second,
+///   colliding meaning.
+///
+/// `@name` is DELIBERATELY not touched, and it is the one member of the family that is not a silent
+/// drop here: this exact slot is where `anon_array_member_name` reads the name of a member-position
+/// anonymous inline array, so `[ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner`
+/// today. Refusing it would delete that; naming the VARIANT from it instead would rename variants in
+/// specs that generate today (`F(Inner)` → `Inner(Inner)`) and would give the variant a second naming
+/// slot beside the arm's own `// ; @name <n>`, which is the documented one. Neither is this card's
+/// to choose — the fork is ledgered in `cddl-matrix/ROADMAP.md` § "Findings — open".
+fn reject_field_directives_on_single_entry_arm(
+    types: &mut IntermediateTypes,
+    name: &RustIdent,
+    group_entry: &GroupEntry,
+    optional_comma: &OptionalComma,
+) {
+    // An `InlineGroup` entry panics `group_entry_rule_metadata` and is already refused on its own
+    // terms by the entry-position rejection in `group_entry_to_type` — one message per problem, the
+    // same carve-out the occurrence guard above makes.
+    if matches!(group_entry, GroupEntry::InlineGroup { .. }) {
+        return;
+    }
+    let metadata = group_entry_rule_metadata(group_entry, optional_comma);
+    // Name the arm by its MEMBER key where it has one, and by the entry as written where it does
+    // not (`// kv`), with the directive comment the entry renders back trimmed off — the author is
+    // looking at their CDDL, and the comment is the thing being talked about, not part of the site.
+    // A real member KEY (`f: bytes`), as opposed to the typename a keyless `// kv` arm is named
+    // after — the two share `group_entry_to_raw_field_name`, but only the first can be re-spelled
+    // with a `: inner` in the remedy below.
+    let member_key = match group_entry {
+        GroupEntry::ValueMemberKey { ge, .. } if ge.member_key.is_some() => {
+            group_entry_to_raw_field_name(group_entry)
+        }
+        _ => None,
+    };
+    let arm_desc = group_entry_to_raw_field_name(group_entry).unwrap_or_else(|| {
+        group_entry
+            .to_string()
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    });
+    let site = format!(
+        "the single-entry group-choice arm `{arm_desc}` of rule `{}`",
+        source_rule_name_of(types, name)
+    );
+    let codec_directives = {
+        let mut found = custom_codec_directives(&metadata);
+        if metadata.custom_encodings.is_some() {
+            found.push("@custom_encodings");
+        }
+        if metadata.custom_wire_major.is_some() {
+            found.push("@custom_wire_major");
+        }
+        found
+    };
+    if !codec_directives.is_empty() {
+        let written = codec_directives
+            .iter()
+            .map(|d| format!("`{d}`"))
+            .collect::<Vec<_>>()
+            .join(" / ");
+        // The remedy is spelled for the arm as WRITTEN: a keyed member keeps its key, a keyless one
+        // (`// kv`) references the new rule directly. Both spellings were asserted to route the
+        // pair into this very arm's serialize/deserialize before this text shipped.
+        let remedy_arm = match &member_key {
+            Some(key) => format!("{key}: inner"),
+            None => "inner".to_owned(),
+        };
+        types.record_rejection(format!(
+            "{written} on {site}: the custom (de)serializer pair cannot be honored on a \
+             single-entry arm — the arm registers no record, so the entry's type goes straight into \
+             the enum variant and the variant's codec is generated by the enum, leaving the \
+             directive nothing to replace. Name the member's type as its OWN rule and put the \
+             COMPLETE pair there (`inner = <type> ; @custom_serialize <fn> @custom_deserialize \
+             <fn>`, then `// {remedy_arm}`), which does route both directions at this arm."
+        ));
+    }
+    if metadata.comment.is_some() {
+        types.record_rejection(format!(
+            "@doc on {site}: a single-entry arm registers no record, so there is no field for the \
+             entry's doc comment to land on. Write it in the ARM's own slot instead, which \
+             documents the enum variant the arm becomes: put `; @doc <text>` on the line that OPENS \
+             the arm (`// ; @doc <text>`), before the entry."
+        ));
+    }
+    reject_member_scoped_directives(types, &site, "a group-choice arm's member", &metadata);
 }
 
 /// The well-known-tag semantics registry: THE single place mapping a CBOR tag number to the
@@ -6113,19 +6308,19 @@ fn parse_record_from_group_choice(
                 return None;
             }
             let rule_metadata = group_entry_rule_metadata(group_entry, optional_comma);
-            // `@raw_bytes_flavor` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition,
-            // never a field/member position — reject loudly instead of silently ignoring it.
-            if rule_metadata.raw_bytes_flavor {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
-                types.record_rejection(format!(
-                    "@raw_bytes_flavor on field `{field_name}` of rule `{source_name}`: this tag \
-                     is only valid on a {EXTERN_MARKER} rule definition, not a field. Remove it \
-                     from this entry."
-                ));
-            }
+            // The RULE-SCOPED directives, refused at this member position by the shared seam the
+            // single-entry group-choice arm also calls — that arm is a member position which mints
+            // no record, so without one shared list the two spellings of "which directives does a
+            // member position refuse" drift apart.
+            reject_member_scoped_directives(
+                types,
+                &format!(
+                    "field `{field_name}` of rule `{}`",
+                    source_rule_name_of(types, name)
+                ),
+                "a field",
+                &rule_metadata,
+            );
             // A wire-facts declaration (`@custom_encodings` / `@custom_wire_major`) is a property OF
             // the pair, and a field carries its own pair — so a declaration here with one half (or
             // none) describes no codec.
@@ -6179,82 +6374,6 @@ fn parse_record_from_group_choice(
                      entry (`; @custom_serialize <fn> @custom_deserialize <fn>`), adding the missing \
                      {missing}, or move the pair to the member's TYPE rule if the format belongs to \
                      the type."
-                ));
-            }
-            // `@used_as_elem` names the TYPE whose loose-list wasm wrapper to mint, so it is
-            // rule-scoped and never applies at a field/member position — reject loudly instead of
-            // silently dropping it. Honoring it here would need a sub-ruling per member shape (an
-            // optional field, an inline `[* x]`, a primitive): the tag is only unambiguous when the
-            // field's type is a bare named reference. The remedy is exact and already proven, so
-            // refuse and name it.
-            if rule_metadata.used_as_elem {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
-                types.record_rejection(format!(
-                    "@used_as_elem on field `{field_name}` of rule `{source_name}`: this directive \
-                     is rule-scoped — it mints the loose-list wasm wrapper for the TYPE it tags — \
-                     and does not apply to a field/member position. Put it on the rule that defines \
-                     the element type (`<type> = … ; @used_as_elem`)."
-                ));
-            }
-            // `@copy` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
-            // rule definition, never a field/member position — reject loudly instead of ignoring it.
-            if rule_metadata.copy {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
-                types.record_rejection(format!(
-                    "@copy on field `{field_name}` of rule `{source_name}`: this tag is only valid \
-                     on a {EXTERN_MARKER} or {RAW_BYTES_MARKER} rule definition, not a field. \
-                     Remove it from this entry."
-                ));
-            }
-            // `@extern_companions` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition,
-            // never a field/member position — reject loudly instead of silently ignoring it. This is
-            // also the slot a plain-GROUP rule's TRAILING comment binds to (`grp = (a: uint) ;
-            // @extern_companions …`, the `@name plain-group-trailing` seam), so it covers that
-            // spelling too.
-            if rule_metadata.extern_companions.is_some() {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
-                types.record_rejection(format!(
-                    "@extern_companions on field `{field_name}` of rule `{source_name}`: this tag \
-                     is only valid on a {EXTERN_MARKER} rule definition, not a field. Remove it \
-                     from this entry."
-                ));
-            }
-            // `@duplicates` is per-rule and never applies at a field/member position — reject loudly
-            // instead of silently ignoring it. The remedy names the collection as its own rule.
-            if rule_metadata.duplicates.is_some() {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
-                types.record_rejection(format!(
-                    "@duplicates on field `{field_name}` of rule `{source_name}`: this directive \
-                     is per-rule and does not apply to a field/member position. Name the collection \
-                     as its own rule and put `; @duplicates <preserve|reject>` on that rule. \
-                     (An inline `#6.258` array in this position already defaults to `@duplicates \
-                     reject` via the well-known-tag registry — hoisting it to a named rule with `; \
-                     @duplicates preserve` is exactly how to opt out.)"
-                ));
-            }
-            // `@ignore` is the open struct-map rest-row tolerate-and-drop flavor and never applies at
-            // a field/member position — reject loudly instead of silently ignoring it.
-            if rule_metadata.ignore {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
-                types.record_rejection(format!(
-                    "@ignore on field `{field_name}` of rule `{source_name}`: this directive is only \
-                     valid on an open struct-map rest row (`{{ 1: a, * k => v }} ; @ignore`), not at \
-                     a field/member position. Remove it from this entry."
                 ));
             }
             // does not exist for fixed values importantly
@@ -7744,8 +7863,21 @@ pub fn parse_group(
                 // TODO: handle map-based enums? It would require being able to extract the key logic
                 // We might end up doing this anyway to support table-maps in choices though.
                 if group_choice.group_entries.len() == 1 {
-                    let group_entry = &group_choice.group_entries.first().unwrap().0;
-                    reject_occurrence_on_single_entry_arm(types, name, group_entry, rep);
+                    let (group_entry, entry_comma) = group_choice.group_entries.first().unwrap();
+                    // An occurrence-carrying arm is refused as a SHAPE, so its member's directives
+                    // describe a member that will not exist — one message per problem, and the one
+                    // to give is the one whose remedy rewrites the arm. In MAP rep a lower-bound-≥1
+                    // marker is honored by collapse (the shared `inline_group_occurrence_flattens`
+                    // boundary) and refuses nothing, so a directive on `{ x: uint // + kv }` still
+                    // reaches the validation below — which is exactly right: that arm generates.
+                    if !reject_occurrence_on_single_entry_arm(types, name, group_entry, rep) {
+                        reject_field_directives_on_single_entry_arm(
+                            types,
+                            name,
+                            group_entry,
+                            entry_comma,
+                        );
+                    }
                     let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
                     // Resolve aliases first: an alias is transparent, so an arm spelled
                     // `kv_alias` must materialize and embed the plain group exactly like the

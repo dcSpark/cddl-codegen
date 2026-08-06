@@ -38,7 +38,13 @@
  * SPELLING axis is folded in the same way, by the multi-line group-rule shape: a plain group's rule
  * slot is its LAST entry's trailing comment, so writing the closing paren on its own line puts the
  * trailing comment past every slot the AST offers — generation refuses that spelling, and the cells
- * measure the refusal.
+ * measure the refusal. The MEMBER-position axis is folded in by the two single-entry
+ * group-choice-arm shapes: that arm mints no record, so the entry's trailing slot is the one member
+ * slot the record field walk never reaches, and the whole directive family dropped there at exit 0
+ * while this gate passed 413/413 — the measurement that the position was ABSENT, not tolerated.
+ * Cells whose drop is a KNOWN, ledgered defect rather than a legitimate no-op live on
+ * `KNOWN_POSITION_DROPS` instead of the allowlist, and are held under measurement in both
+ * directions.
  *
  * Tier: `local` (never `fast`/CI — CI cost policy). No `--check` mode: this gate has no drift
  * artifact, it just runs.
@@ -157,6 +163,13 @@ interface Shape {
    *  The rule slot is the LAST arm's trailing comment, so `toggledArm < list.length - 1` is the
    *  arm-position axis and `toggledArm === list.length - 1` is the ordinary rule slot. */
   arms?: { list: string[]; toggledArm: number };
+  /** render as a two-arm GROUP choice whose SECOND arm holds exactly ONE entry, placing the toggled
+   *  directive in that entry's TRAILING comment slot — INSIDE the brackets, on the entry's own line.
+   *  That is a field/member position which mints no record (the entry's type goes straight into the
+   *  enum variant), so it is the one member slot the record field walk never reaches; every other
+   *  member rendering this gate has goes through a record. Ignored when `arms` is set; overrides
+   *  `body`. */
+  singleEntryArm?: { rep: "array" | "map"; otherEntry: string; entry: string };
   /** render as a MULTI-LINE plain GROUP rule whose closing paren sits on its OWN line, placing the
    *  toggled directive in the trailing comment on that closing-paren line. That is the one position
    *  the pinned CDDL parser cannot bind a group rule's directive in, so generation REFUSES it —
@@ -310,6 +323,26 @@ const SHAPES: Shape[] = [
     id: "option_collapse_non_last_arm",
     desc: "`T / null` Option-collapse rule, directive on a NON-LAST arm (the collapse has no variants)",
     arms: { list: ["uint", "null"], toggledArm: 0 },
+    holders: HOLDERS,
+  },
+  // -- the MEMBER-position axis: the one member slot that mints no record --------------------------
+  // Every other member rendering here reaches the record field walk, which honors or refuses a
+  // member's directives. A SINGLE-ENTRY group-choice arm does not: the entry's type goes straight
+  // into the enum variant, so the entry's trailing metadata slot had no reader at all and the whole
+  // family dropped at exit 0 in both reps while this gate passed 413/413 — the measurement that the
+  // position was ABSENT from the swept shapes, not tolerated by them. Both reps are swept because
+  // the two split on the shared occurrence-collapse boundary elsewhere in the same branch, so a
+  // one-rep position could pass for a rep-specific reason.
+  {
+    id: "single_entry_group_choice_arm_array",
+    desc: "ARRAY single-entry group-choice arm, directive in the ENTRY-trailing slot (the member position that mints no record)",
+    singleEntryArm: { rep: "array", otherEntry: "a: uint", entry: "m: bytes" },
+    holders: HOLDERS,
+  },
+  {
+    id: "single_entry_group_choice_arm_map",
+    desc: "MAP single-entry group-choice arm, directive in the ENTRY-trailing slot (the member position that mints no record)",
+    singleEntryArm: { rep: "map", otherEntry: "a: uint", entry: "m: bytes" },
     holders: HOLDERS,
   },
   // -- the SPELLING axis: the same shape, written so the parser cannot bind its directive ----------
@@ -701,6 +734,16 @@ function renderShape(shape: Shape, holder: string[], directives: string[]): stri
       const c = own.length ? ` ; ${own.join(" ")}` : "";
       lines.push(`${i === 0 ? "foo = " : "  / "}${arm}${c}`);
     });
+  } else if (shape.singleEntryArm) {
+    // `//` must OPEN the arm's line: the arm's own metadata slot is the comment that follows it
+    // there, and this shape's directive belongs to the ENTRY, so it goes at the end of the entry's
+    // line instead — a different slot, which is the whole point of the shape.
+    const { rep, otherEntry, entry } = shape.singleEntryArm;
+    const [open, close] = rep === "array" ? ["[", "]"] : ["{", "}"];
+    const c = directives.length ? ` ; ${directives.join(" ")}` : "";
+    lines.push(`${shape.head ?? "foo"} = ${open} ${otherEntry}`);
+    lines.push(`// ${entry}${c}`);
+    lines.push(close);
   } else if (shape.multilineGroupEntries) {
     // The closing paren gets its own line — the whole point of the shape. The directive's comment
     // therefore ends the closing-paren line, which is where the parser stops being able to bind it.
@@ -744,6 +787,34 @@ function buildHandRule(cell: HandCell, extra: string[]): string {
   // A holder embedding the rule exercises member position too (the transparent-alias flatten seam).
   return `foo = ${cell.ruleBody}${comment}\nholder = [f: foo]\n`;
 }
+
+/** PINNED DROPS: `<cellId>` => the finding the drop belongs to. Distinct from the ALLOWLIST above in
+ *  what it claims — an allowlisted cell is a LEGITIMATE no-op, a pinned one is a KNOWN DEFECT held
+ *  under measurement so the gate can carry the position without being red on arrival. Both directions
+ *  are enforced: a pinned cell that is still silent PASSES with its reason printed, and a pinned cell
+ *  that starts having an effect / being rejected FAILS as a stale pin, so the fix cannot land without
+ *  pruning the entry. Same posture (and same authoring rule) as `dsl_position_tests`'
+ *  `KNOWN_SILENT_DROP`.
+ *
+ *  Every entry below is one finding: the six RULE-SCOPED directives with no member-position reader at
+ *  all, plus `@name`. They are not properties of the one-entry arm — each drops IDENTICALLY at an
+ *  ordinary record field (probed 2026-08-07: `u = [a: uint, f: bytes ; @newtype]` and its five
+ *  siblings all exit 0 with the directive unread), so the position this shape adds merely exposes
+ *  them. Refusing them belongs with the field walk, where the same change also decides what a plain
+ *  GROUP rule's trailing comment means; that is the ledgered item, not this one. */
+const KNOWN_POSITION_DROPS: Record<string, string> = Object.fromEntries(
+  ["array", "map"].flatMap(rep =>
+    [
+      ["name", "the entry slot's `@name` HAS a reader here (a member-position anonymous inline array is named from it), so it is not a blanket drop — whether it should also name the VARIANT, which already has its own `// ; @name <n>` slot, is the open fork"],
+      ["rust_name", "rule-scoped (an extern-deps type-name pin); no member position reads it, ordinary record fields included"],
+      ["newtype", "rule-scoped (mint a wrapper instead of a transparent alias); no member position reads it, ordinary record fields included"],
+      ["no_alias", "rule-scoped (suppress the rule's own `pub type`); no member position reads it, ordinary record fields included"],
+      ["used_as_key", "rule-scoped (the Ord/Hash demand on a TYPE); no member position reads it, ordinary record fields included"],
+      ["custom_json", "rule-scoped (the serde/schemars derives on a TYPE); no member position reads it, ordinary record fields included"],
+      ["no_json_schema_export", "rule-scoped (a json-gen schema-registration row); no member position reads it, ordinary record fields included"],
+    ].map(([directive, reason]) => [`single_entry_group_choice_arm_${rep}__${directive}`, reason]),
+  ),
+);
 
 /** Assemble the full cell list: the hand corpus first (its ids own the ALLOWLIST entries and its
  *  comments pin specific shipped regressions), then the shape×directive product. A cell whose
@@ -985,6 +1056,17 @@ async function main(): Promise<number> {
     }
     const best = verdicts[ci].reduce((a, b) => (VERDICT_RANK[b.kind] < VERDICT_RANK[a.kind] ? b : a));
     const holders = cell.variants.map(v => v.holder).join(" | ");
+    // A pinned drop is held under measurement in BOTH directions: still-silent passes with its
+    // reason, and anything louder is a STALE pin the fix must prune in its own commit.
+    if (cell.id in KNOWN_POSITION_DROPS) {
+      if (best.kind === "silent") {
+        console.log(`  PASS ${cell.id}: pinned drop — ${KNOWN_POSITION_DROPS[cell.id]}`);
+        passes++;
+      } else {
+        failures.push(`KNOWN_POSITION_DROPS entry '${cell.id}' is STALE — '${cell.toggled}' is now ${best.kind} on ${cell.shape}. The drop it pinned is fixed: prune the entry in the same commit as the fix.`);
+      }
+      return;
+    }
     if (best.kind === "effect") {
       console.log(`  PASS ${cell.id}: '${cell.toggled}' changed generated output on ${cell.shape}`);
       passes++;
@@ -1006,6 +1088,8 @@ async function main(): Promise<number> {
   const cellIds = new Set(cells.map(c => c.id));
   for (const id of Object.keys(ALLOWLIST))
     if (!cellIds.has(id)) failures.push(`ALLOWLIST entry '${id}' names no cell — stale, prune it`);
+  for (const id of Object.keys(KNOWN_POSITION_DROPS))
+    if (!cellIds.has(id)) failures.push(`KNOWN_POSITION_DROPS entry '${id}' names no cell — stale, prune it`);
 
   console.log(
     `\nno_silent_directive: ${passes} passed, ${failures.length} failed ` +
