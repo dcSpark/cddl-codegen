@@ -512,6 +512,42 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     X (a compile-fail probe is an execution too) — so the entry cannot drift from the code while
     its carriers stay green. Pickup re-probe remains the enforcement of last resort, not the plan.
 
+16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
+    executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
+    invisible to both existing systems: `no_silent_directive` measures whether a directive has an
+    EFFECT (a routed single half passes it), and the executed custom-pair e2e fixtures assert
+    round-trips only for the complete-pair placements someone hand-wrote. What slipped between
+    them, twice in one cycle (2026-08-06, both by ad-hoc probing rather than any gate): a single
+    codec half on a transparent alias was accepted and ROUTED — every embed site wrote the custom
+    wire and read the default one, a silent asymmetric round-trip (now refused; its GRID rejection
+    cells are the control); and the FIELD-level single half still ships exactly that asymmetry at
+    exit 0 (`cddl-matrix/ROADMAP.md` § findings, the field-level entry — the open seed vector).
+    Mechanical shape: for each accepted `@custom_serialize`/`@custom_deserialize` placement (field,
+    alias, record rule, both table positions, open-map rest row) × profile (default, preserve,
+    canonical), generate with stub codecs that are true inverses of each other but NOT of the
+    default wire (the hex-text pair from the e2e fixtures is the template), then execute
+    `from_cbor_bytes(to_cbor_bytes(v)) == v` through a holder. Any placement whose two directions
+    disagree fails identity immediately. Include the rule-CLASS flavor axis the B3-007 cycle had
+    to enumerate by hand (loose/non-empty/bounded/`@duplicates` collection flavors): a coherence
+    sweep that misses a flavor leaves that flavor exactly the silent carrier the pair rejections
+    just closed.
+
+17. **The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch
+    crate outruns `tests/warmup/Cargo.lock` at every upstream release.** Proven 2026-08-06 (the
+    stale-lock offline tail in § Operational watches, "Registry-fetch transients"): the
+    oracle-fingerprint probe resolves a temp crate FRESH against crates.io, so the day
+    `zerocopy-derive 0.8.56` published, the offline-forced gate failed sub-second wanting a
+    version the locked warm-up fetch never cached — and the cargo cache holding .52 through .55
+    shows the class fires at release cadence, with 13 further warmup deps sitting behind latest.
+    Mechanical shape: in `check.ts`'s `warmupThenOffline`, run
+    `cargo update --manifest-path tests/warmup/Cargo.toml` (and the fuzz manifest if its scratch
+    consumers resolve fresh) before the retried fetch — the warm-up is already the tier's one
+    online step, and the lock is gitignored per-checkout state, so refreshing it there is free of
+    determinism cost; keep the workspace fetch `--locked` (the workspace lock is committed and
+    must NOT drift). Alternative if refresh-always proves noisy: pin the fingerprint probe crate's
+    manifest to exact versions so it stops resolving fresh — either ends the class; the manual
+    `cargo update -p <dep>` tail below stays only until one of them lands.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
@@ -2883,9 +2919,20 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     paths carry); the transparency gate is the standing detector if a null-replay class outruns
     the retry.
   - **A sighting under an offline gate run is a NEW class**, not this one — an offline cell
-    cannot hit the registry; investigate it, don't re-ledger it here. A
-    `no matching package named <dep>` failure offline is the known manual tail: a tests/ fixture
-    crate grew a dep outside the warm-up manifest — add it to `tests/warmup/Cargo.toml`.
+    cannot hit the registry; investigate it, don't re-ledger it here. Two manual tails are now
+    known, distinguished by the error text: (1) `no matching package named <dep>` — a tests/
+    fixture crate grew a dep outside the warm-up manifest; add it to `tests/warmup/Cargo.toml`.
+    (2) `failed to download <dep> vX.Y.Z … --offline was specified` — a FRESH-resolving scratch
+    crate (the oracle-fingerprint probe is one) wants a version newer than the gitignored
+    `tests/warmup/Cargo.lock`, i.e. an upstream release landed since the lock was minted; the
+    signature is a SUB-SECOND `HARNESS FAILURE` from the gate (the probe dies before building
+    anything), and the remedy is a targeted `cargo update -p <dep> --manifest-path
+    tests/warmup/Cargo.toml` (an `=`-pinned twin like `zerocopy-derive` moves via its parent),
+    never `CHECK_ONLINE=1` as a habit. Observed 2026-08-06 (`zerocopy-derive 0.8.56`, first seen
+    amid 4-way gate concurrency and initially misread as lock contention — the solo re-run is
+    what separated the classes; per-checkout, so every checkout re-fixes on first contact). The
+    systematic retirement of tail (2) is the work item "The warm-up should REFRESH the
+    dep-universe lock, not trust it".
   Fail-fast discipline is unchanged and general: a failed run plus a one-gate retry is NOT a tier
   pass — fail-fast SKIPS every downstream gate, so a tier-level claim needs the tier re-run (the
   gate cache keeps already-passed cells cheap).
