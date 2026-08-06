@@ -2088,6 +2088,67 @@ fn duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm() {
     );
 }
 
+/// The wasm face of a `@newtype`/TAG-forced WRAPPER over a preserve table: the wrapper's
+/// `new`/getter boundary names the flavored structural class, and the crate MINTS that class plus a
+/// `collections.rs` index row for it. Both halves are the pin — a boundary naming a class nobody
+/// mints is E0425 in the generated wasm crate, at the exact remove where the spec author cannot see
+/// it, and an index missing a defined wrapper breaks every downstream `--extern-wrapper-index`
+/// deferral. The `{+}` flavor rides the same path through its restricted `NonEmptyPairMapKToV` door.
+#[test]
+fn tagged_preserve_table_wrapper_boundary_mints_its_pair_map_class() {
+    const CDDL: &str = "tagged_pt = #6.24({ * uint => text }) ; @duplicates preserve\n\
+                        tagged_pt_ne = #6.25({ + uint => text }) ; @duplicates preserve\n\
+                        holder = [a: tagged_pt, b: tagged_pt_ne]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_tagged_pt_wasm_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "tagged_pt_wasm_unused",
+        "--wasm=true",
+    ]))
+    .expect("a tagged preserve table must GENERATE under --wasm");
+    std::fs::remove_file(&path).ok();
+    let wasm = out
+        .get("wasm/src/generated/mod.rs")
+        .expect("wasm mod.rs must be emitted");
+    for (wrapper, class) in [
+        ("TaggedPt", "PairMapU64ToText"),
+        ("TaggedPtNe", "NonEmptyPairMapU64ToText"),
+    ] {
+        assert!(
+            wasm.contains(&format!(
+                "pub fn new(inner: &{class}) -> Self {{\n        Self(cddl_lib::{wrapper}::new("
+            )),
+            "`{wrapper}`'s wasm ctor must take the flavored `{class}`, got:\n{wasm}"
+        );
+        assert!(
+            wasm.contains(&format!("pub struct {class}(")),
+            "the crate must MINT `{class}` — a boundary naming an unminted class is E0425, \
+             got:\n{wasm}"
+        );
+    }
+    // the wrapper classes own their tag, so they expose a real standalone codec
+    assert!(
+        wasm.contains("pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedPt, JsError>"),
+        "the wasm wrapper class must expose the codec the tag-owning rust wrapper gained, got:\n{wasm}"
+    );
+    let index = out
+        .get("wasm/src/generated/collections.rs")
+        .expect("the collection-wrapper index must be emitted");
+    for class in ["PairMapU64ToText", "NonEmptyPairMapU64ToText"] {
+        assert!(
+            index.contains(&format!("pub use crate::generated::{class};")),
+            "the wrapper-minted `{class}` must appear in the collections index, got:\n{index}"
+        );
+    }
+}
+
 /// A `@duplicates preserve` construct and a non-preserve construct of the IDENTICAL key/value both
 /// cross the wasm boundary, each through its OWN structural class: the container flavor is part of
 /// the structural name (`PairMapKToV` vs `MapKToV`), so one name is never asked to be two
@@ -2311,6 +2372,45 @@ fn preserve_pair_map_loose_wrapper_ident_collision_rejects_gracefully() {
         msg.contains("PairMapU64ToText") && msg.contains("PairMap wrapper"),
         "the message must name the claimed ident and the pair-map twin (distinct from the \
          NonEmpty/reject siblings), got: {msg}"
+    );
+}
+
+/// The second mint source of the same name family: a `@newtype`/TAG-forced WRAPPER over an inline
+/// `{* k => v} ; @duplicates preserve` names the structural `PairMapKToV` class at its wasm
+/// `new`/getter boundary, and the wasm struct walk mints it there. Without this source enumerated in
+/// the detector the collision fell through to the generic `export.rs` duplicate-ident backstop —
+/// loud, but in neither the spec author's terms nor the right container kind's voice.
+#[test]
+fn preserve_pair_map_wrapper_inner_ident_collision_rejects_gracefully() {
+    // `pair_map_u64_to_text` is a plain struct rule claiming the ident the tagged preserve table
+    // wrapper's boundary names.
+    const CDDL: &str = "pair_map_u64_to_text = [x: uint]\n\
+                        tagged_pt = #6.24({ * uint => text }) ; @duplicates preserve\n\
+                        holder = [t: tagged_pt, p: pair_map_u64_to_text]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_pmap_wrapper_ident_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "pmap_wrapper_ident_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let err = result.expect_err(
+        "a user rule claiming the wrapper-minted pair-map ident must be a graceful Err",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("PairMapU64ToText")
+            && msg.contains("PairMap wrapper")
+            && msg.contains("wrapped by rule 'TaggedPt'"),
+        "the message must name the claimed ident, the pair-map twin and the WRAPPER rule that \
+         mints it, got: {msg}"
     );
 }
 
@@ -3199,15 +3299,19 @@ fn newtype_on_two_arm_258_idiom_is_accepted_and_nominalizes() {
     );
 }
 
-/// Gap-2 table corner: `@duplicates` on a `@newtype` TABLE (`{* k => v} ; @newtype @duplicates …`)
-/// is hard-rejected this phase. A `preserve` policy would swap the wrapper's inner to the `PairMap`
-/// twin, but the synthesized structural map wasm wrapper class wraps `BTreeMap`, not `PairMap`, so the
-/// wasm crate would not compile — the boundary is pinned loudly rather than silenced or shipped broken.
-/// The message names the rule and the transparent-table-alias workaround. Pinned key (Phase 2.2 wires
-/// the PairMap wasm wrapper and subsumes this).
+/// `@duplicates` on a `@newtype` TABLE (`{* k => v} ; @newtype @duplicates …`) NOMINALIZES on both
+/// policies. `preserve` swaps the wrapper's inner to the `PairMap` vec-of-pairs twin and its wasm
+/// boundary to the `PairMapKToV` structural class the wasm struct walk mints for exactly that inner;
+/// `reject` is the table default, so the wrapper keeps the loose `BTreeMap` core and the `MapKToV`
+/// boundary. Both directions are pinned because the policy is what selects the inner REPRESENTATION:
+/// a silently-dropped `preserve` would emit a wrapper that collapses duplicate keys the spec says to
+/// keep, and a `preserve` boundary naming the default class is the E0425 the wasm crate cannot build.
 #[test]
-fn newtype_table_duplicates_rejects_gracefully() {
-    for policy in ["preserve", "reject"] {
+fn newtype_table_duplicates_nominalizes_on_both_policies() {
+    for (policy, rust_inner, wasm_inner) in [
+        ("preserve", "PairMap<u64, String>", "PairMapU64ToText"),
+        ("reject", "BTreeMap<u64, String>", "MapU64ToText"),
+    ] {
         let cddl = format!(
             "foo = {{ * uint => text }} ; @newtype @duplicates {policy}\nholder = [f: foo]\n"
         );
@@ -3217,24 +3321,32 @@ fn newtype_table_duplicates_rejects_gracefully() {
             policy
         ));
         std::fs::write(&path, &cddl).unwrap();
-        let result = crate::api::generated_strings(&Cli::parse_from([
+        let out = crate::api::generated_strings(&Cli::parse_from([
             "cddl-codegen",
             "--input",
             path.to_str().unwrap(),
             "--output",
             "newtype_table_dup_unused",
             "--wasm=true",
-        ]));
+        ]))
+        .unwrap_or_else(|e| panic!("@newtype @duplicates {policy} table must generate: {e}"));
         std::fs::remove_file(&path).ok();
-        let err = result.expect_err(
-            "@duplicates on a @newtype table must be a graceful Err (unwired PairMap wasm boundary)",
-        );
-        let msg = err.to_string();
+        let rust = out
+            .get("rust/src/generated/mod.rs")
+            .expect("rust mod.rs must be emitted");
         assert!(
-            msg.contains("@duplicates on rule `Foo`")
-                && msg.contains("@newtype` table")
-                && msg.contains("transparent table alias"),
-            "the rejection must name the rule and the table-alias workaround, got: {msg}"
+            rust.contains(&format!("pub struct Foo(pub(crate) {rust_inner})")),
+            "`@newtype @duplicates {policy}` must nominalize over `{rust_inner}`:\n{rust}"
+        );
+        let wasm = out
+            .get("wasm/src/generated/mod.rs")
+            .expect("wasm mod.rs must be emitted");
+        assert!(
+            wasm.contains(&format!("pub fn new(inner: &{wasm_inner})"))
+                && wasm.contains(&format!("pub fn get(&self) -> {wasm_inner}"))
+                && wasm.contains(&format!("pub struct {wasm_inner}(")),
+            "the `{policy}` wrapper's wasm boundary must name — and the crate must MINT — \
+             `{wasm_inner}`:\n{wasm}"
         );
     }
 }
@@ -5892,14 +6004,16 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
          `f_tag2_encoding`; got:\n{flavor_a}"
     );
 
-    // Flavor B (heterogeneous): mandatory outer 24 (level 1, `Option<Sz>`) + an OPTIONAL inner tag
-    // (level 2, `TagPresenceEncoding`). The carrier is the one rule shape whose tag still rides a
-    // transparent alias — a tagged PRESERVE table, carved out of the transparent-alias wire assert
-    // because a wrapper cannot hold its `PairMap` inner (see
-    // `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias`). That coupling is
-    // deliberate and load-bearing: when the PairMap-aware wasm wrapper lands and the carve-out
-    // retires, this flavor loses its last spelling and the optional-tag level-2 path becomes
-    // unreachable — retire the flavor with it rather than inventing a carrier.
+    // Flavor B (the heterogeneous case, now settled by construction): a mandatory outer tag over an
+    // OPTIONALLY-tagged inner cannot stack at all, because no transparent alias carries an
+    // `OptionallyTagged` operation any more — every optional-tag idiom body WRAPS, the tagged
+    // PRESERVE table (its last transparent spelling) included, and
+    // `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias` now refuses the shape
+    // unconditionally. The depth mechanism is unchanged; what this half pins is that the OPTIONAL
+    // tag stays LEVEL 1 inside the wrapper's OWN encoding struct while the holder's outer tag stays
+    // level 1 in the holder's — two namespaces, so nothing to disambiguate and no `f_tag2_encoding`
+    // to mint. (Kept as a live carrier rather than deleted: an alias regression that reintroduced
+    // the flattening would resurface here as a level-2 member on the holder.)
     let flavor_b = gen_encodings(
         "set = #6.100({* uint => tstr}) / {* uint => tstr} ; @duplicates preserve\n\
          holder = [f: #6.24(set)]\n",
@@ -5920,9 +6034,15 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
          got:\n{flavor_b}"
     );
     assert!(
-        flavor_b.contains("pub f_tag2_encoding: TagPresenceEncoding"),
-        "heterogeneous inner optional tag must be level-2 `f_tag2_encoding: TagPresenceEncoding`; \
-         got:\n{flavor_b}"
+        !flavor_b.contains("f_tag2_encoding"),
+        "the wrapped inner owns its own optional tag, so nothing stacks onto the holder's member \
+         and no level-2 member may be minted there; got:\n{flavor_b}"
+    );
+    assert!(
+        flavor_b.contains("pub struct SetEncoding {")
+            && flavor_b.contains("pub inner_tag_encoding: TagPresenceEncoding"),
+        "the optional-tag preserve table must WRAP and carry its tag tri-state at level 1 in its \
+         own encoding struct; got:\n{flavor_b}"
     );
 
     // Flavor C (name-boundary reset): an outer mandatory tag 24 over an ARRAY whose element carries

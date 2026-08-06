@@ -72,7 +72,7 @@ The positions this covers:
 
 **Container descent preserves the rule.** An `Array` element, a `Map` key or value, and an `Optional` inner are each themselves member positions with their own declared spelling, at every depth: a rest row over `{* epoch => {* policy_id => text}}` spells `Epoch` *and* the nested `PolicyId`.
 
-**An alias that names a wrapped form spells its payload from the target.** When the alias *rule itself* carries an encoding operation, the alias ident denotes the wrapped value, not the payload — so the payload read names the target:
+**A rule that owns an encoding operation is a type, so its ident is what the member reads.** When the *rule itself* carries an encoding operation — a tag head, `bytes .cbor`, the optional-tag idiom — it mints a **wrapper struct** rather than a transparent alias, so its ident denotes a real type whose codec *is* the wrapped form:
 
 ```cddl
 credential = [idx: uint, hash: policy_id]
@@ -80,11 +80,9 @@ tagged_creds = #6.11({* uint => credential}) ; @duplicates preserve
 holder = [tc: tagged_creds]
 ```
 
-`tagged_creds` emits `pub type TaggedCreds = PairMap<u64, Credential>;` with the tag riding the alias, and its values are read with `Credential::deserialize` *inside* the already-consumed tag. `TaggedCreds::deserialize` there would compile (the alias is transparent) and would lie: `TaggedCreds` **is** the tagged table, so naming it at the position that reads the map body claims to read a tagged value. This is the one place the rule and "one spelling per member" disagree, and the rule loses on purpose.
+`tagged_creds` emits `pub struct TaggedCreds(pub(crate) PairMap<u64, Credential>)` whose serialize writes `write_tag(11)` and whose deserialize requires it, and `tc` is read with `TaggedCreds::deserialize` — the whole tagged table, which is exactly what the ident denotes. Same for `cred_bytes = bytes .cbor credential` (`CredBytes::deserialize`) and `tagged_arr = #6.24([* uint])` (`TaggedArr::deserialize`). Because no transparent alias can carry a wire-affecting operation, one CDDL type never has two wire forms selected by use-site, and there is no position where the ident and the value read there disagree.
 
-A tagged **preserve table** is the only rule shape that can still reach this, and only because a wrapper cannot hold its `PairMap` inner (see [Type aliases and tagged rules](current_capacities#type-aliases-and-tagged-rules)). Every other tagged rule body — and every `bytes .cbor` one — mints a **wrapper struct**, so its ident denotes a real type whose codec *is* the wrapped form: `cred_bytes = bytes .cbor credential` is read with `CredBytes::deserialize`, and `tagged_arr = #6.24([* uint])` with `TaggedArr::deserialize`, which is the truth rather than a lie.
-
-What matters is which declaration owns the encoding operation, not that there is one. An operation written into the **member's own type expression** leaves the alias denoting exactly the value being read, so the spelling survives it: `f: #6.9(stake_credential)` is a field typed `StakeCredential` read with `StakeCredential::deserialize` inside the tag, and `j: bytes .cbor stake_credential` is a field typed `StakeCredential` read with `StakeCredential::deserialize` inside the byte string. And a container inner *inside* a payload is a member position of its own again, so `bytes .cbor [* stake_credential]` reads its elements with `StakeCredential::deserialize`.
+What matters is which declaration owns the encoding operation, not that there is one. An operation written into the **member's own type expression** leaves an alias denoting exactly the value being read, so the spelling survives it: `f: #6.9(stake_credential)` is a field typed `StakeCredential` read with `StakeCredential::deserialize` inside the tag, and `j: bytes .cbor stake_credential` is a field typed `StakeCredential` read with `StakeCredential::deserialize` inside the byte string. And a container inner *inside* a payload is a member position of its own again, so `bytes .cbor [* stake_credential]` reads its elements with `StakeCredential::deserialize`.
 
 Two things are deliberately **not** covered:
 

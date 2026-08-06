@@ -4,6 +4,10 @@
 ; NonEmptyPairMap) — without the projected directive the consumer would rebuild a reject-default
 ; BTreeMap that silently REJECTS the duplicate keys the dep preserves (the cross-crate skew the seam
 ; kills, the mirror of the reject direction). Exercises both the `{*}` (PairMap) and `{+}`
-; (NonEmptyPairMap) flavors.
+; (NonEmptyPairMap) flavors, plus the TAGGED flavor, which force-wraps into a nominal wrapper
+; owning its tag: that one projects as an opaque extern type (its codec is its own, exactly like the
+; non-preserve tagged-table twin), so what the consumer must NOT do is rebuild a transparent
+; pair-map alias whose standalone codec would drop the tag.
 preserve_map  = {* uint => text} ; @duplicates preserve
 preserve_nmap = {+ uint => text} ; @duplicates preserve
+tagged_preserve_map = #6.24({* uint => text}) ; @duplicates preserve

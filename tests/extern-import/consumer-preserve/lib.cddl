@@ -1,4 +1,6 @@
 ; Consumer spec referencing the dependency's @duplicates-preserve table rules (`preserve_map`,
 ; `preserve_nmap`). Generated via --extern-import at the dep's minted export; the rebuilt types must
 ; be the pair-map twins (preserve on both sides of the crate boundary), not reject-default BTreeMaps.
-holder = [pm: preserve_map, pnm: preserve_nmap]
+; `tagged_preserve_map` is the nominal (tag-owning) flavor: the consumer must reference the dep's
+; TYPE and call its codec, never rebuild the table body inline.
+holder = [pm: preserve_map, pnm: preserve_nmap, tpm: tagged_preserve_map]

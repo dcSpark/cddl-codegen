@@ -391,10 +391,11 @@ fn member_call_targets_spell_the_declared_alias() {
 /// `CredBytes::deserialize` is the truth at the member position, and there is no transparent
 /// bytes-wrapped ident left for a payload read to be sealed from.
 ///
-/// The seal MECHANISM (an alias whose own `base_type` carries encodings does not lift) stays live
-/// for the remaining rule-owned-operation aliases — see
-/// `encoding_operation_ownership_decides_whether_the_spelling_survives`, whose seal half is a tagged
-/// collection.
+/// The seal MECHANISM (an alias whose own `base_type` carries encodings does not lift) is now
+/// unreachable by construction rather than merely unused: no rule-owned operation registers a
+/// transparent alias any more, which
+/// `encoding_operation_ownership_decides_whether_the_spelling_survives` pins from the positive side
+/// (a tagged preserve table, the last such spelling, reads through its own wrapper's codec).
 #[test]
 fn cbor_bytes_root_wraps_and_a_member_cbor_lifts_the_payloads_alias() {
     let src = generate(
@@ -583,15 +584,15 @@ fn aliased_member_leaves_error_strings_and_variant_paths_alone() {
 /// instance of the reported defect: a field typed `StakeCredential` filled by
 /// `Credential::deserialize`.
 ///
-/// The seal half uses a tagged PRESERVE table because that is the ONLY rule-owned-operation alias
-/// class left: every other tagged rule body — and every `bytes .cbor` one — force-wraps, so its
-/// ident is a real type and the question does not arise (see
-/// `cbor_bytes_root_wraps_and_a_member_cbor_lifts_the_payloads_alias`). A `preserve` policy's
-/// `PairMap` inner is what a wrapper cannot hold, which is why that one combination stays
-/// transparent (`IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias` carves it out
-/// by name). The coupling is deliberate: when the PairMap-aware wasm wrapper lands and the carve-out
-/// retires, the SEAL half loses its last subject and the seal branch becomes dead — retire it with
-/// the carve-out rather than inventing a carrier.
+/// The ownership question now has NO rule-owned-operation alias class left to be open on: every
+/// tagged rule body — and every `bytes .cbor` one — force-wraps, the tagged PRESERVE table (its last
+/// transparent spelling) included, so a rule-owned operation always names a real type and
+/// `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias` refuses the alternative
+/// unconditionally (see `cbor_bytes_root_wraps_and_a_member_cbor_lifts_the_payloads_alias`). The
+/// former SEAL half therefore pins the POSITIVE settlement instead: `g`'s rule-owned tag makes
+/// `TaggedCreds` a wrapper that owns its tag, so the member reads through
+/// `TaggedCreds::deserialize` — the ident denotes the whole tagged table and the read agrees with
+/// it, which is the same agreement the LIFT half asserts from the other direction.
 #[test]
 fn encoding_operation_ownership_decides_whether_the_spelling_survives() {
     let src = generate(
@@ -634,11 +635,11 @@ fn encoding_operation_ownership_decides_whether_the_spelling_survives() {
         "a member-expression `.cbor` over an alias must LIFT at the payload read:\n{src}"
     );
 
-    // SEAL — the tag on `g` is the alias RULE's, so `TaggedCreds` names the tagged table and does
-    // not denote the position that reads the map body; the member is read structurally instead.
+    // SETTLED — the tag on `g` is the RULE's, so the rule force-wraps and `TaggedCreds` IS the
+    // tagged table as a real type: the member reads through its own codec, which owns the tag.
     assert!(
-        !src.contains("TaggedCreds::deserialize"),
-        "a rule-owned encoding alias must never spell its own ident inside the operation it \
-         names:\n{src}"
+        src.contains("TaggedCreds::deserialize"),
+        "a rule-owned encoding operation must force-wrap, so the member reads through the rule's \
+         own codec rather than structurally:\n{src}"
     );
 }

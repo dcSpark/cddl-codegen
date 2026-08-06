@@ -782,6 +782,29 @@ impl GenerationScope {
                             self.ensure_non_empty_wrappers(types, range, cli);
                         }
                         RustStructType::Wrapper { wrapped, .. } => {
+                            // A `@newtype`/TAG-forced wrapper over an INLINE `@duplicates preserve`
+                            // table stores a `Map` inner carrying the policy (threaded onto the
+                            // wrapped type by `register_rust_struct`). The conceptual visitor above
+                            // is policy-blind, so it mints only the DEFAULT-flavored `MapKToV` while
+                            // this wrapper's own wasm boundary (`new`/`get`) names the `PairMapKToV`
+                            // twin — E0425 on a class nobody minted. Mint that twin here, from the
+                            // RustType-level walk that can read the flavor, exactly as the array
+                            // sibling's `@duplicates reject` inner reaches
+                            // `generate_reject_ordered_set_type` through
+                            // `ensure_non_empty_wrappers` below. The `{+ …}` preserve flavor routes
+                            // through that same call (its `NonEmptyPairMapKToV` door), so only the
+                            // LOOSE `{* …}` shape is claimed here.
+                            if wrapped.is_preserve_pair_map() && !wrapped.is_non_empty_map() {
+                                mint_wasm_wrapper_for_visited_type(
+                                    self,
+                                    types,
+                                    &wrapped.conceptual_type,
+                                    &mut wasm_wrappers_generated,
+                                    &table_shape_sole_owner,
+                                    true,
+                                    cli,
+                                );
+                            }
                             self.ensure_non_empty_wrappers(types, wrapped, cli);
                         }
                         RustStructType::GroupChoice { variants, .. }

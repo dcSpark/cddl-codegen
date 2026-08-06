@@ -144,9 +144,9 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      was an instance of — no wire-affecting property of a `RustType` may survive on a root that
      emits a transparent alias — is a hard refusal in
      `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias`, which fires for any
-     FUTURE encoding operation at the one registration seam that could carry one (its one carve-out,
-     tags on a named collection / `T / null` collapse, is ledgered in `cddl-matrix/ROADMAP.md`
-     § Findings). The emitted-code half — the part no generator assert can speak for — is executed by
+     FUTURE encoding operation at the one registration seam that could carry one (unconditionally
+     over every non-`Fixed` base: a `Fixed` one is the already-refused bare-literal rule, whose
+     alias entry never reaches a wire). The emitted-code half — the part no generator assert can speak for — is executed by
      `integration_tests::cbor_rule_body_standalone_codec_agrees_with_its_embed_site` (`local` tier),
      which runs the wrapped-form/bare-form/embed-agreement table on a scalar and a record payload
      under the plain and preserve profiles. The embed-site COMPILE leg above keeps its own

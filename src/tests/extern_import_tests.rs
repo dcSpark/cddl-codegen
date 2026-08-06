@@ -346,6 +346,21 @@ fn extern_import_projects_duplicates_preserve_no_cross_crate_skew() {
         export_body.contains("preserve_nmap = {+ uint => tstr} ; @duplicates preserve"),
         "the {{+}} preserve table must project its directive; got:\n{export_body}"
     );
+    // …and the TAGGED flavor projects as an OPAQUE extern type rather than as a transparent table
+    // body: it force-wraps into a nominal wrapper whose codec owns the tag, so the consumer must
+    // reach it as a type (exactly like the non-preserve tagged-table twin). Projecting the body
+    // instead would hand the consumer a transparent pair-map alias whose standalone codec drops the
+    // tag the dep's type writes.
+    assert!(
+        export_body.contains("tagged_preserve_map = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "a TAGGED preserve table owns its own codec, so it must project as an opaque extern type; \
+         got:\n{export_body}"
+    );
+    assert!(
+        !export_body.contains("tagged_preserve_map = {"),
+        "the tagged preserve table must NOT project its table body — that would rebuild a \
+         transparent alias whose standalone codec drops the tag; got:\n{export_body}"
+    );
 
     // Consume the export via --extern-import.
     let flag_root = scratch("duppreserve_flag");
@@ -376,6 +391,12 @@ fn extern_import_projects_duplicates_preserve_no_cross_crate_skew() {
     assert!(
         ser.contains("NonEmptyPairMap::try_from"),
         "the consumer must deserialize the {{+}} preserve table through the NonEmptyPairMap door"
+    );
+    // …while the TAGGED flavor is read through the DEP's own codec, tag and all — the consumer
+    // rebuilds no map body for it at all.
+    assert!(
+        ser.contains("TaggedPreserveMap::deserialize"),
+        "the consumer must call the dep type's own codec for a tag-owning preserve table"
     );
 
     // (3) byte-identity vs a physical stub carrying the directive (the seam roundtrips it verbatim).
