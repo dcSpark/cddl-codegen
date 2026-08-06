@@ -18,7 +18,7 @@ directory of per-type files instead needs `declareExternallyReferenced: false` t
 re-declaring what it references, and that leaves exactly those types referenced but never declared —
 a hard `TS2304` for the consumer.
 
-Eleven definitions, one per script branch:
+Fifteen definitions, one per script branch:
 
 - `Foo` — a struct that references three other definitions, and gets `additionalProperties: false`
   injected (→ no `[k: string]`).
@@ -57,10 +57,30 @@ Eleven definitions, one per script branch:
 - `RestAny` — an everything-admitting catch-all (the empty schema an `* any => any` row emits). It
   already projects to an `unknown` index signature every named property satisfies, so it is left
   alone; also pinned exactly, for the same reason.
+- `Blake2b256` — a key json2ts's own title normalization does *not* leave alone (it uppercases a
+  letter following a digit). The declaration must be exactly `Blake2b256JSON`, because that is the
+  name `json-ts-types.js` keys the splice on; published as `Blake2B256JSON` the class reads as one
+  with no type at all. Its `description` names both spellings, which is the control for the
+  map-back's safety argument: text the *document* contributed must survive verbatim, and would not
+  under a post-compile identifier rename.
+- `Blake2B256` — the collision half. Two keys the normalization conflates must still emit two
+  distinct declarations; under normalize-and-emit one of them became `Blake2B256JSON1`, a name no
+  consumer can ask for, attached to whichever definition lost the race.
+- `Spelling` — an enum whose member strings name the awkward type. The string-literal control for
+  the same safety argument as `Blake2b256`'s description.
+- `OrderedHashMap<K, V>` — a `$defs` key that is not a TypeScript identifier (the static runtime
+  publishes exactly this one). There is no `<key>JSON` to guarantee, so it keeps the
+  normalize-and-emit behaviour and lands as `OrderedHashMapKVJSON`; no wasm class can carry such a
+  name, so nothing keys on it.
 
 The failure directions — a document that does not compile, a stale per-type schema file beside the
-document, two documents, and a document with no definitions — are covered by the same test with
-files written into the work dir at runtime, so they are not committed fixtures here.
+document, two documents, a document with no definitions, and two definitions landing on one
+declaration name — are covered by the same test with files written into the work dir at runtime, so
+they are not committed fixtures here. The last one cannot be left to `tsc`: TypeScript merges
+same-named `interface` declarations silently.
 
-Not covered (deliberately): `json-ts-types.js` (the wasm-pack `.d.ts` merge step) — out of scope
-here, gated by its own fixture-based test `integration_tests::js_d_ts_merge`.
+`json-ts-types.js` (the wasm-pack `.d.ts` merge step) has its own fixture-based test,
+`integration_tests::js_d_ts_merge`, over hand-written defs. The one thing that test cannot see —
+whether the name `run-json2ts.js` emits is the name the merge keys on — is covered here instead, by
+running the merge once over the defs file this test just produced, against a stand-in `pkg/` whose
+classes include the awkward-named one.

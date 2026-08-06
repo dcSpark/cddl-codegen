@@ -11,7 +11,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~32s<!-- /gen:sh:tests-tier-fast --> |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~40s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~8.4 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~49 min<!-- /gen:sh:tests-tier-full --> |
 
@@ -2830,7 +2830,14 @@ cheapest-in-isolation first:
   another definition references — the shape that ships as an undeclared `TS2304` unless the whole
   document is compiled as one unit), resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
   definition, a definition whose own `title` does not become its emitted name, no near-duplicate
-  `FooJSON1` from a `$ref` with a sibling annotation, and no synthetic root. It also pins the
+  `FooJSON1` from a `$ref` with a sibling annotation, and no synthetic root. It pins the
+  declaration-NAME guarantee too — `<$defs key>JSON` exactly, for every key spellable as a TypeScript
+  identifier, whatever json2ts's own title normalization would have made of it (`Blake2b256JSON`, not
+  `Blake2B256JSON`), including a pair of keys that normalization used to conflate into one name plus a
+  `JSON1`, and the two controls that make the map-back's safety argument checkable: a `description`
+  and an enum member string both naming the awkward type survive VERBATIM, which is what rules out
+  renaming identifiers in json2ts's output. A `$defs` key that is not itself an identifier
+  (`OrderedHashMap<K, V>`) keeps the normalized spelling, since there is no `<key>JSON` to promise. It also pins the
   catch-all widening — named properties beside a catch-all, in BOTH spellings (`patternProperties`
   and `additionalProperties`, which is which is a property of the rest row's key domain, not of the
   projection), top level and nested, with the optional-property case that needs `undefined` in the
@@ -2841,11 +2848,16 @@ cheapest-in-isolation first:
   asserts cannot be. `--skipLibCheck` stays off (it would make the check vacuous over a `.d.ts`) and
   `--strict` is what makes the optional-property case fail at all; `typescript` is injected into the
   work dir's manifest by the test, so the shipped `static/package_json_schemas.json` keeps pinning
-  only what a consumer's package actually needs. Four further phases pin
+  only what a consumer's package actually needs. It then bridges the two shipped scripts once, over
+  the defs file that run just produced: the declaration-name guarantee only pays off where
+  `json-ts-types.js` keys the splice on that exact name, and `js_d_ts_merge`'s hand-written defs
+  cannot see whether the two agree. Five further phases pin
   the failure directions, each a non-zero exit that leaves the last-good `json-types.d.ts` on disk: a
-  document that cannot compile, a stale per-type schema beside the document, two documents, and a
-  document with no definitions. (Any of them exiting 0 ships a `.d.ts` that silently drops part of
-  the JSON surface, with nothing in the build output saying so.)
+  document that cannot compile, a stale per-type schema beside the document, two documents, a
+  document with no definitions, and two definitions landing on one declaration name. (Any of them
+  exiting 0 ships a `.d.ts` that silently drops — or silently MERGES — part of the JSON surface, with
+  nothing in the build output saying so. The last one cannot be delegated to `tsc`: TypeScript merges
+  same-named `interface` declarations without a diagnostic.)
 - **`assert_schema_projects_to_legal_ts`** is the same two steps over a fixture's REAL emitted
   document, and is a helper rather than a test of its own: a `--json-schema-export` fixture opts in by
   calling it after `run_test`, which hands it the document the json-gen crate just wrote (today:
@@ -2867,7 +2879,9 @@ cheapest-in-isolation first:
   allowed class keeps `any` rather than gaining a `TS2304` dangling name, and a stale escape is
   itself an error so the list cannot rot) and the near-miss diagnostic (a class whose declaration
   differs from `<Class>JSON` only by json2ts's identifier normalization is named with both spellings
-  and excluded from the suggested escape, because its type is published already); a second run
+  and excluded from the suggested escape, because its type is published already — and, since the
+  shipped `run-json2ts.js` no longer emits such a name, told to re-run that script rather than to
+  rename their rule); a second run
   being byte-identical (the appended block is marker-delimited and truncated each run, so re-running
   without an intervening `rimraf ./pkg` can't duplicate every declaration); a method name the script
   cannot find exiting non-zero with the `--method=` override named and the `.d.ts` untouched (the

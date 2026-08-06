@@ -99,7 +99,8 @@ if (strays.length > 0) {
 }
 
 const documentFile = documents[0];
-const document = JSON.parse(fs.readFileSync(path.join(schemasDir, documentFile), 'utf8'));
+const documentText = fs.readFileSync(path.join(schemasDir, documentFile), 'utf8');
+const document = JSON.parse(documentText);
 const sourceDefs = document.$defs || document.definitions;
 if (sourceDefs == null || Object.keys(sourceDefs).length === 0) {
   // An empty JSON surface must not produce a green build: the wasm classes' `to_json_value()` would
@@ -107,16 +108,83 @@ if (sourceDefs == null || Object.keys(sourceDefs).length === 0) {
   fail(`${documentFile} has no definitions ($defs). Refusing to write an empty ${outputFile}.`);
 }
 
-// `JSON` suffix so these names cannot collide with the wasm classes they describe. Applied to the
-// `$defs` KEYS (and titles) BEFORE compiling, so json2ts emits the final names itself — renaming
-// identifiers in its output afterwards also rewrites matching words inside doc comments and string
-// literal unions.
+// `JSON` suffix so these names cannot collide with the wasm classes they describe. This is the name
+// the emitted declaration MUST carry — `json-ts-types.js` keys the splice on it — so how it gets
+// there is the subject of the next block: the naive route (compile under the real name, rename
+// afterwards if json2ts mangled it) is unavailable, because renaming an identifier in the output
+// also rewrites matching words inside doc comments and string-literal unions.
 const suffixed = (name) => `${name}JSON`;
 
 // The document needs a root that references every definition, or json2ts prunes the ones nothing
 // else points at (a schema root that no other type embeds — a large fraction of a real corpus).
 // Stripped from the output again below.
 const ROOT_TITLE = '__AllSchemas';
+
+// json2ts does not emit a title verbatim: it runs the name through its own identifier
+// normalization, which is NOT the identity on every valid identifier (it uppercases a letter
+// following a digit, so `Blake2b256JSON` is published as `Blake2B256JSON`). `json-ts-types.js`
+// keys the splice on the exact `<Class>JSON` spelling, so a normalized name reads to it as a class
+// the document published no type for — the class ships `any` and the consumer's only remedy would
+// be to rename their CDDL rule.
+//
+// So the normalization is removed from the contract rather than modelled: each definition compiles
+// under a SYNTHETIC title that the normalization provably leaves alone, and every occurrence of
+// that token in the emitted TypeScript is mapped back to `<key>JSON` afterwards. The guarantee is
+// then exact — the declaration name is `<key>JSON` for every key it can be — and it does not
+// depend on json2ts's naming rules staying what they are today.
+//
+// Two properties make the map-back safe. Both are established here, not assumed:
+//
+//   * FIXED POINT. The token is ASCII letters only, with an uppercase first letter: no digits, no
+//     `$`, no underscores, no accented letters and no separators — those are the only things
+//     json2ts's normalization rewrites. So it emits the token verbatim and `<key>JSON` lands
+//     exactly where the token was. (Digit-letter adjacency is what mangles `Blake2b256`, so the
+//     index below is spelled in letters rather than digits.)
+//   * ABSENCE. The token does not occur anywhere in the source document's text. This is the ENTIRE
+//     safety argument for replacing text after the compile — which is otherwise exactly what this
+//     script avoids, by setting titles before compiling: renaming an identifier in json2ts's
+//     output also rewrites matching words inside doc comments and string-literal unions, both of
+//     which carry text straight from the document. A token absent from the source cannot BE one of
+//     those words, so every occurrence in the output is a name json2ts minted from our title.
+//
+// Scoped to keys where `<key>JSON` is a valid TypeScript identifier: a `$defs` key need not be one
+// (the static runtime publishes `OrderedHashMap<K, V>`), and there is no name to guarantee when
+// the target cannot be spelled. Those keys keep the plain suffixed title and json2ts normalizes it
+// as before — no wasm class can carry such a name, so `json-ts-types.js` never keys on one.
+const TS_IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+const SYNTHETIC_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const synthesizable = Object.keys(sourceDefs).filter((name) => TS_IDENTIFIER.test(suffixed(name)));
+// Lengthening (rather than, say, a random suffix) keeps the absence proof deterministic: the same
+// document always picks the same prefix, and reproducible output is a hard requirement here.
+let syntheticPrefix = 'CddlCodegenSynthDef';
+while (documentText.includes(syntheticPrefix) || JSON.stringify(document).includes(syntheticPrefix)) {
+  syntheticPrefix += 'X';
+}
+// Fixed width, so no token is a prefix of another and the map-back cannot mis-split one.
+let syntheticWidth = 1;
+while (Math.pow(26, syntheticWidth) < synthesizable.length) syntheticWidth += 1;
+const syntheticToken = (index) => {
+  let letters = '';
+  for (let i = 0, rest = index; i < syntheticWidth; ++i, rest = Math.floor(rest / 26)) {
+    letters = SYNTHETIC_ALPHABET[rest % 26] + letters;
+  }
+  return `${syntheticPrefix}${letters}`;
+};
+
+// `$defs` key -> the key this script compiles it under, and (for the synthetic ones) back again.
+const emittedKey = new Map();
+const mapBack = new Map();
+let syntheticIndex = 0;
+for (const name of Object.keys(sourceDefs)) {
+  const target = suffixed(name);
+  if (!TS_IDENTIFIER.test(target)) {
+    emittedKey.set(name, target);
+    continue;
+  }
+  const token = syntheticToken(syntheticIndex++);
+  emittedKey.set(name, token);
+  mapBack.set(token, target);
+}
 
 // Annotations sitting beside a `$ref` are legal in 2020-12, but json2ts reads the combination as a
 // schema distinct from its target and emits a near-duplicate type (`FooJSON1`). They are pure
@@ -135,7 +203,7 @@ const rewriteRefs = (node) => {
   if (typeof node.$ref === 'string') {
     const bare = node.$ref.replace(/^#\/(?:\$defs|definitions)\//, '');
     if (knownNames.has(bare)) {
-      node.$ref = `#/$defs/${suffixed(bare)}`;
+      node.$ref = `#/$defs/${emittedKey.get(bare)}`;
     }
     for (const keyword of ANNOTATION_KEYWORDS) delete node[keyword];
   }
@@ -144,19 +212,20 @@ const rewriteRefs = (node) => {
   }
 };
 // Ref rewriting runs BEFORE the per-definition title is written, so the annotation strip above can
-// never delete the suffixed title this script is about to set.
+// never delete the title this script is about to set.
 rewriteRefs(sourceDefs);
 
 const defs = Object.create(null);
 for (const [name, body] of Object.entries(sourceDefs)) {
   // json2ts names a type from its `title` in preference to its `$defs` key, so the title has to
-  // carry the suffix too — otherwise a definition that arrived with a title (from a Rust doc
-  // comment, say) emits an unsuffixed name that merges with the wasm class of the same name.
-  const def = { ...body, title: suffixed(name) };
+  // carry the compiled-under name too — otherwise a definition that arrived with a title (from a
+  // Rust doc comment, say) emits an unsuffixed name that merges with the wasm class of the same
+  // name.
+  const def = { ...body, title: emittedKey.get(name) };
   // Suppresses `[k: string]: unknown` on the emitted type, unless the definition really is a map.
   // Per-definition, because every definition becomes a top-level declaration here.
   if (typeof def.additionalProperties !== 'object') def.additionalProperties = false;
-  defs[suffixed(name)] = def;
+  defs[emittedKey.get(name)] = def;
 }
 
 // TypeScript requires every named property to be assignable to the type's index signature, which
@@ -282,13 +351,41 @@ json2ts
     if (withoutRoot.includes(ROOT_TITLE)) {
       throw new Error(`${ROOT_TITLE} survived into the output; refusing to write it`);
     }
-    const declared = (withoutRoot.match(/^export (?:type|interface) /gm) || []).length;
-    if (declared === 0) {
+    // Map the synthetic titles back to `<key>JSON`. Safe by the absence property established above:
+    // every occurrence of the prefix in this text is a name json2ts minted from one of our titles.
+    const mapped = withoutRoot.replace(
+      new RegExp(`${syntheticPrefix}[A-Z]{${syntheticWidth}}`, 'g'),
+      (token) => mapBack.get(token) || token
+    );
+    // Same guard class as `ROOT_TITLE`'s: a token that reached the output through some route the
+    // map does not know about would ship a name no consumer can have asked for.
+    if (mapped.includes(syntheticPrefix)) {
+      throw new Error(
+        `a synthetic definition title (${syntheticPrefix}...) survived into the output; ` +
+        `refusing to write it`);
+    }
+    // Duplicate declarations cannot be left to the consumer's type-checker: TypeScript MERGES two
+    // `interface`s of the same name silently, so a collision would ship a type that is the union of
+    // two unrelated shapes with nothing said. Reachable whenever a key whose `<key>JSON` is exact
+    // and a key json2ts normalizes land on the same identifier (`OrderedHashMapKV` beside
+    // `OrderedHashMap<K, V>`).
+    const declarations =
+      [...mapped.matchAll(/^export (?:type|interface) ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]);
+    const duplicates =
+      [...new Set(declarations.filter((name, i) => declarations.indexOf(name) !== i))].sort();
+    if (duplicates.length > 0) {
+      throw new Error(
+        `${duplicates.length} declaration name(s) are emitted more than once: ` +
+        `${duplicates.join(', ')}. TypeScript merges same-named interfaces silently, so this ` +
+        `would ship a type nobody declared. Rename the colliding $defs key(s).`);
+    }
+    if (declarations.length === 0) {
       throw new Error(`no types produced from ${Object.keys(defs).length} definitions`);
     }
     fs.mkdirSync(path.dirname(outputFile), { recursive: true });
-    fs.writeFileSync(outputFile, withoutRoot);
-    console.log(`${SCRIPT}: ${declared} types from ${Object.keys(defs).length} definitions`);
+    fs.writeFileSync(outputFile, mapped);
+    console.log(
+      `${SCRIPT}: ${declarations.length} types from ${Object.keys(defs).length} definitions`);
   })
   .catch((e) => {
     // A document that fails to compile is a hard failure of the whole run, never a silently-dropped

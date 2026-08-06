@@ -3,6 +3,22 @@
   "title": "cddl_lib",
   "$defs": {
     "Bar": { "type": "string", "enum": ["x", "y"] },
+    "Blake2b256": {
+      "description": "Blake2b256JSON is named verbatim here, and so is Blake2b256.",
+      "type": "object",
+      "required": ["hash"],
+      "properties": { "hash": { "type": "string" } }
+    },
+    "Blake2B256": {
+      "type": "object",
+      "required": ["hex"],
+      "properties": { "hex": { "type": "string" } }
+    },
+    "Spelling": { "type": "string", "enum": ["Blake2b256JSON", "Blake2b256"] },
+    "OrderedHashMap<K, V>": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
     "Deep": {
       "type": "object",
       "required": ["inner"],
