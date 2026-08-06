@@ -250,27 +250,21 @@ ledgered here (that's what the probe/gate error messages point at).
   in which the arms needing a hand-written `@name` outnumber the ones that do not, or a single crate
   carrying more than a handful of them — the hand-naming cost grows with that count inside one
   consumer, so that is the dimension to watch rather than a second consumer appearing.
-- **A transparent alias carrying a `@custom_serialize`/`@custom_deserialize` PAIR has two wire forms
-  in one crate: every embed site routes through the pair, its own standalone codec does not.** Probed
-  2026-08-04 while force-wrapping the `.cbor` rule bodies (which closed the structurally identical
-  `.cbor` instance). `inner = uint ; @custom_serialize cs @custom_deserialize cd` emits
-  `pub type Inner = u64;` — the pair replaces the codec of the type the alias RESOLVES to, at each
-  position that reaches it, and mints no type of its own — so `Inner::to_cbor_bytes()` /
-  `Inner::from_cbor_bytes()` are `u64`'s built-in codec while `[f: inner]` writes and reads `cs`/`cd`.
-  Silent, and the crate compiles. Deliberately NOT fixed here: the transparent spelling is the
-  DOCUMENTED contract for the pair (`comment_dsl.mdx` prescribes it as the remedy for the extern /
-  raw-bytes marker, tag-rule and `@newtype` refusals — wrapping the alias would break each of those),
-  and the extern-interface seam already treats such an alias as hazardous (`; unexported:` row). The
-  invariant assert added with the `.cbor` fix therefore scopes to the `RustType`'s OWN `encodings`
-  vec, never to `AliasInfo`-carried codec metadata. Documented as a caution in `comment_dsl.mdx`
-  § "Reaching an annotated alias through another rule". The accepted named-collection form is an
-  additional inert carrier: `items = [* uint] ; @custom_serialize cs @custom_deserialize cd`
-  lowers to a transparent collection typedef, and the pair reaches neither emitted alias metadata
-  nor holder call sites (both targets are absent). **Reopening signal:** a consumer reporting that a
-  pair-carrying alias's standalone `to_cbor_bytes`/`from_cbor_bytes` produced or accepted the
-  built-in wire where their spec says the pair's, or observing the named collection's hooks absent
-  at holder sites — i.e. a caller reaching either currently inert public seam, which is what
-  nothing yet says anyone does.
+- **No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point.**
+  A pair-carrying transparent alias mints no rust type (that is what gives one CDDL name one wire
+  form: a `pub type` there would carry the aliased type's built-in codec as a standalone wire
+  contradicting the one every embed site writes). The consequence is that the pair's wire is
+  reachable only THROUGH an embedding — a holder field, a table entry, an arm — and never as
+  `Inner::to_cbor_bytes()`. A consumer who wants that entry point today hand-writes a wrapper over
+  the codec functions. Deliberately not built as a default: nominalizing would break the in-memory
+  transparency that is the alias-of-marker spelling's documented point (a value IS the hand-written
+  type), and it is the remedy `comment_dsl.mdx` § "Positions that are rejected" prescribes for the
+  extern/raw-bytes marker, tag-head, tag-258, enum and `@newtype` refusals — each of which needs the
+  alias to stay transparent. A directive requesting the wrapper explicitly would sit ON TOP of the
+  one-wire-form contract rather than against it, since an opted-in nominal type owns its whole wire
+  in both directions. **Reopening signal:** a single consumer crate carrying more than a handful of
+  such hand-written standalone wrappers — the hand-maintenance cost grows with that count inside one
+  crate, so that is the dimension to watch rather than a second consumer appearing.
 
 - **A type-choice ARM or member declared as `bytes .cbor <alias>` changes NAME, not wire, once the
   alias survives to the arm.** Measured 2026-08-03 while fixing the wire half of the same seam (the

@@ -713,7 +713,7 @@ const GRID: &[Cell] = &[
         expect: Expect::Reject("on the open-array rest tail (`* t`) of rule `opa`"),
     },
     // 23d. REJECT: a TABLE's row entry slot. Disjoint from the table RULE's own slot (cell 23g),
-    //      which is a separate — and still silent — finding.
+    //      which is its own rejection for its own reason.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "table-row-entry",
