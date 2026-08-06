@@ -1,0 +1,197 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for NullableHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        serializer.write_tag_sz(
+            10u64,
+            fit_sz(
+                10u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f0_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        match &self.f0 {
+            Some(x) => {
+                serializer.write_unsigned_integer_sz(
+                    *x,
+                    fit_sz(
+                        *x,
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.f0_encoding)
+                            .unwrap_or_default(),
+                    ),
+                )?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
+        serializer.write_text_sz(
+            &self.f1,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.f1_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.f1.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NullableHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let (f0, f0_tag_encoding, f0_encoding) = (|| -> Result<_, DeserializeError> {
+                match raw.tag_sz()? {
+                    (10, tag_enc) => Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                        true => Result::<_, DeserializeError>::Ok(
+                            raw.unsigned_integer_sz()
+                                .map(|(x, enc)| (x, Some(tag_enc), Some(enc)))?,
+                        )
+                        .map(|(x, f0_tag_encoding, f0_encoding)| {
+                            (Some(x), f0_tag_encoding, f0_encoding)
+                        })?,
+                        false => {
+                            if raw.special()? != cbor_event::Special::Null {
+                                return Err(DeserializeFailure::ExpectedNull.into());
+                            }
+                            (None, Some(tag_enc), None)
+                        }
+                    }),
+                    (tag, _enc) => Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 10,
+                    }
+                    .into()),
+                }
+            })()
+            .map_err(|e| e.annotate("f0"))?;
+            let (f1, f1_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f1"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NullableHolder {
+                f0,
+                f1,
+                encodings: Some(NullableHolderEncoding {
+                    len_encoding,
+                    f0_tag_encoding,
+                    f0_encoding,
+                    f1_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("NullableHolder"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedNullable {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_tag_sz(
+            10u64,
+            fit_sz(
+                10u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        match &self.inner {
+            Some(x) => serializer.write_unsigned_integer_sz(
+                *x,
+                fit_sz(
+                    *x,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.inner_encoding)
+                        .unwrap_or_default(),
+                ),
+            ),
+            None => serializer.write_special(cbor_event::Special::Null),
+        }
+    }
+}
+
+impl Deserialize for TaggedNullable {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
+                (10, tag_enc) => match raw.cbor_type()? != cbor_event::Type::Special {
+                    true => Result::<_, DeserializeError>::Ok(
+                        raw.unsigned_integer_sz()
+                            .map(|(x, enc)| (x, Some(tag_enc), Some(enc)))?,
+                    )
+                    .map(|(x, inner_tag_encoding, inner_encoding)| {
+                        (Some(x), inner_tag_encoding, inner_encoding)
+                    })?,
+                    false => {
+                        if raw.special()? != cbor_event::Special::Null {
+                            return Err(DeserializeFailure::ExpectedNull.into());
+                        }
+                        (None, Some(tag_enc), None)
+                    }
+                },
+                (tag, _enc) => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 10,
+                    }
+                    .into());
+                }
+            };
+            Ok(Self {
+                inner,
+                encodings: Some(TaggedNullableEncoding {
+                    inner_tag_encoding,
+                    inner_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("TaggedNullable"))
+    }
+}

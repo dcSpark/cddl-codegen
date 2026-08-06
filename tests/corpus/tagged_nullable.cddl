@@ -1,0 +1,22 @@
+; A CBOR tag over a `T / null` OPTION COLLAPSE — the shape whose remedy the anonymous-choice-under-a-tag
+; refusal advertises (name the choice, then tag the name), so it is the spelling a consumer is told to
+; write. It is not a variation of `tagged.cddl`: `uint / null` collapses to `Option<u64>` rather than
+; minting a choice enum, so the tag's content read is the option's null-peek, and that combination has
+; its own deserialize seam.
+;
+; The seam is a `--preserve-encodings` one, which is why this fixture exists rather than a snapshot note.
+; A crossed tag contributes its head size to the tuple the child read produces, and the option's TWO
+; arms have to agree on that tuple: the `Some` arm threads the tag size through the child's `.map(..)`,
+; and the `None` arm — which the emitter writes itself, having consumed only the tag and the null —
+; must re-state it. Both arms now carry `Some(tag_enc)`, so `d8 0a f6` (a widened tag head over null)
+; re-encodes byte-identically instead of collapsing to `ca f6`. The value slot stays `None` and the
+; inner type's own encoding slots keep their defaults: those describe bytes that were never on the
+; wire, while the tag head was.
+;
+; Both positions are spelled because they reach the seam through different callers — `tagged_nullable`
+; as a rule BODY (the auto-wrapped tag newtype over an `Optional` inner) and `nullable_holder`'s field
+; as a MEMBER (the record field walk). The default profile is a control: it carries no encoding tuple
+; at all, so it round-trips either way and only preserve can witness the loss.
+nullable_inner = uint / null
+tagged_nullable = #6.10(nullable_inner)
+nullable_holder = [f0: #6.10(nullable_inner), f1: tstr]

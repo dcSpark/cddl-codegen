@@ -441,7 +441,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **120** — ✅ 67 covered · ➕ 29 supported-untested · ⚠️ 1 partial · ➖ 23 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 92
+- Corpus fixtures: 93
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk
