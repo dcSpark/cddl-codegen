@@ -820,15 +820,11 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 36000,
-      "n": 20,
+      "warm_ms": 44000,
+      "n": 19,
       "measured": "2026-08-06",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-28",
-          "warm_ms": 12000
-        },
         {
           "date": "2026-07-28",
           "warm_ms": 19000
@@ -844,6 +840,10 @@
         {
           "date": "2026-08-06",
           "warm_ms": 36000
+        },
+        {
+          "date": "2026-08-06",
+          "warm_ms": 44000
         }
       ]
     },
