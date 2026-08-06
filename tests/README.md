@@ -1912,7 +1912,8 @@ row; user docs: `docs/docs/output_format.mdx` § "Open arrays", `docs/docs/comme
 User doc: `docs/docs/comment_dsl.mdx` § `@custom_serialize`/`@custom_deserialize` — the honored
 positions (type-level alias, named record rule, record field, table key/value), the signature contracts (including
 the `force_canonical` trailing argument and the by-value table-position encoding), and the
-"Positions that are rejected" / "Positions that are still silent" boundary. Hand-fn fragments
+"Positions that are rejected" list (every position that parses but cannot be honored is on it —
+there is no accepted-and-unhonored remainder). Hand-fn fragments
 spliced into generated trees: `tests/custom_serialization` (core), `tests/custom_serialization_preserve`
 (preserve, incl. the table-position pair), `tests/custom_serialization_canonical` (canonical
 `force_canonical` signatures).
