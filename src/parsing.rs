@@ -931,33 +931,44 @@ fn reject_unnameable_arm_variant_name(
     ));
 }
 
-/// An occurrence marker on the single entry of a single-entry group-choice arm is REFUSED.
+/// An occurrence marker on the single entry of a single-entry group-choice arm is REFUSED — unless
+/// DROPPING it is sound, which is exactly the question `inline_group_occurrence_flattens` already
+/// answers, so this asks it there rather than restating the boundary.
 ///
 /// A one-entry arm never registers a record: its entry's TYPE goes straight into the enum variant,
 /// and a variant holds exactly one value. There is nowhere for a repetition count to live, so the
 /// marker was read by nothing at all — `[ x: uint // ? kv ]`, `// * kv`, `// + kv` and `// 2*3 kv`
-/// each generated output BYTE-IDENTICAL to the unmarked `// kv`, at exit 0. That is the silent
-/// half of the defect; the loud half is on the wire, where the emitted decoder then rejects the
-/// counts the spec admits: the empty encoding a `?` / `*` / `0*n` arm allows comes back as
-/// `No variant matched … Definite length mismatch: found 0`, and every 2-or-more encoding a `*` /
-/// `+` / `n*m` arm allows fails the same way.
+/// each generated output BYTE-IDENTICAL to the unmarked `// kv`, at exit 0. Where that byte
+/// identity is WRONG, it is wrong on the wire: the emitted decoder rejects the counts the spec
+/// admits, so the empty encoding a `?` / `*` / `0*n` arm allows comes back as `No variant matched …
+/// Definite length mismatch: found 0`, and (in an ARRAY) every 2-or-more encoding a `*` / `+` /
+/// `n*m` arm allows fails the same way.
 ///
-/// Honoring the marker is not a guard's work — a zero-case variant has to be TELLABLE on the wire,
-/// which means the sibling arms' own length checks must exclude the empty form, and that is the
-/// occurrence/bounds program's scope (the queue's "unify non-final optional/repeated array
-/// decoding"). So this is a refusal, and it is an honest one because the remedy it names is
-/// verified to generate in both representations: a TYPE choice over one named rule per count
-/// (`xarr = [x: uint]`, `kvarr = [kv]`, `empty = []`, `t = xarr / kvarr / empty` for `?`;
-/// `kvs = [* kv]` in place of `kvarr` for `*`). The named-array WRAPPER (`w = [kv]` referenced
+/// Where it is RIGHT, it is the shared predicate's map-side carve-out: under unique map keys a
+/// second repetition of a fixed-key alternative would duplicate its keys, so every lower-bound-≥1
+/// marker (`+`, `2*3`, `2*`) admits count 1 and nothing else — dropping it is the honored
+/// semantics, not narrowing, and `{ x: uint // + kv }` keeps generating the mandatory arm's bytes.
+/// Refusing those would remove correct surface AND would have to claim a 2-or-more encoding that
+/// does not exist in a map, which is why the message below is rep-scoped rather than uniform.
+///
+/// Honoring the markers that DO reach the refusal is not a guard's work — a zero-case variant has
+/// to be TELLABLE on the wire, which means the sibling arms' own length checks must exclude the
+/// empty form, and that is the occurrence/bounds program's scope (the queue's "unify non-final
+/// optional/repeated array decoding"). So this is a refusal, and it is an honest one because the
+/// remedy it names is verified to generate in both representations: a TYPE choice over one named
+/// rule per count (`xarr = [x: uint]`, `kvarr = [kv]`, `empty = []`, `t = xarr / kvarr / empty` for
+/// `?`; `kvs = [* kv]` in place of `kvarr` for `*`). The named-array WRAPPER (`w = [kv]` referenced
 /// from the arm) is deliberately NOT the remedy named here: it nests the group in an array of its
 /// own and so cannot express the empty case at all.
 ///
 /// Read off the ENTRY's own occurrence, so it covers every entry shape the arm can take — a plain
 /// group, an alias to one, a tagged one, and a plain keyed or bare member (the defect is not
-/// group-specific: `[ x: uint // ? a: tstr ]` was byte-identical to its unmarked twin too). Two
-/// deliberate non-firings:
-/// - `1*1` (and an absent marker) already mean exactly once, so dropping them narrows nothing.
-///   Same pedantic-exactly-once carve-out the array record-field loop's `narrows` guard makes.
+/// group-specific: `[ x: uint // ? a: tstr ]` was byte-identical to its unmarked twin too). Three
+/// deliberate non-firings, the first two being the shared predicate's own:
+/// - `1*1` (and an absent marker) already mean exactly once, in EITHER representation, so dropping
+///   them narrows nothing. Same pedantic-exactly-once carve-out the array record-field loop's
+///   `narrows` guard makes.
+/// - a lower-bound-≥1 marker in a MAP arm, per the collapse above.
 /// - an `InlineGroup` entry, which the entry-position refusal in `group_entry_to_type` already
 ///   rejects on its own terms for EVERY marker including none — one message per problem.
 fn reject_occurrence_on_single_entry_arm(
@@ -971,54 +982,61 @@ fn reject_occurrence_on_single_entry_arm(
         GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
         GroupEntry::InlineGroup { .. } => None,
     };
-    let marked = occur
-        .map(|o| {
-            !matches!(
-                o.occur,
-                Occur::Exact {
-                    lower: Some(1),
-                    upper: Some(1),
-                    ..
-                }
-            )
-        })
-        .unwrap_or(false);
-    if !marked {
+    // THE one boundary, shared with the inline-group splice: an arm that can be spelled without
+    // its marker keeps generating, everything else refuses. Never duplicate the match here — two
+    // spellings of "is dropping this sound?" is how the seams come to disagree.
+    if occur.is_none() || inline_group_occurrence_flattens(occur, rep) {
         return;
     }
     let site = rejection_site(types, Some(name), "anonymous group choice");
     let source_name = source_rule_name_of(types, name);
-    // The remedy is representation-specific in more than its brackets: an array alternative can
-    // reference the plain group directly (`kvarr = [kv]`, verified) and can spell a repeating count
-    // as a homogeneous array (`kvs = [* kv]`, verified), while a MAP-rep record refuses a keyless
-    // plain-group member outright, so the map alternative spells the members and has no 2-or-more
-    // form to offer — map keys are unique, so there is no such encoding to express.
-    let remedy = match rep {
-        Representation::Array => format!(
-            "Give each count its own alternative as a named rule and select between them with a \
-             TYPE choice (`/`), which is where a per-alternative count CAN be spelled: \
-             `one = [ … ]` holding the alternative's contents, `none = []` for the empty case, \
-             `many = [* … ]` for a repeating one, then `{source_name} = one / none / many` — one \
-             rule per arm of the original `//` choice."
+    // Rep-scoped in three places, all for the same reason — a map's keys are unique, so a repeated
+    // fixed-key alternative has no 2-or-more encoding at all: the markers that can REACH this
+    // message differ, the wire consequence to claim differs, and the remedy differs. The remedy
+    // also differs in more than its brackets: an array alternative can reference the plain group
+    // directly (`kvarr = [kv]`, verified) and spell a repeating count as a homogeneous array
+    // (`kvs = [* kv]`, verified), while a MAP-rep record refuses a keyless plain-group member
+    // outright, so the map alternative spells the members out.
+    let (markers, consequence, remedy, still_supported) = match rep {
+        Representation::Array => (
+            "carries an occurrence marker (`?` / `*` / `+` / `n*m`)",
+            "Every count the marker admits and that variant cannot hold — the EMPTY encoding under \
+             `?` / `*` / `0*n`, every 2-or-more encoding under `*` / `+` / `n*m` — is then \
+             rejected by a decoder the spec says must accept it."
+                .to_owned(),
+            format!(
+                "Give each count its own alternative as a named rule and select between them with \
+                 a TYPE choice (`/`), which is where a per-alternative count CAN be spelled: \
+                 `one = [ … ]` holding the alternative's contents, `none = []` for the empty case, \
+                 `many = [* … ]` for a repeating one, then `{source_name} = one / none / many` — \
+                 one rule per arm of the original `//` choice."
+            ),
+            "(An arm with NO marker is supported as it stands, as is the pedantic `1*1`, which \
+             already means exactly once.)",
         ),
-        Representation::Map => format!(
-            "Give each count its own alternative as a named rule and select between them with a \
-             TYPE choice (`/`), which is where a per-alternative count CAN be spelled: \
-             `one = {{ … }}` spelling the alternative's own members and `none = {{}}` for the empty \
-             case, then `{source_name} = one / none` — one rule per arm of the original `//` \
-             choice (map keys are unique, so a repeated fixed-key alternative has no 2-or-more \
-             encoding to spell)."
+        Representation::Map => (
+            "carries a zero-permitting occurrence marker (`?` / `*` / `0*n` / `*n`)",
+            "The EMPTY encoding the marker admits is then rejected by a decoder the spec says must \
+             accept it — and that is the whole of it here, because a map's keys are unique, so a \
+             repeated fixed-key alternative has no 2-or-more encoding in the first place."
+                .to_owned(),
+            format!(
+                "Give each count its own alternative as a named rule and select between them with \
+                 a TYPE choice (`/`), which is where a per-alternative count CAN be spelled: \
+                 `one = {{ … }}` spelling the alternative's own members and `none = {{}}` for the \
+                 empty case, then `{source_name} = one / none` — one rule per arm of the original \
+                 `//` choice."
+            ),
+            "(An arm with NO marker is supported as it stands, as are the pedantic `1*1` and every \
+             lower-bound-≥1 marker — `+`, `2*3`, `2*` — which admit exactly one repetition under \
+             unique map keys and so generate the mandatory arm.)",
         ),
     };
     types.record_rejection(format!(
-        "{site}: the group-choice arm `{group_entry}` carries an occurrence marker (`?` / `*` / \
-         `+` / `n*m`), which is unsupported — a single-entry arm becomes ONE enum variant holding \
-         exactly one value, so the marker is dropped and the emitted codec writes, and accepts, \
-         exactly one repetition of it. Every count the marker admits and that variant cannot hold \
-         — the EMPTY encoding under `?` / `*` / `0*n`, every 2-or-more encoding under `*` / `+` / \
-         `n*m` — is then rejected by a decoder the spec says must accept it. {remedy} (An arm with \
-         NO marker is supported as it stands, as is the pedantic `1*1`, which already means \
-         exactly once.)"
+        "{site}: the group-choice arm `{group_entry}` {markers}, which is unsupported — a \
+         single-entry arm becomes ONE enum variant holding exactly one value, so the marker is \
+         dropped and the emitted codec writes, and accepts, exactly one repetition of it. \
+         {consequence} {remedy} {still_supported}"
     ));
 }
 
@@ -3862,6 +3880,14 @@ enum GroupParsingType {
 /// mandatory field is the honored semantics (the f18d764 boundary). Every zero-permitting marker
 /// (`*`, `?`, `0*n`) and every array marker admitting 2+ reps (`+`, `2*5`) is kept unflattened so
 /// the caller can reject it instead of silently generating a decoder that rejects valid CBOR.
+///
+/// SECOND CONSUMER, asking the identical question:
+/// `reject_occurrence_on_single_entry_arm`. A single-entry group-choice arm has nowhere to put a
+/// repetition count either — the entry's TYPE goes straight into the enum variant, and a variant
+/// holds exactly one value — so "is dropping this marker sound?" is the same question there, and
+/// it asks it HERE rather than restating the boundary. One predicate is what stops the two seams
+/// from disagreeing about `{ x: uint // + kv }`: honored-as-mandatory on both, because a second
+/// repetition would duplicate `kv`'s fixed keys.
 fn inline_group_occurrence_flattens(occur: Option<&Occurrence>, rep: Representation) -> bool {
     match occur.map(|o| &o.occur) {
         // no marker, or an explicit exactly-once bound: splicing preserves the semantics.
