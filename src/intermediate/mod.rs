@@ -4078,6 +4078,34 @@ impl<'a> IntermediateTypes<'a> {
                     }
                 }
             }
+            // The ARRAY sibling of the table rule above, and unhonored for the same reason: a named
+            // collection rule (`items = [* uint]`, `[+ uint]`, `[3*5 uint]`, and both `@duplicates`
+            // flavors) lowers to a transparent collection TYPEDEF registered through
+            // `AliasInfo::new_manual`, whose `rule_metadata` is hardcoded `None` — so the pair
+            // reaches neither the collection's standalone codec nor a holder's field call sites, and
+            // ANY presence rejects rather than only a lone half. Keyed on the `Array` struct variant,
+            // which is exactly the family that lowers this way (a `[a: uint]` RECORD body mints
+            // `Record` and is handled below); the flavors differ only in the container the typedef
+            // names (`Vec` / `NonEmptyVec` / `OrderedSet`), never in the metadata drop.
+            if matches!(rust_struct.variant(), RustStructType::Array { .. }) {
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: a named collection rule (`{ident} = [* t]`) \
+                             lowers to a transparent collection typedef that owns no codec for the \
+                             directive to override, so it is dropped rather than honored — in both \
+                             directions, whichever half is written. Put it on the rule that defines \
+                             the collection's ELEMENT type (`t = bytes ; {directive} …`, then \
+                             `{ident} = [* t]`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
+                             hand-write the type in full to own the whole collection's wire."
+                        ));
+                    }
+                }
+            }
             // A TAGGED wrapper — a tag-head rule (`x = #6.42(uint)`), and the tag-258 set idiom,
             // which nominalizes into one — is structurally the `@newtype` wrapper the parse walk
             // already refuses this pair on, minus the directive: `wrappers.rs` emits its `Serialize`
