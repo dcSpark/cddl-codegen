@@ -1,0 +1,3 @@
+rt = [uint]
+; cell: nesyncoll x rootref (reference from the ROOT scope)
+rootholder = [field0: [+ foo]]
