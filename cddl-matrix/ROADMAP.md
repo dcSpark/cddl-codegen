@@ -249,9 +249,15 @@ ledgered here (that's what the probe/gate error messages point at).
   so the mechanism is the type-choice fixed-arm variant-name minter not sanitizing `.` and `-`.
   Loud, never silent: no exit-0 output exists to be wrong. Scope of the probe: bare type choices,
   default profile; the group-choice spelling of the same pairings emits through the arm cells above
-  and is green. Candidate fix, either direction honest: sanitize the minted variant identifier
-  (a public-API naming decision — e.g. `F1_5` / `FNeg1` — so it wants a deliberate scheme, not an
-  ad-hoc escape), or refuse the arm kind gracefully naming the construct until that scheme exists.
+  and is green. Two later probes (2026-08-06, doc-audit pass) sharpen the record: the ALL-FIXED
+  c-style-enum form shares the defect (`t = 1.5 / 2.5` dies identically, so the c-enum variant
+  minter is the same unsanitized site), and a WORKAROUND exists today — an arm-position `@name`
+  (`t = 1.5 ; @name half_and_half` before the `/ tstr` arm) supplies the identifier and generation
+  succeeds (probed at generation, `--wasm=false` default profile; documented in
+  `current_capacities.mdx` § Type choices). Candidate fix, either direction honest: sanitize the
+  minted variant identifier (a public-API naming decision — e.g. `F1_5` / `FNeg1` — so it wants a
+  deliberate scheme, not an ad-hoc escape), or refuse the arm kind gracefully naming the construct
+  and the `@name` workaround until that scheme exists.
 - **A transparent alias carrying a `@custom_serialize`/`@custom_deserialize` PAIR has two wire forms
   in one crate: every embed site routes through the pair, its own standalone codec does not.** Probed
   2026-08-04 while force-wrapping the `.cbor` rule bodies (which closed the structurally identical
