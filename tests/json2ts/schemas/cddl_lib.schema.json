@@ -19,6 +19,16 @@
       "type": "object",
       "additionalProperties": { "type": "integer" }
     },
+    "Odd<K>/~1name": {
+      "type": "object",
+      "required": ["v"],
+      "properties": { "v": { "type": "integer" } }
+    },
+    "OddHolder": {
+      "type": "object",
+      "required": ["odd"],
+      "properties": { "odd": { "$ref": "#/$defs/Odd%3CK%3E~1~01name" } }
+    },
     "Deep": {
       "type": "object",
       "required": ["inner"],

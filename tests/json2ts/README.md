@@ -72,6 +72,14 @@ Fifteen definitions, one per script branch:
   publishes exactly this one). There is no `<key>JSON` to guarantee, so it keeps the
   normalize-and-emit behaviour and lands as `OrderedHashMapKVJSON`; no wasm class can carry such a
   name, so nothing keys on it.
+- `Odd<K>/~1name` + `OddHolder` — a non-identifier key that is also REFERENCED, which
+  `OrderedHashMap<K, V>` is not. Its pointer (`#/$defs/Odd%3CK%3E~1~01name`) carries both escaping
+  layers a `$ref` token has: the JSON-Pointer escapes (`/` → `~1`, and the literal `~1` in the name
+  → `~01`) under the URI-fragment percent-encoding. Matching that token against a `$defs` key
+  without decoding both leaves the reference pointing at the key as it was *before* the script
+  renames it, and json2ts's resolver then fails the whole document with a `MissingPointerError` —
+  not one bad type, no output at all. `tests/json-extern`'s hand-written `JsonSchema` impl publishes
+  exactly this spelling, which is where the shape comes from.
 
 The failure directions — a document that does not compile, a stale per-type schema file beside the
 document, two documents, a document with no definitions, and two definitions landing on one
