@@ -7939,7 +7939,7 @@ fn group_choice_fixed_value_arm_emits_fieldless_variant() {
 /// construction's `len_encoding` load-bearing: a construction that defaulted the field instead of
 /// moving the read one would compile and re-encode to different bytes.
 ///
-/// The third spec is the CONTROL: a fixed UINT arm binds its own `Sz` sidecar, so its binding list
+/// The last spec is the CONTROL: a fixed UINT arm binds its own `Sz` sidecar, so its binding list
 /// was never empty and it always took the constructor branch. It stays green, and it shows the
 /// emptiness split is between "no fields at all" and "outer fields only" rather than a blanket
 /// change. Tier: check.ts `local` (nested cargo).
@@ -7997,6 +7997,24 @@ fn group_choice_same_major_fixed_arm_constructs_preserve_struct_variant() {
     rt(&[0x98, 0x01, 0xf4]); // non-minimal outer len, [false]
     assert!(matches!(T::from_cbor_bytes(&[0x81, 0xf6]).unwrap(), T::V { .. }));
     assert!(matches!(T::from_cbor_bytes(&[0x81, 0xf4]).unwrap(), T::F { .. }));
+"#,
+        },
+        // The BARE (unnamed-member) arm spelling: the variant name comes from the value's own
+        // lexeme rather than a member key, a different minter reaching the same construction site.
+        // Enumerated for the same reason the default-profile pin enumerates its three spellings.
+        Case {
+            label: "bare_bool_null",
+            spec: "t = [ true // null ]\n",
+            required: &[
+                "Ok(()) => return Ok(Self::True { len_encoding })",
+                "Ok(()) => return Ok(Self::Null { len_encoding })",
+            ],
+            forbidden: &["Ok(T::True)", "Ok(T::Null)"],
+            body: r#"
+    rt(&[0x81, 0xf5]); // [true]
+    rt(&[0x81, 0xf6]); // [null]
+    rt(&[0x9f, 0xf5, 0xff]); // indefinite [true]
+    rt(&[0x98, 0x01, 0xf6]); // non-minimal outer len, [null]
 "#,
         },
         Case {
