@@ -678,6 +678,28 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // 23-i / 23-ii. REJECT: a SINGLE half at the field slot cell 23 honors as a complete pair. The
+    //      two directions are lifted independently there, so the declared half routes the named
+    //      function while the opposite direction keeps the FIELD TYPE's generated codec — the field
+    //      writes bytes it cannot read back, at exit 0. Cell 23 is the standing control that makes
+    //      each rejection attributable to the MISSING half rather than to the field position, the
+    //      same way 23o is for the record rule's 23m/23n.
+    Cell {
+        directive: "@custom_serialize",
+        position: "field-level-alone",
+        spec: "holder = [f: bytes, ; @custom_serialize my_ser\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize alone on field `f` of rule `holder`"),
+    },
+    Cell {
+        directive: "@custom_deserialize",
+        position: "field-level-alone",
+        spec: "holder = [f: bytes, ; @custom_deserialize my_deser\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize alone on field `f` of rule `holder`"),
+    },
     // 23a-f: the six REJECTING placements. The pair is a TYPE-level override keyed on the type whose
     // codec it replaces; each of these positions deletes, bypasses, or never had that type, so the
     // directives used to parse and generate as if absent. Cells 22/23 above are the standing controls

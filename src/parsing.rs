@@ -5935,6 +5935,46 @@ fn parse_record_from_group_choice(
                     &rule_metadata,
                 );
             }
+            // A LONE half of the pair at a field/member position — the field twin of the record-rule
+            // and transparent-alias single-half rejections, refused for their stated reason: one
+            // position ends up with two wire forms. `generate_serialize`/`generate_deserialize` lift
+            // each half independently, so the declared direction routes the named function while the
+            // opposite direction keeps the FIELD TYPE's own generated codec, and the crate compiles
+            // and ships that asymmetry silently. The complete pair stays accepted — it owns both
+            // directions of this field. (A rule-TRAILING comment on a plain-group rule binds to that
+            // group's last entry, the `@extern_companions` neighbour's seam, so this names the entry
+            // the comment actually reached rather than the rule the author wrote it after.)
+            if let Some((directive, declared, kept, missing)) = match (
+                &rule_metadata.custom_serialize,
+                &rule_metadata.custom_deserialize,
+            ) {
+                (Some(_), None) => Some((
+                    "@custom_serialize",
+                    "serialize path writes through the named function",
+                    "deserialize path keeps",
+                    "@custom_deserialize",
+                )),
+                (None, Some(_)) => Some((
+                    "@custom_deserialize",
+                    "deserialize path reads through the named function",
+                    "serialize path keeps",
+                    "@custom_serialize",
+                )),
+                _ => None,
+            } {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "{directive} alone on field `{field_name}` of rule `{source_name}`: the field's \
+                     {declared} while its {kept} the field type's own generated codec — so the bytes \
+                     this field writes are not the bytes it reads back. Write both halves on this \
+                     entry (`; @custom_serialize <fn> @custom_deserialize <fn>`), adding the missing \
+                     {missing}, or move the pair to the member's TYPE rule if the format belongs to \
+                     the type."
+                ));
+            }
             // `@used_as_elem` names the TYPE whose loose-list wasm wrapper to mint, so it is
             // rule-scoped and never applies at a field/member position — reject loudly instead of
             // silently dropping it. Honoring it here would need a sub-ruling per member shape (an

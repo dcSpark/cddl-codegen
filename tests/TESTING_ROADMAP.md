@@ -519,9 +519,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     round-trips only for the complete-pair placements someone hand-wrote. What slipped between
     them, twice in one cycle (2026-08-06, both by ad-hoc probing rather than any gate): a single
     codec half on a transparent alias was accepted and ROUTED — every embed site wrote the custom
-    wire and read the default one, a silent asymmetric round-trip (now refused; its GRID rejection
-    cells are the control); and the FIELD-level single half still ships exactly that asymmetry at
-    exit 0 (`cddl-matrix/ROADMAP.md` § findings, the field-level entry — the open seed vector).
+    wire and read the default one, a silent asymmetric round-trip; and the FIELD-level single half
+    shipped exactly that asymmetry at exit 0. Both are refused now, and their GRID rejection cells
+    are the control — but what those refusals close is the two spellings someone happened to probe,
+    not the class: every ACCEPTED placement remains unmeasured for round-trip identity.
     Mechanical shape: for each accepted `@custom_serialize`/`@custom_deserialize` placement (field,
     alias, record rule, both table positions, open-map rest row) × profile (default, preserve,
     canonical), generate with stub codecs that are true inverses of each other but NOT of the

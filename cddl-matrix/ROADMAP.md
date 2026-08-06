@@ -296,20 +296,21 @@ ledgered here (that's what the probe/gate error messages point at).
   such hand-written standalone wrappers — the hand-maintenance cost grows with that count inside one
   crate, so that is the dimension to watch rather than a second consumer appearing.
 
-- **A FIELD-level single custom-codec half is accepted at exit 0 and asymmetric: the declared
-  direction routes the named function, the opposite direction keeps the field type's generated
-  codec.** `t = [ f: bytes, ; @custom_serialize ws_only ]` emits `ws_only(serializer, &self.f)` on
-  the write path while the read path stays `raw.bytes()` — the same read-one-wire/write-another
-  divergence whose RULE-level spellings are now both refused (a single half on a named record rule,
-  and — delivered with the one-wire-form alias work — a single half on a transparent alias rule),
-  left open at the field slot those rejections do not reach. Probed 2026-08-06 on the delivered
-  binary (`0527a034`), default profile, `--wasm=false`, array-record field; not probed: map-record
-  fields, preserve/canonical profiles, wasm/json faces, or whether any committed fixture carries a
-  lone field half (none is known to). Fix shape mirrors the alias twin: refuse a lone half at the
-  field slot with the write-both-halves remedy — unless a deliberate use for a one-directional
-  field override surfaces, which nothing documents today (`comment_dsl.mdx` shows field pairs only
-  complete). Reopening-through-delivery signal: this is a candidate next-cycle card, not a
-  deferral — the divergence ships silently in any spec that hits it.
+- **A field/member directive written on a SINGLE-ENTRY group-choice arm is silently dropped — the
+  whole field-directive family, not one directive.** `t = [ a: uint // f: bytes ; @custom_serialize
+  ws_only ]` generates at exit 0 with the arm's codec fully generated in both directions and
+  `ws_only` never called; the COMPLETE pair and `@raw_bytes_flavor` (rejected at the field slot
+  everywhere else) drop the same way in the same position. The cause is structural: a one-entry arm
+  lowers to an enum variant carrying the member's inline type, so no record is minted and the
+  field-metadata walk that reads (and validates) a member's directives never runs. A MULTI-entry arm
+  does mint a record and behaves exactly like an ordinary field in every respect measured. Probed
+  2026-08-07 at `d240eef3`, default profile, `--wasm=false`, both reps, on `@custom_serialize`
+  alone, the complete pair, and `@raw_bytes_flavor`; not probed: the other directives in the family,
+  preserve/canonical profiles, wasm/json faces. Fix shape: give the one-entry arm's member the same
+  metadata-validation seam the record walk has, so the position either honors a directive or refuses
+  it — a silent drop is the outcome the DSL rejects everywhere else. Reopening-through-delivery
+  signal: this is a candidate card, not a deferral — an author who writes a complete custom pair on
+  such an arm gets the default wire with no diagnostic.
 
 - **A type-choice ARM or member declared as `bytes .cbor <alias>` changes NAME, not wire, once the
   alias survives to the arm.** Measured 2026-08-03 while fixing the wire half of the same seam (the
