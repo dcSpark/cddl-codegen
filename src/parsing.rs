@@ -4018,6 +4018,49 @@ fn record_plain_group_table_domain_rejection(
     ));
 }
 
+/// The rejection for a KEYED map-record member whose type is a plain group
+/// (`kv = (a: uint, b: uint)`, `t = { c: kv }`) — the struct-map twin of
+/// `record_plain_group_table_domain_rejection`, refused for the same reason.
+///
+/// The key claims one map entry, and that entry's VALUE slot holds exactly one item. A keyless
+/// group has no single-item form, so the only emission available is `serialize_as_embedded_group`,
+/// which splices the group's members in flat: `t = { c: kv }` wrote
+/// `write_map(Len(1))`, the key `"c"`, then Kv's four items — five items after a one-entry map
+/// header, which an interoperating decoder reads as `{'c': 'a'}` plus trailing bytes. Every keyed
+/// spelling of the shape reaches that same splice (the bare member, a tag around it, `?` on it, an
+/// alias to the group, and a group-choice arm carrying it), so the guard is on the member's
+/// resolved type rather than on any one spelling.
+///
+/// Deserialize was never generated for it either — `map_record_deser_refusals` declined the whole
+/// record, because a map's members may arrive in ANY order (`foo = {a, b, bar}, bar = (c, d)`
+/// admits `{a, d, c, b}`) and `deserialize_as_embedded_group` reads a fixed sequence. That left a
+/// serialize-only crate emitting bytes only this crate could interpret, which is worse than a
+/// refusal: exit 0, a crate that compiles, and no way for the author to learn the wire is wrong.
+///
+/// The remedy is a NAMED array rule (`w = [kv]`, then `c: w`), which gives the slot the single
+/// nested item it needs with real nested-array semantics. The INLINE spelling (`c: [kv]`) is NOT
+/// the remedy — it collapses to the group ident carrying `basic_override`, and stamping the outer
+/// Map rep onto the already-Array group is refused separately by
+/// `set_rep_if_plain_group`'s conflicting-representations arm.
+fn record_plain_group_map_member_rejection(
+    types: &mut IntermediateTypes,
+    site: &str,
+    field_name: &str,
+    group_name: &str,
+) {
+    types.record_rejection(format!(
+        "{site}: map field `{field_name}` uses the plain group `{group_name}` as its type, which \
+         is unsupported — a CBOR map entry holds exactly one item in its value slot, and a keyless \
+         group has no single-item form, so it could only be spliced in with its members written \
+         flat. That contradicts the map's own entry count and emits bytes no other CBOR \
+         implementation reads back as the spec says. Give the array framing its own rule and \
+         reference that, which gives the slot the one item it needs and has real nested-array \
+         semantics: `w = [{group_name}]`, then `{field_name}: w`. (Writing the array inline \
+         (`{field_name}: [{group_name}]`) is not the remedy — it is refused separately, as a \
+         conflicting representation on `{group_name}` itself.)"
+    ));
+}
+
 /// `rule_name` is the enclosing rule when there is one (the named-rule path through
 /// `parse_group_choice`); `None` for anonymous nested composites (`rust_type_from_type2`'s
 /// `Type2::Array` / `Type2::Map` arms), where rejection messages describe the entry instead of
@@ -6072,6 +6115,31 @@ fn parse_record_from_group_choice(
                                 ));
                                 return None;
                             }
+                            // A keyed member whose type resolves to a plain group can only be
+                            // emitted as a flat splice, which writes more items than the key's own
+                            // entry promised — refuse every spelling of it here, at the one seam
+                            // the named / tagged / optional / alias / multi-entry-choice-arm
+                            // members all pass through. `is_basic` is the same predicate
+                            // `generate_serialize` uses to pick the splicing emission, so an
+                            // array-WRAPPED group (`c: [kv]`, `basic_override`) keeps its own
+                            // conflicting-representations refusal and the named-array remedy
+                            // (`w = [kv]`, `c: w`) stays green.
+                            if field_type.is_basic(types)
+                                && let ConceptualRustType::Rust(group_ident) =
+                                    field_type.conceptual_type.resolve_alias_shallow()
+                            {
+                                let group_name = types
+                                    .source_rule_name(group_ident)
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| group_ident.to_string());
+                                record_plain_group_map_member_rejection(
+                                    types,
+                                    &format!("rule `{source_name}`"),
+                                    &field_name,
+                                    &group_name,
+                                );
+                                return None;
+                            }
                             Some(key)
                         }
                         // A map-representation field without a key is unsupported by design (each
@@ -7449,8 +7517,39 @@ pub fn parse_group(
                         match group_entry_map_key_kind(group_entry) {
                             // only uint/text keys are supported (parity with the record map path,
                             // which also rejects other fixed key kinds gracefully at parsing)
-                            MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_))) => {
+                            MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_)))
+                                if !ty.is_basic(types) =>
+                            {
                                 Some(key)
+                            }
+                            // A KEYED single-entry arm whose type resolves to a plain group is the
+                            // record path's member refusal reached through the enum seam: the key
+                            // claims one entry and the group can only splice. (A KEYLESS arm is a
+                            // different shape and stays supported — the referenced struct owns its
+                            // own keys, so `{ x: uint // kv }` writes a conformant 2-entry map.)
+                            MapKeyKind::Fixed(FixedValue::Uint(_) | FixedValue::Text(_)) => {
+                                let source_name = types
+                                    .source_rule_name(name)
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| name.to_string());
+                                let group_name =
+                                    match ty.conceptual_type.resolve_alias_shallow() {
+                                        ConceptualRustType::Rust(group_ident) => types
+                                            .source_rule_name(group_ident)
+                                            .map(str::to_owned)
+                                            .unwrap_or_else(|| group_ident.to_string()),
+                                        // unreachable while `is_basic` is the guard, which only
+                                        // says true for a `Rust` ident — kept total rather than
+                                        // asserted, since the message is the whole point here.
+                                        _ => ty.for_variant().to_string(),
+                                    };
+                                record_plain_group_map_member_rejection(
+                                    types,
+                                    &format!("rule `{source_name}`"),
+                                    &ident_name,
+                                    &group_name,
+                                );
+                                None
                             }
                             MapKeyKind::Fixed(other) => {
                                 let source_name = types
