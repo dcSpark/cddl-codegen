@@ -5395,6 +5395,359 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
     );
 }
 
+/// A plain group as a TYPE-choice arm (`x: kv / null`, `u = kv / tstr`) is refused, and the refusal
+/// is the durable contract rather than a deferred support branch.
+///
+/// A type choice denotes exactly ONE data item — telling the arms apart on the wire is the whole of
+/// what a choice decoder does — while a plain group has no type of its own and can only be SPLICED,
+/// writing its members flat into the enclosing collection. A splice has no one-item form, so there
+/// is nothing an arm could hold and nothing for the dispatch to tell apart; the array framing the
+/// message names is not a workaround for a missing feature, it is the shape a spec author has to
+/// choose in order to mean anything here. (This is why the finding's other candidate fix — "stamp
+/// the group's Array rep on the choice walk's arms", the way the array PLACEMENTS do — is not on
+/// the table: those placements splice into a container whose length already scales with the group's
+/// arity, and an arm has no such container to absorb the extra items.)
+///
+/// What the shape reached before this guard is three different failures from one root, all of them
+/// the arm never stamping a rep so the group is never materialized: the `rust_struct` expect at
+/// `intermediate/rust_type.rs` (`rust struct Kv not found but referenced by …`) for the `/ null`
+/// collapse, the unwrap further down the same file for a non-collapsing arm, and — under `--wasm`,
+/// which is the DEFAULT — the plain-group registry assert in `intermediate/mod.rs` reached earlier,
+/// the same profile-widening B3-044's sibling found. Worst of the three was RULE position under the
+/// collapse: `u = kv / null` exited 0 emitting `pub type U = Option<Kv>;` over a `Kv` the crate
+/// never defines, so the tool reported success on output that does not compile.
+///
+/// ONE guard function covers every spelling, but it needs THREE call sites, and the split is the
+/// code's own: `create_variants_from_type_choices` is the single seam every NON-collapsing arm
+/// routes through (rule and member position alike, any arity), while the `T / null` collapse fork
+/// returns an `Option<T>` before that seam is reached and does so in two places — the rule-level one
+/// in `parse_type_choices` and the member-level one in `rust_type`. That is exactly the split the
+/// pre-existing fixed-inner (`true / null`) refusal already lives with, so the guard is placed
+/// beside it at both, and this test pins both branches of the fork as well as the shared seam.
+#[test]
+fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_grouparm_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "grouparm_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "kv = (a: uint, b: uint)\n";
+    const ALIAS: &str = "kv = (a: uint, b: uint)\nkv_alias = kv\n";
+    /// The body every site shares — the two positions word only their own SUBJECT differently.
+    const BODY: &str = "a type-choice arm cannot be the plain group `kv`";
+
+    // The rule-position spelling, in full: names the rule, the group by its SOURCE spelling, why an
+    // arm has nothing to hold, the array-framed remedy, where a tag goes, and the supported
+    // neighbours it must not be confused with.
+    let bare = run(&format!("{GROUP}u = kv / null\n"), "bare", &[])
+        .expect_err("a plain-group type-choice arm must reject gracefully");
+    assert!(
+        bare.contains(&format!("rule `u`: {BODY}")),
+        "rejection should name the rule and the group, got: {bare}"
+    );
+    assert!(
+        bare.contains("a choice arm denotes exactly ONE data item"),
+        "rejection should explain why an arm has nothing to hold, got: {bare}"
+    );
+    assert!(
+        bare.contains("`w = [kv]`, then `w` in place of `kv` here (`x: w / null`, `u = w / null`)"),
+        "rejection should name the array-framed remedy at both positions, got: {bare}"
+    );
+    assert!(
+        bare.contains("A tag belongs on the framed reference — `#6.10(w)`"),
+        "rejection should say where a tag goes, got: {bare}"
+    );
+    assert!(
+        bare.contains(
+            "as a keyless GROUP-choice arm, `t = [ x: uint // kv ]`, and as a plain alias, `u = kv`"
+        ),
+        "rejection should point back at the supported splice placements, got: {bare}"
+    );
+
+    // Every spelling the ONE guard covers. The site prefix separates the two positions (a rule name
+    // where one exists, the position class where none does — the pre-existing convention at each of
+    // these seams), and the body is identical because the predicate reads the RESOLVED arm type
+    // rather than its surface shape.
+    for (spec, tag, site) in [
+        // --- the seven probed at pickup ---
+        (
+            format!("{GROUP}t = [ c: uint, x: kv / null ]\n"),
+            "member_collapsing",
+            "a two-arm `T / null` choice used as a member or element type",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, x: kv / tstr ]\n"),
+            "member_non_collapsing",
+            "an inline type choice",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, x: kv / null }}\n"),
+            "map_rep_member",
+            "a two-arm `T / null` choice used as a member or element type",
+        ),
+        (
+            format!("{ALIAS}t = [ c: uint, x: kv_alias / null ]\n"),
+            "alias_arm",
+            "a two-arm `T / null` choice used as a member or element type",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, x: #6.10(kv) / null ]\n"),
+            "tagged_arm",
+            "a two-arm `T / null` choice used as a member or element type",
+        ),
+        (
+            format!("{GROUP}u = kv / null\n"),
+            "rule_collapsing",
+            "rule `u`",
+        ),
+        (
+            format!("{GROUP}u = kv / tstr\n"),
+            "rule_non_collapsing",
+            "rule `u`",
+        ),
+        // --- what the pickup probe left unprobed, settled here ---
+        // three+ arms, at both positions: the seam is per-ARM, not per-choice.
+        (
+            format!("{GROUP}u = kv / tstr / uint\n"),
+            "three_arms_rule",
+            "rule `u`",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, x: kv / tstr / uint ]\n"),
+            "three_arms_member",
+            "an inline type choice",
+        ),
+        // a plain-group arm inside an ANONYMOUS nested choice.
+        (
+            format!("{GROUP}t = [ c: uint, x: (kv / tstr) ]\n"),
+            "nested_anonymous",
+            "an inline type choice",
+        ),
+        // the map-rep NON-collapsing member, and the tagged/alias NON-collapsing arms: the collapse
+        // fork is not what makes the guard reach them.
+        (
+            format!("{GROUP}t = {{ c: uint, x: kv / tstr }}\n"),
+            "map_rep_non_collapsing",
+            "an inline type choice",
+        ),
+        (
+            format!("{GROUP}u = #6.10(kv) / tstr\n"),
+            "tagged_non_collapsing",
+            "rule `u`",
+        ),
+        (
+            format!("{ALIAS}u = kv_alias / tstr\n"),
+            "alias_non_collapsing",
+            "rule `u`",
+        ),
+        // arm ORDER within the collapse (`null / kv`), an alias CHAIN, and rule ORDER — none of
+        // them is what the guard reads.
+        (
+            format!("{GROUP}u = null / kv\n"),
+            "null_arm_first",
+            "rule `u`",
+        ),
+        (
+            format!("{GROUP}kv_a = kv\nkv_b = kv_a\nu = kv_b / null\n"),
+            "alias_chain",
+            "rule `u`",
+        ),
+        (
+            "u = kv / null\nkv = (a: uint, b: uint)\n".to_owned(),
+            "reversed_rule_order",
+            "rule `u`",
+        ),
+        // a group whose own members are ALL optional is reachable and deliberately still refused:
+        // the remedy serves it identically (same blanket the two sibling guards take).
+        (
+            "kv = (? a: uint, ? b: uint)\nu = kv / null\n".to_owned(),
+            "all_optional_members",
+            "rule `u`",
+        ),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains(&format!("{site}: {BODY}")),
+            "the {tag} spelling should carry `{site}` and the shared body, got: {msg}"
+        );
+        assert_eq!(
+            msg.matches(BODY).count(),
+            1,
+            "one offending arm must report exactly ONCE ({tag}), got: {msg}"
+        );
+    }
+
+    // Profile independence: the refusal is at parsing, so no flag combination reaches an emission
+    // that could differ. (These formerly aborted at exit 101 on the `rust_struct` expect/unwrap in
+    // `intermediate/rust_type.rs` with `--wasm=false`, and on the plain-group registry assert in
+    // `intermediate/mod.rs` under the DEFAULT `--wasm` — except `u = kv / null`, which exited 0.)
+    for (extra, profile) in [
+        (vec!["--wasm=false"], "no_wasm"),
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        for (spec, spelling) in [
+            (format!("{GROUP}u = kv / null\n"), "rule_collapsing"),
+            (format!("{GROUP}u = kv / tstr\n"), "rule_non_collapsing"),
+            (format!("{GROUP}t = [ c: uint, x: kv / null ]\n"), "member"),
+            (
+                format!("{ALIAS}t = [ c: uint, x: kv_alias / null ]\n"),
+                "alias",
+            ),
+            (
+                format!("{GROUP}t = [ c: uint, x: #6.10(kv) / null ]\n"),
+                "tagged",
+            ),
+        ] {
+            let msg = run(&spec, &format!("{profile}_{spelling}"), &extra)
+                .expect_err("the refusal must fire on every profile");
+            assert!(
+                msg.contains(BODY),
+                "the {spelling} spelling on {profile} should carry the same body, got: {msg}"
+            );
+        }
+    }
+
+    // The remedy the message names must actually work — a remedy string is an executable claim. Both
+    // positions, the tag moved onto the framed reference, and the non-collapsing arm too. (The
+    // generated crate additionally `cargo check`s; that is verified out of band, not here.)
+    for (spec, tag) in [
+        (format!("{GROUP}w = [kv]\nu = w / null\n"), "remedy_rule"),
+        (
+            format!("{GROUP}w = [kv]\nt = [ c: uint, x: w / null ]\n"),
+            "remedy_member",
+        ),
+        (
+            format!("{GROUP}w = [kv]\nu = #6.10(w) / null\n"),
+            "remedy_tagged",
+        ),
+        (
+            format!("{GROUP}w = [kv]\nt = [ c: uint, y: w / tstr ]\n"),
+            "remedy_non_collapsing",
+        ),
+    ] {
+        for (extra, profile) in [
+            (vec!["--wasm=false"], "no_wasm"),
+            (vec!["--preserve-encodings=true"], "preserve"),
+            (vec!["--wasm=true"], "wasm"),
+        ] {
+            assert!(
+                run(&spec, &format!("{tag}_{profile}"), &extra).is_ok(),
+                "the remedy `{}` must generate on {profile}, got: {:?}",
+                spec.trim(),
+                run(&spec, &format!("{tag}_{profile}"), &extra).err()
+            );
+        }
+    }
+
+    // Neighbours the guard must NOT widen into. The boundary that matters most is the BARE ALIAS at
+    // rule position (`u = kv`, no choice around it): it is a supported alias spelling and reaches
+    // neither the collapse fork nor the arm seam, so the guard must fire on CHOICE arms only. The
+    // rest are the splice placements the message itself points back at, plus the array-WRAPPED forms
+    // — `w = [kv]` is a Record and an inline `[kv]` arm carries `basic_override`, so neither is
+    // `is_basic` — and a non-group choice, which has no plain group in it at all.
+    for (spec, tag) in [
+        (format!("{GROUP}u = kv\n"), "bare_alias_rule_position"),
+        (format!("{ALIAS}u = kv_alias\n"), "bare_alias_chain"),
+        (format!("{GROUP}t = [ c: uint, kv ]\n"), "mandatory_splice"),
+        (
+            format!("{GROUP}t = [ c: uint, x: #6.10(kv) ]\n"),
+            "tagged_mandatory_member",
+        ),
+        (
+            format!("{GROUP}t = [ x: uint // kv ]\n"),
+            "group_choice_arm",
+        ),
+        (
+            format!("{GROUP}t = {{ x: uint // kv }}\n"),
+            "group_choice_arm_map",
+        ),
+        (format!("{GROUP}w = [kv]\n"), "named_array_wrapper"),
+        (
+            format!("{GROUP}t = [ c: uint, x: [kv] / null ]\n"),
+            "inline_wrapped_arm",
+        ),
+        (format!("{GROUP}u = [kv] / null\n"), "inline_wrapped_rule"),
+        (
+            format!("{GROUP}t = [ c: uint, x: uint / tstr ]\n"),
+            "non_group_choice",
+        ),
+        (format!("{GROUP}t = [ * kv ]\n"), "homogeneous_array"),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // One problem, one message — and by the same token TWO offending arms are two problems and get
+    // two messages, never one collapsed report.
+    let two_arms = run(
+        &format!("{GROUP}kw = (c: uint)\nu = kv / kw\n"),
+        "two_group_arms",
+        &[],
+    )
+    .expect_err("both offending arms must reject");
+    assert_eq!(
+        two_arms
+            .matches("a type-choice arm cannot be the plain group")
+            .count(),
+        2,
+        "two offending arms should report twice, got: {two_arms}"
+    );
+
+    // The sibling plain-group refusals keep their OWN messages: at each of them the problem is a
+    // different one (telling present from absent, having nothing to collect, overrunning a map
+    // entry's one-item slot), so none may be swallowed by this arm-shaped one.
+    for (spec, tag, needle) in [
+        (
+            format!("{GROUP}t = [ c: uint, ? kv ]\n"),
+            "optional_array_field",
+            "is an OPTIONAL (`?`) reference to the plain group `kv`",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, * kv ]\n"),
+            "array_rest_tail",
+            "an open-array rest tail cannot capture the plain group `kv`",
+        ),
+        (
+            format!("{GROUP}t = {{ c: kv }}\n"),
+            "keyed_map_member",
+            "plain group",
+        ),
+    ] {
+        let msg = run(&spec, tag, &[]).expect_err(&format!("`{}` must reject", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} sibling should keep its own message (`{needle}`), got: {msg}"
+        );
+        assert!(
+            !msg.contains(BODY),
+            "the {tag} sibling must not also report the choice-arm problem, got: {msg}"
+        );
+    }
+}
+
 /// An occurrence marker on the single entry of a single-entry group-choice ARM is refused — except
 /// where DROPPING it is sound, which `inline_group_occurrence_flattens` already decides and this
 /// seam defers to rather than restating.

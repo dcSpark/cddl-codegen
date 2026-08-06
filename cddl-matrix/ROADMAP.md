@@ -77,8 +77,8 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   alias-indirected one) or a wrapping restores it (the named-array remedies), and reject rows
   carrying the refusal evidence. The TYPE-choice-arm placement and the rest-tail modifier are the
   2026-08-07 capture-pass correction: the two defects that cycle's probing left behind (the
-  final-position `* kv` rest-tail panic — now refused, see below — and the plain group in a
-  TYPE-choice arm, still a § findings entry) sat on an axis VALUE the product as first stated did
+  final-position `* kv` rest-tail panic and the plain group in a TYPE-choice arm — both now refused,
+  see below) sat on an axis VALUE the product as first stated did
   not list, which is this entry's
   own opening lesson (a defect on an axis the grid does not model) applied to the grid's own
   draft. The third of that cycle's findings — the group-choice arm's silently dropped `?` — sat
@@ -108,7 +108,23 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   refuses on its own delivered message — and the MAP REST ROW, the array tail's exact twin, still
   panics (§ findings). One marker, four verdicts, separating on container and on whether a fixed
   prefix precedes it: no cell of this product is predictable from its neighbours, which is the
-  argument for minting all of them rather than the ones a probe happened to reach. NB this defect
+  argument for minting all of them rather than the ones a probe happened to reach. The TYPE-choice-arm
+  PLACEMENT the same cycle added is the row where the grid's own verdict vocabulary is settled ahead
+  of the cells: every cell of it is a reject row, and permanently, because a type choice denotes
+  exactly ONE data item — telling the arms apart on the wire is the whole of what a choice decoder
+  does — while a plain group can only be spliced and a splice has no one-item form
+  (`plain_group_type_choice_arm_rejects_gracefully_at_every_spelling`). That closes the branch the
+  finding had left open, "stamp the group's Array rep on the choice walk's arms the way the array
+  PLACEMENTS do": the array placements splice into a container whose length already scales with the
+  group's arity and absorbs the extra items, and an arm has no such container, so there is nothing to
+  stamp a rep ONTO. The array framing the refusal names is therefore the semantics rather than a
+  workaround, which makes this row cheap to mint (one verdict, one evidence class) and the row worth
+  minting anyway: it was three DIFFERENT failures from that one root — the `rust_struct` expect/unwrap
+  in `src/intermediate/rust_type.rs`, the plain-group registry assert in `src/intermediate/mod.rs`
+  reached earlier under `--wasm`, and at RULE position under the `/ null` collapse an exit-0
+  emission of `pub type U = Option<Kv>;` over a `Kv` defined nowhere, a non-compiling crate reported
+  as success. A grid whose cells carry only "panics" would have flattened the third, which is the one
+  that matters most. NB this defect
   class is also one
   synthetic instance shy of the
   grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
@@ -258,20 +274,6 @@ ledgered here (that's what the probe/gate error messages point at).
   array-framed remedy the table guard already names (`{ c: uint, * [kv] => uint }`), unless probing
   shows a slot where a one-item form exists that the table guard's argument does not already
   dispose of.
-- **A plain group in a TYPE-CHOICE arm is never materialized, so the arm aborts on the missing
-  registration.** `kv = (a: uint, b: uint)` + `t = [ c: uint, x: kv / null ]` panics with
-  `rust struct Kv not found but referenced by …` at `src/intermediate/rust_type.rs`. Same shape as
-  the alias-in-array gap that
-  `alias_to_plain_group_in_array_positions_matches_the_direct_reference` closed — a use site that
-  routes a plain group to the splicing emission without stamping its Array rep first — but reached
-  through the TYPE-choice walk, which that delivery's four rep-stamp sites do not cover. Scope of
-  the probe (2026-08-07 at `7a233010`): array-representation record, `null`-collapsing two-arm
-  choice, default profile, `--wasm=false`, generate-only; not probed: the other profiles, a
-  non-collapsing choice (`kv / tstr`), a MAP-rep placement, or the same arm at rule position. Fix
-  shape is a choice, not a detail: stamp the rep on the choice walk's arms the way the array
-  placements now do (a splice inside a choice arm still has to be told apart from the other arms on
-  the wire, which is the part to establish first), or refuse a plain-group type-choice arm
-  gracefully naming the array-framed remedy (`w = [kv]`, `x: w / null`).
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:
