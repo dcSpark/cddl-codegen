@@ -3912,6 +3912,60 @@ fn record_fixed_table_value_rejection(
     ));
 }
 
+/// The source name of the bare plain group a table KEY/VALUE domain resolves to, if it is one.
+///
+/// Keyed on `RustType::is_basic` — the SAME predicate `generate_serialize` uses to pick the
+/// `serialize_as_embedded_group` (member-splicing) emission over a real `serialize`, so this
+/// refuses exactly the domains that would splice and nothing else. In particular an array-WRAPPED
+/// group (`[coords]`, inline or as a named rule) carries `basic_override`, serializes as one
+/// nested array item, and is therefore the remedy rather than another instance of the defect.
+/// Aliases resolve through, so `c2 = coords` is caught alongside a direct reference.
+fn plain_group_table_domain(types: &IntermediateTypes, ty: &RustType) -> Option<String> {
+    match ty.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Rust(ident) if ty.is_basic(types) => {
+            Some(source_rule_name_of(types, ident))
+        }
+        _ => None,
+    }
+}
+
+/// The rejection for a table entry whose KEY or VALUE domain is a bare plain group
+/// (`coords = (uint, uint)`, `{ * uint => coords }`).
+///
+/// A CBOR map entry holds EXACTLY ONE item in each of its two slots, and a keyless group has no
+/// single-item form — the only thing a serializer can do with it is splice its members in flat,
+/// which writes N items where the map's own header promised one. That is what this used to emit:
+/// `{ * uint => coords }` with one entry wrote `a2 01 07 08 02 09 0a` inside its holder, which any
+/// other CBOR implementation reads as a 2-entry map `{1: 7, 8: 2}` plus trailing bytes — wire only
+/// this crate's own mirrored decoder could read back. Refused at BOTH spellings (the named rule and
+/// the inline `[{ * uint => coords }]`, which reached a raw `unwrap` at generation instead), since
+/// a graceful refusal has to replace a broken acceptance rather than sit beside it.
+///
+/// The remedy is not a new wire: `[coords]` — an ARRAY rule or the inline array spelling — already
+/// gives the group the single nested item the slot needs, with real nested-array semantics. Giving
+/// the bare spelling a wire of its own would only mint a second spelling of that.
+///
+/// Shared by the plain and the parenthesized (`{ * (uint => coords) }`) table arms, and by the key
+/// and value roles, so no spelling of the same shape can be told apart by its message.
+fn record_plain_group_table_domain_rejection(
+    types: &mut IntermediateTypes,
+    site: &str,
+    entry_src: &str,
+    role: &str,
+    group_name: &str,
+    remedy_entry: &str,
+) {
+    types.record_rejection(format!(
+        "{site}: the table entry `{entry_src}` uses the bare plain group `{group_name}` as its \
+         {role} domain, which is unsupported — a CBOR map entry holds exactly one item in each \
+         slot, and a keyless group has no single-item form, so it could only be spliced in with \
+         its members written flat. That contradicts the map's own entry count and emits bytes no \
+         other CBOR implementation reads back as the spec says. Wrap the group in an array, which \
+         gives the slot the one item it needs and has real nested-array semantics: \
+         `{{ * {remedy_entry} }}`."
+    ));
+}
+
 /// `rule_name` is the enclosing rule when there is one (the named-rule path through
 /// `parse_group_choice`); `None` for anonymous nested composites (`rust_type_from_type2`'s
 /// `Type2::Array` / `Type2::Map` arms), where rejection messages describe the entry instead of
@@ -4147,6 +4201,35 @@ fn parse_group_type<'a>(
                                             &fixed,
                                         );
                                     }
+                                    // A bare plain group in EITHER domain has no single-item CBOR
+                                    // form to occupy a map slot — see
+                                    // `record_plain_group_table_domain_rejection`. Both roles are
+                                    // checked here, so the named-rule and inline consumers of this
+                                    // one seam refuse identically.
+                                    if let Some(group_name) =
+                                        plain_group_table_domain(types, &key_type)
+                                    {
+                                        record_plain_group_table_domain_rejection(
+                                            types,
+                                            &site,
+                                            &format!("{t1} => {value}"),
+                                            "KEY",
+                                            &group_name,
+                                            &format!("[{t1}] => {value}"),
+                                        );
+                                    }
+                                    if let Some(group_name) =
+                                        plain_group_table_domain(types, &value_type)
+                                    {
+                                        record_plain_group_table_domain_rejection(
+                                            types,
+                                            &site,
+                                            &format!("{t1} => {value}"),
+                                            "VALUE",
+                                            &group_name,
+                                            &format!("{t1} => [{value}]"),
+                                        );
+                                    }
                                     return GroupParsingType::HomogenousMap(
                                         key_type,
                                         value_type,
@@ -4217,6 +4300,36 @@ fn parse_group_type<'a>(
                                         record_fixed_table_value_rejection(
                                             types, &site, &entry_src, &fixed,
                                         );
+                                    }
+                                    // same bare-plain-group domain guard as the single-entry table
+                                    // arm, for both roles: `{ * (uint => coords) }` puts a keyless
+                                    // group in a map slot that holds exactly one item.
+                                    let key_group = plain_group_table_domain(types, &key_type);
+                                    let value_group = plain_group_table_domain(types, &value_type);
+                                    if key_group.is_some() || value_group.is_some() {
+                                        let site = rejection_site(types, rule_name, "inline map");
+                                        let value = &ge.entry_type;
+                                        let entry_src = format!("{t1} => {value}");
+                                        if let Some(group_name) = key_group {
+                                            record_plain_group_table_domain_rejection(
+                                                types,
+                                                &site,
+                                                &entry_src,
+                                                "KEY",
+                                                &group_name,
+                                                &format!("[{t1}] => {value}"),
+                                            );
+                                        }
+                                        if let Some(group_name) = value_group {
+                                            record_plain_group_table_domain_rejection(
+                                                types,
+                                                &site,
+                                                &entry_src,
+                                                "VALUE",
+                                                &group_name,
+                                                &format!("{t1} => [{value}]"),
+                                            );
+                                        }
                                     }
                                     // `{ * (k => v) }`: the inline group's own `*` marker is the
                                     // cardinality (unbounded); the inner entry carries no honored

@@ -1,0 +1,32 @@
+; A bare plain group in a table's KEY or VALUE domain. A CBOR map entry holds exactly ONE item in
+; each of its two slots, and a keyless group has no single-item form — the only emission available
+; is splicing its members in flat, which writes N items where the map header promised one. The
+; NAMED spelling used to do exactly that at exit 0 (one entry of `{ * uint => coords }` serialized
+; to `a2 01 07 08 02 09 0a`, which any other CBOR decoder reads as the 2-entry map `{1: 7, 8: 2}`
+; plus trailing bytes) while the INLINE spelling reached a raw `unwrap` at generation, so both are
+; refused here: a graceful refusal replaces a broken acceptance rather than sitting beside it.
+; Every spelling of the shape, since they reach the one seam through two consumers:
+;   - `a`  named rule, VALUE role.
+;   - `b`  named rule, KEY role.
+;   - `c`  inline table (the spelling that panicked), VALUE role.
+;   - `d`  inline table, KEY role — and both roles at once is `e`.
+;   - `f`  parenthesized table (`{ * (k => v) }`), a second arm of the same seam.
+;   - `g`  an ALIAS to the group, caught through shallow alias resolution.
+; Green neighbours, kept here so a refactor that over-widens the guard shows up as a catalog flip:
+; `h` is the remedy the message names — an array-WRAPPED group carries `basic_override`, so it
+; serializes as ONE nested item (`{1: [7,8]}` → `a1 01 82 07 08`, conformant, no trailing bytes) —
+; and `i` is the array-ELEMENT placement of the same group, which stays supported because an
+; array's emitted length scales with the group's arity, so splicing there IS conformant.
+; A single-element parenthesized rule (`one = (uint)`) is a transparent alias rather than a group
+; and never reaches the guard; a `[…]`/`{…}` rule is a real struct and is likewise untouched.
+coords = (uint, uint)
+a = { * uint => coords }
+b = { * coords => uint }
+c = [{ * uint => coords }]
+d = [{ * coords => uint }]
+e = [{ * coords => coords }]
+f = { * (uint => coords) }
+g_alias = coords
+g = { * uint => g_alias }
+h = { * uint => [coords] }
+i = [* coords]

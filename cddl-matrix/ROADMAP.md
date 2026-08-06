@@ -47,17 +47,18 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 
 - **Enumerate the bare named-group REFERENCE kind (`grpent.groupname`) across the table roles.**
   Buildable now, and the payoff is already in hand: `{ * coords => uint }` and `{ * uint => coords }`
-  (a plain group as table key or value) abort at generation with a raw unwrap in both profiles —
-  found 2026-08-06 by an ad-hoc probe while authoring the rc1459 fixture's map controls, recorded in
-  § findings ("A bare plain group as a table KEY or VALUE aborts…"), and modeled by NO containment
-  cell: the `grpent.groupname` kind has array-element and group-choice-arm cells only, so the two
-  table roles render blank in the coverage grid and the abort was invisible to every projection.
-  Add the two cells with truthful verdicts (reject rows carrying the abort evidence until the
-  refusal-or-support fix lands, per the findings entry's fix shapes), and sweep the remaining roles
-  the kind can legally sit in for the same hole while there. NB this defect is also one synthetic
-  instance shy of the grammar-denominator item's reopening signal below (a generation defect in a
-  grid-BLANK cell): a consumer-reported spec breaking in such a cell fires that signal outright;
-  this entry is the cheap targeted slice that does not wait for it.
+  (a plain group as table key or value) are refused — one spelling of them used to abort at
+  generation on a raw unwrap while the other emitted non-conformant CBOR at exit 0 (§ findings, "A
+  plain group SPLICED into a MAP-representation slot…"). Both were modeled by NO containment cell:
+  the `grpent.groupname` kind has array-element and group-choice-arm cells only, so the two table
+  roles render blank in the coverage grid and neither defect was visible to any projection. Add the
+  two cells with truthful verdicts (reject rows carrying the refusal evidence), plus the
+  array-wrapped remedy (`{ * uint => [coords] }`) as the accept row that shows the boundary rather
+  than only its refused side, and sweep the remaining roles the kind can legally sit in for the same
+  hole while there. NB this defect class is also one synthetic instance shy of the
+  grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
+  consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
+  targeted slice that does not wait for it.
 - **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).**
   Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
   cover the member and group-choice-arm positions, and the B3-013 due-diligence probe of the THIRD
@@ -181,22 +182,27 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
-- **A bare plain group as a table KEY or VALUE aborts at generation with a raw unwrap, not a
-  refusal naming the construct.** Surfaced 2026-08-06 during the rc1459 delivery's map-control
-  probes (found-not-fixed there; the delivered fixture's map controls spell the WRAPPED forms,
-  which are green). `coords = (uint, uint)` + `t = [{ * uint => coords }]` — and equally the key
-  side `{ * coords => uint }` — panic at `src/generation/serialize.rs:301`
-  (`types.rust_struct(ident).unwrap()` inside `encoding_var_is_copy`: a plain group registers no
-  `RustStruct` under its ident, so the lookup is `None`), exit 101 under both the default and
-  `--preserve-encodings` profiles. Loud, never silent — no output is written — but it is an
-  internal unwrap, not a diagnostic: nothing names the rule, the role, or the remedy (wrap the
-  group: `{ * uint => [coords] }`, the delivered green control). The array-element role has no
-  such gap — a bare plain group SPLICES there (`[* coords]`, supported) — so the hole is exactly
-  the two table roles, where splicing has no meaning and a refusal or an auto-wrap must be chosen.
-  Scope of the probes: both table roles, both profiles, `--wasm=false`, generate-only; not probed:
-  struct-map (non-table) member positions, json/wasm faces. Fix shape: either a graceful refusal
-  at the registration seam naming the construct and the wrapping remedy, or real support by
-  promoting the group the way the array wrapper spelling does — accepted-and-aborted is neither.
+- **A plain group SPLICED into a MAP-representation slot emits non-conformant CBOR at exit 0 — the
+  table roles are now refused, the keyed struct-map member is not.** A CBOR map entry holds exactly
+  one item per slot, so splicing a group's members in flat writes N items where the map header
+  promised one; an ARRAY container absorbs the same splice because its emitted length scales with
+  the group's arity (`write_array(Len(2 * len))`), which is why `[* coords]` is supported and the
+  map roles are not. The two TABLE roles are closed (`plain_group_table_domain_rejects_gracefully_at_both_spellings`,
+  `tests/robustness/table_domain_plain_group.cddl`): both spellings refuse, naming the role, the
+  group and the array-wrapping remedy. What remains open is the KEYED struct-map member whose type
+  is a plain group of keyed members — `kv = (a: uint, b: uint)` + `t = { c: kv }` generates at
+  exit 0 (deserialize is skipped with the documented `Map with plain group field` notice, so the
+  crate is serialize-only) and its serializer emits `a1 6163 6161 07 6162 08`, which `cbor2` reads
+  as `{'c': 'a'}` with four trailing bytes — the map declared one entry and five items followed.
+  Silent, unlike everything above it: exit 0, a crate that compiles, and bytes only this crate
+  could interpret. Scope of the probe: default profile, `--wasm=false`, serialize path only (there
+  is no decoder to round-trip against); not probed: `--preserve-encodings`, json/wasm faces,
+  nested/tagged spellings. The neighbouring keyless spellings are already graceful — `t = { a: coords }`
+  and the bare splice `t = { kv }` both reject with the `map field has no key` message — so the
+  hazard is specifically the KEYED member over a keyed group, the one shape that passes that check
+  and still cannot fit its slot. Fix shape, matching the table-role ruling: refuse it, naming the
+  construct and the array-wrapping remedy — a serialize-only surface that emits unreadable bytes is
+  worse than a refusal, and `{ c: [kv] }` already spells the conformant intent.
 - **A `.cbor` payload over a TAGGED fixed value (`bytes .cbor #6.1(42)`) emits unparseable Rust
   under the default profile — exit 1 with a rustfmt "generator bug" abort and zero files written,
   but no refusal naming the construct.** Probed 2026-08-06 while delivering default-profile support
