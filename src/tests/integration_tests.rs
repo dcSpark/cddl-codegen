@@ -12179,6 +12179,21 @@ fn js_schema_to_ts() {
     let output_path = work.join("rust/wasm/json-gen/output/json-types.d.ts");
     let dts = std::fs::read_to_string(&output_path).unwrap();
     println!("generated json-types.d.ts:\n{dts}");
+    // Same input, same bytes. Not a generic hygiene check: the declaration names are routed through
+    // synthetic per-definition tokens whose assignment is index-derived precisely so it cannot drift
+    // between runs, and a token picked any other way (a counter seeded elsewhere, anything random)
+    // would leave a consumer's committed `.d.ts` churning on every build with no change to the spec.
+    let rerun = std::process::Command::new("node")
+        .arg("scripts/run-json2ts.js")
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    assert!(rerun.status.success());
+    assert_eq!(
+        std::fs::read_to_string(&output_path).unwrap(),
+        dts,
+        "a second run over the same document must be byte-identical"
+    );
     // Every definition in the document is DECLARED, exactly once, JSON-suffixed — including
     // `Nested`, which nothing but another definition points at. Under a per-type-file design that
     // one was referenced-but-never-declared (a hard TS2304 for the consumer); one document plus one
