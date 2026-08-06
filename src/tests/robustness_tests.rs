@@ -4678,6 +4678,242 @@ fn plain_group_keyed_map_member_rejects_gracefully_at_every_spelling() {
     );
 }
 
+/// Collapse runs of blank lines to one and drop trailing blank lines, so a removed line leaves no
+/// layout artifact in a source-vs-source comparison.
+fn collapse_blank_runs(body: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for line in body.lines() {
+        if line.trim().is_empty() && out.last().is_some_and(|prev: &&str| prev.trim().is_empty()) {
+            continue;
+        }
+        out.push(line);
+    }
+    while out.last().is_some_and(|line| line.trim().is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
+/// The ARRAY-representation counterpart of the map twin above, and its opposite verdict: a plain
+/// group referenced through a TRANSPARENT ALIAS in an array position is SUPPORTED, and behaves
+/// exactly like the direct reference.
+///
+/// An array's emitted length scales with the group's arity, so the flat splice the map rep cannot
+/// afford is the conformant emission here — and an alias carries one wire form, so `kv_alias`
+/// must mean what `kv` means. What stood in the way was purely a registration gap: the rep-stamp
+/// sites matched a bare `Rust` ident and so never materialized a group reached through an alias,
+/// while `is_basic` downstream DOES shallow-resolve and still selected the splicing emission. The
+/// resulting failures had no single signature to pin — the record-field spelling aborted at a
+/// different site per profile (`rust struct Kv not found …` on default, an `Option::unwrap()`
+/// under `--preserve-encodings`, a generic-instance assert under `--wasm=true`), and the
+/// homogeneous-ELEMENT spelling was worse than a panic: exit 0 emitting `pub type KvAlias = Kv;`
+/// with no `Kv` at all, a crate that fails `cargo check` with E0425 while the tool reported
+/// success.
+///
+/// Pins every array-position spelling on every profile, at alias depth 2 and under a reversed rule
+/// order, and — the part that makes "supported" mean something — that the alias spelling's emitted
+/// code is the direct spelling's modulo the alias name, so the two write the same bytes. The map
+/// twin's refusal and the table-domain refusal must NOT move: they are the shapes where a splice
+/// really is unrepresentable.
+#[test]
+fn alias_to_plain_group_in_array_positions_matches_the_direct_reference() {
+    const GROUP: &str = "kv = (a: uint, b: uint)\n";
+    const ALIAS: &str = "kv = (a: uint, b: uint)\nkv_alias = kv\n";
+
+    // (tag, the ALIAS spelling, the DIRECT spelling it must behave like). Each pair differs only in
+    // how the group is named at the use site.
+    let pairs: &[(&str, String, String)] = &[
+        // the record-field splice: the ledgered panic.
+        (
+            "field",
+            format!("{ALIAS}t = [ c: uint, kv_alias ]\n"),
+            format!("{GROUP}t = [ c: uint, kv ]\n"),
+        ),
+        // alias DEPTH: `resolve_alias_shallow` recurses, so one call covers a chain.
+        (
+            "chain",
+            format!("{ALIAS}kv2 = kv_alias\nt = [ c: uint, kv2 ]\n"),
+            format!("{GROUP}t = [ c: uint, kv ]\n"),
+        ),
+        // rule ORDER must not matter: the plain-group registry is settled in a pre-pass.
+        (
+            "reversed",
+            "t = [ c: uint, kv_alias ]\nkv_alias = kv\nkv = (a: uint, b: uint)\n".to_owned(),
+            format!("{GROUP}t = [ c: uint, kv ]\n"),
+        ),
+        // the rule-level homogeneous ELEMENT: the exit-0 non-compiling class.
+        (
+            "element_rule",
+            format!("{ALIAS}a = [* kv_alias]\n"),
+            format!("{GROUP}a = [* kv]\n"),
+        ),
+        // the member-position homogeneous element, a second stamp site.
+        (
+            "element_member",
+            format!("{ALIAS}t = [ x: [* kv_alias] ]\n"),
+            format!("{GROUP}t = [ x: [* kv] ]\n"),
+        ),
+        // a single-entry group-choice ARM, a third: the arm's embedded classification is read off
+        // the same ident, so leaving it bare left the arm neither registered nor embedded.
+        (
+            "choice_arm",
+            format!("{ALIAS}t = [ x: uint // kv_alias ]\n"),
+            format!("{GROUP}t = [ x: uint // kv ]\n"),
+        ),
+        // the MAP rep's keyless arm is the same seam: the referenced struct owns its own keys, so
+        // this one is supported in the map rep too, and the alias spelling used to fall out of the
+        // embedded classification and into the no-key rejection.
+        (
+            "choice_arm_map_keyless",
+            format!("{ALIAS}t = {{ n: uint // kv_alias }}\n"),
+            format!("{GROUP}t = {{ n: uint // kv }}\n"),
+        ),
+        // the anonymous array WRAPPING the aliased group: already supported, and the arm this
+        // resolution pattern was copied from. Guards it against sliding back.
+        (
+            "wrapped",
+            format!("{ALIAS}t = [ x: [kv_alias] ]\n"),
+            format!("{GROUP}t = [ x: [kv] ]\n"),
+        ),
+    ];
+
+    for (extra, profile) in [
+        (vec![], "default"),
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        for (tag, alias_spec, direct_spec) in pairs {
+            let alias_files =
+                expect_generates(&format!("alias_arr_{tag}_{profile}"), alias_spec, &extra);
+            let direct_files = expect_generates(
+                &format!("alias_arr_{tag}_{profile}_direct"),
+                direct_spec,
+                &extra,
+            );
+
+            // Materialization is the whole fix: the group must exist as a struct, not dangle
+            // behind a typedef. (`pub type KvAlias = Kv;` with no `Kv` is what exit-0 broken
+            // looked like.)
+            let alias_lib = alias_files
+                .iter()
+                .find(|(name, _)| name.ends_with("rust/src/generated/mod.rs"))
+                .map(|(_, body)| body.clone())
+                .unwrap_or_else(|| panic!("{tag}/{profile}: no generated rust mod.rs"));
+            assert!(
+                alias_lib.contains("pub struct Kv"),
+                "{tag}/{profile}: the aliased plain group must be materialized as a struct, got:\n{alias_lib}"
+            );
+
+            // Behaviour equality: the alias spelling's emitted code is the direct spelling's once
+            // the alias NAME is spelled back. `KvAlias` is the alias ident and `kv_alias` the
+            // member name the field walk derives from it; nothing else may differ.
+            //
+            // `serialization.rs` — the WIRE — is compared for every spelling, and that is the
+            // property this card is about. `mod.rs` is compared for everything except the
+            // group-choice arms, whose ctor SHAPE differs by a standing decision recorded on
+            // `EnumVariant::group_ctor_record_fields`: an alias arm deliberately gets the
+            // single-argument `new_kv(kv: Kv)` where the direct arm expands the group's fields
+            // (`new_kv(a, b)`). Same variant, same bytes, different ergonomics — a compile-visible
+            // API difference, not a wire one. It is pinned below rather than normalized away, so a
+            // future change to that decision fails here and gets a deliberate update.
+            let ctor_shape_differs = tag.starts_with("choice_arm");
+            for file in [
+                "rust/src/generated/serialization.rs",
+                "rust/src/generated/mod.rs",
+            ]
+            .into_iter()
+            .filter(|file| !(ctor_shape_differs && file.ends_with("mod.rs")))
+            {
+                let (Some(alias_body), Some(direct_body)) = (
+                    alias_files
+                        .iter()
+                        .find(|(name, _)| name.ends_with(file))
+                        .map(|(_, body)| body),
+                    direct_files
+                        .iter()
+                        .find(|(name, _)| name.ends_with(file))
+                        .map(|(_, body)| body),
+                ) else {
+                    continue;
+                };
+                // Spell the alias name back, then drop the alias typedef itself — a
+                // `pub type Kv = Kv;` line after the rename, with no counterpart in the direct
+                // spelling. Blank-line runs collapse so the removal leaves no layout artifact.
+                let respelled = alias_body
+                    .replace("KvAlias", "Kv")
+                    .replace("Kv2", "Kv")
+                    .replace("kv_alias", "kv")
+                    .replace("kv2", "kv");
+                let normalized = collapse_blank_runs(
+                    &respelled
+                        .lines()
+                        .filter(|line| line.trim() != "pub type Kv = Kv;")
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+                assert_eq!(
+                    normalized,
+                    collapse_blank_runs(direct_body),
+                    "{tag}/{profile}: {file} must match the direct reference's once the alias name \
+                     is spelled back"
+                );
+            }
+
+            // The one carve-out above, pinned in both directions so it stays a KNOWN difference.
+            if ctor_shape_differs && profile == "default" {
+                let direct_lib = direct_files
+                    .iter()
+                    .find(|(name, _)| name.ends_with("rust/src/generated/mod.rs"))
+                    .map(|(_, body)| body.clone())
+                    .unwrap_or_else(|| panic!("{tag}: no direct rust mod.rs"));
+                assert!(
+                    alias_lib.contains("pub fn new_kv_alias(kv_alias: KvAlias) -> Self"),
+                    "{tag}: the alias arm keeps the single-argument ctor, got:\n{alias_lib}"
+                );
+                assert!(
+                    direct_lib.contains("pub fn new_kv(a: u64, b: u64) -> Self"),
+                    "{tag}: the direct arm keeps the field-expanded ctor, got:\n{direct_lib}"
+                );
+            }
+        }
+    }
+
+    // The refusals this must NOT widen into. A map entry's value slot holds exactly one item, so
+    // the KEYED map member and the table domain stay rejected through the alias exactly as they are
+    // directly — resolving the alias is what lets those seams SEE the group in the first place.
+    for (spec, tag, needle) in [
+        (
+            format!("{ALIAS}t = {{ c: kv_alias }}\n"),
+            "map_member_alias",
+            "map field `c` uses the plain group `kv`",
+        ),
+        (
+            format!("{ALIAS}a = {{ * uint => kv_alias }}\n"),
+            "table_value_alias",
+            "as its VALUE domain",
+        ),
+    ] {
+        let path =
+            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        std::fs::write(&path, &spec).unwrap();
+        let err = crate::api::generated_strings(&Cli::parse_from(vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "alias_arr_unused",
+        ]))
+        .err()
+        .unwrap_or_else(|| panic!("`{}` must still reject", spec.trim()));
+        std::fs::remove_file(&path).ok();
+        assert!(
+            err.to_string().contains(needle),
+            "the {tag} spelling must keep its own refusal (`{needle}`), got: {err}"
+        );
+    }
+}
+
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
 /// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
 /// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because

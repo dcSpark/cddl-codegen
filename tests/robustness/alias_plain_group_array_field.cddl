@@ -1,0 +1,25 @@
+; A plain group referenced through a TRANSPARENT ALIAS at an array-record field position
+; (`t = [ c: uint, kv_alias ]`) is SUPPORTED, and generates exactly what the DIRECT reference
+; (`t = [ c: uint, kv ]`) generates. An alias carries one wire form — a value IS the aliased type —
+; so the alias spelling must materialize the plain group as an Array-rep Record struct just as the
+; direct one does; the rep-stamp sites resolve aliases (`resolve_alias_shallow`) before matching a
+; `Rust` ident, the same way the member-position `WrappedBasicGroup` arm already did.
+; This fixture records `ok`: it pins that the shape stays materialized, guarding against a
+; regression to the missing-registration abort the bare match used to produce — which fired at a
+; DIFFERENT site per profile (`rust struct Kv not found but referenced by …` under the default
+; profile, an `Option::unwrap()` under `--preserve-encodings`, a generic-instance assert under
+; `--wasm=true`), so no one message could pin it.
+; Alias DEPTH is covered here too (`kv2 = kv_alias`): `resolve_alias_shallow` recurses through a
+; chain, so one resolution call covers any depth. Rule ORDER does not matter — the plain-group
+; registry is settled in a pre-pass over every rule before any of them is parsed.
+; The MAP-representation twin (`t = { c: kv_alias }`) stays REJECTED gracefully at the every-spelling
+; keyed-member seam (a map entry's value slot holds one item, which a flat splice overruns); that
+; boundary is pinned by `plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`. Byte
+; equality between the alias and direct spellings is pinned by
+; `alias_to_plain_group_in_array_positions_matches_the_direct_reference`.
+kv = (a: uint, b: uint)
+kv_alias = kv
+kv2 = kv_alias
+t = [ c: uint, kv_alias ]
+u = [ d: uint, kv2 ]
+v = [ x: uint // kv_alias ]

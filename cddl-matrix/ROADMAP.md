@@ -56,14 +56,20 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   member and its TAGGED flavor emitted silent non-conformant wire at exit 0, its OPTIONAL flavor
   panicked, and a single-entry map group-choice arm emitted a serializer and a deserializer that
   disagreed with each other — all now refused
-  (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`) — while the ARRAY-rep
-  OPTIONAL field and the ALIAS in array position still panic (§ findings, the two entries above,
-  the alias one at a different site per profile). So enumerate the product: placement (array
+  (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`). The ALIAS-INDIRECTED
+  modifier then proved the axis a third time and in the other direction: in ARRAY placements it is
+  now SUPPORTED and byte-equal to the direct reference
+  (`alias_to_plain_group_in_array_positions_matches_the_direct_reference`), and reaching that
+  verdict took four rep-stamp sites plus two emission sites — one of which had been emitting an
+  array header counting elements against a body written in items, at exit 0 in a crate that
+  compiles. The ARRAY-rep OPTIONAL field still panics (§ findings, the entry above). So enumerate
+  the product: placement (array
   element, array-rep field, struct-map member, table key, table value, map/array group-choice arm)
   × modifier (bare, keyed, `?`-optional, tagged, alias-indirected), with truthful verdicts —
-  accept rows where the splice is conformant (array placements) or a wrapping restores it (the
-  named-array remedies), reject rows carrying the refusal evidence, and the two still-panicking
-  cells as defect rows that flip when their findings entries close. NB this defect class is also one synthetic instance shy of the
+  accept rows where the splice is conformant (array placements, including every alias-indirected
+  one) or a wrapping restores it (the named-array remedies), reject rows carrying the refusal
+  evidence, and the still-panicking optional cell as a defect row that flips when its findings
+  entry closes. NB this defect class is also one synthetic instance shy of the
   grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
@@ -208,24 +214,6 @@ ledgered here (that's what the probe/gate error messages point at).
   detail: either pass the optionality down so the embedded read charges the mandatory count, or make
   the assert a graceful rejection naming the array-wrapped remedy (`w = [kv]`,
   `t = [ c: uint, ? w ]`) the way the map sibling now does.
-- **An ALIAS to a plain group in an ARRAY-representation slot panics at generation — the group is
-  never materialized through the alias.** `kv = (a: uint, b: uint)` + `kv_alias = kv` +
-  `t = [ c: uint, kv_alias ]` panics while the direct reference (`t = [ c: uint, kv ]`) is
-  supported. The guards around `set_rep_if_plain_group` match `ConceptualRustType::Rust(ident)`
-  WITHOUT resolving aliases, so the group never registers its Array-rep struct — while the
-  downstream `is_basic` predicate DOES shallow-resolve and routes the member to the splicing
-  emission, which then looks up a `RustStruct` that does not exist. The panic site differs per
-  profile: `expanded_field_count`'s `rust struct Kv not found` under default, a raw
-  `Option::unwrap()` under `--preserve-encodings`, and a `generic_instances.contains_key` assert
-  under `--wasm=true` — three spellings of one missing registration. Scope of the probe
-  (2026-08-06 at `8b33c13d`): the three profiles above, exit 101 on each, generate-only; not
-  probed: the json/component faces, a group-choice arm carrying the alias, or an alias chain of
-  depth two. The MAP-position flavor of the same alias gap is refused gracefully at parse since
-  `plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`'s delivery (its seam
-  shallow-resolves), which is what left the array flavor visible on its own. Fix shape is a
-  choice, not a detail: resolve aliases where reps are stamped so the alias spelling materializes
-  the group and behaves like the direct reference, or refuse the alias spelling gracefully naming
-  the direct-reference remedy.
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:

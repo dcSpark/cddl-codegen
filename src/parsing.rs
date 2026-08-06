@@ -4945,8 +4945,14 @@ fn rust_type_from_type2(
                         cli,
                     ) {
                         GroupParsingType::HomogenousArray(element_type, bounds) => {
+                            // Resolve aliases before stamping: an alias is transparent (one wire
+                            // form, a value IS the aliased type), so `[* kv_alias]` must materialize
+                            // the plain group exactly like `[* kv]` does. Matching the bare
+                            // `Rust(ident)` only would leave the group unregistered and the emitted
+                            // alias chain dangling on a struct that was never defined. Same pattern
+                            // as the `WrappedBasicGroup` sibling below.
                             if let ConceptualRustType::Rust(element_ident) =
-                                &element_type.conceptual_type
+                                element_type.conceptual_type.resolve_alias_shallow()
                             {
                                 types.set_rep_if_plain_group(
                                     parent_visitor,
@@ -6007,7 +6013,16 @@ fn parse_record_from_group_choice(
             }
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
-            if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {
+            // Resolve aliases before stamping: an alias is transparent (one wire form, a value IS
+            // the aliased type), so a field spelled through one (`t = [ c: uint, kv_alias ]`) must
+            // materialize the plain group exactly like the direct `kv` reference does. Matching the
+            // bare `Rust(ident)` only left the group unregistered while `is_basic` — which DOES
+            // shallow-resolve — still selected the splicing emission downstream, so the run aborted
+            // on a struct that was never defined. Same pattern as the `WrappedBasicGroup` arm in
+            // `rust_type_from_type2`.
+            if let ConceptualRustType::Rust(ident) =
+                field_type.conceptual_type.resolve_alias_shallow()
+            {
                 types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
             }
             let optional_field = group_entry_optional(group_entry);
@@ -7084,7 +7099,12 @@ fn parse_group_choice(
                 // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
                 // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
                 // trip their "must be a struct or a generic instance" assert at generation time.
-                if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
+                // Aliases resolve first — an alias is transparent, so `a = [* kv_alias]` materializes
+                // the group exactly like `a = [* kv]`. Without the resolution the run exited 0 having
+                // emitted `pub type KvAlias = Kv;` with no `Kv` anywhere: a crate that does not compile.
+                if let ConceptualRustType::Rust(element_ident) =
+                    element_type.conceptual_type.resolve_alias_shallow()
+                {
                     types.set_rep_if_plain_group(
                         parent_visitor,
                         element_ident,
@@ -7396,8 +7416,17 @@ pub fn parse_group(
                 if group_choice.group_entries.len() == 1 {
                     let group_entry = &group_choice.group_entries.first().unwrap().0;
                     let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
+                    // Resolve aliases first: an alias is transparent, so an arm spelled
+                    // `kv_alias` must materialize and embed the plain group exactly like the
+                    // direct `kv` arm. Reading the bare `Rust(ident)` skipped both the
+                    // registration and the embedded classification for the alias spelling, which
+                    // aborted the ARRAY rep on an unmaterialized struct and pushed the MAP rep's
+                    // keyless arm — a supported shape whose referenced struct owns its own keys —
+                    // into the no-key rejection.
                     let serialize_as_embedded =
-                        if let ConceptualRustType::Rust(ident) = &ty.conceptual_type {
+                        if let ConceptualRustType::Rust(ident) =
+                            ty.conceptual_type.resolve_alias_shallow()
+                        {
                             // we might need to generate it if not used elsewhere
                             types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
                             // manual match in case we expand operaitons later

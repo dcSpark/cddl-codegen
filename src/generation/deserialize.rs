@@ -2079,7 +2079,16 @@ impl GenerationScope {
                     // tests/corpus/array_of_wrapped_group.cddl, which spells both forms plus the
                     // map key/value controls (a table counts ENTRIES, so no expansion can be
                     // charged to it and the array arm is the only site with this hazard).
-                    let (mut deser_loop, plain_len_check) = match &ty.conceptual_type {
+                    // The scrutinee resolves aliases for the same reason the guard already does: an
+                    // alias is transparent, so an element spelled `kv_alias` splices exactly like
+                    // `kv`. Matching the bare type left the alias spelling on the non-embedded
+                    // branch, whose loop counts ELEMENTS against a header the serializer wrote in
+                    // ITEMS — the write/read halves of one crate disagreeing. Same resolution as the
+                    // serialize length expression this arm is paired with.
+                    let (mut deser_loop, plain_len_check) = match ty
+                        .conceptual_type
+                        .resolve_alias_shallow()
+                    {
                         ConceptualRustType::Rust(_) if ty.is_basic(types) => {
                             // two things that must be done differently for embedded plain groups:
                             // 1) We can't directly read the CBOR len's number of items since it could be >1
