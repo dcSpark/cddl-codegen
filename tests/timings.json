@@ -230,9 +230,9 @@
     },
     {
       "gate": "decode_conformance_replay",
-      "warm_ms": 801000,
-      "n": 20,
-      "measured": "2026-08-05",
+      "warm_ms": 970000,
+      "n": 14,
+      "measured": "2026-08-06",
       "machine": "86216c55",
       "history": [
         {
@@ -250,6 +250,10 @@
         {
           "date": "2026-08-05",
           "warm_ms": 801000
+        },
+        {
+          "date": "2026-08-06",
+          "warm_ms": 970000
         }
       ]
     },
