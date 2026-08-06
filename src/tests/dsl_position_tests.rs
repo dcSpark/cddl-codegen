@@ -1006,6 +1006,79 @@ const GRID: &[Cell] = &[
             must_not: &["serializer.write_unsigned_integer(self.a"],
         },
     },
+    // 23o-i .. 23o-viii. A single half on a TRANSPARENT ALIAS rule — the alias twin of the record
+    //      rule's single-half rejection (23m/23n), and refused for that rejection's own stated
+    //      reason. Unlike the record rule's serialize-only case (which emits no `Serialize` impl at
+    //      all and simply does not compile), an alias's lone half DOES compile and routes: every
+    //      embed site is rewritten in the declared direction while the opposite direction keeps the
+    //      aliased type's generated codec, so the alias writes one wire format and reads another.
+    //      Both flavors the docs prescribe are swept — the plain scalar body and the alias-of-marker
+    //      spelling — under the default and preserve profiles, since the routing is profile-blind and
+    //      a rejection that fired on only one of them would leave the other silently asymmetric.
+    Cell {
+        directive: "@custom_serialize",
+        position: "transparent-alias-alone",
+        spec: "inner = uint ; @custom_serialize write_inner\nholder = [f: inner]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize alone on `Inner`: a transparent alias rule"),
+    },
+    Cell {
+        directive: "@custom_deserialize",
+        position: "transparent-alias-alone",
+        spec: "inner = uint ; @custom_deserialize read_inner\nholder = [f: inner]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize alone on `Inner`: a transparent alias rule"),
+    },
+    Cell {
+        directive: "@custom_serialize",
+        position: "transparent-alias-alone-preserve",
+        spec: "inner = uint ; @custom_serialize write_inner\nholder = [f: inner]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize alone on `Inner`: a transparent alias rule"),
+    },
+    Cell {
+        directive: "@custom_deserialize",
+        position: "transparent-alias-alone-preserve",
+        spec: "inner = uint ; @custom_deserialize read_inner\nholder = [f: inner]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize alone on `Inner`: a transparent alias rule"),
+    },
+    Cell {
+        directive: "@custom_serialize",
+        position: "alias-of-marker-alone",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize write_rb\nholder = [f: rb_v1]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize alone on `RbV1`: a transparent alias rule"),
+    },
+    Cell {
+        directive: "@custom_deserialize",
+        position: "alias-of-marker-alone",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_deserialize read_rb\nholder = [f: rb_v1]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize alone on `RbV1`: a transparent alias rule"),
+    },
+    Cell {
+        directive: "@custom_serialize",
+        position: "alias-of-marker-alone-preserve",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize write_rb\nholder = [f: rb_v1]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize alone on `RbV1`: a transparent alias rule"),
+    },
+    Cell {
+        directive: "@custom_deserialize",
+        position: "alias-of-marker-alone-preserve",
+        spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_deserialize read_rb\nholder = [f: rb_v1]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize alone on `RbV1`: a transparent alias rule"),
+    },
     // ---- @custom_encodings -------------------------------------------------------------------
     // The declaration of a custom codec's own wire. Every cell here runs under
     // `--preserve-encodings=true`: encoding VARIABLES are what it declares, and none exist without
