@@ -128,8 +128,10 @@ pub fn convert_to_camel_case(ident: &str) -> String {
     camel_case
 }
 
-/// Whether `name` is spellable as a Rust identifier, i.e. whether emitting it verbatim into
-/// generated source produces an item name rustc can parse.
+/// Whether `name` is LEXICALLY shaped like a Rust identifier. This is the `IDENTIFIER_OR_KEYWORD`
+/// half of the grammar only — `Self` passes here and is still unspellable as an item name, so a
+/// caller deciding whether a MINTED name can be emitted verbatim wants
+/// `parsing::is_spellable_variant_name`, which subtracts the keyword list too.
 ///
 /// Deliberately ASCII-only rather than the full XID grammar Rust accepts: every name-minting path
 /// in this crate already lands in ASCII (`convert_to_camel_case` upper-cases ASCII only, and the

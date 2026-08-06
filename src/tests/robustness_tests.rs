@@ -3695,6 +3695,25 @@ fn lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites() {
         "the c-style-enum rejection should name every offending arm, got: {c_enum}"
     );
 
+    // The KEYWORD half of the predicate: a fixed TEXT arm camel-cases straight through, so `"self"`
+    // mints `Self` — lexically an identifier, but a Rust keyword, and the emitter never raw-escapes
+    // (`r#Self`). It died at the same rustfmt seam ("expected identifier, found keyword `Self`") and
+    // must refuse with the same message. Both the mixed and the group-choice spellings.
+    let keyword_arm = run("t = \"self\" / \"x\" / uint\n", "keyword")
+        .expect_err("a fixed text arm minting a Rust keyword must reject gracefully");
+    assert!(
+        keyword_arm.contains("rule `t`: its arm `\"self\"` generates the variant name `Self`")
+            && keyword_arm.contains("is not a valid Rust identifier")
+            && keyword_arm.contains("`; @name <new_name>`"),
+        "the keyword rejection should share the lexeme rejections' shape, got: {keyword_arm}"
+    );
+    let keyword_group_arm = run("t = [ true // \"self\" ]\n", "keyword_grparm")
+        .expect_err("a bare keyword-minting group-choice member must reject gracefully");
+    assert!(
+        keyword_group_arm.contains("generates the variant name `Self`"),
+        "the group-choice consumer should refuse the keyword too, got: {keyword_group_arm}"
+    );
+
     // Nested ANONYMOUS choice: no rule owns the arms, so the wording is role-generic. This spelling
     // also mints the enclosing RULE ident from the same lexeme (`F1.5OrText`), which is why the
     // rejection has to land before generation rather than at the variant alone.
@@ -3721,6 +3740,9 @@ fn lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites() {
     for (supported, tag) in [
         ("t = 5 / null / tstr\n", "uint_ok"),
         ("t = \"x\" / null / tstr\n", "text_ok"),
+        // A text arm whose camel-cased lexeme is merely CAPITALIZED, not reserved.
+        ("t = \"type\" / null / tstr\n", "text_nonkeyword_ok"),
+        ("t = \"self\" ; @name mine\n  / uint\n", "named_keyword_ok"),
         ("t = 1.5 ; @name half\n  / tstr\n", "named_float_ok"),
         ("t = -1 ; @name neg_one\n  / null / tstr\n", "named_nint_ok"),
         ("t = [ true // v: 1.5 ]\n", "named_group_member_ok"),
@@ -4214,6 +4236,31 @@ fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
         "the inline rejection should share the named one's body, got: {inline_value}"
     );
 
+    // A TAGGED domain: the remedy has to wrap the GROUP REFERENCE, leaving the tag outside
+    // (`#6.5([coords])`), because the array is the group's single-item carrier and the tag wraps
+    // that carrier — `[#6.5(coords)]` also generates but tags the wrong thing. Pinned on both
+    // roles, since each builds its remedy from a different AST node.
+    let tagged_value = run(
+        &format!("{GROUP}t = {{ * uint => #6.5(coords) }}\n"),
+        "tagged_value",
+        &[],
+    )
+    .expect_err("a tagged bare plain group as a table VALUE domain must reject gracefully");
+    assert!(
+        tagged_value.contains("`{ * uint => #6.5([coords]) }`"),
+        "the tagged-VALUE remedy must wrap the group, not the tag, got: {tagged_value}"
+    );
+    let tagged_key = run(
+        &format!("{GROUP}t = {{ * #6.5(coords) => uint }}\n"),
+        "tagged_key",
+        &[],
+    )
+    .expect_err("a tagged bare plain group as a table KEY domain must reject gracefully");
+    assert!(
+        tagged_key.contains("`{ * #6.5([coords]) => uint }`"),
+        "the tagged-KEY remedy must wrap the group, not the tag, got: {tagged_key}"
+    );
+
     // Remaining spellings of the same shape: inline key role, both roles at once (which names both
     // sides), the parenthesized table, an alias to the group, and the `+` cardinality.
     for (spec, tag, needle) in [
@@ -4279,6 +4326,16 @@ fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
         (
             format!("{GROUP}t = [{{ * uint => [coords] }}]\n"),
             "wrap_inline",
+        ),
+        // The tagged-domain remedies the messages above print back, verified to generate so the
+        // rejection cannot send an author into a second wall.
+        (
+            format!("{GROUP}t = {{ * uint => #6.5([coords]) }}\n"),
+            "wrap_tagged_value",
+        ),
+        (
+            format!("{GROUP}t = {{ * #6.5([coords]) => uint }}\n"),
+            "wrap_tagged_key",
         ),
     ] {
         assert!(

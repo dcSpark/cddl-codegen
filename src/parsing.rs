@@ -886,14 +886,30 @@ fn reject_group_choice_arm_variant_name_collision(
     ));
 }
 
+/// Whether a MINTED variant name can be emitted verbatim as a Rust variant identifier.
+///
+/// Two conditions, both read off the STRING: it must be lexically an identifier
+/// (`is_valid_rust_ident`), and it must not be a Rust KEYWORD — which is what Rust's own grammar
+/// means by `IDENTIFIER` (`IDENTIFIER_OR_KEYWORD` minus the keywords). The keyword half is not a
+/// special case for `Self`: the emitter writes minted names verbatim and never raw-escapes them
+/// (`r#..`), so EVERY keyword lexeme is unspellable in the position, and checking the list keeps
+/// this guard a predicate on the string exactly like its lexical half. Only `Self` is reachable
+/// from today's minters — `convert_to_camel_case` upper-cases the first character and `Self` is
+/// the one capitalized keyword — but a minter that ever emitted a lower-cased name is covered
+/// without a second repair.
+fn is_spellable_variant_name(name: &str) -> bool {
+    is_valid_rust_ident(name) && !RUST_KEYWORDS.contains(&name)
+}
+
 /// An arm whose variant name was DERIVED from the arm's own type and came out unspellable as Rust.
 ///
 /// The derivation that produces these is `FixedValue::for_variant`, which mints from the value's
-/// LEXEME (`1.5` → `F1.5`, `-1` → `U-1`): every other minted spelling is already ASCII-identifier
-/// shaped, so in practice this fires on fixed float and fixed nint arms. The predicate is on the
-/// minted STRING rather than on the value's kind, so any future lexeme-derived name is covered by
-/// the same seam instead of shipping invalid Rust to rustfmt — which is what these used to do,
-/// dying with an error that named rustfmt's confusion rather than the arm the author wrote.
+/// LEXEME: `1.5` → `F1.5` and `-1` → `U-1` are not identifier-shaped at all, and a fixed TEXT arm
+/// camel-cases straight through, so `"self"` → `Self` is identifier-SHAPED but a keyword. Both are
+/// caught by `is_spellable_variant_name`, a predicate on the minted STRING rather than on the
+/// value's kind, so any future lexeme-derived name is covered by the same seam instead of shipping
+/// invalid Rust to rustfmt — which is what these used to do, dying with an error that named
+/// rustfmt's confusion rather than the arm the author wrote.
 ///
 /// Rejected rather than auto-sanitized (`F1_5`): a variant name is public API of the generated
 /// crate, so the sanitization scheme would be a naming decision the author never made. `@name` is
@@ -3702,7 +3718,7 @@ pub fn create_variants_from_type_choices(
             // the author's own, and is the remedy the rejection points at.
             _ => {
                 let minted = rust_type.for_variant().to_string();
-                if !is_valid_rust_ident(&minted) {
+                if !is_spellable_variant_name(&minted) {
                     // The rejection names the rule as the AUTHOR spelled it (`owner_desc` above
                     // carries the rust ident, which the arm-dedup warnings already print).
                     let source_owner_desc = match owner {
@@ -3925,6 +3941,42 @@ fn plain_group_table_domain(types: &IntermediateTypes, ty: &RustType) -> Option<
         ConceptualRustType::Rust(ident) if ty.is_basic(types) => {
             Some(source_rule_name_of(types, ident))
         }
+        _ => None,
+    }
+}
+
+/// The innermost TYPENAME a table domain's source spelling references, if it has one — the token
+/// the array-wrapping remedy has to wrap, which is not always the whole domain expression. A tag
+/// belongs OUTSIDE the array: the array is the group's single-item carrier and the tag wraps that
+/// carrier, so `#6.5(coords)` becomes `#6.5([coords])`, never `[#6.5(coords)]` (both generate, but
+/// only the first keeps the tag on the item the spec tagged).
+fn innermost_typename_src(t2: &Type2) -> Option<String> {
+    match t2 {
+        Type2::Typename { ident, .. } => Some(ident.to_string()),
+        Type2::TaggedData { t, .. } => match t.type_choices.as_slice() {
+            [choice] => innermost_typename_src(&choice.type1.type2),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// A table domain's source spelling with its group reference wrapped in an array — the remedy the
+/// rejection below prints back. Falls back to wrapping the whole expression when no single
+/// typename is identifiable, which is never worse than the spelling the author already wrote.
+fn array_wrapped_domain_src(src: &str, t2: &Type2) -> String {
+    match innermost_typename_src(t2) {
+        // The typename occurs once in its own domain's rendering, and a tag's only other token is
+        // digits, so the first-occurrence replacement cannot land on anything else.
+        Some(name) => src.replacen(&name, &format!("[{name}]"), 1),
+        None => format!("[{src}]"),
+    }
+}
+
+/// The single `Type2` a table domain's `Type` carries, when it is not itself a choice.
+fn single_type2<'a>(t: &'a Type<'a>) -> Option<&'a Type2<'a>> {
+    match t.type_choices.as_slice() {
+        [choice] => Some(&choice.type1.type2),
         _ => None,
     }
 }
@@ -4215,7 +4267,13 @@ fn parse_group_type<'a>(
                                             &format!("{t1} => {value}"),
                                             "KEY",
                                             &group_name,
-                                            &format!("[{t1}] => {value}"),
+                                            &format!(
+                                                "{} => {value}",
+                                                array_wrapped_domain_src(
+                                                    &t1.to_string(),
+                                                    &t1.type2,
+                                                )
+                                            ),
                                         );
                                     }
                                     if let Some(group_name) =
@@ -4227,7 +4285,16 @@ fn parse_group_type<'a>(
                                             &format!("{t1} => {value}"),
                                             "VALUE",
                                             &group_name,
-                                            &format!("{t1} => [{value}]"),
+                                            &format!(
+                                                "{t1} => {}",
+                                                match single_type2(value) {
+                                                    Some(t2) => array_wrapped_domain_src(
+                                                        &value.to_string(),
+                                                        t2,
+                                                    ),
+                                                    None => format!("[{value}]"),
+                                                }
+                                            ),
                                         );
                                     }
                                     return GroupParsingType::HomogenousMap(
@@ -4317,7 +4384,13 @@ fn parse_group_type<'a>(
                                                 &entry_src,
                                                 "KEY",
                                                 &group_name,
-                                                &format!("[{t1}] => {value}"),
+                                                &format!(
+                                                    "{} => {value}",
+                                                    array_wrapped_domain_src(
+                                                        &t1.to_string(),
+                                                        &t1.type2,
+                                                    )
+                                                ),
                                             );
                                         }
                                         if let Some(group_name) = value_group {
@@ -4327,7 +4400,16 @@ fn parse_group_type<'a>(
                                                 &entry_src,
                                                 "VALUE",
                                                 &group_name,
-                                                &format!("{t1} => [{value}]"),
+                                                &format!(
+                                                    "{t1} => {}",
+                                                    match single_type2(value) {
+                                                        Some(t2) => array_wrapped_domain_src(
+                                                            &value.to_string(),
+                                                            t2,
+                                                        ),
+                                                        None => format!("[{value}]"),
+                                                    }
+                                                ),
                                             );
                                         }
                                     }
@@ -7336,7 +7418,7 @@ pub fn parse_group(
                             // a second consumer. Refuse it here too rather than emitting `F1.5`.
                             None => {
                                 let minted = ty.for_variant().to_string();
-                                if !is_valid_rust_ident(&minted) {
+                                if !is_spellable_variant_name(&minted) {
                                     let owner_desc =
                                         format!("rule `{}`", source_rule_name_of(types, name));
                                     reject_unnameable_arm_variant_name(
