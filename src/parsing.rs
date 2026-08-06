@@ -1360,6 +1360,17 @@ fn parse_type_choices(
             types.record_rejection(message);
             return;
         }
+        // The collapse's PLAIN-GROUP inner (`u = kv / null`), sibling of the fixed guard above and
+        // refused for the reason `reject_plain_group_type_choice_arm` carries. This site is the one
+        // that mattered most: the other six spellings of a plain-group arm panicked, while this one
+        // exited 0 emitting `pub type U = Option<Kv>;` over a `Kv` the crate never defines — a
+        // non-compiling output the tool reported as success. Registering NOTHING is correct for the
+        // same reason the fixed guard gives: this rule registers no rust struct either way, and
+        // finalize's registered-nothing check cannot outrun the rejection recorded here.
+        let collapse_site = rejection_site(types, Some(name), "anonymous");
+        if reject_plain_group_type_choice_arm(types, &inner_rust_type, &collapse_site) {
+            return;
+        }
         let final_type = match tag {
             Some(tag) => {
                 RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag(tag)
@@ -3739,6 +3750,13 @@ pub fn create_variants_from_type_choices(
         Some(name) => format!("rule `{name}`"),
         None => "an inline type choice".to_owned(),
     };
+    // `owner_desc` with the rule named as the AUTHOR spelled it, which is what a REJECTION quotes
+    // back (the warnings above print the rust ident instead, and the unnameable-variant rejection
+    // below re-derives this same string for the same reason).
+    let source_owner_desc = match owner {
+        Some(name) => format!("rule `{}`", source_rule_name_of(types, name)),
+        None => "an inline type choice".to_owned(),
+    };
     let mut variant_names_used = BTreeMap::<String, u32>::new();
     let mut variants: Vec<EnumVariant> = Vec::new();
     // What each kept variant was built from, plus the 1-based SOURCE arm ordinal it came from — the
@@ -3748,7 +3766,17 @@ pub fn create_variants_from_type_choices(
     let mut kept: Vec<(RustType, usize)> = Vec::new();
     for (arm_idx, choice) in type_choices.iter().enumerate() {
         let rejections_before = types.rejection_count();
-        let rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1, cli);
+        let mut rust_type = rust_type_from_type1(types, parent_visitor, &choice.type1, cli);
+        // A PLAIN GROUP arm (`u = kv / tstr`, `x: kv / tstr`). This is the seam every NON-collapsing
+        // arm routes through — rule position and member position, two arms or twenty — so one check
+        // here covers all of them; the `T / null` collapse is the only fork that bypasses it, and
+        // both of ITS branches carry the same guard. Swapping in the inert `Fixed(Null)` placeholder
+        // is what the `rejected` read below already expects of a refused arm, and it is what keeps
+        // the arm out of the dedup keys and away from the `rust_struct` unwrap in `cbor_types` that
+        // this shape used to abort on.
+        if reject_plain_group_type_choice_arm(types, &rust_type, &source_owner_desc) {
+            rust_type = ConceptualRustType::Fixed(FixedValue::Null).into();
+        }
         // An arm the walk REJECTED carries the inert `Fixed(Null)` placeholder every graceful
         // rejection returns, not the type it spelled — so it is neither a dedup candidate nor a
         // dedup key (`[int] / [tstr]`, two rejected anonymous groups, would otherwise read as one
@@ -3805,10 +3833,6 @@ pub fn create_variants_from_type_choices(
                 if !is_spellable_variant_name(&minted) {
                     // The rejection names the rule as the AUTHOR spelled it (`owner_desc` above
                     // carries the rust ident, which the arm-dedup warnings already print).
-                    let source_owner_desc = match owner {
-                        Some(name) => format!("rule `{}`", source_rule_name_of(types, name)),
-                        None => "an inline type choice".to_owned(),
-                    };
                     reject_unnameable_arm_variant_name(
                         types,
                         &source_owner_desc,
@@ -3997,6 +4021,59 @@ fn fixed_null_collapse_reason(fixed: &FixedValue) -> String {
             )
         }
     }
+}
+
+/// A TYPE-choice arm whose RESOLVED type is a plain group (`kv = (a: uint, b: uint)`, then
+/// `x: kv / null` or `u = kv / tstr`). Returns whether the arm was refused, so each caller can put
+/// its own inert placeholder in the arm's slot.
+///
+/// This is a refusal that is also the durable contract, not a support branch deferred. A type
+/// choice denotes exactly ONE data item — the decoder's whole job at a choice is to tell the arms
+/// apart from each other on the wire — while a plain group has no type of its own and can only be
+/// SPLICED, writing its members flat into the enclosing collection. There is no one-item form of a
+/// splice, so there is nothing an arm could hold and nothing for the dispatch to tell apart; the
+/// array framing the message names is not a workaround for a missing feature but the shape the spec
+/// author has to choose in order to mean anything here. What the shape reached instead was two
+/// panics and one silently broken crate: the arm never stamps the group's rep, so the group is never
+/// materialized, and the walks that then look it up abort on the `rust_struct` expect/unwrap in
+/// `intermediate/rust_type.rs` (or, under `--wasm`, earlier on the plain-group registry assert in
+/// `intermediate/mod.rs`) — except at RULE position under the `/ null` collapse, which exited 0
+/// emitting `pub type U = Option<Kv>;` with `Kv` defined nowhere in the crate.
+///
+/// Guarded on `is_basic` over the RESOLVED arm type — the same predicate and the same
+/// resolved-type placement as the record-field and rest-tail twins — so the bare, the ALIAS
+/// (`kv_alias / null`) and the TAGGED (`#6.10(kv) / null`) spellings land on ONE message. The
+/// array-WRAPPED forms keep their own (supported) verdicts: `w = [kv]` is a Record, not a plain
+/// group, and an inline `[kv]` arm carries `basic_override`, so neither is `is_basic`.
+fn reject_plain_group_type_choice_arm(
+    types: &mut IntermediateTypes,
+    arm_type: &RustType,
+    site: &str,
+) -> bool {
+    if !arm_type.is_basic(types) {
+        return false;
+    }
+    let ConceptualRustType::Rust(group_ident) = arm_type.conceptual_type.resolve_alias_shallow()
+    else {
+        return false;
+    };
+    let group_name = types
+        .source_rule_name(group_ident)
+        .map(str::to_owned)
+        .unwrap_or_else(|| group_ident.to_string());
+    types.record_rejection(format!(
+        "{site}: a type-choice arm cannot be the plain group `{group_name}` — a plain group has no \
+         type of its own, it splices its members flat into the enclosing array or map, while a \
+         choice arm denotes exactly ONE data item that the decoder has to tell apart from the other \
+         arms. A splice has no one-item form, so there is nothing for the arm to hold. Give the \
+         group its own array framing and put THAT in the arm, which makes the arm exactly one data \
+         item: `w = [{group_name}]`, then `w` in place of `{group_name}` here (`x: w / null`, `u = \
+         w / null`). (A tag belongs on the framed reference — `#6.10(w)` — not on the group. \
+         Splicing the group with no choice around it is supported as it stands: as a mandatory \
+         array member, `t = [ c: uint, {group_name} ]`, as a keyless GROUP-choice arm, `t = [ x: \
+         uint // {group_name} ]`, and as a plain alias, `u = {group_name}`.)"
+    ));
+    true
 }
 
 /// The rejection for a table entry whose VALUE domain is a bare fixed value (`{ * uint => 5 }`).
@@ -5380,6 +5457,18 @@ fn rust_type(
                         fixed_null_collapse_reason(fixed)
                     );
                     types.record_rejection(message);
+                    return ConceptualRustType::Fixed(FixedValue::Null).into();
+                }
+                // The member-position sibling of the rule-level plain-group arm guard in
+                // `parse_type_choices` (`x: kv / null`). Both collapse branches need it because the
+                // `/ null` fork returns an `Option<T>` before `create_variants_from_type_choices` —
+                // where every NON-collapsing arm is judged — is ever reached. Role-generic wording:
+                // no rule name is available here, same as the fixed guard above.
+                if reject_plain_group_type_choice_arm(
+                    types,
+                    &inner_rust_type,
+                    "a two-arm `T / null` choice used as a member or element type",
+                ) {
                     return ConceptualRustType::Fixed(FixedValue::Null).into();
                 }
                 return ConceptualRustType::Optional(Box::new(inner_rust_type)).into();

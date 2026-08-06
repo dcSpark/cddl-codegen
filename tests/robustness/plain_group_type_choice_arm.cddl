@@ -1,0 +1,30 @@
+; A plain group as a TYPE-choice arm (`u = kv / null`, `x: kv / tstr`) is REFUSED gracefully, and
+; the refusal is the durable contract rather than a support branch deferred. A type choice denotes
+; exactly ONE data item — telling the arms apart on the wire is the whole of what a choice decoder
+; does — while a plain group has no type of its own and can only be SPLICED, writing its members
+; flat into the enclosing collection. A splice has no one-item form, so there is nothing an arm
+; could hold and nothing for the dispatch to tell apart; the array framing the message names is not
+; a workaround for a missing feature, it is the shape the spec author has to choose to mean anything
+; here. (The array PLACEMENTS of the same group are supported because their container's length
+; scales with the group's arity and absorbs the extra items — an arm has no such container.)
+; Before the guard, one root (the arm never stamps the group's rep, so the group is never
+; materialized) produced three failures: the `rust_struct` expect/unwrap in
+; `src/intermediate/rust_type.rs`, the plain-group registry assert in `src/intermediate/mod.rs`
+; reached earlier under `--wasm` (the default), and — worst — RULE position under the `/ null`
+; collapse, which exited 0 emitting `pub type U = Option<Kv>;` over a `Kv` the crate never defines.
+; The refusal is honest because the remedy it names is verified to generate and `cargo check`:
+; `w = [kv]`, then `w / null` — the array framing makes the arm exactly ONE data item. A tag belongs
+; on that framed reference (`#6.10(w)`, also verified) rather than on the group. Splicing the group
+; with no choice around it stays supported: a mandatory array member (`t = [ c: uint, kv ]`), a
+; keyless GROUP-choice arm (`t = [ x: uint // kv ]`) and a plain alias (`u = kv`) all generate.
+; ONE guard function covers every spelling, over the RESOLVED arm type, so bare, ALIAS and TAGGED
+; land on one message — but it needs THREE call sites, which is the code's own split:
+; `create_variants_from_type_choices` is the single seam every NON-collapsing arm routes through
+; (rule and member position, any arity), while the `T / null` collapse fork returns an `Option<T>`
+; earlier and does so in two places (`parse_type_choices` at rule level, `rust_type` at member
+; level) — the same split the pre-existing fixed-inner (`true / null`) refusal already lives with.
+; Message identity, profile independence, the bare-alias boundary and the sibling plain-group
+; refusals this one must not swallow are pinned by
+; `plain_group_type_choice_arm_rejects_gracefully_at_every_spelling`.
+kv = (a: uint, b: uint)
+u = kv / null
