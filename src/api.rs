@@ -828,6 +828,16 @@ pub fn with_types<R>(
         }
         Err(e) => return Err(e.into()),
     };
+    // The one group-rule spelling whose rule-position directive the pinned parser cannot deliver
+    // (a trailing comment after a closing paren on its own line) is refused here, from the source
+    // buffer the spans index — the AST holds no slot to read it from, so this is the only place the
+    // spelling is still visible. Run ONCE, before the IR loop, so the refusal is independent of how
+    // many passes the loop takes and lands before any rule is walked.
+    if let Some(msg) =
+        parsing::multiline_group_trailing_directive_rejection(&cddl, input_files_content.as_str())
+    {
+        return Err(msg.into());
+    }
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     // The IR build runs in a LOOP because one of its inputs is decided from its own OUTPUT: the
     // recursive-type boundary (`crate::recursion_boundary`) classifies the finalized IR's cycles,

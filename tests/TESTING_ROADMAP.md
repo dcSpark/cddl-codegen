@@ -1699,22 +1699,35 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   extract) and fail if any harvested id is matched by NO ephemeral pattern — lockstep with the
   authority exactly where the authority is present.
 - **Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery —
-  blocked on publishing the reviewed fork revision.** At the pinned cddl revision (`ac1b98ec`), a
-  multi-line spliced group comment (`grp = (\n a: uint\n) ; @x`) is misbound to the following rule
-  or orphaned, while the observable single-line spelling binds to the last entry's trailing slot.
-  That single-line slot is real field metadata and is correctly covered by `no_silent_directive`;
-  it must not be reinterpreted as a rule-only position. The current boundary is documented in
-  `tests/README.md` § “The directive×rule-shape sweep”.
+  blocked on publishing the reviewed fork revision.** At the pinned cddl revision (`ac1b98ec`) a
+  group rule's rule-position directive binds to its LAST GROUP ENTRY's trailing slot, so the
+  spelling that puts the closing paren on its own line (`grp = (\n a: uint\n) ; @x`) leaves the
+  trailing comment past every slot the AST offers — it is merged into the following rule's
+  leading-comment slot, or orphaned when the group rule is last. A directive is therefore
+  undeliverable in that position at this pin, and generation REFUSES the spelling pre-IR
+  (`parsing::multiline_group_trailing_directive_rejection`, named from `api::with_types` right after
+  the checked parse) so the formatting choice cannot decide silently what a spec means. Prose
+  comments there stay accepted, and both bindable spellings — the whole group on one line, and the
+  closing paren on the last entry's line — are unchanged and pinned by
+  `group_rule_directive_on_the_last_entry_line_is_honored`. That last-entry slot is
+  real field metadata and is correctly covered by `no_silent_directive`; it must not be
+  reinterpreted as a rule-only position. The current boundary is documented in `tests/README.md`
+  § “The directive×rule-shape sweep”.
 
-  Fork commit `a7ed0784e89689784ff78ed0e85c7434a3528937` (`local-fixes`, unpushed) adds the
-  `RuleTrailing` source-position anchor without disturbing the single-line binding. When that
-  revision is published and adopted, land the prepared `group_rule_pin_metadata` reader and both
-  spellings' `no_silent_directive` vectors in the same change. At the new rule-only slot, honor
+  The refusal is the interim posture, not the end state: it makes the spelling loud, where adoption
+  would make it WORK. Fork commit `a7ed0784e89689784ff78ed0e85c7434a3528937` (`local-fixes`,
+  unpushed) adds the `RuleTrailing` source-position anchor without disturbing the last-entry
+  binding, and publishing it is blocked on an explicit maintainer reversal of the 2026-08-04 no-fork-push
+  ruling. When that revision is published and adopted, the delivery replaces the refusal seam with
+  the prepared `group_rule_pin_metadata` reader (`comments_after_rule` as a third source) and lands
+  both spellings' `no_silent_directive` vectors in the same change — the multi-line sweep shape
+  `plain_group_spliced_multiline_paren` flips from measuring a rejection to measuring an effect, and
+  the `robustness_tests` refusal vectors become honor vectors. At the new rule-only slot, honor
   `@rust_name`, `@no_json_schema_export`, `@custom_json`, and `@used_as_key`; reject `@doc`,
   `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`, `@duplicates`,
   `@raw_bytes_flavor`, the custom-codec family, and `@extern_companions` with one site-bearing
   diagnostic plus per-directive vectors. The path override was already green with the prepared
-  codegen side and the committed pin is red exactly on the multi-line halves. Reopening signal: the
+  codegen side. Reopening signal: the
   fork is bumped for any reason, or a consumer cannot reformat a lossy multi-line group spelling.
 
 - **The recombination member-kind table does not span the tagged-optional shape, and one exit-0

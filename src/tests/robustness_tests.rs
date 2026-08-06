@@ -8843,3 +8843,178 @@ fn a_plain_group_no_rule_splices_refuses_every_rule_position_directive() {
         "a SPLICED plain group must honor its rule-position @doc, not refuse it"
     );
 }
+
+/// The multi-line group-rule trailing-directive spelling — `grp = (\n a: uint\n) ; @rust_name Foo`
+/// — is REFUSED, not silently dropped. The pinned `cddl` parser emits no trailing anchor of the
+/// group rule's own on the closing-paren line, so its comment-binding trivia merge hands that
+/// comment to the FOLLOWING rule's `comments_before_rule` (or orphans it when the group rule is
+/// last). Nothing in this repo reads either position, so every rule-position directive a plain
+/// group can carry vanished on formatting alone. `parsing::multiline_group_trailing_directive_rejection`
+/// refuses the spelling with the two spellings the parser DOES bind.
+///
+/// Both misbinding cases are covered: a FOLLOWING rule exists to receive the comment, and the group
+/// rule is the document's LAST (the comment reaches no AST slot at all).
+#[test]
+fn multiline_group_rule_trailing_directive_is_refused_not_dropped() {
+    let cases = [
+        (
+            "following rule",
+            "grp = (\n  a: uint\n) ; @rust_name Foo\nkeeper = [grp]\n",
+        ),
+        (
+            "last rule of the document",
+            "keeper = [grp]\ngrp = (\n  a: uint\n) ; @rust_name Foo\n",
+        ),
+    ];
+    for (kind, spec) in cases {
+        match rule_directive_emit(spec, &[]) {
+            Ok(out) => {
+                panic!("{kind}: the lossy multi-line spelling must be refused, generated:\n{out}")
+            }
+            Err(e) => {
+                assert!(
+                    e.contains("group rule `grp`"),
+                    "{kind}: the refusal must name the offending rule, got:\n{e}"
+                );
+                assert!(
+                    e.contains("@rust_name"),
+                    "{kind}: the refusal must name the directive it found, got:\n{e}"
+                );
+                assert!(
+                    e.contains("ONE line") && e.contains("closing paren on the LAST ENTRY's line"),
+                    "{kind}: the refusal must give both supported spellings, got:\n{e}"
+                );
+            }
+        }
+    }
+}
+
+/// The boundary control in the direction of over-firing: a group written across lines whose closing
+/// paren stays on the LAST ENTRY's line binds its trailing comment to that entry's trailing slot,
+/// which `group_rule_pin_metadata` reads — so the directive is HONORED and generation succeeds.
+/// This is one of the two remedies the refusal advertises, so it has to keep working.
+///
+/// Two halves, because "honored" has two observable faces here: `@doc` reaches the emitted
+/// construct (generation succeeds and the doc line appears), and `@rust_name` reaches
+/// `handle_rust_name_pin` — whose own extern-only refusal for this shape is what proves the
+/// directive arrived as RULE metadata rather than being intercepted by the multi-line scan.
+#[test]
+fn group_rule_directive_on_the_last_entry_line_is_honored() {
+    const DOC: &str = "the paren stayed on the last entry's line";
+    let out = rule_directive_emit(
+        &format!("grp = (a: uint,\n  b: uint) ; @doc {DOC}\nkeeper = [grp]\n"),
+        &[],
+    )
+    .expect("the paren-on-last-entry-line spelling must generate");
+    assert!(
+        out.contains(&format!("/// {DOC}")),
+        "the directive must reach the emitted construct:\n{out}"
+    );
+    // The same spelling delivers `@rust_name` to the rule seam, which refuses it on an exported
+    // rule for its OWN (extern-only) reason — never with the multi-line refusal.
+    let err = rule_directive_emit(
+        "grp = (a: uint,\n  b: uint) ; @rust_name RenamedGrp\nkeeper = [grp]\n",
+        &[],
+    )
+    .expect_err("@rust_name on an exported rule is refused by its own seam");
+    assert!(
+        err.contains("reserved for extern-interface / stub files")
+            && !err.contains("group rule `grp`"),
+        "the paren-on-last-entry-line spelling must reach the rule seam, not the multi-line \
+         refusal, got:\n{err}"
+    );
+}
+
+/// The boundary control in the direction of under-accepting: a PROSE trailing comment in the same
+/// multi-line position carries no directive, so nothing is lost and nothing is refused. The scan
+/// keys on `metadata_from_comments` returning a non-default `RuleMetadata`, not on the comment's
+/// mere presence.
+#[test]
+fn multiline_group_rule_trailing_prose_comment_is_accepted() {
+    rule_directive_emit(
+        "grp = (\n  a: uint\n) ; not a directive, just prose\nkeeper = [grp]\n",
+        &[],
+    )
+    .expect("a prose trailing comment in the multi-line position must generate");
+}
+
+/// The refusal covers the WHOLE rule-position vocabulary, not the one directive a hand test would
+/// sample: the scan fires pre-IR off `metadata_from_comments`, so every `KNOWN_RULE_METADATA_TAGS`
+/// member is refused uniformly in this position — including the four the single-line slot honors.
+/// The list is READ from the authority so a new directive flows in automatically.
+#[test]
+fn every_known_directive_is_refused_in_the_multiline_group_position() {
+    // Canonical argument spellings for the directives whose argument is required (comment_ast
+    // panics on a missing one) — keyed by tag so a new authority member surfaces as a miss here.
+    let spelling = |tag: &str| -> String {
+        match tag {
+            "@name" => "@name renamed_foo".to_string(),
+            "@rust_name" => "@rust_name RenamedFoo".to_string(),
+            "@duplicates" => "@duplicates reject".to_string(),
+            "@custom_serialize" => "@custom_serialize my_serialize".to_string(),
+            "@custom_deserialize" => "@custom_deserialize my_deserialize".to_string(),
+            "@custom_encodings" => "@custom_encodings sz".to_string(),
+            "@custom_wire_major" => "@custom_wire_major text".to_string(),
+            "@extern_companions" => "@extern_companions dep_wasm=FooList".to_string(),
+            "@doc" => "@doc explains the rule".to_string(),
+            other => other.to_string(),
+        }
+    };
+    for tag in crate::comment_ast::KNOWN_RULE_METADATA_TAGS {
+        let spec = format!(
+            "grp = (\n  a: uint\n) ; {}\nkeeper = [grp]\n",
+            spelling(tag)
+        );
+        match rule_directive_emit(&spec, &[]) {
+            Ok(_) => {
+                panic!("`{tag}` in the multi-line group position must be refused, but generated")
+            }
+            Err(e) => {
+                assert!(
+                    e.contains("group rule `grp`") && e.contains(tag),
+                    "`{tag}`: expected the multi-line group refusal naming the tag, got:\n{e}"
+                );
+            }
+        }
+    }
+}
+
+/// Directory (multi-module) input: the offending rule can sit in any module of the concatenated
+/// buffer, and the rule identifier still identifies the site (duplicate identifiers across modules
+/// are a parse error, so the ident IS unique across the concatenation).
+#[test]
+fn multiline_group_rule_refusal_names_the_rule_in_a_multi_module_input() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_mlgroup_dir_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.cddl"), "first = [x: uint]\n").unwrap();
+    std::fs::write(
+        root.join("b.cddl"),
+        "second_grp = (\n  a: uint\n) ; @rust_name Renamed\nkeeper = [second_grp]\n",
+    )
+    .unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        root.to_str().unwrap(),
+        "--output",
+        "multiline_group_dir_unused",
+        "--wasm",
+        "false",
+    ]);
+    let out = crate::api::generated_strings(&cli);
+    std::fs::remove_dir_all(&root).ok();
+    let err = out
+        .expect_err("the lossy spelling in the second module must be refused")
+        .to_string();
+    assert!(
+        err.contains("group rule `second_grp`") && err.contains("@rust_name"),
+        "the refusal must name the rule in the second module and its directive, got:\n{err}"
+    );
+}

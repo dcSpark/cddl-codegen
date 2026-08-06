@@ -883,16 +883,35 @@ gset<T> = [* T]
 inst = gset<uint> ; @no_json_schema_export   ; correct — the instance is the type
 ```
 
-On a plain group, write the directive on the same line as the closing paren
-(`grp = (a: uint) ; @no_json_schema_export`). The MULTI-LINE spelling — closing paren on its own
-line — silently loses the directive (like `@rust_name`): the pinned CDDL parser binds that trailing
-comment to the *following* rule's leading-comment slot (or drops it as an orphan when the group rule
-is last), a position nothing reads, so the directive has no effect and nothing is reported. Use the
-single-line form. (There is no third lossy spelling: a comment runs to end of line, so putting a
-field-position comment before the closing paren on one line comments the paren out and the spec does
-not parse at all — a loud failure, not a drop.) A parser-side fix exists but is not adopted; the
-tracking entry in `tests/TESTING_ROADMAP.md` ("A rule-position directive is still silently LOST in
-the multi-line group-rule spelling") records its state.
+On a plain group, a rule-position directive has to end the line the closing paren is on. Two
+spellings do that — the whole group on one line, or the closing paren kept on the last entry's line:
+
+```cddl
+grp = (a: uint, b: uint) ; @no_json_schema_export
+
+grp = (a: uint,
+  b: uint) ; @no_json_schema_export          ; also fine — the paren ends the last entry's line
+```
+
+A closing paren on its **own** line is **rejected**, with an error naming the rule, the directive(s)
+found and both spellings above:
+
+```cddl
+grp = (
+  a: uint
+) ; @no_json_schema_export                   ; refused — the parser cannot bind a directive here
+```
+
+The pinned CDDL parser binds a group rule's rule-position directive to its last group *entry*, and a
+paren on its own line leaves the trailing comment past that slot — it is merged into the *following*
+rule's leading-comment slot instead (or orphaned when the group rule is last), a position nothing
+reads. Since the directive cannot be delivered at all in that position, generation refuses the
+spelling rather than dropping it. A **prose** comment there is fine; only a directive is refused.
+(There is no third lossy spelling: a comment runs to end of line, so putting a field-position comment
+before the closing paren on one line comments the paren out and the spec does not parse at all — a
+loud failure, not a drop.) Adopting a parser-side fix would make the refused spelling *honored*
+instead; `tests/TESTING_ROADMAP.md` ("Adopt the parser's `RuleTrailing` anchor for multi-line group
+rules") tracks that.
 
 ### A suppressed type still has a wasm `to_json_value()`, so the JSON → TypeScript scripts fail on it
 

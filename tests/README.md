@@ -2625,18 +2625,22 @@ explicit spelling of a default, a directive whose target already satisfies it, a
 excluded emission site), never a place to park a real drop. The 17 hand cells above the product each
 pin a specific shipped regression or placement control and are kept.
 
-The gate renders three placements: the rule slot, an arm's trailing comment (`armPlacement`), and the
+The gate renders four placements: the rule slot, an arm's trailing comment (`armPlacement`), the
 ROW-ENTRY slot of an inline table (`rowEntryPlacement`) — a comment *inside* the braces, which the
-other two structurally cannot reach and which was where the inline-table `@duplicates` drop hid.
+others structurally cannot reach and which was where the inline-table `@duplicates` drop hid — and
+the closing-paren line of a multi-line plain group (`multilineGroupEntries`).
 
-One parser boundary is deliberately not called a fourth placement yet. For a single-line spliced
-plain group (`grp = (a: uint) ; @x`), the pinned cddl AST binds `@x` to the last entry's trailing
-slot, indistinguishable from field metadata inside the parens. The product therefore measures the
-real field/rule effects, targeted rejections and justified redundant no-ops of that shared slot; it
-has no separate rule-only position to sweep. The unpublished parser fix tracked in
-`tests/TESTING_ROADMAP.md` adds a `RuleTrailing` anchor for the multi-line spelling. Adopting it must
-add that placement and its rule-only honor/reject classification to this gate in the same delivery,
-not reinterpret the working last-entry slot ahead of the parser change.
+That fourth placement measures a REFUSAL, not an effect. For a spliced plain group the pinned cddl
+AST binds a rule-position directive to the LAST ENTRY's trailing slot — indistinguishable from field
+metadata inside the parens — so the product measures the real field/rule effects, targeted
+rejections and justified redundant no-ops of that shared slot, and there is no separate rule-only
+position to sweep. Writing the closing paren on its own line puts the trailing comment past that
+slot entirely, where the parser can deliver nothing; generation refuses the spelling, so all 18 cells
+of `plain_group_spliced_multiline_paren` go green through the nonzero with-directive exit and need no
+allowlist rows. The unpublished parser fix tracked in `tests/TESTING_ROADMAP.md` adds a
+`RuleTrailing` anchor for that spelling. Adopting it must convert those cells from rejections to
+rule-only honor/reject classifications in the same delivery, not reinterpret the working last-entry
+slot ahead of the parser change.
 
 ### Sibling-crate companion classes (`@extern_companions`) — test map
 
