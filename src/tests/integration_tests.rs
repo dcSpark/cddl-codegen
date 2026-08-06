@@ -12083,11 +12083,17 @@ fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> O
 /// rather than `T | undefined`, and the `Open`/`Deep` definitions would pass without the catch-all
 /// widening carrying `undefined`.
 ///
-/// Further phases pin the failure directions, all four of which must be non-zero exits that leave the
+/// It also bridges the two shipped scripts once, over the defs file this run actually produced: the
+/// declaration-name guarantee (`<$defs key>JSON` for every key spellable as an identifier, whatever
+/// json2ts's title normalization would have made of it) only pays off where `json-ts-types.js` keys
+/// the splice on that exact name, and nothing else exercises both halves against real json2ts output.
+///
+/// Further phases pin the failure directions, all five of which must be non-zero exits that leave the
 /// last-good `json-types.d.ts` on disk: a document that does not compile, a stale per-type schema file
-/// beside the document, more than one document, and a document with no definitions. Any of them
-/// exiting 0 would ship a `.d.ts` that silently drops (or never declares) part of the JSON surface,
-/// with nothing in the build output saying so.
+/// beside the document, more than one document, a document with no definitions, and two definitions
+/// landing on one declaration name. Any of them exiting 0 would ship a `.d.ts` that silently drops
+/// (or never declares, or silently MERGES) part of the JSON surface, with nothing in the build output
+/// saying so.
 #[test]
 fn js_schema_to_ts() {
     use std::str::FromStr;
@@ -12189,6 +12195,21 @@ fn js_schema_to_ts() {
         "export interface RestDeepJSON",
         "export interface RestSameJSON",
         "export interface RestAnyJSON",
+        // `<key>JSON` is the emitted declaration name for every key that can be spelled as a
+        // TypeScript identifier, whatever json2ts's own title normalization would have made of it.
+        // `Blake2b256` is the real consumer spelling that used to publish as `Blake2B256JSON`
+        // (json2ts uppercases a letter following a digit), which `json-ts-types.js` keys on and
+        // therefore reads as a class with no type at all.
+        "export interface Blake2b256JSON",
+        // The COLLISION half: two keys the normalization used to conflate. Under the old
+        // normalize-and-emit behaviour one of these was published as `Blake2B256JSON1` — a name no
+        // consumer can ask for, attached to whichever definition lost the race.
+        "export interface Blake2B256JSON",
+        // A `$defs` key that is NOT a TypeScript identifier keeps today's behaviour: there is no
+        // `<key>JSON` to guarantee, so the title is suffixed and json2ts normalizes it
+        // (`OrderedHashMap<K, V>` -> `OrderedHashMapKVJSON`). The static runtime publishes exactly
+        // this key, and no wasm class can carry such a name, so nothing keys on it.
+        "export interface OrderedHashMapKVJSON",
     ] {
         assert_eq!(
             dts.matches(declaration).count(),
@@ -12196,6 +12217,18 @@ fn js_schema_to_ts() {
             "expected exactly one `{declaration}`:\n{dts}"
         );
     }
+    // The two controls for the map-back's safety argument: a synthetic token absent from the source
+    // document cannot be a word the source contributed, so text that came from the document is
+    // untouched. Both are the failure mode that rules out the naive fix (renaming identifiers in
+    // json2ts's output), which would rewrite these occurrences too.
+    assert!(
+        dts.contains("Blake2b256JSON is named verbatim here, and so is Blake2b256."),
+        "a `description` naming the awkward type must reach the doc comment verbatim:\n{dts}"
+    );
+    assert!(
+        dts.contains("export type SpellingJSON = \"Blake2b256JSON\" | \"Blake2b256\";"),
+        "an enum member string naming the awkward type must survive verbatim:\n{dts}"
+    );
     // Refs were repointed at the suffixed keys; the enum became a union.
     assert!(dts.contains("bar: BarJSON"), "{dts}");
     assert!(dts.contains("nested: NestedJSON"), "{dts}");
@@ -12348,6 +12381,53 @@ fn js_schema_to_ts() {
         "the emitted json-types.d.ts must type-check:\n{dts}"
     );
 
+    // The two shipped scripts bridged for real, over the defs file `run-json2ts.js` JUST WROTE
+    // rather than a hand-laid one — the only place the declaration-name guarantee and the splice
+    // that depends on it meet. `js_d_ts_merge` covers `json-ts-types.js`'s own branches over
+    // hand-written defs, which cannot see whether the name the other script emits is the name this
+    // one keys on; that is exactly what used to leave `Blake2b256` shipping `to_json_value(): any`
+    // with the type published under `Blake2B256JSON`. Cheap because the layout is already the
+    // shipped one: the same `<root>/rust/wasm` tree, plus the wasm-pack `pkg/` the second script
+    // rewrites in place. (No wasm-pack run — `package_json_pipeline` stays the one wasm-pack e2e.)
+    let pkg = work.join("rust/wasm/pkg");
+    std::fs::create_dir_all(&pkg).unwrap();
+    std::fs::copy(
+        static_dir.join("json-ts-types.js"),
+        work.join("scripts/json-ts-types.js"),
+    )
+    .unwrap();
+    let bindings = pkg.join("cddl_lib_wasm.d.ts");
+    let bindings_source = "export class Foo {\n  free(): void;\n  to_json_value(): any;\n}\n\n\
+                           export class Blake2b256 {\n  free(): void;\n  to_json_value(): any;\n}\n";
+    std::fs::write(&bindings, bindings_source).unwrap();
+    // wasm-pack always emits this sidecar and the script must exclude it when picking the bindings.
+    std::fs::write(
+        pkg.join("cddl_lib_wasm_bg.wasm.d.ts"),
+        "/* tslint:disable */\nexport const memory: WebAssembly.Memory;\n",
+    )
+    .unwrap();
+    let merge = std::process::Command::new("node")
+        .arg("scripts/json-ts-types.js")
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !merge.status.success() {
+        eprintln!(
+            "json-ts-types.js stderr:\n{}",
+            String::from_utf8_lossy(&merge.stderr)
+        );
+    }
+    assert!(
+        merge.status.success(),
+        "every class in the bindings has a published type, so the merge must succeed"
+    );
+    let merged = std::fs::read_to_string(&bindings).unwrap();
+    assert!(
+        merged.contains("to_json_value(): Blake2b256JSON;"),
+        "the awkward-named class must end up TYPED in the merged bindings:\n{merged}"
+    );
+    assert!(merged.contains("to_json_value(): FooJSON;"), "{merged}");
+
     // Failure directions. Each re-runs over the same, now-populated, output and must exit non-zero
     // without touching it.
     let document = schemas_out.join("cddl_lib.schema.json");
@@ -12407,6 +12487,27 @@ fn js_schema_to_ts() {
     .unwrap();
     run_and_expect_failure("empty $defs", &["$defs"]);
     std::fs::write(&document, &good_document).unwrap();
+
+    // 5) Two keys landing on ONE declaration name — an identifier key whose `<key>JSON` is emitted
+    // exactly, beside a non-identifier key json2ts normalizes onto the same identifier. `tsc` is not
+    // the oracle for this: TypeScript MERGES two same-named `interface` declarations silently, so
+    // the shipped `.d.ts` would type both classes as the union of two unrelated shapes with nothing
+    // said anywhere. The script has to refuse it itself.
+    let colliding = good_document.replace(
+        "\"$defs\": {",
+        "\"$defs\": {\n    \"OrderedHashMapKV\": { \"type\": \"object\", \
+         \"additionalProperties\": { \"type\": \"integer\" } },",
+    );
+    assert_ne!(
+        colliding, good_document,
+        "the collision mutation must apply to the fixture document"
+    );
+    std::fs::write(&document, &colliding).unwrap();
+    run_and_expect_failure(
+        "colliding declaration names",
+        &["OrderedHashMapKVJSON", "more than once"],
+    );
+    std::fs::write(&document, &good_document).unwrap();
 }
 
 /// Covers the shipped `static/json-ts-types.js` (`tests/README.md` § "JSON-schema → TypeScript
@@ -12424,7 +12525,10 @@ fn js_schema_to_ts() {
 ///    now) is itself an error so the list cannot rot. The one offender shape that is NOT a missing
 ///    type — a class whose declaration differs from `<Class>JSON` only by json2ts's normalization
 ///    of the definition title (`Blake2b256` → `Blake2B256JSON`) — is named with BOTH spellings and
-///    is left out of the suggested `--allow-untyped` value, since its type already exists;
+///    is left out of the suggested `--allow-untyped` value, since its type already exists. The
+///    shipped `run-json2ts.js` no longer emits such a name (`js_schema_to_ts` pins that), so what
+///    reaches this diagnostic is a defs file that is stale or was written by an older or forked
+///    script, and the remedy it states is re-running that script;
 /// 3. running twice is byte-identical (the appended block is marker-delimited and truncated each
 ///    run, so a second run without an intervening `rimraf ./pkg` can't duplicate every declaration);
 /// 4. a method name the script can't find (the `--wasm-cbor-json-api-macro` case, where the macro
@@ -12533,6 +12637,11 @@ fn js_d_ts_merge() {
     // see it under the name it keys on. The failure must name BOTH spellings and must not offer
     // `--allow-untyped` for it — telling a consumer to publish a type they have already published,
     // or to suppress one they already have, is a worse diagnosis than the `any` this check replaced.
+    // The current `run-json2ts.js` cannot produce this file (it compiles under synthetic
+    // normalization-fixed-point titles and maps them back, pinned by `js_schema_to_ts`), so the
+    // remedy is about the FILE, not the CDDL: re-run the script. A remedy string is an executable
+    // claim, so "rename the rule, or give it an @name" must not survive the guarantee that made it
+    // false.
     const NORM_DTS: &str =
         "export class Blake2b256 {\n  free(): void;\n  to_json_value(): any;\n}\n";
     const NORM_DEFS: &str = "export interface Blake2B256JSON {\n  hash: string;\n}\n";
@@ -12555,6 +12664,15 @@ fn js_d_ts_merge() {
         !near_miss_stderr.contains("--allow-untyped=Blake2b256"),
         "--allow-untyped must not be offered for a class whose type is published under a \
          normalized name:\n{near_miss_stderr}"
+    );
+    assert!(
+        near_miss_stderr.contains("re-run scripts/run-json2ts.js"),
+        "the remedy must be to re-run the script that now guarantees the name:\n{near_miss_stderr}"
+    );
+    assert!(
+        !near_miss_stderr.contains("rename the rule"),
+        "the pre-guarantee remedy is false now that <key>JSON is the emitted declaration \
+         name:\n{near_miss_stderr}"
     );
     assert_eq!(
         std::fs::read_to_string(&norm_path).unwrap(),

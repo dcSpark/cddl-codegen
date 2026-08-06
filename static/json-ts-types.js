@@ -218,14 +218,18 @@ if (staleAllows.length > 0) {
 }
 const untyped = [...untypedClasses.keys()].filter(cls => !allowUntyped.has(cls)).sort();
 if (untyped.length > 0) {
-  // One offender shape is NOT a missing type: `run-json2ts.js` sets each definition's title to
-  // `<key>JSON`, but json2ts normalizes titles into identifiers, so the declaration it emits can
-  // differ from the `<Class>JSON` this script keys on (`$defs` key `Blake2b256` -> declaration
-  // `Blake2B256JSON`). Telling that consumer to publish a type they have already published is a
-  // worse diagnosis than the `any` this check replaced, so name the declaration that exists.
-  // Comparing modulo normalization — every non-alphanumeric stripped, case folded — is cheap and
-  // catches the whole class without modelling json2ts's exact rules. DIAGNOSTIC ONLY: which classes
-  // fail, and the exit code, are unchanged.
+  // One offender shape is NOT a missing type: the document publishes the class's type under a name
+  // that differs from `<Class>JSON` only by json2ts's normalization of the definition title into an
+  // identifier (`$defs` key `Blake2b256` -> declaration `Blake2B256JSON`). The shipped
+  // `run-json2ts.js` no longer produces that — it compiles under synthetic titles the normalization
+  // leaves alone and maps them back, so `<key>JSON` is the emitted declaration name for every key
+  // that can be spelled as one — which makes this shape a statement about the FILE on disk: it is
+  // stale, or it was written by an older or forked script. Telling that consumer to publish a type
+  // they have already published is a worse diagnosis than the `any` this check replaced, so name
+  // the declaration that exists and the step that reconciles it. Comparing modulo normalization —
+  // every non-alphanumeric stripped, case folded — is cheap and catches the whole class without
+  // modelling json2ts's exact rules. DIAGNOSTIC ONLY: which classes fail, and the exit code, are
+  // unchanged.
   const normalized = name => name.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
   const declaredByNormalized = new Map();
   for (const name of declared) {
@@ -257,8 +261,9 @@ if (untyped.length > 0) {
       return `${entry}\n    ^ the document DOES publish a type for this class, declared as ` +
         `${matches.join(' / ')} — that differs from ${cls}JSON only by json2ts's normalization of ` +
         `the definition title into an identifier. --allow-untyped is not the answer here (it would ` +
-        `ship \`any\` for a class that has a type): rename the rule, or give it an @name, so the ` +
-        `class name is a fixed point of that normalization.`;
+        `ship \`any\` for a class that has a type): the current run-json2ts.js emits ${cls}JSON ` +
+        `for this definition, so ${jsonDefsFile} is stale or was written by an older or forked ` +
+        `script — re-run scripts/run-json2ts.js.`;
     }).join('\n') +
     `\n${dtsFile} was left untouched. Publish a type for each (a CDDL rule, ` +
     `--json-schema-root for a hand-written type, or --json-schema-dep for a dependency whose ` +

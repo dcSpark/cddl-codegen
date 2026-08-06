@@ -2582,26 +2582,19 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   collection wrapper and a c-style enum do not. Reopening signal: a consumer whose
   deliberately-unpublished set is large enough that restating it on the script command line is a
   maintenance burden.
-- **Guarantee `<$defs key>JSON` is the emitted declaration name.** `run-json2ts.js` sets each
-  definition's `title` to `<key>JSON`, but `json-schema-to-typescript` normalizes titles into
-  identifiers, so a key that is not a fixed point of that normalization is published under a name
-  `json-ts-types.js` cannot key on (`Blake2b256` → `Blake2B256JSON`) and its class reads as untyped.
-  The constraint that shapes any fix: post-compile identifier renaming is not available, because it
-  also rewrites matching words inside doc comments and string-literal unions — which is exactly why
-  the script sets titles BEFORE compiling. The candidate design worth recording removes
-  normalization from the contract rather than detecting it: compile with synthetic per-definition
-  titles that are provably normalization fixed points and provably absent from the source document,
-  then map them back to `<key>JSON` in the emitted text. What exists meanwhile is diagnosis only —
-  `json-ts-types.js`'s failure compares modulo normalization and names the declaration that does
-  exist (pinned by `integration_tests::js_d_ts_merge`'s case 2), so the consumer is not told to
-  publish a type they already published; the class is still untyped in the shipped `.d.ts`, and no
-  `--allow-untyped` entry fixes that. Reopening signal: a consumer's type name is not a fixed point
-  of the normalization and its class does expose JSON methods.
 - **json2ts artifact doc comments naming `undefined`.** The emitted `.d.ts` carries comments like
   "This interface was referenced by `undefined`'s JSON-Schema definition via the `patternProperty`
-  …" — `undefined` because the parent definition's title is managed by `run-json2ts.js` rather than
-  present in the source document. Purely cosmetic, and pre-existing. No reopening signal is needed:
-  fold it into whichever change next touches that script's output, where it is nearly free.
+  …". The name in that comment is json2ts's own standalone name for the schema that OWNS the
+  catch-all, and it is `undefined` exactly when that owner is an anonymous INLINE object — a nested
+  object property carrying a rest region — because such a schema has no `title`, no `$id` and no
+  `$defs` key for json2ts to name it from. Top-level definitions already read correctly
+  (`OpenJSON`), and the declaration-name work did not change this: the fix is not managing titles,
+  which those inline schemas do not have. What would fix it is giving each such inline object a
+  name, and that is not cosmetic — json2ts hoists a named object schema into a top-level
+  declaration of its own, so the published surface gains a declaration per nested rest region.
+  Reopening signal: a consumer's emitted `json-types.d.ts` carries more of these `undefined`
+  comments than named ones — i.e. nested rest regions dominate their surface, which is also the
+  condition under which the hoisted-declaration cost is worth paying.
 - **A file listing `--json-schema-root` values, instead of one flag per root.** The repeatable flag
   is what shipped, on the grounds that it matches every other repeatable flag and that the asking
   consumer's eight entries do not justify a new file format. A file-listing variant stays purely
