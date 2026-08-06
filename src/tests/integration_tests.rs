@@ -7539,6 +7539,264 @@ mod __tagged_root_wrap_pin {
     );
 }
 
+/// The `@duplicates preserve` TABLE flavor of the sibling above: a tagged preserve table, its `{+}`
+/// twin, the optional-tag idiom's map flavor and the `@newtype` spelling each own their wire form —
+/// standalone `to/from_cbor_bytes` write and require exactly what an embed site does — while the
+/// inner stays the duplicate-keyed `PairMap`/`NonEmptyPairMap` twin the policy selects.
+///
+/// The defect this closes: these four were the last rule bodies whose tag rode a TRANSPARENT alias
+/// (`pub type TaggedPt = PairMap<u64, String>;`), so the named rule had no codec of its own at all —
+/// `TaggedPt::to_cbor_bytes()` did not compile and `from_cbor_bytes` did not exist — while every
+/// embed site wrote `write_tag(n)` inline and required it. One CDDL type with no self-describing
+/// wire form, reachable only through a holder.
+///
+/// Two properties are asserted together because the fix could satisfy either alone and still be
+/// wrong: the wrapper owns the TAG, and its inner is still the PAIR-MAP (a wrapper over the loose
+/// `BTreeMap` would own the tag while silently collapsing the duplicate keys the directive exists to
+/// keep). The preserve leg adds the byte-exactness half — duplicate keys re-emitted in entry order,
+/// under a NON-MINIMAL map length the wrapper must carry through its own encoding sidecar.
+///
+/// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
+/// only `fast`. This gate will not be seen by CI.
+#[test]
+fn tagged_preserve_table_standalone_codec_agrees_with_its_embed_site() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_tagged_preserve_wrap_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let target_dir = scratch.join("target");
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "tagged_pt = #6.24({ * uint => tstr }) ; @duplicates preserve\n\
+         tagged_pt_ne = #6.25({ + uint => tstr }) ; @duplicates preserve\n\
+         opt_tag_pt = #6.26({ * uint => tstr }) / { * uint => tstr } ; @duplicates preserve\n\
+         nt_pt = { * uint => tstr } ; @newtype @duplicates preserve\n\
+         holder = [a: tagged_pt, b: tagged_pt_ne, c: opt_tag_pt, d: nt_pt]\n",
+    )
+    .unwrap();
+
+    // Wire forms, hand-derived from RFC 8949 (tag = major 6, map = major 5):
+    //   {1: "x"}                        -> a1 01 61 78
+    //   #6.24({1: "x"})                 -> d8 18 a1 01 61 78
+    //   #6.25(...) / #6.26(...)         -> d8 19 … / d8 1a …
+    //   {1: "x", 1: "y"} (dup keys)     -> a2 01 61 78 01 61 79
+    //   …with a NON-MINIMAL len (ai=24) -> b8 02 01 61 78 01 61 79
+    //   holder [a, b, c, d]             -> 84 <a> <b> <c> <d>
+    const PIN: &str = r##"
+#[cfg(test)]
+mod __tagged_preserve_wrap_pin {
+    use super::*;
+    use super::serialization::{Deserialize, ToCBORBytes};
+
+    const PT_TAGGED: &[u8] = &[0xd8, 0x18, 0xa1, 0x01, 0x61, 0x78];
+    const PT_BARE: &[u8] = &[0xa1, 0x01, 0x61, 0x78];
+    const NE_TAGGED: &[u8] = &[0xd8, 0x19, 0xa1, 0x01, 0x61, 0x78];
+    const OPT_TAGGED: &[u8] = &[0xd8, 0x1a, 0xa1, 0x01, 0x61, 0x78];
+    const OPT_UNTAGGED: &[u8] = &[0xa1, 0x01, 0x61, 0x78];
+    const NT_BARE: &[u8] = &[0xa1, 0x01, 0x61, 0x78];
+    const HOLDER: &[u8] = &[
+        0x84,
+        0xd8, 0x18, 0xa1, 0x01, 0x61, 0x78,
+        0xd8, 0x19, 0xa1, 0x01, 0x61, 0x78,
+        0xd8, 0x1a, 0xa1, 0x01, 0x61, 0x78,
+        0xa1, 0x01, 0x61, 0x78,
+    ];
+    // duplicate keys, which only the PairMap inner can hold
+    const PT_DUPS: &[u8] = &[0xd8, 0x18, 0xa2, 0x01, 0x61, 0x78, 0x01, 0x61, 0x79];
+
+    fn one() -> Vec<(u64, String)> {
+        vec![(1u64, String::from("x"))]
+    }
+
+    /// The standalone codec IS the spec's tagged form, in both directions — and the mandatory-tag
+    /// flavors REJECT the bare untagged map, which the transparent alias's target used to accept.
+    #[test]
+    fn standalone_codec_writes_and_accepts_the_tagged_form() {
+        assert_eq!(
+            TaggedPt::new(PairMap::from(one())).to_cbor_bytes(),
+            PT_TAGGED,
+            "a tagged preserve table must write its tag standalone"
+        );
+        assert_eq!(
+            TaggedPtNe::new(NonEmptyPairMap::try_from(one()).unwrap()).to_cbor_bytes(),
+            NE_TAGGED
+        );
+        assert_eq!(
+            OptTagPt::new(PairMap::from(one())).to_cbor_bytes(),
+            OPT_TAGGED,
+            "the optional-tag idiom WRITES the tag (it only ACCEPTS both forms)"
+        );
+        assert_eq!(NtPt::new(PairMap::from(one())).to_cbor_bytes(), NT_BARE);
+
+        assert_eq!(
+            TaggedPt::from_cbor_bytes(PT_TAGGED).expect("tagged must decode").to_cbor_bytes(),
+            PT_TAGGED
+        );
+        assert_eq!(
+            TaggedPtNe::from_cbor_bytes(NE_TAGGED).expect("tagged must decode").to_cbor_bytes(),
+            NE_TAGGED
+        );
+        assert!(
+            TaggedPt::from_cbor_bytes(PT_BARE).is_err(),
+            "the untagged map is not what the spec admits for a `#6.24(...)` root"
+        );
+        assert!(
+            TaggedPtNe::from_cbor_bytes(PT_BARE).is_err(),
+            "the untagged map is not what the spec admits for a `#6.25(...)` root"
+        );
+        // the optional-tag idiom admits BOTH halves standalone, exactly as its embed sites do
+        assert_eq!(
+            OptTagPt::from_cbor_bytes(OPT_TAGGED).expect("the tagged half must decode").get().len(),
+            1
+        );
+        assert_eq!(
+            OptTagPt::from_cbor_bytes(OPT_UNTAGGED).expect("the untagged half must decode").get().len(),
+            1
+        );
+    }
+
+    /// The inner is still the DUPLICATE-KEYED twin: a wrapper over the loose map would own the tag
+    /// and silently collapse the second entry.
+    #[test]
+    fn the_wrapped_inner_keeps_duplicate_keys_in_entry_order() {
+        let back = TaggedPt::from_cbor_bytes(PT_DUPS).expect("duplicate keys must decode");
+        assert_eq!(back.get().len(), 2, "both entries must survive the decode");
+        assert_eq!(
+            back.get().as_slice(),
+            &[(1u64, String::from("x")), (1u64, String::from("y"))][..],
+            "entry order is the wire order"
+        );
+        assert_eq!(back.to_cbor_bytes(), PT_DUPS, "and re-emits byte-exactly");
+    }
+
+    /// Standalone and EMBEDDED agree byte-for-byte.
+    #[test]
+    fn standalone_and_embedded_agree() {
+        let holder = Holder::new(
+            TaggedPt::new(PairMap::from(one())),
+            TaggedPtNe::new(NonEmptyPairMap::try_from(one()).unwrap()),
+            OptTagPt::new(PairMap::from(one())),
+            NtPt::new(PairMap::from(one())),
+        );
+        assert_eq!(holder.to_cbor_bytes(), HOLDER);
+        let back = Holder::from_cbor_bytes(HOLDER).expect("the holder vector must decode");
+        assert_eq!(back.to_cbor_bytes(), HOLDER);
+        assert_eq!(back.a.to_cbor_bytes(), PT_TAGGED);
+        assert_eq!(back.b.to_cbor_bytes(), NE_TAGGED);
+        assert_eq!(back.c.to_cbor_bytes(), OPT_TAGGED);
+        assert_eq!(back.d.to_cbor_bytes(), NT_BARE);
+    }
+}
+"##;
+
+    // Preserve-profile only: the wrapper's own encoding sidecar must carry the tag size, the map
+    // length encoding and the POSITIONAL key/value encodings, so a duplicate-keyed map written
+    // under a non-minimal length re-emits byte-exactly. Under the plain profile the same input
+    // decodes and re-emits with a MINIMAL length, which is why this half cannot be in the shared
+    // pin.
+    const PRESERVE_PIN: &str = r##"
+#[cfg(test)]
+mod __tagged_preserve_bytes_pin {
+    use super::*;
+    use super::serialization::{Deserialize, ToCBORBytes};
+
+    // tag 24, map len 2 written NON-MINIMALLY (additional info 24, then the count byte),
+    // two entries under the SAME key
+    const NON_MINIMAL_DUPS: &[u8] = &[
+        0xd8, 0x18, 0xb8, 0x02, 0x01, 0x61, 0x78, 0x01, 0x61, 0x79,
+    ];
+    // the same map under an INDEFINITE length
+    const INDEFINITE_DUPS: &[u8] = &[
+        0xd8, 0x18, 0xbf, 0x01, 0x61, 0x78, 0x01, 0x61, 0x79, 0xff,
+    ];
+
+    #[test]
+    fn the_wrapper_round_trips_byte_exactly() {
+        for bytes in [NON_MINIMAL_DUPS, INDEFINITE_DUPS] {
+            let back = TaggedPt::from_cbor_bytes(bytes).expect("must decode");
+            assert_eq!(back.get().len(), 2);
+            assert_eq!(
+                back.to_cbor_bytes(),
+                bytes,
+                "the wrapper's own encoding sidecar must carry the tag size, the map length \
+                 encoding and the positional entry encodings"
+            );
+        }
+    }
+}
+"##;
+
+    for (leg, extra) in [
+        ("plain", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+    ] {
+        let out = scratch.join(leg);
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false");
+        for arg in extra {
+            cmd.arg(arg);
+        }
+        let gen_out = cmd.output().unwrap();
+        assert!(
+            gen_out.status.success(),
+            "{leg}: generation failed:\n{}",
+            String::from_utf8_lossy(&gen_out.stderr)
+        );
+        let generated_mod = out.join("rust/src/generated/mod.rs");
+        let source = std::fs::read_to_string(&generated_mod).unwrap();
+        // fixture premises: all four roots must really be wrapper STRUCTS (not transparent
+        // aliases), and their inners must really be the pair-map twins — otherwise the pin is
+        // asserting something else's codec, or a duplicate-collapsing map's.
+        for name in ["TaggedPt", "TaggedPtNe", "OptTagPt", "NtPt"] {
+            assert!(
+                source.contains(&format!("pub struct {name}"))
+                    && !source.contains(&format!("pub type {name}")),
+                "{leg}: a tagged/`@newtype` preserve table must mint a wrapper struct, got no \
+                 `{name}` struct:\n{source}"
+            );
+        }
+        assert!(
+            source.contains("PairMap<u64, String>")
+                && source.contains("NonEmptyPairMap<u64, String>"),
+            "{leg}: the wrapped inners must be the pair-map twins:\n{source}"
+        );
+        let pin = if leg == "preserve" {
+            format!("{PIN}\n{PRESERVE_PIN}")
+        } else {
+            PIN.to_owned()
+        };
+        std::fs::write(&generated_mod, format!("{source}\n{pin}")).unwrap();
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .arg("__tagged_preserve_")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&test.stdout);
+        assert!(
+            test.status.success(),
+            "{leg}: the tagged-preserve-table wire pin must build and pass:\n--- stdout ---\n{stdout}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&test.stderr)
+        );
+        // a name filter that matches nothing still exits 0 — pin the arm COUNT so the pin cannot
+        // silently stop running (3 shared arms, plus the byte-exactness arm on the preserve leg)
+        let expected = if leg == "preserve" { 4 } else { 3 };
+        assert!(
+            stdout.contains(&format!("{expected} passed")),
+            "{leg}: expected {expected} pin arms to run:\n{stdout}"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tracked SILENT-WRONG-OUTPUT gaps (compile-green, snapshot-blessed, behaviorally wrong).
 //

@@ -272,29 +272,6 @@ ledgered here (that's what the probe/gate error messages point at).
   at holder sites — i.e. a caller reaching either currently inert public seam, which is what
   nothing yet says anyone does.
 
-- **A tagged PRESERVE table's standalone codec drops the tag.** The narrowed remnant of the class
-  T1-13 closed (recorded 2026-08-04, narrowed the same day). Every tagged rule body now force-wraps
-  — collections, the optional-tag idiom in both flavors, and `T / null` — so its standalone
-  `to/from_cbor_bytes` write and require the tag exactly as its embed sites do. ONE combination
-  cannot: `t = #6.n({* k => v}) ; @duplicates preserve`, whose inner is the `PairMap` vec-of-pairs
-  twin. A wrapper cannot hold that inner — the register-side duplicates threading is scoped to
-  `Array` deliberately, because the synthesized structural map wasm wrapper class wraps `BTreeMap`
-  (probed: wrapping it fails the wasm crate with E0425 on a missing `PairMapU64ToText`), while a
-  preserve-table ALIAS works under wasm only because the named rule itself becomes the `PairMap`
-  class. Refusing the shape is not available either: it generates and compiles today, so a refusal
-  would be a support regression. So `TaggedPreserveTable::to_cbor_bytes()` still writes a bare map
-  while every embed site writes `write_tag(n)` first — the one-type-two-wire-forms shape, surviving
-  in exactly one spelling. It is carved out of
-  `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias` BY NAME (a tag op on a `Map`
-  base carrying `Preserve`, nothing else), so the exemption cannot silently widen. Wiring the
-  PairMap-aware synthesized wasm wrapper class retires the carve-out, this entry, the
-  `@duplicates`-on-`@newtype`-table parse rejection, and the two test carriers that depend on it
-  (`declared_spelling_tests::encoding_operation_ownership_decides_whether_the_spelling_survives`'s
-  SEAL half and `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated`'s flavor B,
-  both of which say so in place). **Reopening signal:** the wasm per-kind wrapper work landing — or,
-  before it, any spec in this repo that spells a tagged preserve table and uses it standalone rather
-  than only from a holder.
-
 - **A type-choice ARM or member declared as `bytes .cbor <alias>` changes NAME, not wire, once the
   alias survives to the arm.** Measured 2026-08-03 while fixing the wire half of the same seam (the
   alias's `@custom_serialize`/`@custom_deserialize` pair, which the arm now routes through in both

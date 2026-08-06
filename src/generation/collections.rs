@@ -1114,11 +1114,13 @@ impl GenerationScope {
                             (**v).clone(),
                             &ident,
                             false,
-                            // Correct-by-construction, but UNREACHABLE as `true`: an inline
-                            // (anonymous) `{+ …}` occurrence carries no directive (the policy is
-                            // per-rule — a preserve map arm must be given its own NAMED rule), so
-                            // `is_preserve_pair_map()` is always `false` here. Threading it keeps this
-                            // seam honest if that ever changes.
+                            // Reached as `true` by exactly one shape: the INNER of a
+                            // `@newtype`/tag-forced wrapper over `{+ k => v} ; @duplicates preserve`
+                            // (`register_rust_struct` threads the rule's policy onto the wrapper's
+                            // stored inner, so the wrapper's boundary names `NonEmptyPairMapKToV`
+                            // and this is what mints it). A bare inline (anonymous) `{+ …}`
+                            // occurrence carries no directive of its own — the policy is per-rule —
+                            // so every other caller passes `false`.
                             rt.is_preserve_pair_map(),
                             cli,
                         );

@@ -2418,47 +2418,20 @@ impl<'a> IntermediateTypes<'a> {
     /// silent wire form.
     ///
     /// It is an internal invariant, unreachable from user input, so a panic is the honest posture —
-    /// same class as the already-`Alias`-wrapped-base refusal above. Two carve-outs remain, each
+    /// same class as the already-`Alias`-wrapped-base refusal above. ONE carve-out remains,
     /// enumerated by GENERATION (all committed specs plus the whole `--bin cddl-codegen` suite,
-    /// with the carve-outs removed) rather than by grep:
+    /// with the carve-out removed) rather than by grep:
     ///
     /// 1. A base that is `Fixed`: the rule is refused, by `record_bare_fixed_rule_rejection` in this
     ///    same function (`foo = #6.5(5)`, `tests/robustness/tagged_literal.cddl`). The entry is
     ///    inserted only so a sibling's reference resolves during parse; `finalize` turns the
     ///    rejection into an `Err` before anything is emitted, so no alias — and no surviving tag —
     ///    ever reaches a wire. The invariant is about what EMITS.
-    /// 2. A tag operation on a `Map` base carrying `@duplicates preserve` — and ONLY that
-    ///    combination. `t = #6.n({* k => v}) ; @duplicates preserve` (and the optional-tag idiom's
-    ///    map flavor) keeps its transparent alias because a wrapper cannot carry the `PairMap` inner
-    ///    a preserve policy selects: the register-side duplicates threading is scoped to `Array`
-    ///    deliberately, since the synthesized structural map wasm wrapper class wraps `BTreeMap`
-    ///    (probed — wrapping it fails the wasm crate with E0425 on a missing `PairMapU64ToText`),
-    ///    while a preserve-table ALIAS works under wasm because the named rule itself becomes the
-    ///    `PairMap` class. Refusing the shape instead is not available: it generates and compiles
-    ///    today, so a refusal would be a support regression. The combination keeps the
-    ///    standalone-tag-drop it has always had, ledgered in `cddl-matrix/ROADMAP.md` § Findings
-    ///    ("A tagged PRESERVE table's standalone codec drops the tag"); wiring the PairMap-aware
-    ///    wasm wrapper retires both the carve-out and the entry. Keying the carve-out on the
-    ///    POLICY — not on "Map base" — keeps every other tagged map firing.
     fn assert_no_wire_facts_survive_a_transparent_alias(alias: &RustIdent, base_type: &RustType) {
         if base_type.encodings.is_empty() {
             return;
         }
         if matches!(base_type.conceptual_type, ConceptualRustType::Fixed(_)) {
-            return;
-        }
-        let preserve_map = matches!(base_type.conceptual_type, ConceptualRustType::Map(_, _))
-            && matches!(
-                base_type.config.duplicates,
-                Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-            );
-        let only_tags = base_type.encodings.iter().all(|op| {
-            matches!(
-                op,
-                CBOREncodingOperation::Tagged(_) | CBOREncodingOperation::OptionallyTagged(_)
-            )
-        });
-        if preserve_map && only_tags {
             return;
         }
         panic!(
@@ -2647,29 +2620,30 @@ impl<'a> IntermediateTypes<'a> {
             }
             _ => (),
         }
-        // A `@newtype` wrapper over an INLINE ARRAY set (`#6.258([* a]) ; @newtype`,
-        // `[* a] ; @newtype @duplicates reject`) selects its inner representation by the effective
-        // `@duplicates` policy exactly as a transparent array alias does (the `Array` arm above
-        // `with_duplicates_policy` its stored member type): reject ⇒ the `OrderedSet`/`NonEmptyOrderedSet`
-        // uniqueness twin, preserve ⇒ today's plain `Vec`/`NonEmptyVec`. The policy is written on THIS
+        // A `@newtype`- or TAG-forced wrapper over an INLINE COLLECTION (`#6.258([* a]) ; @newtype`,
+        // `[* a] ; @newtype @duplicates reject`, `#6.24({* k => v}) ; @duplicates preserve`) selects
+        // its inner representation by the effective
+        // `@duplicates` policy exactly as a transparent alias does (the `Array`/`Table` arms above
+        // `with_duplicates_policy` their stored member type): on an ARRAY, reject ⇒ the
+        // `OrderedSet`/`NonEmptyOrderedSet`
+        // uniqueness twin, preserve ⇒ today's plain `Vec`/`NonEmptyVec`; on a MAP, preserve ⇒ the
+        // `PairMap`/`NonEmptyPairMap` vec-of-pairs twin (reject is the table default, a no-op). The
+        // policy is written on THIS
         // rule (an explicit `@duplicates` directive or the single-arm registry default) so it lives in
-        // the wrapper's struct config, but the inline array type built at the parse site carries none —
+        // the wrapper's struct config, but the inline collection type built at the parse site carries
+        // none —
         // thread it onto the STORED wrapped type here so `generate_wrapper_struct` (which reads the inner
         // via the wrapped type, not the struct config) and every IR walker see one consistent shape.
         // Only override when this rule actually carries a policy: a `@newtype` over a REFERENCED set
         // rule (`homogeneous = #6.24(homogeneous_inner)`) has no directive of its own, and its wrapped
         // type already carries the referenced rule's policy through the alias — overwriting with `None`
         // would clobber that inherited reject/preserve back to a plain `Vec`.
-        // Scoped to ARRAY wrapped types deliberately: the table twin (`{* k => v} ; @newtype` +
-        // `@duplicates preserve` ⇒ a `PairMap` inner) has NO wired wasm boundary — the synthesized
-        // structural map wasm wrapper class wraps `BTreeMap`, not `PairMap` (a preserve-table ALIAS
-        // works under wasm only because the named rule itself becomes the `PairMap` wasm class). Wiring
-        // that PairMap-aware synthesized wasm class is Phase 2.2's per-kind wrapper work; until then the
-        // parse site hard-rejects `@duplicates` on a `@newtype` table rather than emit a broken wasm
-        // crate or silently drop the directive.
         if let Some(policy) = rust_struct.config().duplicates
             && let RustStructType::Wrapper { wrapped, .. } = &mut rust_struct.variant
-            && matches!(wrapped.conceptual_type, ConceptualRustType::Array(_))
+            && matches!(
+                wrapped.conceptual_type,
+                ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+            )
         {
             *wrapped = wrapped.clone().with_duplicates_policy(Some(policy));
         }
@@ -4962,10 +4936,15 @@ impl<'a> IntermediateTypes<'a> {
     /// capture field's wasm getter returns the structural class), an ANONYMOUS preserve table instance
     /// (`ptbl<uint, tstr>`, which routes through the structural wrapper via its passthrough alias), a
     /// NAMED preserve `{* …}` rule that solely owns the shape (its `pub type PairMapKToV = <Owner>;`
-    /// alias claims the ident beside the class), and a named preserve `{+ …}` rule whose `try_from`
-    /// source is the loose pair-map builder. A user rule that IS a plain preserve `{* k => v}` table of
+    /// alias claims the ident beside the class), a named preserve `{+ …}` rule whose `try_from`
+    /// source is the loose pair-map builder, and a `@newtype`/TAG-forced WRAPPER over an inline
+    /// `{* k => v} ; @duplicates preserve` (its `new`/getter boundary names the structural class,
+    /// which the wasm struct walk mints for exactly that inner). A user rule that IS a plain preserve
+    /// `{* k => v}` table of
     /// the same key/value is not a collision — that rule IS the builder (shared, exactly as the
-    /// default-flavored sibling shares it). Message text is deliberately distinct from the other kinds'
+    /// default-flavored sibling shares it); a rule that is the WRAPPER is, because a wrapper is a
+    /// nominal type of its own and cannot double as the builder class. Message text is deliberately
+    /// distinct from the other kinds'
     /// (it names the pair-map twin) so a failing spec points at the right container kind.
     fn preserve_pair_map_loose_wrapper_name_collisions(&self) -> Vec<String> {
         // BTreeSet: deterministic message order (repo determinism invariant)
@@ -5048,6 +5027,29 @@ impl<'a> IntermediateTypes<'a> {
                         &mut msgs,
                     );
                 }
+                // A `@newtype`- or TAG-forced wrapper over an inline `{* k => v} ; @duplicates
+                // preserve`: the wasm struct walk mints the structural `PairMapKToV` class its
+                // `new`/getter boundary names. The `{+ …}` flavor is NOT here — its restricted
+                // `NonEmptyPairMapKToV` class and its loose `try_from` source are both claimed by
+                // `non_empty_map_wrapper_name_collisions`' inline leg, whose naming is flavor-aware,
+                // so routing it here too would emit two messages for one collision.
+                RustStructType::Wrapper { wrapped, .. } => {
+                    if !wrapped.is_preserve_pair_map() || wrapped.is_non_empty_map() {
+                        continue;
+                    }
+                    let ConceptualRustType::Map(domain, range) = &wrapped.conceptual_type else {
+                        unreachable!("is_preserve_pair_map implies a Map conceptual type");
+                    };
+                    let structural =
+                        ConceptualRustType::name_for_wasm_map(domain, range, true).to_string();
+                    check(
+                        structural,
+                        domain,
+                        range,
+                        format!("the `@duplicates preserve` table wrapped by rule '{ident}'"),
+                        &mut msgs,
+                    );
+                }
                 _ => {}
             }
         }
@@ -5103,9 +5105,12 @@ impl<'a> IntermediateTypes<'a> {
     /// its passthrough alias, so a user rule claiming that ident silently shadows it. Named preserve
     /// `{+ …}` rules mint under their own rule ident and are not a source here — the same
     /// anonymous-instance-only scope as `reject_ordered_set_wrapper_name_collisions`' first leg. INLINE
-    /// `{+ …}` occurrences carry no directive, so the default-flavored twin
-    /// (`non_empty_map_wrapper_name_collisions`) covers them; that detector's naming is flavor-aware
-    /// too, so if an inline preserve occurrence ever becomes expressible it is already checked there.
+    /// `{+ …}` occurrences are covered by the default-flavored twin
+    /// (`non_empty_map_wrapper_name_collisions`), whose inline leg reads the flavor off the
+    /// occurrence — which is what covers the one preserve-flavored inline shape that IS expressible:
+    /// the inner of a `@newtype`/tag-forced wrapper over `{+ k => v} ; @duplicates preserve`, whose
+    /// restricted class and loose `try_from` source that leg claims together (one collision, one
+    /// message).
     fn preserve_pair_map_non_empty_wrapper_name_collisions(&self) -> Vec<String> {
         // BTreeSet: deterministic message order (repo determinism invariant)
         let mut msgs = BTreeSet::new();
