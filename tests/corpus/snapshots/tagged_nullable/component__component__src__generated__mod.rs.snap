@@ -1,0 +1,88 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type NullableHolder = WitNullableHolder;
+    type TaggedNullable = WitTaggedNullable;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitNullableHolder(pub RefCell<cddl_lib::NullableHolder>);
+
+impl wit_types::GuestNullableHolder for WitNullableHolder {
+    fn new(f0: Option<u64>, f1: String) -> Self {
+        let inner = cddl_lib::NullableHolder::new(f0, f1);
+        WitNullableHolder(RefCell::new(inner))
+    }
+
+    fn f0(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        me.f0.as_ref().map(|x| *x)
+    }
+
+    fn f1(&self) -> String {
+        let me = self.0.borrow();
+        me.f1.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NullableHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NullableHolder, String> {
+        <cddl_lib::NullableHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::NullableHolder::new(WitNullableHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTaggedNullable(pub RefCell<cddl_lib::TaggedNullable>);
+
+impl wit_types::GuestTaggedNullable for WitTaggedNullable {
+    fn new(inner: Option<u64>) -> Self {
+        let inner = cddl_lib::TaggedNullable::new(inner);
+        WitTaggedNullable(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner.as_ref().map(|x| *x)
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TaggedNullable as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TaggedNullable, String> {
+        <cddl_lib::TaggedNullable as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TaggedNullable::new(WitTaggedNullable(RefCell::new(v))))
+            .map_err(err)
+    }
+}

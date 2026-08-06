@@ -10844,6 +10844,141 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "tagged_nullable.nullable_holder"
+axis = "corpus"
+example = "nullable_inner = uint / null\nnullable_holder = [f0: #6.10(nullable_inner), f1: tstr]"
+fixture = "tagged_nullable"
+rule = "nullable_holder"
+spec = "__probe_holder = [0, nullable_holder]\nnullable_inner = uint / null\nnullable_holder = [f0: #6.10(nullable_inner), f1: tstr]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820082ca19046f674e6f7264696373"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082ca1906d06b4c6973746572696e652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082ca1908346c706f6e746966696361746573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082ca1908b46967756172616e746f72"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082ca190ce8686675737469657374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082caf66662616c646572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082caf668696e666c75786573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082caf66a65617274687175616b65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082caf66b64657363656e64656e7473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082caf66c696e64656c69636163792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tagged_nullable.nullable_inner"
+axis = "corpus"
+example = "nullable_inner = uint / null"
+fixture = "tagged_nullable"
+rule = "nullable_inner"
+spec = "__probe_holder = [0, nullable_inner]\nnullable_inner = uint / null"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82001908f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001909d7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190f93"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001910cb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tagged_nullable.tagged_nullable"
+axis = "corpus"
+example = "nullable_inner = uint / null\ntagged_nullable = #6.10(nullable_inner)"
+fixture = "tagged_nullable"
+rule = "tagged_nullable"
+spec = "__probe_holder = [0, tagged_nullable]\nnullable_inner = uint / null\ntagged_nullable = #6.10(nullable_inner)"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200ca18ae"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200ca190528"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200ca1905aa"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200ca190d3f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200ca191181"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200caf6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "tagged_ranged_inner.tagged_ranged"
 axis = "corpus"
 example = "tagged_ranged = #6.42(uint .le 255)"

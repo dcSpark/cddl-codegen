@@ -1941,9 +1941,22 @@ impl GenerationScope {
                         } else {
                             vec!["None".to_owned()]
                         };
-                        // `None` for each crossed tag level (an `Option<Sz>` / presence var), then
-                        // the inner type's own defaults — same order as the `Some` arm's binders.
-                        none_elems.extend(crossed_tag_vars.iter().map(|_| "None".to_owned()));
+                        // The already-read head size for each crossed tag level, then the inner
+                        // type's own defaults — same order as the `Some` arm's binders.
+                        //
+                        // The tag levels are NOT defaulted, and that asymmetry with the slots
+                        // around them is the whole point: a crossed tag's head is bytes this arm
+                        // has ALREADY consumed (the enclosing `match .tag_sz()?` bound them to
+                        // `tag_enc`, which is in scope here), so defaulting them to `None` made a
+                        // widened `d8 0a f6` re-encode as `ca f6` — a preserve-encodings violation
+                        // at exit 0. The value slot and the inner type's own encoding slots stay
+                        // defaulted BECAUSE the bytes they describe were never on the wire: the
+                        // payload is null. Pinned by tests/corpus/tagged_nullable.cddl in both the
+                        // rule-body and member positions.
+                        none_elems.extend(
+                            (1..=crossed_tag_levels)
+                                .map(|level| format!("Some({})", tag_enc_binding(level))),
+                        );
                         none_elems.extend(
                             ty_enc_fields
                                 .iter()
@@ -2666,11 +2679,7 @@ impl GenerationScope {
                     // size. Depth-suffix the binding (`tag_enc` -> `tag_enc2` at level >= 2) so each
                     // level's `Some(..)` final expr references its own size.
                     let tag_level = config.tag_depth + 1;
-                    let tag_enc_binding = if tag_level <= 1 {
-                        "tag_enc".to_owned()
-                    } else {
-                        format!("tag_enc{tag_level}")
-                    };
+                    let tag_enc_binding = tag_enc_binding(tag_level);
                     if config.optional_field {
                         deser_code.content.line("read_len.read_elems(1)?;");
                         deser_code.read_len_used = true;

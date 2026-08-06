@@ -1,0 +1,73 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{NullableHolderEncoding, TaggedNullableEncoding};
+
+#[derive(Clone, Debug)]
+pub struct NullableHolder {
+    pub f0: NullableInner,
+    pub f1: String,
+    pub encodings: Option<NullableHolderEncoding>,
+}
+
+impl NullableHolder {
+    pub fn new(f0: NullableInner, f1: String) -> Self {
+        Self {
+            f0,
+            f1,
+            encodings: None,
+        }
+    }
+}
+
+pub type NullableInner = Option<u64>;
+
+impl From<TaggedNullable> for NullableInner {
+    fn from(wrapper: TaggedNullable) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaggedNullable {
+    pub(crate) inner: NullableInner,
+    pub encodings: Option<TaggedNullableEncoding>,
+}
+
+impl TaggedNullable {
+    pub fn get(&self) -> NullableInner {
+        self.inner
+    }
+
+    pub fn new(inner: NullableInner) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<NullableInner> for TaggedNullable {
+    fn from(inner: NullableInner) -> Self {
+        TaggedNullable::new(inner)
+    }
+}

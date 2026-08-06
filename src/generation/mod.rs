@@ -2969,6 +2969,24 @@ pub(super) fn tag_encoding_infix(tag_level: usize) -> String {
     }
 }
 
+/// The LOCAL a mandatory `Tagged` level's `match .tag_sz()?` pattern binds its head size to, under
+/// `--preserve-encodings`. Depth-suffixed for the same reason [`tag_encoding_infix`] is: stacked
+/// levels nest their `match` blocks, so an un-suffixed binding would let the inner level shadow the
+/// outer and both final exprs would read the innermost size.
+///
+/// Shared rather than spelled twice because two emitters must agree on it: the `Tagged` arm that
+/// BINDS it, and the `Optional` arm's `None` branch, which re-states the already-consumed tag size
+/// for a null payload (the `Some` branch gets it threaded through the child's `.map(..)` instead).
+/// A drift between the two is not a compile error at generation time — it is an E0425 in the
+/// consumer's crate, or worse, a silently dropped head width.
+pub(super) fn tag_enc_binding(tag_level: usize) -> String {
+    if tag_level <= 1 {
+        "tag_enc".to_owned()
+    } else {
+        format!("tag_enc{tag_level}")
+    }
+}
+
 /// `tag_depth` is the number of tag levels already crossed on THIS member name (0 at the member
 /// root, incremented each time a `Tagged`/`OptionallyTagged` op recurses into its child under the
 /// same name). It drives `tag_encoding_infix` so stacked tags get distinct members. Name-changing
