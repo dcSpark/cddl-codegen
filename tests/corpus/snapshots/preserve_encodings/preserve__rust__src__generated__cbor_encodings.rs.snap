@@ -6,7 +6,6 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use super::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding, TagPresenceEncoding};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -135,8 +134,8 @@ pub struct CustomRecordHolderEncoding {
 pub struct CustomTablePositionsEncoding {
     pub len_encoding: LenEncoding,
     pub keyed_encoding: LenEncoding,
-    pub keyed_key_encodings: BTreeMap<HexTableStr, StringEncoding>,
-    pub keyed_value_encodings: BTreeMap<HexTableStr, Option<cbor_event::Sz>>,
+    pub keyed_key_encodings: BTreeMap<Vec<u8>, StringEncoding>,
+    pub keyed_value_encodings: BTreeMap<Vec<u8>, Option<cbor_event::Sz>>,
     pub valued_encoding: LenEncoding,
     pub valued_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
     pub valued_value_encodings: BTreeMap<u64, StringEncoding>,

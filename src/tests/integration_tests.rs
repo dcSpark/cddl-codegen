@@ -8913,14 +8913,13 @@ fn alias_of_marker_e2e() {
     let export = tests_dir.join("alias-of-marker-e2e/export/rust/src/generated");
     let generated_mod = std::fs::read_to_string(export.join("mod.rs")).unwrap();
     // The alias IS the marker's type: no wrapper is minted, so every custom codec's value argument is
-    // the hand-written extern itself.
-    for alias in [
-        "pub type PolicyIdV1 = PolicyId;",
-        "pub type PolicyIdV1Entry = PolicyId;",
-    ] {
+    // the hand-written extern itself — and no `pub type` either, because a pair-carrying alias whose
+    // name existed as a rust type would hand that name the marker's BUILT-IN codec as its standalone
+    // `to_cbor_bytes`/`from_cbor_bytes`, contradicting the custom wire every embed site writes.
+    for alias in ["pub type PolicyIdV1", "pub type PolicyIdV1Entry"] {
         assert!(
-            generated_mod.contains(alias),
-            "the alias must resolve to the marker's type ({alias}):\n{generated_mod}"
+            !generated_mod.contains(alias),
+            "a pair-carrying alias must mint no rust type ({alias}):\n{generated_mod}"
         );
     }
     let encodings = std::fs::read_to_string(export.join("cbor_encodings.rs")).unwrap();
@@ -8929,7 +8928,7 @@ fn alias_of_marker_e2e() {
     // key (the `PolicyId` the custom reader returned, not the text it consumed).
     for slot in [
         "pub p_encoding: StringEncoding",
-        "pub t_key_encodings: BTreeMap<PolicyIdV1Entry, StringEncoding>",
+        "pub t_key_encodings: BTreeMap<PolicyId, StringEncoding>",
         "pub v_value_encodings: BTreeMap<u64, StringEncoding>",
     ] {
         assert!(

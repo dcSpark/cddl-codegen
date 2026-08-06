@@ -119,6 +119,55 @@ impl AliasInfo {
         }
     }
 
+    /// Whether this entry's wire is owned by a `@custom_serialize`/`@custom_deserialize` codec
+    /// rather than by the aliased type's built-in one — the fact BOTH the routing and the
+    /// projection key on, so they cannot disagree.
+    ///
+    /// Read off this entry's OWN `rule_metadata`, never off `wire_metadata_inherited_from`. That is
+    /// not a shortcut: a rule that renames an annotated alias has the pair COPIED into its metadata
+    /// at registration (`parsing::strip_alias_for_registration`) because the `Alias` node the
+    /// emitters lift from is stripped there — so the metadata is where the facts actually live for
+    /// own and inherited alike, and the provenance field records only WHO wrote them. Consulting
+    /// the provenance instead would answer a different question (was this authored here?) than the
+    /// one both consumers ask (does a codec own this wire?).
+    ///
+    /// Either half counts, though only complete pairs survive to generation — a lone half is a
+    /// graceful rejection at the finalize seam. Keying on either is defense in depth: were a single
+    /// half ever to reach here, it routes embed sites, and an entry that routes must not also
+    /// project a standalone type whose codec contradicts it.
+    pub fn carries_custom_pair(&self) -> bool {
+        self.rule_metadata.as_ref().is_some_and(|metadata| {
+            metadata.custom_serialize.is_some() || metadata.custom_deserialize.is_some()
+        })
+    }
+
+    /// Whether the `Alias` wrapper NODE survives resolution. The node is not a projection — it is
+    /// the routing key the serialize/deserialize emitters look the pair up by, and the source the
+    /// enum-variant naming derives from — so a pair-carrying entry keeps it even though it emits no
+    /// `pub type`. See [`Self::emits_rust_alias`] for the other half of that split.
+    pub fn keeps_alias_node(&self) -> bool {
+        self.gen_rust_alias || self.carries_custom_pair()
+    }
+
+    /// Whether a `pub type` line is emitted for this entry in the RUST crate, and therefore whether
+    /// members/params/boundaries SPELL the alias name rather than the resolved base type.
+    ///
+    /// A pair-carrying alias emits none. The alias's standalone codec would be the aliased type's
+    /// blanket impl — nothing per-alias is emitted for the pair to displace — while every embed
+    /// site routes the pair, so keeping the name as a Rust type gives one CDDL name two wire forms,
+    /// selected by whether a caller went through the standalone entry point or through a holder.
+    /// Suppressing the projection removes the contradicting surface; the CDDL name still carries
+    /// the wire facts, it just no longer names a Rust type.
+    pub fn emits_rust_alias(&self) -> bool {
+        self.gen_rust_alias && !self.carries_custom_pair()
+    }
+
+    /// The wasm-face twin of [`Self::emits_rust_alias`]. Separate stored flags, one shared
+    /// suppression reason: the wasm `pub type` re-exposes the same contradicting standalone name.
+    pub fn emits_wasm_alias(&self) -> bool {
+        self.gen_wasm_alias && !self.carries_custom_pair()
+    }
+
     /// Record that this entry's wire-codec metadata came from `origin` rather than from the rule's
     /// own comment. `None` leaves it as the rule's own (the constructors' default).
     pub fn with_inherited_wire_metadata(mut self, origin: Option<AliasIdent>) -> Self {
@@ -419,6 +468,20 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, AliasInfo> {
         &self.type_aliases
+    }
+
+    /// Whether `ident` names an alias whose TYPE PROJECTION is suppressed — it routes a custom
+    /// (de)serializer pair, so it emits no `pub type` on either face and every position that would
+    /// otherwise SPELL its name must spell the resolved base type instead.
+    ///
+    /// One predicate for both faces on purpose: the suppression reason is the pair, which is
+    /// face-blind, so a rust member and a wasm member can never disagree about whether the name
+    /// exists. The `Alias` NODE still survives resolution — this is only about the spelling; see
+    /// [`AliasInfo::keeps_alias_node`] for the other half.
+    pub fn alias_projection_suppressed(&self, ident: &RustIdent) -> bool {
+        self.type_aliases
+            .get(&AliasIdent::Rust(ident.clone()))
+            .is_some_and(|info| info.carries_custom_pair())
     }
 
     /// Seed the rules `crate::recursion_boundary` decided to auto-`@newtype`, before any parsing.
@@ -1870,9 +1933,9 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             };
             let emitted_this_pass = if wasm {
-                alias_info.gen_wasm_alias
+                alias_info.emits_wasm_alias()
             } else {
-                alias_info.gen_rust_alias
+                alias_info.emits_rust_alias()
             };
             if !emitted_this_pass {
                 continue;
@@ -2147,9 +2210,12 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     /// The alias-substitution rule: a REGISTERED alias resolves to its base type, kept behind an
-    /// `Alias` wrapper when the alias generates a rust type (`gen_rust_alias` — the wrapper is what
-    /// preserves the alias's name for naming derivations) and substituted transparently when it
-    /// doesn't; an unregistered ident is `None` (the caller decides the fallback). This is the ONE
+    /// `Alias` wrapper when the alias [keeps its node](AliasInfo::keeps_alias_node) — because it
+    /// emits a rust type, OR because it carries a custom pair the emitters route through that node
+    /// (the wrapper is what preserves the alias's name for naming derivations and for the pair
+    /// lookup) — and substituted transparently when it doesn't; an unregistered ident is `None`
+    /// (the caller decides the fallback). Note the two are no longer the same question: a
+    /// pair-carrying alias keeps the node while emitting no `pub type`. This is the ONE
     /// owner of that rule: `new_type` (the canonical pipeline constructor) and the
     /// `--wrapper-requests` shape parser (generation/requests.rs `parse_shape_fragment`) both call it, so a
     /// leaf built outside the pipeline cannot drift from pipeline resolution — the drift is exactly
@@ -2158,7 +2224,7 @@ impl<'a> IntermediateTypes<'a> {
     /// unregistered reserved idents is `new_type`'s fallback, not part of the rule.
     pub fn resolve_alias(&self, alias_ident: &AliasIdent) -> Option<RustType> {
         self.type_aliases.get(alias_ident).map(|info| {
-            if info.gen_rust_alias {
+            if info.keeps_alias_node() {
                 info.base_type.clone().as_alias(alias_ident.clone())
             } else {
                 info.base_type.clone()
@@ -2829,7 +2895,7 @@ impl<'a> IntermediateTypes<'a> {
             let AliasIdent::Rust(ident) = alias_ident else {
                 continue;
             };
-            if !alias_info.gen_rust_alias || self.rust_struct(ident).is_some() {
+            if !alias_info.keeps_alias_node() || self.rust_struct(ident).is_some() {
                 continue;
             }
             if let Some(replacement) = self.resolve_alias(alias_ident) {

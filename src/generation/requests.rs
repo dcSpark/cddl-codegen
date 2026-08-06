@@ -859,7 +859,7 @@ fn describe_leaf_resolution(types: &IntermediateTypes, token: &str, ident: &Rust
     match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
         Some(info) => {
             let target = render_wrapper_shape(&info.base_type);
-            if info.gen_rust_alias {
+            if info.emits_rust_alias() {
                 format!("`{token}` (a kept alias resolving to `{target}`)")
             } else {
                 format!("`{token}` (transparently substituted to `{target}`)")

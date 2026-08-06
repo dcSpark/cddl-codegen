@@ -7921,11 +7921,14 @@ fn custom_codec_pair_on_extern_rule_rejects_gracefully() {
             ),
         );
         assert!(
-            src.contains(&format!("pub type {ident}V1 = {ident};"))
+            !src.contains(&format!("pub type {ident}V1"))
+                && src.contains(&format!("pub f: {ident},"))
                 && src.contains("my_ser(")
                 && src.contains("my_deser("),
-            "[{tag}] the alias road must resolve to the marker's type and route both directions \
-             through the custom fns, got:\n{src}"
+            "[{tag}] the alias road must resolve to the marker's type at the member position and \
+             route both directions through the custom fns, while minting NO type of its own — a \
+             `pub type {ident}V1 = {ident};` would hand the CDDL name a standalone codec (the \
+             marker's built-in one) contradicting the wire every embed site writes, got:\n{src}"
         );
     }
 }
@@ -8019,43 +8022,46 @@ fn custom_codec_pair_in_row_entry_slot_rejects_gracefully() {
     );
 }
 
-/// `@no_alias` together with the custom (de)serializer pair is rejected BY DESIGN, via a GRACEFUL
-/// `Err` (`record_rejection` → drained by `finalize`), never a `panic!`. `@no_alias` strips the type
-/// alias node the override is keyed on, so the pair goes with it and BOTH directions fall back to
-/// the default wire format — a SYMMETRIC drop, which is precisely what no round-trip test can see.
-/// The control is the same rule without `@no_alias`, which does emit both call sites.
+/// `@no_alias` beside the custom (de)serializer pair is ACCEPTED and REDUNDANT: it asks for exactly
+/// what the pair already guarantees, and both are honored.
+///
+/// It used to be refused, because `resolve_alias` stripped the alias node whenever the rule emitted
+/// no `pub type` — and that node is the key the emitters look the pair up by, so `@no_alias` really
+/// did take the pair with it and drop BOTH directions to the default wire (a symmetric drop no
+/// round-trip test can see). Node survival no longer keys on emission: an entry keeps its node if it
+/// emits a type OR carries a pair. A pair-carrying alias then suppresses its own projection anyway,
+/// which is precisely what the directive was asking for.
+///
+/// The acceptance criterion is byte-identity, not merely "generates": the directive must be a no-op
+/// in the presence of the pair, on every emitted file. Asserting the whole file map equal is what
+/// makes that a statement about the OUTPUT rather than about the two lines a substring check would
+/// look at.
 #[test]
-fn custom_codec_pair_with_no_alias_rejects_gracefully() {
-    let err = expect_graceful_rejection(
+fn no_alias_beside_a_custom_codec_pair_is_accepted_and_generates_byte_identically() {
+    let with_directive = expect_custom_codec_source(
         "custom_no_alias",
         "cb = bytes ; @no_alias @custom_serialize my_ser @custom_deserialize my_deser\n\
          holder = [f: cb]\n",
-        &[],
     );
-    assert!(
-        err.contains(
-            "@custom_serialize together with `@no_alias` on `Cb`: `@no_alias` removes the \
-             type-alias node the custom (de)serializer override is keyed on, so the pair goes with \
-             it and BOTH directions silently fall back to the default wire format."
-        ),
-        "the @no_alias rejection must name the combination and the symmetric drop, got:\n{err}"
-    );
-    assert!(
-        err.contains("Drop `@no_alias` to keep the alias the pair overrides, or drop the pair."),
-        "the rejection must name both ways out, got:\n{err}"
-    );
-    assert!(
-        err.contains("@custom_deserialize together with `@no_alias` on `Cb`:"),
-        "each half of the pair gets its own rejection line, got:\n{err}"
-    );
-    // CONTROL: without `@no_alias` the identical rule honors the pair.
-    let src = expect_custom_codec_source(
+    let without = expect_custom_codec_source(
         "custom_no_alias_control",
         "cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]\n",
     );
+    assert_eq!(
+        with_directive, without,
+        "`@no_alias` beside a complete pair must be a byte-identical no-op: the pair already \
+         suppresses the type projection the directive asks to remove"
+    );
     assert!(
-        src.contains("my_ser(") && src.contains("my_deser("),
-        "the same rule without @no_alias must emit both custom call sites, got:\n{src}"
+        with_directive.contains("my_ser(") && with_directive.contains("my_deser("),
+        "control: the combination must still route BOTH directions through the pair — the retired \
+         refusal existed because the node carrying that routing was dropped, so its survival is \
+         what the acceptance rests on, got:\n{with_directive}"
+    );
+    assert!(
+        !with_directive.contains("pub type Cb"),
+        "control: the suppression the directive redundantly requests is genuinely in effect, so \
+         the byte-identity above is not two copies of an emitted alias, got:\n{with_directive}"
     );
 }
 
@@ -8391,18 +8397,21 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
         "a generic record definition's concrete instance must get thin delegation and route its \
          holder through the same pair, got:\n{src}"
     );
-    // Scope boundary: named collections are not records and own no generated class impl. Their
-    // existing pair is silently dropped at both directions; B3-031 must not newly claim only the
-    // writer by routing their Root(Rust) reference through `my_ser`.
-    let src = expect_custom_codec_source(
+    // Scope boundary: named collections are not records and own no generated class impl, so
+    // whole-record delegation must not reach them by routing their `Root(Rust)` reference through
+    // `my_ser`. The boundary is now enforced by REFUSING the spelling outright rather than by
+    // generating it with both halves dropped — a collection typedef has nothing for either half to
+    // displace, so the pair cannot be honored there in any direction.
+    let err = expect_graceful_rejection(
         "custom_named_array_nonrecord_boundary",
         "items = [* uint] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
          holder = [f: items]\n",
+        &[],
     );
     assert!(
-        !src.contains("my_ser(") && !src.contains("my_deser(raw)"),
-        "a named collection is outside whole-record delegation; B3-031 must not alter its existing \
-         silent-drop boundary, got:\n{src}"
+        err.contains("@custom_serialize on `Items`: a named collection rule")
+            && err.contains("@custom_deserialize on `Items`: a named collection rule"),
+        "a named collection must refuse the pair in BOTH directions rather than drop it, got:\n{err}"
     );
     // CONTROL 2: a PLAIN GROUP rule's trailing comment binds to its LAST MEMBER's slot (the
     // `@name plain-group-trailing` seam), where the pair is a FIELD-level directive and IS honored.

@@ -463,8 +463,6 @@ pub enum CborPayloadEnum {
     I2,
 }
 
-pub type CustomBytes = Vec<u8>;
-
 #[derive(Clone, Debug)]
 pub struct CustomFieldHolder {
     pub nested: StructWithCustomSerialization,
@@ -514,16 +512,13 @@ impl CustomRecordHolder {
 
 #[derive(Clone, Debug)]
 pub struct CustomTablePositions {
-    pub keyed: OrderedHashMap<HexTableStr, u64>,
-    pub valued: OrderedHashMap<u64, HexTableStr>,
+    pub keyed: OrderedHashMap<Vec<u8>, u64>,
+    pub valued: OrderedHashMap<u64, Vec<u8>>,
     pub encodings: Option<CustomTablePositionsEncoding>,
 }
 
 impl CustomTablePositions {
-    pub fn new(
-        keyed: OrderedHashMap<HexTableStr, u64>,
-        valued: OrderedHashMap<u64, HexTableStr>,
-    ) -> Self {
+    pub fn new(keyed: OrderedHashMap<Vec<u8>, u64>, valued: OrderedHashMap<u64, Vec<u8>>) -> Self {
         Self {
             keyed,
             valued,
@@ -1000,13 +995,11 @@ impl From<Hash> for Vec<u8> {
     }
 }
 
-pub type HexTableStr = Vec<u8>;
-
 #[derive(Clone, Debug)]
 pub struct MapStructWithCustomSerialization {
     pub chunked: Vec<u8>,
     pub hexed: Vec<u8>,
-    pub aliased: CustomBytes,
+    pub aliased: Vec<u8>,
     pub tagged: u64,
     pub plain: u64,
     pub encodings: Option<MapStructWithCustomSerializationEncoding>,
@@ -1016,7 +1009,7 @@ impl MapStructWithCustomSerialization {
     pub fn new(
         chunked: Vec<u8>,
         hexed: Vec<u8>,
-        aliased: CustomBytes,
+        aliased: Vec<u8>,
         tagged: u64,
         plain: u64,
     ) -> Self {
@@ -1917,20 +1910,20 @@ impl TryFrom<String> for String64 {
 
 #[derive(Clone, Debug)]
 pub struct StructWithCustomSerialization {
-    pub custom_bytes: CustomBytes,
+    pub custom_bytes: Vec<u8>,
     pub field: Vec<u8>,
-    pub overridden: CustomBytes,
-    pub tagged1: CustomBytes,
+    pub overridden: Vec<u8>,
+    pub tagged1: Vec<u8>,
     pub tagged2: u64,
     pub encodings: Option<StructWithCustomSerializationEncoding>,
 }
 
 impl StructWithCustomSerialization {
     pub fn new(
-        custom_bytes: CustomBytes,
+        custom_bytes: Vec<u8>,
         field: Vec<u8>,
-        overridden: CustomBytes,
-        tagged1: CustomBytes,
+        overridden: Vec<u8>,
+        tagged1: Vec<u8>,
         tagged2: u64,
     ) -> Self {
         Self {
