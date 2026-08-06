@@ -1,0 +1,28 @@
+; An occurrence marker on the single entry of a single-entry group-choice ARM
+; (`t = [ x: uint // ? kv ]`) is REFUSED gracefully. A one-entry arm registers no record: the
+; entry's TYPE goes straight into the enum variant, and a variant holds exactly one value, so there
+; is nowhere for a repetition count to live and the marker was read by nothing at all. `? kv`,
+; `* kv`, `+ kv` and `2*3 kv` each generated output BYTE-IDENTICAL to the unmarked `// kv`, at exit
+; 0 — and the codec that output carries then rejects the counts the spec admits: the empty encoding
+; a `?` / `*` / `0*n` arm allows comes back as `No variant matched … Definite length mismatch:
+; found 0`, and every 2-or-more encoding a `*` / `+` / `n*m` arm allows fails the same way. The
+; defect is not group-specific — `[ x: uint // ? a: tstr ]` was byte-identical to its unmarked twin
+; too — so the guard reads the ENTRY's occurrence and covers a plain group, an alias to one, a
+; tagged one, and a plain keyed or bare member alike, in BOTH representations.
+; Honoring the marker is not a guard's work: a zero-case variant has to be TELLABLE on the wire,
+; which means the sibling arms' own length checks must exclude the empty form — the occurrence/
+; bounds program's scope (the queue's "unify non-final optional/repeated array decoding").
+; The refusal is honest because the remedy it names is verified to generate: a TYPE choice over one
+; named rule per count — `xarr = [x: uint]`, `kvarr = [kv]`, `empty = []`, `t = xarr / kvarr /
+; empty` for `?`, with `kvs = [* kv]` in place of `kvarr` for `*`. The named-array WRAPPER
+; (`w = [kv]` referenced from the arm) is deliberately NOT that remedy: it nests the group in an
+; array of its own and so cannot express the empty case at all.
+; Two deliberate non-firings: an absent marker and the pedantic `1*1` already mean exactly once, so
+; dropping them narrows nothing (the same carve-out the array record-field loop's `narrows` guard
+; makes); and an inline-group entry (`? (a: uint, b: uint)`) is already refused in entry position
+; for EVERY marker including none, so it keeps that message — one message per problem.
+; Message identity, the per-marker × per-rep matrix, the profile independence and the neighbouring
+; guards that must not be shadowed are pinned by
+; `occurrence_on_single_entry_group_choice_arm_rejects_gracefully`.
+kv = (a: uint, b: uint)
+t = [ x: uint // ? kv ]

@@ -5116,6 +5116,297 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
     );
 }
 
+/// An occurrence marker on the single entry of a single-entry group-choice ARM is refused.
+///
+/// A one-entry arm registers no record at all — the entry's TYPE goes straight into the enum
+/// variant, and a variant holds exactly one value — so there is nowhere for a repetition count to
+/// live and the marker was read by NOTHING. That made it the quietest defect class on the board:
+/// `[ x: uint // ? kv ]`, `// * kv`, `// + kv` and `// 2*3 kv` each generated output
+/// byte-identical to the unmarked `// kv` at exit 0, in both representations, through an alias and
+/// under a tag, and NOT only for plain groups — `[ x: uint // ? a: tstr ]` was byte-identical to
+/// its unmarked twin too. The codec that identical output carries then rejects exactly the counts
+/// the marker admits: the empty encoding a `?` / `*` / `0*n` arm allows comes back as
+/// `No variant matched … Definite length mismatch: found 0`, and every 2-or-more encoding fails
+/// the same way.
+///
+/// Honoring the marker would need a zero-case variant that is TELLABLE on the wire — the sibling
+/// arms' own length checks have to exclude the empty form — which is the occurrence/bounds
+/// program's scope, so this is a refusal. It is an honest one because the remedy it names is
+/// asserted here to generate in BOTH reps: a TYPE choice over one named rule per count. The
+/// named-array wrapper (`w = [kv]` from the arm) is deliberately not that remedy — it nests the
+/// group in an array of its own and cannot express the empty case — so the message must never
+/// name it.
+///
+/// Pins the message (site, arm source spelling, the rep-specific remedy) across the per-marker ×
+/// per-rep matrix on every profile, the two deliberate non-firings (`1*1` and an absent marker),
+/// the verified remedies, and the neighbouring guards this one must not shadow or double-report:
+/// the multi-entry arm's optional-plain-group refusal, the rest-tail-in-a-choice-arm refusal, and
+/// the inline-group entry-position refusal.
+#[test]
+fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_armoccur_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "armoccur_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "kv = (a: uint, b: uint)\n";
+    const ALIAS: &str = "kv = (a: uint, b: uint)\nkv_alias = kv\n";
+    const WHY: &str = "a single-entry arm becomes ONE enum variant holding exactly one value, so \
+                       the marker is dropped";
+
+    // The bare ARRAY spelling, in full: the site (rule + the arm exactly as written), why the
+    // dropped marker is wire-wrong, the array-framed TYPE-choice remedy, and what stays supported.
+    let bare = run(&format!("{GROUP}t = [ x: uint // ? kv ]\n"), "bare", &[])
+        .expect_err("an occurrence marker on a single-entry arm must reject gracefully");
+    assert!(
+        bare.contains("rule `t`: the group-choice arm `? kv` carries an occurrence marker"),
+        "rejection should name the rule and the arm as written, got: {bare}"
+    );
+    assert!(
+        bare.contains(WHY),
+        "rejection should explain that the marker is dropped, got: {bare}"
+    );
+    assert!(
+        bare.contains("rejected by a decoder the spec says must accept it"),
+        "rejection should name the wire consequence, got: {bare}"
+    );
+    assert!(
+        bare.contains("`one = [ … ]`") && bare.contains("`t = one / none / many`"),
+        "rejection should name the array TYPE-choice remedy, got: {bare}"
+    );
+    assert!(
+        bare.contains("the pedantic `1*1`, which already means exactly once"),
+        "rejection should say what stays supported, got: {bare}"
+    );
+    // The named-array WRAPPER is not the remedy here: it cannot express the empty case.
+    assert!(
+        !bare.contains("`w = [kv]`"),
+        "the wrapper remedy cannot express the empty case and must not be advertised, got: {bare}"
+    );
+
+    // Per-marker × per-rep. Every marker except an absent one and `1*1` refuses, and the arm is
+    // quoted back verbatim so the author can find which of several arms is meant.
+    for (marker, tag) in [
+        ("?", "opt"),
+        ("*", "star"),
+        ("+", "plus"),
+        ("2*3", "bounded"),
+        ("*3", "upper_only"),
+        ("2*", "lower_only"),
+    ] {
+        for (open, close, rep) in [("[", "]", "array"), ("{", "}", "map")] {
+            let spec = format!("{GROUP}t = {open} x: uint // {marker} kv {close}\n");
+            let msg = run(&spec, &format!("{tag}_{rep}"), &[])
+                .expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+            assert!(
+                msg.contains(&format!(
+                    "the group-choice arm `{marker} kv` carries an occurrence marker"
+                )),
+                "the {marker} marker in a {rep} arm should reject naming the arm, got: {msg}"
+            );
+        }
+    }
+
+    // The remedy is representation-specific in more than its brackets: an array alternative can
+    // reference the plain group directly and can spell a repeating count as a homogeneous array,
+    // while a MAP-rep record refuses a keyless plain-group member outright — so the map text
+    // spells members and offers no 2-or-more form (map keys are unique; there is no such encoding).
+    let map_msg = run(
+        &format!("{GROUP}t = {{ x: uint // ? kv }}\n"),
+        "map_body",
+        &[],
+    )
+    .expect_err("the map rep must reject too");
+    assert!(
+        map_msg.contains("`one = { … }` spelling the alternative's own members")
+            && map_msg.contains("`t = one / none`")
+            && map_msg.contains("map keys are unique"),
+        "the map rep should carry its own remedy text, got: {map_msg}"
+    );
+    assert!(
+        !map_msg.contains("`many = "),
+        "the map rep must not offer a repeating alternative, got: {map_msg}"
+    );
+
+    // The guard reads the ENTRY's occurrence, not the entry's shape, so every arm shape it can
+    // carry lands on the one message — including the ones that are not plain groups at all.
+    for (spec, tag, needle) in [
+        // an ALIAS to the plain group.
+        (
+            format!("{ALIAS}t = [ x: uint // ? kv_alias ]\n"),
+            "alias",
+            "the group-choice arm `? kv_alias` carries an occurrence marker",
+        ),
+        // a TAG around the group.
+        (
+            format!("{GROUP}t = [ x: uint // ? #6.10(kv) ]\n"),
+            "tagged",
+            "the group-choice arm `? #6.10(kv)` carries an occurrence marker",
+        ),
+        // NOT group-specific: an ordinary keyed member arm dropped its marker identically.
+        (
+            "t = [ x: uint // ? a: tstr ]\n".to_owned(),
+            "keyed_member",
+            "the group-choice arm `? a: tstr` carries an occurrence marker",
+        ),
+        // a BARE typename arm, whose variant name is minted from the type.
+        (
+            "t = [ x: uint // * tstr ]\n".to_owned(),
+            "bare_typename",
+            "the group-choice arm `* tstr` carries an occurrence marker",
+        ),
+        // an explicitly `@name`d arm: the name settles the variant, it does not excuse the marker.
+        (
+            format!("{GROUP}t = [ x: uint // ; @name Alt\n ? kv ]\n"),
+            "named_arm",
+            "carries an occurrence marker",
+        ),
+        // rule ORDER must not matter: the plain-group registry is settled in a pre-pass.
+        (
+            "t = [ x: uint // ? kv ]\nkv = (a: uint, b: uint)\n".to_owned(),
+            "reversed",
+            "the group-choice arm `? kv` carries an occurrence marker",
+        ),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} spelling should reject with `{needle}`, got: {msg}"
+        );
+    }
+
+    // Profile independence: the refusal is at parsing, so no flag combination reaches an emission
+    // that could differ. (All of these formerly exited 0 with the silently-narrowed codec.)
+    for (extra, tag) in [
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        for (spec, spelling) in [
+            (format!("{GROUP}t = [ x: uint // ? kv ]\n"), "array"),
+            (format!("{GROUP}t = {{ x: uint // * kv }}\n"), "map"),
+        ] {
+            let msg = run(&spec, &format!("{tag}_{spelling}"), &extra)
+                .expect_err("the refusal must fire on every profile");
+            assert!(
+                msg.contains("carries an occurrence marker"),
+                "the {spelling} spelling on {tag} should carry the same body, got: {msg}"
+            );
+        }
+    }
+
+    // The remedies the message names must actually work — otherwise it sends the author into
+    // another wall. Both reps, and the `*` form the array text offers.
+    for (spec, tag) in [
+        (
+            format!(
+                "{GROUP}xarr = [x: uint]\nkvarr = [kv]\nempty = []\nt = xarr / kvarr / empty\n"
+            ),
+            "remedy_array_optional",
+        ),
+        (
+            format!("{GROUP}xarr = [x: uint]\nkvs = [* kv]\nt = xarr / kvs\n"),
+            "remedy_array_repeating",
+        ),
+        (
+            "xmap = {x: uint}\nkvmap = {a: uint, b: uint}\nempty = {}\nt = xmap / kvmap / empty\n"
+                .to_owned(),
+            "remedy_map",
+        ),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "the remedy `{}` must generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // Neighbours the guard must NOT widen into. The unmarked arm is the supported core in both
+    // reps, and `1*1` is exactly-once however pedantically spelled — the same carve-out the array
+    // record-field loop's `narrows` guard makes, so dropping it narrows nothing.
+    for (spec, tag) in [
+        (format!("{GROUP}t = [ x: uint // kv ]\n"), "mandatory_array"),
+        (format!("{GROUP}t = {{ x: uint // kv }}\n"), "mandatory_map"),
+        (
+            format!("{GROUP}t = [ x: uint // 1*1 kv ]\n"),
+            "exact_1x1_array",
+        ),
+        (
+            format!("{GROUP}t = {{ x: uint // 1*1 kv }}\n"),
+            "exact_1x1_map",
+        ),
+        // a MULTI-entry arm carrying `?` on a member routes the record walk, which has always
+        // handled optional non-group fields.
+        (
+            "t = [ x: uint // ? c: uint, d: uint ]\n".to_owned(),
+            "multi_entry_optional_scalar",
+        ),
+        // a count-permitting occurrence in a SINGLE-choice group is the record path's rest tail,
+        // a different seam entirely.
+        (format!("{GROUP}t = [ * kv ]\n"), "single_choice_rest_tail"),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // One message per problem: the three neighbouring refusals keep their own text and this guard
+    // never joins in, because each of their inputs is a shape it does not see (a multi-entry arm,
+    // or an inline group).
+    for (spec, tag, needle) in [
+        // MULTI-entry arm with `?` on a plain-group member: the record path's own refusal.
+        (
+            format!("{GROUP}t = [ x: uint // ? kv, c: uint ]\n"),
+            "multi_entry_optional_group",
+            "is an OPTIONAL (`?`) reference to the plain group `kv`",
+        ),
+        // MULTI-entry arm ending in a rest tail: the choice-arm placement refusal.
+        (
+            format!("{GROUP}t = [ x: uint // c: uint, * kv ]\n"),
+            "multi_entry_rest_tail",
+            "an open-array rest tail (`* t`) inside a group-choice arm",
+        ),
+        // an INLINE group entry is refused in entry position for EVERY marker including none, so
+        // it must keep that message rather than be told about its `?`.
+        (
+            "t = [ x: uint // ? (a: uint, b: uint) ]\n".to_owned(),
+            "inline_group_arm",
+            "in entry position is unsupported",
+        ),
+    ] {
+        let msg = run(&spec, tag, &[]).expect_err(&format!("`{}` must reject", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} neighbour should keep its own message, got: {msg}"
+        );
+        assert!(
+            !msg.contains("carries an occurrence marker"),
+            "the {tag} neighbour must not be double-reported by this guard, got: {msg}"
+        );
+    }
+}
+
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
 /// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
 /// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because

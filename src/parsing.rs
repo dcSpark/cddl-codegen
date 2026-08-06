@@ -931,6 +931,97 @@ fn reject_unnameable_arm_variant_name(
     ));
 }
 
+/// An occurrence marker on the single entry of a single-entry group-choice arm is REFUSED.
+///
+/// A one-entry arm never registers a record: its entry's TYPE goes straight into the enum variant,
+/// and a variant holds exactly one value. There is nowhere for a repetition count to live, so the
+/// marker was read by nothing at all — `[ x: uint // ? kv ]`, `// * kv`, `// + kv` and `// 2*3 kv`
+/// each generated output BYTE-IDENTICAL to the unmarked `// kv`, at exit 0. That is the silent
+/// half of the defect; the loud half is on the wire, where the emitted decoder then rejects the
+/// counts the spec admits: the empty encoding a `?` / `*` / `0*n` arm allows comes back as
+/// `No variant matched … Definite length mismatch: found 0`, and every 2-or-more encoding a `*` /
+/// `+` / `n*m` arm allows fails the same way.
+///
+/// Honoring the marker is not a guard's work — a zero-case variant has to be TELLABLE on the wire,
+/// which means the sibling arms' own length checks must exclude the empty form, and that is the
+/// occurrence/bounds program's scope (the queue's "unify non-final optional/repeated array
+/// decoding"). So this is a refusal, and it is an honest one because the remedy it names is
+/// verified to generate in both representations: a TYPE choice over one named rule per count
+/// (`xarr = [x: uint]`, `kvarr = [kv]`, `empty = []`, `t = xarr / kvarr / empty` for `?`;
+/// `kvs = [* kv]` in place of `kvarr` for `*`). The named-array WRAPPER (`w = [kv]` referenced
+/// from the arm) is deliberately NOT the remedy named here: it nests the group in an array of its
+/// own and so cannot express the empty case at all.
+///
+/// Read off the ENTRY's own occurrence, so it covers every entry shape the arm can take — a plain
+/// group, an alias to one, a tagged one, and a plain keyed or bare member (the defect is not
+/// group-specific: `[ x: uint // ? a: tstr ]` was byte-identical to its unmarked twin too). Two
+/// deliberate non-firings:
+/// - `1*1` (and an absent marker) already mean exactly once, so dropping them narrows nothing.
+///   Same pedantic-exactly-once carve-out the array record-field loop's `narrows` guard makes.
+/// - an `InlineGroup` entry, which the entry-position refusal in `group_entry_to_type` already
+///   rejects on its own terms for EVERY marker including none — one message per problem.
+fn reject_occurrence_on_single_entry_arm(
+    types: &mut IntermediateTypes,
+    name: &RustIdent,
+    group_entry: &GroupEntry,
+    rep: Representation,
+) {
+    let occur = match group_entry {
+        GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref(),
+        GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
+        GroupEntry::InlineGroup { .. } => None,
+    };
+    let marked = occur
+        .map(|o| {
+            !matches!(
+                o.occur,
+                Occur::Exact {
+                    lower: Some(1),
+                    upper: Some(1),
+                    ..
+                }
+            )
+        })
+        .unwrap_or(false);
+    if !marked {
+        return;
+    }
+    let site = rejection_site(types, Some(name), "anonymous group choice");
+    let source_name = source_rule_name_of(types, name);
+    // The remedy is representation-specific in more than its brackets: an array alternative can
+    // reference the plain group directly (`kvarr = [kv]`, verified) and can spell a repeating count
+    // as a homogeneous array (`kvs = [* kv]`, verified), while a MAP-rep record refuses a keyless
+    // plain-group member outright, so the map alternative spells the members and has no 2-or-more
+    // form to offer — map keys are unique, so there is no such encoding to express.
+    let remedy = match rep {
+        Representation::Array => format!(
+            "Give each count its own alternative as a named rule and select between them with a \
+             TYPE choice (`/`), which is where a per-alternative count CAN be spelled: \
+             `one = [ … ]` holding the alternative's contents, `none = []` for the empty case, \
+             `many = [* … ]` for a repeating one, then `{source_name} = one / none / many` — one \
+             rule per arm of the original `//` choice."
+        ),
+        Representation::Map => format!(
+            "Give each count its own alternative as a named rule and select between them with a \
+             TYPE choice (`/`), which is where a per-alternative count CAN be spelled: \
+             `one = {{ … }}` spelling the alternative's own members and `none = {{}}` for the empty \
+             case, then `{source_name} = one / none` — one rule per arm of the original `//` \
+             choice (map keys are unique, so a repeated fixed-key alternative has no 2-or-more \
+             encoding to spell)."
+        ),
+    };
+    types.record_rejection(format!(
+        "{site}: the group-choice arm `{group_entry}` carries an occurrence marker (`?` / `*` / \
+         `+` / `n*m`), which is unsupported — a single-entry arm becomes ONE enum variant holding \
+         exactly one value, so the marker is dropped and the emitted codec writes, and accepts, \
+         exactly one repetition of it. Every count the marker admits and that variant cannot hold \
+         — the EMPTY encoding under `?` / `*` / `0*n`, every 2-or-more encoding under `*` / `+` / \
+         `n*m` — is then rejected by a decoder the spec says must accept it. {remedy} (An arm with \
+         NO marker is supported as it stands, as is the pedantic `1*1`, which already means \
+         exactly once.)"
+    ));
+}
+
 /// The well-known-tag semantics registry: THE single place mapping a CBOR tag number to the
 /// duplicate-handling policy its IANA-registered semantics imply, applied wherever the tag directly
 /// wraps a homogeneous occurrence collection (the shape the array/table construction sites already
@@ -7504,6 +7595,7 @@ pub fn parse_group(
                 // We might end up doing this anyway to support table-maps in choices though.
                 if group_choice.group_entries.len() == 1 {
                     let group_entry = &group_choice.group_entries.first().unwrap().0;
+                    reject_occurrence_on_single_entry_arm(types, name, group_entry, rep);
                     let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
                     // Resolve aliases first: an alias is transparent, so an arm spelled
                     // `kv_alias` must materialize and embed the plain group exactly like the
