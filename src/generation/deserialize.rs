@@ -340,6 +340,34 @@ fn line_unit_value(deser_code: &mut DeserializationCode, before_after: &Deserial
     }
 }
 
+/// Whether a `.cbor` payload's target carries NO value of its own — the test the payload arm
+/// applies to choose between reading with a discarding wrapper and STAGING the read into
+/// `let {var}_payload = …;`. Callers gate it on `!cli.preserve_encodings`, which is where the
+/// profile dependence lives: with encodings on, a fixed value carries one and nothing here is
+/// value-less.
+///
+/// The property belongs to the whole encoding CHAIN, not to its root. A `Fixed` root stores
+/// nothing, and a mandatory `Tagged` operation over one stores nothing either — the tag number is a
+/// constant, verified on the way past, and the arm it emits evaluates to `()` like its child. So
+/// `bytes .cbor #6.1(42)` is exactly as value-less as `bytes .cbor 42`, and testing only the root
+/// staged the tagged spelling: `let k_payload = ();` followed by a bare `k_payload` line in the
+/// discarding STATEMENT slots a fixed member is read in (an array struct's field sequence, a map
+/// entry's presence closure), which is not Rust and aborted at rustfmt rather than refusing.
+///
+/// Two operations are deliberately NOT seen through. `CBORBytes` — a `.cbor` inside a `.cbor` on one
+/// chain — is refused at parse before generation ever sees it (`nested_cbor_payload_rejects_gracefully`),
+/// so there is no such child to recurse into. `OptionallyTagged` records the tag's PRESENCE, which
+/// is a value the caller's position has to receive in every profile.
+fn payload_is_value_less(child: &SerializingRustType) -> bool {
+    match child {
+        SerializingRustType::Root(ConceptualRustType::Fixed(_), _) => true,
+        SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(_), inner) => {
+            payload_is_value_less(inner)
+        }
+        _ => false,
+    }
+}
+
 // Adds a fixed length check if length is fixed, reads the mandatory amount if there are optional fields, or nothing for dynamic lengths
 pub(super) fn add_deserialize_initial_len_check(
     deser_body: &mut dyn CodeBlock,
@@ -2684,11 +2712,14 @@ impl GenerationScope {
                     // entry's `k_present = (|| { .. })()?` block) a bare expression line is not Rust.
                     // Under `--preserve-encodings` a fixed value DOES carry an encoding, so it is a
                     // value like any other and this leg must not take it.
-                    let value_less_payload = !cli.preserve_encodings
-                        && matches!(
-                            *child,
-                            SerializingRustType::Root(ConceptualRustType::Fixed(_), _)
-                        );
+                    //
+                    // Value-less-ness is a property of the whole encoding CHAIN, not of its root: a
+                    // mandatory `Tagged` operation stores nothing of its own without encodings
+                    // either (the number is a constant, verified on the way past), so
+                    // `bytes .cbor #6.1(42)` is exactly as value-less as `bytes .cbor 42` and must
+                    // take the same leg.
+                    let value_less_payload =
+                        !cli.preserve_encodings && payload_is_value_less(&child);
                     if value_less_payload {
                         self.generate_deserialize(
                             types,
