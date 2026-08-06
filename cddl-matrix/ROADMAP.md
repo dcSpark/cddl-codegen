@@ -266,6 +266,21 @@ ledgered here (that's what the probe/gate error messages point at).
   such hand-written standalone wrappers — the hand-maintenance cost grows with that count inside one
   crate, so that is the dimension to watch rather than a second consumer appearing.
 
+- **A FIELD-level single custom-codec half is accepted at exit 0 and asymmetric: the declared
+  direction routes the named function, the opposite direction keeps the field type's generated
+  codec.** `t = [ f: bytes, ; @custom_serialize ws_only ]` emits `ws_only(serializer, &self.f)` on
+  the write path while the read path stays `raw.bytes()` — the same read-one-wire/write-another
+  divergence whose RULE-level spellings are now both refused (a single half on a named record rule,
+  and — delivered with the one-wire-form alias work — a single half on a transparent alias rule),
+  left open at the field slot those rejections do not reach. Probed 2026-08-06 on the delivered
+  binary (`0527a034`), default profile, `--wasm=false`, array-record field; not probed: map-record
+  fields, preserve/canonical profiles, wasm/json faces, or whether any committed fixture carries a
+  lone field half (none is known to). Fix shape mirrors the alias twin: refuse a lone half at the
+  field slot with the write-both-halves remedy — unless a deliberate use for a one-directional
+  field override surfaces, which nothing documents today (`comment_dsl.mdx` shows field pairs only
+  complete). Reopening-through-delivery signal: this is a candidate next-cycle card, not a
+  deferral — the divergence ships silently in any spec that hits it.
+
 - **A type-choice ARM or member declared as `bytes .cbor <alias>` changes NAME, not wire, once the
   alias survives to the arm.** Measured 2026-08-03 while fixing the wire half of the same seam (the
   alias's `@custom_serialize`/`@custom_deserialize` pair, which the arm now routes through in both
