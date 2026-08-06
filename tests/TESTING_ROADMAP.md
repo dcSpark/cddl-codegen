@@ -493,7 +493,14 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     pins message TEXT; this extends the convention so the remedy half of the contract is executed,
     not just spelled. Sweep the existing family for remedies that are only text-pinned and add the
     generate leg where one is missing; new refusals adopt the pattern from the start (the
-    table-domain and tagged-domain tests are the templates).
+    table-domain and tagged-domain tests are the templates). Third proven instance, 2026-08-06,
+    and it extends the claim's reach to LEDGER prose: a findings entry's recommended remedy
+    (`{ c: [kv] }` for the keyed plain-group map member) was itself refused — as a conflicting
+    representation, a different wall — and only the pickup re-probe caught it before the refusal
+    message shipped naming it; the delivered test's "the remedy must actually work" legs are this
+    pattern applied from the start (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`).
+    A remedy string is executable wherever it lives: in an emitted message it gets a pinned
+    generate leg, in a findings entry it gets executed at pickup.
 
 ## Standing-system residuals (recur-first)
 

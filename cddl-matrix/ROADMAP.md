@@ -45,17 +45,25 @@ matrix's own side — as opposed to in the generator, which is the findings ledg
 kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
 (deferred, so each names the observable that would reopen it).
 
-- **Enumerate the bare named-group REFERENCE kind (`grpent.groupname`) across the table roles.**
-  Buildable now, and the payoff is already in hand: `{ * coords => uint }` and `{ * uint => coords }`
-  (a plain group as table key or value) are refused — one spelling of them used to abort at
-  generation on a raw unwrap while the other emitted non-conformant CBOR at exit 0 (§ findings, "A
-  plain group SPLICED into a MAP-representation slot…"). Both were modeled by NO containment cell:
-  the `grpent.groupname` kind has array-element and group-choice-arm cells only, so the two table
-  roles render blank in the coverage grid and neither defect was visible to any projection. Add the
-  two cells with truthful verdicts (reject rows carrying the refusal evidence), plus the
-  array-wrapped remedy (`{ * uint => [coords] }`) as the accept row that shows the boundary rather
-  than only its refused side, and sweep the remaining roles the kind can legally sit in for the same
-  hole while there. NB this defect class is also one synthetic instance shy of the
+- **Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS
+  and member MODIFIERS — two explicit axes, not a "remaining roles" sweep.** Buildable now, and the
+  payoff is measured: every defect yet found in this kind's cells was caught by per-delivery ad-hoc
+  probing rather than any projection, because each sat on an axis the grid does not model. The two
+  TABLE roles (`{ * coords => uint }` / `{ * uint => coords }`) — one aborted on a raw unwrap, the
+  other emitted non-conformant CBOR at exit 0 — are now refused
+  (`plain_group_table_domain_rejects_gracefully_at_both_spellings`). The 2026-08-06 cycle then
+  proved the MODIFIER axis is live too, each flavor breaking DIFFERENTLY: the KEYED struct-map
+  member and its TAGGED flavor emitted silent non-conformant wire at exit 0, its OPTIONAL flavor
+  panicked, and a single-entry map group-choice arm emitted a serializer and a deserializer that
+  disagreed with each other — all now refused
+  (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`) — while the ARRAY-rep
+  OPTIONAL field and the ALIAS in array position still panic (§ findings, the two entries above,
+  the alias one at a different site per profile). So enumerate the product: placement (array
+  element, array-rep field, struct-map member, table key, table value, map/array group-choice arm)
+  × modifier (bare, keyed, `?`-optional, tagged, alias-indirected), with truthful verdicts —
+  accept rows where the splice is conformant (array placements) or a wrapping restores it (the
+  named-array remedies), reject rows carrying the refusal evidence, and the two still-panicking
+  cells as defect rows that flip when their findings entries close. NB this defect class is also one synthetic instance shy of the
   grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
