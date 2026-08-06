@@ -8114,6 +8114,184 @@ fn same_major_arms_round_trip_byte_exactly() {{{body}}}
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// A `.cbor` payload whose target is a bare FIXED value generates, builds and round-trips under
+/// every profile — the same spec, not just the `--preserve-encodings` one.
+///
+/// Without encodings a fixed value stores nothing, so the `Fixed` deserialize branch used to assert
+/// that its caller wrapped no text around it. The `.cbor` payload arm's staging expression (`let
+/// {var}_payload = ` / `;`) IS such a wrapper, so `[bytes .cbor 42]` aborted at generation
+/// (`assert_eq!` left `";"` right `""`) while the identical spec exited 0 under preserve — one spec,
+/// buildable under one profile only. The branch now evaluates to the unit `()` and emits it through
+/// whatever wrapper it is given, and the payload arm reads a value-less payload without staging it
+/// at all; where the wrapper is empty (every caller that worked before) the emitted bytes are
+/// unchanged.
+///
+/// The leg is e2e — generate, build, round-trip — because two of the three failure modes live past
+/// generation: the second half of this class emitted a bare `x_payload` expression line in the
+/// discarding statement slots a fixed member is read in (an array struct's field sequence, a map
+/// entry's presence-closure), which is not Rust. Text pins alone would have restated the fix.
+///
+/// `--annotate-fields=false` is enumerated as its own case rather than assumed: with annotations on,
+/// a member is read inside a `Result`-returning closure, which supplies an `Ok(..)` wrapper the
+/// value-less branch can satisfy; with them off the member is read in a bare statement slot that
+/// supplies nothing. The two reach the branch through different wrappers, and only the second
+/// exercises the discard suppression.
+///
+/// The vectors demand the payload still be VERIFIED (a wrong constant is rejected, per kind) and
+/// still be EXHAUSTED (trailing bytes inside the byte string are rejected), because "accept
+/// anything" would round-trip just as happily as a correct decoder on the valid vectors alone. The
+/// preserve case adds a non-minimally-encoded payload (`0x19 0x002a` for 42) that a
+/// non-encoding-preserving decoder would re-emit as `0x18 0x2a`. Tier: check.ts `local` (nested
+/// cargo).
+#[test]
+fn cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_cbor_fixed_payload_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let target_dir = scratch.join("target");
+
+    // The BARE array element, the NAMED array members (one per fixed kind) and the KEYED map member
+    // are the three positions the class covers; they differ in the wrapper their caller supplies,
+    // not in the payload. The OPTIONAL array member is a fourth: it is the one that reaches the
+    // branch with `optional_field` set, so the `read_len.read_elems(1)?` the branch emits has to sit
+    // inside the payload read rather than beside it.
+    const SPEC: &str = "bare = [bytes .cbor 42]\n\
+                        named = [a: bytes .cbor 42, b: bytes .cbor \"s\", c: bytes .cbor true, d: bytes .cbor null]\n\
+                        keyed = { k: bytes .cbor -7 }\n\
+                        opt = [? x: bytes .cbor 42, y: uint]\n";
+
+    // Shared by every profile: the wire form is the same, only the fidelity guarantee differs.
+    const COMMON_VECTORS: &str = r#"
+    rt!(Bare, &[0x81, 0x42, 0x18, 0x2a]); // [h'182a'] -> [42]
+    rt!(Named, &[0x84, 0x42, 0x18, 0x2a, 0x42, 0x61, 0x73, 0x41, 0xf5, 0x41, 0xf6]);
+    rt!(Keyed, &[0xa1, 0x61, 0x6b, 0x41, 0x26]); // { "k": h'26' } -> { k: -7 }
+    rej!(Bare, &[0x81, 0x42, 0x18, 0x2b]); // payload is 43, not 42
+    rej!(Bare, &[0x81, 0x43, 0x18, 0x2a, 0x01]); // 42 plus a trailing item INSIDE the payload
+    rej!(Named, &[0x84, 0x42, 0x18, 0x2a, 0x42, 0x61, 0x74, 0x41, 0xf5, 0x41, 0xf6]); // "t" not "s"
+    rej!(Named, &[0x84, 0x42, 0x18, 0x2a, 0x42, 0x61, 0x73, 0x41, 0xf4, 0x41, 0xf6]); // false not true
+    rej!(Named, &[0x84, 0x42, 0x18, 0x2a, 0x42, 0x61, 0x73, 0x41, 0xf5, 0x41, 0xf7]); // undefined not null
+    rej!(Keyed, &[0xa1, 0x61, 0x6b, 0x41, 0x27]); // payload is -8, not -7
+    rt!(Opt, &[0x82, 0x42, 0x18, 0x2a, 0x01]); // [h'182a', 1] -> the optional member PRESENT
+    rt!(Opt, &[0x81, 0x01]); // [1] -> the optional member absent
+"#;
+
+    struct Case {
+        label: &'static str,
+        flag: &'static str,
+        extra_vectors: &'static str,
+    }
+    let cases = [
+        Case {
+            label: "default",
+            flag: "--preserve-encodings=false",
+            extra_vectors: "",
+        },
+        Case {
+            label: "annotate_off",
+            flag: "--annotate-fields=false",
+            extra_vectors: "",
+        },
+        Case {
+            label: "preserve",
+            flag: "--preserve-encodings=true",
+            // A non-minimal payload head: re-encoding it as `0x18 0x2a` would be a fidelity
+            // violation, so this vector fails on any path that drops the payload's own encoding.
+            extra_vectors: "    rt!(Bare, &[0x81, 0x43, 0x19, 0x00, 0x2a]);\n",
+        },
+    ];
+
+    for Case {
+        label,
+        flag,
+        extra_vectors,
+    } in cases
+    {
+        let case_root = scratch.join(label);
+        std::fs::create_dir_all(&case_root).unwrap();
+        let input = case_root.join("input.cddl");
+        std::fs::write(&input, SPEC).unwrap();
+        let out = case_root.join("out");
+        let generated = codegen_cmd()
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg(flag)
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{label}: generating a `.cbor` payload over a bare fixed value failed\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+
+        let ser = std::fs::read_to_string(out.join("rust/src/generated/serialization.rs")).unwrap();
+        // The payload is still VERIFIED and still EXHAUSTED. Named here so a pass cannot come from
+        // a decoder that stopped checking either — the vectors below would catch that too, but
+        // these say WHICH mechanism is expected to be doing the catching.
+        for needle in [
+            "expected: Key::Uint(42)",
+            "if !inner_de.as_slice().is_empty()",
+        ] {
+            assert!(
+                ser.contains(needle),
+                "{label}: the emitted payload read no longer contains `{needle}`:\n{ser}"
+            );
+        }
+
+        std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+        std::fs::write(
+            out.join("rust/tests/rt.rs"),
+            format!(
+                r#"use cbor_event::se::{{Serialize, Serializer}};
+use cddl_lib::serialization::Deserialize;
+use cddl_lib::*;
+
+/// Decode, re-encode, and demand the SAME bytes back.
+macro_rules! rt {{
+    ($t:ty, $bytes:expr) => {{{{
+        let b: &[u8] = $bytes;
+        let v = <$t>::from_cbor_bytes(b)
+            .unwrap_or_else(|e| panic!("{{b:02x?}} failed to decode: {{e}}"));
+        let mut s = Serializer::new_vec();
+        v.serialize(&mut s).unwrap();
+        assert_eq!(s.finalize(), b, "re-encoding {{b:02x?}} changed the bytes");
+    }}}};
+}}
+macro_rules! rej {{
+    ($t:ty, $bytes:expr) => {{{{
+        let b: &[u8] = $bytes;
+        assert!(<$t>::from_cbor_bytes(b).is_err(), "{{b:02x?}} was accepted");
+    }}}};
+}}
+
+#[test]
+fn fixed_payloads_round_trip_and_reject_wrong_payloads() {{{COMMON_VECTORS}{extra_vectors}}}
+"#
+            ),
+        )
+        .unwrap();
+
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{label}: the generated crate failed to build or round-trip\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;

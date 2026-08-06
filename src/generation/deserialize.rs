@@ -323,6 +323,23 @@ impl<'a> DeserializeBeforeAfter<'a> {
     }
 }
 
+/// Emit the unit `()` — the value of a construct that only VERIFIES and stores nothing — through a
+/// caller's `before`/`after` wrapper, or emit nothing at all when the position DISCARDS it.
+///
+/// The suppression is the same one the preserve-side fixed Null/Bool arms apply, for the same two
+/// reasons: a discarded `();` is a `clippy::no_effect` finding in every consumer's regenerated
+/// crate, and at a block tail the missing line is not missing at all — a block with no tail
+/// expression already evaluates to `()`.
+fn line_unit_value(deser_code: &mut DeserializationCode, before_after: &DeserializeBeforeAfter) {
+    if !before_after.discards_value() {
+        deser_code.content.line(&format!(
+            "{}(){}",
+            before_after.before_str(false),
+            before_after.after_str(false)
+        ));
+    }
+}
+
 // Adds a fixed length check if length is fixed, reads the mandatory amount if there are optional fields, or nothing for dynamic lengths
 pub(super) fn add_deserialize_initial_len_check(
     deser_body: &mut dyn CodeBlock,
@@ -793,13 +810,14 @@ impl GenerationScope {
         } else {
             match serializing_rust_type {
                 SerializingRustType::Root(ConceptualRustType::Fixed(f), _cfg) => {
-                    if !cli.preserve_encodings {
-                        // we don't evaluate to any values here, just verify
-                        // before/after are ignored and we need to handle fixed value deserialization in a different way
-                        // than normal ones.
-                        assert_eq!(before_after.after, "");
-                        assert_eq!(before_after.before, "");
-                    }
+                    // Without encodings a fixed value carries zero information: this branch only
+                    // VERIFIES the constant, so the value it evaluates to is the unit `()`. It is
+                    // still a value, and a caller MAY wrap it — the `.cbor` payload arm stages its
+                    // target's read into `let {var}_payload = ` / `;` and then USES that binding, so
+                    // `[bytes .cbor 42]` reaches here with wrapper text and needs something bound.
+                    // Emitting the unit through the caller's wrapper (below, after the match) serves
+                    // both: an unwrapped caller gets exactly what it got when this branch asserted
+                    // its before/after away, and a wrapping caller gets a well-typed `()`.
                     if config.optional_field {
                         deser_code.content.line("read_len.read_elems(1)?;");
                         deser_code.throws = true;
@@ -1017,9 +1035,14 @@ impl GenerationScope {
                         }
                     };
                     deser_code.throws = true;
-                    // this block needs to evaluate to a Result even though it has no value
-                    if !cli.preserve_encodings && before_after.expects_result {
-                        deser_code.content.line("Ok(())");
+                    // The verified constant's value is the unit `()`, emitted through the caller's
+                    // wrapper — which yields `Ok(())` for a block that must evaluate to a Result.
+                    // Together with the discard suppression inside the helper this reproduces the
+                    // previous contract EXACTLY for every caller that passes no wrapper (which, when
+                    // this branch asserted its before/after away, was every caller): an empty
+                    // `before` with `expects_result` emits `Ok(())`, without it emits nothing.
+                    if !cli.preserve_encodings {
+                        line_unit_value(&mut deser_code, &before_after);
                     }
                 }
                 SerializingRustType::Root(ConceptualRustType::Primitive(p), type_cfg) => {
@@ -2651,7 +2674,33 @@ impl GenerationScope {
                     // binding. Both spellings are emitted rather than always binding, because the
                     // statement positions are the common ones and a `let x = x_payload;` rebinding
                     // in every consumer's generated crate is noise that says nothing.
-                    if before_after.is_statement() {
+                    //
+                    // A VALUE-LESS payload is a third case, and takes neither spelling. Without
+                    // encodings a fixed value stores nothing, so there is nothing to stage: read it
+                    // with a discarding wrapper, run the check, then satisfy the caller's wrapper
+                    // with the unit the payload evaluates to. Staging it would bind `let x_payload =
+                    // ();` and re-emit `x_payload` — the same unit, but at the discarding STATEMENT
+                    // slots a fixed member is read in (an array struct's field sequence, a map
+                    // entry's `k_present = (|| { .. })()?` block) a bare expression line is not Rust.
+                    // Under `--preserve-encodings` a fixed value DOES carry an encoding, so it is a
+                    // value like any other and this leg must not take it.
+                    let value_less_payload = !cli.preserve_encodings
+                        && matches!(
+                            *child,
+                            SerializingRustType::Root(ConceptualRustType::Fixed(_), _)
+                        );
+                    if value_less_payload {
+                        self.generate_deserialize(
+                            types,
+                            *child,
+                            DeserializeBeforeAfter::new("", "", false),
+                            config.overload_deserializer(name_overload),
+                            cli,
+                        )
+                        .add_to_code(&mut deser_code);
+                        deser_code.content.push_block(trailing_check());
+                        line_unit_value(&mut deser_code, &before_after);
+                    } else if before_after.is_statement() {
                         self.generate_deserialize(
                             types,
                             *child,

@@ -11,7 +11,7 @@ expression: catalog
 any_control_op             error (graceful)
 any_member                 ok
 bytes_member               error (graceful)
-cbor_fixed_payload         PANIC
+cbor_fixed_payload         ok
 cbor_payload_same_chain_alias ok
 cbor_payload_same_chain_inline error (graceful)
 cbor_ref_alias_chain       ok

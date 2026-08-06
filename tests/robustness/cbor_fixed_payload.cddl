@@ -1,25 +1,26 @@
 ; A `.cbor` payload whose TARGET is a bare fixed value (`bytes .cbor 42`), in MEMBER / element
-; position. ABORTS under the DEFAULT profile — a tracked-known gap, recorded here so a fix flips this
-; row loudly rather than the class going unnoticed.
+; position. Generates under EVERY profile; the row is the regression carrier for that.
 ;
-; The `Fixed` deserialize branch verifies a constant and evaluates to nothing, so it asserts its
-; caller passed no before/after wrapper text (`generation/deserialize.rs`, the two `assert_eq!`s
-; guarded by `if !cli.preserve_encodings`). A `.cbor` overload wraps its target's read in the
-; payload's own staging expression, which IS before/after text — so the two meet and the assert
-; fires. The asserts are the guard that caught this and are deliberately left in place: reaching
-; them means a caller is asking a value-less branch to produce a value, which a silent widening
-; would paper over.
+; Without encodings a fixed value stores nothing, so the `Fixed` deserialize branch evaluates to the
+; unit `()` and emits it through whatever before/after wrapper its caller supplies — including the
+; staging expression a `.cbor` overload wraps its target's read in. Where the wrapper binds nothing
+; the line is suppressed instead, so a caller that supplies none (which is every caller outside a
+; payload) gets the same bytes it always got.
 ;
 ; The class covers every fixed kind (`42`, `"s"`, `true`, `null`) and both the bare and the keyed
 ; element spellings — it keys on `Fixed` under a `.cbor` chain, not on the constant or the key.
 ; Two neighbours are deliberately NOT it:
 ;   - the rule-BODY spelling `x = bytes .cbor 42` is refused GRACEFULLY one seam earlier, by the
 ;     bare-fixed-value rule-body rejection, and never reaches the deserialize walk;
-;   - `--preserve-encodings` generates it at exit 0, because the asserts are flag-guarded there and
-;     the fixed branch takes its encoding-carrying path instead. That divergence is the sharpest
-;     statement of the gap: the same spec is buildable under one profile and aborts under another.
+;   - a TAG between the `.cbor` and the constant (`bytes .cbor #6.1(42)`) still emits unparseable
+;     Rust, because the value-less test matches a bare fixed root only — ledgered in
+;     cddl-matrix/ROADMAP.md § findings, `A `.cbor` payload over a TAGGED fixed value` entry.
+;
+; This row is generate-only, so it holds the ABORT class alone. That the emitted crate builds and
+; round-trips byte-exactly — payload verified, payload exhaustion enforced, non-minimal payload
+; heads preserved — is pinned by
+; `cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile`.
 ;
 ; Surfaced by the recombination sweep (`outer=arr_single inner=cbor_payload filler=type2.value`)
-; once the tagged-optional member kind reshuffled its seeded draws onto the composition; confirmed
-; pre-existing by generating the minimal spelling at the parent commit.
+; once the tagged-optional member kind reshuffled its seeded draws onto the composition.
 x = [bytes .cbor 42]
