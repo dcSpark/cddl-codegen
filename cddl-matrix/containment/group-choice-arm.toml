@@ -168,3 +168,24 @@ feature = "type2.map"
 spec = "allowed"
 note = "Array-representation group-choice arm containing an anonymous map type; this isolates the anonymous-composite generation limit inside a `//` arm. RFC8610 §2.2.2, §3.4, §3.5."
 example = "t = [ {a: int, b: uint} // tstr ]"
+
+# Fixed-value FLOAT arms, one per DISPATCH PATH. A float is a CBOR major-7 special, so unlike the
+# nint/tag rows above it can share its major with a sibling arm — which routes the emitted
+# deserialize down a different site. Both are enumerated because a kind proven on one dispatch path
+# certifies nothing about the other (`contain.choice-member.prelude.true.same_major_brute`).
+
+[[contain]]
+id = "contain.group-choice-arm.type2.value.float_array"
+role = "role.group-choice-arm"
+feature = "type2.value"
+spec = "allowed"
+note = "Array-representation group-choice arm carrying a fixed FLOAT member value beside a sibling arm of a DISJOINT CBOR major (`[ v: 1.5 // label: tstr ]`) — the float-kind counterpart of `contain.group-choice-arm.type2.value.nint_array` (a fixed nint) and `contain.group-choice-arm.type2.value.map` (a fixed uint, map rep). Dispatch path: TYPE-MATCH — the emitted deserialize reads the array header then matches `raw.cbor_type()`, routing CBOR major 7 (Special) to this arm and major 3 (Text) to the sibling; the arm then reads `raw.float()?`, verifies the constant with an exact `!=` compare and stores nothing, reporting a wrong constant as `FixedValueMismatch` with `Key::Float`, and falls through to `NoVariantMatched` on any other major. No backtracking is emitted, so this row measures the type-match site only — the same-major sibling arm is `contain.group-choice-arm.type2.value.float_same_major_array`. RFC8610 §2.1, §2.2.2, §3.4."
+example = "t = [ v: 1.5 // label: tstr ]"
+
+[[contain]]
+id = "contain.group-choice-arm.type2.value.float_same_major_array"
+role = "role.group-choice-arm"
+feature = "type2.value"
+spec = "allowed"
+note = "Array-representation group-choice arm carrying a fixed FLOAT member value beside an arm that SHARES its CBOR major (`[ v: 1.5 // flag: true ]`) — `1.5` and `true` are both major 7, so the wire major cannot be the arm discriminant. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize reads the array header, anchors `raw.position()`, runs each arm's reader in source order (the float arm verifying its constant as `FixedValueMismatch` with `Key::Float`, the bool arm as `FixedValueMismatch` with `Key::Bool`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch its disjoint-major sibling `contain.group-choice-arm.type2.value.float_array` takes, which is why the float kind is enumerated on both. The group-choice spelling is deliberate: the same pairing as a bare TYPE choice is a different (and currently defective) path — see `cddl-matrix/ROADMAP.md` § findings. RFC8610 §2.1, §2.2.2, §3.4, App. D."
+example = "t = [ v: 1.5 // flag: true ]"

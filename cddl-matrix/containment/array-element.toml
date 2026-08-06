@@ -157,3 +157,11 @@ feature = "type2.value"
 spec = "allowed"
 note = "A BARE (unkeyed) literal as an array entry in exactly-once placement (`[5, x: uint]`) — no memberkey, so the grpent is a bare `type` that happens to be a value. The exactly-once side of the fixed-value cardinality boundary; its count-permitting siblings are `contain.occurrence-target.type2.value.zero_array` / `.optional_array` / `.plus_array` (`[* 5]`, `[? 5]`, `[+ 5]`). Distinct from `contain.array-element.type2.value`, which carries a memberkey (`[w: uint, v: 5]`) — keying is the varying axis between the two. RFC8610 §2.1, §3.4; ABNF grpent = type (no memberkey) -> type2 value."
 example = "a = [5, x: uint]"
+
+[[contain]]
+id = "contain.array-element.value.number.float"
+role = "role.array-element"
+feature = "value.number"
+spec = "allowed"
+note = "A FLOAT numeric literal as a fixed array-element value (`[v: 1.5]`) — the third KIND of `contain.array-element.value.number`, whose literal is the uint `5`, beside the nint `contain.array-element.value.number.nint`. The kinds are not interchangeable: a fixed float encodes on CBOR major 7 as a float head (`f9`/`fa`/`fb`), so the member reads `raw.float()?` rather than an integer reader, verifies the constant with an exact `!=` compare (`1.5` is `3/2`, exactly representable, so the compare is well-defined) and reports a wrong value as `FixedValueMismatch` with `Key::Float`, and the serialize side writes `write_float(serializer, 1.5)` — the shortest lossless head for the value. Member position, not arm position: the constant is verified on deserialize and stored nowhere, which is why this cell classifies as enforcement-bearing (`query_q4_directional.ts`) while its arm-position relatives do not. The DECIMAL lexeme is what this cell varies; its hexfloat spelling of the same value class is the feature row `value.number.hexfloat` (`[v: 0x1.8p+1]`). Optional (`? f: 2.5`) fixed floats are `tests/corpus/optional_fixed_float.cddl`. RFC8610 §2.1, §3.4."
+example = "a = [v: 1.5]"
