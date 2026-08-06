@@ -1,5 +1,6 @@
-; A `.cbor` payload whose TARGET is a bare fixed value (`bytes .cbor 42`), in MEMBER / element
-; position. Generates under EVERY profile; the row is the regression carrier for that.
+; A `.cbor` payload whose TARGET carries no value of its own — a bare fixed value (`bytes .cbor 42`)
+; or one behind any number of mandatory TAGS (`bytes .cbor #6.1(42)`) — in MEMBER / element
+; position. Generates under EVERY profile; the rows are the regression carrier for that.
 ;
 ; Without encodings a fixed value stores nothing, so the `Fixed` deserialize branch evaluates to the
 ; unit `()` and emits it through whatever before/after wrapper its caller supplies — including the
@@ -7,20 +8,36 @@
 ; the line is suppressed instead, so a caller that supplies none (which is every caller outside a
 ; payload) gets the same bytes it always got.
 ;
-; The class covers every fixed kind (`42`, `"s"`, `true`, `null`) and both the bare and the keyed
-; element spellings — it keys on `Fixed` under a `.cbor` chain, not on the constant or the key.
-; Two neighbours are deliberately NOT it:
-;   - the rule-BODY spelling `x = bytes .cbor 42` is refused GRACEFULLY one seam earlier, by the
-;     bare-fixed-value rule-body rejection, and never reaches the deserialize walk;
-;   - a TAG between the `.cbor` and the constant (`bytes .cbor #6.1(42)`) still emits unparseable
-;     Rust, because the value-less test matches a bare fixed root only — ledgered in
-;     cddl-matrix/ROADMAP.md § findings, `A `.cbor` payload over a TAGGED fixed value` entry.
+; Value-less-ness is a property of the whole encoding CHAIN, so the payload arm's test recurses
+; through `Tagged`: a mandatory tag stores nothing of its own without encodings either, its number
+; being a constant verified on the way past. Testing the ROOT alone staged the tagged spelling and
+; re-emitted the binding as a bare expression line in a discarding statement slot — not Rust, and an
+; abort at rustfmt rather than a refusal, while the same spec exited 0 under `--preserve-encodings`.
 ;
-; This row is generate-only, so it holds the ABORT class alone. That the emitted crate builds and
-; round-trips byte-exactly — payload verified, payload exhaustion enforced, non-minimal payload
-; heads preserved — is pinned by
+; The class covers every fixed kind (`42`, `"s"`, `true`, `null`), both the bare and the keyed
+; element spellings, and stacked tags — it keys on a value-less chain under a `.cbor`, not on the
+; constant, the key, or the tag depth:
+;   - `x`  the bare untagged element.
+;   - `y`  a tag between the `.cbor` and the constant, bare element.
+;   - `z`  the same behind an ARRAY member key.
+;   - `m`  the same behind a MAP member key — the position that actually aborted under this
+;          catalog's flags, since a map entry's presence closure supplies the statement slot the
+;          staged binding could not be a bare expression in (the array positions aborted only under
+;          `--annotate-fields=false`, which no catalog row can spell).
+;   - `s`  stacked tags, which the test has to RECURSE through rather than peek one level.
+; One neighbour is deliberately NOT it: the rule-BODY spelling `x = bytes .cbor 42` is refused
+; GRACEFULLY one seam earlier, by the bare-fixed-value rule-body rejection, and never reaches the
+; deserialize walk.
+;
+; These rows are generate-only, so they hold the ABORT class alone. That the emitted crate builds
+; and round-trips byte-exactly — payload verified, tag verified, payload exhaustion enforced,
+; non-minimal payload and tag heads preserved — is pinned by
 ; `cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile`.
 ;
 ; Surfaced by the recombination sweep (`outer=arr_single inner=cbor_payload filler=type2.value`)
 ; once the tagged-optional member kind reshuffled its seeded draws onto the composition.
 x = [bytes .cbor 42]
+y = [bytes .cbor #6.1(42)]
+z = [k: bytes .cbor #6.1(42)]
+m = { k: bytes .cbor #6.1(42) }
+s = [bytes .cbor #6.1(#6.2(42))]

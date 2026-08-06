@@ -200,28 +200,6 @@ ledgered here (that's what the probe/gate error messages point at).
   detail: either pass the optionality down so the embedded read charges the mandatory count, or make
   the assert a graceful rejection naming the array-wrapped remedy (`w = [kv]`,
   `t = [ c: uint, ? w ]`) the way the map sibling now does.
-- **A `.cbor` payload over a TAGGED fixed value (`bytes .cbor #6.1(42)`) emits unparseable Rust
-  under the default profile — exit 1 with a rustfmt "generator bug" abort and zero files written,
-  but no refusal naming the construct.** Probed 2026-08-06 while delivering default-profile support
-  for the UNTAGGED spelling (`bytes .cbor 42`, now an `ok` row). The payload arm stages a
-  value-carrying payload into `let {var}_payload = …;` and then re-emits `{var}_payload` at the
-  caller's position; a fixed value carries nothing, so the staging is skipped and the caller's
-  wrapper is satisfied with a unit instead — but that skip keys on the payload being a fixed value
-  DIRECTLY, and a tag between the `.cbor` and the constant hides it. The tag arm passes its child an
-  empty wrapper and yields a `match` whose arms evaluate to `()`, so the staged binding is a unit
-  that is then re-emitted as a bare expression line in a statement slot: `k_payload` followed by
-  `Ok(true)`, which is not Rust. Positions differ in whether the caller's own wrapper rescues it: a
-  map member aborts under the default profile, an array member aborts only under
-  `--annotate-fields=false` (with annotations on, the member's `Result`-returning closure supplies
-  an `Ok(..)` the bare line becomes the argument of). Scope of the probes: array-element and
-  map-member positions, default / `--annotate-fields=false` / `--preserve-encodings` profiles,
-  `--wasm=false`, generate-only; `--preserve-encodings` generates at exit 0 in every position (a
-  fixed value carries an encoding there, so nothing is value-less), and the tag WITHOUT a `.cbor`
-  (`[x: #6.1(42)]`) generates in every position — the pairing is what breaks. Not probed:
-  json/wasm/component faces, stacked tags, or the `.cbor-seq` sibling operator. Fix shape: the
-  value-less test the payload arm applies to its child should see THROUGH the encoding operations
-  that carry no value of their own under the profile in question, rather than matching only a bare
-  fixed root.
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:

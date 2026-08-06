@@ -8114,8 +8114,8 @@ fn same_major_arms_round_trip_byte_exactly() {{{body}}}
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// A `.cbor` payload whose target is a bare FIXED value generates, builds and round-trips under
-/// every profile — the same spec, not just the `--preserve-encodings` one.
+/// A `.cbor` payload whose target is a FIXED value — bare, or behind any number of mandatory tags —
+/// generates, builds and round-trips under every profile, not just the `--preserve-encodings` one.
 ///
 /// Without encodings a fixed value stores nothing, so the `Fixed` deserialize branch used to assert
 /// that its caller wrapped no text around it. The `.cbor` payload arm's staging expression (`let
@@ -8125,6 +8125,13 @@ fn same_major_arms_round_trip_byte_exactly() {{{body}}}
 /// whatever wrapper it is given, and the payload arm reads a value-less payload without staging it
 /// at all; where the wrapper is empty (every caller that worked before) the emitted bytes are
 /// unchanged.
+///
+/// Value-less-ness belongs to the whole encoding CHAIN. A mandatory tag stores nothing of its own
+/// without encodings either, so `bytes .cbor #6.1(42)` takes the same leg — but only because the
+/// leg's test recurses through `Tagged` rather than matching a bare fixed root. Testing the root
+/// alone staged the tagged spelling and re-emitted `k_payload` as a bare expression line, which
+/// aborted at rustfmt under the default profile while preserve generated the same spec at exit 0.
+/// `stacked` pins that the recursion is a recursion.
 ///
 /// The leg is e2e — generate, build, round-trip — because two of the three failure modes live past
 /// generation: the second half of this class emitted a bare `x_payload` expression line in the
@@ -8160,10 +8167,19 @@ fn cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile() {
     // not in the payload. The OPTIONAL array member is a fourth: it is the one that reaches the
     // branch with `optional_field` set, so the `read_len.read_elems(1)?` the branch emits has to sit
     // inside the payload read rather than beside it.
+    // The four TAGGED rules are the same four positions with a mandatory tag between the `.cbor`
+    // and the constant. A tag carries no value of its own without encodings either, so they take
+    // the same value-less leg — which is only true because the leg's test sees through the tag
+    // rather than matching a bare fixed root. `stacked` is there because tags nest: the test is a
+    // recursion, not a one-level peek.
     const SPEC: &str = "bare = [bytes .cbor 42]\n\
                         named = [a: bytes .cbor 42, b: bytes .cbor \"s\", c: bytes .cbor true, d: bytes .cbor null]\n\
                         keyed = { k: bytes .cbor -7 }\n\
-                        opt = [? x: bytes .cbor 42, y: uint]\n";
+                        opt = [? x: bytes .cbor 42, y: uint]\n\
+                        tagged_bare = [bytes .cbor #6.1(42)]\n\
+                        tagged = [t: bytes .cbor #6.1(42)]\n\
+                        tagged_keyed = { m: bytes .cbor #6.1(42) }\n\
+                        stacked = [s: bytes .cbor #6.1(#6.2(42))]\n";
 
     // Shared by every profile: the wire form is the same, only the fidelity guarantee differs.
     const COMMON_VECTORS: &str = r#"
@@ -8178,6 +8194,18 @@ fn cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile() {
     rej!(Keyed, &[0xa1, 0x61, 0x6b, 0x41, 0x27]); // payload is -8, not -7
     rt!(Opt, &[0x82, 0x42, 0x18, 0x2a, 0x01]); // [h'182a', 1] -> the optional member PRESENT
     rt!(Opt, &[0x81, 0x01]); // [1] -> the optional member absent
+    // A TAG between the `.cbor` and the constant: the payload is `c1 18 2a` (tag(1) over 42), so
+    // the byte string is 3 long (`0x43`). Hand-derived, not read back off the generator.
+    rt!(TaggedBare, &[0x81, 0x43, 0xc1, 0x18, 0x2a]);
+    rt!(Tagged, &[0x81, 0x43, 0xc1, 0x18, 0x2a]);
+    rt!(TaggedKeyed, &[0xa1, 0x61, 0x6d, 0x43, 0xc1, 0x18, 0x2a]); // { "m": h'c1182a' }
+    rt!(Stacked, &[0x81, 0x44, 0xc1, 0xc2, 0x18, 0x2a]); // tag(1) over tag(2) over 42
+    rej!(Tagged, &[0x81, 0x43, 0xc2, 0x18, 0x2a]); // tag 2, not tag 1
+    rej!(Tagged, &[0x81, 0x43, 0xc1, 0x18, 0x2b]); // the tag is right, the constant is 43
+    rej!(Tagged, &[0x81, 0x42, 0x18, 0x2a]); // the constant with no tag at all
+    rej!(Tagged, &[0x81, 0x44, 0xc1, 0x18, 0x2a, 0x01]); // a trailing item INSIDE the payload
+    rej!(Tagged, &[0x81, 0x42, 0xc1, 0x18]); // the payload's uint head is truncated
+    rej!(Stacked, &[0x81, 0x43, 0xc1, 0x18, 0x2a]); // the INNER tag is missing
 "#;
 
     struct Case {
@@ -8201,7 +8229,11 @@ fn cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile() {
             flag: "--preserve-encodings=true",
             // A non-minimal payload head: re-encoding it as `0x18 0x2a` would be a fidelity
             // violation, so this vector fails on any path that drops the payload's own encoding.
-            extra_vectors: "    rt!(Bare, &[0x81, 0x43, 0x19, 0x00, 0x2a]);\n",
+            // The tagged twin does the same for the TAG's head (`0xd8 0x01` for tag 1 instead of
+            // `0xc1`), which is the encoding the preserve profile has to be carrying for the tagged
+            // spelling to be a value like any other there.
+            extra_vectors: "    rt!(Bare, &[0x81, 0x43, 0x19, 0x00, 0x2a]);\n    \
+                            rt!(Tagged, &[0x81, 0x44, 0xd8, 0x01, 0x18, 0x2a]);\n",
         },
     ];
 
@@ -8236,6 +8268,8 @@ fn cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile() {
         for needle in [
             "expected: Key::Uint(42)",
             "if !inner_de.as_slice().is_empty()",
+            // the tag between the `.cbor` and the constant is VERIFIED, not skipped past
+            "DeserializeFailure::TagMismatch",
         ] {
             assert!(
                 ser.contains(needle),
