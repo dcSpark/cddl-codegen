@@ -2359,16 +2359,20 @@ fn handle_rust_name_pin(
 /// discarded — the pest bridge's comment binding is a source-position trivia merge, and with no
 /// trailing anchor of the group rule's own on that line, the merge binds the comment to the
 /// FOLLOWING rule's `comments_before_rule` (or orphans it when the group rule is last). Nothing
-/// reads that position, so the directive is silently lost; use the single-line form.
-/// `Rule::Group`'s own `comments_after_rule` is not an escape hatch at this pin: the merge emits no
-/// anchor for it (the construction sites' `None`s are pre-merge defaults, not the mechanism), so
-/// reading it here is dead code until the fork-side fix is adopted. There is NO second lossy
-/// spelling: a last entry's slot cannot be "contended" by a rule-trailing comment on one line,
-/// because a CDDL comment runs to end of line — that spelling comments out the closing paren and
-/// fails to parse. The fork-side fix (an additive `RuleTrailing` merge fallback) exists on the
-/// dcSpark fork's `local-fixes` branch, unadopted by maintainer ruling; state and design
-/// constraints are tracked in `tests/TESTING_ROADMAP.md` ("A rule-position directive is still
-/// silently LOST in the multi-line group-rule spelling").
+/// reads that position, so a directive written there would be lost on formatting alone — which is
+/// why [`multiline_group_trailing_directive_rejection`] REFUSES the spelling pre-IR, from the source
+/// buffer, before this fn is ever reached for such a rule. Everything below therefore only ever sees
+/// a spelling the parser does bind (whole group on one line, or closing paren on the last entry's
+/// line). `Rule::Group`'s own `comments_after_rule` is not an escape hatch at this pin: the merge
+/// emits no anchor for it (the construction sites' `None`s are pre-merge defaults, not the
+/// mechanism), so reading it here is dead code until the fork-side fix is adopted. There is NO
+/// second lossy spelling: a last entry's slot cannot be "contended" by a rule-trailing comment on
+/// one line, because a CDDL comment runs to end of line — that spelling comments out the closing
+/// paren and fails to parse. The fork-side fix (an additive `RuleTrailing` merge fallback) exists on
+/// the dcSpark fork's `local-fixes` branch, unadopted by maintainer ruling, and is what would make
+/// the refused spelling HONORED rather than merely loud; state and design constraints are tracked in
+/// `tests/TESTING_ROADMAP.md` ("Adopt the parser's `RuleTrailing` anchor for multi-line group
+/// rules").
 fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments>) -> RuleMetadata {
     let mut metadata = RuleMetadata::from(comments_after_group);
     if let Some((entry, optional_comma)) = group
@@ -2393,6 +2397,100 @@ fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments
         metadata = merge_metadata(&metadata, &trailing);
     }
     metadata
+}
+
+/// A graceful-rejection message for the ONE group-rule spelling the pinned `cddl` parser cannot
+/// bind a rule-position directive in — a trailing comment after a closing paren that sits on its
+/// own line (`grp = (\n a: uint\n) ; @rust_name Foo`) — else `None`. First offence in source order
+/// (rules are walked in source order, so the choice is deterministic), mirroring
+/// `api::scan_module_directives`, which is also a pre-IR whole-buffer scan that stops at the first
+/// bad line.
+///
+/// Why a source-buffer scan rather than an AST read: there IS no AST slot to read. The parser's
+/// comment binding is a source-position trivia merge, and `GroupEntry::InlineGroup` emits no
+/// trailing anchor of the group rule's own on that line, so the comment is merged into the
+/// FOLLOWING rule's `comments_before_rule` — or reaches no slot at all when the group rule is the
+/// document's last. Nothing reads either position, so honoring the spelling is impossible at this
+/// pin and the only honest alternative to silence is refusal. `Rule::Group`'s span is what makes the
+/// scan exact: it ends just past the closing `)`, BEFORE the trailing comment, for every group-rule
+/// spelling (`Rule::Type`'s span, by contrast, INCLUDES its trailing comment — which is also why
+/// type rules are never scanned here: their multi-line trailing comment lands in
+/// `comments_after_type` and is honored).
+///
+/// ALL directives refuse uniformly, including the four `group_rule_pin_metadata`'s callers honor in
+/// the bound position (`@rust_name`, `@no_json_schema_export`, `@custom_json`, `@used_as_key`): the
+/// parser delivers none of them here, so there is nothing to sort. A comment that parses to
+/// `RuleMetadata::default()` is prose and is left alone.
+pub(crate) fn multiline_group_trailing_directive_rejection(
+    cddl: &cddl::ast::CDDL,
+    buffer: &str,
+) -> Option<String> {
+    cddl.rules.iter().find_map(|rule| match rule {
+        Rule::Group { span, .. } => {
+            multiline_group_trailing_directive_offence(&rule.name(), *span, buffer)
+        }
+        Rule::Type { .. } => None,
+    })
+}
+
+/// The four-part detection condition for one group rule, split out so it is unit-testable against a
+/// hand-built (span, buffer) pair. `span` is the rule's own span into `buffer`.
+fn multiline_group_trailing_directive_offence(
+    name: &str,
+    span: cddl::ast::Span,
+    buffer: &str,
+) -> Option<String> {
+    // (1) the span's final character is the group's closing paren.
+    let through_paren = buffer.get(..span.1)?;
+    if !through_paren.ends_with(')') {
+        return None;
+    }
+    let paren = span.1 - 1;
+    // (2) only whitespace precedes that `)` on its line — i.e. the paren is on its OWN line. The
+    //     single-line spelling and the paren-on-last-entry-line spelling both fail here, which is
+    //     exactly right: the parser binds their trailing comment to the last entry's slot.
+    let line_start = through_paren[..paren].rfind('\n').map_or(0, |nl| nl + 1);
+    if !through_paren[line_start..paren]
+        .chars()
+        .all(char::is_whitespace)
+    {
+        return None;
+    }
+    // (3) the first non-whitespace character after the span, on that same line, starts a comment.
+    let rest_of_line = buffer.get(span.1..)?.lines().next().unwrap_or("");
+    let comment = rest_of_line.trim_start().strip_prefix(';')?;
+    // (4) that comment carries at least one directive. The parser hands comment text over WITHOUT
+    //     its leading `;` everywhere else, so the `;` is stripped above and `comment` is spelled
+    //     exactly as `metadata_from_comments` sees it in a bound position — the scan and the
+    //     honoring sites therefore agree on what a directive IS.
+    let metadata = metadata_from_comments(&[comment]);
+    if metadata == RuleMetadata::default() {
+        return None;
+    }
+    let found = metadata
+        .all_directives()
+        .iter()
+        .map(|tag| format!("`{tag}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(multiline_group_trailing_directive_message(name, &found))
+}
+
+/// The one multi-line group-rule refusal message. Pinned by the `robustness_tests` vectors
+/// (`multiline_group_rule_trailing_directive_is_refused_not_dropped` and the
+/// `KNOWN_RULE_METADATA_TAGS` sweep beside it), which assert the rule ident, the directive spelling
+/// and BOTH remedies as substrings; do not reword it.
+fn multiline_group_trailing_directive_message(name: &str, found: &str) -> String {
+    format!(
+        "group rule `{name}`: a trailing comment on a multi-line group rule's closing-paren line \
+         cannot carry a directive — the pinned CDDL parser binds that comment to the FOLLOWING rule \
+         (or drops it when the group rule is last), so {found} would be silently lost. Refused \
+         rather than dropped. Two spellings put the directive where the parser binds it to this \
+         rule: write the whole group on ONE line (`{name} = (…) ; {found_first} …`), or keep the \
+         closing paren on the LAST ENTRY's line. A prose (non-directive) trailing comment is \
+         accepted in this position.",
+        found_first = found.split(',').next().unwrap_or(found).trim()
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

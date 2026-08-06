@@ -34,7 +34,11 @@
  *
  * The arm-position axis is folded in as its own shapes (a directive on a NON-LAST arm of a
  * multi-choice rule, and of a `T / null` Option collapse): the rule slot is the LAST arm's trailing
- * comment, so a directive on an earlier arm is built and discarded unless something rejects it.
+ * comment, so a directive on an earlier arm is built and discarded unless something rejects it. The
+ * SPELLING axis is folded in the same way, by the multi-line group-rule shape: a plain group's rule
+ * slot is its LAST entry's trailing comment, so writing the closing paren on its own line puts the
+ * trailing comment past every slot the AST offers — generation refuses that spelling, and the cells
+ * measure the refusal.
  *
  * Tier: `local` (never `fast`/CI — CI cost policy). No `--check` mode: this gate has no drift
  * artifact, it just runs.
@@ -153,6 +157,12 @@ interface Shape {
    *  The rule slot is the LAST arm's trailing comment, so `toggledArm < list.length - 1` is the
    *  arm-position axis and `toggledArm === list.length - 1` is the ordinary rule slot. */
   arms?: { list: string[]; toggledArm: number };
+  /** render as a MULTI-LINE plain GROUP rule whose closing paren sits on its OWN line, placing the
+   *  toggled directive in the trailing comment on that closing-paren line. That is the one position
+   *  the pinned CDDL parser cannot bind a group rule's directive in, so generation REFUSES it —
+   *  which is a PASS here (a nonzero with-directive exit is "loudly rejected", never a silent
+   *  drop). Ignored when `arms` is set; overrides `body`. */
+  multilineGroupEntries?: string[];
   /** the holder embeddings that make generation exercise the rule — one variant per entry. */
   holders: string[][];
 }
@@ -181,7 +191,12 @@ const INST_HOLDERS: string[][] = [
 /** The shape axis. The first ten are the mandatory parse paths (a rule body reaches a marking site
  *  through exactly one of them); the rest each proved interesting in a prior delivery. Spellings are
  *  reused verbatim from `robustness_tests::no_json_schema_export_misuse_rejects_gracefully`, which
- *  already had to name most of these, so the two enumerations cannot drift on what a shape IS. */
+ *  already had to name most of these, so the two enumerations cannot drift on what a shape IS.
+ *
+ *  Two of the entries are not body shapes but PLACEMENT/SPELLING axes folded in as shapes, because
+ *  what a cell measures is "did this directive reach a marking site", and the source position it is
+ *  written at decides that just as much as the rule body does: the two `…_non_last_arm` shapes, and
+ *  the multi-line group rule whose closing paren sits on its own line. */
 const SHAPES: Shape[] = [
   // -- the mandatory nine (with single-choice split into its transparent and struct halves) -------
   { id: "alias", desc: "scalar transparent alias (`foo = uint`)", body: "uint", holders: HOLDERS },
@@ -296,6 +311,18 @@ const SHAPES: Shape[] = [
     desc: "`T / null` Option-collapse rule, directive on a NON-LAST arm (the collapse has no variants)",
     arms: { list: ["uint", "null"], toggledArm: 0 },
     holders: HOLDERS,
+  },
+  // -- the SPELLING axis: the same shape, written so the parser cannot bind its directive ----------
+  // A plain group's rule slot is the LAST group entry's trailing comment, so a closing paren on its
+  // OWN line puts the trailing comment past every slot the AST offers — the parser merges it into
+  // the FOLLOWING rule's `comments_before_rule` instead. Nothing reads that, so a directive there
+  // was lost on formatting alone; generation now refuses the spelling, which this cell measures as
+  // the loud rejection it is (nonzero with-directive exit = PASS, so no allowlist rows).
+  {
+    id: "plain_group_spliced_multiline_paren",
+    desc: "plain group rule SPLICED into a holder, closing paren on its OWN line (the spelling whose trailing directive the parser cannot bind)",
+    multilineGroupEntries: ["a: uint", "b: uint"],
+    holders: [["holder = [foo]"]],
   },
 ];
 
@@ -674,6 +701,13 @@ function renderShape(shape: Shape, holder: string[], directives: string[]): stri
       const c = own.length ? ` ; ${own.join(" ")}` : "";
       lines.push(`${i === 0 ? "foo = " : "  / "}${arm}${c}`);
     });
+  } else if (shape.multilineGroupEntries) {
+    // The closing paren gets its own line — the whole point of the shape. The directive's comment
+    // therefore ends the closing-paren line, which is where the parser stops being able to bind it.
+    const c = directives.length ? ` ; ${directives.join(" ")}` : "";
+    lines.push(`${shape.head ?? "foo"} = (`);
+    lines.push(...shape.multilineGroupEntries.map(e => `  ${e},`));
+    lines.push(`)${c}`);
   } else {
     const c = directives.length ? ` ; ${directives.join(" ")}` : "";
     lines.push(`${shape.head ?? "foo"} = ${shape.body}${c}`);
