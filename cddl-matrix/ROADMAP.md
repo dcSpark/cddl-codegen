@@ -197,25 +197,28 @@ ledgered here (that's what the probe/gate error messages point at).
   struct-map (non-table) member positions, json/wasm faces. Fix shape: either a graceful refusal
   at the registration seam naming the construct and the wrapping remedy, or real support by
   promoting the group the way the array wrapper spelling does — accepted-and-aborted is neither.
-- **A `.cbor` payload over a bare fixed value aborts in member position under the default profile,
-  and generates under `--preserve-encodings` — the same spec, buildable under one profile only.**
-  Surfaced 2026-08-06 by the recombination sweep (`outer=arr_single inner=cbor_payload
-  filler=type2.value`, composition `rc1462 = [bytes .cbor 42]`) once the tagged-optional member kind
-  reshuffled its seeded draws onto that composition; confirmed pre-existing by generating the
-  minimal spelling at the parent commit. The value-less `Fixed` deserialize branch asserts its
-  caller wrapped no before/after text around it, and a `.cbor` overload's staging expression is
-  exactly such a wrapper, so the two meet and the `assert_eq!` fires (`generation/deserialize.rs`,
-  both asserts guarded by `if !cli.preserve_encodings` — which is why preserve, taking the fixed
-  branch's encoding-carrying path, exits 0). The asserts stay in place: reaching them means a caller
-  is asking a value-less branch to produce a value, and a silent widening would paper that over.
-  Pinned as a `PANIC` catalog row by `tests/robustness/cbor_fixed_payload.cddl` and keyed in
-  `recombination_tests::KNOWN_PANIC_CLASSES`. Scope of the probes: default and preserve profiles,
-  `--wasm=false`, generate-only; every fixed kind (`42` / `"s"` / `true` / `null`) and both the bare
-  and keyed element spellings reach it, while the rule-BODY spelling `x = bytes .cbor 42` is refused
-  gracefully one seam earlier and never arrives. Not probed: json/wasm/component faces, or whether
-  the same pairing arises through a tag chain rather than a `.cbor` one. Fix shape: the `Fixed`
-  branch needs to accept (and discard) an enclosing payload's staging wrapper the way its
-  preserve-side twin already does, rather than asserting the wrapper away.
+- **A `.cbor` payload over a TAGGED fixed value (`bytes .cbor #6.1(42)`) emits unparseable Rust
+  under the default profile — exit 1 with a rustfmt "generator bug" abort and zero files written,
+  but no refusal naming the construct.** Probed 2026-08-06 while delivering default-profile support
+  for the UNTAGGED spelling (`bytes .cbor 42`, now an `ok` row). The payload arm stages a
+  value-carrying payload into `let {var}_payload = …;` and then re-emits `{var}_payload` at the
+  caller's position; a fixed value carries nothing, so the staging is skipped and the caller's
+  wrapper is satisfied with a unit instead — but that skip keys on the payload being a fixed value
+  DIRECTLY, and a tag between the `.cbor` and the constant hides it. The tag arm passes its child an
+  empty wrapper and yields a `match` whose arms evaluate to `()`, so the staged binding is a unit
+  that is then re-emitted as a bare expression line in a statement slot: `k_payload` followed by
+  `Ok(true)`, which is not Rust. Positions differ in whether the caller's own wrapper rescues it: a
+  map member aborts under the default profile, an array member aborts only under
+  `--annotate-fields=false` (with annotations on, the member's `Result`-returning closure supplies
+  an `Ok(..)` the bare line becomes the argument of). Scope of the probes: array-element and
+  map-member positions, default / `--annotate-fields=false` / `--preserve-encodings` profiles,
+  `--wasm=false`, generate-only; `--preserve-encodings` generates at exit 0 in every position (a
+  fixed value carries an encoding there, so nothing is value-less), and the tag WITHOUT a `.cbor`
+  (`[x: #6.1(42)]`) generates in every position — the pairing is what breaks. Not probed:
+  json/wasm/component faces, stacked tags, or the `.cbor-seq` sibling operator. Fix shape: the
+  value-less test the payload arm applies to its child should see THROUGH the encoding operations
+  that carry no value of their own under the profile in question, rather than matching only a bare
+  fixed root.
 - **A fixed FLOAT or NINT arm in a bare TYPE choice mints an invalid Rust variant identifier and
   dies at rustfmt — exit 1 and zero files written, but no refusal naming the construct.** Probed
   2026-08-06 while enumerating the float fixed-value kind (whose group-choice-arm cells

@@ -930,15 +930,21 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "doubly nested tags are not supported",
         "tag directly inside a tag; pinned by tests/matrix_panic/contain.tag-content.type2.tag.cddl",
     ),
-    (
-        "assertion `left == right` failed left: \";\" right: \"\" @ src/generation/deserialize.rs",
-        "a `.cbor` payload over a bare FIXED value in member/element position, under the DEFAULT \
-         profile: the value-less `Fixed` deserialize branch asserts its caller wrapped nothing \
-         around it, and the payload overload's staging expression is exactly such a wrapper; \
-         pinned by tests/robustness/cbor_fixed_payload.cddl (a PANIC catalog row) and ledgered in \
-         cddl-matrix/ROADMAP.md § findings, `A `.cbor` payload over a bare fixed value aborts in \
-         member position under the default profile` entry",
-    ),
+    // (retired when a `.cbor` payload over a bare FIXED value gained default-profile SUPPORT) The
+    // `assertion left: ";" right: ""` class was the value-less `Fixed` deserialize branch refusing
+    // any caller-supplied before/after text, met by the `.cbor` payload arm's staging expression —
+    // one spec (`[bytes .cbor 42]`) buildable under `--preserve-encodings` and aborting under the
+    // default profile. The branch now evaluates to the unit `()` and emits it through whatever
+    // wrapper it is handed, and the payload arm reads a value-less payload without staging it; a
+    // caller that supplies no wrapper (which, while the asserts stood, was every caller) gets
+    // byte-identical output. Unlike the sibling retirement below, the two `assert_eq!`s could NOT
+    // be left standing: they were not a guard against a caller that shouldn't wrap, they were the
+    // refusal itself. What replaces them is the discard suppression — a wrapper that binds nothing
+    // still emits nothing — so a wrapping caller is served rather than rejected. Generation,
+    // build and byte-exact round-trip across the default, `--annotate-fields=false` and preserve
+    // profiles are pinned by
+    // `cbor_payload_over_fixed_value_generates_and_round_trips_on_every_profile`, and the outcome
+    // category by tests/robustness/cbor_fixed_payload.cddl (now an `ok` catalog row).
     // (retired when the fixed-value group-choice arm gained default-profile SUPPORT) A group-choice
     // arm whose whole content is a fixed value (`t = { a: 0 // b: tstr }`, `t = [ a: 0 // b: tstr ]`,
     // `t = [ 0 // tstr ]`) now generates under every profile instead of aborting under all but
@@ -946,9 +952,10 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // `Fixed` deserialize branch, and both were fixed: `generate_enum` dropped the `|| rep.is_some()`
     // that forced a group-choice arm to bind a value it has none of, and
     // `make_keyed_map_variant_deser_code` gained the fixed-value exemption it never had. The
-    // `assert_eq!`s at the branch are deliberately LEFT IN PLACE — they are the guard that caught
-    // this, and after the fix they simply never fire; a future caller that reaches them with a
-    // binding re-earns this entry rather than being papered over. The emitted code's shape (a
+    // `assert_eq!`s at the branch were left standing then as the guard that had caught this, and
+    // were retired later by the entry above — the caller they were still rejecting turned out to be
+    // a legitimate one. What holds this fix now is that its two call sites pass no wrapper at all,
+    // which is the case the branch emits nothing for. The emitted code's shape (a
     // field-less construction, with the constant and the map arm's member key still VERIFIED) is
     // pinned by `group_choice_fixed_value_arm_emits_fieldless_variant`; the two array spellings,
     // which no matrix cell expresses, are `ok` rows in tests/robustness/.
