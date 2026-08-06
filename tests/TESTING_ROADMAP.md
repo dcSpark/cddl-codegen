@@ -500,7 +500,17 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     message shipped naming it; the delivered test's "the remedy must actually work" legs are this
     pattern applied from the start (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`).
     A remedy string is executable wherever it lives: in an emitted message it gets a pinned
-    generate leg, in a findings entry it gets executed at pickup.
+    generate leg, in a findings entry it gets executed at pickup. Fourth proven instance
+    (2026-08-06, the tagged-preserve-table delivery's pickup probe) extends the same principle to
+    the DESCRIPTION half of a findings entry: the entry's operative sentence claimed the shape's
+    standalone codec "writes/accepts a bare map" when in fact no standalone codec existed at all
+    (`to_cbor_bytes` failed E0599 for the `PairMap` instantiation; `from_cbor_bytes` was absent) —
+    and the entry HAD two coupled test carriers, but both pinned an adjacent structural fact (the
+    transparent alias surviving, via source-text assertions) rather than executing the operative
+    sentence. Working rule: when a findings entry couples to carriers, at least one carrier
+    executes the entry's HEADLINE claim — for a claims-the-API-does-X sentence that means calling
+    X (a compile-fail probe is an execution too) — so the entry cannot drift from the code while
+    its carriers stay green. Pickup re-probe remains the enforcement of last resort, not the plan.
 
 ## Standing-system residuals (recur-first)
 
@@ -2602,6 +2612,25 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   it would unblock.
 
 ## Operational watches
+
+- **An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain
+  artifact until proven otherwise — and "fails identically on the baseline binary" is not that
+  proof, because an environmental failure is binary-independent by construction.** Proven
+  2026-08-06 (B3-006 delivery): an implementation agent's scratch e2e pass ran a generated
+  `no-std-check/` shim outside the repo directory, where `rust-toolchain.toml` does not govern, so
+  cargo used the DEFAULT toolchain — which lacks the `thumbv7m-none-eabi` target — and the run
+  died E0463 on `core`. The agent controlled for its own change by re-running on the baseline
+  binary (also red, necessarily) and reported a "pre-existing no-std-check defect under
+  `--json-serde-derives --json-schema-export`"; the claim propagated into cycle bookkeeping before
+  a disambiguating re-run under the PINNED toolchain (`rustup run <pinned> cargo check --target
+  thumbv7m-none-eabi`) compiled the same shim clean and retired it. The per-toolchain-target trap
+  was already documented for the GATE (AGENTS.md § fresh-worktree setup); what this watch adds is
+  the attribution rule for AD-HOC shim runs: before ledgering any scratch no-std E0463, re-run
+  under the pinned toolchain (or from inside the repo directory, where the pin governs) — a
+  baseline differential distinguishes regression from pre-existing, never product from
+  environment. (The clean pinned-toolchain run also showed 2 `unused_imports` warnings in the
+  generated crate under the json flags — the class the "unused_imports on generated crates" work
+  item above already owns; noted here so the sighting is not re-derived as new.)
 
 - **A working-tree gate run concurrent with a live implementation agent measures a hybrid tree that
   exists in no commit — and a gate that REWRITES committed files on pass launders that hybrid into
