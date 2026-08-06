@@ -13,7 +13,7 @@ use crate::intermediate::{
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
-    is_identifier_user_defined,
+    is_identifier_user_defined, is_valid_rust_ident,
 };
 
 #[derive(Clone, Debug)]
@@ -883,6 +883,35 @@ fn reject_group_choice_arm_variant_name_collision(
         "rule `{owner}`: its group-choice arms `{first_arm_source_name}` and \
          `{second_arm_source_name}` both generate the variant `{enum_name}::{variant_name}`. Two \
          variants cannot share one name. Rename one of them with `; @name <new_name>`."
+    ));
+}
+
+/// An arm whose variant name was DERIVED from the arm's own type and came out unspellable as Rust.
+///
+/// The derivation that produces these is `FixedValue::for_variant`, which mints from the value's
+/// LEXEME (`1.5` → `F1.5`, `-1` → `U-1`): every other minted spelling is already ASCII-identifier
+/// shaped, so in practice this fires on fixed float and fixed nint arms. The predicate is on the
+/// minted STRING rather than on the value's kind, so any future lexeme-derived name is covered by
+/// the same seam instead of shipping invalid Rust to rustfmt — which is what these used to do,
+/// dying with an error that named rustfmt's confusion rather than the arm the author wrote.
+///
+/// Rejected rather than auto-sanitized (`F1_5`): a variant name is public API of the generated
+/// crate, so the sanitization scheme would be a naming decision the author never made. `@name` is
+/// the supported route, exactly as for the two collision rejections above.
+///
+/// Shared by both arm-naming consumers — `create_variants_from_type_choices` (type choices, bare
+/// and nested-anonymous) and the group-choice arm loop's bare-member fallback — so the two cannot
+/// drift in what they refuse or in how they spell the remedy.
+fn reject_unnameable_arm_variant_name(
+    types: &mut IntermediateTypes,
+    owner_desc: &str,
+    arm_source: &str,
+    minted_name: &str,
+) {
+    types.record_rejection(format!(
+        "{owner_desc}: its arm `{arm_source}` generates the variant name `{minted_name}`, which is \
+         not a valid Rust identifier. Name the arm with `; @name <new_name>` to choose the variant \
+         name yourself."
     ));
 }
 
@@ -3669,7 +3698,26 @@ pub fn create_variants_from_type_choices(
             RuleMetadata {
                 name: Some(name), ..
             } => convert_to_camel_case(name),
-            _ => rust_type.for_variant().to_string(),
+            // Only the DERIVED spelling is checked for identifier validity: an explicit `@name` is
+            // the author's own, and is the remedy the rejection points at.
+            _ => {
+                let minted = rust_type.for_variant().to_string();
+                if !is_valid_rust_ident(&minted) {
+                    // The rejection names the rule as the AUTHOR spelled it (`owner_desc` above
+                    // carries the rust ident, which the arm-dedup warnings already print).
+                    let source_owner_desc = match owner {
+                        Some(name) => format!("rule `{}`", source_rule_name_of(types, name)),
+                        None => "an inline type choice".to_owned(),
+                    };
+                    reject_unnameable_arm_variant_name(
+                        types,
+                        &source_owner_desc,
+                        &choice.type1.type2.to_string(),
+                        &minted,
+                    );
+                }
+                minted
+            }
         };
         if let Some(dup_ordinal) = dup_of {
             let arm_ordinal = arm_idx + 1;
@@ -7169,7 +7217,24 @@ pub fn parse_group(
                         Some(explicit) => (explicit, true),
                         None => match group_entry_to_raw_field_name(group_entry) {
                             Some(field_name) => (field_name, false),
-                            None => (ty.for_variant().to_string(), false),
+                            // A BARE member (`[ true // 1.5 ]`) has no key to name the variant
+                            // after, so the name is minted from the member's TYPE — the same
+                            // lexeme-derived spelling the type-choice seam guards, reached through
+                            // a second consumer. Refuse it here too rather than emitting `F1.5`.
+                            None => {
+                                let minted = ty.for_variant().to_string();
+                                if !is_valid_rust_ident(&minted) {
+                                    let owner_desc =
+                                        format!("rule `{}`", source_rule_name_of(types, name));
+                                    reject_unnameable_arm_variant_name(
+                                        types,
+                                        &owner_desc,
+                                        &group_entry.to_string(),
+                                        &minted,
+                                    );
+                                }
+                                (minted, false)
+                            }
                         },
                     };
                     let variant_ident = VariantIdent::new_custom(settle_arm_variant_name(

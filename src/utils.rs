@@ -128,6 +128,23 @@ pub fn convert_to_camel_case(ident: &str) -> String {
     camel_case
 }
 
+/// Whether `name` is spellable as a Rust identifier, i.e. whether emitting it verbatim into
+/// generated source produces an item name rustc can parse.
+///
+/// Deliberately ASCII-only rather than the full XID grammar Rust accepts: every name-minting path
+/// in this crate already lands in ASCII (`convert_to_camel_case` upper-cases ASCII only, and the
+/// fixed-text minter filters to `is_ascii_alphanumeric`), so the two agree on everything the tool
+/// can actually produce, and a checker that is narrower than the emitter can only ever refuse a
+/// name early — never wave an unspellable one through to rustfmt.
+pub fn is_valid_rust_ident(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c == '_' || c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
 pub fn cddl_prelude(name: &str) -> Option<&str> {
     match name {
         // Custom implemented types like uint, bool, etc are handled in the alias system and
