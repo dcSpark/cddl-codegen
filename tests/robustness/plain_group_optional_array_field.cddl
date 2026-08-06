@@ -1,0 +1,22 @@
+; An OPTIONAL (`?`) plain-group field in an ARRAY-representation record
+; (`t = [ c: uint, ? kv ]`) is REFUSED gracefully. A plain group splices its members flat into the
+; enclosing array, so nothing on the wire marks where the optional group starts, and an embedded
+; decoder length-checks only the members it consumed: telling present from absent needs the group's
+; mandatory member count charged to the ENCLOSING read length before the group is read, or a second
+; embedded deserialize method. That is the occurrence/bounds program's territory (the queue's
+; "unify non-final optional/repeated array decoding" work), not a guard's — and until it lands the
+; shape must not reach emission, where it aborted on `assertion failed: !config.optional_field`,
+; naming neither the construct nor a remedy.
+; The refusal is honest because the remedy it names is verified to generate: `w = [kv]`, then
+; `t = [ c: uint, ? w ]` — the array framing makes the optional item exactly ONE element a decoder
+; can test for. Dropping the `?` (a MANDATORY splice, `t = [ c: uint, kv ]`) also stays supported:
+; an array's emitted length scales with the group's arity, so that splice is conformant.
+; One seam covers every spelling, guarded on the RESOLVED member type: bare, ALIAS (`? kv_alias`,
+; reachable since the alias-in-array support landed) and TAGGED (`? #6.1(kv)`, which used to exit 0
+; emitting a codec whose own decoder rejected its own bytes with a definite-length mismatch).
+; Message identity, the profile independence, and the supported neighbours are pinned by
+; `optional_plain_group_array_field_rejects_gracefully_at_every_spelling`; the MAP twin of the same
+; modifier keeps its own message
+; (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`).
+kv = (a: uint, b: uint)
+t = [ c: uint, ? kv ]
