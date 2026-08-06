@@ -200,6 +200,24 @@ ledgered here (that's what the probe/gate error messages point at).
   detail: either pass the optionality down so the embedded read charges the mandatory count, or make
   the assert a graceful rejection naming the array-wrapped remedy (`w = [kv]`,
   `t = [ c: uint, ? w ]`) the way the map sibling now does.
+- **An ALIAS to a plain group in an ARRAY-representation slot panics at generation — the group is
+  never materialized through the alias.** `kv = (a: uint, b: uint)` + `kv_alias = kv` +
+  `t = [ c: uint, kv_alias ]` panics while the direct reference (`t = [ c: uint, kv ]`) is
+  supported. The guards around `set_rep_if_plain_group` match `ConceptualRustType::Rust(ident)`
+  WITHOUT resolving aliases, so the group never registers its Array-rep struct — while the
+  downstream `is_basic` predicate DOES shallow-resolve and routes the member to the splicing
+  emission, which then looks up a `RustStruct` that does not exist. The panic site differs per
+  profile: `expanded_field_count`'s `rust struct Kv not found` under default, a raw
+  `Option::unwrap()` under `--preserve-encodings`, and a `generic_instances.contains_key` assert
+  under `--wasm=true` — three spellings of one missing registration. Scope of the probe
+  (2026-08-06 at `8b33c13d`): the three profiles above, exit 101 on each, generate-only; not
+  probed: the json/component faces, a group-choice arm carrying the alias, or an alias chain of
+  depth two. The MAP-position flavor of the same alias gap is refused gracefully at parse since
+  `plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`'s delivery (its seam
+  shallow-resolves), which is what left the array flavor visible on its own. Fix shape is a
+  choice, not a detail: resolve aliases where reps are stamped so the alias spelling materializes
+  the group and behaves like the direct reference, or refuse the alias spelling gracefully naming
+  the direct-reference remedy.
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:
