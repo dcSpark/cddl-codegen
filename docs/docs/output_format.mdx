@@ -748,10 +748,14 @@ rest row — structurally simpler because arrays are positional: there are no ke
 policy, no key dispatch, and no ordering machinery. The rest tail must be the array's **last**
 element, must occur exactly `*`, and must follow ≥1 fixed member; other spellings (a bounded/`+`
 occurrence, a non-final `*`, a rest tail in a group-choice arm or a plain group, or a fixed-value
-element type like `* 5`) are graceful rejections naming the supported form. One element-type
-restriction is not yet graceful: a rest tail whose element is a **plain group**
-(`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) currently **aborts** generation rather than
-rejecting — name the group's array framing instead (`w = [kv]`, `t = [ c: uint, * w ]`), which is
+element type like `* 5`, or a **plain group** element type) are graceful rejections naming the
+supported form. The plain-group case (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses
+because a rest tail collects one value per remaining array element and a plain group is not one —
+it has no type of its own, splicing its members flat instead — and the guard reads the *resolved*
+element type, so the bare, alias (`* kv_alias`) and tagged (`* #6.10(kv)`) spellings refuse alike.
+The remedy the message names is the group's array framing: `w = [kv]`, then `t = [ c: uint, * w ]`;
+a tag belongs on that framed reference (`* #6.10(w)`) rather than on the group. A single
+**mandatory** splice (`t = [ c: uint, kv ]`) and the sole-element homogeneous array (`[* kv]`) stay
 supported.
 
 **The `rest` field.** A `pub Vec<T>` named `rest` (rename with `@name` on the tail entry), holding

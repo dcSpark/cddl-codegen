@@ -1,0 +1,23 @@
+; A final-position open-array REST TAIL over a plain group (`t = [ c: uint, * kv ]`) is REFUSED
+; gracefully. A plain group has no type of its own — it splices its members flat into the enclosing
+; array — while a rest tail collects ONE value per remaining array element, so there is nothing for
+; the tail to collect: the tail emitter's `rust_struct` lookup came back empty and generation
+; aborted on a raw `Option::unwrap()` in `encoding_var_is_copy` (and, under `--preserve-encodings`
+; or `--wasm`, on the plain-group registry assert reached earlier), naming neither the construct nor
+; a remedy. Honouring the shape means a SPLICING tail that consumes the group's arity worth of
+; elements per repetition, which is the occurrence/bounds program's territory (the queue's "unify
+; non-final optional/repeated array decoding" work), not a guard's.
+; The refusal is honest because the remedy it names is verified to generate and `cargo check`:
+; `w = [kv]`, then `t = [ c: uint, * w ]` — the array framing makes each repetition exactly ONE
+; array element. A tag belongs on that framed reference (`* #6.10(w)`, also verified) rather than on
+; the group. A single MANDATORY splice (`t = [ c: uint, kv ]`) stays supported: an array's emitted
+; length scales with the group's arity, so that splice is conformant.
+; One seam covers every spelling, guarded on the RESOLVED element type: bare, ALIAS (`* kv_alias`)
+; and TAGGED (`* #6.10(kv)`). Message identity, profile independence and the sibling guards this one
+; must not shadow (choice-arm placement, plain-group owner, multiplicity, position, occurrence kind,
+; member key, fixed-value element) are pinned by
+; `plain_group_array_rest_tail_rejects_gracefully_at_every_spelling`; the `?`-modifier twin at an
+; ordinary array FIELD keeps its own message
+; (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`).
+kv = (a: uint, b: uint)
+t = [ c: uint, * kv ]

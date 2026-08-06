@@ -77,8 +77,9 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   alias-indirected one) or a wrapping restores it (the named-array remedies), and reject rows
   carrying the refusal evidence. The TYPE-choice-arm placement and the rest-tail modifier are the
   2026-08-07 capture-pass correction: the two defects that cycle's probing left behind (the
-  final-position `* kv` rest-tail panic, the plain group in a TYPE-choice arm — both § findings
-  entries) sat on an axis VALUE the product as first stated did not list, which is this entry's
+  final-position `* kv` rest-tail panic — now refused, see below — and the plain group in a
+  TYPE-choice arm, still a § findings entry) sat on an axis VALUE the product as first stated did
+  not list, which is this entry's
   own opening lesson (a defect on an axis the grid does not model) applied to the grid's own
   draft. The third of that cycle's findings — the group-choice arm's silently dropped `?` — sat
   INSIDE the stated product (group-choice arm × `?`-optional), which is exactly the cell class the
@@ -97,7 +98,18 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   1 and nothing else. Those keep generating — the f18d764 collapse boundary, asked of the one shared
   predicate (`inline_group_occurrence_flattens`) rather than restated, so the arm seam and the
   inline-group splice cannot come to disagree — and only the zero-permitting markers refuse there.
-  A grid row must therefore carry the REP, not just the marker. NB this defect class is also one
+  A grid row must therefore carry the REP, not just the marker. The rest-tail modifier the same
+  cycle added to the product is settled the same way — refused, because a rest tail collects one
+  value per remaining array element and a plain group is not one, having no type of its own to
+  collect (`plain_group_array_rest_tail_rejects_gracefully_at_every_spelling`; the splicing tail
+  that would consume the group's arity per repetition is the queue's occurrence/bounds scope). Its
+  cell is a rep-carrying row too, and the row's own probing shows why: the ARRAY tail now refuses,
+  the SOLE-element homogeneous cell (`[* kv]`) generates, the pure TABLE form (`{ * kv => uint }`)
+  refuses on its own delivered message — and the MAP REST ROW, the array tail's exact twin, still
+  panics (§ findings). One marker, four verdicts, separating on container and on whether a fixed
+  prefix precedes it: no cell of this product is predictable from its neighbours, which is the
+  argument for minting all of them rather than the ones a probe happened to reach. NB this defect
+  class is also one
   synthetic instance shy of the
   grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
@@ -225,19 +237,27 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
-- **A count-permitting occurrence over a plain group in FINAL array position aborts on a raw
-  `Option::unwrap()`.** `kv = (a: uint, b: uint)` + `t = [ c: uint, * kv ]` panics in
-  `src/generation/serialize.rs`. The `*` in final position is classified as an open-array REST TAIL
-  rather than as a narrowed member, so it routes past the record-field guards into a tail emitter
-  that has no splicing form for a group. Every neighbouring spelling of the same intent is already
-  graceful: NON-final `* kv` is refused by the rest tail's position guard, `+ kv` and `n*m kv` by
-  its occurrence guard, and the record path's own narrows guard covers keyed members. Scope of the
-  probe (2026-08-07 at `7a233010`): array-representation record, default profile, `--wasm=false`,
-  generate-only; not probed: the other profiles, the json/component faces, or a rest tail whose
-  group is reached through an alias. Fix shape is a choice, not a detail: give the rest-tail
-  emitter the splicing form (a tail of a 2-member group captures pairs, which is what the CDDL
-  says), or refuse it at the tail seam naming the homogeneous-array remedy (`w = [kv]`,
-  `t = [ c: uint, * w ]`) the way its `+`/`n*m` siblings already are.
+- **A plain group on a MAP REST ROW aborts on a raw `Option::unwrap()`, on either slot.**
+  `kv = (a: uint, b: uint)` + `t = { c: uint, * kv => uint }` (domain) and
+  `t = { c: uint, * uint => kv }` (range) panic at `src/generation/serialize.rs`'
+  `encoding_var_is_copy` on the default profile, and at the plain-group registry assert in
+  `src/intermediate/mod.rs` under `--preserve-encodings` and `--wasm` — the same unmaterialized
+  plain group, and the same two sites, as the array rest tail that
+  `plain_group_array_rest_tail_rejects_gracefully_at_every_spelling` now refuses. What makes this
+  the array tail's exact twin rather than a fresh class is that the FIXED PREFIX is what reaches it:
+  the prefix-less form of the same spelling (`t = { * kv => uint }`) is the pure TABLE shape, which
+  the delivered table-domain guard already refuses with its own message
+  (`plain_group_table_domain_rejects_gracefully_at_both_spellings`) — so the map rest-row seam has
+  no plain-group guard of its own on either slot, and the table guard it is next to does not cover
+  it. Scope of the probe (2026-08-07 at `37f92cbb`, found while retiring the array tail's entry):
+  both slots, default profile plus `--preserve-encodings` and `--wasm`, `--wasm=false` where
+  unstated, generate-only; not probed: the json/component faces, an ALIAS-indirected or TAGGED
+  spelling on either slot (the array twin's guard covered all three through the resolved type, so
+  expect the same reach here), or a rest row carrying entry directives. Fix shape follows the twin
+  rather than being open: refuse at the map rest-row seam on the resolved slot type, naming the
+  array-framed remedy the table guard already names (`{ c: uint, * [kv] => uint }`), unless probing
+  shows a slot where a one-item form exists that the table guard's argument does not already
+  dispose of.
 - **A plain group in a TYPE-CHOICE arm is never materialized, so the arm aborts on the missing
   registration.** `kv = (a: uint, b: uint)` + `t = [ c: uint, x: kv / null ]` panics with
   `rust struct Kv not found but referenced by …` at `src/intermediate/rust_type.rs`. Same shape as

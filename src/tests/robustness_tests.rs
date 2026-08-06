@@ -5116,6 +5116,285 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
     );
 }
 
+/// The array placement's OTHER unsupported modifier: a final-position open-array REST TAIL over a
+/// plain group (`t = [ c: uint, * kv ]`).
+///
+/// `*` in final position is classified as a rest TAIL rather than as a narrowed member, so it routes
+/// past the record-field guards (the `?` twin above among them) into the tail seam, whose emitter
+/// has no splicing form for a group: a rest tail collects ONE value per remaining array element,
+/// and a plain group is not one — it splices its members flat and is never materialized as a type
+/// of its own. Generation therefore aborted on a raw `Option::unwrap()` in `encoding_var_is_copy`
+/// (and, under `--preserve-encodings` / `--wasm`, on the plain-group registry assert reached
+/// earlier), naming neither the construct nor a way out. Honouring the shape means a SPLICING tail
+/// consuming the group's arity worth of elements per repetition, which is the occurrence/bounds
+/// program's scope, so this is a refusal and not an implementation.
+///
+/// What makes the refusal honest is that both remedies it names are asserted here to generate: the
+/// array framing (`w = [kv]`, then `* w`) and the tag moved onto that framed reference
+/// (`* #6.10(w)`). Pins the message across every spelling the one seam covers — bare, ALIAS and
+/// TAGGED — on every profile, and pins the sibling guards this one must neither shadow nor
+/// double-report: the guards that run BEFORE the element type is even computed (choice-arm
+/// placement, plain-group owner, multiplicity, position, occurrence kind, member key) keep their
+/// own messages, the fixed-value guard beside it keeps its own, and the row-entry DIRECTIVE guards
+/// after it are deliberately shadowed — a directive cannot be judged on a tail that has no
+/// representable element, and one problem gets one message.
+#[test]
+fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_grouptail_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "grouptail_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "kv = (a: uint, b: uint)\n";
+    const ALIAS: &str = "kv = (a: uint, b: uint)\nkv_alias = kv\n";
+
+    // The bare spelling, in full: names the rule, the group by its SOURCE spelling, why a tail has
+    // nothing to collect, the array-framed remedy, where a tag goes, and the supported neighbour.
+    let bare = run(&format!("{GROUP}t = [ c: uint, * kv ]\n"), "bare", &[])
+        .expect_err("a plain-group rest tail must reject gracefully");
+    assert!(
+        bare.contains("rule `t`: an open-array rest tail cannot capture the plain group `kv`"),
+        "rejection should name the rule and the group, got: {bare}"
+    );
+    assert!(
+        bare.contains("a rest tail collects ONE value per remaining element"),
+        "rejection should explain why the tail has nothing to collect, got: {bare}"
+    );
+    assert!(
+        bare.contains("`w = [kv]`, then `* w` in place of this tail"),
+        "rejection should name the array-framed remedy, got: {bare}"
+    );
+    assert!(
+        bare.contains("A tag belongs on the framed reference — `* #6.10(w)`"),
+        "rejection should say where a tag goes, got: {bare}"
+    );
+    assert!(
+        bare.contains("A single MANDATORY splice of the group"),
+        "rejection should point at the supported mandatory splice, got: {bare}"
+    );
+
+    // Every other spelling reaches the same seam and carries the same body, because the guard reads
+    // the RESOLVED element type rather than its surface shape.
+    for (spec, tag) in [
+        (format!("{ALIAS}t = [ c: uint, * kv_alias ]\n"), "alias"),
+        // a TAG around the element is an encoding operation, so the element type is still the group.
+        (format!("{GROUP}t = [ c: uint, * #6.10(kv) ]\n"), "tagged"),
+        // a group whose own members are ALL optional is reachable and deliberately still refused:
+        // the remedy serves it identically.
+        (
+            "kv = (? a: uint, ? b: uint)\nt = [ c: uint, * kv ]\n".to_owned(),
+            "all_optional_members",
+        ),
+        // rule ORDER must not matter: the plain-group registry is settled in a pre-pass.
+        (
+            "t = [ c: uint, * kv ]\nkv = (a: uint, b: uint)\n".to_owned(),
+            "reversed",
+        ),
+        // a longer fixed prefix changes nothing — the seam is the tail's element type.
+        (
+            format!("{GROUP}t = [ c: uint, d: tstr, * kv ]\n"),
+            "longer_prefix",
+        ),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains("an open-array rest tail cannot capture the plain group `kv`"),
+            "the {tag} spelling should carry the same body, got: {msg}"
+        );
+    }
+
+    // Profile independence: the refusal is at parsing, so no flag combination reaches an emission
+    // that could differ. (All of these formerly aborted at exit 101 — at `serialize.rs`'
+    // `encoding_var_is_copy` unwrap on the default profile, and at the plain-group registry assert
+    // under preserve/wasm.)
+    for (extra, tag) in [
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        for (spec, spelling) in [
+            (format!("{GROUP}t = [ c: uint, * kv ]\n"), "bare"),
+            (format!("{ALIAS}t = [ c: uint, * kv_alias ]\n"), "alias"),
+            (format!("{GROUP}t = [ c: uint, * #6.10(kv) ]\n"), "tagged"),
+        ] {
+            let msg = run(&spec, &format!("{tag}_{spelling}"), &extra)
+                .expect_err("the refusal must fire on every profile");
+            assert!(
+                msg.contains("an open-array rest tail cannot capture the plain group `kv`"),
+                "the {spelling} spelling on {tag} should carry the same body, got: {msg}"
+            );
+        }
+    }
+
+    // Both remedies the message names must actually work — a remedy string is an executable claim.
+    // (The generated crate additionally `cargo check`s; that is verified out of band, not here.)
+    for (spec, tag) in [
+        (format!("{GROUP}w = [kv]\nt = [ c: uint, * w ]\n"), "remedy"),
+        (
+            format!("{GROUP}w = [kv]\nt = [ c: uint, * #6.10(w) ]\n"),
+            "remedy_tagged",
+        ),
+    ] {
+        for (extra, profile) in [
+            (vec![], "default"),
+            (vec!["--preserve-encodings=true"], "preserve"),
+            (vec!["--wasm=true"], "wasm"),
+        ] {
+            assert!(
+                run(&spec, &format!("{tag}_{profile}"), &extra).is_ok(),
+                "the remedy `{}` must generate on {profile}, got: {:?}",
+                spec.trim(),
+                run(&spec, &format!("{tag}_{profile}"), &extra).err()
+            );
+        }
+    }
+
+    // Neighbours the guard must NOT widen into. The mandatory splice is the array placement's
+    // supported core (an array's length scales with the group's arity), the TAGGED mandatory member
+    // is that same splice with an encoding operation on it, the lone `* kv` is a homogeneous array
+    // recognized by `parse_group_type` before the tail seam ever runs, the inline `* [kv]` element
+    // carries `basic_override` (so it is not a plain group here), and a scalar tail is the tail
+    // feature's own happy path.
+    for (spec, tag) in [
+        (format!("{GROUP}t = [ c: uint, kv ]\n"), "mandatory_splice"),
+        (
+            format!("{ALIAS}t = [ c: uint, kv_alias ]\n"),
+            "mandatory_splice_alias",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, x: #6.10(kv) ]\n"),
+            "tagged_mandatory_member",
+        ),
+        (format!("{GROUP}t = [ * kv ]\n"), "homogeneous_array"),
+        (
+            format!("{GROUP}t = [ c: uint, * [kv] ]\n"),
+            "inline_wrapped",
+        ),
+        ("t = [ c: uint, * uint ]\n".to_owned(), "scalar_tail"),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // Guard ORDER. Everything that runs before the element type is computed keeps its own message:
+    // one problem, one message, and never two.
+    for (spec, tag, needle) in [
+        (
+            format!("{GROUP}t = [ x: uint // c: uint, * kv ]\n"),
+            "choice_arm",
+            "inside a group-choice arm",
+        ),
+        (
+            format!("{GROUP}g = ( a: uint, * kv )\nt = [ g ]\n"),
+            "plain_group_owner",
+            "inside a plain group",
+        ),
+        (
+            format!("{GROUP}t = [ * kv, * kv ]\n"),
+            "multiplicity",
+            "supports a single trailing rest tail",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, * kv, d: uint ]\n"),
+            "non_final",
+            "must be the LAST member of the array",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, + kv ]\n"),
+            "plus_occurrence",
+            "must use the `*` occurrence",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, 2*3 kv ]\n"),
+            "bounded_occurrence",
+            "must use the `*` occurrence",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, * k: kv ]\n"),
+            "member_key",
+            "is positional and cannot carry a member key",
+        ),
+        (
+            "t = [ c: uint, * 5 ]\n".to_owned(),
+            "fixed_value",
+            "cannot be a fixed value",
+        ),
+    ] {
+        let msg = run(&spec, tag, &[]).expect_err(&format!("`{}` must reject", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} neighbour should keep its own message (`{needle}`), got: {msg}"
+        );
+        assert!(
+            !msg.contains("cannot capture the plain group"),
+            "the {tag} neighbour must not also report the element-type problem, got: {msg}"
+        );
+    }
+
+    // …and the row-entry DIRECTIVE guards, which run AFTER the element type is computed, are
+    // deliberately shadowed by it: a directive cannot be judged on a tail with no representable
+    // element, so the shape refusal is the one message. (Same precedence the placement guards
+    // already have over these.)
+    for (spec, tag) in [
+        (
+            format!("{GROUP}t = [ c: uint, * kv ; @ignore\n]\n"),
+            "ignore",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, * kv ; @name xs\n]\n"),
+            "name",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, * kv ; @duplicates reject\n]\n"),
+            "duplicates",
+        ),
+        (
+            format!("{GROUP}t = [ c: uint, * kv ; @custom_serialize s @custom_deserialize d\n]\n"),
+            "custom_codec",
+        ),
+    ] {
+        let msg = run(&spec, tag, &[]).expect_err(&format!("`{}` must reject", spec.trim()));
+        assert!(
+            msg.contains("an open-array rest tail cannot capture the plain group `kv`"),
+            "the {tag} directive should get the shape refusal, got: {msg}"
+        );
+    }
+
+    // The `?`-modifier twin at an ordinary array FIELD keeps its OWN message: there the problem is
+    // telling present from absent, here it is that a tail has nothing to collect.
+    let optional_twin = run(
+        &format!("{GROUP}t = [ c: uint, ? kv ]\n"),
+        "optional_twin",
+        &[],
+    )
+    .expect_err("the optional twin must keep rejecting");
+    assert!(
+        optional_twin.contains("is an OPTIONAL (`?`) reference to the plain group `kv`"),
+        "the optional twin should keep its own message, got: {optional_twin}"
+    );
+}
+
 /// An occurrence marker on the single entry of a single-entry group-choice ARM is refused — except
 /// where DROPPING it is sound, which `inline_group_occurrence_flattens` already decides and this
 /// seam defers to rather than restating.

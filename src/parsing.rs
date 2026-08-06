@@ -7183,6 +7183,41 @@ fn recognize_array_rest_tail(
         ));
         return (None, Some(candidate));
     }
+    // A PLAIN GROUP tail element (`* kv`, where `kv = (a: uint, b: uint)`). Sibling of the
+    // fixed-value guard above and for the same reason: a rest tail collects one Rust value per
+    // remaining array element, and a plain group is not one — it splices its members flat into the
+    // enclosing array and is never materialized as a type of its own, so the tail emitter's
+    // `rust_struct` lookup came back empty and generation aborted on a raw `Option::unwrap()` in
+    // `encoding_var_is_copy` (and, under `--preserve-encodings` / `--wasm`, on the plain-group
+    // registry assert reached earlier). Honoring the shape means a SPLICING tail that consumes the
+    // group's arity worth of elements per repetition — the occurrence/bounds program's territory,
+    // not a guard's — so this is a refusal, and one made honest by a remedy verified to generate.
+    //
+    // Guarded on `is_basic` over the RESOLVED element type — the same predicate and the same
+    // one-seam placement as the record-field twin — so the bare, the ALIAS (`* kv_alias`) and the
+    // TAGGED (`* #6.10(kv)`) spellings land on ONE message on every profile. The array-WRAPPED
+    // forms keep their own (supported) verdicts: `w = [kv]` is a Record, not a plain group, and an
+    // inline `* [kv]` element carries `basic_override`, so neither is `is_basic`.
+    if element_type.is_basic(types)
+        && let ConceptualRustType::Rust(group_ident) =
+            element_type.conceptual_type.resolve_alias_shallow()
+    {
+        let group_name = types
+            .source_rule_name(group_ident)
+            .map(str::to_owned)
+            .unwrap_or_else(|| group_ident.to_string());
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail cannot capture the plain group `{group_name}` \
+             — a plain group has no type of its own, it splices its members flat into the \
+             enclosing array, while a rest tail collects ONE value per remaining element, so there \
+             is nothing for it to collect. Give the group its own array framing and capture that, \
+             which makes each repetition exactly ONE array element: `w = [{group_name}]`, then \
+             `* w` in place of this tail. (A tag belongs on the framed reference — `* #6.10(w)` — \
+             not on the group. A single MANDATORY splice of the group, `{group_name}` with no \
+             occurrence, is supported as it stands.)"
+        ));
+        return (None, Some(candidate));
+    }
     // Entry-level directives on the tail (`@name`, `@ignore`; `@duplicates` is rejected — no keys),
     // read from the row's own trailing slot (NOT rule-position handling — the tail is by definition
     // the array's last entry, whose slot the cddl parser also binds a rule's trailing comment to; the
