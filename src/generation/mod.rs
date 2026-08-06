@@ -390,7 +390,7 @@ impl GenerationScope {
             // only generate user-defined ones
             if let AliasIdent::Rust(ident) = alias_ident {
                 // also make sure not to generate it if we instead generated a binary wrapper type
-                if alias_info.gen_rust_alias
+                if alias_info.emits_rust_alias()
                     && !(cli.no_synthesized_rust_collection_aliases
                         && alias_info.synthesized_collection)
                 {
@@ -561,7 +561,7 @@ impl GenerationScope {
                     }
                     self.rust(types, ident).push_type_alias(type_alias);
                 }
-                if alias_info.gen_wasm_alias {
+                if alias_info.emits_wasm_alias() {
                     // WASM crate
                     if let ConceptualRustType::Fixed(constant) =
                         &alias_info.base_type.conceptual_type
@@ -1413,7 +1413,7 @@ impl GenerationScope {
             .type_aliases()
             .iter()
             .filter_map(|(alias_ident, info)| match alias_ident {
-                AliasIdent::Rust(ident) if info.gen_rust_alias => Some(ident),
+                AliasIdent::Rust(ident) if info.emits_rust_alias() => Some(ident),
                 _ => None,
             })
             .collect();
@@ -2009,7 +2009,7 @@ impl GenerationScope {
                 .type_aliases()
                 .iter()
                 .filter_map(|(alias_ident, info)| match alias_ident {
-                    AliasIdent::Rust(ident) if info.gen_wasm_alias => Some(ident),
+                    AliasIdent::Rust(ident) if info.emits_wasm_alias() => Some(ident),
                     _ => None,
                 })
                 .collect();

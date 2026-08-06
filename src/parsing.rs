@@ -2727,28 +2727,16 @@ fn parse_type(
                  and hand-write the type in full."
             ));
         }
-        // `@no_alias` strips the alias node the override is keyed on, so the pair goes with it and
-        // both directions fall back to the default wire format — symmetric, and therefore invisible
-        // to a round-trip test. Excluded body shapes (`Map`/`Array`, and the tag-head/parenthesized
-        // wrappers that recurse back into this function carrying the metadata) route to
-        // `parse_group`, where `@no_alias` is inert for a different reason and a named RECORD rule
-        // legitimately carries the pair.
-        if rule_metadata.no_alias
-            && !matches!(
-                &type1.type2,
-                Type2::Map { .. }
-                    | Type2::Array { .. }
-                    | Type2::TaggedData { .. }
-                    | Type2::ParenthesizedType { .. }
-            )
-        {
-            types.record_rejection(format!(
-                "{directive} together with `@no_alias` on `{type_name}`: `@no_alias` removes the \
-                 type-alias node the custom (de)serializer override is keyed on, so the pair goes \
-                 with it and BOTH directions silently fall back to the default wire format. Drop \
-                 `@no_alias` to keep the alias the pair overrides, or drop the pair."
-            ));
-        }
+        // `@no_alias` beside the pair is ACCEPTED and redundant, not refused. It used to be refused
+        // because `resolve_alias` STRIPPED the alias node when the rule emitted no `pub type`, and
+        // the node is what the emitters look the pair up by — so the pair went with it and both
+        // directions silently fell back to the default wire. Node survival is now keyed on
+        // `AliasInfo::keeps_alias_node` (emits-a-type OR carries-a-pair) rather than on emission
+        // alone, so the pair keeps its routing key with or without the directive. What remains is a
+        // request the pair already grants: a pair-carrying alias suppresses its own type projection,
+        // because a `pub type` here would carry the aliased type's built-in codec as a standalone
+        // wire contradicting the one every embed site writes. Both are honored, and the spelling
+        // generates byte-identically either way.
         // `@newtype` mints a wrapper struct whose `Serialize` impl is generated unconditionally
         // (`wrappers.rs` has no custom handling) while the DESERIALIZE call sites do route through
         // the custom reader — so the pair here is not a drop but a round-trip asymmetry: the wrapper

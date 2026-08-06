@@ -474,8 +474,6 @@ impl CborPayloadNestedPayloads {
     }
 }
 
-pub type CustomBytes = Vec<u8>;
-
 #[derive(Clone, Debug)]
 pub struct CustomRecord {
     pub ignored: Option<u64>,
@@ -984,7 +982,7 @@ impl InlineWrapper {
 pub struct MapStructWithCustomSerialization {
     pub chunked: Vec<u8>,
     pub hexed: Vec<u8>,
-    pub aliased: CustomBytes,
+    pub aliased: Vec<u8>,
     pub tagged: u64,
     pub plain: u64,
 }
@@ -993,7 +991,7 @@ impl MapStructWithCustomSerialization {
     pub fn new(
         chunked: Vec<u8>,
         hexed: Vec<u8>,
-        aliased: CustomBytes,
+        aliased: Vec<u8>,
         tagged: u64,
         plain: u64,
     ) -> Self {
@@ -1940,19 +1938,19 @@ impl From<TaggedText> for String {
 
 #[derive(Clone, Debug)]
 pub struct StructWithCustomSerialization {
-    pub custom_bytes: CustomBytes,
+    pub custom_bytes: Vec<u8>,
     pub field: Vec<u8>,
-    pub overridden: CustomBytes,
-    pub tagged1: CustomBytes,
+    pub overridden: Vec<u8>,
+    pub tagged1: Vec<u8>,
     pub tagged2: u64,
 }
 
 impl StructWithCustomSerialization {
     pub fn new(
-        custom_bytes: CustomBytes,
+        custom_bytes: Vec<u8>,
         field: Vec<u8>,
-        overridden: CustomBytes,
-        tagged1: CustomBytes,
+        overridden: Vec<u8>,
+        tagged1: Vec<u8>,
         tagged2: u64,
     ) -> Self {
         Self {

@@ -14,8 +14,6 @@ pub mod collections;
 
 use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
-pub type CustomDeclared = Vec<u8>;
-
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct CustomNewtype(pub(crate) cddl_lib::CustomNewtype);
@@ -109,11 +107,11 @@ impl Customized {
         self.0.field.clone()
     }
 
-    pub fn declared(&self) -> CustomDeclared {
+    pub fn declared(&self) -> Vec<u8> {
         self.0.declared.clone().into()
     }
 
-    pub fn new(field: String, declared: CustomDeclared) -> Self {
+    pub fn new(field: String, declared: Vec<u8>) -> Self {
         Self(cddl_lib::Customized::new(field, declared.clone()))
     }
 }

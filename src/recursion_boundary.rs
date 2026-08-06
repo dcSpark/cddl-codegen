@@ -233,7 +233,7 @@ pub fn classify(types: &IntermediateTypes, already_forced: &BTreeSet<RustIdent>)
         .type_aliases()
         .iter()
         .filter_map(|(alias_ident, info)| match alias_ident {
-            AliasIdent::Rust(ident) if info.gen_rust_alias => {
+            AliasIdent::Rust(ident) if info.keeps_alias_node() => {
                 Some((ident.clone(), info.base_type.clone()))
             }
             _ => None,

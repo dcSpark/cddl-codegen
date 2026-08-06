@@ -78,9 +78,12 @@ mod alias_of_marker {
     #[test]
     fn the_alias_decodes_to_the_markers_type_through_the_custom_wire() {
         let v = Holder::from_cbor_bytes(&wire()).unwrap();
-        // `PolicyIdV1`/`PolicyIdV1Entry` ARE `PolicyId` — the alias resolved to the marker's type, so
-        // these comparisons are against the hand-written extern, not against some minted wrapper.
-        let p: PolicyIdV1 = v.p;
+        // `policy_id_v1`/`policy_id_v1_entry` ARE `policy_id` — the alias resolved to the marker's
+        // type, so these comparisons are against the hand-written extern, not against some minted
+        // wrapper. The alias names no RUST type to annotate with (a pair-carrying alias mints none,
+        // so its name cannot carry a standalone codec contradicting the custom wire below), so the
+        // annotation spells what it resolves to.
+        let p: PolicyId = v.p;
         assert_eq!(p, decoded(P_TEXT));
         assert_eq!(v.t.get(&decoded(A_TEXT)).copied(), Some(1));
         assert_eq!(v.t.get(&decoded(B_TEXT)).copied(), Some(2));

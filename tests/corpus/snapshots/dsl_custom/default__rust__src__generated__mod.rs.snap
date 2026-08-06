@@ -18,8 +18,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-pub type CustomDeclared = Vec<u8>;
-
 #[derive(Clone, Debug, Copy)]
 pub struct CustomNewtype(pub(crate) u64);
 
@@ -42,11 +40,11 @@ impl From<u64> for CustomNewtype {
 #[derive(Clone, Debug)]
 pub struct Customized {
     pub field: String,
-    pub declared: CustomDeclared,
+    pub declared: Vec<u8>,
 }
 
 impl Customized {
-    pub fn new(field: String, declared: CustomDeclared) -> Self {
+    pub fn new(field: String, declared: Vec<u8>) -> Self {
         Self { field, declared }
     }
 }

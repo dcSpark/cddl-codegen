@@ -861,8 +861,6 @@ impl AsRef<cddl_lib::CborNestedPayloads> for CborNestedPayloads {
     }
 }
 
-pub type CustomBytes = Vec<u8>;
-
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct CustomFieldHolder(pub(crate) cddl_lib::CustomFieldHolder);
@@ -2031,11 +2029,9 @@ impl AsRef<cddl_lib::Hash> for Hash {
     }
 }
 
-pub type HexTableStr = Vec<u8>;
-
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct HexTableStrList(pub(crate) Vec<cddl_lib::HexTableStr>);
+pub struct HexTableStrList(pub(crate) Vec<Vec<u8>>);
 
 #[wasm_bindgen]
 impl HexTableStrList {
@@ -2047,29 +2043,29 @@ impl HexTableStrList {
         self.0.len()
     }
 
-    pub fn get(&self, index: usize) -> HexTableStr {
+    pub fn get(&self, index: usize) -> Vec<u8> {
         self.0[index].clone().into()
     }
 
-    pub fn add(&mut self, elem: HexTableStr) {
+    pub fn add(&mut self, elem: Vec<u8>) {
         self.0.push(elem.clone());
     }
 }
 
-impl From<Vec<cddl_lib::HexTableStr>> for HexTableStrList {
-    fn from(native: Vec<cddl_lib::HexTableStr>) -> Self {
+impl From<Vec<Vec<u8>>> for HexTableStrList {
+    fn from(native: Vec<Vec<u8>>) -> Self {
         Self(native)
     }
 }
 
-impl From<HexTableStrList> for Vec<cddl_lib::HexTableStr> {
+impl From<HexTableStrList> for Vec<Vec<u8>> {
     fn from(wasm: HexTableStrList) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<cddl_lib::HexTableStr>> for HexTableStrList {
-    fn as_ref(&self) -> &Vec<cddl_lib::HexTableStr> {
+impl AsRef<Vec<Vec<u8>>> for HexTableStrList {
+    fn as_ref(&self) -> &Vec<Vec<u8>> {
         &self.0
     }
 }
@@ -2078,7 +2074,7 @@ pub type MapBytesToMapU64ToMapU64ToArrArrText = Data;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapHexTableStrToU64(pub(crate) OrderedHashMap<cddl_lib::HexTableStr, u64>);
+pub struct MapHexTableStrToU64(pub(crate) OrderedHashMap<Vec<u8>, u64>);
 
 #[wasm_bindgen]
 impl MapHexTableStrToU64 {
@@ -2090,11 +2086,11 @@ impl MapHexTableStrToU64 {
         self.0.len()
     }
 
-    pub fn insert(&mut self, key: HexTableStr, value: u64) -> Option<u64> {
+    pub fn insert(&mut self, key: Vec<u8>, value: u64) -> Option<u64> {
         self.0.insert(key.clone(), value)
     }
 
-    pub fn get(&self, key: HexTableStr) -> Option<u64> {
+    pub fn get(&self, key: Vec<u8>) -> Option<u64> {
         self.0.get(&key).copied()
     }
 
@@ -2103,20 +2099,20 @@ impl MapHexTableStrToU64 {
     }
 }
 
-impl From<OrderedHashMap<cddl_lib::HexTableStr, u64>> for MapHexTableStrToU64 {
-    fn from(native: OrderedHashMap<cddl_lib::HexTableStr, u64>) -> Self {
+impl From<OrderedHashMap<Vec<u8>, u64>> for MapHexTableStrToU64 {
+    fn from(native: OrderedHashMap<Vec<u8>, u64>) -> Self {
         Self(native)
     }
 }
 
-impl From<MapHexTableStrToU64> for OrderedHashMap<cddl_lib::HexTableStr, u64> {
+impl From<MapHexTableStrToU64> for OrderedHashMap<Vec<u8>, u64> {
     fn from(wasm: MapHexTableStrToU64) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<OrderedHashMap<cddl_lib::HexTableStr, u64>> for MapHexTableStrToU64 {
-    fn as_ref(&self) -> &OrderedHashMap<cddl_lib::HexTableStr, u64> {
+impl AsRef<OrderedHashMap<Vec<u8>, u64>> for MapHexTableStrToU64 {
+    fn as_ref(&self) -> &OrderedHashMap<Vec<u8>, u64> {
         &self.0
     }
 }
@@ -2145,7 +2141,7 @@ impl MapStructWithCustomSerialization {
         self.0.hexed.clone()
     }
 
-    pub fn aliased(&self) -> CustomBytes {
+    pub fn aliased(&self) -> Vec<u8> {
         self.0.aliased.clone().into()
     }
 
@@ -2160,7 +2156,7 @@ impl MapStructWithCustomSerialization {
     pub fn new(
         chunked: Vec<u8>,
         hexed: Vec<u8>,
-        aliased: CustomBytes,
+        aliased: Vec<u8>,
         tagged: u64,
         plain: u64,
     ) -> Self {
@@ -2284,7 +2280,7 @@ impl AsRef<OrderedHashMap<u64, Vec<Vec<String>>>> for MapU64ToArrArrText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToHexTableStr(pub(crate) OrderedHashMap<u64, cddl_lib::HexTableStr>);
+pub struct MapU64ToHexTableStr(pub(crate) OrderedHashMap<u64, Vec<u8>>);
 
 #[wasm_bindgen]
 impl MapU64ToHexTableStr {
@@ -2296,11 +2292,11 @@ impl MapU64ToHexTableStr {
         self.0.len()
     }
 
-    pub fn insert(&mut self, key: u64, value: HexTableStr) -> Option<HexTableStr> {
+    pub fn insert(&mut self, key: u64, value: Vec<u8>) -> Option<Vec<u8>> {
         self.0.insert(key, value.clone())
     }
 
-    pub fn get(&self, key: u64) -> Option<HexTableStr> {
+    pub fn get(&self, key: u64) -> Option<Vec<u8>> {
         self.0.get(&key).cloned()
     }
 
@@ -2309,20 +2305,20 @@ impl MapU64ToHexTableStr {
     }
 }
 
-impl From<OrderedHashMap<u64, cddl_lib::HexTableStr>> for MapU64ToHexTableStr {
-    fn from(native: OrderedHashMap<u64, cddl_lib::HexTableStr>) -> Self {
+impl From<OrderedHashMap<u64, Vec<u8>>> for MapU64ToHexTableStr {
+    fn from(native: OrderedHashMap<u64, Vec<u8>>) -> Self {
         Self(native)
     }
 }
 
-impl From<MapU64ToHexTableStr> for OrderedHashMap<u64, cddl_lib::HexTableStr> {
+impl From<MapU64ToHexTableStr> for OrderedHashMap<u64, Vec<u8>> {
     fn from(wasm: MapU64ToHexTableStr) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<OrderedHashMap<u64, cddl_lib::HexTableStr>> for MapU64ToHexTableStr {
-    fn as_ref(&self) -> &OrderedHashMap<u64, cddl_lib::HexTableStr> {
+impl AsRef<OrderedHashMap<u64, Vec<u8>>> for MapU64ToHexTableStr {
+    fn as_ref(&self) -> &OrderedHashMap<u64, Vec<u8>> {
         &self.0
     }
 }
@@ -4317,7 +4313,7 @@ impl StructWithCustomSerialization {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn custom_bytes(&self) -> CustomBytes {
+    pub fn custom_bytes(&self) -> Vec<u8> {
         self.0.custom_bytes.clone().into()
     }
 
@@ -4325,11 +4321,11 @@ impl StructWithCustomSerialization {
         self.0.field.clone()
     }
 
-    pub fn overridden(&self) -> CustomBytes {
+    pub fn overridden(&self) -> Vec<u8> {
         self.0.overridden.clone().into()
     }
 
-    pub fn tagged1(&self) -> CustomBytes {
+    pub fn tagged1(&self) -> Vec<u8> {
         self.0.tagged1.clone().into()
     }
 
@@ -4338,10 +4334,10 @@ impl StructWithCustomSerialization {
     }
 
     pub fn new(
-        custom_bytes: CustomBytes,
+        custom_bytes: Vec<u8>,
         field: Vec<u8>,
-        overridden: CustomBytes,
-        tagged1: CustomBytes,
+        overridden: Vec<u8>,
+        tagged1: Vec<u8>,
         tagged2: u64,
     ) -> Self {
         Self(cddl_lib::StructWithCustomSerialization::new(

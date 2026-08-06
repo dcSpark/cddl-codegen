@@ -1519,6 +1519,14 @@ impl ConceptualRustType {
             Self::Map(_k, _v) => format!("{}{}", opt_ref, self.for_wasm_member_ct(types)),
             // it might not be worth generating this as aliases are ignored by wasm-pack build, but
             // that could change in the future so as long as it doens't cause issues we'll leave it
+            // A pair-carrying alias emits no `pub type` on the wasm face either, so its name is not
+            // a type a parameter can be declared as — spell what it resolves to. Checked before the
+            // shape arms below because the suppression is a property of the NAME, not of the shape.
+            Self::Alias(AliasIdent::Rust(rust_ident), ty)
+                if types.alias_projection_suppressed(rust_ident) =>
+            {
+                ty.for_wasm_param_impl(types, force_not_ref)
+            }
             Self::Alias(ident, ty) => match &**ty {
                 Self::Rust(_) |
                 Self::Array(_) |
@@ -1597,6 +1605,12 @@ impl ConceptualRustType {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
                 AliasIdent::Reserved(_) => ty.for_wasm_member_ct(types),
+                // A pair-carrying alias emits no wasm `pub type`, so the name does not exist to
+                // store a member as — spell the resolved type. The stored VALUE is unaffected: the
+                // suppressed alias was transparent, so the name and the base named one type.
+                AliasIdent::Rust(rust_ident) if types.alias_projection_suppressed(rust_ident) => {
+                    ty.for_wasm_member_ct(types)
+                }
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(_) => ident.to_string(),
             },
@@ -1652,6 +1666,14 @@ impl ConceptualRustType {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
                 AliasIdent::Reserved(_) => ty.for_rust_member_ct(types, from_wasm, cli),
+                // A pair-carrying alias emits no `pub type`, so its name is not a type a member can
+                // be declared as — spell what it resolves to. Recursing (rather than spelling the
+                // base ident here) is what keeps the marker-alias flavor right: the base is a
+                // `Rust(PolicyId)`, whose own arm applies the `from_wasm` crate-path form the
+                // suppressed name would otherwise have carried.
+                AliasIdent::Rust(rust_ident) if types.alias_projection_suppressed(rust_ident) => {
+                    ty.for_rust_member_ct(types, from_wasm, cli)
+                }
                 // but other aliases are generated and should be used.
                 AliasIdent::Rust(rust_ident) => {
                     if from_wasm {

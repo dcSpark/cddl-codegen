@@ -722,15 +722,21 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("on the table row (`* k => v`) of rule `t`"),
     },
-    // 23e. REJECT: with `@no_alias`, which strips the alias node the override keys on (a SYMMETRIC
-    //      drop — both directions fall back to default wire, so no round-trip can see it).
+    // 23e. ACCEPTED and redundant: `@no_alias` asks for the type-projection suppression a
+    //      pair-carrying alias already performs, so both are honored. (It was once refused because
+    //      node survival keyed on EMISSION, so suppressing the `pub type` took the pair's routing
+    //      key with it; survival now keys on emits-a-type OR carries-a-pair.) The anchors are the
+    //      two facts the retired refusal denied: the routing survives, and no `pub type` is emitted.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "with-no-alias",
         spec: "cb = bytes ; @no_alias @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("together with `@no_alias`"),
+        expect: Expect::Effect {
+            must: &["my_ser(serializer, &self.f)", "my_deser(raw)"],
+            must_not: &["pub type Cb"],
+        },
     },
     // 23f. REJECT: with `@newtype` — not a drop but an ASYMMETRY (deserialize call sites route
     //      through the custom reader, the wrapper writes through its generated impl).
@@ -915,7 +921,9 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Effect {
             must: &[
-                "pub f: Inner,",
+                // the alias mints no rust type, so the member spells what it resolves to — the
+                // `.cbor` framing still belongs to the member expression, not to the alias
+                "pub f: u64,",
                 "ser_inner(&mut f_inner_se, &self.f)",
                 "ser_inner(serializer, &self.d)",
                 "deser_inner(inner_de)",
@@ -1135,7 +1143,7 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Effect {
             must: &[
-                "pub t_key_encodings: BTreeMap<AnV1, StringEncoding>",
+                "pub t_key_encodings: BTreeMap<An, StringEncoding>",
                 "let (t_key, t_key_encoding) =",
                 "my_deser(raw)",
             ],
@@ -1295,9 +1303,10 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Effect {
             must: &[
-                // the alias resolves to the marker's type — no wrapper is minted for the pair to
-                // sit on, which is what makes this the Rust-type override
-                "pub type PidV1 = Pid;",
+                // the alias resolves to the marker's type and mints NO type of its own: a
+                // `pub type PidV1 = Pid;` would give the CDDL name a standalone codec (the
+                // marker's built-in one) contradicting the wire every embed site writes
+                "pub f: Pid,",
                 "pub f_encoding: StringEncoding",
                 // split so the anchors survive a rustfmt line wrap between LHS and call
                 "let (f, f_encoding) =",
@@ -1305,7 +1314,7 @@ const GRID: &[Cell] = &[
                 // the by-REFERENCE argument mode this position gives the codec
                 ".map(|encs| encs.f_encoding.clone())",
             ],
-            must_not: &[],
+            must_not: &["pub type PidV1"],
         },
     },
     // 23y. HONORED at a TABLE KEY DOMAIN: the per-entry sidecar is keyed by the DECODED key (the
@@ -1320,13 +1329,14 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Effect {
             must: &[
-                "pub type PidV1 = Pid;",
-                "pub t_key_encodings: BTreeMap<PidV1, StringEncoding>",
+                "pub t_key_encodings: BTreeMap<Pid, StringEncoding>",
                 "my_ser(serializer, key, t_key_encoding)",
                 "let (t_key, t_key_encoding) =",
                 "my_deser(raw)",
             ],
-            must_not: &[],
+            // the structural map CLASS name still derives from the alias (`for_variant` reads the
+            // surviving node), so only the type SPELLING resolves — the name does not
+            must_not: &["pub type PidV1"],
         },
     },
     // ---- @raw_bytes_flavor -------------------------------------------------------------------
@@ -1796,6 +1806,89 @@ pub(super) fn generate(
     result
 }
 
+/// A transparent alias carrying a custom pair mints NO rust type — on either face — while every
+/// position that reaches it keeps routing the pair.
+///
+/// The defect this pins out of existence: the alias used to emit `pub type Inner = u64;`, whose
+/// standalone `Inner::to_cbor_bytes()` / `Inner::from_cbor_bytes()` were `u64`'s blanket-impl
+/// codec, while every EMBED site routed `write_inner`/`read_inner`. One CDDL name then had two wire
+/// forms, selected by whether a caller went through the standalone entry point or through a holder
+/// — and nothing per-alias is emitted for the pair to displace, so no emission change could
+/// redirect that standalone codec. Removing the name is what closes it.
+///
+/// The contract is an IFF, so both directions are asserted here: the pair-carrying names are gone
+/// and their members spell the resolved base, while an unannotated sibling's `pub type` survives
+/// untouched (the positive control that makes the absences attributable to the pair rather than to
+/// a flag or a broken fixture). Suppression is transitive — `renamed = inner` inherits the wire
+/// facts, so it inherits the suppression — and it reaches the WASM face too, which re-exposed the
+/// same contradicting standalone name.
+///
+/// What must NOT change is the alias-derived NAMING: the `Alias` node survives resolution because
+/// it is the routing key the emitters look the pair up by, so the structural wasm class of
+/// `[* inner]` is still `InnerList`. A name is not a type.
+#[test]
+fn a_pair_carrying_alias_mints_no_type_on_either_face_while_naming_and_routing_survive() {
+    // `bin` is a BYTES alias so its list element is not directly wasm-exposable and a `*List`
+    // wrapper class is actually minted — the surface the naming half of the contract lives on.
+    const SPEC: &str = "inner = uint ; @custom_serialize write_inner @custom_deserialize read_inner\n\
+                        renamed = inner\n\
+                        plain = uint\n\
+                        bin = bytes ; @custom_serialize write_bin @custom_deserialize read_bin\n\
+                        holder = [a: inner, b: renamed, p: plain, l: [* bin]]\n";
+    let files = generate(SPEC, &[], true, "pair_alias_no_projection")
+        .expect("a pair-carrying alias spec must generate");
+    let rust = files
+        .get("rust/src/generated/mod.rs")
+        .expect("the rust root module must be generated");
+    let wasm = files
+        .get("wasm/src/generated/mod.rs")
+        .expect("the wasm root module must be generated");
+
+    for (face, src) in [("rust", rust), ("wasm", wasm)] {
+        assert!(
+            !src.contains("pub type Inner") && !src.contains("pub type Renamed"),
+            "[{face}] a pair-carrying alias (and the rule that renames it) must mint no `pub type` \
+             — such a name carries the aliased type's built-in codec as its standalone \
+             to/from_cbor_bytes, contradicting the wire every embed site writes:\n{src}"
+        );
+        assert!(
+            src.contains("pub type Plain = u64;"),
+            "[{face}] control: an unannotated transparent alias still emits its `pub type`, so the \
+             absences above are attributable to the pair and not to the face or the flags:\n{src}"
+        );
+    }
+    assert!(
+        rust.contains("pub a: u64,") && rust.contains("pub b: u64,"),
+        "members reached through the alias — directly and through the rename — must spell the type \
+         it RESOLVES to:\n{rust}"
+    );
+    assert!(
+        rust.contains("pub p: Plain,"),
+        "control: the unannotated alias is still spelled by NAME at its member position:\n{rust}"
+    );
+    assert!(
+        wasm.contains("pub struct BinList(pub(crate) Vec<Vec<u8>>);"),
+        "the surviving `Alias` node is what the structural wasm class NAME derives from, so \
+         suppressing the type must leave `[* bin]`'s wrapper called `BinList` while what it \
+         STORES resolves — a name is not a type:\n{wasm}"
+    );
+
+    let ser = files
+        .get("rust/src/generated/serialization.rs")
+        .expect("serialization must be generated");
+    assert!(
+        ser.contains("write_inner(serializer, &self.a)")
+            && ser.contains("write_inner(serializer, &self.b)")
+            && ser.contains("read_inner(raw)"),
+        "every position that reaches the alias must still route the pair — the suppression removes \
+         a contradicting standalone surface, never the routing:\n{ser}"
+    );
+    assert!(
+        !ser.contains("self.a)?;\n        serializer.write_unsigned_integer"),
+        "the routed positions must not fall back to the built-in codec the pair replaces:\n{ser}"
+    );
+}
+
 /// The concatenated generated source, or a distinct marker for a graceful `Err` / a `panic!`.
 enum Outcome {
     Source(String),
@@ -2012,9 +2105,10 @@ fn cbor_payload_and_member_agree_on_the_wrapped_aliass_custom_pair() {
         .join("\n");
 
     assert!(
-        src.contains("pub f: Inner,"),
-        "the `.cbor` member must spell its type as declared — the encoding operation is the \
-         MEMBER expression's, so the alias denotes the value read there:\n{src}"
+        src.contains("pub f: u64,") && !src.contains("pub type Inner"),
+        "the `.cbor` member spells the type the annotated alias RESOLVES to: the encoding operation \
+         is the MEMBER expression's, so the alias still denotes the value read inside the byte \
+         string, but a pair-carrying alias mints no rust type for the member to name:\n{src}"
     );
 
     let h_ser = impl_block(&src, "cbor_event::se::Serialize for H");
@@ -2115,9 +2209,14 @@ fn transparent_realias_and_member_agree_on_the_aliass_custom_pair() {
         .join("\n");
 
     assert!(
-        src.contains("pub y: Bar,"),
-        "fixture premise: the member must be declared through the re-alias, or the assertions \
-         below are vacuous:\n{src}"
+        src.contains("pub y: u64,")
+            && !src.contains("pub type Bar")
+            && !src.contains("pub type Foo")
+            && !src.contains("pub type Inner"),
+        "fixture premise: the member is declared through the re-alias, whose inherited pair \
+         suppresses the type projection at EVERY link of the chain — so no link names a rust type \
+         and the member spells the resolved base. If a `pub type` survived here, that name would \
+         carry a standalone codec contradicting the wire the assertions below pin:\n{src}"
     );
 
     let ser = impl_block(&src, "cbor_event::se::Serialize for UseBar");
