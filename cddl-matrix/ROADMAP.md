@@ -203,6 +203,32 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
+- **A `?` occurrence on a group-choice ARM is dropped silently, narrowing the arm to its
+  present-only case at exit 0.** `kv = (a: uint, b: uint)` + `t = [ x: uint // ? kv ]` generates
+  output BYTE-IDENTICAL to the mandatory `t = [ x: uint // kv ]` — the emitted enum is
+  `X(u64) | Kv(Kv)`, with no representation of the zero-occurrence alternative the `?` admits. The
+  consequence is on the wire, not just in the API: the generated decoder REJECTS the empty array
+  the spec permits (`0x80` → `No variant matched … Definite length mismatch: found 0`) while
+  accepting `[2, 3]`. This is the arm analogue of the record path's narrowing guards, on a seam
+  those guards do not reach: a single-entry group-choice arm never routes through the record-field
+  walk (it becomes a variant type directly), so neither the array narrows guard nor the
+  optional-plain-group guard beside it
+  (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`) sees it, and the arm
+  seam builds the variant from the entry's TYPE without ever reading its occurrence. Scope of the
+  probe (2026-08-07 at `ba991ab1`): default profile, `--wasm=false`, generate-plus-execute for the
+  array rep (byte-identical emission and the two decode vectors above), generate-only for the MAP
+  rep (`t = { x: uint // ? kv }`) and the alias spelling (`? kv_alias`) — both also byte-identical
+  to their mandatory twins, so the drop is not array-specific. Not probed: the other profiles, the
+  json/component faces, a `?` arm carrying a non-group type, or the other occurrence markers on an
+  arm. Fix shape is a choice, not a detail: honor the occurrence at the arm seam by giving the
+  zero-case its own variant (establish first that the arms stay tellable apart on the wire — an
+  empty arm matches an empty array, which every other arm's length check must then exclude), or
+  refuse a `?`-carrying group-choice arm gracefully. A refusal must not name the named-array
+  wrapper as the remedy: `w = [kv]` + `t = [ x: uint // w ]` does generate, but it nests the group
+  in its own array and still cannot express the empty case, so it answers a different spec. What
+  DOES express this one, verified to generate at exit 0, is naming all three alternatives as rules
+  and using a TYPE choice: `xarr = [x: uint]`, `kvarr = [kv]`, `empty = []`, then
+  `t = xarr / kvarr / empty`.
 - **A count-permitting occurrence over a plain group in FINAL array position aborts on a raw
   `Option::unwrap()`.** `kv = (a: uint, b: uint)` + `t = [ c: uint, * kv ]` panics in
   `src/generation/serialize.rs`. The `*` in final position is classified as an open-array REST TAIL
