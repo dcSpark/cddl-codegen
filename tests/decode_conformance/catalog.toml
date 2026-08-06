@@ -759,6 +759,27 @@ reason = "the value 6 is not the fixed value 5 — violates the fixed-value arra
 expect_err = "Expected fixed value 5 found 6"
 
 [[row]]
+id = "contain.array-element.value.number.float"
+axis = "containment"
+example = "a = [v: 1.5]"
+spec = "a = [v: 1.5]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "81f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81f94100"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 2.5 is not the fixed value 1.5 — violates the fixed-value array member `v: 1.5` in `a = [v: 1.5]` (FixedValueMismatch with Key::Float); the instance is the spec-valid `[1.5]` (`81f93e00`) with ONLY the constant's half-precision head value changed (`3e00`->`4100`, 1.5->2.5), so the wrong constant is its sole invalidity; both oracles certify the violation"
+expect_err = "Expected fixed value 1.5 found 2.5"
+
+[[row]]
 id = "contain.array-element.value.number.nint"
 axis = "containment"
 example = "a = [v: -1]"
@@ -2004,6 +2025,78 @@ expect_err = "Expected fixed value true found false"
 hex = "81cbf5"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "contain.group-choice-arm.type2.value.float_array"
+axis = "containment"
+example = "t = [ v: 1.5 // label: tstr ]"
+spec = "t = [ v: 1.5 // label: tstr ]"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "8167736f6972c3a965"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81687363686d616c747a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81696e6f637475726e6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "816a6d6f6f6e7368696e6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "816b616e7469746f78696e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81f94100"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 2.5 is not the fixed value 1.5 — the wire major (7, Special) routes the TYPE-MATCH dispatch to the float arm of `t = [ v: 1.5 // label: tstr ]`, which then fails its constant check (FixedValueMismatch with Key::Float, propagated directly — no backtracking to the text arm); the instance is the spec-valid `[1.5]` (`81f93e00`) with ONLY the constant's half-precision head value changed (`3e00`->`4100`, 1.5->2.5); both oracles certify the violation"
+expect_err = "Expected fixed value 1.5 found 2.5"
+
+[[row]]
+id = "contain.group-choice-arm.type2.value.float_same_major_array"
+axis = "containment"
+example = "t = [ v: 1.5 // flag: true ]"
+spec = "t = [ v: 1.5 // flag: true ]"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "81f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81f94100"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value 2.5 satisfies NEITHER same-major arm of `t = [ v: 1.5 // flag: true ]` — both arms share CBOR major 7, so the BRUTE-FORCE dispatch tries each in source order and both fail (the float arm as FixedValueMismatch 1.5 vs 2.5, the bool arm as a Special::Bool type mismatch), ending in NoVariantMatchedWithCauses carrying both causes; the instance is the spec-valid `[1.5]` (`81f93e00`) with ONLY the constant's half-precision head value changed (`3e00`->`4100`), so arm non-membership is its sole invalidity; both oracles certify the violation"
+expect_err = "No variant matched"
 
 [[row]]
 id = "contain.group-choice-arm.type2.value.map"

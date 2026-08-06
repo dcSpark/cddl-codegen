@@ -1788,6 +1788,21 @@
           }
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.array-element.value.number.float",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.array-element.value.number.nint",
         "status": "supported"
       },
@@ -2174,6 +2189,36 @@
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.type2.tag.fixed_array",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.group-choice-arm.type2.value.float_array",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen generates but does not compile (cargo check exit 101)",
+            "status": "unsupported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 2 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.group-choice-arm.type2.value.float_same_major_array",
         "status": "supported"
       },
       {
@@ -3369,6 +3414,14 @@
       "spec": "allowed"
     },
     {
+      "example": "a = [v: 1.5]",
+      "feature": "value.number",
+      "id": "contain.array-element.value.number.float",
+      "note": "A FLOAT numeric literal as a fixed array-element value (`[v: 1.5]`) — the third KIND of `contain.array-element.value.number`, whose literal is the uint `5`, beside the nint `contain.array-element.value.number.nint`. The kinds are not interchangeable: a fixed float encodes on CBOR major 7 as a float head (`f9`/`fa`/`fb`), so the member reads `raw.float()?` rather than an integer reader, verifies the constant with an exact `!=` compare (`1.5` is `3/2`, exactly representable, so the compare is well-defined) and reports a wrong value as `FixedValueMismatch` with `Key::Float`, and the serialize side writes `write_float(serializer, 1.5)` — the shortest lossless head for the value. Member position, not arm position: the constant is verified on deserialize and stored nowhere, which is why this cell classifies as enforcement-bearing (`query_q4_directional.ts`) while its arm-position relatives do not. The DECIMAL lexeme is what this cell varies; its hexfloat spelling of the same value class is the feature row `value.number.hexfloat` (`[v: 0x1.8p+1]`). Optional (`? f: 2.5`) fixed floats are `tests/corpus/optional_fixed_float.cddl`. RFC8610 §2.1, §3.4.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
       "example": "b = bytes .cbor ({a: int, c: uint})",
       "feature": "type2.map",
       "id": "contain.cbor-payload.type2.map",
@@ -3645,6 +3698,22 @@
       "feature": "type2.map",
       "id": "contain.group-choice-arm.type2.map.array",
       "note": "Array-representation group-choice arm containing an anonymous map type; this isolates the anonymous-composite generation limit inside a `//` arm. RFC8610 §2.2.2, §3.4, §3.5.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ v: 1.5 // label: tstr ]",
+      "feature": "type2.value",
+      "id": "contain.group-choice-arm.type2.value.float_array",
+      "note": "Array-representation group-choice arm carrying a fixed FLOAT member value beside a sibling arm of a DISJOINT CBOR major (`[ v: 1.5 // label: tstr ]`) — the float-kind counterpart of `contain.group-choice-arm.type2.value.nint_array` (a fixed nint) and `contain.group-choice-arm.type2.value.map` (a fixed uint, map rep). Dispatch path: TYPE-MATCH — the emitted deserialize reads the array header then matches `raw.cbor_type()`, routing CBOR major 7 (Special) to this arm and major 3 (Text) to the sibling; the arm then reads `raw.float()?`, verifies the constant with an exact `!=` compare and stores nothing, reporting a wrong constant as `FixedValueMismatch` with `Key::Float`, and falls through to `NoVariantMatched` on any other major. No backtracking is emitted, so this row measures the type-match site only — the same-major sibling arm is `contain.group-choice-arm.type2.value.float_same_major_array`. RFC8610 §2.1, §2.2.2, §3.4.",
+      "role": "role.group-choice-arm",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = [ v: 1.5 // flag: true ]",
+      "feature": "type2.value",
+      "id": "contain.group-choice-arm.type2.value.float_same_major_array",
+      "note": "Array-representation group-choice arm carrying a fixed FLOAT member value beside an arm that SHARES its CBOR major (`[ v: 1.5 // flag: true ]`) — `1.5` and `true` are both major 7, so the wire major cannot be the arm discriminant. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize reads the array header, anchors `raw.position()`, runs each arm's reader in source order (the float arm verifying its constant as `FixedValueMismatch` with `Key::Float`, the bool arm as `FixedValueMismatch` with `Key::Bool`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch its disjoint-major sibling `contain.group-choice-arm.type2.value.float_array` takes, which is why the float kind is enumerated on both. The group-choice spelling is deliberate: the same pairing as a bare TYPE choice is a different (and currently defective) path — see `cddl-matrix/ROADMAP.md` § findings. RFC8610 §2.1, §2.2.2, §3.4, App. D.",
       "role": "role.group-choice-arm",
       "spec": "allowed"
     },

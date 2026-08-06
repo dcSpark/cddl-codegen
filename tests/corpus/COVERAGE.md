@@ -421,7 +421,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
 | `value.text` |  | ✅ | ✅ | · |  |  |  | · |  |  |
 
-- Modelled `(role × feature)` cells: **68** (over 132 shape-granular containment rows).
+- Modelled `(role × feature)` cells: **68** (over 135 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **32**.
 - Exercised by the corpus, modelled by **nothing**: **150** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **36**.

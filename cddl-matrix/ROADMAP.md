@@ -8,13 +8,13 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->120 features (95 RFC8610 + 1 RFC9682 + 24 `CDDL_CODEGEN` vendor profile), 132 containment cells, and 286 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->120 features (95 RFC8610 + 1 RFC9682 + 24 `CDDL_CODEGEN` vendor profile), 135 containment cells, and 289 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->90 `class="constraint"` enforcement reject vectors over 70 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->3 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->93 `class="constraint"` enforcement reject vectors over 73 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — the widened-occurrence-marker table
 class is CLOSED (`+`/`1*` is honored as a non-empty container and the other count-permitting markers
@@ -158,6 +158,42 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
+- **A same-major group-choice arm pairing under `--preserve-encodings` emits a crate that does not
+  compile: the brute-force deserialize returns unit-variant constructions for arms preserve makes
+  STRUCT variants.** Surfaced 2026-08-06 by the new cell
+  `contain.group-choice-arm.type2.value.float_same_major_array` (`t = [ v: 1.5 // flag: true ]` —
+  the float/bool pairing shares CBOR major 7, forcing the brute-force try-each-arm dispatch) and
+  reproduced by hand: generation exits 0 and `cargo check` fails E0533 at the emitted
+  `serialization.rs` (`Ok(()) => return Ok(T::Flag)` — but under preserve the fixed-value arm is a
+  struct variant carrying `len_encoding`, so the unit construction is not a value). The verify
+  annotation records the honest posture (`emission.preserve.status = "unsupported"`, cargo check
+  exit 101 — one of the three preserve-side emission divergences in the status headers); this entry
+  is the candidate fix. The class is the brute-force SUCCESS-return site specifically: the
+  disjoint-major pairing `t = [ v: 1.5 // label: tstr ]`
+  (`contain.group-choice-arm.type2.value.float_array`) takes the type-match dispatch and is green
+  under preserve, and the bare-type-choice same-major pairing
+  (`contain.choice-member.prelude.true.same_major_brute`) emits through a different path with no
+  divergence. Scope of the probes: default and preserve profiles, rust face, `cargo check`; not
+  probed whether OTHER preserve-struct-variant arm kinds (fixed text/uint with sidecars) reach the
+  same site through other same-major pairings. Fix shape: the brute-force arm-success return must
+  construct the variant with its encoding sidecar fields (or defer to the arm reader's constructed
+  value) instead of assuming unit variants.
+- **A fixed FLOAT or NINT arm in a bare TYPE choice mints an invalid Rust variant identifier and
+  dies at rustfmt — exit 1 and zero files written, but no refusal naming the construct.** Probed
+  2026-08-06 while enumerating the float fixed-value kind (whose group-choice-arm cells
+  `contain.group-choice-arm.type2.value.float_array` / `.float_same_major_array` and member cell
+  `contain.array-element.value.number.float` take different, green paths). `t = 1.5 / tstr` and
+  `t = -1 / null / tstr` mint enum variants named from the literal's LEXEME (`F1.5`, `F-1`) — not a
+  valid identifier — so generation fails only when rustfmt refuses the emitted tokens ("arbitrary
+  expressions are not allowed in patterns" / "expected item, found `5`"), an error that names
+  rustfmt's confusion rather than the arm. The uint and text kinds are unaffected
+  (`t = 5 / null / tstr`, `t = "x" / null / tstr` — their lexemes already form valid identifiers),
+  so the mechanism is the type-choice fixed-arm variant-name minter not sanitizing `.` and `-`.
+  Loud, never silent: no exit-0 output exists to be wrong. Scope of the probe: bare type choices,
+  default profile; the group-choice spelling of the same pairings emits through the arm cells above
+  and is green. Candidate fix, either direction honest: sanitize the minted variant identifier
+  (a public-API naming decision — e.g. `F1_5` / `FNeg1` — so it wants a deliberate scheme, not an
+  ad-hoc escape), or refuse the arm kind gracefully naming the construct until that scheme exists.
 - **A transparent alias carrying a `@custom_serialize`/`@custom_deserialize` PAIR has two wire forms
   in one crate: every embed site routes through the pair, its own standalone codec does not.** Probed
   2026-08-04 while force-wrapping the `.cbor` rule bodies (which closed the structurally identical
@@ -365,29 +401,6 @@ ledgered here (that's what the probe/gate error messages point at).
   shape is still uncatalogued as a matrix cell. **Reopening signal**, on the magnitude axis: a spec
   brought to us contains a fixed-value/null two-arm choice, i.e. the count of rules its owner must
   hand-rewrite to keep generating reaches 1; today the evidence is synthetic probes only.
-- **Enumerate the FLOAT fixed-value kind, in both the arm and the member position.** The kind axis
-  and the position axis are separate cells, but they share one reason to be enumerated at all: the
-  result is known to be NON-uniform (probed kinds keep behaving differently from `uint`), so these
-  are rows with a known payoff rather than a speculative sweep. Float is the kind left: it used to
-  wait on the preserve-mode float stub, and that stub is retired — floats preserve their head width
-  in every position — so both rows are buildable now, with `tests/corpus/optional_fixed_float.cddl`
-  as the member-position precedent. The remaining kinds are done or deliberately excluded: bool and
-  null are covered arm-side by `tests/corpus/group_choice_fixed_special.cddl`, nint and the
-  tag-wrapped form by `contain.group-choice-arm.type2.value.nint_array` /
-  `contain.group-choice-arm.type2.tag.fixed_array`, the same-major-type pairing by
-  `contain.choice-member.prelude.true.same_major_brute`, and the member position by
-  `contain.array-element.value.number.nint`; `undefined` and the byte-string literal have no member
-  representation at all (their own entries below).
-  The kind axis has
-  a second dimension the cells must spell deliberately: the DISPATCH PATH. A choice's arms reach
-  either the type-match dispatch or (when arms share a CBOR major type) the brute-force
-  try-each-arm path, and the two emit independently, so a kind row probed on one path certifies
-  nothing about the other. A float arm is a major-7 special, so it shares its major with `true` /
-  `false` / `null`: the arm-side row must be spelled to state which path its example takes rather
-  than inheriting the type-match assumption the integer kinds' rows record.
-  The `n*m` marker on the cardinality boundary is omitted rather than deferred — the refusal
-  message names `*` / `+` / `?` / `n*m` from one site, so a fourth row would model the same code
-  path the three markers already reach.
 - **`undefined` has no member REPRESENTATION, so a spec that constrains a position to it must be
   hand-rewritten.** `undefined` is refused gracefully in every position — `[v: undefined, x: uint]`,
   `{ k: undefined, j: uint }` and the rule body `x = undefined` all exit 1 naming the type, under the
