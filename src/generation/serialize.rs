@@ -1222,7 +1222,14 @@ impl GenerationScope {
                     }
                 }
                 SerializingRustType::Root(ConceptualRustType::Array(ty), _cfg) => {
-                    let len_expr = match &ty.conceptual_type {
+                    // Resolve the element's aliases before classifying it: an alias is transparent,
+                    // so `[* kv_alias]` splices exactly as many items per element as `[* kv]` does.
+                    // Matching the bare `Rust` ident wrote a header counting ELEMENTS while the loop
+                    // below wrote each element's members FLAT — an array whose header disagrees with
+                    // its own contents, at exit 0 in a crate that compiles. Pinned by
+                    // `alias_to_plain_group_in_array_positions_matches_the_direct_reference`; its
+                    // deserialize counterpart is the element-read arm in `generate_deserialize`.
+                    let len_expr = match ty.conceptual_type.resolve_alias_shallow() {
                         ConceptualRustType::Rust(elem_ident)
                             if types.is_plain_group(elem_ident) =>
                         {
