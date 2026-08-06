@@ -17719,6 +17719,12 @@ fn shallow_any_still_parses() {
 /// regression, or a genuine gap to record on the emission axis via a verify.ts probe); an EXPECTED
 /// failure that now generates fine fails the gate as "resurfaced" (the gap closed — re-probe so the
 /// emission verdict flips to supported), so the verdicts can't rot.
+///
+/// One emission-unsupported flavor is deliberately NOT a generation-level expectation: a verdict
+/// whose evidence records "generates but does not compile" (the verify.ts probe's verbatim clause
+/// for a cell that generates at exit 0 and fails `cargo check`). Its divergence is a compile-level
+/// fact this generation-only sweep cannot observe in either direction, so the expectation is
+/// skipped where it is derived — see the comment at that site for the loudness argument.
 #[test]
 #[ignore]
 fn all_supported_constructs_generate_all_profiles() {
@@ -17755,6 +17761,22 @@ fn all_supported_constructs_generate_all_profiles() {
                     .and_then(|v| v.as_str())
                     .unwrap_or("emission profile is unsupported")
                     .to_string();
+                // An emission-unsupported verdict has TWO flavors, and only one is a
+                // generation-level expectation. The probe's own evidence clause distinguishes
+                // them: "generates but does not compile" (verify.ts's emission probe, verbatim)
+                // marks a cell whose generation SUCCEEDS and whose divergence lives at `cargo
+                // check` — a compile-level fact this generation-only sweep cannot see, owned by
+                // the verify.ts probe that minted the verdict (first instance:
+                // `contain.group-choice-arm.type2.value.float_same_major_array`/preserve, the
+                // E0533 brute-force-arm defect in cddl-matrix/ROADMAP.md § findings). Registering
+                // it here would demand generation FAIL and misread honesty as staleness. Skipping
+                // the expectation keeps both directions loud: if generation ever starts failing,
+                // the cell lands in `failures` (a class change worth a re-probe); when the
+                // compile defect is fixed, the verify.ts re-probe flips the verdict to supported
+                // and the `DECODE_CONFORMANCE_PRESERVE_SKIP` stale guard trips in the same run.
+                if reason.contains("generates but does not compile") {
+                    continue;
+                }
                 expected_fail.insert((profile.to_string(), id.to_string()), reason);
             }
         }
