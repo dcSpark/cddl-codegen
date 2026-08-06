@@ -47,15 +47,11 @@
     },
     {
       "gate": "clippy",
-      "warm_ms": 5000,
+      "warm_ms": 3000,
       "n": 20,
       "measured": "2026-08-06",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-05",
-          "warm_ms": 253
-        },
         {
           "date": "2026-08-06",
           "warm_ms": 3000
@@ -71,6 +67,10 @@
         {
           "date": "2026-08-06",
           "warm_ms": 5000
+        },
+        {
+          "date": "2026-08-06",
+          "warm_ms": 3000
         }
       ]
     },
@@ -348,9 +348,9 @@
     },
     {
       "gate": "generated_local_out_of_scope_crates_compile",
-      "warm_ms": 9000,
-      "n": 17,
-      "measured": "2026-08-05",
+      "warm_ms": 11000,
+      "n": 12,
+      "measured": "2026-08-06",
       "machine": "86216c55",
       "history": [
         {
@@ -360,6 +360,10 @@
         {
           "date": "2026-08-05",
           "warm_ms": 9000
+        },
+        {
+          "date": "2026-08-06",
+          "warm_ms": 11000
         }
       ]
     },
