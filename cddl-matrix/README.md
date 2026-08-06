@@ -681,7 +681,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   a verdict from `generate` for those ops (classified statically by controller op-name —
   `lib.ts` `rubyGenerateIsBernoulli`, self-tested at startup, gated by `verify_selftest`;
   `bun run verify.ts --selftest` runs that check, its wasm-evidence sibling, and the policy-mint
-  classifier standalone in ~30 ms). The
+  classifier standalone in tens of milliseconds). The
   clause reports one of three deterministic tokens, all preserving the `; ruby=` delimiter downstream
   splitters key on: `ruby=ok|fail` from `generate` for NON-narrowing examples; `ruby=ok(validate)|
   fail(validate)` for a narrowing op WITH committed spec-valid accept vectors — ruby `validate` over

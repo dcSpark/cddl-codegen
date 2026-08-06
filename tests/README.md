@@ -34,9 +34,10 @@ before considering work done" — the heavy correctness gates (full
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
 `cddl-matrix/` once; the runtime stays dependency-free — which is also why it is NOT in the class
 above: CI cannot install it without a second `run:` step), `verify_selftest` (`verify.ts`'s
-assert-at-startup deciders, run standalone in ~30 ms — their own gate is `full`-tier, and a wrong
-verdict token, evidence-stage name, or policy-mint classifier is silent in production, so the cheap
-tier is where it must fail), `no_std_check` (the no_std drift gate — see its section below), `no_silent_directive` (which
+assert-at-startup deciders, run standalone in tens of milliseconds — their own gate is `full`-tier,
+and a wrong verdict token, evidence-stage name, or policy-mint classifier is silent in production, so
+the cheap tier is where it must fail), `no_std_check` (the no_std drift gate — see its section below),
+`no_silent_directive` (which
 spawns `cargo build` plus generator runs) and `timings_digest_check` live here, NOT in CI. The
 doc-citation gate
 checks that gap prose's cited pins still exist, reports each path that is still tracked by git but
@@ -2502,9 +2503,10 @@ Two gates mirror the matrix legs:
   verbatim (base accept, `cddl_encoding_fidelity::variants` encoding variants, `header_mutants` header
   mutation at holder offset 2, over-acceptance completeness, the `--preserve-encodings`
   byte-identity leg, and the json/wasm surface legs below), differing only in the catalog path, its
-  own scratch target, its own skip-ledger instances, and vacuity floors pinned from actuals. The corpus carries only plain
-  accept vectors at HEAD (the enforcement / over-acceptance axes are matrix-owned), so the
-  constraint-reason and over-acceptance machinery stays armed; policy-rejected vectors use the same
+  own scratch target, its own skip-ledger instances, and vacuity floors pinned from actuals. The corpus
+  carries plain accept vectors plus the tag-258 policy-rejected pins at HEAD; the authored-constraint
+  and over-acceptance axes remain matrix-owned, so their machinery stays armed while policy-rejected
+  vectors use the same
   default reason assertion and preserve rejection path as their matrix sibling (the tag-258
   `tag_set_default.default_set` row is the exemplar). `PRESERVE_SKIP` holds only the by-design
   `dsl_ignore.ignored` / `dsl_ignore.ignored_list` rows
