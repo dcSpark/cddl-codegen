@@ -8853,16 +8853,154 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
     );
     // CONTROL 2: a PLAIN GROUP rule's trailing comment binds to its LAST MEMBER's slot (the
     // `@name plain-group-trailing` seam), where the pair is a FIELD-level directive and IS honored.
-    // The record-kind check must not reach it — probed to still emit the field call site.
+    // The record-kind check must not reach it — probed to still emit the field call sites. The pair
+    // is COMPLETE because a lone half at any field slot is its own rejection
+    // (`single_half_custom_codec_on_record_field_rejects_gracefully`), which this control must not
+    // trip over: what it isolates is the record-kind check's reach, not the pair's completeness.
     let src = expect_custom_codec_source(
         "custom_plain_group_trailing_control",
-        "pg = (a: uint, b: text) ; @custom_deserialize my_deser\nholder = [pg]\n",
+        "pg = (a: uint, b: text) ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+         holder = [pg]\n",
     );
     assert!(
-        src.contains("let b = my_deser(raw)"),
+        src.contains("let b = my_deser(raw)") && src.contains("my_ser(serializer, &self.b)"),
         "a plain group's trailing pair is a field-level directive on its last member and must stay \
-         honored, got:\n{src}"
+         honored in both directions, got:\n{src}"
     );
+}
+
+/// A SINGLE HALF of the custom (de)serializer pair at a FIELD/MEMBER slot is rejected BY DESIGN, via
+/// a GRACEFUL `Err` (`record_rejection` → drained by `finalize`), never a `panic!` and never a
+/// generated crate. It is the field twin of the record-rule and transparent-alias single-half
+/// rejections, and it fails the way the ALIAS one does rather than the record one: the field slot's
+/// two directions are lifted independently, so the declared half routes the named function while the
+/// opposite direction keeps the FIELD TYPE's generated codec. The crate compiles, and the field
+/// writes bytes it cannot read back — probed at exit 0 in every rep before this rejection existed
+/// (array `ws_only(serializer, &self.f)` beside `raw.bytes()`, and the map-rep mirror).
+///
+/// Both reps are asserted because the seam is the shared field-metadata walk, and the divergence
+/// text is direction-SPECIFIC (each half names which path was rewritten and which kept the generated
+/// codec) while the remedy is shared. The complete pair stays accepted in both reps — it owns both
+/// directions of the field — and is the control that makes each rejection attributable to the
+/// MISSING half rather than to the field position.
+#[test]
+fn single_half_custom_codec_on_record_field_rejects_gracefully() {
+    let err = expect_graceful_rejection(
+        "custom_field_ser_only",
+        "t = [\n  f: bytes ; @custom_serialize ws_only\n]\n",
+        &[],
+    );
+    assert!(
+        err.contains(
+            "@custom_serialize alone on field `f` of rule `t`: the field's serialize path writes \
+             through the named function while its deserialize path keeps the field type's own \
+             generated codec — so the bytes this field writes are not the bytes it reads back."
+        ),
+        "the serialize-only field rejection must name its own direction's divergence, got:\n{err}"
+    );
+
+    let err = expect_graceful_rejection(
+        "custom_field_deser_only",
+        "t = [\n  f: bytes ; @custom_deserialize rd_only\n]\n",
+        &[],
+    );
+    assert!(
+        err.contains(
+            "@custom_deserialize alone on field `f` of rule `t`: the field's deserialize path reads \
+             through the named function while its serialize path keeps the field type's own \
+             generated codec — so the bytes this field writes are not the bytes it reads back."
+        ),
+        "the deserialize-only field rejection must name the mirror divergence, got:\n{err}"
+    );
+
+    // The MAP rep reaches the same field-metadata walk, so it must reject identically — the
+    // asymmetry was probed there too (`ws_only` write beside a `raw.bytes()` read).
+    let err = expect_graceful_rejection(
+        "custom_map_field_ser_only",
+        "t = {\n  f: bytes ; @custom_serialize ws_only\n}\n",
+        &[],
+    );
+    assert!(
+        err.contains("@custom_serialize alone on field `f` of rule `t`"),
+        "the map-rep field rejection must fire at the same seam, got:\n{err}"
+    );
+
+    // The remedy is shared by both halves and by both reps: write the pair on THIS entry, or move it
+    // to the member's type rule.
+    for (tag, spec) in [
+        (
+            "custom_field_ser_only_remedy",
+            "t = [\n  f: bytes ; @custom_serialize ws_only\n]\n",
+        ),
+        (
+            "custom_field_deser_only_remedy",
+            "t = [\n  f: bytes ; @custom_deserialize rd_only\n]\n",
+        ),
+        (
+            "custom_map_field_ser_only_remedy",
+            "t = {\n  f: bytes ; @custom_serialize ws_only\n}\n",
+        ),
+    ] {
+        let err = expect_graceful_rejection(tag, spec, &[]);
+        assert!(
+            err.contains(
+                "Write both halves on this entry (`; @custom_serialize <fn> @custom_deserialize \
+                 <fn>`), adding the missing "
+            ) && err.contains(
+                "or move the pair to the member's TYPE rule if the format belongs to the type."
+            ),
+            "[{tag}] every single-half field rejection must offer the same two remedies, got:\n{err}"
+        );
+    }
+
+    // The rejection is at PARSE, before any emission, so no profile can rescue the shape — asserted
+    // rather than assumed, because a per-profile split would be a support claim this seam cannot
+    // make.
+    for flags in [
+        &["--preserve-encodings=true"][..],
+        &["--preserve-encodings=true", "--canonical-form=true"][..],
+    ] {
+        let err = expect_graceful_rejection(
+            "custom_field_ser_only_profile",
+            "t = [\n  f: bytes ; @custom_serialize ws_only\n]\n",
+            flags,
+        );
+        assert!(
+            err.contains("@custom_serialize alone on field `f` of rule `t`"),
+            "the field rejection must be profile-independent ({flags:?}), got:\n{err}"
+        );
+    }
+
+    // CONTROL: the COMPLETE pair at the same slot stays accepted in both reps, routing BOTH
+    // directions through the named functions.
+    for (tag, spec, key_write) in [
+        (
+            "custom_field_both_set_control",
+            "t = [\n  f: bytes ; @custom_serialize ws_only @custom_deserialize rd_only\n]\n",
+            None,
+        ),
+        (
+            "custom_map_field_both_set_control",
+            "t = {\n  f: bytes ; @custom_serialize ws_only @custom_deserialize rd_only\n}\n",
+            Some("serializer.write_text(\"f\")?;"),
+        ),
+    ] {
+        let src = expect_custom_codec_source(tag, spec);
+        assert!(
+            src.contains("ws_only(serializer, &self.f)")
+                && src.contains("rd_only(raw)")
+                && !src.contains("serializer.write_bytes(&self.f)")
+                && !src.contains("raw.bytes()"),
+            "[{tag}] the complete field pair must own both directions, got:\n{src}"
+        );
+        if let Some(key_write) = key_write {
+            assert!(
+                src.contains(key_write),
+                "[{tag}] the pair replaces the VALUE codec only — the map key is still written by \
+                 generated code, got:\n{src}"
+            );
+        }
+    }
 }
 
 /// A generic DEFINITION works by substituting the instance's arguments into ONE registered
