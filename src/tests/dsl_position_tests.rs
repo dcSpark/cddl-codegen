@@ -789,6 +789,73 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("on `PtblU64Bytes`: a table rule"),
     },
+    // 23g-iv .. 23g-viii. The ARRAY-bodied siblings of the table rule (23g). A named collection rule
+    //      lowers to a transparent collection typedef exactly as a table lowers to a transparent map
+    //      alias — `AliasInfo::new_manual` drops the rule metadata, so neither emission site can see
+    //      the pair and it reaches neither the collection's standalone codec nor a holder's field
+    //      call sites. ANY presence rejects, like the table, because there are no impls for either
+    //      half to suppress. One cell per shape that reaches the `Array` struct variant, since each
+    //      is a distinct lowering (loose `Vec`, `NonEmptyVec`, bounded, and the two `@duplicates`
+    //      flavors — `OrderedSet` for reject, `Vec` for preserve): the whole family has to be closed
+    //      at once or the uncovered flavor stays a silent carrier.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "array-rule-loose",
+        spec: "items = [* uint] ; @custom_serialize write_items @custom_deserialize read_items\nholder = [f: items]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("a named collection rule (`Items = [* t]`)"),
+    },
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "array-rule-non-empty",
+        spec: "items = [+ uint] ; @custom_serialize write_items @custom_deserialize read_items\nholder = [f: items]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize on `Items`: a named collection rule"),
+    },
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "array-rule-bounded",
+        spec: "items = [3*5 uint] ; @custom_serialize write_items @custom_deserialize read_items\nholder = [f: items]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize on `Items`: a named collection rule"),
+    },
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "array-rule-duplicates-reject",
+        spec: "items = [* uint] ; @duplicates reject @custom_serialize write_items @custom_deserialize read_items\nholder = [f: items]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("a named collection rule (`Items = [* t]`)"),
+    },
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "array-rule-duplicates-preserve",
+        spec: "items = [* uint] ; @duplicates preserve @custom_serialize write_items @custom_deserialize read_items\nholder = [f: items]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("a named collection rule (`Items = [* t]`)"),
+    },
+    // 23g-ix / 23g-x. Each half ALONE on a named collection rule, the array twin of 23g-i/23g-ii:
+    //      the both-halves escape a RECORD rule has (23o) has no collection counterpart either.
+    Cell {
+        directive: "@custom_serialize",
+        position: "array-rule-alone",
+        spec: "items = [* uint] ; @custom_serialize write_items\nholder = [f: items]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_serialize on `Items`: a named collection rule"),
+    },
+    Cell {
+        directive: "@custom_deserialize",
+        position: "array-rule-alone",
+        spec: "items = [* uint] ; @custom_deserialize read_items\nholder = [f: items]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("@custom_deserialize on `Items`: a named collection rule"),
+    },
     // 23h. The pair on the KEY-DOMAIN alias of an open struct-map rest row, honored in BOTH
     //      directions. A custom pair on the domain routes the row to the typed seek path
     //      (`RestRow::map_key_uses_peeked_path` excludes it), so the key is read by
