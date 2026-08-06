@@ -4218,6 +4218,61 @@ impl<'a> IntermediateTypes<'a> {
                 }
             }
         }
+        // A single half on a TRANSPARENT ALIAS rule — the alias twin of the record rule's
+        // single-half rejection above, refused for that rejection's own stated reason: one type
+        // decodes the same bytes two ways. An alias's lone half is the more insidious shape, because
+        // unlike serialize-only on a record (no `Serialize` impl at all, so the crate does not
+        // compile) it COMPILES and routes — `generate_serialize`/`generate_deserialize` lift each
+        // half independently, so every embed site is rewritten in the declared direction while the
+        // opposite direction keeps the aliased type's generated codec. The alias then writes one wire
+        // format and reads another.
+        //
+        // Walked over the alias table rather than the struct loop above because the alias ENTRY is
+        // what "lowers to a transparent alias" means — the collection and table rules register
+        // through `AliasInfo::new_manual` (whose `rule_metadata` is `None`, so they are skipped here
+        // and rejected by their own kind arms), and the struct-minting kinds have no entry at all.
+        // Only a rule's OWN declaration reports: `strip_alias_for_registration` copies both halves
+        // wholesale, so an INHERITED single half can only descend from an origin that is itself
+        // reported here, and reporting each link would name rules nobody wrote the directive on.
+        let mut single_half_alias_rejections = BTreeSet::new();
+        for (alias_ident, info) in &self.type_aliases {
+            let AliasIdent::Rust(ident) = alias_ident else {
+                continue;
+            };
+            if info.wire_metadata_inherited_from.is_some() {
+                continue;
+            }
+            let Some(metadata) = info.rule_metadata.as_ref() else {
+                continue;
+            };
+            let (directive, half, rewritten, missing) =
+                match (&metadata.custom_serialize, &metadata.custom_deserialize) {
+                    (Some(_), None) => (
+                        "@custom_serialize",
+                        "serialize",
+                        "WRITES",
+                        "@custom_deserialize",
+                    ),
+                    (None, Some(_)) => (
+                        "@custom_deserialize",
+                        "deserialize",
+                        "READS",
+                        "@custom_serialize",
+                    ),
+                    _ => continue,
+                };
+            single_half_alias_rejections.insert(format!(
+                "{directive} alone on `{ident}`: a transparent alias rule with only the {half} \
+                 half rewrites every embed site that {rewritten} through the named function, while \
+                 the opposite direction keeps the aliased type's own generated codec — so `{ident}` \
+                 reads one wire format and writes another, at every position that reaches it. Write \
+                 both halves (`{ident} = <body> ; @custom_serialize <fn> @custom_deserialize \
+                 <fn>`), adding the missing {missing}, or drop the directive."
+            ));
+        }
+        for msg in single_half_alias_rejections {
+            self.record_rejection(msg);
+        }
         for msg in custom_codec_rejections {
             self.record_rejection(msg);
         }
