@@ -1586,9 +1586,29 @@ fn generate_enum(
                             cli,
                         );
                         let names_without_outer = enum_gen_info.names_without_outer();
-                        if names_without_outer.is_empty() {
+                        if enum_gen_info.names.is_empty() {
+                            // Field-less variant: name it, don't call it. Reached by a fixed-value
+                            // arm under the default profile, where nothing — neither an inner
+                            // binding nor an outer var — is stored on the variant.
                             return_if_deserialized
                                 .line(format!("Ok(()) => return Ok({}::{}),", name, variant.name));
+                        } else if names_without_outer.is_empty() {
+                            // Struct variant whose ONLY fields are outer vars: under
+                            // `--preserve-encodings` an array/map-rep arm always carries
+                            // `len_encoding`, and a fixed bool/null value contributes no sidecar of
+                            // its own, so the probe closure yields `()` while the variant is still a
+                            // struct variant. Match the unit the closure returns, but CONSTRUCT
+                            // through `generate_constructor` — naming the variant here would emit
+                            // `Ok(T::Flag)` for a `T::Flag { len_encoding }` and fail to compile
+                            // (E0533). Same emptiness split the `cbor_type()`-dispatch path above
+                            // makes between `names` and `outer_vars`; the outer var is in scope at
+                            // this point because the outer len read precedes the arm dispatch.
+                            enum_gen_info.generate_constructor(
+                                &mut return_if_deserialized,
+                                "Ok(()) => return Ok(",
+                                "),",
+                                None,
+                            );
                         } else {
                             enum_gen_info.generate_constructor(
                                 &mut return_if_deserialized,

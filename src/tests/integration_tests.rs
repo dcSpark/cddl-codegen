@@ -7917,6 +7917,185 @@ fn group_choice_fixed_value_arm_emits_fieldless_variant() {
     }
 }
 
+/// The BRUTE-FORCE group-choice deserialize CONSTRUCTS its variant, so a same-major arm pairing
+/// compiles under `--preserve-encodings`.
+///
+/// Two arms sharing a CBOR major (`t = [ v: 1.5 // flag: true ]` — `1.5` and `true` are both major
+/// 7) cannot be told apart by wire type, so `generate_enum` emits the try-each-arm form rather than
+/// the `cbor_type()`-dispatch form its disjoint-major sibling (`t = [ v: 1.5 // label: tstr ]`)
+/// takes. Under preserve an array-rep arm always carries `len_encoding`, which makes even a
+/// value-less arm a STRUCT variant — while the arm's probe closure still yields `()`, because a
+/// fixed bool/null is a single-byte CBOR special contributing no encoding sidecar of its own.
+/// NAMING the variant at that success return (`Ok(T::Flag)` for a `T::Flag { len_encoding }`) is
+/// E0533 while generation exits 0: output that builds nowhere, produced by a run that reported
+/// success.
+///
+/// The leg is therefore e2e — generate, `cargo check`, round-trip — not emitted-text only: the
+/// defect class lives at `cargo check`, so a text pin could only ever restate the fix's own
+/// spelling. The emitted-text assertions ride along to name WHICH construction is expected, so a
+/// pass cannot come from the arm silently disappearing.
+///
+/// The vectors carry an indefinite and a NON-MINIMAL outer length, which is what makes the
+/// construction's `len_encoding` load-bearing: a construction that defaulted the field instead of
+/// moving the read one would compile and re-encode to different bytes.
+///
+/// The third spec is the CONTROL: a fixed UINT arm binds its own `Sz` sidecar, so its binding list
+/// was never empty and it always took the constructor branch. It stays green, and it shows the
+/// emptiness split is between "no fields at all" and "outer fields only" rather than a blanket
+/// change. Tier: check.ts `local` (nested cargo).
+#[test]
+fn group_choice_same_major_fixed_arm_constructs_preserve_struct_variant() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_gc_same_major_preserve_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let target_dir = scratch.join("target");
+
+    struct Case {
+        label: &'static str,
+        spec: &'static str,
+        /// Emitted arm-success constructions that must appear.
+        required: &'static [&'static str],
+        /// Spellings that must NOT — the variant NAMED where it has fields.
+        forbidden: &'static [&'static str],
+        /// Body of the round-trip test injected into the generated crate.
+        body: &'static str,
+    }
+    let cases = [
+        Case {
+            label: "float_bool",
+            spec: "t = [ v: 1.5 // flag: true ]\n",
+            required: &["Ok(()) => return Ok(Self::Flag { len_encoding })"],
+            forbidden: &["Ok(T::Flag)"],
+            body: r#"
+    rt(&[0x81, 0xf5]); // [true]
+    rt(&[0x9f, 0xf5, 0xff]); // indefinite [true]
+    rt(&[0x98, 0x01, 0xf5]); // non-minimal outer len, [true]
+    rt(&[0x81, 0xf9, 0x3e, 0x00]); // the sibling arm: [1.5]
+    rt(&[0x9f, 0xf9, 0x3e, 0x00, 0xff]);
+    assert!(matches!(T::from_cbor_bytes(&[0x81, 0xf5]).unwrap(), T::Flag { .. }));
+"#,
+        },
+        // BOTH arms are field-less specials here, so the construction site is exercised twice in
+        // one crate rather than beside a sidecar-carrying sibling.
+        Case {
+            label: "null_false",
+            spec: "t = [ v: null // f: false ]\n",
+            required: &[
+                "Ok(()) => return Ok(Self::V { len_encoding })",
+                "Ok(()) => return Ok(Self::F { len_encoding })",
+            ],
+            forbidden: &["Ok(T::V)", "Ok(T::F)"],
+            body: r#"
+    rt(&[0x81, 0xf6]); // [null]
+    rt(&[0x81, 0xf4]); // [false]
+    rt(&[0x9f, 0xf6, 0xff]); // indefinite [null]
+    rt(&[0x98, 0x01, 0xf4]); // non-minimal outer len, [false]
+    assert!(matches!(T::from_cbor_bytes(&[0x81, 0xf6]).unwrap(), T::V { .. }));
+    assert!(matches!(T::from_cbor_bytes(&[0x81, 0xf4]).unwrap(), T::F { .. }));
+"#,
+        },
+        Case {
+            label: "uint_control",
+            spec: "t = [ a: 0 // b: uint ]\n",
+            required: &["Ok(a_encoding) => {"],
+            forbidden: &["Ok(T::A)"],
+            body: r#"
+    rt(&[0x81, 0x00]); // [0] -> the fixed arm
+    rt(&[0x81, 0x05]); // [5] -> the open arm
+    rt(&[0x81, 0x18, 0x00]); // [0] with a non-minimal VALUE encoding
+    rt(&[0x98, 0x01, 0x00]); // non-minimal outer len, [0]
+"#,
+        },
+    ];
+
+    for Case {
+        label,
+        spec,
+        required,
+        forbidden,
+        body,
+    } in cases
+    {
+        let case_root = scratch.join(label);
+        std::fs::create_dir_all(&case_root).unwrap();
+        let input = case_root.join("input.cddl");
+        std::fs::write(&input, spec).unwrap();
+        let out = case_root.join("out");
+        let generated = codegen_cmd()
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--preserve-encodings=true")
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{label}: generation under --preserve-encodings failed\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+
+        let ser = std::fs::read_to_string(out.join("rust/src/generated/serialization.rs")).unwrap();
+        for needle in required {
+            assert!(
+                ser.contains(needle),
+                "{label}: the brute-force arm-success return no longer emits `{needle}` — the \
+                 same-major dispatch is constructing something else:\n{ser}"
+            );
+        }
+        for needle in forbidden {
+            assert!(
+                !ser.contains(needle),
+                "{label}: the brute-force arm-success return NAMES the variant (`{needle}`) — \
+                 under preserve it is a struct variant carrying `len_encoding`, so this is E0533 \
+                 in a crate the tool exited 0 on"
+            );
+        }
+
+        std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+        std::fs::write(
+            out.join("rust/tests/rt.rs"),
+            format!(
+                r#"use cbor_event::se::{{Serialize, Serializer}};
+use cddl_lib::serialization::Deserialize;
+use cddl_lib::*;
+
+/// Decode, re-encode, and demand the SAME bytes back — the byte-exact contract preserve exists for.
+fn rt(bytes: &[u8]) {{
+    let t = T::from_cbor_bytes(bytes)
+        .unwrap_or_else(|e| panic!("{{bytes:02x?}} failed to decode: {{e}}"));
+    let mut s = Serializer::new_vec();
+    t.serialize(&mut s).unwrap();
+    assert_eq!(s.finalize(), bytes, "re-encoding {{bytes:02x?}} changed the bytes");
+}}
+
+#[test]
+fn same_major_arms_round_trip_byte_exactly() {{{body}}}
+"#
+            ),
+        )
+        .unwrap();
+
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{label}: the generated preserve crate failed to build or round-trip\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;
@@ -17766,14 +17945,18 @@ fn all_supported_constructs_generate_all_profiles() {
                 // them: "generates but does not compile" (verify.ts's emission probe, verbatim)
                 // marks a cell whose generation SUCCEEDS and whose divergence lives at `cargo
                 // check` — a compile-level fact this generation-only sweep cannot see, owned by
-                // the verify.ts probe that minted the verdict (first instance:
-                // `contain.group-choice-arm.type2.value.float_same_major_array`/preserve, the
-                // E0533 brute-force-arm defect in cddl-matrix/ROADMAP.md § findings). Registering
+                // the verify.ts probe that minted the verdict. Registering
                 // it here would demand generation FAIL and misread honesty as staleness. Skipping
                 // the expectation keeps both directions loud: if generation ever starts failing,
                 // the cell lands in `failures` (a class change worth a re-probe); when the
                 // compile defect is fixed, the verify.ts re-probe flips the verdict to supported
                 // and the `DECODE_CONFORMANCE_PRESERVE_SKIP` stale guard trips in the same run.
+                // No annotation currently carries this flavor — the cell that introduced it
+                // (`contain.group-choice-arm.type2.value.float_same_major_array`/preserve, an
+                // E0533 from the brute-force arm-success return) is fixed and its verdict is
+                // `supported`. The branch stays because the flavor is a property of verify.ts's
+                // emission probe, not of that one cell: the next compile-level divergence mints
+                // the same clause and must land here rather than in `expected_fail`.
                 if reason.contains("generates but does not compile") {
                     continue;
                 }
@@ -20091,24 +20274,19 @@ const DECODE_CONFORMANCE_PRESERVE_SKIP: &[(&str, &str)] = &[
          docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
          not a generator gap; default-profile decode fully replays this row's vectors",
     ),
-    // A live DEFECT, unlike the refusal and the by-design rejection above: generation exits 0
-    // under --preserve-encodings but the emitted crate does not compile (E0533 — the same-major
-    // group-choice BRUTE-FORCE deserialize returns unit-variant constructions, `Ok(T::Flag)`,
-    // for arms preserve makes STRUCT variants carrying `len_encoding`). The disjoint-major
-    // pairing (`contain.group-choice-arm.type2.value.float_array`, type-match dispatch) is green
-    // under preserve, so the skip is exactly this row. Candidate fix is ledgered in
-    // cddl-matrix/ROADMAP.md § findings ("A same-major group-choice arm pairing under
-    // `--preserve-encodings` emits a crate that does not compile"); the stale-entry guard is the
-    // tripwire for when that fix lands. Default-profile decode of this row fully replays,
-    // including its hand constraint vector.
-    (
-        "contain.group-choice-arm.type2.value.float_same_major_array",
-        "the same-major float/bool pairing generates an UNCOMPILABLE crate under \
-         --preserve-encodings (E0533: brute-force deserialize constructs unit variants where \
-         preserve makes them struct variants) — a live generator defect, ledgered in \
-         cddl-matrix/ROADMAP.md § findings; only the preserve leg is skipped, the \
-         default-profile decode fully replays this row's vectors",
-    ),
+    // (retired when the brute-force arm-success return learned to CONSTRUCT its variant)
+    // `contain.group-choice-arm.type2.value.float_same_major_array` (`t = [ v: 1.5 // flag: true ]`)
+    // used to ride here: under --preserve-encodings generation exited 0 and the crate failed to
+    // compile with E0533, because the brute-force try-each-arm deserialize emitted the unit
+    // construction `Ok(T::Flag)` for an arm preserve renders as `T::Flag { len_encoding }`. The
+    // construction-site guard keyed on `names_without_outer()`, which EXCLUDES outer vars, so an
+    // arm whose only field is `len_encoding` read as field-less; it now splits emptiness the way
+    // the `cbor_type()`-dispatch path always did (`names` for the true unit variant,
+    // `names_without_outer` for what the probe closure binds) and routes the outer-vars-only case
+    // through `generate_constructor`. Fixed bool and null arms were the whole class — every other
+    // fixed kind (uint/nint/float/text) carries its own encoding sidecar and already took the
+    // constructor branch. Pinned by
+    // `group_choice_same_major_fixed_arm_constructs_preserve_struct_variant`.
 ];
 
 /// Every catalog row the matrix annotations call preserve-UNSUPPORTED must already carry a

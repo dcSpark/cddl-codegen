@@ -13,7 +13,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->3 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->93 `class="constraint"` enforcement reject vectors over 73 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — the widened-occurrence-marker table
@@ -216,26 +216,6 @@ ledgered here (that's what the probe/gate error messages point at).
   the same pairing arises through a tag chain rather than a `.cbor` one. Fix shape: the `Fixed`
   branch needs to accept (and discard) an enclosing payload's staging wrapper the way its
   preserve-side twin already does, rather than asserting the wrapper away.
-- **A same-major group-choice arm pairing under `--preserve-encodings` emits a crate that does not
-  compile: the brute-force deserialize returns unit-variant constructions for arms preserve makes
-  STRUCT variants.** Surfaced 2026-08-06 by the new cell
-  `contain.group-choice-arm.type2.value.float_same_major_array` (`t = [ v: 1.5 // flag: true ]` —
-  the float/bool pairing shares CBOR major 7, forcing the brute-force try-each-arm dispatch) and
-  reproduced by hand: generation exits 0 and `cargo check` fails E0533 at the emitted
-  `serialization.rs` (`Ok(()) => return Ok(T::Flag)` — but under preserve the fixed-value arm is a
-  struct variant carrying `len_encoding`, so the unit construction is not a value). The verify
-  annotation records the honest posture (`emission.preserve.status = "unsupported"`, cargo check
-  exit 101 — one of the three preserve-side emission divergences in the status headers); this entry
-  is the candidate fix. The class is the brute-force SUCCESS-return site specifically: the
-  disjoint-major pairing `t = [ v: 1.5 // label: tstr ]`
-  (`contain.group-choice-arm.type2.value.float_array`) takes the type-match dispatch and is green
-  under preserve, and the bare-type-choice same-major pairing
-  (`contain.choice-member.prelude.true.same_major_brute`) emits through a different path with no
-  divergence. Scope of the probes: default and preserve profiles, rust face, `cargo check`; not
-  probed whether OTHER preserve-struct-variant arm kinds (fixed text/uint with sidecars) reach the
-  same site through other same-major pairings. Fix shape: the brute-force arm-success return must
-  construct the variant with its encoding sidecar fields (or defer to the arm reader's constructed
-  value) instead of assuming unit variants.
 - **A fixed FLOAT or NINT arm in a bare TYPE choice mints an invalid Rust variant identifier and
   dies at rustfmt — exit 1 and zero files written, but no refusal naming the construct.** Probed
   2026-08-06 while enumerating the float fixed-value kind (whose group-choice-arm cells
