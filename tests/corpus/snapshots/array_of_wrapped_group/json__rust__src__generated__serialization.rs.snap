@@ -1,0 +1,306 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Coords {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        self.serialize_as_embedded_group(serializer)
+    }
+}
+
+impl SerializeEmbeddedGroup for Coords {
+    fn serialize_as_embedded_group<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_unsigned_integer(self.index_0)?;
+        serializer.write_unsigned_integer(self.index_1)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Coords {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            Ok((len, read_len))
+        })()
+        .map_err(|e| e.annotate("Coords"))?;
+        let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);
+        (|| -> Result<_, DeserializeError> {
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(())
+        })()
+        .map_err(|e| e.annotate("Coords"))?;
+        ret
+    }
+}
+
+impl DeserializeEmbeddedGroup for Coords {
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
+        _read_len: &mut CBORReadLen,
+        _len: cbor_event::Len,
+    ) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            Ok(Coords { index_0, index_1 })
+        })()
+        .map_err(|e| e.annotate("Coords"))
+    }
+}
+
+impl cbor_event::se::Serialize for SplicedGroupArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_array(cbor_event::Len::Len(2 * self.inner.len() as u64))?;
+        for element in self.inner.iter() {
+            element.serialize_as_embedded_group(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for SplicedGroupArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let inner = (|| -> Result<_, DeserializeError> {
+                let mut inner_arr = Vec::new();
+                let len = raw.array()?;
+                let mut inner_read_len = CBORReadLen::from(len);
+                while match len {
+                    cbor_event::Len::Len(n) => inner_read_len.read() < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    inner_read_len.read_elems(2)?;
+                    inner_arr.push(Coords::deserialize_as_embedded_group(
+                        raw,
+                        &mut inner_read_len,
+                        len,
+                    )?);
+                }
+                Ok(inner_arr)
+            })()
+            .map_err(|e| e.annotate("inner"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(SplicedGroupArray { inner })
+        })()
+        .map_err(|e| e.annotate("SplicedGroupArray"))
+    }
+}
+
+impl cbor_event::se::Serialize for WrappedGroupArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_array(cbor_event::Len::Len(1 * self.inner.len() as u64))?;
+        for element in self.inner.iter() {
+            element.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for WrappedGroupArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let inner = (|| -> Result<_, DeserializeError> {
+                let mut inner_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (inner_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    inner_arr.push(Coords::deserialize(raw)?);
+                }
+                Ok(inner_arr)
+            })()
+            .map_err(|e| e.annotate("inner"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(WrappedGroupArray { inner })
+        })()
+        .map_err(|e| e.annotate("WrappedGroupArray"))
+    }
+}
+
+impl cbor_event::se::Serialize for WrappedGroupMapKey {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_map(cbor_event::Len::Len(self.inner.len() as u64))?;
+        for (key, value) in self.inner.iter() {
+            key.serialize(serializer)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for WrappedGroupMapKey {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let inner = (|| -> Result<_, DeserializeError> {
+                let mut inner_table = BTreeMap::new();
+                let inner_len = raw.map()?;
+                while match inner_len {
+                    cbor_event::Len::Len(n) => (inner_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(inner_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let inner_key = Coords::deserialize(raw)?;
+                    let inner_value = raw.unsigned_integer()?;
+                    if inner_table.insert(inner_key.clone(), inner_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                            "some complicated/unsupported type",
+                        )))
+                        .into());
+                    }
+                }
+                Ok(inner_table)
+            })()
+            .map_err(|e| e.annotate("inner"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(WrappedGroupMapKey { inner })
+        })()
+        .map_err(|e| e.annotate("WrappedGroupMapKey"))
+    }
+}
+
+impl cbor_event::se::Serialize for WrappedGroupMapValue {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_map(cbor_event::Len::Len(self.inner.len() as u64))?;
+        for (key, value) in self.inner.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            value.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for WrappedGroupMapValue {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let inner = (|| -> Result<_, DeserializeError> {
+                let mut inner_table = BTreeMap::new();
+                let inner_len = raw.map()?;
+                while match inner_len {
+                    cbor_event::Len::Len(n) => (inner_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(inner_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let inner_key = raw.unsigned_integer()?;
+                    let inner_value = Coords::deserialize(raw)?;
+                    if inner_table.insert(inner_key, inner_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Uint(inner_key)).into());
+                    }
+                }
+                Ok(inner_table)
+            })()
+            .map_err(|e| e.annotate("inner"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(WrappedGroupMapValue { inner })
+        })()
+        .map_err(|e| e.annotate("WrappedGroupMapValue"))
+    }
+}

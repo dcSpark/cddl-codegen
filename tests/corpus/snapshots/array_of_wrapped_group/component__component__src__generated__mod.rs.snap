@@ -1,0 +1,212 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Coords = WitCoords;
+    type SplicedGroupArray = WitSplicedGroupArray;
+    type WrappedGroupArray = WitWrappedGroupArray;
+    type WrappedGroupMapKey = WitWrappedGroupMapKey;
+    type WrappedGroupMapValue = WitWrappedGroupMapValue;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitCoords(pub RefCell<cddl_lib::Coords>);
+
+impl wit_types::GuestCoords for WitCoords {
+    fn new(index0: u64, index1: u64) -> Self {
+        let inner = cddl_lib::Coords::new(index0, index1);
+        WitCoords(RefCell::new(inner))
+    }
+
+    fn index0(&self) -> u64 {
+        let me = self.0.borrow();
+        me.index_0
+    }
+
+    fn index1(&self) -> u64 {
+        let me = self.0.borrow();
+        me.index_1
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Coords as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Coords, String> {
+        <cddl_lib::Coords as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Coords::new(WitCoords(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitSplicedGroupArray(pub RefCell<cddl_lib::SplicedGroupArray>);
+
+impl wit_types::GuestSplicedGroupArray for WitSplicedGroupArray {
+    fn new(inner: Vec<wit_types::CoordsBorrow<'_>>) -> Self {
+        let inner = inner
+            .into_iter()
+            .map(|x| x.get::<WitCoords>().0.borrow().clone())
+            .collect();
+        let inner = cddl_lib::SplicedGroupArray::new(inner);
+        WitSplicedGroupArray(RefCell::new(inner))
+    }
+
+    fn inner(&self) -> Vec<wit_types::Coords> {
+        let me = self.0.borrow();
+        me.inner
+            .iter()
+            .map(|x| wit_types::Coords::new(WitCoords(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::SplicedGroupArray as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::SplicedGroupArray, String> {
+        <cddl_lib::SplicedGroupArray as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::SplicedGroupArray::new(WitSplicedGroupArray(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitWrappedGroupArray(pub RefCell<cddl_lib::WrappedGroupArray>);
+
+impl wit_types::GuestWrappedGroupArray for WitWrappedGroupArray {
+    fn new(inner: Vec<wit_types::CoordsBorrow<'_>>) -> Self {
+        let inner = inner
+            .into_iter()
+            .map(|x| x.get::<WitCoords>().0.borrow().clone())
+            .collect();
+        let inner = cddl_lib::WrappedGroupArray::new(inner);
+        WitWrappedGroupArray(RefCell::new(inner))
+    }
+
+    fn inner(&self) -> Vec<wit_types::Coords> {
+        let me = self.0.borrow();
+        me.inner
+            .iter()
+            .map(|x| wit_types::Coords::new(WitCoords(RefCell::new(x.clone()))))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WrappedGroupArray as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WrappedGroupArray, String> {
+        <cddl_lib::WrappedGroupArray as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::WrappedGroupArray::new(WitWrappedGroupArray(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitWrappedGroupMapKey(pub RefCell<cddl_lib::WrappedGroupMapKey>);
+
+impl wit_types::GuestWrappedGroupMapKey for WitWrappedGroupMapKey {
+    fn new(inner: Vec<(wit_types::CoordsBorrow<'_>, u64)>) -> Self {
+        let inner = inner
+            .into_iter()
+            .map(|(x0, x1)| (x0.get::<WitCoords>().0.borrow().clone(), x1))
+            .collect();
+        let inner = cddl_lib::WrappedGroupMapKey::new(inner);
+        WitWrappedGroupMapKey(RefCell::new(inner))
+    }
+
+    fn inner(&self) -> Vec<(wit_types::Coords, u64)> {
+        let me = self.0.borrow();
+        me.inner
+            .iter()
+            .map(|(x0, x1)| {
+                (
+                    wit_types::Coords::new(WitCoords(RefCell::new(x0.clone()))),
+                    *x1,
+                )
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WrappedGroupMapKey as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WrappedGroupMapKey, String> {
+        <cddl_lib::WrappedGroupMapKey as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::WrappedGroupMapKey::new(WitWrappedGroupMapKey(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitWrappedGroupMapValue(pub RefCell<cddl_lib::WrappedGroupMapValue>);
+
+impl wit_types::GuestWrappedGroupMapValue for WitWrappedGroupMapValue {
+    fn new(inner: Vec<(u64, wit_types::CoordsBorrow<'_>)>) -> Self {
+        let inner = inner
+            .into_iter()
+            .map(|(x0, x1)| (x0, x1.get::<WitCoords>().0.borrow().clone()))
+            .collect();
+        let inner = cddl_lib::WrappedGroupMapValue::new(inner);
+        WitWrappedGroupMapValue(RefCell::new(inner))
+    }
+
+    fn inner(&self) -> Vec<(u64, wit_types::Coords)> {
+        let me = self.0.borrow();
+        me.inner
+            .iter()
+            .map(|(x0, x1)| {
+                (
+                    *x0,
+                    wit_types::Coords::new(WitCoords(RefCell::new(x1.clone()))),
+                )
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WrappedGroupMapValue as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WrappedGroupMapValue, String> {
+        <cddl_lib::WrappedGroupMapValue as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::WrappedGroupMapValue::new(WitWrappedGroupMapValue(RefCell::new(v))))
+        .map_err(err)
+    }
+}

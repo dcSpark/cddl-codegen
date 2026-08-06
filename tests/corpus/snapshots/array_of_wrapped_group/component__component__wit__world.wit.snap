@@ -1,0 +1,46 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource coords {
+    constructor(index0: u64, index1: u64);
+    index0: func() -> u64;
+    index1: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<coords, string>;
+  }
+  resource spliced-group-array {
+    constructor(inner: list<borrow<coords>>);
+    inner: func() -> list<coords>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<spliced-group-array, string>;
+  }
+  resource wrapped-group-array {
+    constructor(inner: list<borrow<coords>>);
+    inner: func() -> list<coords>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<wrapped-group-array, string>;
+  }
+  resource wrapped-group-map-key {
+    constructor(inner: list<tuple<borrow<coords>, u64>>);
+    inner: func() -> list<tuple<coords, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<wrapped-group-map-key, string>;
+  }
+  resource wrapped-group-map-value {
+    constructor(inner: list<tuple<u64, borrow<coords>>>);
+    inner: func() -> list<tuple<u64, coords>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<wrapped-group-map-value, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

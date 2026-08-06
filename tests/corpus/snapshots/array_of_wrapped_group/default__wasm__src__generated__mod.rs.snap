@@ -1,0 +1,366 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Coords(pub(crate) cddl_lib::Coords);
+
+#[wasm_bindgen]
+impl Coords {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Coords, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> u64 {
+        self.0.index_1
+    }
+
+    pub fn new(index_0: u64, index_1: u64) -> Self {
+        Self(cddl_lib::Coords::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::Coords> for Coords {
+    fn from(native: cddl_lib::Coords) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Coords> for cddl_lib::Coords {
+    fn from(wasm: Coords) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Coords> for Coords {
+    fn as_ref(&self) -> &cddl_lib::Coords {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CoordsList(pub(crate) Vec<cddl_lib::Coords>);
+
+#[wasm_bindgen]
+impl CoordsList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Coords {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Coords) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Coords>> for CoordsList {
+    fn from(native: Vec<cddl_lib::Coords>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CoordsList> for Vec<cddl_lib::Coords> {
+    fn from(wasm: CoordsList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Coords>> for CoordsList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Coords> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapCoordsToU64(pub(crate) BTreeMap<cddl_lib::Coords, u64>);
+
+#[wasm_bindgen]
+impl MapCoordsToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: &Coords, value: u64) -> Option<u64> {
+        self.0.insert(key.clone().into(), value)
+    }
+
+    pub fn get(&self, key: &Coords) -> Option<u64> {
+        self.0.get(key.as_ref()).copied()
+    }
+
+    pub fn keys(&self) -> CoordsList {
+        CoordsList(self.0.keys().cloned().collect::<Vec<_>>())
+    }
+}
+
+impl From<BTreeMap<cddl_lib::Coords, u64>> for MapCoordsToU64 {
+    fn from(native: BTreeMap<cddl_lib::Coords, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapCoordsToU64> for BTreeMap<cddl_lib::Coords, u64> {
+    fn from(wasm: MapCoordsToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<cddl_lib::Coords, u64>> for MapCoordsToU64 {
+    fn as_ref(&self) -> &BTreeMap<cddl_lib::Coords, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToCoords(pub(crate) BTreeMap<u64, cddl_lib::Coords>);
+
+#[wasm_bindgen]
+impl MapU64ToCoords {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: &Coords) -> Option<Coords> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: u64) -> Option<Coords> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u64, cddl_lib::Coords>> for MapU64ToCoords {
+    fn from(native: BTreeMap<u64, cddl_lib::Coords>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToCoords> for BTreeMap<u64, cddl_lib::Coords> {
+    fn from(wasm: MapU64ToCoords) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u64, cddl_lib::Coords>> for MapU64ToCoords {
+    fn as_ref(&self) -> &BTreeMap<u64, cddl_lib::Coords> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SplicedGroupArray(pub(crate) cddl_lib::SplicedGroupArray);
+
+#[wasm_bindgen]
+impl SplicedGroupArray {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SplicedGroupArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn inner(&self) -> CoordsList {
+        self.0.inner.clone().into()
+    }
+
+    pub fn new(inner: &CoordsList) -> Self {
+        Self(cddl_lib::SplicedGroupArray::new(inner.clone().into()))
+    }
+}
+
+impl From<cddl_lib::SplicedGroupArray> for SplicedGroupArray {
+    fn from(native: cddl_lib::SplicedGroupArray) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SplicedGroupArray> for cddl_lib::SplicedGroupArray {
+    fn from(wasm: SplicedGroupArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SplicedGroupArray> for SplicedGroupArray {
+    fn as_ref(&self) -> &cddl_lib::SplicedGroupArray {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedGroupArray(pub(crate) cddl_lib::WrappedGroupArray);
+
+#[wasm_bindgen]
+impl WrappedGroupArray {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedGroupArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn inner(&self) -> CoordsList {
+        self.0.inner.clone().into()
+    }
+
+    pub fn new(inner: &CoordsList) -> Self {
+        Self(cddl_lib::WrappedGroupArray::new(inner.clone().into()))
+    }
+}
+
+impl From<cddl_lib::WrappedGroupArray> for WrappedGroupArray {
+    fn from(native: cddl_lib::WrappedGroupArray) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedGroupArray> for cddl_lib::WrappedGroupArray {
+    fn from(wasm: WrappedGroupArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedGroupArray> for WrappedGroupArray {
+    fn as_ref(&self) -> &cddl_lib::WrappedGroupArray {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedGroupMapKey(pub(crate) cddl_lib::WrappedGroupMapKey);
+
+#[wasm_bindgen]
+impl WrappedGroupMapKey {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedGroupMapKey, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn inner(&self) -> MapCoordsToU64 {
+        self.0.inner.clone().into()
+    }
+
+    pub fn new(inner: &MapCoordsToU64) -> Self {
+        Self(cddl_lib::WrappedGroupMapKey::new(inner.clone().into()))
+    }
+}
+
+impl From<cddl_lib::WrappedGroupMapKey> for WrappedGroupMapKey {
+    fn from(native: cddl_lib::WrappedGroupMapKey) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedGroupMapKey> for cddl_lib::WrappedGroupMapKey {
+    fn from(wasm: WrappedGroupMapKey) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedGroupMapKey> for WrappedGroupMapKey {
+    fn as_ref(&self) -> &cddl_lib::WrappedGroupMapKey {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WrappedGroupMapValue(pub(crate) cddl_lib::WrappedGroupMapValue);
+
+#[wasm_bindgen]
+impl WrappedGroupMapValue {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WrappedGroupMapValue, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn inner(&self) -> MapU64ToCoords {
+        self.0.inner.clone().into()
+    }
+
+    pub fn new(inner: &MapU64ToCoords) -> Self {
+        Self(cddl_lib::WrappedGroupMapValue::new(inner.clone().into()))
+    }
+}
+
+impl From<cddl_lib::WrappedGroupMapValue> for WrappedGroupMapValue {
+    fn from(native: cddl_lib::WrappedGroupMapValue) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WrappedGroupMapValue> for cddl_lib::WrappedGroupMapValue {
+    fn from(wasm: WrappedGroupMapValue) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WrappedGroupMapValue> for WrappedGroupMapValue {
+    fn as_ref(&self) -> &cddl_lib::WrappedGroupMapValue {
+        &self.0
+    }
+}

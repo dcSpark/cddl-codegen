@@ -588,6 +588,261 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "array_of_wrapped_group.coords"
+axis = "corpus"
+example = "coords = (uint, uint)"
+fixture = "array_of_wrapped_group"
+rule = "coords"
+spec = "__probe_holder = [0, coords]\ncoords = (uint, uint)"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "830018ef18a3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "83001901de190558"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8300190202190e5b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8300190682190468"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "83001907151905b4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "830019085318fd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8300190bd11908b4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8300190e90190e64"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "83001911e1190bf7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8300191235190da9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "array_of_wrapped_group.spliced_group_array"
+axis = "corpus"
+example = "coords = (uint, uint)\nspliced_group_array = [inner: [* coords]]"
+fixture = "array_of_wrapped_group"
+rule = "spliced_group_array"
+spec = "__probe_holder = [0, spliced_group_array]\ncoords = (uint, uint)\nspliced_group_array = [inner: [* coords]]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008180"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818218b2190dca"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081821908ed19114f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008182190ccb190ed9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818419097e1906d81902631911a7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008184190c3819053f1907ac190484"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008184190db419010e191118190f4e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008186190e77190b9d1901de190631190380191162"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081861911b9190796190b421902471909f1190ac2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081881908c3190ba3190c691874190ba01909471909ac190e86"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "array_of_wrapped_group.wrapped_group_array"
+axis = "corpus"
+example = "coords = (uint, uint)\nwrapped_group_array = [inner: [* [coords]]]"
+fixture = "array_of_wrapped_group"
+rule = "wrapped_group_array"
+spec = "__probe_holder = [0, wrapped_group_array]\ncoords = (uint, uint)\nwrapped_group_array = [inner: [* [coords]]]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200818182183f18d6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081818218b3191164"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818182190348190448"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818182190709190550"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081818219082c191227"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818182190d73190311"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081828219030c1910ec82190ca3190c54"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008184821904181905418218301907d882190ff61911af8219093f1911bf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081848219088a18378219024719075b8219087a19076a821903e11909c0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818482190e6819032c8219094019080382190be519061e821904cb190b74"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "array_of_wrapped_group.wrapped_group_map_key"
+axis = "corpus"
+example = "coords = (uint, uint)\nwrapped_group_map_key = [inner: { * [coords] => uint }]"
+fixture = "array_of_wrapped_group"
+rule = "wrapped_group_map_key"
+spec = "__probe_holder = [0, wrapped_group_map_key]\ncoords = (uint, uint)\nwrapped_group_map_key = [inner: { * [coords] => uint }]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820081a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "array_of_wrapped_group.wrapped_group_map_value"
+axis = "corpus"
+example = "coords = (uint, uint)\nwrapped_group_map_value = [inner: { * uint => [coords] }]"
+fixture = "array_of_wrapped_group"
+rule = "wrapped_group_map_value"
+spec = "__probe_holder = [0, wrapped_group_map_value]\ncoords = (uint, uint)\nwrapped_group_map_value = [inner: { * uint => [coords] }]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820081a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a11904788219018b190643"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a11906aa8219074f191079"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a1190aa282191063190cb9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a119104f8219116c190ee0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a11912278218af190cf3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a21911a6821908d4190a941903078219058d190ea8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a3190c5e82190db7190bfd1903ca82190a8a190d9a1907a6821911c619115a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a4187c82190791190ccb18948218d7190d1019119b821903431905d319039482190e74190e42"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081a41904a5821902fd18871906aa821911391907241910ad8219046c19019e1911d98219096b19029c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "bool.has_bool"
 axis = "corpus"
 example = "has_bool = [flag: bool]"
