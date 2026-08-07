@@ -1634,6 +1634,75 @@ mod tests {
         assert_eq!(back.hexed, vec![0xBA, 0xAD, 0xD0, 0x0D]);
     }
 
+    // Fidelity is a contract on the custom READERS too: accept only wire the paired writer can
+    // re-emit from the decoded value plus the returned encoding variables. `hex::decode` tolerates
+    // uppercase digits and `u64::from_str` a leading `+`/zeros, but the writers emit lowercase hex
+    // and canonical decimal, and no encoding variable carries case or digit spelling — so each such
+    // input used to be ACCEPTED and re-encoded to different bytes, exactly the violation the byte
+    // fuzzer's preserve-fidelity oracle asserts against (found by `fuzz_bounded_run`; the first
+    // vector below is the hand-derived libFuzzer artifact). The readers now refuse; the
+    // lowercase/canonical-decimal controls in the two tests above stay green.
+    #[test]
+    fn custom_codec_readers_reject_wire_they_cannot_reemit() {
+        // the libFuzzer artifact: [keyed: {} (indefinite), valued: {0 => "ffffCf"} (indefinite)]
+        // — mixed-case hex in the table VALUE position, re-encoded as "ffffcf" before the fix
+        let crash = vec![
+            0x9f, // array(indefinite)
+            0xbf, 0xff, // keyed: {} (indefinite)
+            0xbf, // valued: map(indefinite)
+            0x00, // 0 =>
+            0x66, 0x66, 0x66, 0x66, 0x66, 0x43, 0x66, // text(6) "ffffCf"
+            0xff, // break (valued)
+            0xff, // break (array)
+        ];
+        assert!(CustomTablePositions::from_cbor_bytes(&crash).is_err());
+        // the same hole from the table KEY position (read_hex_table_string's other reach)
+        let upper_key = vec![
+            arr_def(2),
+                map_def(1),
+                    cbor_string("CAFE"),
+                        cbor_int(1, Sz::Inline),
+                map_def(0),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<u8>>();
+        assert!(CustomTablePositions::from_cbor_bytes(&upper_key).is_err());
+        // and from the struct-field positions (read_hex_string, read_tagged_uint_str)
+        let struct_bytes = |hexed: &str, tagged: &str| {
+            vec![
+                map_sz(5, Sz::Inline),
+                    cbor_string("chunked"),
+                        cbor_bytes_sz(vec![0xCA], StringLenSz::Indefinite(vec![(1, Sz::Inline)])),
+                    cbor_string("hexed"),
+                        cbor_string(hexed),
+                    cbor_string("aliased"),
+                        cbor_bytes_sz(vec![0x03], StringLenSz::Indefinite(vec![(1, Sz::Inline)])),
+                    cbor_string("tagged"),
+                        cbor_tag(9),
+                        cbor_string(tagged),
+                    cbor_string("plain"),
+                        cbor_int(7, Sz::Inline),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<u8>>()
+        };
+        // control first: lowercase hex + canonical decimal is accepted and re-encodes to itself
+        let ok = struct_bytes("baad", "1024");
+        assert_eq!(
+            MapStructWithCustomSerialization::from_cbor_bytes(&ok)
+                .unwrap()
+                .to_cbor_bytes(),
+            ok
+        );
+        // uppercase hex at the struct-field slot
+        assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("BAAD", "1024")).is_err());
+        // decimal spellings `u64::from_str` accepts but `to_string` never re-emits
+        assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("baad", "+1024")).is_err());
+        assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("baad", "01024")).is_err());
+    }
+
     // A table's KEY domain and VALUE range are the two positions a type-level custom pair reaches
     // that no struct field does: both go through the table loop rather than a record field's
     // config. `hex_table_str` writes bytes as hex TEXT, which the default `bytes` writer never
