@@ -692,7 +692,12 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     evidence for the tree it was done on and nothing after it; one corpus input carrying that
     spelling (plus a group-choice-arm sibling if it routes differently) turns the guarantee into a
     standing cell: a compile-floor row under BOTH annotate=false flavors, a snapshot pin, and the
-    usual registration (snapshot bless, `CORPUS_PARITY_INPUTS` row). Same input-poverty class as
+    usual registration (snapshot bless, `CORPUS_PARITY_INPUTS` row). Starting premise, probed on
+    the delivering tree so the pickup starts green rather than shape-hunting: both spellings
+    (`choice_holder = fixed_enum / bytes`; `gc_holder = [ a: fixed_enum // b: tstr ]`) generate at
+    exit 0 and `cargo check` green under BOTH annotate=false flavors, with the statement-form leg
+    visibly emitted (`Ok(()) => return Ok(FixedEnum::I0)` inside the variant-probe closures) —
+    probed `--wasm=false` only; the floor's own cells will run `--wasm=true`. Same input-poverty class as
     the both-nominal pair-map cell above: the emission branch exists, the fix cycle proved it
     load-bearing, and no committed input reaches it.
 
