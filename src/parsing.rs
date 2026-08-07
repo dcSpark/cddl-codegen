@@ -1092,16 +1092,23 @@ fn is_spellable_variant_name(name: &str) -> bool {
 /// Shared by both arm-naming consumers — `create_variants_from_type_choices` (type choices, bare
 /// and nested-anonymous) and the group-choice arm loop's bare-member fallback — so the two cannot
 /// drift in what they refuse or in how they spell the remedy.
+///
+/// `naming_slot` is the one thing the two consumers do NOT share: a type-choice arm's naming slot
+/// is its own trailing comment, a group-choice arm's is the one that follows the `//` opening it —
+/// and a group-choice arm has a SECOND, adjacent slot (the entry's own line) that names nothing,
+/// which is exactly where an author reading a bare `; @name <new_name>` remedy lands. So the slot
+/// is named, not implied.
 fn reject_unnameable_arm_variant_name(
     types: &mut IntermediateTypes,
     owner_desc: &str,
     arm_source: &str,
     minted_name: &str,
+    naming_slot: &str,
 ) {
     types.record_rejection(format!(
         "{owner_desc}: its arm `{arm_source}` generates the variant name `{minted_name}`, which is \
          not a valid Rust identifier. Name the arm with `; @name <new_name>` to choose the variant \
-         name yourself."
+         name yourself — {naming_slot}."
     ));
 }
 
@@ -1246,18 +1253,30 @@ fn reject_occurrence_on_single_entry_arm(
 ///   read, so the entry slot is refused with that slot as the remedy rather than given a second,
 ///   colliding meaning.
 ///
-/// `@name` is DELIBERATELY not touched, and it is the one member of the family that is not a silent
-/// drop here: this exact slot is where `anon_array_member_name` reads the name of a member-position
-/// anonymous inline array, so `[ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner`
-/// today. Refusing it would delete that; naming the VARIANT from it instead would rename variants in
-/// specs that generate today (`F(Inner)` → `Inner(Inner)`) and would give the variant a second naming
-/// slot beside the arm's own `// ; @name <n>`, which is the documented one. Neither is this card's
-/// to choose — the fork is ledgered in `cddl-matrix/ROADMAP.md` § "Findings — open".
+/// `@name` splits, because this slot HAS a reader for exactly one member shape: the
+/// anonymous-inline-array minting path takes the member's struct name from it, so
+/// `[ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner`. That naming door is what
+/// the "Anonymous groups not allowed" error advertises and `comment_dsl.mdx` documents, so it is
+/// kept; everywhere else the name was read by nothing (`// f: bytes ; @name renamed` still emitted
+/// variant `F`), and that is refused with the arm's OWN naming slot as the remedy. Naming the
+/// VARIANT from this slot instead was the rejected alternative: it renames variants in specs that
+/// generate today (`F(Inner)` → `Inner(Inner)`) and mints a second naming slot beside the arm's
+/// documented `// ; @name <n>`.
+///
+/// Which member shapes the reader covers is NOT restated here. It is OBSERVED, through the reader's
+/// only effect — the member's parsed type IS the struct the name mints — which is why this seam runs
+/// AFTER the entry's type parse and takes `member_type`. A second spelling of the reader's scope
+/// ("sole type choice, operator-free, heterogeneous inline array") is precisely the drift the
+/// observation avoids: change the reader and this verdict changes with it, in the same commit and by
+/// construction. The one spelling the observation reads as consumed without the reader running is a
+/// member whose type is a rule ALREADY named what the directive asks for (`f: inner ; @name inner`),
+/// where the name describes the type the member already has and nothing is lost.
 fn reject_field_directives_on_single_entry_arm(
     types: &mut IntermediateTypes,
     name: &RustIdent,
     group_entry: &GroupEntry,
     optional_comma: &OptionalComma,
+    member_type: &RustType,
 ) {
     // An `InlineGroup` entry panics `group_entry_rule_metadata` and is already refused on its own
     // terms by the entry-position rejection in `group_entry_to_type` — one message per problem, the
@@ -1330,6 +1349,24 @@ fn reject_field_directives_on_single_entry_arm(
              documents the enum variant the arm becomes: put `; @doc <text>` on the line that OPENS \
              the arm (`// ; @doc <text>`), before the entry."
         ));
+    }
+    // The `@name` fork: honored where the anon-array reader consumed it, refused where it did not.
+    // The condition is the reader's own effect, read off the parsed member type rather than
+    // re-derived from the AST — see this function's doc comment.
+    if let Some(written) = metadata.name.as_ref() {
+        let consumed = matches!(
+            &member_type.conceptual_type,
+            ConceptualRustType::Rust(ident) if ident.to_string() == convert_to_camel_case(written)
+        );
+        if !consumed {
+            types.record_rejection(format!(
+                "@name `{written}` on {site}: this slot names a member-position anonymous inline \
+                 array (`// f: [x: uint] ; @name Inner` mints `pub struct Inner` and holds it in \
+                 the variant), and this member's type is not one — so the name is read by nothing \
+                 here. The arm's naming slot is the one that follows the `//` opening it: write \
+                 `// ; @name {written}` on that line to name the enum variant the arm becomes."
+            ));
+        }
     }
     // Never the dual-read slot: a group-choice arm belongs to a TYPE rule (a multi-choice plain
     // group body is refused before this walk runs), so no rule's trailing comment lands here.
@@ -4191,6 +4228,8 @@ pub fn create_variants_from_type_choices(
                         &source_owner_desc,
                         &choice.type1.type2.to_string(),
                         &minted,
+                        "a type-choice arm's naming slot is its own trailing \
+                         comment (`<arm> ; @name <new_name>`)",
                     );
                 }
                 minted
@@ -8147,15 +8186,21 @@ pub fn parse_group(
                     // marker is honored by collapse (the shared `inline_group_occurrence_flattens`
                     // boundary) and refuses nothing, so a directive on `{ x: uint // + kv }` still
                     // reaches the validation below — which is exactly right: that arm generates.
-                    if !reject_occurrence_on_single_entry_arm(types, name, group_entry, rep) {
+                    let occurrence_refused =
+                        reject_occurrence_on_single_entry_arm(types, name, group_entry, rep);
+                    let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
+                    // The directive validation runs AFTER the member's type parse, because the
+                    // `@name` verdict is the anon-array reader's own effect observed on `ty` rather
+                    // than a second derivation of that reader's scope.
+                    if !occurrence_refused {
                         reject_field_directives_on_single_entry_arm(
                             types,
                             name,
                             group_entry,
                             entry_comma,
+                            &ty,
                         );
                     }
-                    let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
                     // Resolve aliases first: an alias is transparent, so an arm spelled
                     // `kv_alias` must materialize and embed the plain group exactly like the
                     // direct `kv` arm. Reading the bare `Rust(ident)` skipped both the
@@ -8199,6 +8244,9 @@ pub fn parse_group(
                                         &owner_desc,
                                         &group_entry.to_string(),
                                         &minted,
+                                        "a group-choice arm's naming slot is the one that \
+                                         FOLLOWS the `//` opening it \
+                                         (`// ; @name <new_name>`), not the entry's own line",
                                     );
                                 }
                                 (minted, false)

@@ -828,17 +828,17 @@ function buildHandRule(cell: HandCell, extra: string[]): string {
  *  pruning the entry. Same posture (and same authoring rule) as `dsl_position_tests`'
  *  `KNOWN_SILENT_DROP`.
  *
- *  The one finding left here is `@name` in the single-entry arm's ENTRY slot, whose fork is ledgered
- *  in `cddl-matrix/ROADMAP.md` § "Findings — open". The six TYPE-SCOPED directives that used to sit
- *  beside it are refused now, at this position and at every other member position — which is why the
- *  `record_field_*` shapes above measure them too rather than only this one. */
-const KNOWN_POSITION_DROPS: Record<string, string> = Object.fromEntries(
-  ["array", "map"].flatMap(rep =>
-    [
-      ["name", "the entry slot's `@name` HAS a reader here (a member-position anonymous inline array is named from it), so it is not a blanket drop — whether it should also name the VARIANT, which already has its own `// ; @name <n>` slot, is the open fork"],
-    ].map(([directive, reason]) => [`single_entry_group_choice_arm_${rep}__${directive}`, reason]),
-  ),
-);
+ *  EMPTY, and that is the state to keep it in: every member-position drop it carried has been
+ *  refused. The single-entry arm's six TYPE-SCOPED directives are refused at that position and at
+ *  every other member position (which is why the `record_field_*` shapes above measure them too),
+ *  and its `@name` is refused wherever the anonymous-inline-array reader does not consume it.
+ *
+ *  That reader's HONORED leg is deliberately not a cell here and cannot be one: its
+ *  without-directive baseline (`// f: [x: uint]`, unnamed) does not generate at all, which this
+ *  gate's model classifies as a fixture bug rather than a measurement. It is pinned in-process
+ *  instead, by `robustness_tests::name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent`,
+ *  which sweeps the agreement over a vocabulary of arm-entry member types. */
+const KNOWN_POSITION_DROPS: Record<string, string> = {};
 
 /** Assemble the full cell list: the hand corpus first (its ids own the ALLOWLIST entries and its
  *  comments pin specific shipped regressions), then the shape×directive product. A cell whose

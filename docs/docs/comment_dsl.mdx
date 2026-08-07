@@ -112,8 +112,13 @@ works. `@doc` on the entry is refused with the arm's own slot (`// ; @doc …`) 
 the remedy; and the rule-scoped tags (`@copy`, `@raw_bytes_flavor`, `@used_as_elem`,
 `@extern_companions`, `@duplicates`, `@ignore`) and the type-scoped ones (`@rust_name`, `@newtype`,
 `@no_alias`, `@used_as_key`, `@custom_json`, `@no_json_schema_export`) get the same rejections they
-get at an ordinary field. The one directive the entry slot **does** carry on such an arm is `@name` naming an anonymous
-inline array member type, immediately below — the arm's own name still comes from the arm slot.
+get at an ordinary field. The one thing the entry slot **does** carry on such an arm is `@name`
+naming an **anonymous inline array** member type (immediately below) — that naming door is what the
+"Anonymous groups not allowed" error advertises, so it stays. It is scoped to exactly the member
+types that door covers: written on a member whose type is anything else — a homogeneous `[* uint]`,
+a primitive, a named rule, an array behind a tag, an inline map — the name is read by nothing, and
+it is a hard error naming the arm's own slot (`// ; @name <n>`) as the remedy. The arm's own name
+always comes from the arm slot; the entry slot never names the variant.
 
 Note: `@name` also names an **anonymous inline array used as a member's type**, which is the remedy
 the "Anonymous groups not allowed" error advertises:

@@ -7024,6 +7024,184 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
     }
 }
 
+/// `@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm agrees with the ONE reader
+/// that slot has: honored exactly where `anon_array_member_name` consumes it — a member-position
+/// ANONYMOUS heterogeneous inline array, which the name mints the struct for — and refused
+/// everywhere else, where it was read by nothing (`// f: bytes ; @name renamed` still emitted
+/// variant `F`).
+///
+/// The property this pins is the AGREEMENT, not a list of shapes: over a vocabulary of arm-entry
+/// member types, every `@name` is EITHER honored-as-mint (and only for the anon heterogeneous array)
+/// OR refused — never silent, never both. That matters because the refusal seam does not restate the
+/// reader's scope; it observes the reader's only effect (the member's parsed type IS the struct the
+/// name mints), so this test is what would catch the two drifting apart if the reader's scope ever
+/// moved.
+///
+/// The two rejected dispositions, kept here because the test's shape is the argument for the third:
+/// refusing the slot outright deletes the naming door the "Anonymous groups not allowed" error
+/// advertises, and naming the VARIANT from it renames variants in specs that generate today
+/// (`F(Inner)` → `Inner(Inner)`) while minting a second naming slot beside the arm's documented one.
+#[test]
+fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
+    // (tag, member type as written, whether the anon-array reader consumes the name)
+    const VOCABULARY: &[(&str, &str, bool)] = &[
+        // the ONE consuming shape: the anonymous heterogeneous inline array, whose struct the name
+        // mints and whose variant then holds it.
+        ("anon_hetero_array", "[x: uint]", true),
+        // a HOMOGENEOUS inline array is a `Vec`, not a struct — nothing to name.
+        ("homogeneous_array", "[* uint]", false),
+        ("bare_primitive", "bytes", false),
+        ("alias", "al", false),
+        // behind a tag the array is the tag's payload, not the member's whole type, so the reader's
+        // ascent stops — the same scoping the member-position naming door has.
+        ("tagged_anon_array", "#6.42([x: uint])", false),
+        // an inline MAP has no naming door at all (its own error points at the named form).
+        ("anon_map", "{x: uint}", false),
+    ];
+    const REFUSAL_HEAD: &str = "this slot names a member-position anonymous inline array";
+    for (tag, member, consumed) in VOCABULARY {
+        for (rep, open, close) in [("array", "[", "]"), ("map", "{", "}")] {
+            let prelude = if *tag == "alias" { "al = uint\n" } else { "" };
+            let with = run_spec(
+                &format!("{prelude}t = {open} a: uint\n// f: {member} ; @name Inner\n{close}\n"),
+                &format!("armname_agree_with_{tag}_{rep}"),
+            );
+            let without = run_spec(
+                &format!("{prelude}t = {open} a: uint\n// f: {member}\n{close}\n"),
+                &format!("armname_agree_without_{tag}_{rep}"),
+            );
+            match with {
+                Ok(files) => {
+                    assert!(
+                        *consumed,
+                        "[{tag}/{rep}] only the anon heterogeneous array may HONOR the entry-slot \
+                         name; this shape generated instead of refusing"
+                    );
+                    let src = files.into_values().collect::<Vec<_>>().join("\n");
+                    assert!(
+                        src.contains("pub struct Inner") && src.contains("F(Inner)"),
+                        "[{tag}/{rep}] an honored entry-slot name must mint the struct and hold it \
+                         in the variant, got:\n{src}"
+                    );
+                    // …and it cannot ALSO have been refused, which an `Ok` already says, so the
+                    // remaining silence check is that the directive changed something at all.
+                    let bare = without
+                        .map(|f| f.into_values().collect::<Vec<_>>().join("\n"))
+                        .unwrap_or_default();
+                    assert!(
+                        bare != src,
+                        "[{tag}/{rep}] the entry-slot name must not be a byte-identical no-op"
+                    );
+                }
+                Err(err) => {
+                    assert!(
+                        !*consumed,
+                        "[{tag}/{rep}] the consuming shape must keep generating, got:\n{err}"
+                    );
+                    assert!(
+                        err.contains(REFUSAL_HEAD)
+                            && err.contains(
+                                "@name `Inner` on the single-entry group-choice arm \
+                                             `f` of rule `t`"
+                            )
+                            && err.contains(
+                                "The arm's naming slot is the one that follows the `//` opening it"
+                            ),
+                        "[{tag}/{rep}] an unconsumed entry-slot name must be refused by name, by \
+                         site and with the arm's own slot as the remedy, got:\n{err}"
+                    );
+                    assert_eq!(
+                        err.matches(REFUSAL_HEAD).count(),
+                        1,
+                        "[{tag}/{rep}] the refusal must be said exactly once, got:\n{err}"
+                    );
+                }
+            }
+        }
+    }
+
+    // The refusal is at PARSE, so no profile reaches an emission that could differ (`--wasm=false`
+    // spelled explicitly: the flag parse-defaults to TRUE, so a no-flag run is a wasm run).
+    for flags in [
+        &["--wasm=false"][..],
+        &["--wasm=false", "--preserve-encodings=true"][..],
+        &["--wasm=true"][..],
+    ] {
+        let err = expect_graceful_rejection(
+            "armname_profile",
+            "t = [ a: uint\n// f: bytes ; @name renamed\n]\n",
+            flags,
+        );
+        assert!(
+            err.contains("@name `renamed` on the single-entry group-choice arm `f` of rule `t`"),
+            "the entry-slot refusal must be profile-independent ({flags:?}), got:\n{err}"
+        );
+    }
+
+    // CONTROL 1 — the ORDINARY member-position naming door is not an arm and must not change: the
+    // spelling `comment_dsl.mdx` documents as the "Anonymous groups not allowed" remedy still mints
+    // its struct and its field.
+    let door = expect_custom_codec_source(
+        "armname_member_door_control",
+        "t = [0, [1, bytes] ; @name inner\n]\n",
+    );
+    assert!(
+        door.contains("pub struct Inner") && door.contains("pub inner: Inner"),
+        "the member-position anonymous-array naming door must be untouched, got:\n{door}"
+    );
+
+    // CONTROL 2 — the ARM's own slot keeps naming the variant. It is the remedy this refusal names,
+    // so a refusal pointing at a slot that stopped working would be worse than the silence it
+    // replaced.
+    let arm_slot = expect_custom_codec_source(
+        "armname_arm_slot_control",
+        "t = [ a: uint\n// ; @name Alt\nf: bytes ]\n",
+    );
+    assert!(
+        arm_slot.contains("Alt(Vec<u8>)"),
+        "the arm's own naming slot must keep naming the variant, got:\n{arm_slot}"
+    );
+
+    // CONTROL 3 — a MULTI-entry arm mints a record, so its entry slot is an ordinary FIELD slot and
+    // `@name` there keeps renaming the field. This seam is the one-entry arm's alone.
+    let multi = expect_custom_codec_source(
+        "armname_multi_entry_control",
+        "t = [ a: uint\n// f: bytes ; @name renamed\n, g: uint ]\n",
+    );
+    assert!(
+        multi.contains("pub renamed: Vec<u8>"),
+        "a multi-entry arm's entry slot must keep renaming the field, got:\n{multi}"
+    );
+
+    // CONTROL 4 — the bare-member arm whose variant name the lexeme minter cannot spell gets TWO
+    // distinct messages, and the second is now slot-precise: the ledger's evidence was an author
+    // told to "name the arm with `; @name <new_name>`" who had just done that in the slot next door.
+    let lexeme = expect_graceful_rejection(
+        "armname_lexeme_slot_precision",
+        "t = [ true\n// 1.5 ; @name half\n]\n",
+        &[],
+    );
+    assert!(
+        lexeme.contains("@name `half` on the single-entry group-choice arm `1.5` of rule `t`"),
+        "the unconsumed entry-slot name must be refused on a bare member too, got:\n{lexeme}"
+    );
+    assert!(
+        lexeme.contains("generates the variant name `F1.5`")
+            && lexeme.contains(
+                "a group-choice arm's naming slot is the one that FOLLOWS the `//` opening it"
+            ),
+        "the lexeme refusal must name the group-choice arm's own slot, got:\n{lexeme}"
+    );
+    // The TYPE-choice consumer of the same minter names ITS slot, which is a different one.
+    let type_choice =
+        expect_graceful_rejection("armname_lexeme_type_choice", "t = 1.5 / tstr\n", &[]);
+    assert!(
+        type_choice.contains("a type-choice arm's naming slot is its own trailing comment")
+            && !type_choice.contains("FOLLOWS the `//`"),
+        "the type-choice consumer must name its own slot, not the group-choice one, got:\n{type_choice}"
+    );
+}
+
 /// The six TYPE-SCOPED directives (`@rust_name`, `@newtype`, `@no_alias`, `@used_as_key`,
 /// `@custom_json`, `@no_json_schema_export`) describe the TYPE a rule's name denotes, so no member
 /// position reads them — and until this seam existed every member position DROPPED them at exit 0,

@@ -322,25 +322,6 @@ ledgered here (that's what the probe/gate error messages point at).
   crate, so that is the dimension to watch rather than a second consumer appearing. It is not
   already met: the entry records that the hand-written route exists, not that anyone has been
   observed paying for it.
-- **`@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm is half-honored, and
-  which way it should be settled is open.** The slot HAS a reader — `anon_array_member_name` takes
-  the name of a member-position anonymous inline array from exactly it, so
-  `t = [ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner` and generates. Where the
-  member's type is anything else the name is read by nothing: `t = [ a: uint // f: bytes ; @name
-  renamed ]` still emits variant `F`, and `t = [ true // 1.5 ; @name half ]` refuses with a message
-  telling the author to "name the arm with `; @name <new_name>`" — which they just did, in the slot
-  next door. Probed 2026-08-07 at `c950d6c5`, default profile, `--wasm=false`, both reps. Neither
-  obvious disposition is free: REFUSING the slot deletes the anonymous-array naming door the
-  "Anonymous groups not allowed" error advertises, and HONORING it as the variant name renames
-  variants in specs that generate today (`F(Inner)` → `Inner(Inner)`) while giving the variant a
-  second naming slot beside the arm's own `// ; @name <n>`, which is the documented one. A third
-  shape — refuse only where the anon-array reader did not consume it — has to restate that reader's
-  scope at a second site, which is the drift this codebase spends comments preventing. Every other
-  directive at this position is honored or refused
-  (`field_directives_on_single_entry_group_choice_arm_reject_gracefully`), so this is the one
-  spelling left. This is a candidate card needing a ruling, not a signalled deferral — an author
-  whose arm name lands in the wrong slot already
-  gets either silence or a rejection that names the remedy they already wrote.
 - **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
