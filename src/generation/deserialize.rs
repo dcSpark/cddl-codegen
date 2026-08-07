@@ -1642,8 +1642,23 @@ impl GenerationScope {
                                 // returns would leak out, dropping the wrapper -> E0308), so we first wrap
                                 // it in an immediately-invoked closure to yield a composable
                                 // `Result<Enum, _>` expression and let before_after wrap that.
+                                //
+                                // "Empty before/after composes as-is" holds only while a scaffolding
+                                // closure actually exists to catch the early returns, and that is an
+                                // `--annotate-fields` property: with the flag off there is no
+                                // per-field closure, so a caller wanting a plain value
+                                // (`expects_result == false`) splices the statement form straight
+                                // into `deserialize()` — every `return Ok(Enum::Variant)` then targets
+                                // `deserialize()`'s own return type and the dispatch's `Result` is
+                                // left un-`?`ed at its binding (E0308 per variant, plus one at the
+                                // binding). So the closure the flag removed is re-supplied here: force
+                                // the IIFE for exactly that combination, which leaves every
+                                // annotate=true emission byte-identical.
+                                let force_iife_for_no_annotate =
+                                    !cli.annotate_fields && !before_after.expects_result;
                                 let mut enum_body = (!before_after.before.is_empty()
-                                    || !before_after.after.is_empty())
+                                    || !before_after.after.is_empty()
+                                    || force_iife_for_no_annotate)
                                 .then(|| {
                                     let mut b = Block::new(format!(
                                         "{}(|| -> Result<_, DeserializeError>",
@@ -1731,6 +1746,11 @@ impl GenerationScope {
                                 }
                                 if let Some(enum_body) = enum_body {
                                     deser_code.content.push_block(enum_body);
+                                }
+                                if force_iife_for_no_annotate {
+                                    // `after_str(true)` appended the `?` that turns the IIFE's
+                                    // `Result` back into the plain value the caller asked for.
+                                    deser_code.throws = true;
                                 }
                             }
                             RustStructType::RawBytesType => {

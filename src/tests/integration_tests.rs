@@ -3192,10 +3192,9 @@ const NO_ANNOTATE_FLOOR_STEMS: &[&str] = &[
 /// write a nice way around this in the annotate_fields=false, preserve_encodings=true case"): with
 /// `--annotate-fields=false` there is no per-type scaffolding closure, so any emission that assumed
 /// one — to re-shape a value, to pin an inference variable, or to `return` early — lands in
-/// `deserialize()` itself. Class C is the only one that also reaches the NON-preserve row, because
-/// its `return` is emitted whether or not encodings exist.
+/// `deserialize()` itself.
 ///
-/// The three classes, none of which any other gate reaches:
+/// The remaining classes, neither of which any other gate reaches:
 ///   A. **optional field + encoding sidecars** (E0308) — the annotate=false path emits the
 ///      `if <peek> { Some(<tuple>) } else { None }` form and binds it to the BARE tuple pattern
 ///      `let (f, f_encoding, …) = …`; the annotate=true path re-shapes through
@@ -3205,11 +3204,6 @@ const NO_ANNOTATE_FLOOR_STEMS: &[&str] = &[
 ///   B. **untyped `.into()` for a length encoding** (E0283) — `let {f}_encoding = {f}_len.into();`
 ///      has nothing to pin its type parameter once the closure that consumed it into a typed return
 ///      tuple is gone (`LenSz: Into<_>` is ambiguous).
-///   C. **c-style-enum inline dispatch** (E0308) — the try-each-variant sequence inlined at a
-///      c-enum use site emits `return Ok(<Variant>)`, correct only inside the scaffolding closure;
-///      without it the `return` targets the enclosing `deserialize()` (a different type), and the
-///      dispatch's own `Result` is left un-`?`ed at its binding. The only NON-preserve entry — this
-///      one is red under plain `--annotate-fields=false`.
 const NO_ANNOTATE_KNOWN_RED: &[(&str, &str, &str, &str)] = &[
     (
         "alias_positions",
@@ -3217,20 +3211,6 @@ const NO_ANNOTATE_KNOWN_RED: &[(&str, &str, &str, &str)] = &[
         "E0283",
         "class B: `let key_1_encoding = key_1_len.into();` — no closure return type to pin the \
          `Into` target",
-    ),
-    (
-        "cbor_enum_payload",
-        "noannotate",
-        "E0308",
-        "class C: the inlined c-style-enum variant dispatch `return`s its Ok value, which only \
-         reaches the right frame inside the annotate_fields scaffolding closure",
-    ),
-    (
-        "cbor_enum_payload",
-        "preserve_noannotate",
-        "E0308",
-        "class C under preserve — the same `return`, now carrying the encoding tuple \
-         (`return Ok((PayloadEnum::I0, Some(tag_enc), tagged_payload_encoding))`)",
     ),
     (
         "dsl_copy",
