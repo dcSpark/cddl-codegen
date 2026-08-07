@@ -322,24 +322,6 @@ ledgered here (that's what the probe/gate error messages point at).
   crate, so that is the dimension to watch rather than a second consumer appearing. It is not
   already met: the entry records that the hand-written route exists, not that anyone has been
   observed paying for it.
-- **No member position — an ordinary record field included — reads the six RULE-SCOPED directives
-  that have no member meaning, so each is silently dropped there.** `@rust_name`, `@newtype`,
-  `@no_alias`, `@used_as_key`, `@custom_json` and `@no_json_schema_export` are read only at rule
-  position; written on a member's trailing comment they are parsed into the entry's metadata and
-  never looked at. Probed 2026-08-07 at `c950d6c5`, default profile, `--wasm=false`, each of the six
-  at an ordinary array-record field (`u = [a: uint, f: bytes ; @newtype]` and siblings, all exit 0
-  with the directive unread) and at a single-entry group-choice arm's entry slot; not probed: map-rep
-  fields, the row-entry slots, preserve/canonical profiles, wasm/json faces. The six directives
-  the field walk DOES refuse (`@copy`,
-  `@raw_bytes_flavor`, `@used_as_elem`, `@extern_companions`, `@duplicates`, `@ignore`) live in
-  one shared list that both member positions call, so the fix is to extend that list — but doing so
-  also decides what a plain GROUP rule's TRAILING comment means, since that comment binds to the
-  group's LAST MEMBER, and `pg = (…) ; @used_as_key` is a spelling authors plausibly write today.
-  That coupling is why it is filed as its own item. The
-  single-entry arm's cells for these six are pinned in `no_silent_directive.ts`'s
-  `KNOWN_POSITION_DROPS`, which fails loudly as a stale pin the moment the fix lands.
-  This is a candidate card, not a signalled deferral — every one of the six
-  ships as silence today, so the problem is already observed rather than waiting on an observable.
 - **`@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm is half-honored, and
   which way it should be settled is open.** The slot HAS a reader — `anon_array_member_name` takes
   the name of a member-position anonymous inline array from exactly it, so

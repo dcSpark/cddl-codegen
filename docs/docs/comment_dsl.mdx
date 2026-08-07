@@ -90,6 +90,16 @@ splices the group**. A group nothing splices emits neither a struct nor a field,
 can be renamed and the rule-position rejection applies (see
 [Plain groups nothing splices](#plain-groups-nothing-splices)).
 
+That slot is read **twice**, and deliberately: it is the last entry's, *and* it is the only slot the
+parser gives a group rule for its own directives. So the rule-scoped tags written there
+(`@rust_name`, `@newtype`, `@no_alias`, `@used_as_key`, `@custom_json`, `@no_json_schema_export`) are
+read at **rule** level — `grp = (a: uint, b: uint) ; @used_as_key` gives the spliced group's struct
+its comparison derives — and are *not* subject to the member-position refusal below. The exemption
+is the **last** entry only: written on any earlier entry of the same group they are member-position
+directives like any other, and refused. A *type* rule shares nothing: a comment after the closing `]` or `}` reaches the rule slot
+alone, so `keyed = [a: uint, b: text] ; @used_as_key` is a rule directive and the member walk never
+sees it.
+
 Note: a group-choice arm has **two** comment slots, and they are not interchangeable. The slot that
 names and documents the arm is the one that follows the `//` opening it (the `; @name native` lines
 above); the slot at the **end of an entry's own line** is that entry's, exactly as in a record. On a
@@ -100,8 +110,9 @@ carry a field-level directive, and every one written there is a **hard error** n
 works. `@doc` on the entry is refused with the arm's own slot (`// ; @doc …`) as the remedy; the
 [custom (de)serializer pair](#positions-that-are-rejected) is refused with the member's type rule as
 the remedy; and the rule-scoped tags (`@copy`, `@raw_bytes_flavor`, `@used_as_elem`,
-`@extern_companions`, `@duplicates`, `@ignore`) get the same rejections they get at an ordinary
-field. The one directive the entry slot **does** carry on such an arm is `@name` naming an anonymous
+`@extern_companions`, `@duplicates`, `@ignore`) and the type-scoped ones (`@rust_name`, `@newtype`,
+`@no_alias`, `@used_as_key`, `@custom_json`, `@no_json_schema_export`) get the same rejections they
+get at an ordinary field. The one directive the entry slot **does** carry on such an arm is `@name` naming an anonymous
 inline array member type, immediately below — the arm's own name still comes from the arm slot.
 
 Note: `@name` also names an **anonymous inline array used as a member's type**, which is the remedy
