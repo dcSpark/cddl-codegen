@@ -133,7 +133,7 @@ export type Row = GateRow | RunRow;
 /**
  * Ledger order IS chronological order, and that is load-bearing: `--update` takes the most recent N
  * rows per (gate, cache class) by POSITION, not by parsing `run` as a date. 21 of the 352 logs on
- * disk are hand-named (`check-local-item23.log`) and carry no timestamp at all, so a date parse would
+ * disk are hand-named (e.g. a `check-local-<item>.log`) and carry no timestamp at all, so a date parse would
  * have to either drop them or invent an ordering. Backfill instead walks the logs in mtime order and
  * appends; live emission appends as it goes. Both are chronological by construction.
  */
@@ -933,7 +933,7 @@ export async function selfTests(): Promise<TestResult[]> {
   // Parser fixtures. Inline rather than pointing at draft/logs/: those are gitignored and are
   // deleted on a retention window, so a fixture living there would rot exactly when it matters.
   {
-    const p = parseLog(FIXTURE_COMPLETED, "check-full-2026-07-25T20-12-44Z.log")!;
+    const p = parseLog(FIXTURE_COMPLETED, "check-full-2000-01-01T00-00-00Z.log")!;
     const verify = p.gates.find(g => g.gate === "verify");
     const test = p.gates.find(g => g.gate === "test");
     ok("parser_completed_log_yields_wall_verdict_and_cells",
@@ -944,7 +944,7 @@ export async function selfTests(): Promise<TestResult[]> {
       JSON.stringify({ n: p.gates.length, wallMs: p.wallMs, verdict: p.verdict, verify, test }));
   }
   {
-    const p = parseLog(FIXTURE_KILLED, "check-full-2026-07-25T17-53-25Z.log")!;
+    const p = parseLog(FIXTURE_KILLED, "check-full-2000-01-01T01-00-00Z.log")!;
     ok("parser_killed_log_yields_gates_but_no_wall_or_verdict",
       p.gates.length === 2 && p.wallMs === undefined && p.verdict === undefined,
       JSON.stringify({ n: p.gates.length, wallMs: p.wallMs, verdict: p.verdict }));
@@ -952,7 +952,7 @@ export async function selfTests(): Promise<TestResult[]> {
   {
     ok("parser_rejects_a_non_tier_log_name",
       splitLogName("check-optional_fixed_float-crates-20260718T141505Z.log") === null &&
-      splitLogName("check-full-2026-07-25T20-12-44Z.log")?.tier === "full");
+      splitLogName("check-full-2000-01-01T00-00-00Z.log")?.tier === "full");
   }
   {
     ok("parser_inverts_every_fmtDur_shape",
@@ -1045,20 +1045,20 @@ export async function selfTests(): Promise<TestResult[]> {
         ...seq("check-fast-", 15), ...seq("check-local-", 12), ...seq("check-full-", 3),
         ["check-optional_fixed_float-crates-20260718T141505Z.log", 1_600_000_000],
         ["verify-rustname-registration-2026-07-18T22-48-50Z.log", 1_600_000_001],
-        ["check-local-item23.log", 1_600_000_002],
+        ["check-local-itemfixture.log", 1_600_000_002],
       ];
       const { dir, logs, ledger } = mk(files);
       writeFileSync(ledger, '{"v":1}\n');
-      const cited = new Set(["check-fast-000.log", "check-local-item23.log"]);
+      const cited = new Set(["check-fast-000.log", "check-local-itemfixture.log"]);
       const r = retainLogs({ logsDir: logs, ledger, cited: () => cited });
       const left = new Set(readdirSync(logs));
       const newestSurvive = (p: string, from: number) =>
         Array.from({ length: 10 }, (_, i) => `${p}${String(from + i).padStart(3, "0")}.log`).every(f => left.has(f));
       ok("retention_keeps_the_last_10_per_tier_and_every_cited_log",
-        // fast: 15 -> 5 expired, 1 cited -> 4 deleted. local: 13 (12 + the older item23) -> 3
-        // expired, item23 cited -> 2 deleted. full: 3 -> none expired.
+        // fast: 15 -> 5 expired, 1 cited -> 4 deleted. local: 13 (12 + the older itemfixture) -> 3
+        // expired, itemfixture cited -> 2 deleted. full: 3 -> none expired.
         r.status === "ran" && r.deleted.length === 6 && r.bytes === 6000 &&
-        r.citedKept.length === 2 && left.has("check-fast-000.log") && left.has("check-local-item23.log") &&
+        r.citedKept.length === 2 && left.has("check-fast-000.log") && left.has("check-local-itemfixture.log") &&
         newestSurvive("check-fast-", 5) && newestSurvive("check-local-", 2) &&
         left.has("check-optional_fixed_float-crates-20260718T141505Z.log") &&
         left.has("verify-rustname-registration-2026-07-18T22-48-50Z.log"),
