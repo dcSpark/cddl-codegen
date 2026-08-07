@@ -629,6 +629,25 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     its existing failures; the vector is an `@name FooJSON` fixture through `js_d_ts_merge`'s
     hand-laid harness.
 
+19. **A corpus cell for the preserve pair-map whose key AND value are self-encoding — the one
+    `@duplicates preserve` emission arm no committed snapshot pins.** The positional
+    (non-canonical) pair-map serialize loop binds its `.enumerate()` index `i` when a per-entry
+    key/value sidecar lookup reads it and `_i` when neither does, and the committed corpus
+    exercises only the first: `table_preserve`'s five positional loops all read a
+    `*_key_encodings.get(i)`, while the `_i` leg — reached exactly when key and value are BOTH
+    nominal self-encoding types (`m = { * ref => ref } ; @duplicates preserve` with `ref` a
+    struct/collection rule, each entry carrying its own sidecar internally) — is pinned by no
+    snapshot and compiled by no corpus gate. Its only current coverage is the
+    `tests/recursive-collection-ref` integration fixture, which is where the `unused variable: i`
+    emission defect this leg shipped with was finally seen — by the `run_test` generator-owned
+    warning scan on that scan's first sweep, not by any corpus layer (fixed in the same
+    delivery). The stakes are compile-shaped in both directions: a wrong emptiness condition
+    either emits `_i` under a live `.get(i)` lookup (E0425 in every consumer build of the
+    affected shape) or `i` under none (the warning class the scan now holds at zero). One corpus
+    input with the both-nominal shape buys the leg a snapshot pin plus a
+    `feature_corpus_compiles` cell — standard corpus registration (snapshot bless,
+    `CORPUS_PARITY_INPUTS` row).
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
@@ -2688,6 +2707,19 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   it would unblock.
 
 ## Operational watches
+
+- **A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps
+  for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's.** Proven
+  2026-08-07, twice in one cycle: a session polling a live `check-local-*.log` for the tier
+  verdict fired early on `RESULT: PASS (editorial mapping holds mechanically)` — an in-gate
+  self-check's line — while the tier had ~10 minutes left; the re-armed anchor `^RESULT:` matched
+  the same line again. The tier verdict's exact shapes are
+  `RESULT: PASS — all in-tier gates green (tier=<t>)` and `RESULT: FAIL — <n> gate(s) failed: …`
+  (and a `--only` run's is the distinct `<sel> selected PASS/FAIL … no tier verdict` line), so a
+  poll must match those shapes, not the `RESULT:` prefix — and any watcher should also cover
+  process death (`pgrep` the run) so silence is distinguishable from still-running. Working rule:
+  poll for the tier-shaped line verbatim; treat a bare `RESULT:` match inside a live log as a
+  sub-check's output until the process has exited.
 
 - **A no-flag `cddl-codegen` invocation is a WASM run — the `wasm` flag's PARSE default is true —
   so a "default profile" probe that does not spell `--wasm=false` attributes wasm-profile facts to
