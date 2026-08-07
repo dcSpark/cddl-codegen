@@ -401,10 +401,11 @@ fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent)
         .unwrap_or_else(|| name.to_string());
     types.record_rejection(format!(
         "@ignore on rule `{source_name}`: this directive is only valid on an open struct-map rest \
-         row (`{{ 1: a, * k => v }} ; @ignore`) or an open-array rest tail (`[ a, * t ] ; @ignore`), \
-         where it selects the tolerate-and-drop flavor. It does not apply at a rule, alias, union, \
-         table, whole-array, or field position. Remove it, or move it onto the `* k => v` row / `* t` \
-         tail of an open struct-map / open array."
+         row (`* k => v ; @ignore`) or an open-array rest tail (`* t ; @ignore`), written in the \
+         ROW's / TAIL's own trailing comment on its own line inside the container, where it selects \
+         the tolerate-and-drop flavor. It does not apply at a rule, alias, union, table, \
+         whole-array, or field position. Remove it, or move it onto the `* k => v` row / `* t` tail \
+         of an open struct-map / open array."
     ));
 }
 
@@ -490,15 +491,24 @@ fn custom_codec_directives(metadata: &RuleMetadata) -> Vec<&'static str> {
 /// field walk does" a fact rather than a resemblance: a directive added to this list is refused at
 /// both, and neither can quietly grow a position-specific verdict for one of them.
 ///
+/// The list has two halves. The one written out below is the half a ROW-ENTRY slot cannot take
+/// wholesale (`@ignore` and `@duplicates` are honored there), so the row seams call the other half —
+/// [`reject_type_scoped_directives`] — on its own.
+///
 /// `site` names the slot the way that slot's other rejections do (`field \`f\` of rule \`t\``), and
 /// `position_noun` is the phrase the three "…, not X" messages end on — the only text that varies
 /// between positions, because the other three already word themselves position-generically
 /// (`a field/member position`).
+///
+/// `rule_slot_shared` marks the ONE member slot the cddl parser also binds a RULE's trailing comment
+/// to — a plain group rule's LAST entry — and suppresses only the [`reject_type_scoped_directives`]
+/// half; see that function's doc comment for why the split is exactly there.
 fn reject_member_scoped_directives(
     types: &mut IntermediateTypes,
     site: &str,
     position_noun: &str,
     metadata: &RuleMetadata,
+    rule_slot_shared: bool,
 ) {
     // `@raw_bytes_flavor` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition, never a
     // field/member position — reject loudly instead of silently ignoring it.
@@ -553,9 +563,94 @@ fn reject_member_scoped_directives(
     // field/member position — reject loudly instead of silently ignoring it.
     if metadata.ignore {
         types.record_rejection(format!(
-            "@ignore on {site}: this directive is only valid on an open struct-map rest row \
-             (`{{ 1: a, * k => v }} ; @ignore`), not at a field/member position. Remove it from \
-             this entry."
+            "@ignore on {site}: this directive is only valid on an open struct-map rest row, \
+             written in the ROW's own trailing comment (`* k => v ; @ignore`, on the row's own line \
+             inside the braces), not at a field/member position. Remove it from this entry."
+        ));
+    }
+    if !rule_slot_shared {
+        reject_type_scoped_directives(types, site, metadata);
+    }
+}
+
+/// The TYPE-SCOPED directives, refused at a MEMBER position. Split out of
+/// [`reject_member_scoped_directives`] rather than folded into its list because the two halves have
+/// different reach: these six describe the TYPE a name denotes (how it lowers, what it derives, what
+/// the json faces do with it), so no member position reads them and every member position refuses
+/// them, while the other half includes directives a row-entry slot legitimately HONORS
+/// (`@ignore`, `@duplicates`). A row seam can therefore call this one alone.
+///
+/// The six were read into a member's `RuleMetadata` and dropped at exit 0 — `@newtype` on an
+/// ordinary array-record field, `@used_as_key` on a map-record field, and their four siblings, all
+/// byte-identical to the undirected spec under default, `--preserve-encodings` and `--wasm`.
+///
+/// Deliberately NOT called for the one member slot the cddl parser also binds a RULE's trailing
+/// comment to: a plain group rule's LAST entry (`pg = (a: uint, b: uint) ; @used_as_key`). That
+/// slot is the group rule's documented directive slot — `@used_as_key` there IS honored at rule
+/// level, and `comment_dsl.mdx` documents the dual read — so refusing it here would refuse the rule
+/// position through the member seam. The OTHER half still fires there, unchanged: a plain group's
+/// trailing `@duplicates` has always been refused by member site (`field \`b\` of rule \`pg\``).
+/// Non-last plain-group entries carry no rule reading and refuse like any member.
+///
+/// `site` names the slot the way that slot's other rejections do. Each remedy names the rule that
+/// defines the member's type, because that is where the directive's own reader lives.
+fn reject_type_scoped_directives(
+    types: &mut IntermediateTypes,
+    site: &str,
+    metadata: &RuleMetadata,
+) {
+    // `@rust_name` pins the FINAL derived Rust type name of a rule in an extern-deps scope, so it is
+    // keyed on a rule's type and has no member reading at all.
+    if metadata.rust_name.is_some() {
+        types.record_rejection(format!(
+            "@rust_name on {site}: this directive is rule-scoped — it pins the final Rust type name \
+             of a rule in a {EXTERN_DEPS_DIR} scope — and does not apply to a field/member \
+             position. Put it on the rule that defines the member's type (`<type> = … ; @rust_name \
+             <Pinned>`)."
+        ));
+    }
+    // `@newtype` asks a rule that would lower to a transparent alias to mint a wrapper struct
+    // instead. A member declares no rule, so there is no lowering here to change.
+    if metadata.newtype.is_some() {
+        types.record_rejection(format!(
+            "@newtype on {site}: this directive is rule-scoped — it makes a rule mint a wrapper \
+             struct instead of a transparent alias — and does not apply to a field/member position. \
+             Put it on the rule that defines the member's type (`<type> = … ; @newtype`)."
+        ));
+    }
+    // `@no_alias` suppresses a rule's own `pub type` line. A member emits no alias line.
+    if metadata.no_alias {
+        types.record_rejection(format!(
+            "@no_alias on {site}: this directive is rule-scoped — it suppresses the `pub type` line \
+             a rule of its own emits — and does not apply to a field/member position. Put it on the \
+             rule that defines the member's type (`<type> = … ; @no_alias`)."
+        ));
+    }
+    // `@used_as_key` is the Ord/Hash derive demand on a TYPE; the derives land on that type's
+    // definition, never on a position that uses it.
+    if metadata.key_demand.is_some() {
+        types.record_rejection(format!(
+            "@used_as_key on {site}: this directive is rule-scoped — it demands the comparison \
+             derives on the TYPE it tags — and does not apply to a field/member position. Put it on \
+             the rule that defines the member's type (`<type> = … ; @used_as_key`)."
+        ));
+    }
+    // `@custom_json` suppresses the serde/schemars derives on a TYPE.
+    if metadata.custom_json {
+        types.record_rejection(format!(
+            "@custom_json on {site}: this directive is rule-scoped — it suppresses the \
+             serde/schemars derives on the TYPE it tags — and does not apply to a field/member \
+             position. Put it on the rule that defines the member's type (`<type> = … ; \
+             @custom_json`)."
+        ));
+    }
+    // `@no_json_schema_export` suppresses a TYPE's schema-registration row in the json-gen crate.
+    if metadata.no_json_schema_export {
+        types.record_rejection(format!(
+            "@no_json_schema_export on {site}: this directive is rule-scoped — it suppresses the \
+             json-gen schema-registration row of the TYPE it tags — and does not apply to a \
+             field/member position. Put it on the rule that defines the member's type (`<type> = … \
+             ; @no_json_schema_export`)."
         ));
     }
 }
@@ -1131,8 +1226,12 @@ fn reject_occurrence_on_single_entry_arm(
 ///
 /// Three groups, from the field walk's own reads (a code enumeration of what
 /// `parse_record_from_group_choice` does with a member's `RuleMetadata`, not a keyword sweep):
-/// - The RULE-SCOPED six go through `reject_member_scoped_directives`, the list the field walk
-///   itself calls — same directives, same remedies, one shared source.
+/// - The RULE-SCOPED ones go through `reject_member_scoped_directives`, the list the field walk
+///   itself calls — same directives, same remedies, one shared source. That list carries both the
+///   directives whose only valid home is a marker/collection RULE (`@raw_bytes_flavor`, `@copy`,
+///   `@used_as_elem`, `@extern_companions`, `@duplicates`, `@ignore`) and the TYPE-SCOPED six
+///   (`@rust_name`, `@newtype`, `@no_alias`, `@used_as_key`, `@custom_json`,
+///   `@no_json_schema_export`).
 /// - The custom-codec family (`@custom_serialize` / `@custom_deserialize` and the
 ///   `@custom_encodings` / `@custom_wire_major` wire facts that describe their wire) is HONORED at
 ///   an ordinary field and cannot be here: the arm registers no `RustField` for the pair to ride,
@@ -1232,7 +1331,15 @@ fn reject_field_directives_on_single_entry_arm(
              the arm (`// ; @doc <text>`), before the entry."
         ));
     }
-    reject_member_scoped_directives(types, &site, "a group-choice arm's member", &metadata);
+    // Never the dual-read slot: a group-choice arm belongs to a TYPE rule (a multi-choice plain
+    // group body is refused before this walk runs), so no rule's trailing comment lands here.
+    reject_member_scoped_directives(
+        types,
+        &site,
+        "a group-choice arm's member",
+        &metadata,
+        false,
+    );
 }
 
 /// The well-known-tag semantics registry: THE single place mapping a CBOR tag number to the
@@ -6408,6 +6515,12 @@ fn parse_record_from_group_choice(
             // single-entry group-choice arm also calls — that arm is a member position which mints
             // no record, so without one shared list the two spellings of "which directives does a
             // member position refuse" drift apart.
+            // A plain GROUP rule's LAST entry is the one member slot the parser also binds the
+            // RULE's trailing comment to (`pg = (a: uint, b: uint) ; @used_as_key` is the group
+            // rule's documented directive slot, honored at rule level), so the type-scoped half is
+            // suppressed exactly there and nowhere else — including non-last entries of the same
+            // group, which no rule reading reaches.
+            let rule_slot_shared = types.is_plain_group(name) && index + 1 == entry_count;
             reject_member_scoped_directives(
                 types,
                 &format!(
@@ -6416,6 +6529,7 @@ fn parse_record_from_group_choice(
                 ),
                 "a field",
                 &rule_metadata,
+                rule_slot_shared,
             );
             // A wire-facts declaration (`@custom_encodings` / `@custom_wire_major`) is a property OF
             // the pair, and a field carries its own pair — so a declaration here with one half (or
@@ -7285,11 +7399,21 @@ fn recognize_rest_row(
     // is rejected under --preserve-encodings. No front door remains here for either flavor.
     // Read entry-level directives (`@name`, `@duplicates`, `@ignore`) from the rest row's own trailing
     // slot —
-    // NOT rule-position handling (the rest row is by definition the map's last entry, whose slot the
-    // cddl parser also binds a rule's trailing comment to; a map/record rule reads its own metadata
-    // via `get_comment_after` on the group choice, so the two do not collide — a rest-row directive
-    // stays entry-level and a rule directive stays rule-level).
+    // NOT rule-position handling, and the two slots are DISJOINT here: on a map TYPE rule the parser
+    // binds a trailing comment written after the closing brace to the RULE slot alone
+    // (`u = { 1: a, * k => v } ; @ignore` is refused as a rule-position `@ignore`, and this walk
+    // never sees it), so anything read below is the comment the author put on the ROW's own line.
+    // The dual-read slot is a plain GROUP rule's last entry, which is a different construct.
     let rest_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
+    // The TYPE-SCOPED directives describe the type a name denotes, so a row entry — which declares
+    // no type of its own — reads none of them. The row's own honored family (`@name`, `@duplicates`,
+    // `@ignore`) is why this seam calls the type-scoped list ALONE rather than the whole member list.
+    // Placement/shape guards above fire FIRST, per this seam's convention.
+    reject_type_scoped_directives(
+        types,
+        &format!("the open struct-map rest row (`* k => v`) of rule `{src}`"),
+        &rest_metadata,
+    );
     // A custom (de)serializer pair in this slot is inert (the row declares no type of its own) —
     // reject it here rather than generating default wire in both directions.
     if reject_custom_codec_on_row_entry(
@@ -7570,12 +7694,22 @@ fn recognize_array_rest_tail(
         return (None, Some(candidate));
     }
     // Entry-level directives on the tail (`@name`, `@ignore`; `@duplicates` is rejected — no keys),
-    // read from the row's own trailing slot (NOT rule-position handling — the tail is by definition
-    // the array's last entry, whose slot the cddl parser also binds a rule's trailing comment to; the
-    // rule reads its own metadata via `get_comment_after` on the group choice, so the two do not
-    // collide). Placement/shape guards above fire FIRST, so `@ignore` on a rejected placement gets the
-    // placement rejection, not one of these.
+    // read from the row's own trailing slot (NOT rule-position handling, and the two slots are
+    // DISJOINT here: on an array TYPE rule the parser binds a trailing comment written after the
+    // closing bracket to the RULE slot alone — `u = [ a, * t ] ; @ignore` is refused as a
+    // rule-position `@ignore`, and this walk never sees it — so anything read below is the comment
+    // the author put on the TAIL's own line; the dual-read slot is a plain GROUP rule's last entry,
+    // a different construct). Placement/shape guards above fire FIRST, so `@ignore` on a rejected
+    // placement gets the placement rejection, not one of these.
     let tail_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
+    // The TYPE-SCOPED directives describe the type a name denotes, so a tail entry — which declares
+    // no type of its own — reads none of them. Called ALONE (not the whole member list) because this
+    // slot legitimately honors `@name` and `@ignore`, which that list refuses.
+    reject_type_scoped_directives(
+        types,
+        &format!("the open-array rest tail (`* t`) of rule `{src}`"),
+        &tail_metadata,
+    );
     // A custom (de)serializer pair in this slot is inert (the tail declares no type of its own) —
     // reject it here rather than generating default wire in both directions.
     if reject_custom_codec_on_row_entry(

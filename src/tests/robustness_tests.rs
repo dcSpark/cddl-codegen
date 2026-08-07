@@ -7024,6 +7024,268 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
     }
 }
 
+/// The six TYPE-SCOPED directives (`@rust_name`, `@newtype`, `@no_alias`, `@used_as_key`,
+/// `@custom_json`, `@no_json_schema_export`) describe the TYPE a rule's name denotes, so no member
+/// position reads them — and until this seam existed every member position DROPPED them at exit 0,
+/// byte-identically to the undirected spec (probed at an ordinary array-record field under default,
+/// `--preserve-encodings` and `--wasm`, and under the json flags for the two json-faced ones).
+/// Refused now at every member slot, through the same shared list the field walk and the
+/// single-entry group-choice arm already share, extended to the row seams that could only ever take
+/// this half of it (a rest row and a rest tail HONOR `@name`/`@ignore`/`@duplicates`, which the
+/// other half refuses).
+///
+/// The one member slot exempted is a plain GROUP rule's LAST entry, and it is exempted because the
+/// cddl parser binds a group rule's trailing comment to exactly that slot: `pg = (…) ; @used_as_key`
+/// is the group rule's documented directive slot, honored at rule level, so refusing it at the
+/// member seam would refuse the RULE position. Type rules do not share that slot — a comment after
+/// `]` or `}` reaches the rule slot alone — which is why `keyed = [a: uint, b: text] ; @used_as_key`
+/// keeps being honored, and it is asserted below beside the group case.
+#[test]
+fn type_scoped_directives_reject_at_every_member_position() {
+    // (tag, spelling, the directive-naming head of the message, extra flags)
+    const SIX: &[(&str, &str, &str, &[&str])] = &[
+        (
+            "rust_name",
+            "@rust_name RenamedFoo",
+            "@rust_name on {SITE}: this directive is rule-scoped — it pins the final Rust type name",
+            &[],
+        ),
+        (
+            "newtype",
+            "@newtype",
+            "@newtype on {SITE}: this directive is rule-scoped — it makes a rule mint a wrapper \
+             struct",
+            &[],
+        ),
+        (
+            "no_alias",
+            "@no_alias",
+            "@no_alias on {SITE}: this directive is rule-scoped — it suppresses the `pub type` line",
+            &[],
+        ),
+        (
+            "used_as_key",
+            "@used_as_key",
+            "@used_as_key on {SITE}: this directive is rule-scoped — it demands the comparison \
+             derives",
+            &[],
+        ),
+        (
+            "custom_json",
+            "@custom_json",
+            "@custom_json on {SITE}: this directive is rule-scoped — it suppresses the \
+             serde/schemars derives",
+            &["--json-serde-derives=true"],
+        ),
+        (
+            "no_json_schema_export",
+            "@no_json_schema_export",
+            "@no_json_schema_export on {SITE}: this directive is rule-scoped — it suppresses the \
+             json-gen schema-registration row",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        ),
+    ];
+    // Every member slot a directive comment can sit in, with the site phrase that slot's other
+    // rejections already use. The two row slots are the ones that could only ever take this half of
+    // the shared list.
+    let positions: [(&str, &str, &str); 5] = [
+        (
+            "array_field",
+            "u = [a: uint, f: bytes ; {D}\n]\nholder = [x: u]\n",
+            "field `f` of rule `u`",
+        ),
+        (
+            "map_field",
+            "u = {a: uint, f: bytes ; {D}\n}\nholder = [x: u]\n",
+            "field `f` of rule `u`",
+        ),
+        (
+            "single_entry_arm",
+            "u = [ a: uint\n// f: bytes ; {D}\n]\nholder = [x: u]\n",
+            "the single-entry group-choice arm `f` of rule `u`",
+        ),
+        (
+            "rest_row",
+            "u = { 1: a,\n * k => v ; {D}\n}\na = uint\nk = text\nv = uint\nholder = [x: u]\n",
+            "the open struct-map rest row (`* k => v`) of rule `u`",
+        ),
+        (
+            "rest_tail",
+            "u = [ a,\n * t ; {D}\n]\na = uint\nt = text\nholder = [x: u]\n",
+            "the open-array rest tail (`* t`) of rule `u`",
+        ),
+    ];
+    for (tag, spelling, needle_template, flags) in SIX {
+        for (pos_tag, spec_template, site) in positions {
+            let spec = spec_template.replace("{D}", spelling);
+            let needle = needle_template.replace("{SITE}", site);
+            let err =
+                expect_graceful_rejection(&format!("type_scoped_{tag}_{pos_tag}"), &spec, flags);
+            assert!(
+                err.contains(&needle),
+                "[{tag}/{pos_tag}] the type-scoped directive must be refused by name and by site, \
+                 got:\n{err}"
+            );
+            // Once per offending member — the shared seam must not also be reached through a second
+            // path for the same entry.
+            assert_eq!(
+                err.matches(&needle).count(),
+                1,
+                "[{tag}/{pos_tag}] the refusal must be said exactly once, got:\n{err}"
+            );
+        }
+    }
+
+    // The refusal is at PARSE, so no profile reaches an emission that could differ. Swept for two of
+    // the six across the profiles their surfaces live under (`--wasm=false` is spelled explicitly:
+    // the flag parse-defaults to TRUE, so a no-flag run is a wasm run).
+    for flags in [
+        &["--wasm=false"][..],
+        &["--wasm=false", "--preserve-encodings=true"][..],
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ][..],
+        &["--wasm=true"][..],
+    ] {
+        for (tag, spelling, head) in [
+            ("newtype", "@newtype", "@newtype on field `f` of rule `u`"),
+            (
+                "used_as_key",
+                "@used_as_key",
+                "@used_as_key on field `f` of rule `u`",
+            ),
+        ] {
+            let err = expect_graceful_rejection(
+                &format!("type_scoped_profile_{tag}"),
+                &format!("u = [a: uint, f: bytes ; {spelling}\n]\nholder = [x: u]\n"),
+                flags,
+            );
+            assert!(
+                err.contains(head),
+                "[{tag}] the member refusal must be profile-independent ({flags:?}), got:\n{err}"
+            );
+        }
+    }
+
+    // CONTROL 1 — the plain-group LAST entry is the dual-read slot and keeps its RULE-level verdict
+    // exactly: honored where the rule position honors it, refused with the RULE-position message
+    // where it refuses, and an accepted no-op where the rule mints nothing for the directive to act
+    // on. None of them may pick up a member-position message.
+    for (tag, spelling, flags, check) in [
+        (
+            "pg_used_as_key",
+            "@used_as_key",
+            &[][..],
+            // the spliced group's struct gains the comparison derives at RULE level
+            Some("Ord, PartialOrd"),
+        ),
+        ("pg_newtype", "@newtype", &[][..], None),
+        ("pg_no_alias", "@no_alias", &[][..], None),
+        (
+            "pg_no_json_schema_export",
+            "@no_json_schema_export",
+            &["--json-serde-derives=true", "--json-schema-export=true"][..],
+            None,
+        ),
+    ] {
+        let src = rule_directive_emit(
+            &format!("pg = (a: uint, b: uint) ; {spelling}\nt = [pg]\n"),
+            flags,
+        )
+        .unwrap_or_else(|e| {
+            panic!("[{tag}] the plain-group rule slot must keep generating, got:\n{e}")
+        });
+        if let Some(needle) = check {
+            assert!(
+                src.contains(needle),
+                "[{tag}] the rule-level effect must survive the member-seam exemption, got:\n{src}"
+            );
+        }
+    }
+    // `@custom_json` at the same slot is honored the same way — asserted by ABSENCE of the derive on
+    // `Pg` beside a control rule that keeps it, so the absence is the directive and not the flags.
+    let pg_cj = rule_directive_emit(
+        "pg = (a: uint, b: uint) ; @custom_json\nctrl = (a: uint, b: uint)\nt = [pg]\nc = [ctrl]\n",
+        &["--json-serde-derives=true"],
+    )
+    .expect("the plain-group @custom_json slot must keep generating");
+    assert!(
+        !pg_cj.contains("serde::Serialize)]\npub struct Pg {")
+            && pg_cj.contains("serde::Serialize)]\npub struct Ctrl {"),
+        "@custom_json on a plain group's rule slot must keep suppressing only Pg's derives, got:\n{pg_cj}"
+    );
+    // `@rust_name` there keeps the RULE-position rejection it already had, not a member one.
+    let pg_rn = expect_graceful_rejection(
+        "type_scoped_pg_rust_name",
+        "pg = (a: uint, b: uint) ; @rust_name RenamedFoo\nt = [pg]\n",
+        &[],
+    );
+    assert!(
+        pg_rn.contains("@rust_name on `Pg`: reserved for extern-interface")
+            && !pg_rn.contains("of rule `pg`"),
+        "the plain-group rule slot must keep the RULE-position @rust_name rejection, got:\n{pg_rn}"
+    );
+
+    // CONTROL 2 — the exemption is the LAST entry only. A non-last plain-group entry has no rule
+    // reading and refuses like any member.
+    let pg_nonlast = expect_graceful_rejection(
+        "type_scoped_pg_nonlast",
+        "pg = (a: uint ; @newtype\n, b: uint)\nt = [pg]\n",
+        &[],
+    );
+    assert!(
+        pg_nonlast.contains("@newtype on field `a` of rule `pg`"),
+        "a NON-last plain-group entry must refuse like any member, got:\n{pg_nonlast}"
+    );
+
+    // CONTROL 3 — the OTHER half of the shared list is not exempted at the dual-read slot: a plain
+    // group's trailing `@duplicates` has always been refused by member site, and still is.
+    let pg_dup = expect_graceful_rejection(
+        "type_scoped_pg_duplicates",
+        "pg = (a: uint, b: uint) ; @duplicates reject\nt = [pg]\n",
+        &[],
+    );
+    assert!(
+        pg_dup.contains("@duplicates on field `b` of rule `pg`"),
+        "the non-type-scoped half must keep firing at the dual-read slot, got:\n{pg_dup}"
+    );
+
+    // CONTROL 4 — a TYPE rule does not share the slot at all (a comment after `]` / `}` reaches the
+    // rule slot alone), so both reps keep honoring the directive at rule position.
+    for (tag, spec) in [
+        (
+            "type_rule_array",
+            "keyed = [a: uint, b: text] ; @used_as_key\nholder = [x: keyed]\n",
+        ),
+        (
+            "type_rule_map",
+            "keyed = {a: uint, b: text} ; @used_as_key\nholder = [x: keyed]\n",
+        ),
+    ] {
+        let src = rule_directive_emit(spec, &[]).unwrap_or_else(|e| {
+            panic!("[{tag}] the type-rule slot must keep generating, got:\n{e}")
+        });
+        assert!(
+            src.contains("Ord, PartialOrd"),
+            "[{tag}] a type rule's own slot must keep honoring @used_as_key, got:\n{src}"
+        );
+    }
+
+    // CONTROL 5 — the row slots keep HONORING what is theirs. Extending them with the type-scoped
+    // half must not have reached `@name` / `@ignore` / `@duplicates`.
+    let row_honored = rule_directive_emit(
+        "u = { 1: a,\n * k => v ; @name extras\n}\na = uint\nk = text\nv = uint\nholder = [x: u]\n",
+        &[],
+    )
+    .expect("the rest row's own directives must keep being honored");
+    assert!(
+        row_honored.contains("extras"),
+        "the rest row must keep honoring `@name`, got:\n{row_honored}"
+    );
+}
+
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
 /// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
 /// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because

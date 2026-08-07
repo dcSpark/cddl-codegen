@@ -163,6 +163,12 @@ interface Shape {
    *  The rule slot is the LAST arm's trailing comment, so `toggledArm < list.length - 1` is the
    *  arm-position axis and `toggledArm === list.length - 1` is the ordinary rule slot. */
   arms?: { list: string[]; toggledArm: number };
+  /** render as a RECORD rule with two entries, placing the toggled directive in the SECOND entry's
+   *  TRAILING comment slot — an ordinary record FIELD. The sibling of `singleEntryArm` below: the
+   *  same slot spelling at the member position that DOES reach the record field walk, so the two
+   *  together decide whether a member-position verdict belongs to the position or to the walk that
+   *  reaches it. Ignored when `arms` is set; overrides `body`. */
+  recordFieldEntry?: { rep: "array" | "map"; otherEntry: string; entry: string };
   /** render as a two-arm GROUP choice whose SECOND arm holds exactly ONE entry, placing the toggled
    *  directive in that entry's TRAILING comment slot — INSIDE the brackets, on the entry's own line.
    *  That is a field/member position which mints no record (the entry's type goes straight into the
@@ -323,6 +329,24 @@ const SHAPES: Shape[] = [
     id: "option_collapse_non_last_arm",
     desc: "`T / null` Option-collapse rule, directive on a NON-LAST arm (the collapse has no variants)",
     arms: { list: ["uint", "null"], toggledArm: 0 },
+    holders: HOLDERS,
+  },
+  // -- the MEMBER-position axis: the ORDINARY record field ----------------------------------------
+  // The member position every other shape here reaches only incidentally (through a holder), swept
+  // as a position in its own right: the slot where a directive comment ends an ordinary field's
+  // line. It is the CONTROL for the single-entry-arm shapes below — a verdict that differs between
+  // the two belongs to the arm's missing record, and one that matches belongs to the member
+  // position itself. Both reps, because the record field walk is rep-parameterized.
+  {
+    id: "record_field_array",
+    desc: "ARRAY record rule, directive in an ordinary FIELD's trailing slot (the member position the record field walk reaches)",
+    recordFieldEntry: { rep: "array", otherEntry: "a: uint", entry: "m: bytes" },
+    holders: HOLDERS,
+  },
+  {
+    id: "record_field_map",
+    desc: "MAP record rule, directive in an ordinary FIELD's trailing slot (the member position the record field walk reaches)",
+    recordFieldEntry: { rep: "map", otherEntry: "a: uint", entry: "m: bytes" },
     holders: HOLDERS,
   },
   // -- the MEMBER-position axis: the one member slot that mints no record --------------------------
@@ -734,6 +758,14 @@ function renderShape(shape: Shape, holder: string[], directives: string[]): stri
       const c = own.length ? ` ; ${own.join(" ")}` : "";
       lines.push(`${i === 0 ? "foo = " : "  / "}${arm}${c}`);
     });
+  } else if (shape.recordFieldEntry) {
+    // The annotated entry is the record's LAST, so its trailing comment cannot swallow a following
+    // entry; the closer moves to its own line for the same reason the arm shape's does.
+    const { rep, otherEntry, entry } = shape.recordFieldEntry;
+    const [open, close] = rep === "array" ? ["[", "]"] : ["{", "}"];
+    const c = directives.length ? ` ; ${directives.join(" ")}` : "";
+    lines.push(`${shape.head ?? "foo"} = ${open} ${otherEntry}, ${entry}${c}`);
+    lines.push(close);
   } else if (shape.singleEntryArm) {
     // `//` must OPEN the arm's line: the arm's own metadata slot is the comment that follows it
     // there, and this shape's directive belongs to the ENTRY, so it goes at the end of the entry's
@@ -796,22 +828,14 @@ function buildHandRule(cell: HandCell, extra: string[]): string {
  *  pruning the entry. Same posture (and same authoring rule) as `dsl_position_tests`'
  *  `KNOWN_SILENT_DROP`.
  *
- *  Every entry below is one finding: the six RULE-SCOPED directives with no member-position reader at
- *  all, plus `@name`. They are not properties of the one-entry arm — each drops IDENTICALLY at an
- *  ordinary record field (probed 2026-08-07: `u = [a: uint, f: bytes ; @newtype]` and its five
- *  siblings all exit 0 with the directive unread), so the position this shape adds merely exposes
- *  them. Refusing them belongs with the field walk, where the same change also decides what a plain
- *  GROUP rule's trailing comment means; that is the ledgered item, not this one. */
+ *  The one finding left here is `@name` in the single-entry arm's ENTRY slot, whose fork is ledgered
+ *  in `cddl-matrix/ROADMAP.md` § "Findings — open". The six TYPE-SCOPED directives that used to sit
+ *  beside it are refused now, at this position and at every other member position — which is why the
+ *  `record_field_*` shapes above measure them too rather than only this one. */
 const KNOWN_POSITION_DROPS: Record<string, string> = Object.fromEntries(
   ["array", "map"].flatMap(rep =>
     [
       ["name", "the entry slot's `@name` HAS a reader here (a member-position anonymous inline array is named from it), so it is not a blanket drop — whether it should also name the VARIANT, which already has its own `// ; @name <n>` slot, is the open fork"],
-      ["rust_name", "rule-scoped (an extern-deps type-name pin); no member position reads it, ordinary record fields included"],
-      ["newtype", "rule-scoped (mint a wrapper instead of a transparent alias); no member position reads it, ordinary record fields included"],
-      ["no_alias", "rule-scoped (suppress the rule's own `pub type`); no member position reads it, ordinary record fields included"],
-      ["used_as_key", "rule-scoped (the Ord/Hash demand on a TYPE); no member position reads it, ordinary record fields included"],
-      ["custom_json", "rule-scoped (the serde/schemars derives on a TYPE); no member position reads it, ordinary record fields included"],
-      ["no_json_schema_export", "rule-scoped (a json-gen schema-registration row); no member position reads it, ordinary record fields included"],
     ].map(([directive, reason]) => [`single_entry_group_choice_arm_${rep}__${directive}`, reason]),
   ),
 );
