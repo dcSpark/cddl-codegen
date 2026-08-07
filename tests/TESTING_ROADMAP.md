@@ -1385,26 +1385,37 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   workspace-requests gates already capture — `workspace_requests_hosts_cross_scope_elements`
   (facet-1 wasm check), `workspace_requests_cohosted_keys_list_no_self_import` (wasm check) and
   `workspace_requests_hosts_borrowed_wrappers` (both wasm32 builds) — at no added cargo cost.
-  Wiring the REMAINING capture sites (the `extern_deps` family, which reaches cargo through
-  `run_test`) is blocked behind two things, in order. First an EMISSION defect the wiring probe
-  proved: a generated root `src/generated/mod.rs` emits `use serialization::*;` that rustc reports
-  unused — verbatim `warning: unused import: `serialization::*``, at
-  `tests/extern-deps/export/rust/src/generated/mod.rs:81`,
-  `tests/extern-deps-non-preserve/…:55`, `tests/extern-deps-wasm/…:63` and, decisively, plain
-  `tests/multifile/export/rust/src/generated/mod.rs:59`, so the class is MULTIFILE-shaped rather
-  than cross-crate-flag-specific. It reproduces at both capture sites of each fixture (the rust
-  `cargo test` and the wasm `cargo build`/`test`) and is committed in the fixture export trees, so
-  it is greppable without running anything. This is consumer-visible build noise, not an internal
-  fixture wart: every consumer of a multifile-shaped spec gets the same `unused import` warning on
-  every build of their regenerated crate. Probed against the 13 enumerated
-  workspace-requests/extern-deps gates' capture sites; NOT probed against consumer regens or
-  against other multifile fixtures. Two things in the same stderr are NOT this finding: the
-  documented `Serialize` trait residue (already exempted by the scan) and the warnings from
-  `tests/extern-dep-crate/src/*`, which is hand-written stand-in code rather than generator output.
-  Second, once the emission is fixed, the `run_test` sites need a generated-files-only restriction
-  before the scan can be wired there at all — those crates carry hand-appended `tests.rs`/
-  `deser_test` modules and path deps on hand-written crates, whose warnings the raw line scan
-  cannot tell from the generator's. Proven instance of exactly the blind spot the scanning covers
+  The REMAINING capture sites — every `run_test` fixture, the `extern_deps` family included — are
+  now scanned too, by the location-aware `assert_no_generator_owned_unused_warnings` on all six
+  cargo-driving stages `run_test` runs (rust `cargo test`; wasm `cargo test` / `cargo build`;
+  `wasm-pack build`; both json-gen `cargo run`s). A `run_test` crate is not 100% generated, so the
+  restriction is POSITIONAL rather than per-file: the harness appends its `tests.rs`/`deser_test`
+  modules INSIDE the generated `generated/mod.rs`, so a file-level filter could not separate the two.
+  `GeneratedOwnership` records the export's generated `src/` roots plus each appended file's
+  pre-append line count, and rustc's separate `--> path:line:col` line attributes each warning
+  against them; a warning in an appended region, in a hand-written path dep
+  (`tests/extern-dep-crate/src/*`, which rustc renders ABSOLUTE where the crate's own files render
+  relative to the cargo cwd), or with no location to pair at all, is exempt — as is the documented
+  `Serialize` trait residue below, by class. Retracted with this wiring: an earlier version of this
+  entry recorded an EMISSION defect — a generated root `src/generated/mod.rs` emitting an unused
+  `use serialization::*;`, claimed to reach every consumer of a multifile-shaped spec — which is
+  FALSE. The glob is `run_test`'s own unconditional append into the just-generated
+  `generated/mod.rs` ("some pasted-in tests need this"), so it never leaves the throwaway fixture
+  export trees and no consumer ever sees it; the append now carries `#[allow(unused_imports)]`,
+  the honest annotation for harness-owned convenience glue that some pasted tests need and some do
+  not. Probed 2026-08-07 by generating `tests/multifile/inputs`, `tests/core/input.cddl` (default
+  profile, i.e. wasm ON) and `tests/preserve-encodings/input.cddl`
+  (`--preserve-encodings=true --json-serde-derives=true --json-schema-export=true`), plus a
+  `--wasm=false` core cell, to scratch dirs: the string appears NOWHERE under any emitted crate.
+  NOT probed against every fixture's flag set. Wiring the scan over the 44 `run_test` fixtures
+  surfaced exactly one generator-owned warning, and it was FIXED rather than ledgered: the
+  positional `@duplicates preserve` pair-map serialize loop emitted its `.enumerate()` index
+  unconditionally, while the emitted body reads it only through the key/value encoding-sidecar
+  lookups, so a pair-map whose key and value both carry empty sidecars warned `unused variable: i`
+  in every consumer build. The escape hatch for a future hit that CANNOT be fixed in place —
+  `KNOWN_GENERATOR_OWNED_WARNINGS`, a pin by file and exact warning text, asserted LIVE at the end
+  of the run that owns its export so a fixed emission fails its pin as stale — ships EMPTY with its
+  enforcement live, the same shape as `KNOWN_POSITION_DROPS`. Proven instance of exactly the blind spot the scanning covers
   (2026-07-22, consumer-reported, fixed class-level): the used-ident scan counted `::`-path-tail
   segments (`cml_chain::assets::Coin` counting `assets`), which collide with the parent's `pub mod`
   defs, so `super_glob_needed` conservatively kept the sidecar's dead `use super::*;`; the

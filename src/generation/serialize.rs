@@ -1423,8 +1423,20 @@ impl GenerationScope {
                         } else {
                             let mut ser_loop = if preserve_pair_map {
                                 // positional: enumerate so the encoding sidecar is read by index.
+                                // The index's only readers are the key and value encoding lookups
+                                // below, so bind `_i` when NEITHER is emitted — otherwise the
+                                // generated crate warns `unused variable: i` on every build. Both
+                                // sides participate here, unlike the canonical sibling above, whose
+                                // key was already serialized (and its lookup already done) inside
+                                // `key_order`.
+                                let idx_var =
+                                    if key_enc_fields.is_empty() && value_enc_fields.is_empty() {
+                                        "_i"
+                                    } else {
+                                        "i"
+                                    };
                                 Block::new(format!(
-                                    "for (i, (key, value)) in {}.iter().enumerate()",
+                                    "for ({idx_var}, (key, value)) in {}.iter().enumerate()",
                                     config.expr
                                 ))
                             } else {
