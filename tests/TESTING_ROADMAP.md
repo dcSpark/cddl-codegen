@@ -693,7 +693,14 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     fix is the same three-line rename per gate; what makes it a work item rather than a trivial edit
     is that those gates also build `wasm/` and `wasm/json-gen`, which path-depend on `rust/` by its
     generated name, so each gate needs the rename applied across its whole crate set (or the
-    dependency spellings rewritten with it) and its whole gate cache re-earned.
+    dependency spellings rewritten with it) and its whole gate cache re-earned. The fix should
+    land with a DETECTION layer, not just the rename: a per-shard-run red canary — one
+    deliberately non-compiling cell asserted to FAIL its `cargo check` — proves the verdict
+    channel itself is live, so any FUTURE false-fresh class (this hazard's mechanism or another)
+    fails the gate loudly instead of silently greening; the rename alone only removes the one
+    known mechanism. (No pre-existing gate could have caught this class:
+    `gate_cache_closure_audit` audits OUR cache keys, and here the key was right — the verdict
+    cargo handed us was wrong.)
 
 ## Standing-system residuals (recur-first)
 
@@ -1527,7 +1534,16 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the one deliberately-conservative keep the disqualifiers do not cover — an intermediate module
   between the ancestor and a deeper protector that consumes the ancestor's copy for everything
   below it; replace the per-descendant approximation with exact resolution modelling only on a
-  real warning report from the live arm.
+  real warning report from the live arm. Third known DETECTOR blind spot, recorded as a posture
+  when the extern-breadth seeding surfaced the wasm re-export contract wart: the matrix compile
+  probes (`cddl-matrix/verify.ts`, the `DEF_SPLICE`-seeded user-code rows included) judge cargo
+  EXIT CODES only and run no warning scan — the wart was caught because the same shape sits in
+  the corpus, whose `feature_corpus_compiles` scan is the warning detector. So a warning-class
+  generator imprecision reachable ONLY through a matrix-only shape (a cell with no corpus
+  sibling) ships unseen today. Deliberate for now: the matrix's verdict model is
+  support-classification, not lint, and the corpus mirrors most compiled shapes. Trigger to build
+  the layer (port `unused_generated_import_lines` over the matrix probes' captured stderr): a
+  SECOND warning-class finding whose only compiled home is a matrix cell.
 - **Mechanical layers for the two review-owned design rules in `tests/README.md` § "Design
   rules" (invariant-softening, vacuity-floor witness) — build only if a class recurs.** The
   vacuity-floor detector is a scoped mutation sweep over the harness's emission helpers — a
