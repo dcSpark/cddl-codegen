@@ -4440,9 +4440,11 @@ fn record_plain_group_table_domain_rejection(
 /// author reading either message has to recognize the line they wrote).
 ///
 /// A CBOR map entry holds exactly one item in each of its two slots and a keyless group has no
-/// single-item form, so the row has no wire: every spelling of it aborted generation on the
-/// plain-group registry assert in `is_enum`, reached from `finalize`'s wrapper-name collision walk
-/// (so on every profile — the shape never got as far as an emission face that could differ).
+/// single-item form, so the row has no wire: every spelling of it aborted on every profile before
+/// producing usable output — on the plain-group registry assert in `is_enum` (reached from
+/// `finalize`'s wrapper-name collision walk) whenever wasm surfaces are enabled, and under
+/// `--wasm=false` later, on raw generation-time `Option::unwrap()`s (`encoding_var_is_copy` on the
+/// default profile; the preserve emitter's sidecar lookup under `--preserve-encodings`).
 ///
 /// The remedy is the same array framing the table twin names — the array is the group's single-item
 /// carrier — and it is verified to generate and build on the default, `--preserve-encodings` and
