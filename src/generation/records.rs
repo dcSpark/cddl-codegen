@@ -2279,15 +2279,20 @@ fn build_map_field_deser_arm(
             } else {
                 (format!("let {var_names_str} = "), ";")
             };
-            let mut deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
-            if field.rust_type.is_fixed_value() {
-                // A fixed value's deserialize binds `{var}_value` / `{var}_encoding` INLINE — with
-                // annotate=false no closure isolates them, so the un-prefixed `{field}_encoding`
-                // would shadow this match arm's outer accumulator and the trailing reassignment
-                // below would assign the shadow (E0308: `Sz` vs `Option<Sz>`). Bind the temporaries
-                // under the same `tmp_` prefix the non-fixed path uses.
-                deser_config = deser_config.overload_var_name(&temp_var_prefix);
-            }
+            // A deserialize binds its working vars (`{var}_value`, `{var}_encoding`,
+            // `{var}_elem_encodings`, …) INLINE — with annotate=false no closure isolates them, so
+            // an un-prefixed `{field}_encoding` shadows this match arm's outer accumulator and the
+            // trailing reassignment below assigns the SHADOW. The outer accumulator then keeps its
+            // `default()` and the constructor records default encodings, which is a
+            // preserve-encodings violation wherever the shadow happens to be `mut` (the `Vec`/`Map`
+            // sidecars are) and a compile error where it is not (E0384 on the scalar `_encoding`;
+            // E0308 `Sz` vs `Option<Sz>` on a fixed value's). Neither half is fixable by typing the
+            // binding — a `let {f}_encoding: LenEncoding = len.into();` ascription silences the
+            // E0283 the un-pinned `.into()` raises and leaves the loss. Bind the temporaries under
+            // the same `tmp_` prefix the binding pattern already uses, for EVERY field type, so the
+            // reassignments below reach the accumulators and inference pins `.into()` through them.
+            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional)
+                .overload_var_name(&temp_var_prefix);
             gen_scope
                 .generate_deserialize(
                     types,

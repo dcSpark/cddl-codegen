@@ -3181,45 +3181,23 @@ const NO_ANNOTATE_FLOOR_STEMS: &[&str] = &[
 /// The corpus cells whose rust crate does NOT compile under an [`NO_ANNOTATE_FLAVORS`] row today,
 /// as `(stem, flavor, the rustc error CLASS, root cause read from the emitted source)`.
 ///
-/// This leg is a compile FLOOR, so a red cell is ledgered rather than skipped: the entry is the
-/// finding. Four-state, like `WASM_MATRIX_SKIP`'s verdict — listed + red with the pinned class is the
-/// expected state; listed + GREEN fails as "the fix landed, retire the entry"; listed + red with a
-/// DIFFERENT class fails as "the failure changed shape, re-read it"; unlisted + red is an ordinary
-/// gate failure. So the ledger can go stale in neither direction, and the three bug classes below
-/// each get a green-turning tripwire without anyone having to remember them.
+/// EMPTY is the healthy state, and the machinery stays for the next red cell rather than being
+/// retired with the last one: this leg is a compile FLOOR, so a red cell is ledgered rather than
+/// skipped — the entry is the finding. Four-state, like `WASM_MATRIX_SKIP`'s verdict — listed + red
+/// with the pinned class is the expected state; listed + GREEN fails as "the fix landed, retire the
+/// entry"; listed + red with a DIFFERENT class fails as "the failure changed shape, re-read it";
+/// unlisted + red is an ordinary gate failure. So the ledger can go stale in neither direction, and
+/// a red cell gets a green-turning tripwire without anyone having to remember it.
 ///
-/// The seam is the one the generator's own `records.rs` comment already names ("we might be able to
-/// write a nice way around this in the annotate_fields=false, preserve_encodings=true case"): with
-/// `--annotate-fields=false` there is no per-type scaffolding closure, so any emission that assumed
-/// one — to re-shape a value, to pin an inference variable, or to `return` early — lands in
-/// `deserialize()` itself.
-///
-/// The remaining class, which no other gate reaches:
-///   B. **untyped `.into()` for a length encoding** (E0283) — `let {f}_encoding = {f}_len.into();`
-///      has nothing to pin its type parameter once the closure that consumed it into a typed return
-///      tuple is gone (`LenSz: Into<_>` is ambiguous).
-const NO_ANNOTATE_KNOWN_RED: &[(&str, &str, &str, &str)] = &[
-    (
-        "alias_positions",
-        "preserve_noannotate",
-        "E0283",
-        "class B: `let key_1_encoding = key_1_len.into();` — no closure return type to pin the \
-         `Into` target",
-    ),
-    (
-        "dsl_copy",
-        "preserve_noannotate",
-        "E0283",
-        "class B: `let key_2_encoding = key_2_len.into();` — no closure return type to pin the \
-         `Into` target",
-    ),
-    (
-        "group_choice_map",
-        "preserve_noannotate",
-        "E0283",
-        "class B: `let f0_encoding = len.into();` — no closure return type to pin the `Into` target",
-    ),
-];
+/// The seam a new entry is most likely to sit on is the one the generator's own `records.rs`
+/// comment names ("we might be able to write a nice way around this in the annotate_fields=false,
+/// preserve_encodings=true case"): with `--annotate-fields=false` there is no per-type scaffolding
+/// closure, so any emission that assumes one — to re-shape a value, to isolate an inline binding, or
+/// to `return` early — lands in `deserialize()` itself. Each of the three classes this ledger was
+/// minted for was exactly that, and each is now fixed by giving the emission its own frame rather
+/// than by typing around the symptom (see `docs/docs/command_line_flags.mdx`,
+/// `--annotate-fields`).
+const NO_ANNOTATE_KNOWN_RED: &[(&str, &str, &str, &str)] = &[];
 
 /// Cross-shard accumulator for the floor pins above: which `<stem>/<flavor>` cells this leg actually
 /// swept. Whole-corpus property, so it is checked by whichever shard completes the set — the same
