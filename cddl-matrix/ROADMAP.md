@@ -925,12 +925,20 @@ composition-space cross-check that complements this matrix's curated per-shape g
   (fixed; pinned always-on by `emit_tests_multifile_scope_imports`, executed at matrix breadth by
   `multifile_matrix_roundtrips`). The rule going forward: a NEW flag-gated emission surface must
   state its input-mode posture in the same change — exercised under directory input, or recorded
-  single-file-only with the reason. Known surfaces never generated under directory input today, to
-  exercise (a multifile cell/profile) or record as a deliberate posture when next touched:
-  `--emit-tests-conformance` (the corpus fixtures are all single-file), the `--wasm-*-macro` modes
-  (their compile gates use single-file inputs), and EXECUTION of the generated json-gen crate
-  (`wasm/json-gen`) against cross-module types (the multifile `json`-profile sweep compiles
-  rust+wasm; the json-gen runner gate is single-file-only). NOT on this list:
+  single-file-only with the reason. Postures already settled, each with the pin that holds it:
+  `--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` (a
+  multifile placement cell's non-root-module rule judged against the concatenated source spec — the
+  spec-on-disk contract `docs/docs/command_line_flags.mdx` states for the flag); the
+  `--wasm-*-macro` modes × directory input are compile-gated by `wasm_macros_multifile_compiles`
+  (per-module macro imports, invocations minted inside the submodule's own file, and the scoped
+  rust path each invocation carries), which puts the input-mode axis under the compile-only verdict
+  that is those surfaces' permanent posture (§ "Explicitly out of scope") rather than adding a
+  behavioral row; and EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module
+  types is covered by `multifile_json_preserve`, whose `run_test` leg runs the json-gen binary over
+  the four-submodule `tests/multifile/inputs` tree and asserts the emitted document. A directory
+  `--input` holding ONE `.cddl` file is not multifile in the sense this axis means —
+  `api::with_types` splits scopes only when >1 file is found — so a single-file input directory
+  discharges no input-mode posture. NOT on this list:
   `--common-import-override`, `--extern-wasm-crate`, `--extern-wrapper-index`, and the
   workspace-mode set `--workspace-dep`/`--wrapper-requests`/`--key-requests` are exercised
   under directory input by construction — their pins (`integration_tests::extern_deps*`,
