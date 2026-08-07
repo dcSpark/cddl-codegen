@@ -36,7 +36,7 @@
  *
  * Run from cddl-matrix/:  bun run build_matrix.ts && bun run verify.ts
  */
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -397,11 +397,156 @@ const SELFTEST = process.argv.includes("--selftest");
 // must remain class-less red triage. This must share `--selftest`, not wait for a random mint draw.
 policyMintClassifierSelfTest();
 if (SELFTEST) console.log("policy mint classifier self-test OK (delimiter + matched/unmatched reason)");
+// The committed catalog the mint writes, the D4 corroborating oracle reads, and the component
+// execution leg draws its per-row spec + vectors from. Declared HERE, above the startup self-tests,
+// because the component leg's selection-validity check reads it before any probe work runs.
+const CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "catalog.toml");
+
+// --- the COMPONENT execution leg's bounded row selection ------------------------------------------
+// The `--component` face's EXECUTION probe (`componentProbe`) runs a SELECTION of matrix rows, not
+// all of them: each selected row pays a wasm32-wasip2 build plus a native oracle build plus a
+// wasmtime run, where the wasm leg pays one native `cargo test`. Compile BREADTH over the component
+// face is already owned by the `component_corpus_compiles` gate; this leg exists for glue that
+// BUILDS but BEHAVES wrongly, which a handful of structurally-distinct rows can evidence. Growing
+// the set is one edit here — every row is validated against the committed catalog at startup.
+//
+// Each row is chosen for a translation class the WIT projection has to get right, and each must be a
+// FEATURE-axis catalog row (the only axis wired into a component clause today):
+const COMPONENT_PROBE_ROWS: string[] = [
+  // The bounds/VALIDATES class: `.size 2` narrows the member to `u16` in the projection
+  // (`constructor(x: u16)`), so the boundary carries a width the CDDL only implies — and the row's
+  // committed constraint vector (65536) proves the refusal crosses as `Err`, not as a trap or a
+  // silent truncation.
+  "ctl.size.uint",
+  // The DESPECIALIZED class: `[+ uint]` has no resource of its own — it despecializes to
+  // `list<u64>` at the embed site with a FALLIBLE constructor, so the non-emptiness lives in the
+  // guest glue rather than the type. Its reject vector is the empty list.
+  "occur.one_or_more",
+  // The plain-record CONTROL: a three-member heterogeneous record is the shape every other class is
+  // read against, and it is the one selected row whose resource IS the rule (standalone mode, not a
+  // synthetic holder). If this row ever fails, the failure is the face, not the class under test.
+  "type2.array",
+];
+
+// `component_roundtrips` verdict codes. Positive is the wasm32-wasip2 BUILD's own cargo exit (the
+// drive stage was never reached); zero and the negatives are drive-stage verdicts. One field carries
+// all of them because the stage-field set is fixed at three (generation / minted door / round trip),
+// and the taxonomy is pinned fixture-by-fixture in the self-test below.
+const COMPONENT_VECTOR_FAIL = -1;   // a vector's verdict disagreed with what the catalog expects
+const COMPONENT_TRAP = -2;          // a call did not return a value at all — the instance is poisoned
+const COMPONENT_INCONCLUSIVE = -3;  // no usable verdict (oracle or host produced nothing to judge)
+interface ComponentFields { minted_component?: boolean; component_gen?: number; component_roundtrips?: number }
+interface ComponentVectorCounts { accepts: number; rejects: number }
+
+// (4) The COMPONENT-execution evidence composer's STAGE taxonomy — `wasmEvidence`'s twin, and the
+// same failure it pins: a clause that names the wrong stage reads as a plausible annotation. The
+// stages differ from the wasm leg's because the pipeline does (generate -> minted WIT door ->
+// wasm32-wasip2 build -> drive under wasmtime), and the drive stage alone has three distinguishable
+// outcomes: a vector disagreed, the boundary TRAPPED (a class the wasm leg cannot even observe —
+// its "round trip" is a native cargo test), or nothing usable came back. Same extra assertion as the
+// wasm twin: no generation-stage clause may name a later stage's tool.
+{
+  const cases: [ComponentFields, ComponentVectorCounts | undefined, string][] = [
+    [{}, undefined, ""],                                                                    // opted out / not selected
+    [{ minted_component: false, component_gen: 1 }, undefined, "; component generation REFUSED (generator exit 1)"],
+    [{ minted_component: false, component_gen: 101 }, undefined, "; component generation PANICKED (generator exit 101)"],
+    [{ minted_component: true, component_gen: 0, component_roundtrips: 0 }, { accepts: 10, rejects: 1 },
+      "; component round-trips (10 accept + 1 reject vector(s) under wasmtime)"],
+    [{ minted_component: false, component_gen: 0, component_roundtrips: 0 }, undefined,
+      "; component compiles (no minted component surface)"],
+    [{ minted_component: true, component_gen: 0, component_roundtrips: 101 }, { accepts: 10, rejects: 1 },
+      "; component glue failed to compile (cargo exit 101)"],
+    [{ minted_component: true, component_gen: 0, component_roundtrips: COMPONENT_VECTOR_FAIL }, { accepts: 10, rejects: 1 },
+      "; component round-trip FAILED (10 accept + 1 reject vector(s) under wasmtime)"],
+    [{ minted_component: true, component_gen: 0, component_roundtrips: COMPONENT_TRAP }, { accepts: 10, rejects: 1 },
+      "; component host TRAPPED (10 accept + 1 reject vector(s) under wasmtime)"],
+    [{ minted_component: true, component_gen: 0, component_roundtrips: COMPONENT_INCONCLUSIVE }, { accepts: 10, rejects: 1 },
+      "; component probe INCONCLUSIVE (no usable verdict under wasmtime)"],
+  ];
+  const failures = cases
+    .map(([fields, vectors, want]) => ({ fields, want, got: componentEvidence(fields, vectors) }))
+    .filter(f => f.got !== f.want);
+  const leaked = cases
+    .filter(([fields]) => (fields.component_gen ?? 0) !== 0)
+    .map(([fields]) => componentEvidence(fields))
+    .filter(clause => clause.includes("cargo") || clause.includes("wasmtime"));
+  if (failures.length || leaked.length) {
+    console.error(
+      "HARNESS FAILURE: component-evidence stage-taxonomy self-test failed — " +
+      failures.map(f => `${JSON.stringify(f.fields)}: expected ${JSON.stringify(f.want)}, got ${JSON.stringify(f.got)}`)
+        .concat(leaked.map(c => `generation-stage clause names a later stage's tool: ${JSON.stringify(c)}`))
+        .join("; ") +
+      " — the annotations would attribute failures to the wrong stage; refusing to run.",
+    );
+    process.exit(2);
+  }
+  if (SELFTEST) console.log(`component-evidence stage-taxonomy self-test OK (${cases.length} fixtures)`);
+}
+// (5) The component leg's SELECTION is a committed const table of matrix row ids, and every one of
+// them must resolve to a catalog entry the leg can actually drive. Without this check the leg would
+// shrink SILENTLY as the catalog moves — a row that gets pinned, re-minted under a different
+// `type_name`, or loses its accept vectors would just stop being probed, and the annotations would
+// read as if that construct had never been claimed. Checked at startup (not at probe time) so the
+// failure names the drift instead of surfacing as a missing clause ten minutes in.
+{
+  const rows = existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map<string, CatalogRow>();
+  const problems: string[] = [];
+  if (rows.size === 0) {
+    problems.push(`the committed catalog ${CATALOG_PATH} holds no rows (not yet minted?) — the selection cannot be validated`);
+  } else {
+    for (const id of COMPONENT_PROBE_ROWS) {
+      const row = rows.get(id);
+      if (!row) { problems.push(`${id}: no catalog row`); continue; }
+      if (row.pinned_reason !== undefined) { problems.push(`${id}: catalog row is PINNED (${row.pinned_reason})`); continue; }
+      if (row.spec === undefined || row.type_name === undefined) { problems.push(`${id}: catalog row has no spec/type_name`); continue; }
+      // The leg is wired into the FEATURE loop only, so a selection reaching another axis would
+      // probe nothing at all — exactly the silent shrink this block exists to prevent.
+      if (row.axis !== "feature") { problems.push(`${id}: catalog axis is '${row.axis}', but only the feature axis composes a component clause today`); continue; }
+      if (!row.vectors.some(v => v.expect === "accept" && v.class !== "over-acceptance"))
+        problems.push(`${id}: catalog row has no spec-valid accept vector to drive`);
+    }
+    const dupes = COMPONENT_PROBE_ROWS.filter((id, i) => COMPONENT_PROBE_ROWS.indexOf(id) !== i);
+    if (dupes.length) problems.push(`duplicate row id(s) in COMPONENT_PROBE_ROWS: ${[...new Set(dupes)].join(", ")}`);
+  }
+  if (problems.length) {
+    console.error(
+      "HARNESS FAILURE: the component-probe row selection does not resolve against the committed decode catalog — " +
+      problems.join("; ") +
+      " — the component leg would silently probe fewer rows than it claims; refusing to run.",
+    );
+    process.exit(2);
+  }
+  if (SELFTEST) console.log(`component-probe selection self-test OK (${COMPONENT_PROBE_ROWS.length} row(s) resolve to drivable catalog entries)`);
+}
+// (6) `toKebabCase` mirrors the generator's rust-ident -> WIT-ident conversion, and the component
+// leg names the resource it looks for with it. A drift here fails QUIETLY in the understating
+// direction — the mint check misses, the row reads "no minted component surface", and the round
+// trip that would have run silently doesn't. The fixtures are the generator's own table
+// (`src/utils.rs::convert_to_kebab_case_table`), so a change on either side has to move both.
+{
+  const cases: [string, string][] = [
+    ["ProbeHolder", "probe-holder"],   // the synthetic holder every holder-mode catalog row decodes through
+    ["Foo", "foo"],
+    ["index_0", "index0"], ["index_1", "index1"],   // digit-led words MERGE (consumer-compat floor)
+    ["TxID", "tx-id"], ["IPAddress", "ip-address"], ["NFT", "nft"], ["some_DNS_name", "some-dns-name"],
+    ["Record", "record"],                            // a WIT keyword converts like any other name
+    ["to_cbor_bytes", "to-cbor-bytes"], ["from_cbor_bytes", "from-cbor-bytes"],
+    ["Foo2Bar", "foo2-bar"],                         // an interior digit continues a word
+  ];
+  const failures = cases.filter(([from, want]) => toKebabCase(from) !== want);
+  if (failures.length) {
+    console.error(
+      "HARNESS FAILURE: the rust-ident -> WIT-ident mirror drifted from the generator's — " +
+      failures.map(([from, want]) => `${JSON.stringify(from)}: expected ${JSON.stringify(want)}, got ${JSON.stringify(toKebabCase(from))}`).join("; ") +
+      " — the component leg would look for a resource the world does not declare and read as unminted; refusing to run.",
+    );
+    process.exit(2);
+  }
+  if (SELFTEST) console.log(`component kebab-ident mirror self-test OK (${cases.length} fixtures)`);
+}
 if (SELFTEST) process.exit(0);
 // K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
 const FOREIGN_K = 10;
-// The committed catalog the mint writes and the D4 corroborating oracle reads.
-const CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "catalog.toml");
 // The committed CORPUS catalog (composition-depth leg), sibling of catalog.toml.
 const CORPUS_CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "corpus_catalog.toml");
 const CORPUS_DIR = resolve(CODEGEN_DIR, "tests", "corpus");
@@ -426,6 +571,10 @@ interface ProbeResult extends Derived {
   // stays the raw generate exit for the diagnostic report; the annotation clause reads this.
   ruby_clause: string;
   minted_wasm?: boolean; wasm_gen?: number; wasm_roundtrips?: number;
+  // Component execution leg: one field per STAGE (generation exit / minted WIT decode door / the
+  // build+drive verdict code). Undefined for every row outside COMPONENT_PROBE_ROWS and for an
+  // opted-out run, so the report/annotation output is then byte-identical to a pre-leg run.
+  minted_component?: boolean; component_gen?: number; component_roundtrips?: number;
   // Decode-foreign oracle (D4): whether the generated decoder accepted the committed spec-derived
   // vectors, and how many accept vectors were replayed. Undefined when opted out (byte-identical output).
   accepts_foreign?: boolean; foreign_vectors?: number;
@@ -817,6 +966,33 @@ let ccOutForeign = join(probeDir, `cc_out_foreign_${outSeq++}`);
 const catalogRows: Map<string, CatalogRow> =
   DECODE_FOREIGN && !MINT_DECODE && existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map();
 
+// DEFAULT-ON component EXECUTION leg (opt out with `--no-component` argv or VERIFY_COMPONENT=0 env):
+// for each row of COMPONENT_PROBE_ROWS, regenerate the row's catalog `spec` with
+// `--component=true --wasm=false`, build the emitted `component/` package for wasm32-wasip2, and
+// drive the catalog's vectors through the real component under wasmtime. Its own out dir and cargo
+// target keep it from perturbing the rust/wasm probes' compile classification, and its catalog map
+// is loaded independently of the decode-foreign oracle's so the two legs' opt-outs stay orthogonal.
+// Opted out -> the per-probe fields stay undefined, so the report/annotation output is byte-identical
+// to a pre-leg run (the wasm-oracle opt-out pattern).
+const COMPONENT_PROBE =
+  !process.argv.includes("--no-component") &&
+  !["0", "false"].includes((process.env.VERIFY_COMPONENT ?? "").toLowerCase());
+const COMPONENT_PROBE_SET = new Set(COMPONENT_PROBE_ROWS);
+const componentCatalogRows: Map<string, CatalogRow> =
+  COMPONENT_PROBE && !MINT_DECODE && existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map();
+let ccOutComponent = join(probeDir, `cc_out_component_${outSeq++}`);
+// One cargo target shared by every component cell: the wasip2 dep graph (wit-bindgen, wit-component)
+// is the expensive half and is path-independent, so only the leaf crates rebuild per cell. Sharing it
+// is exactly why every cell must `touchTree` before its build — cargo's leaf fingerprint is keyed by
+// package name+version, and every cell's crates are `cddl-lib`/`cddl-lib-component` 0.1.0 (proven
+// while bringing this leg up: without the touch, cell 2's oracle compiled against cell 1's rlib and
+// failed with `cannot find type ProbeHolder in crate cddl_lib`).
+const COMPONENT_TARGET = COMPONENT_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_component_target_")) : "";
+if (COMPONENT_TARGET) scratchTargets.push(COMPONENT_TARGET);
+// Per-row vector counts for the evidence clause (a property of the committed catalog, not of the
+// run — see componentEvidence), and the per-row roll-up the summary section prints.
+const componentVectors = new Map<string, ComponentVectorCounts>();
+
 function runExit(cmd: string[], cwd?: string, env?: Record<string, string>, timeoutS = PROBE_TIMEOUT): number {
   const r = Bun.spawnSync(cmd, {
     cwd, env: env ? { ...process.env, ...env } : undefined,
@@ -1079,6 +1255,302 @@ function wasmProbe(cell: string): { minted_wasm?: boolean; wasm_gen?: number; wa
   return { minted_wasm, wasm_gen: gen, wasm_roundtrips: runWasmTest(cell) };
 }
 
+// --- the COMPONENT execution leg ------------------------------------------------------------------
+// Stage 1 generate -> stage 2 mint-check the WIT door -> stage 3 build for wasm32-wasip2 -> stage 4
+// drive the catalog's vectors through the built component under wasmtime, against a LIVE native
+// oracle re-encode from the same cell's rust crate. Stages 3-4 are memoized as one gate-cache cell:
+// they share a tree hash and there is no verdict to record between them.
+
+// Mirror of src/utils.rs `convert_to_kebab_case` (a RustIdent as a WIT identifier): snake-case word
+// boundaries joined with `-`, with a DIGIT-LED word merged into the one before it (`index_0` ->
+// `index0`). Used only to name the resource the mint check and the host look for; a mismatch would
+// read as "no minted component surface", which the clause says plainly rather than claiming a pass.
+function toKebabCase(ident: string): string {
+  let snake = "";
+  const chars = [...ident];
+  let inUpperRun = false;
+  const needsSep = () => snake.length > 0 && !snake.endsWith("_");
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (c === "-" || c === "_") { snake += "_"; continue; }
+    if (c === "$" || c === "@") continue;
+    const isUpper = c >= "A" && c <= "Z";
+    if (inUpperRun) {
+      if (isUpper) {
+        const next = chars[i + 1];
+        if (next !== undefined && next >= "a" && next <= "z") {
+          if (needsSep()) snake += "_";
+          inUpperRun = false;
+        }
+      } else {
+        inUpperRun = false;
+      }
+    } else if (isUpper) {
+      if (needsSep()) snake += "_";
+      inUpperRun = true;
+    }
+    snake += c.toLowerCase();
+  }
+  let kebab = "";
+  for (const word of snake.split("_").filter(w => w.length > 0)) {
+    const digitLed = word[0] >= "0" && word[0] <= "9";
+    if (kebab.length > 0 && !digitLed) kebab += "-";
+    kebab += word;
+  }
+  return kebab;
+}
+
+// The MINT check: does the emitted world declare `resource <name>` carrying a `from-cbor-bytes`
+// door? Without that door the type has no decode surface at all (the projection gates it on
+// `deserializable`), so there is nothing to round-trip and the leg must say so rather than build a
+// component and drive nothing.
+function witDeclaresDecodeDoor(witPath: string, resource: string): boolean {
+  if (!existsSync(witPath)) return false;
+  const wit = readFileSync(witPath, "utf8");
+  const start = new RegExp(`(^|\\n)\\s*resource\\s+%?${resource.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{`).exec(wit);
+  if (!start) return false;
+  const body = wit.slice(start.index + start[0].length);
+  const end = body.indexOf("}");
+  return (end === -1 ? body : body.slice(0, end)).includes("from-cbor-bytes:");
+}
+
+// Recursive copy — the host crate is two files, so this is deliberately the simplest thing that
+// puts them in scratch. Copied rather than built in place so a verify run never writes a Cargo.lock
+// or a target/ into the checkout.
+function copyTreeInto(from: string, to: string): void {
+  mkdirSync(to, { recursive: true });
+  for (const ent of readdirSync(from, { withFileTypes: true })) {
+    if (ent.name === "target") continue;
+    const src = join(from, ent.name);
+    const dst = join(to, ent.name);
+    if (ent.isDirectory()) copyTreeInto(src, dst); else copyFileSync(src, dst);
+  }
+}
+
+const COMPONENT_HOST_SRC = resolve(ROOT, "component-probe-host");
+// The host is an input to every cached component cell that lives OUTSIDE the hashed generated tree,
+// so its CONTENT HASH is key material (the cache-closure rule; `component_host`'s VERDICT_MARKER is
+// the same idea for that gate's assertion logic). Editing what the host checks therefore invalidates
+// every cell, instead of serving stale PASSes.
+let componentHostHash = "";
+let componentHostBin = "";
+// Built LAZILY, on the first cache miss: a run whose cells all hit pays no wasmtime build at all.
+// A failure here is a broken probe ENVIRONMENT, not a verdict about any row — same posture as the
+// wasm warm-up's.
+function ensureComponentHost(): string {
+  if (componentHostBin) return componentHostBin;
+  const dir = join(probeDir, "component-probe-host");
+  rmSync(dir, { recursive: true, force: true });
+  copyTreeInto(COMPONENT_HOST_SRC, dir);
+  const manifest = join(dir, "Cargo.toml");
+  const exit = runExit(["cargo", "build", "--manifest-path", manifest], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPONENT_TARGET }, COMPILE_WARM_TIMEOUT);
+  const bin = join(COMPONENT_TARGET, "debug", "component-probe-host");
+  if (exit !== 0 || !existsSync(bin)) {
+    console.error(
+      `HARNESS FAILURE: the component probe host (${COMPONENT_HOST_SRC}) failed to build (cargo exit ${exit}) — ` +
+      "the component execution leg cannot observe anything without it; no verdicts were written. " +
+      "Opt the leg out with --no-component / VERIFY_COMPONENT=0 if this environment cannot build wasmtime.",
+    );
+    process.exit(2);
+  }
+  componentHostBin = bin;
+  return bin;
+}
+
+const nextComponentOut = (): string => {
+  rmSync(ccOutComponent, { recursive: true, force: true });
+  ccOutComponent = join(probeDir, `cc_out_component_${outSeq++}`);
+  return ccOutComponent;
+};
+
+interface ComponentVector { name: string; expect: "accept" | "reject"; hex: string }
+
+// Stages 3+4 as ONE memoized closure. Keyed on the generated tree (which by then holds the narrowed
+// manifests, the oracle bin and the vector manifest, so a catalog vector change moves the key) plus
+// the host's content hash plus a verdict marker for what the closure CHECKS.
+function componentBuildAndDrive(cell: string, out: string, resource: string, vectors: ComponentVector[]): number {
+  const componentManifest = join(out, "component", "Cargo.toml");
+  const rustManifest = join(out, "rust", "Cargo.toml");
+  const argv = [
+    "verdict=component-probe-v1",
+    `host=${componentHostHash}`,
+    "cwd=component", "cargo", "build", "--target", "wasm32-wasip2",
+    "cwd=rust", "cargo", "run", "--bin", "component_probe_oracle",
+    "drive=component-probe-host",
+  ];
+  let key: string | null = null;
+  let entryBase: Omit<GateCacheEntry, "cell" | "created"> | null = null;
+  if (GATE_CACHE_ENABLED && runGenerateLockfile(componentManifest) === 0 && runGenerateLockfile(rustManifest) === 0) {
+    const tree = hashTree(out);
+    const keyParts = gateCacheKey({ gate: "verify.component_probe", argv, tree });
+    key = keyParts.key;
+    entryBase = { schema: GATE_CACHE_SCHEMA, gate: "verify.component_probe", argv, rustc: keyParts.rustc, tree };
+    if (readGateCacheEntry(key, CODEGEN_DIR)) {
+      gateCacheStats.cached++;
+      console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
+      return 0;
+    }
+  }
+
+  const host = ensureComponentHost();
+  touchTree(out);   // same-name stale-fingerprint defense — see touchTree's comment and COMPONENT_TARGET's
+  gateCacheStats.run++;
+
+  // Stage 3: build ONLY the component package for wasm32-wasip2. The rust crate's `cdylib` output
+  // exists for wasm-bindgen's target and `wasm-component-ld` has been seen to crash on it, so the
+  // manifest was narrowed to `rlib` during preparation and the workspace build is never used.
+  const build = runProbe(["cargo", "build", "--target", "wasm32-wasip2"], join(out, "component"), { CARGO_TARGET_DIR: COMPONENT_TARGET }, COMPILE_WARM_TIMEOUT);
+  if (build !== 0) return build;   // POSITIVE => the build's own cargo exit (see the verdict codes)
+  const pkg = /name\s*=\s*"([^"]+)"/.exec(readFileSync(componentManifest, "utf8"))?.[1] ?? "cddl-lib-component";
+  const artifact = join(COMPONENT_TARGET, "wasm32-wasip2", "debug", `${pkg.replace(/-/g, "_")}.wasm`);
+  // A build that produced no COMPONENT would make every verdict below an observation of the wrong
+  // thing: wasm32-wasip2 artifacts carry the component-model preamble where a core module carries
+  // layer 0.
+  const head = existsSync(artifact) ? readFileSync(artifact).subarray(0, 8) : null;
+  if (!head || Buffer.compare(head, Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x0d, 0x00, 0x01, 0x00])) !== 0) {
+    console.error(`[component] ${cell}: the wasip2 build reported success but ${artifact} is not a component-model binary.`);
+    return COMPONENT_INCONCLUSIVE;
+  }
+
+  // Stage 4a: the LIVE oracle. The expected bytes are whatever the cell's OWN rust crate re-encodes
+  // to — never a committed hex, which would pin encoding policy this leg does not own (its charter
+  // is cross-face agreement, and the encoding gates own the bytes themselves).
+  const vecFile = join(out, "component_probe_vectors.txt");
+  const oracle = Bun.spawnSync(
+    ["cargo", "run", "-q", "--manifest-path", rustManifest, "--bin", "component_probe_oracle", "--", vecFile],
+    { cwd: CODEGEN_DIR, env: { ...process.env, CARGO_TARGET_DIR: COMPILE_TARGET }, stdout: "pipe", stderr: "pipe", timeout: COMPILE_WARM_TIMEOUT * 1000 },
+  );
+  const oracleBytes = new Map<string, string>();
+  for (const line of (oracle.stdout?.toString() ?? "").split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq > 0 && !line.slice(eq + 1).startsWith("ERR:")) oracleBytes.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+  }
+  const missing = vectors.filter(v => v.expect === "accept" && !oracleBytes.has(v.name)).map(v => v.name);
+  if ((oracle.exitCode ?? -1) !== 0 || missing.length) {
+    console.error(
+      `[component] ${cell}: the native oracle produced no expected bytes for ${missing.length ? missing.join(", ") : "any vector"} ` +
+      `(cargo exit ${oracle.exitCode}) — no byte-equality verdict is possible.\n${oracle.stderr?.toString() ?? ""}`,
+    );
+    return COMPONENT_INCONCLUSIVE;
+  }
+
+  // Stage 4b: drive. One instance, vectors in order, so the re-check vector's line is evidence that
+  // the instance survived the rejects that preceded it.
+  const driveFile = join(out, "component_probe_drive.txt");
+  writeFileSync(driveFile, vectors.map(v => `${v.name} ${v.expect} ${v.hex} ${v.expect === "accept" ? oracleBytes.get(v.name) : "-"}`).join("\n") + "\n");
+  const run = Bun.spawnSync([host, artifact, resource, driveFile], { stdout: "pipe", stderr: "pipe", timeout: PROBE_TIMEOUT * 1000 });
+  const stdout = run.stdout?.toString() ?? "";
+  const verdicts = new Map<string, string>();
+  for (const m of stdout.matchAll(/^component-probe (\S+) (\S+) (\S+)(?: (.*))?$/gm)) verdicts.set(m[1], m[3]);
+  const trapped = [...verdicts.entries()].filter(([, v]) => v === "trap");
+  if (trapped.length) {
+    console.error(`[component] ${cell}: the boundary TRAPPED on ${trapped.map(([n]) => n).join(", ")}:\n${stdout}`);
+    return COMPONENT_TRAP;
+  }
+  const absent = vectors.filter(v => !verdicts.has(v.name)).map(v => v.name);
+  if (absent.length || (run.exitCode ?? -1) !== 0) {
+    console.error(
+      `[component] ${cell}: the host produced no verdict for ${absent.join(", ") || "some vector"} (host exit ${run.exitCode})\n` +
+      `${stdout}${run.stderr?.toString() ?? ""}`,
+    );
+    return COMPONENT_INCONCLUSIVE;
+  }
+  // POLICY (deliberately here, not in the host): an accept vector must decode AND re-encode to the
+  // oracle's bytes; a reject vector must come back as an `Err` that CROSSED the boundary.
+  const wrong = vectors.filter(v => verdicts.get(v.name) !== (v.expect === "accept" ? "ok" : "err"));
+  if (wrong.length) {
+    console.error(`[component] ${cell}: ${wrong.length} vector(s) disagreed (${wrong.map(v => `${v.name}=${verdicts.get(v.name)}`).join(", ")}):\n${stdout}`);
+    return COMPONENT_VECTOR_FAIL;
+  }
+  if (key && entryBase) writeGateCacheEntry(key, { ...entryBase, cell, created: new Date().toISOString() }, CODEGEN_DIR);
+  return 0;
+}
+
+// The component half of a probe. Returns {} for every row outside the bounded selection and for an
+// opted-out run, so those rows' fields stay undefined (report/annotation output matches a pre-leg
+// run). The row's catalog `spec` — not the bare matrix example — is what gets generated: holder-mode
+// rows decode through `__probe_holder`, and the `type_name` the doors are named after is the
+// holder's.
+function componentProbe(cell: string): ComponentFields {
+  if (!COMPONENT_PROBE || !COMPONENT_PROBE_SET.has(cell)) return {};
+  const row = componentCatalogRows.get(cell);
+  if (!row || row.spec === undefined || row.type_name === undefined) return {};   // startup self-test gates this
+  const accepts = row.vectors.filter(v => v.expect === "accept" && v.class !== "over-acceptance");
+  const rejects = row.vectors.filter(v => v.expect === "reject");
+  componentVectors.set(cell, { accepts: accepts.length, rejects: rejects.length });
+
+  // Stage 1: generate. Own spec file so the leg never clobbers a probe loop's shared `probeFile`.
+  const specFile = join(probeDir, "component_probe.cddl");
+  writeFileSync(specFile, row.spec.replace(/\n*$/, "\n"));
+  const out = nextComponentOut();
+  const gen = runProbe(["cargo", "run", "-q", "--", `--input=${specFile}`, `--output=${out}`, "--component=true", "--wasm=false"], CODEGEN_DIR);
+  if (gen !== 0) return { minted_component: false, component_gen: gen };
+
+  // Stage 2: the minted WIT door. Read BEFORE the build and recorded either way, mirroring the wasm
+  // leg's `minted_wasm`: the build still runs, so a face with no decode door is reported as
+  // compiling rather than as an unbuilt unknown.
+  const resource = toKebabCase(row.type_name);
+  const minted_component = witDeclaresDecodeDoor(join(out, "component", "wit", "world.wit"), resource);
+
+  // Prepare everything the cached closure reads, INSIDE the hashed tree (the cache-closure rule):
+  // the narrowed manifest, a workspace root, the oracle bin, and the vector manifest.
+  const rustManifest = join(out, "rust", "Cargo.toml");
+  writeFileSync(rustManifest, readFileSync(rustManifest, "utf8").replace('crate-type = ["cdylib", "rlib"]', 'crate-type = ["rlib"]'));
+  writeFileSync(join(out, "Cargo.toml"), '[workspace]\nresolver = "3"\nmembers = ["rust", "component"]\n');
+  const vectors: ComponentVector[] = [
+    ...accepts.map((v, i) => ({ name: `accept_${i}`, expect: "accept" as const, hex: v.hex })),
+    ...rejects.map((v, i) => ({ name: `reject_${i}`, expect: "reject" as const, hex: v.hex })),
+  ];
+  // The re-check: a refusal is only the contract if the instance SURVIVES it, so an accept vector is
+  // re-driven after the rejects. It is a control, not a catalog vector, and is excluded from the
+  // counts the evidence clause reports.
+  if (rejects.length && accepts.length) vectors.push({ name: "reuse_0", expect: "accept", hex: accepts[0].hex });
+  writeFileSync(join(out, "component_probe_vectors.txt"), vectors.map(v => `${v.name} ${v.expect} ${v.hex} -`).join("\n") + "\n");
+  mkdirSync(join(out, "rust", "src", "bin"), { recursive: true });
+  writeFileSync(join(out, "rust", "src", "bin", "component_probe_oracle.rs"), componentOracleSource(row.type_name));
+  if (!componentHostHash) componentHostHash = hashTree(COMPONENT_HOST_SRC);
+
+  return { minted_component, component_gen: gen, component_roundtrips: componentBuildAndDrive(cell, out, resource, vectors) };
+}
+
+// The live oracle, as a bin in the cell's OWN rust crate: it calls exactly what the guest glue calls
+// (`Deserialize::from_cbor_bytes` then `ToCBORBytes::to_cbor_bytes`), so "the component agrees with
+// the rust crate" is a comparison of the same two operations across the boundary. A vector it cannot
+// decode prints `ERR:` and the caller decides — a reject vector is EXPECTED to land there.
+function componentOracleSource(typeName: string): string {
+  return `// Written by cddl-matrix/verify.ts's component execution leg (componentProbe) — not generated code.
+use cddl_lib::serialization::{Deserialize, ToCBORBytes};
+
+fn main() {
+    let path = std::env::args().nth(1).expect("usage: component_probe_oracle <vector-manifest>");
+    for line in std::fs::read_to_string(&path).expect("vector manifest").lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut f = line.split_whitespace();
+        let name = f.next().expect("<name> <expect> <hex> <expected>");
+        let _expect = f.next();
+        let hex = f.next().expect("<name> <expect> <hex> <expected>");
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex"))
+            .collect();
+        match <cddl_lib::${typeName} as Deserialize>::from_cbor_bytes(&bytes) {
+            Ok(v) => println!(
+                "{name}={}",
+                <cddl_lib::${typeName} as ToCBORBytes>::to_cbor_bytes(&v)
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>()
+            ),
+            Err(e) => println!("{name}=ERR:{e}"),
+        }
+    }
+}
+`;
+}
+
 // The cddl-codegen half of the support verdict, shared by the feature / per-cell / control-op loops so
 // the "supported means round-trips" semantics can't drift apart between them.
 function codegenVerdict(p: CodegenProbe): { supported: boolean; detail: string } {
@@ -1120,6 +1592,39 @@ function wasmEvidence(p: { minted_wasm?: boolean; wasm_gen?: number; wasm_roundt
   return minted_wasm
     ? `; wasm round-trip FAILED (cargo test exit ${wasm_roundtrips})`
     : `; wasm crate failed to compile (cargo test exit ${wasm_roundtrips})`;
+}
+
+// Component-execution evidence suffix — `wasmEvidence`'s twin, and read the same way: every clause
+// names the STAGE the observation was made at, because that is what a reader acts on. "" when the
+// row is not in the selection or the leg is opted out, so those runs' annotations are byte-identical
+// to a pre-leg run. The taxonomy, in the order tested:
+//   - no probe (not selected / opted out / rust generation failed)     -> "" (annotations unchanged)
+//   - generation refused / panicked (`component_gen` nonzero)          -> a clause naming GENERATION
+//     and the GENERATOR's exit, free of any later stage's tool name (`cargo`, `wasmtime`)
+//   - the wasip2 BUILD failed (`component_roundtrips` positive: cargo's own exit) -> the glue clause
+//   - built + drove clean -> round-trips, or (no minted door) compiles-only. The `minted_component`
+//     fallback is the same discipline as the rust/wasm `minted` one: a green build over a face with
+//     no decode door is not a round trip.
+//   - a vector disagreed / the boundary trapped / nothing usable came back -> one clause each. TRAP
+//     is deliberately never folded into the failure clause: an `Err` leaves the instance usable and
+//     is the CONTRACT for a refusal, while a trap poisons every later call, so the two are different
+//     defects with different fixes.
+// The vector counts ride a second argument rather than a fourth stage field: they are a property of
+// the committed catalog row, not an observation of the run, and the stage-field set is what the
+// report and the opt-out byte-identity are defined over.
+function componentEvidence(p: ComponentFields, v?: ComponentVectorCounts): string {
+  const { minted_component, component_gen, component_roundtrips } = p;
+  if (component_gen === undefined) return "";
+  if (component_gen !== 0 && component_gen !== 101) return `; component generation REFUSED (generator exit ${component_gen})`;
+  if (component_gen === 101) return "; component generation PANICKED (generator exit 101)";
+  if (component_roundtrips === undefined) return "";   // unreachable: component_gen 0 always sets it
+  const vecs = `${v?.accepts ?? 0} accept + ${v?.rejects ?? 0} reject vector(s) under wasmtime`;
+  if (component_roundtrips > 0) return `; component glue failed to compile (cargo exit ${component_roundtrips})`;
+  if (component_roundtrips === 0)
+    return minted_component ? `; component round-trips (${vecs})` : "; component compiles (no minted component surface)";
+  if (component_roundtrips === COMPONENT_TRAP) return `; component host TRAPPED (${vecs})`;
+  if (component_roundtrips === COMPONENT_VECTOR_FAIL) return `; component round-trip FAILED (${vecs})`;
+  return "; component probe INCONCLUSIVE (no usable verdict under wasmtime)";
 }
 
 // --- EMBED FALLBACK for shapes with no STANDALONE mint surface -----------------------------------
@@ -2259,7 +2764,10 @@ for (const f of featureList) {
   // Decode-foreign oracle (D4): corroborate a supported verdict by replaying the committed spec-derived
   // vectors through the generated decoder. Never changes `d.support`.
   const foreign = d.status === "supported" ? decodeForeignProbe(f.id, f.example) : {};
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, ruby_clause: rc.token, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_gen: cg.wasm_gen, wasm_roundtrips: cg.wasm_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
+  // Component execution leg (bounded selection; {} for every other row). Runs LAST in the iteration
+  // because it writes its own spec file and out dir, and nothing after it reads either.
+  const component = componentProbe(f.id);
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, ruby_clause: rc.token, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_gen: cg.wasm_gen, wasm_roundtrips: cg.wasm_roundtrips, minted_component: component.minted_component, component_gen: component.component_gen, component_roundtrips: component.component_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
 }
 // The later loops (containment, control-op, decode-foreign replay) write `probeFile` and expect the
 // codegen probes to read it — reset the input in case the LAST feature above was extern-stub-shaped.
@@ -2400,7 +2908,7 @@ const tomlStr = (s: string) => JSON.stringify(s); // JSON string escaping is a v
 // emitted ONLY when the oracle is on, so an opted-out run (--no-decode-foreign /
 // VERIFY_DECODE_FOREIGN=0) — whose per-row evidence also omits the clause — is byte-identical to a
 // pre-feature run (the wasm-oracle opt-out discipline, applied to the header too).
-const annoLines: string[] = [...annotationsHeaderLines(DECODE_FOREIGN)];
+const annoLines: string[] = [...annotationsHeaderLines(DECODE_FOREIGN, COMPONENT_PROBE)];
 // Emit the per-emission-profile dotted keys for one probed row, profiles sorted by name for
 // determinism. `emission.<name>.status`/`emission.<name>.evidence` sit inside the row's [[support]]
 // table (dotted sub-tables); the detail is already embed-upgraded (see probeEmissions).
@@ -2413,7 +2921,11 @@ function pushEmissionLines(emission?: Record<string, EmissionOutcome>) {
   }
 }
 for (const pr of probe_results) {
-  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}${decodeForeignEvidence({ accepts_foreign: pr.accepts_foreign, foreign_vectors: pr.foreign_vectors })}; ruby=${pr.ruby_clause} rust=${ok(pr.rust)}`;
+  // Clause ORDER is fixed and pinned by the self-tests: rust detail, then the wasm face, then the
+  // component face, then the decode-foreign oracle. The decode-foreign clause stays LAST of the
+  // corroborating three because `project_decode_conformance.ts` § 9 matches it with a `(?=;|$)`
+  // lookahead, so anything appended after it would have to keep that boundary intact.
+  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}${componentEvidence(pr, componentVectors.get(pr.id))}${decodeForeignEvidence({ accepts_foreign: pr.accepts_foreign, foreign_vectors: pr.foreign_vectors })}; ruby=${pr.ruby_clause} rust=${ok(pr.rust)}`;
   if (pr.parser_limitation) ev += " (rust parser limitation: reference/ABNF accept)";
   if (pr.profile === "CDDL_CODEGEN") ev += " (vendor profile: validity by cddl-codegen; ruby/rust informational)";
   if (pr.status === "out_of_profile")
@@ -2538,6 +3050,34 @@ const foreignAll = [
   ...containment_corroboration.map(r => ({ af: r.accepts_foreign, fv: r.foreign_vectors })),
   ...controlop_support.map(r => ({ af: r.accepts_foreign, fv: r.foreign_vectors })),
 ];
+// COMPONENT-EXECUTION roll-up: selected rows whose component face did not do what the rust crate
+// does. Corroboration only, exactly like the wasm oracle and the decode-foreign one — surfaced here
+// so a regression is loud in the run output as well as in the committed annotations diff.
+interface ComponentProbeFailure { id: string; stage: string; detail: string }
+const component_probe_failures: ComponentProbeFailure[] = [];
+for (const pr of probe_results) {
+  if (pr.component_gen === undefined) continue;
+  const v = componentVectors.get(pr.id);
+  const vecs = `${v?.accepts ?? 0} accept + ${v?.rejects ?? 0} reject vector(s)`;
+  if (pr.component_gen !== 0)
+    component_probe_failures.push({ id: pr.id, stage: "generation", detail: `generator exit ${pr.component_gen}` });
+  else if ((pr.component_roundtrips ?? 0) > 0)
+    component_probe_failures.push({ id: pr.id, stage: "build", detail: `wasm32-wasip2 cargo exit ${pr.component_roundtrips}` });
+  else if (pr.component_roundtrips === COMPONENT_TRAP)
+    component_probe_failures.push({ id: pr.id, stage: "drive", detail: `the boundary TRAPPED (${vecs})` });
+  else if (pr.component_roundtrips === COMPONENT_VECTOR_FAIL)
+    component_probe_failures.push({ id: pr.id, stage: "drive", detail: `a vector disagreed (${vecs})` });
+  else if (pr.component_roundtrips === COMPONENT_INCONCLUSIVE)
+    component_probe_failures.push({ id: pr.id, stage: "drive", detail: "no usable verdict (oracle or host produced nothing to judge)" });
+}
+const componentCounts = {
+  rows_selected: COMPONENT_PROBE_ROWS.length,
+  rows_round_tripped: probe_results.filter(pr => pr.component_roundtrips === 0 && pr.minted_component).length,
+  rows_failed: component_probe_failures.length,
+  vectors_driven: probe_results
+    .filter(pr => pr.component_roundtrips === 0 && pr.minted_component)
+    .reduce((n, pr) => n + (componentVectors.get(pr.id)?.accepts ?? 0) + (componentVectors.get(pr.id)?.rejects ?? 0), 0),
+};
 const decodeForeignCounts = {
   rows_corroborated: foreignAll.filter(r => r.af === true).length,
   rows_no_vectors: foreignAll.filter(r => r.af === undefined && r.fv === 0).length,
@@ -2570,6 +3110,8 @@ const report = {
   // Conditional so an opted-out run's verify_report.json is byte-identical to a pre-feature run (the
   // per-probe accepts_foreign/foreign_vectors are already omitted when undefined; this omits the roll-up).
   ...(DECODE_FOREIGN ? { decode_foreign_failures } : {}),
+  // Same conditionality, same reason: an opted-out run's verify_report.json matches a pre-leg run's.
+  ...(COMPONENT_PROBE ? { component_probe_failures } : {}),
   target_profile: CDDL_CODEGEN_TARGET_PROFILE,
   summary: {
     features: features.length,
@@ -2746,6 +3288,12 @@ const SECTIONS: ReportSection[] = [
     header: n => "\nDECODE-FOREIGN FAILURES (" + n + "; supported row whose committed spec-derived vectors the generated decoder REJECTED — corroboration only, verdict unchanged):",
     line: (df: DecodeForeignFailure) => `  - ${df.id} (${df.vectors} accept vector(s))`,
     footer: () => `decode-foreign     : corroborated=${decodeForeignCounts.rows_corroborated} row(s) (${decodeForeignCounts.vectors_accepted} vector(s)); no-vectors=${decodeForeignCounts.rows_no_vectors}; failed=${decodeForeignCounts.rows_failed}`,
+  },
+  {
+    key: "component_probe_failures", hard: false, items: component_probe_failures, always: true, when: COMPONENT_PROBE,
+    header: n => "\nCOMPONENT-EXECUTION FAILURES (" + n + "; a selected row whose component face did not behave as its own rust crate does — corroboration only, verdict unchanged):",
+    line: (cf: ComponentProbeFailure) => `  - ${cf.id} [${cf.stage}]: ${cf.detail}`,
+    footer: () => `component exec     : round-tripped=${componentCounts.rows_round_tripped}/${componentCounts.rows_selected} selected row(s) (${componentCounts.vectors_driven} vector(s)); failed=${componentCounts.rows_failed}`,
   },
   {
     key: "controlop_missing_example", hard: true, items: controlop_missing_example,

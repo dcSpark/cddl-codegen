@@ -1,0 +1,22 @@
+# The generic wasmtime host the matrix's component EXECUTION leg drives every selected cell through
+# (`cddl-matrix/verify.ts` § componentProbe). It is COPIED into the run's scratch and built there,
+# never built where it sits: a build in the checkout would write a `Cargo.lock`/`target/` into the
+# repo, and the leg's gate-cache key covers this crate by CONTENT HASH (the cache-closure rule — an
+# input outside the hashed generated tree has to be in the key, or an edit to the assertions here
+# would serve a stale PASS forever).
+#
+# Its own workspace root: the crate sits inside the cddl-codegen checkout but is not a member of
+# anything there, and a self-rooted manifest keeps it building the same way if that ever changes.
+#
+# The wasmtime pins are deliberately the SAME as `tests/component-host/host` — one warm cargo cache
+# serves both, and the offline-after-warmup tier design has no other source for these crates.
+[package]
+name = "component-probe-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasmtime = "47"
+wasmtime-wasi = "47"
+
+[workspace]
