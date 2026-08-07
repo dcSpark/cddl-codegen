@@ -257,7 +257,13 @@ fuzzer sweep surfaced — that is what the section means, and what the many `§ 
 what the generator does TODAY, including the boundaries it keeps permanently and the upstream-oracle
 gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle gaps"); prunes that wait
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
-ledgered here (that's what the probe/gate error messages point at).
+ledgered here (that's what the probe/gate error messages point at). An entry claiming a GENERATOR
+defect must carry a harness-free repro — the tool run alone, into a scratch dir — before it is
+written: evidence read off committed fixture trees passes through the test harness, which appends
+its own content INTO generated files, and one retracted entry's "greppable in the fixture trees"
+emission defect was exactly such an append (the unused `use serialization::*;` claim, retracted
+2026-08-07 after a fresh-generation probe found the generator emits that glob nowhere — the
+retraction record is in `tests/TESTING_ROADMAP.md`'s unused-imports entry).
 
 - **No CHOICE-OF-BODIES for a group rule, so a body carrying two or more group choices is refused
   rather than honored.** `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
