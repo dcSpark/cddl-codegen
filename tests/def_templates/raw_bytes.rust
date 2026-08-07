@@ -1,0 +1,18 @@
+// A trivial `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition: a fixed-width byte array behind the
+// `RawBytesEncoding` contract, which is the whole interface the marker declares.
+#[derive(__DERIVES__)]
+pub struct __NAME__([u8; 4]);
+
+impl serialization::RawBytesEncoding for __NAME__ {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, error::DeserializeError> {
+        use core::convert::TryInto;
+        bytes
+            .try_into()
+            .map(__NAME__)
+            .map_err(|e| error::DeserializeFailure::InvalidStructure(Box::new(e)).into())
+    }
+}

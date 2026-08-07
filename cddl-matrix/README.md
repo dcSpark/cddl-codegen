@@ -17,8 +17,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
 > upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->120 features and 135 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->289 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->123 features and 135 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->292 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -602,16 +602,29 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   overturning that rationale, or accepting that two map positions publish different key
   conventions, which is a consumer-driven decision to make before any code, not a fix this
   boundary is waiting on.
-- **Execution-gate exemptions.** 7 user-code features stay `supported` via the documented
-  `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code (or pin a dependency-crate
-  name), so they can't compile (or test) standalone: `ext.extern`, `ext.raw_bytes`,
-  `dsl.custom_serialize`, `dsl.custom_deserialize`, `dsl.raw_bytes_flavor`, `dsl.copy`,
-  `dsl.rust_name` (integration-tested instead). The exemption has a recorded cost: it once let
-  an extern-only-scope undeclared-module compile break ship unseen (since fixed — string-pinned by
-  `integration_extern_only_scope_declared_in_root` and compile-pinned at the hand-fixture level by
-  `facade_composition_compiles`, which builds the documented facade consumer over exactly that
-  multi-scope extern shape; the residual BREADTH hole — extern cells at corpus/matrix breadth stay
-  compile-exempt — is tracked in `ROADMAP.md` § findings). `prelude.any` was the canonical execution-gate catch — `x = any` exited 0
+- **User-code rows are SEEDED, not exempted.** A row whose generated code names user-supplied items
+  (an extern / raw-bytes type, a `@custom_serialize`/`@custom_deserialize` pair) gets that code
+  written for it — `DEF_SPLICE` in `verify.ts` appends a name-parameterized definition from
+  `tests/def_templates/` into the seed-once thin `rust/src/lib.rs` / `wasm/src/lib.rs` (the
+  documented residence; `src/generated/**` would collide E0255 with the tool's own re-export glue),
+  and a codec fn additionally gets the hand `use` that comment_dsl.mdx names as the remedy for a
+  bare codec name. Those rows then run the ordinary compile/test verdict on both faces, plus — under
+  the json emission profile, for these rows only — the emitted `wasm/json-gen` crate, which no other
+  stage of this harness builds. The cost of NOT compiling them is recorded: the exemption let an
+  extern-only-scope undeclared-module break ship unseen (since fixed — string-pinned by
+  `integration_extern_only_scope_declared_in_root`, compile-pinned at the hand-fixture level by
+  `facade_composition_compiles`), and seeding the first defs immediately surfaced a second one of
+  the same class, where a spec of ONLY marker rules emitted an undeclared `serialization` module its
+  own self-check named (`marker_only_root_declares_the_serialization_module`).
+  Exactly 2 rows stay in `COMPILE_GATE_EXEMPT`, and for a reason a definition cannot answer — what
+  is missing is a whole OTHER CRATE, not a type: `dsl.rust_name` (the pinned name lives in a
+  dependency crate the generated `use extern_dep::…` needs on the path) and `dsl.extern_companions`
+  (the directive DEFERS the wasm companions to a sibling wasm crate, so defining them locally would
+  defeat the deferral it declares). Both are integration-tested where the other crate exists.
+  A user-code row is also pinned in the D3 decode catalog, seeded or not, because the reference
+  oracle does not describe its wire — an extern typename ruby rejects outright, and a custom codec
+  writes bytes the ruby-generated vectors for the REPLACED type never describe.
+  `prelude.any` was the canonical execution-gate catch — `x = any` exited 0
   but emitted `pub type X = Any;`, an undefined type — and the gate held it ➖ until first-class
   `any` support landed (2026-07-23); the row is now execution-verified `supported` with the wasm
   and JSON emission legs green too (all three surfaces shipped the same day; the evidence records
@@ -743,10 +756,14 @@ records the ORDER (walked empirically for the `@used_as_elem` registration):
 1. Add the feature row in `features/cddl_codegen.toml`, then `bun run build_matrix.ts`.
 2. Full `bun run verify.ts` — writes the row's verdicts into `annotations/cddl_codegen.toml`.
    **If the row's example references user-supplied code** (custom-codec fns, extern/raw-bytes
-   types), add its `COMPILE_GATE_EXEMPT` entry in `verify.ts` BEFORE this step: minted without it,
-   the standalone-compile probe fails and the row verdicts `unsupported`, costing a second full run
-   to correct (walked both ways: the `dsl.custom_encodings` registration paid the second ~12 min
-   run; `dsl.custom_wire_major` pre-added the entry and minted `supported` first try).
+   types), add its `DEF_SPLICE` entry in `verify.ts` BEFORE this step — reusing a
+   `tests/def_templates/` template where one fits, adding one where none does — and validate it
+   against a scratch generate + `cargo check` first. Minted without it, the standalone-compile probe
+   fails and the row verdicts `unsupported`, costing a second full run to correct (walked both ways:
+   the `dsl.custom_encodings` registration paid the second ~12 min run; `dsl.custom_wire_major`
+   pre-declared and minted `supported` first try). `COMPILE_GATE_EXEMPT` is the fallback for the
+   narrow case where no definition can help because a whole OTHER CRATE is missing; its entry must
+   name what structurally blocks a def, and the row then verdicts from the generation exit alone.
 3. `bun run project_robustness.ts` — mints `tests/matrix_supported/<id>.cddl`.
 4. `bun run verify.ts --mint-decode-foreign --only=<id>` — mints the decode catalog vectors.
 5. Full `verify.ts` again — satisfies the decode-foreign evidence clause.

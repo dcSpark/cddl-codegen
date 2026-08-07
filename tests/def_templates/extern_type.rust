@@ -1,0 +1,25 @@
+// A trivial `_CDDL_CODEGEN_EXTERN_TYPE_` definition: a uint on the wire, so any spec position the
+// marker rule can occupy (record field, list element, map key, choice arm) has a real type behind it.
+#[derive(__DERIVES__)]
+pub struct __NAME__(pub u64);
+
+impl __NAME__ {
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl cbor_event::se::Serialize for __NAME__ {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.0)
+    }
+}
+
+impl serialization::Deserialize for __NAME__ {
+    fn deserialize(raw: &mut cbor_event::de::Deserializer) -> Result<Self, error::DeserializeError> {
+        Ok(Self(raw.unsigned_integer()?))
+    }
+}

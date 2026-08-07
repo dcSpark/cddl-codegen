@@ -1,0 +1,2 @@
+ext_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+holder = [y: ext_gen<uint>]

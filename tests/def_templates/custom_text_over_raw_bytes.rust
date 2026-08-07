@@ -1,0 +1,53 @@
+// `@custom_wire_major text` beside a `@custom_serialize`/`@custom_deserialize` pair on an alias of a
+// `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule: the codec's wire is a TEXT item (lowercase hex), so an open
+// table's entry dispatch must peek major 3 rather than the major-2 the replaced type would answer.
+// Hex is hand-rolled rather than pulled from a crate so the splice needs no manifest edit.
+fn __SER___to_hex(bytes: &[u8]) -> String {
+    use core::fmt::Write;
+    let mut out = String::new();
+    for b in bytes {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
+fn __DESER___from_hex(text: &str) -> Option<Vec<u8>> {
+    let raw = text.as_bytes();
+    if raw.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(raw.len() / 2);
+    let mut i = 0;
+    while i < raw.len() {
+        let hi = (raw[i] as char).to_digit(16)?;
+        let lo = (raw[i + 1] as char).to_digit(16)?;
+        out.push(((hi << 4) | lo) as u8);
+        i += 2;
+    }
+    Some(out)
+}
+
+fn __DESER___decode(text: &str) -> Result<__NAME__, error::DeserializeError> {
+    let bytes = __DESER___from_hex(text).ok_or_else(|| {
+        error::DeserializeError::from(error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError(format!("{text}: not lowercase hex")),
+        ))
+    })?;
+    <__NAME__ as serialization::RawBytesEncoding>::from_raw_bytes(&bytes)
+}
+
+pub fn __SER__<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &__NAME__,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_text(__SER___to_hex(
+        serialization::RawBytesEncoding::to_raw_bytes(value),
+    ))
+}
+
+pub fn __DESER__(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<__NAME__, error::DeserializeError> {
+    let text = raw.text()?;
+    __DESER___decode(&text)
+}

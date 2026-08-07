@@ -1,0 +1,26 @@
+// A trivial GENERIC `_CDDL_CODEGEN_EXTERN_TYPE_` base: the parameter is carried through to the
+// element's own codec, so one definition serves every instance the spec binds. The generated crate
+// emits `pub type <Base><Arg> = <Base><Arg-rust-type>;` per instance and references the base by name.
+#[derive(__DERIVES__)]
+pub struct __NAME__<T>(pub T);
+
+impl<T> __NAME__<T> {
+    pub fn new(inner: T) -> Self {
+        Self(inner)
+    }
+}
+
+impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for __NAME__<T> {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<T: serialization::Deserialize> serialization::Deserialize for __NAME__<T> {
+    fn deserialize(raw: &mut cbor_event::de::Deserializer) -> Result<Self, error::DeserializeError> {
+        T::deserialize(raw).map(Self)
+    }
+}

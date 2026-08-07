@@ -297,3 +297,47 @@ desc = "Encodes as bytes but defers to an external type implementing the RawByte
 example = '''
 rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_
 bar = [rb]'''
+
+# ---- intra-alternative variation rows: a GENERIC marker base, with and without instances ----
+# The two extern rows below differ in ONE axis — whether the spec binds an instance — and the two
+# faces answer it differently, which is why both are enumerated rather than one standing for the
+# other: rust names the generic BASE either way (and aliases each instance itself), while the wasm
+# face, having no generics, re-exports the bare base when nothing is bound and demands a CONCRETE
+# `<Base><Arg>` wrapper as soon as something is. The raw-bytes row below is the same axis on the
+# other marker, where the answer is a refusal.
+
+[[feature]]
+id = "ext.extern.generic"
+production = "sentinel"
+alt = "_CDDL_CODEGEN_EXTERN_TYPE_"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER"
+profile = "CDDL_CODEGEN"
+title = "_CDDL_CODEGEN_EXTERN_TYPE_ generic base with NO instances — re-export only"
+desc = "A generic extern base the spec never instantiates. Nothing is emitted for it beyond the re-export glue naming the bare base (`pub use crate::<Base>;`) in both faces: it names no concrete type, so the extern-interface self-check and the json-gen schema registrar must both SKIP it — a row spelling a bare `<Base>` would be E0107 against the parameterized type the marker declares."
+example = '''
+ext_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+plain = [x: uint]'''
+
+[[feature]]
+id = "ext.extern.generic_instance"
+production = "sentinel"
+alt = "_CDDL_CODEGEN_EXTERN_TYPE_"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER"
+profile = "CDDL_CODEGEN"
+title = "_CDDL_CODEGEN_EXTERN_TYPE_ generic base WITH an instance — per-instance alias"
+desc = "A generic extern base the spec binds (`ext_gen<uint>`). The rust crate aliases the instance itself (`pub type ExtGenU64 = ExtGen<u64>;`) and re-exports only the BASE, so one hand-written generic definition serves every instance; the wasm crate, which has no generics, instead requires a user-provided concrete `ExtGenU64` wrapper and re-exports THAT name."
+example = '''
+ext_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+holder = [y: ext_gen<uint>]'''
+
+[[feature]]
+id = "ext.raw_bytes.generic"
+production = "sentinel"
+alt = "_CDDL_CODEGEN_RAW_BYTES_TYPE_"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER"
+profile = "CDDL_CODEGEN"
+title = "_CDDL_CODEGEN_RAW_BYTES_TYPE_ generic base — refused at parse time"
+desc = "The raw-bytes marker's answer to the same generic-base axis the two extern rows above enumerate, and the opposite one: an extern base may legitimately be parameterized (it is an arbitrary hand-written type), but a raw-bytes type IS its own bytes and carries no element type for a parameter to name, so a generic base is refused by name at parse time rather than generating self-check and schema rows spelling a bare base that cannot compile against the parameterized type the marker declares. The remedy the message names is to declare it non-generic. Refused with and without instances, under --wasm=true and --wasm=false alike."
+example = '''
+rb_gen<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+bar = [x: rb_gen<uint>]'''

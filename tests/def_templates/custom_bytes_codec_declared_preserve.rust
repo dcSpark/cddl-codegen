@@ -1,0 +1,35 @@
+// The `@custom_encodings sz,str` flavor: the codec's wire is `#6.42(bytes)`, whose tag head has a
+// width of its own that the replaced `bytes` type would never have inferred. The declaration adds it
+// positionally first, so the two variables arrive in the order the wire writes them — and this file
+// not compiling is exactly how a declaration/call/codec disagreement surfaces.
+pub fn __SER__<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    bytes: &[u8],
+    tag_enc: Option<cbor_event::Sz>,
+    str_enc: &serialization::StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_tag_sz(42, serialization::fit_sz(42, tag_enc))?;
+    serializer.write_bytes_sz(bytes, str_enc.to_str_len_sz(bytes.len() as u64))
+}
+
+pub fn __DESER__(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<
+    (
+        Vec<u8>,
+        Option<cbor_event::Sz>,
+        serialization::StringEncoding,
+    ),
+    error::DeserializeError,
+> {
+    let (tag, tag_sz) = raw.tag_sz()?;
+    if tag != 42 {
+        return Err(error::DeserializeFailure::TagMismatch {
+            found: tag,
+            expected: 42,
+        }
+        .into());
+    }
+    let (bytes, str_enc) = raw.bytes_sz()?;
+    Ok((bytes, Some(tag_sz), str_enc.into()))
+}

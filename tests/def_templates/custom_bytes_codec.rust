@@ -1,0 +1,16 @@
+// `@custom_serialize __SER__ @custom_deserialize __DESER__` over a `bytes` rule, NON-preserve
+// signature (no encoding variables). The wire is a plain byte string: a compile floor's subject is
+// that the declaration, the emitted call and the codec agree on the signature, not that the codec
+// writes anything exotic.
+pub fn __SER__<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    bytes: &[u8],
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_bytes(bytes)
+}
+
+pub fn __DESER__(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<Vec<u8>, error::DeserializeError> {
+    Ok(raw.bytes()?)
+}

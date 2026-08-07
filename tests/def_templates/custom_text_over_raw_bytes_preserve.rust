@@ -1,0 +1,54 @@
+// The `--preserve-encodings` flavor of `custom_text_over_raw_bytes`. The pair sits at an open
+// table's KEY position, whose per-entry sidecar is looked out of the encodings map and handed over
+// BY VALUE (a record field hands its stored encoding over by reference) — so the argument MODE, not
+// just the count, is what this file pins.
+fn __SER___to_hex(bytes: &[u8]) -> String {
+    use core::fmt::Write;
+    let mut out = String::new();
+    for b in bytes {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
+fn __DESER___from_hex(text: &str) -> Option<Vec<u8>> {
+    let raw = text.as_bytes();
+    if raw.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(raw.len() / 2);
+    let mut i = 0;
+    while i < raw.len() {
+        let hi = (raw[i] as char).to_digit(16)?;
+        let lo = (raw[i + 1] as char).to_digit(16)?;
+        out.push(((hi << 4) | lo) as u8);
+        i += 2;
+    }
+    Some(out)
+}
+
+fn __DESER___decode(text: &str) -> Result<__NAME__, error::DeserializeError> {
+    let bytes = __DESER___from_hex(text).ok_or_else(|| {
+        error::DeserializeError::from(error::DeserializeFailure::CBOR(
+            cbor_event::Error::CustomError(format!("{text}: not lowercase hex")),
+        ))
+    })?;
+    <__NAME__ as serialization::RawBytesEncoding>::from_raw_bytes(&bytes)
+}
+
+pub fn __SER__<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &__NAME__,
+    str_enc: serialization::StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    let text = __SER___to_hex(serialization::RawBytesEncoding::to_raw_bytes(value));
+    let len_sz = str_enc.to_str_len_sz(text.len() as u64);
+    serializer.write_text_sz(text, len_sz)
+}
+
+pub fn __DESER__(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(__NAME__, serialization::StringEncoding), error::DeserializeError> {
+    let (text, str_enc) = raw.text_sz()?;
+    __DESER___decode(&text).map(|v| (v, str_enc.into()))
+}

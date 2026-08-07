@@ -1,0 +1,17 @@
+// The `--preserve-encodings` flavor of `custom_bytes_codec`: `bytes` infers exactly one
+// `StringEncoding`, so the pair takes/returns it and the byte string re-emits with the width and
+// chunking it was read at.
+pub fn __SER__<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    bytes: &[u8],
+    str_enc: &serialization::StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_bytes_sz(bytes, str_enc.to_str_len_sz(bytes.len() as u64))
+}
+
+pub fn __DESER__(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(Vec<u8>, serialization::StringEncoding), error::DeserializeError> {
+    let (bytes, str_enc) = raw.bytes_sz()?;
+    Ok((bytes, str_enc.into()))
+}
