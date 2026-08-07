@@ -528,43 +528,49 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     remedies that are only text-pinned and add the generate leg where one is missing; new refusals
     adopt the pattern from the start (the table-domain and tagged-domain tests are the templates,
     and `plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`'s "the remedy must
-    actually work" legs are the pattern applied from day one). Four proven instances, each caught
-    only by executing the claim rather than reading it: a refusal's first predicate refused the
-    exact remedy its own message named (`{ * uint => [coords] }` — the registry keeps materialized
-    plain groups, so the lookup over-matched); a tagged remedy spelling was imprecise
-    (`[#6.5(coords)]` for the faithful `#6.5([coords])`) until a pin asserted the printed remedy
-    generates; a findings entry's recommended remedy (`{ c: [kv] }` for the keyed plain-group map
-    member) was itself refused — as a conflicting representation, a different wall — caught by the
-    pickup re-probe before the refusal message shipped naming it; and a findings entry's
-    DESCRIPTION claimed the shape's standalone codec "writes/accepts a bare map" when no
-    standalone codec existed at all (`to_cbor_bytes` failed E0599 for the `PairMap` instantiation;
-    `from_cbor_bytes` was absent), while both of the entry's coupled test carriers pinned an
-    adjacent structural fact rather than executing the operative sentence. Working rules: a remedy
-    string is executable wherever it lives — in an emitted message it gets a pinned generate leg,
-    in a findings entry it gets executed at pickup; and when a findings entry couples to carriers,
-    at least one carrier executes the entry's HEADLINE claim — for a claims-the-API-does-X
-    sentence that means calling X (a compile-fail probe is an execution too) — so the entry cannot
-    drift from the code while its carriers stay green. Pickup re-probe remains the enforcement of
-    last resort, not the plan.
-    Three further proven instances (2026-08-07, the four-refusal cycle) sharpen the item's scope in
-    two directions it did not yet state. First, a message's advertised-VALID-PLACEMENT example is a
-    remedy string too: both `@ignore` rejections printed "`{ 1: a, * k => v } ; @ignore`" as the
-    one valid placement, and that exact spelling itself refuses (a type rule's after-brace comment
-    binds to the RULE slot, where `@ignore` is rejected) — the working entry-line spelling was
-    documented correctly in `comment_dsl.mdx` all along, so only the messages lied; and the inline
-    group-choice rejection's remedy ("`g = (a // b)`, then reference `g`") named a spelling that
-    PANICKED the pre-registration assert (now a refusal). Both fixed with the messages' pins in the
-    same commits; the sweep this item plans must therefore cover every advice-shaped spelling a
-    message prints, not only the strings introduced by "instead" or "remedy". Second — and this is
-    the half a generates-green vector alone cannot deliver — the claim must be exercised against
-    each TRIGGERING construct class that can produce the message: the anonymous-group rejection's
-    "give it a name using the `@name` notation" was true for the bare inline array and dead advice
-    for the tag-wrapped trigger (`f: #6.42([x: uint]) ; @name Foo`), because the name reader's
-    parent-chain walk stopped at the interposed `TaggedData` node — one message, two trigger
-    classes, and the hand-chosen untagged vector stayed green throughout. The reader now walks tag
-    layers, pinned by `tagged_anon_array_member_name_emits_the_named_rule_remedy`, so the residual
-    is the sweep's shape, not that shape: a remedy pin is per message-per-trigger-class, or the
-    message must name the boundary itself.
+    actually work" legs are the pattern applied from day one). Four working rules bound what the
+    sweep has to cover:
+    - A remedy string is executable wherever it lives — in an emitted message it gets a pinned
+      generate leg, in a findings entry it gets executed at pickup.
+    - EVERY advice-shaped spelling a message prints is a remedy string, not only the strings
+      introduced by "instead" or "remedy": an advertised VALID PLACEMENT is advice a reader copies
+      verbatim.
+    - A remedy pin is per message PER TRIGGERING CONSTRUCT CLASS, or the message must name the
+      boundary itself. This is the half a generates-green vector alone cannot deliver: one message
+      reachable from two construct classes can be sound for the class whose vector someone
+      hand-picked and dead advice for the other.
+    - When a findings entry couples to carriers, at least one carrier executes the entry's HEADLINE
+      claim — for a claims-the-API-does-X sentence that means calling X (a compile-fail probe is an
+      execution too) — so the entry cannot drift from the code while its carriers stay green.
+
+    Pickup re-probe remains the enforcement of last resort, not the plan. Seven proven instances,
+    each caught only by executing the claim rather than reading it:
+    - A refusal's first predicate refused the exact remedy its own message named
+      (`{ * uint => [coords] }` — the registry keeps materialized plain groups, so the lookup
+      over-matched).
+    - A tagged remedy spelling was imprecise (`[#6.5(coords)]` for the faithful `#6.5([coords])`)
+      until a pin asserted the printed remedy generates.
+    - A findings entry's recommended remedy (`{ c: [kv] }` for the keyed plain-group map member) was
+      itself refused — as a conflicting representation, a different wall — caught by the pickup
+      re-probe before the refusal message shipped naming it.
+    - A findings entry's DESCRIPTION claimed the shape's standalone codec "writes/accepts a bare
+      map" when no standalone codec existed at all (`to_cbor_bytes` failed E0599 for the `PairMap`
+      instantiation; `from_cbor_bytes` was absent), while both of the entry's coupled test carriers
+      pinned an adjacent structural fact rather than executing the operative sentence.
+    - Both `@ignore` rejections printed "`{ 1: a, * k => v } ; @ignore`" as the one valid placement,
+      and that exact spelling itself refuses (a type rule's after-brace comment binds to the RULE
+      slot, where `@ignore` is rejected) — the working entry-line spelling was documented correctly
+      in `comment_dsl.mdx` all along, so only the messages lied.
+    - The inline group-choice rejection's remedy ("`g = (a // b)`, then reference `g`") named a
+      spelling that PANICKED the pre-registration assert (now a refusal). That instance and the
+      `@ignore` pair were fixed with the messages' pins in the same commits.
+    - The anonymous-group rejection's "give it a name using the `@name` notation" was true for the
+      bare inline array and dead advice for the tag-wrapped trigger (`f: #6.42([x: uint]) ; @name Foo`),
+      because the name reader's parent-chain walk stopped at the interposed `TaggedData` node — one
+      message, two trigger classes, and the hand-chosen untagged vector stayed green throughout. The
+      reader now walks tag layers, pinned by
+      `tagged_anon_array_member_name_emits_the_named_rule_remedy`, so what that instance leaves is
+      the sweep's shape rather than the shape itself.
 
 16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
@@ -697,9 +703,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     (`choice_holder = fixed_enum / bytes`; `gc_holder = [ a: fixed_enum // b: tstr ]`) generate at
     exit 0 and `cargo check` green under BOTH annotate=false flavors, with the statement-form leg
     visibly emitted (`Ok(()) => return Ok(FixedEnum::I0)` inside the variant-probe closures) —
-    probed `--wasm=false` only; the floor's own cells will run `--wasm=true`. Same input-poverty class as
-    the both-nominal pair-map cell above: the emission branch exists, the fix cycle proved it
-    load-bearing, and no committed input reaches it.
+    probed `--wasm=false` only; the floor's own cells will run `--wasm=true`. Same input-poverty class
+    as this list's "A corpus cell for the preserve pair-map whose key AND value are self-encoding"
+    item: the emission branch exists, the fix cycle proved it load-bearing, and no committed input
+    reaches it.
 
 22. **An execution cell for `--binary-wrappers=true` — the last documented flag value whose only
     coverage is a compile smoke while its emission risk is byte-level.** The annotate=false
@@ -720,8 +727,8 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     byte-string-rich spec under the flag (default AND preserve rows; non-canonical byte-string
     heads under preserve) and round-trip hand-derived vectors byte-exactly — closes the gap.
     Scoped probe record for the claim above: "compile-only" was established by enumerating the
-    `--binary-wrappers` passers in `src/tests/` (`flag_value_smoke`, `config_tests`) on the
-    B3-052 tree, not by grep vocabulary alone.
+    `--binary-wrappers` passers in `src/tests/` (`flag_value_smoke`, `config_tests`) on the tree
+    that delivered the annotate=false floors, not by grep vocabulary alone.
 
 ## Standing-system residuals (recur-first)
 
@@ -1468,19 +1475,24 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `unused_variables` at warn, lumping it with `unused_imports`, whose stay-warn rationale (the
   legitimate trait residue below) has no variables analogue. That gate now denies
   `-D unused_variables` across all four of its cases and all three generated crates, so the class
-  has two owners; `unused_imports` stays at warn there, because the trait residue is real. A second known DETECTOR blind
-  spot, proven by the path-tail instance below: the scan lives only in `feature_corpus_compiles`
-  cells, which never generate under the cross-crate workspace flags, so prune imprecision visible
-  only in `--wrapper-requests`/`--workspace-dep` output (the requested-collections sidecar) reaches
+  has two owners; `unused_imports` stays at warn there, because the trait residue is real.
+
+  The detector's reach is three capture-site families. First, `feature_corpus_compiles`' own cells,
+  where both scans run directly over crates that are 100% generated. Second, the nested cargo stderr
+  the workspace-requests gates already capture: `assert_no_unused_generated_warnings` runs both
+  scans over `workspace_requests_hosts_cross_scope_elements` (facet-1 wasm check),
+  `workspace_requests_cohosted_keys_list_no_self_import` (wasm check) and
+  `workspace_requests_hosts_borrowed_wrappers` (both wasm32 builds) — at no added cargo cost. That
+  family was itself a known blind spot until it was wired, proven by the path-tail instance this
+  entry records: the scan lived only in `feature_corpus_compiles` cells, which never generate under
+  the cross-crate workspace flags, so prune imprecision visible only in
+  `--wrapper-requests`/`--workspace-dep` output (the requested-collections sidecar) reached
   consumers before any gate — a detector-coverage cousin of the input-poverty sub-class ledgered in
   the flag-powerset entry (there the swept input lacks the shape; here the scanning gate lacks the
-  flag). That family is now scanned where the crate under cargo is 100% generated:
-  `assert_no_unused_generated_warnings` runs both scans over the nested cargo stderr the
-  workspace-requests gates already capture — `workspace_requests_hosts_cross_scope_elements`
-  (facet-1 wasm check), `workspace_requests_cohosted_keys_list_no_self_import` (wasm check) and
-  `workspace_requests_hosts_borrowed_wrappers` (both wasm32 builds) — at no added cargo cost.
-  The REMAINING capture sites — every `run_test` fixture, the `extern_deps` family included — are
-  now scanned too, by the location-aware `assert_no_generator_owned_unused_warnings` on all six
+  flag).
+
+  Third, every `run_test` fixture, the `extern_deps` family included, scanned by
+  the location-aware `assert_no_generator_owned_unused_warnings` on all six
   cargo-driving stages `run_test` runs (rust `cargo test`; wasm `cargo test` / `cargo build`;
   `wasm-pack build`; both json-gen `cargo run`s). A `run_test` crate is not 100% generated, so the
   restriction is POSITIONAL rather than per-file: the harness appends its `tests.rs`/`deser_test`
@@ -1489,8 +1501,10 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   pre-append line count, and rustc's separate `--> path:line:col` line attributes each warning
   against them; a warning in an appended region, in a hand-written path dep
   (`tests/extern-dep-crate/src/*`, which rustc renders ABSOLUTE where the crate's own files render
-  relative to the cargo cwd), or with no location to pair at all, is exempt — as is the documented
-  `Serialize` trait residue below, by class. Retracted with this wiring: an earlier version of this
+  relative to the cargo cwd), or with no location to pair at all, is exempt — as is the
+  `Serialize` trait residue this entry's remaining half records, by class.
+
+  Retracted with this wiring: an earlier version of this
   entry recorded an EMISSION defect — a generated root `src/generated/mod.rs` emitting an unused
   `use serialization::*;`, claimed to reach every consumer of a multifile-shaped spec — which is
   FALSE. The glob is `run_test`'s own unconditional append into the just-generated
@@ -1501,7 +1515,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   profile, i.e. wasm ON) and `tests/preserve-encodings/input.cddl`
   (`--preserve-encodings=true --json-serde-derives=true --json-schema-export=true`), plus a
   `--wasm=false` core cell, to scratch dirs: the string appears NOWHERE under any emitted crate.
-  NOT probed against every fixture's flag set. Wiring the scan over the 44 `run_test` fixtures
+  NOT probed against every fixture's flag set.
+
+  Wiring the scan over the 44 `run_test` fixtures
   surfaced exactly one generator-owned warning, and it was FIXED rather than ledgered: the
   positional `@duplicates preserve` pair-map serialize loop emitted its `.enumerate()` index
   unconditionally, while the emitted body reads it only through the key/value encoding-sidecar
@@ -1509,7 +1525,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   in every consumer build. The escape hatch for a future hit that CANNOT be fixed in place —
   `KNOWN_GENERATOR_OWNED_WARNINGS`, a pin by file and exact warning text, asserted LIVE at the end
   of the run that owns its export so a fixed emission fails its pin as stale — ships EMPTY with its
-  enforcement live, the same shape as `KNOWN_POSITION_DROPS`. Proven instance of exactly the blind spot the scanning covers
+  enforcement live, the same shape as `KNOWN_POSITION_DROPS`.
+
+  Proven instance of exactly the blind spot the scanning covers
   (2026-07-22, consumer-reported, fixed class-level): the used-ident scan counted `::`-path-tail
   segments (`cml_chain::assets::Coin` counting `assets`), which collide with the parent's `pub mod`
   defs, so `super_glob_needed` conservatively kept the sidecar's dead `use super::*;`; the
@@ -1521,7 +1539,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `scope_references` over-imports) is the shipped contract in `docs/docs/output_format.mdx`, and the
   protector/disqualifier model it removes them by, with its pins, is current state in
   `tests/README.md` § "Extern-interface export & `--extern-import` (the machine-generated stub
-  channel)". Still future-facing: the `cbor_event::se::Serialize` TRAIT
+  channel)".
+
+  Still future-facing: the `cbor_event::se::Serialize` TRAIT
   import the non-canonical serialization prelude emits — a trait is exercised by a method call
   whose ident never appears, so name-scan cannot prove it unused; the detector's
   `UNUSED_IMPORT_TRAIT_RESIDUE` skips it. What a consumer sees is one rustc `unused import` warning
@@ -1550,12 +1570,15 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `UNUSED_IMPORT_TRAIT_RESIDUE` exemption (and its self-test) is the other half of the same change —
   the residue and the exemption go together or not at all. Reopening signal: a second unremovable
   trait joins the residue, or a consumer for whom the warning is more than cosmetic (it breaks a
-  `-D warnings` build, or it masks a real unused import in the same crate). Also watched,
-  warning-severity only (never a compile error):
+  `-D warnings` build, or it masks a real unused import in the same crate).
+
+  Also watched, warning-severity only (never a compile error):
   the one deliberately-conservative keep the disqualifiers do not cover — an intermediate module
   between the ancestor and a deeper protector that consumes the ancestor's copy for everything
   below it; replace the per-descendant approximation with exact resolution modelling only on a
-  real warning report from the live arm. Third known DETECTOR blind spot, recorded as a posture
+  real warning report from the live arm.
+
+  A THIRD known DETECTOR blind spot is still open, recorded as a posture
   when the extern-breadth seeding surfaced the wasm re-export contract wart: the matrix compile
   probes (`cddl-matrix/verify.ts`, the `DEF_SPLICE`-seeded user-code rows included) judge cargo
   EXIT CODES only and run no warning scan — the wart was caught because the same shape sits in

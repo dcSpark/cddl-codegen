@@ -267,13 +267,16 @@ fuzzer sweep surfaced — that is what the section means, and what the many `§ 
 what the generator does TODAY, including the boundaries it keeps permanently and the upstream-oracle
 gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle gaps"); prunes that wait
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
-ledgered here (that's what the probe/gate error messages point at). An entry claiming a GENERATOR
-defect must carry a harness-free repro — the tool run alone, into a scratch dir — before it is
-written: evidence read off committed fixture trees passes through the test harness, which appends
-its own content INTO generated files, and one retracted entry's "greppable in the fixture trees"
-emission defect was exactly such an append (the unused `use serialization::*;` claim, retracted
-2026-08-07 after a fresh-generation probe found the generator emits that glob nowhere — the
-retraction record is in `tests/TESTING_ROADMAP.md`'s unused-imports entry).
+ledgered here (that's what the probe/gate error messages point at).
+
+One evidence rule for this section: an entry claiming a GENERATOR defect carries a harness-free
+repro — the tool run alone, into a scratch dir — before it is written. Evidence read off committed
+fixture trees does not qualify, because those trees pass through the test harness, which appends its
+own content INTO generated files, so a harness-written emission is indistinguishable there from a
+generator-written one. One entry was retracted on exactly that (2026-08-07): its "greppable in the
+fixture trees" emission defect — an unused `use serialization::*;` — was such an append, and a
+fresh-generation probe found the generator emits that glob nowhere. The retraction record is in
+`tests/TESTING_ROADMAP.md`'s unused-imports entry.
 
 - **No CHOICE-OF-BODIES for a group rule, so a body carrying two or more group choices is refused
   rather than honored.** `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
@@ -936,17 +939,19 @@ composition-space cross-check that complements this matrix's curated per-shape g
   `multifile_matrix_roundtrips`). The rule going forward: a NEW flag-gated emission surface must
   state its input-mode posture in the same change — exercised under directory input, or recorded
   single-file-only with the reason. Postures already settled, each with the pin that holds it:
-  `--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` (a
-  multifile placement cell's non-root-module rule judged against the concatenated source spec — the
-  spec-on-disk contract `docs/docs/command_line_flags.mdx` states for the flag); the
-  `--wasm-*-macro` modes × directory input are compile-gated by `wasm_macros_multifile_compiles`
-  (per-module macro imports, invocations minted inside the submodule's own file, and the scoped
-  rust path each invocation carries), which puts the input-mode axis under the compile-only verdict
-  that is those surfaces' permanent posture (§ "Explicitly out of scope") rather than adding a
-  behavioral row; and EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module
-  types is covered by `multifile_json_preserve`, whose `run_test` leg runs the json-gen binary over
-  the four-submodule `tests/multifile/inputs` tree and asserts the emitted document. A directory
-  `--input` holding ONE `.cddl` file is not multifile in the sense this axis means —
+  - `--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a
+    multifile placement cell's non-root-module rule judged against the concatenated source spec, the
+    spec-on-disk contract `docs/docs/command_line_flags.mdx` states for the flag.
+  - The `--wasm-*-macro` modes × directory input are compile-gated by
+    `wasm_macros_multifile_compiles` (per-module macro imports, invocations minted inside the
+    submodule's own file, and the scoped rust path each invocation carries), which puts the
+    input-mode axis under the compile-only verdict that is those surfaces' permanent posture
+    (§ "Explicitly out of scope") rather than adding a behavioral row.
+  - EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered
+    by `multifile_json_preserve`, whose `run_test` leg runs the json-gen binary over the
+    four-submodule `tests/multifile/inputs` tree and asserts the emitted document.
+
+  A directory `--input` holding ONE `.cddl` file is not multifile in the sense this axis means —
   `api::with_types` splits scopes only when >1 file is found — so a single-file input directory
   discharges no input-mode posture. NOT on this list:
   `--common-import-override`, `--extern-wasm-crate`, `--extern-wrapper-index`, and the
@@ -959,7 +964,9 @@ composition-space cross-check that complements this matrix's curated per-shape g
   directory-input fixtures, and the extern-deps
   mechanism they extend only exists under directory input. (`--no-synthesized-rust-collection-aliases`
   is emission-only alias suppression with no per-module placement logic; its pin is single-file,
-  a deliberate posture.) A SIBLING axis with the same silent-hole character — per-wrapper emission
+  a deliberate posture.)
+
+  A SIBLING axis with the same silent-hole character — per-wrapper emission
   MODE (local vs index-deferred vs workspace-borrowed vs requested-hosted) × wrapper shape ×
   reference POSITION, which neither SHAPES/ROLES nor this input-mode rule enumerates — is swept in
   the rust suite instead, by the wrapper-participation grid (`tests/README.md`
