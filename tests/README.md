@@ -3066,10 +3066,24 @@ neither pruning a fixture nor newly skipping one can silently delete the coverag
 today, as `(stem, flavor, rustc error class, root cause)`, with a four-state verdict: listed + red
 with the pinned class is expected; listed + GREEN fails as "the fix landed, retire the entry";
 listed + red with a DIFFERENT class fails as "the failure changed shape"; unlisted + red is an
-ordinary gate failure. The ledger is a finding, not an exemption — its residents are three emission
-classes that all trace to one seam (with `--annotate-fields=false` there is no per-type scaffolding
-closure, so an emission that assumed one to re-shape a value, pin an inference variable, or `return`
-early lands in `deserialize()` itself), which is the seam `records.rs` already flags in a comment.
+ordinary gate failure. The ledger is a finding, not an exemption, so EMPTY is its healthy state and
+the machinery stays for the next red cell rather than being retired with the last one. The seam a
+new entry is most likely to sit on is the one `records.rs` already flags in a comment: with
+`--annotate-fields=false` there is no per-type scaffolding closure, so an emission that assumed one
+— to re-shape a value, to isolate an inline binding, or to `return` early — lands in
+`deserialize()` itself.
+
+**The semantic floor beside it.**
+`no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly` generates a bespoke spec
+covering the three emissions the flag re-frames (a c-style enum's inlined dispatch, an optional
+field's `Option`-over-the-value-slot distribution, a map field's inner temporaries) and round-trips
+non-canonical wire — indefinite lengths, non-minimal heads — through the built crate. It exists
+because this seam's two failure modes are not the same failure: losing a frame is a build error the
+compile floor catches, while losing an ENCODING compiles and is invisible. The map-field emission is
+where that bites — its inner deserialize's working variables can shadow the arm's encoding
+accumulators, so the trailing reassignments write the shadow and the outer value keeps its
+`default()` — and typing the binding to silence the resulting inference error would leave the loss
+in place. The non-canonical vectors fail against exactly that shape, measured.
 
 Each cell of this leg also gets its own package name (`give_cell_its_own_package_identity`) before
 `cargo check`. Cargo's unit hash for the ROOT package of a build does not include the manifest path,

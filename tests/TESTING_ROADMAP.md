@@ -648,32 +648,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     `feature_corpus_compiles` cell — standard corpus registration (snapshot bless,
     `CORPUS_PARITY_INPUTS` row).
 
-20. **Three `--annotate-fields=false` emission classes emit non-compiling rust, ledgered live in
-    `NO_ANNOTATE_KNOWN_RED`.** The corpus's annotate=false compile floor
-    (`feature_corpus_compiles_no_annotate_shard_NN`) found eight red cells on its first run, all
-    tracing to one seam: with the flag off there is no per-type scaffolding closure, so an emission
-    that assumed one lands in `deserialize()` itself. Class A — an optional field whose type carries
-    encodings binds `if <peek> { Some(<tuple>) } else { None }` to a bare tuple pattern (E0308;
-    `nullable_nested`, `table_preserve`, `wasm_nested_alias`, all under
-    `--preserve-encodings=true`), where the annotate=true path re-shapes through
-    `.map(|(v, …)| (Some(v), …))?` inside the closure. Class B — `let {f}_encoding = {f}_len.into();`
-    has nothing to pin its `Into` target (E0283; `alias_positions`, `dsl_copy`, `group_choice_map`,
-    preserve only). Class C — the inlined c-style-enum variant dispatch `return`s its `Ok` value, so
-    the `return` targets the enclosing `deserialize()` and the dispatch's own `Result` is left
-    un-`?`ed (E0308; `cbor_enum_payload` under BOTH rows — the only class that also breaks plain
-    `--annotate-fields=false`). The seam is the one `generation/records.rs` already flags in a
-    comment ("we might be able to write a nice way around this in the annotate_fields=false,
-    preserve_encodings=true case"), written when nothing compiled the combination; the floor now
-    does, so the classes are visible and each has a green-turning tripwire (a ledgered cell that
-    starts compiling fails the gate asking for the entry's retirement). Order of attack: C first
-    (it is the one class a consumer hits without `--preserve-encodings`, and its fix — emit the
-    dispatch as an immediately-invoked closure, as the annotate=true path already does — likely
-    subsumes nothing else); then A (one emission site, the optional-field-with-encodings binding);
-    then B (needs the encoding type at the emission site, or a `let … : _ =` ascription derived from
-    the sidecar field's declared type). Each fix retires its ledger rows; the leg's floor stems stay
-    green throughout.
-
-21. **Same-named generated crates silently share one cargo fingerprint under a shared
+20. **Same-named generated crates silently share one cargo fingerprint under a shared
     `CARGO_TARGET_DIR`, so a concurrent shard can report a non-compiling crate as `Finished`.**
     Every emitted rust crate is `cddl-lib v0.1.0`, and cargo's unit hash for the ROOT package of a
     build does not include the manifest path — N cells under one target dir share ONE
@@ -3303,7 +3278,10 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   is the shape-rich input the canonical smoke is not, and `NO_ANNOTATE_FLOOR_STEMS` pins the three
   provoking stems (`bounds_spellings`, `fixed_bool_member`, `optional_fixed_member`) as present AND
   swept so pruning cannot re-open the hole. `tests/README.md` § the corpus compile gate carries the
-  full description; what the leg found on its first run is the residual below. The remaining
+  full description; the three emission classes it found on its first run are fixed, and the
+  semantic sibling that a compile floor structurally cannot be
+  (`no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly`) rides beside it, so
+  the combination is swept for BUILDABILITY and for byte-exact fidelity. The remaining
   recur-first lesson from the first three: a THIRD validating
   flag turning up mode-inert is the trigger
   to build the class-level validation-smoke sweep — each clap flag with documented startup
