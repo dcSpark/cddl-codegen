@@ -618,18 +618,67 @@ pub(super) fn generate_array_struct_deserialization(
                         .add_to_code(&mut deser_code);
                     type_check_else.line(format!("Ok({defaults})"));
                 } else {
+                    // The same enc-field split the annotate branch above makes, and for the same
+                    // reason: the `Option` belongs on the VALUE slot alone, never around the whole
+                    // encoding tuple the binding pattern destructures. With no annotate closure to
+                    // re-shape inside, the re-shape rides the value expression itself, in the
+                    // spelling the nullable arm's `Some`-mapping already uses (`Result::<_, _>::Ok`
+                    // so the error type is pinned, `.map(..)?` to distribute).
+                    let enc_fields = if cli.preserve_encodings {
+                        field_encoding_fields(
+                            types,
+                            &field.name,
+                            &field.rust_type,
+                            Some(&field.rule_metadata),
+                            false,
+                            cli,
+                        )
+                    } else {
+                        vec![]
+                    };
                     let deser_config = DeserializeConfig::for_field(field, in_embedded, true);
+                    let (some_before, some_after, defaults) = if enc_fields.is_empty() {
+                        ("Some(".to_owned(), ")".to_owned(), "None".to_owned())
+                    } else {
+                        let enc_names_str = enc_fields
+                            .iter()
+                            .map(|enc| enc.field_name.clone())
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        (
+                            "Result::<_, DeserializeError>::Ok(".to_owned(),
+                            format!(
+                                ").map(|({}, {})| (Some({}), {}))?",
+                                field.name, enc_names_str, field.name, enc_names_str
+                            ),
+                            // Slot order is the binding pattern's, which is the enc-field order —
+                            // the same list the `map` binds — so a defaulted absent field can never
+                            // land its encodings in a neighbour's slot.
+                            format!(
+                                "(None, {})",
+                                enc_fields
+                                    .iter()
+                                    .map(|enc| enc.default_expr.to_owned())
+                                    .collect::<Vec<String>>()
+                                    .join(", ")
+                            ),
+                        )
+                    };
                     gen_scope
                         .generate_deserialize(
                             types,
                             (&field.rust_type).into(),
-                            DeserializeBeforeAfter::new("Some(", ")", false),
+                            DeserializeBeforeAfter::new(&some_before, &some_after, false),
                             deser_config,
                             cli,
                         )
                         .wrap_in_block(type_check_block)
                         .add_to_code(&mut deser_code);
-                    type_check_else.line("None");
+                    type_check_else.line(&defaults);
+                    if !enc_fields.is_empty() {
+                        // the `?` the distribution above appends
+                        deser_code.throws = true;
+                    }
                 }
                 type_check_else.after(after);
                 deser_code.content.push_block(type_check_else);

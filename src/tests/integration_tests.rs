@@ -3194,13 +3194,7 @@ const NO_ANNOTATE_FLOOR_STEMS: &[&str] = &[
 /// one — to re-shape a value, to pin an inference variable, or to `return` early — lands in
 /// `deserialize()` itself.
 ///
-/// The remaining classes, neither of which any other gate reaches:
-///   A. **optional field + encoding sidecars** (E0308) — the annotate=false path emits the
-///      `if <peek> { Some(<tuple>) } else { None }` form and binds it to the BARE tuple pattern
-///      `let (f, f_encoding, …) = …`; the annotate=true path re-shapes through
-///      `.map(|(v, …)| (Some(v), …))?` inside the closure, so only the flag-off spelling is
-///      ill-typed. Reached by an optional field whose type carries encodings: a nullable
-///      (`nullable_nested`), a table (`table_preserve`), a list (`wasm_nested_alias`).
+/// The remaining class, which no other gate reaches:
 ///   B. **untyped `.into()` for a length encoding** (E0283) — `let {f}_encoding = {f}_len.into();`
 ///      has nothing to pin its type parameter once the closure that consumed it into a typed return
 ///      tuple is gone (`LenSz: Into<_>` is ambiguous).
@@ -3224,27 +3218,6 @@ const NO_ANNOTATE_KNOWN_RED: &[(&str, &str, &str, &str)] = &[
         "preserve_noannotate",
         "E0283",
         "class B: `let f0_encoding = len.into();` — no closure return type to pin the `Into` target",
-    ),
-    (
-        "nullable_nested",
-        "preserve_noannotate",
-        "E0308",
-        "class A: optional NULLABLE field — `Option<(Option<u64>, Option<Sz>)>` bound to the bare \
-         tuple pattern `(field0, field0_encoding)`",
-    ),
-    (
-        "table_preserve",
-        "preserve_noannotate",
-        "E0308",
-        "class A: optional TABLE field — `Option<(PairMap<..>, _, Vec<Option<Sz>>, \
-         Vec<StringEncoding>)>` bound to the bare 4-tuple pattern",
-    ),
-    (
-        "wasm_nested_alias",
-        "preserve_noannotate",
-        "E0308",
-        "class A: optional LIST field — `Option<(Vec<u64>, _, Vec<Option<Sz>>)>` bound to the bare \
-         3-tuple pattern",
     ),
 ];
 
