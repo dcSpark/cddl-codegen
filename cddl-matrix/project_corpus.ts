@@ -346,12 +346,16 @@ const w = (s = "") => console.log(s);
 // RENDERED header is silently reverted by the next run (proven once — see the template's doc
 // comment). This check makes both desync directions loud at fast-tier speed: a hand edit to the
 // rendered file fails here immediately (edit the template instead), and a template edit not
-// mirrored into the committed file fails here until it is. The committed file's decode-foreign
-// form is detected from its own bytes so an opted-out run's output is compared against the
-// matching template flavor.
+// mirrored into the committed file fails here until it is. The committed file's per-leg form (the
+// decode-foreign and component-execution paragraphs, each emitted only when its leg is on) is
+// detected from its own bytes, so an opted-out run's output is compared against the matching
+// template flavor.
 const headerDriftJ: string[] = (() => {
   const lines = readFileSync(`${HERE}/annotations/cddl_codegen.toml`, "utf8").split("\n");
-  const expected = annotationsHeaderLines(lines.some(l => l.startsWith("# DECODE-FOREIGN clause")));
+  const expected = annotationsHeaderLines(
+    lines.some(l => l.startsWith("# DECODE-FOREIGN clause")),
+    lines.some(l => l.startsWith("# COMPONENT-EXECUTION clause")),
+  );
   for (let i = 0; i < expected.length; i++) {
     if (lines[i] !== expected[i]) {
       // the first divergence is the story; dumping the rest is noise

@@ -25,6 +25,10 @@ tests/workspace-regen/umbrella/Cargo.lock
 # The dep-universe warm-up crate is only ever `cargo fetch`ed (check.ts offline preflight);
 # its lock is re-resolved per warm-up, not a source of truth.
 tests/warmup/Cargo.lock
+# The matrix's component-execution probe host is COPIED into scratch and built there (verify.ts
+# never builds it in the checkout), so a lock here can only come from a hand `cargo` run — a local
+# artifact, not a source of truth.
+cddl-matrix/component-probe-host/Cargo.lock
 # getting_started_example generates the documented first-run output here (see getting_started.mdx)
 example/export*/
 

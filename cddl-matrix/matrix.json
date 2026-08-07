@@ -52,7 +52,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (10 accept + 1 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.size.uint",
         "status": "supported"
       },
@@ -722,7 +722,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (10 accept + 1 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.one_or_more",
         "status": "supported"
       },
@@ -1447,7 +1447,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; component round-trips (10 accept + 0 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "type2.array",
         "status": "supported"
       },

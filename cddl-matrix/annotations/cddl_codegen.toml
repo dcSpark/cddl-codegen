@@ -56,6 +56,16 @@
 #   oracle: it regenerates from tests/decode_conformance/catalog.toml's committed `spec` and replays
 #   spec-derived CBOR our code did NOT produce through the generated decoder — CORROBORATION ONLY, it
 #   never changes a verdict.
+#
+# COMPONENT-EXECUTION clause (the `--component` face, a BOUNDED row selection): a selected row's
+#   `evidence` gains one `; component …` clause naming the STAGE it was observed at — generation,
+#   the minted WIT door, the wasm32-wasip2 build, or the round trip itself. The leg regenerates the
+#   row's catalog `spec` with `--component=true --wasm=false`, builds the component, and drives the
+#   catalog's vectors through it under wasmtime: every accept vector must decode AND re-encode to
+#   the bytes the row's own rust crate produces (a live oracle, never a committed expectation), and
+#   every reject vector must come back as `Err` — never a trap — with the instance still usable.
+#   CORROBORATION ONLY, like the wasm oracle: it never changes a verdict. Rows outside the
+#   selection carry no component clause; compile BREADTH is the `component_corpus_compiles` gate's.
 
 [[support]]
 id = "assigng.extend"
@@ -88,7 +98,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "ctl.size.uint"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (10 accept + 1 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"
@@ -494,7 +504,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "occur.one_or_more"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (10 accept + 1 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"
@@ -949,7 +959,7 @@ evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 [[support]]
 id = "type2.array"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; component round-trips (10 accept + 0 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
