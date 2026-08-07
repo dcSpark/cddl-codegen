@@ -681,7 +681,17 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     fails the gate loudly instead of silently greening; the rename alone only removes the one
     known mechanism. (No pre-existing gate could have caught this class:
     `gate_cache_closure_audit` audits OUR cache keys, and here the key was right — the verdict
-    cargo handed us was wrong.)
+    cargo handed us was wrong.) NEW MEMBER + a counterexample to the sequential-safety claim
+    above (2026-08-08, the matrix component-execution leg's bring-up): even SEQUENTIAL same-name
+    cells under one shared target cross-bound — cell 2's native oracle resolved its `cddl-lib`
+    path dep against cell 1's already-built same-name rlib and failed loudly on a type the new
+    cell defines (`cannot find type ProbeHolder`), a spurious RED rather than this item's silent
+    green, but the same mechanism (name+version-keyed fingerprints, manifest path excluded). The
+    leg is defended by an mtime `touchTree` per cell before its builds (`verify.ts`,
+    `COMPONENT_TARGET`'s comment carries the proof). Standing rule this instance adds: every NEW
+    shared-target consumer of same-named generated crates states its defense (package rename or
+    `touchTree`) at the site that creates the target dir, so the next leg does not rediscover
+    the hazard live.
 
 21. **A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no
     corpus cell exercises.** The c-style-enum deserialize arm has two emission forms, and the form
@@ -746,9 +756,54 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     work is one fixture each plus its ledger row — the same shape as the three pins already there.
     Found by widening `cddl-matrix/verify.ts`'s component-execution selection (they cost that leg
     three candidate rows: `type.choice` and every `rangeop` row name their rule `t`, and
-    `prelude.any` is the constructor case), which is evidence about the DETECTOR too: a compile
-    breadth gate whose corpus is hand-picked cannot be assumed to cover a class just because the
-    class is ordinary.
+    `prelude.any` is the alias-of-`any` case), which is evidence about the DETECTOR too: a
+    compile breadth gate whose corpus is hand-picked cannot be assumed to cover a class just
+    because the class is ordinary. That detector lesson is the item's SECOND half, and the two
+    fixtures above do NOT discharge it — they pin the two KNOWN instances only. The class-level
+    instrument is a component-face BUILD sweep over the matrix's own enumeration (per drivable
+    catalog row: generate `--component=true --wasm=false`, build the `component/` package for
+    wasip2 — generation and build stages of the execution leg's per-cell flow, breadth instead of
+    its bounded selection, no host run), which is exactly the procedure that surfaced both known
+    classes when run by hand during the leg's widening; both classes sat in ORDINARY rows
+    (`type.choice`, `prelude.any`) that the hand-picked corpus never spelled. Same memoization
+    discipline as the execution leg (the cells are cheap when warm); acceptable as an
+    occasional/mint-style sweep rather than an every-run gate if the cold cost measures badly —
+    what matters is that unknown-unknown compile classes have a systematic finder, not that it
+    runs on every tier.
+
+24. **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
+    no generated component can reach never gets red-proven.** The matrix's generic wasmtime host
+    (`cddl-matrix/component-probe-host/`) maps boundary outcomes to verdict tokens
+    (`ok`/`err`/`mismatch`/`trap`), and the execution leg's red-first controls proved every arm a
+    GENERATED component can drive. The arms it structurally cannot reach — a decode door
+    returning `Ok` with no payload, a door whose result is not a `result` at all — went live
+    without ever firing, and one of them shipped mapped to the WRONG token (`Ok(None)` emitted
+    `ok`, a false-pass channel for the byte-equality assertion; caught by orchestrator design
+    review, fixed in the thirteen-row widening commit). The class: a generic driver grows
+    defensive arms for protocol shapes its own fixtures cannot produce, so the red-first
+    discipline that guards every reachable arm silently exempts exactly the arms most likely to
+    be wrong. The systematic layer: unit-style controls over the host's verdict MAPPING on
+    synthetic inputs (factor the outcome→token mapping into a function the host's own
+    `cargo test` drives with every arm, including the unreachable ones), so a future arm added
+    wrong fails the host's build, not a review. Small — the mapping is one match today.
+
+25. **A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional
+    and the rust side can drift silently-soft.** `cddl-matrix/verify.ts::toKebabCase` mirrors
+    `src/utils.rs::convert_to_kebab_case` to name the WIT resource the component leg's mint check
+    and host look for; the verify startup self-test pins the TS side against a fixture table
+    copied from the rust test `convert_to_kebab_case_table`, and LOCKSTEP doc comments on the
+    rust side name the TS table. But nothing EXECUTABLE ties the two tables together: a rust-side
+    conversion change updates the rust table (its own test forces that) while the TS fixtures
+    keep passing against the OLD rules, and the divergence surfaces only as a soft annotations
+    diff ("no minted component surface" on selected rows) after a full verify run. The
+    systematic layer: a drift check that reads BOTH tables and asserts the shared rows agree —
+    cheapest as an extension of the existing verify self-test (parse the `convert_to_kebab_case_table`
+    assertion rows out of `src/utils.rs` and require every TS fixture row to appear there with
+    the same expectation), which puts it on `verify_selftest`'s local-tier path where the
+    taxonomy pins already live. The general class is the one the LOCKSTEP convention exists for
+    (moved code carries its comments; here the two halves live in different LANGUAGES so no
+    comment survives a refactor mechanically), and the corpus-detect mirror's gate-enforced
+    precedent is the model.
 
 ## Standing-system residuals (recur-first)
 
