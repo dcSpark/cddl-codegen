@@ -27,3 +27,14 @@ typechoice_variants =
     text      ; @name case_1
     /
     [* text]  ; @name case_2
+
+; `@name` on a member-position anonymous inline array reaches THROUGH tag wrappers. A tag mints no
+; type of its own, so the array behind it is the sole nameable referent: the name mints
+; `TaggedPoint` and the tag wraps it, which is what the named-rule spelling (`p = [x: uint]`, then
+; `#6.42(p)`) emits. The wire is the tag over the array either way — pinned in tests.rs against
+; hand-written bytes.
+tagged_anon_holder = [
+    #6.42([x: uint]) ; @name tagged_point
+    ,
+    text             ; @name label
+]

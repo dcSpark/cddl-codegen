@@ -134,4 +134,28 @@ mod tests {
         assert_eq!(non_minimal.get(), 5);
         assert_eq!(non_minimal.to_cbor_bytes(), vec![0x19, 0x00, 0x05]);
     }
+
+    // @name on a member-position anonymous inline array reaches THROUGH the tag wrapper: the name
+    // mints `TaggedPoint` and the tag wraps it. Rust-side naming only — the wire is the tag over
+    // the array, identical to the named-rule spelling (`p = [x: uint]` / `#6.42(p)`).
+    #[test]
+    fn tagged_anon_array_member_name() {
+        let holder = TaggedAnonHolder::new(TaggedPoint::new(1), String::from("hi"));
+        assert_eq!(holder.tagged_point.x, 1);
+        assert_eq!(holder.label, "hi");
+        // array(2), tag(42) d8 2a, array(1), uint 1, text(2) "hi"
+        let bytes = vec![0x82, 0xd8, 0x2a, 0x81, 0x01, 0x62, 0x68, 0x69];
+        assert_eq!(holder.to_cbor_bytes(), bytes);
+        deser_test(&holder);
+        let decoded = TaggedAnonHolder::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(decoded.tagged_point.x, 1);
+        assert_eq!(decoded.label, "hi");
+        assert_eq!(decoded.to_cbor_bytes(), bytes);
+        // preserve-encodings: a non-minimally-encoded inner uint inside the tagged array survives
+        // the round trip, so the minted struct carries its own encoding sidecar like any other.
+        let non_minimal = vec![0x82, 0xd8, 0x2a, 0x81, 0x19, 0x00, 0x01, 0x62, 0x68, 0x69];
+        let kept = TaggedAnonHolder::from_cbor_bytes(&non_minimal).unwrap();
+        assert_eq!(kept.tagged_point.x, 1);
+        assert_eq!(kept.to_cbor_bytes(), non_minimal);
+    }
 }

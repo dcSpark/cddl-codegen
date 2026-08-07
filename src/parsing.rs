@@ -5310,12 +5310,24 @@ fn group_entry_rule_metadata(entry: &GroupEntry, optional_comma: &OptionalComma)
 /// type does not inherit the comment of a parent it merely happens to end, and a general
 /// `Type -> GroupEntry` ascent would leak every field-level directive into every type2 read. So the
 /// naming site asks for the slot by itself, under the narrowest scope that keeps the name
-/// unambiguous: the anonymous array must be the member's WHOLE type. The ascent is therefore
-/// required to be exactly `Type2 -> Type1 -> TypeChoice -> Type -> ValueMemberKeyEntry ->
-/// GroupEntry`, over an operator-free `Type1` and a single-choice `Type`. Every other spelling — a
-/// `.cbor` payload (whose `Type2`'s parent is the `Operator`), a choice arm, an array nested inside
-/// another anonymous array — keeps the anonymous-group rejection rather than guessing which
-/// construct the name was meant for.
+/// unambiguous: the anonymous array must be the member's WHOLE type, UP TO tag wrappers. The
+/// ascent is therefore required to be
+/// `Type2 -> (Type1 -> TypeChoice -> Type -> Type2::TaggedData)* -> Type1 -> TypeChoice -> Type ->
+/// ValueMemberKeyEntry -> GroupEntry`, with EVERY rung over an operator-free `Type1` and a
+/// single-choice `Type`. Every other spelling — a `.cbor` payload (whose `Type2`'s parent is the
+/// `Operator`), a choice arm, a parenthesized type, an array nested inside another anonymous array
+/// — keeps the anonymous-group rejection rather than guessing which construct the name was meant
+/// for.
+///
+/// Tag layers are walked (any number of them, `#6.42([x: uint])` and `#6.1(#6.42([x: uint]))`
+/// alike) because a tag mints NO type of its own: it wraps whatever its payload parses to, so the
+/// anonymous array remains the sole nameable referent and the name can only mean the struct. The
+/// name mints the struct and the tag wraps it, which is byte-for-byte the named-rule remedy
+/// (`inner = [x: uint]` / `f: #6.42(inner)`) with a different identifier. Without this the
+/// rejection would advertise an `@name` door that the tagged spelling cannot open. The per-rung
+/// operator-free and single-choice requirements are what keep it unambiguous: an operator makes the
+/// array the operator's target rather than the tag's whole payload, and a multi-choice `Type` at
+/// any rung reintroduces the arm-vs-member ambiguity the untagged spelling already refuses.
 ///
 /// Only `.name` is consumed. The same comment is ALSO the field-rename slot, so one `@name` here
 /// names both the field and the struct that field holds; every other directive on it keeps the
@@ -5324,31 +5336,43 @@ fn anon_array_member_name<'a>(
     parent_visitor: &'a ParentVisitor<'a, 'a>,
     type2: &'a Type2<'a>,
 ) -> Option<String> {
-    let type1 = match CDDLType::from(type2).parent(parent_visitor)? {
-        CDDLType::Type1(type1) => *type1,
-        _ => return None,
-    };
-    // A control/range operator means the array is the operator's target (`bytes .cbor [..]`), not
-    // the member's own type, and the comment after it is the operator chain's, not the array's.
-    if type1.operator.is_some() {
-        return None;
-    }
-    let type_choice = match CDDLType::from(type1).parent(parent_visitor)? {
-        CDDLType::TypeChoice(type_choice) => *type_choice,
-        _ => return None,
-    };
-    let entry_type = match CDDLType::from(type_choice).parent(parent_visitor)? {
-        CDDLType::Type(entry_type) => *entry_type,
-        _ => return None,
-    };
-    // A choice arm's name would be ambiguous between the arm and the member, and the arm spelling
-    // already has its own reachable slot (`TypeChoice::comments_after_type`).
-    if entry_type.type_choices.len() != 1 {
-        return None;
-    }
-    let value_member_key = match CDDLType::from(entry_type).parent(parent_visitor)? {
-        CDDLType::ValueMemberKeyEntry(value_member_key) => *value_member_key,
-        _ => return None,
+    // The ascent is a loop only because of tag layers: each iteration climbs one
+    // `Type2 -> Type1 -> TypeChoice -> Type` rung and then asks what that `Type` belongs to. A
+    // `ValueMemberKeyEntry` ends the climb (the member slot we want); a `Type2::TaggedData` means
+    // we were inside a tag's payload, so the tag becomes the new `Type2` and the same rung repeats.
+    let mut current = type2;
+    let value_member_key = loop {
+        let type1 = match CDDLType::from(current).parent(parent_visitor)? {
+            CDDLType::Type1(type1) => *type1,
+            _ => return None,
+        };
+        // A control/range operator means the array is the operator's target (`bytes .cbor [..]`),
+        // not the member's own type, and the comment after it is the operator chain's, not the
+        // array's.
+        if type1.operator.is_some() {
+            return None;
+        }
+        let type_choice = match CDDLType::from(type1).parent(parent_visitor)? {
+            CDDLType::TypeChoice(type_choice) => *type_choice,
+            _ => return None,
+        };
+        let entry_type = match CDDLType::from(type_choice).parent(parent_visitor)? {
+            CDDLType::Type(entry_type) => *entry_type,
+            _ => return None,
+        };
+        // A choice arm's name would be ambiguous between the arm and the member, and the arm
+        // spelling already has its own reachable slot (`TypeChoice::comments_after_type`).
+        if entry_type.type_choices.len() != 1 {
+            return None;
+        }
+        match CDDLType::from(entry_type).parent(parent_visitor)? {
+            CDDLType::ValueMemberKeyEntry(value_member_key) => break *value_member_key,
+            // A tag layer. The tag mints no type of its own — it wraps whatever its payload parses
+            // to — so the anonymous array is still the only nameable referent, and climbing past it
+            // introduces no ambiguity. Repeat the rung with the tag as the new `Type2`.
+            CDDLType::Type2(tagged @ Type2::TaggedData { .. }) => current = tagged,
+            _ => return None,
+        }
     };
     let entry = match CDDLType::from(value_member_key).parent(parent_visitor)? {
         CDDLType::GroupEntry(entry) => *entry,

@@ -1061,6 +1061,258 @@ fn anonymous_nested_array_rejects_gracefully() {
     );
 }
 
+/// The member-position `@name` naming door reaches THROUGH tag wrappers, and what it mints there is
+/// the named-rule remedy under a different identifier — asserted as emitted-source EQUALITY rather
+/// than as a feature list, because equality is the only claim that cannot drift into "generates
+/// something".
+///
+/// A tag mints no type of its own: `#6.42([x: uint])` wraps whatever its payload parses to, so the
+/// anonymous array behind it is the sole nameable referent and `@name` there can only mean the
+/// struct. That is why `anon_array_member_name` walks tag layers instead of stopping at them — the
+/// "Anonymous groups not allowed" rejection advertises `@name` as a remedy, and a door the tagged
+/// spelling could not open would make that advice false.
+///
+/// The comparison is against the remedy the SAME message advertises (`inner = [x: uint]` /
+/// `inner: #6.42(inner)`), with the field spelled `inner` in both so the member-position slot's
+/// documented dual effect (it renames the field AND names the struct) leaves nothing else to
+/// differ. One file legitimately differs — `extern_interface_check.rs` asserts the crate's exported
+/// RULES, and a minted struct is not one — so the delta is pinned by SHAPE (exactly the remedy's
+/// two extra `Inner` assertions) and cross-checked against the UNTAGGED door, which produces the
+/// identical delta. That control is what makes the residual attributable to minting rather than to
+/// the tag.
+///
+/// Three profile scopes, because emission (not the parse-time name lookup) is what is being
+/// compared and the profiles emit different code: default rust-only, preserve rust-only, and a wasm
+/// run. The `wasm` flag PARSE-DEFAULTS TRUE, so the rust-only scopes spell `--wasm=false`
+/// explicitly. Preserve is asserted rather than assumed: a tag over an anonymous CHOICE refuses
+/// under preserve, and this pins that a tag over a NAMED struct does not.
+#[test]
+fn tagged_anon_array_member_name_emits_the_named_rule_remedy() {
+    // Written so the only intended difference is the naming route: same field name, same struct
+    // identifier (`@name Inner` and the rule `inner` both mint `Inner`), same tag.
+    const TAGGED_DOOR: &str = "t = [ inner: #6.42([x: uint]) ; @name Inner\n, y: uint ]\n";
+    const NAMED_REMEDY: &str = "inner = [x: uint]\nt = [ inner: #6.42(inner), y: uint ]\n";
+    // The untagged control pair — the door that already worked, against ITS named-rule remedy.
+    const UNTAGGED_DOOR: &str = "t = [ inner: [x: uint] ; @name Inner\n, y: uint ]\n";
+    const UNTAGGED_REMEDY: &str = "inner = [x: uint]\nt = [ inner: inner, y: uint ]\n";
+    // The one file whose content is a function of which rules the spec DECLARES, not of what the
+    // members lower to.
+    const EXPORT_CHECK: &str = "extern_interface_check.rs";
+
+    for (scope, flags) in [
+        ("default_rust_only", &["--wasm=false"][..]),
+        (
+            "preserve_rust_only",
+            &["--wasm=false", "--preserve-encodings=true"][..],
+        ),
+        ("wasm", &["--wasm=true"][..]),
+    ] {
+        let emit = |tag: &str, spec: &str| -> std::collections::BTreeMap<String, String> {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_tagdoor_{scope}_{tag}_{}.cddl",
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "tagged_anon_door_unused",
+            ];
+            argv.extend_from_slice(flags);
+            let out = crate::api::generated_strings(&Cli::parse_from(argv));
+            std::fs::remove_file(&path).ok();
+            out.unwrap_or_else(|e| {
+                panic!("[{scope}/{tag}] spec must generate, got a rejection: {e}\n{spec}")
+            })
+        };
+
+        // Returns the delta on the export-check file after asserting every OTHER file is identical.
+        let compare = |pair: &str,
+                       door: &std::collections::BTreeMap<String, String>,
+                       remedy: &std::collections::BTreeMap<String, String>|
+         -> Vec<String> {
+            assert_eq!(
+                door.keys().collect::<Vec<_>>(),
+                remedy.keys().collect::<Vec<_>>(),
+                "[{scope}/{pair}] the naming door and its named-rule remedy must emit the same \
+                 file set"
+            );
+            for (name, door_src) in door {
+                if name.ends_with(EXPORT_CHECK) {
+                    continue;
+                }
+                assert_eq!(
+                    door_src, &remedy[name],
+                    "[{scope}/{pair}] `{name}` must be byte-identical to the named-rule remedy's"
+                );
+            }
+            let (name, door_src) = door
+                .iter()
+                .find(|(name, _)| name.ends_with(EXPORT_CHECK))
+                .unwrap_or_else(|| panic!("[{scope}/{pair}] no {EXPORT_CHECK} was emitted"));
+            let remedy_src = &remedy[name];
+            remedy_src
+                .lines()
+                .filter(|line| !door_src.lines().any(|d| d == *line))
+                .map(str::to_owned)
+                .collect()
+        };
+
+        let tagged_delta = compare(
+            "tagged",
+            &emit("door", TAGGED_DOOR),
+            &emit("remedy", NAMED_REMEDY),
+        );
+        let untagged_delta = compare(
+            "untagged_control",
+            &emit("uncontrol_door", UNTAGGED_DOOR),
+            &emit("uncontrol_remedy", UNTAGGED_REMEDY),
+        );
+        // The residual is the exported-rule list, and it is the SAME residual the already-working
+        // untagged door leaves — so nothing about the tag route is special.
+        assert_eq!(
+            tagged_delta, untagged_delta,
+            "[{scope}] the tagged door's only residual against its remedy must be exactly the \
+             untagged door's"
+        );
+        assert!(
+            tagged_delta.len() == 2
+                && tagged_delta
+                    .iter()
+                    .all(|line| line.contains("crate::generated::Inner")),
+            "[{scope}] the residual must be the remedy's two exported-rule assertions for the \
+             top-level `inner` rule (a minted struct is not an exported rule), got: \
+             {tagged_delta:?}"
+        );
+    }
+}
+
+/// The SCOPE of the tag-walking member-position naming door: what it reaches and, more importantly,
+/// what it still refuses. The walk climbs `Type2 -> Type1 -> TypeChoice -> Type` rungs through tag
+/// layers only, each rung required to be operator-free and single-choice, so the anonymous array is
+/// the member's whole type up to tags. Every vector below is a spelling where that requirement
+/// either holds (and the name must mint) or fails (and the pre-existing rejection must stand,
+/// unchanged and never a panic).
+///
+/// The boundary vectors are the ones that carry the argument. A `.cbor` payload's array belongs to
+/// the control operator, not to the member, so the name has no unambiguous referent; a multi-choice
+/// member type reintroduces the arm-vs-member ambiguity the untagged door already refuses; and the
+/// inline MAP has no naming door at all, so a tag over one must keep the map's OWN message rather
+/// than start consuming a name it cannot honor. Each is asserted at the tagged spelling because the
+/// walk is what could have widened them.
+#[test]
+fn tagged_anon_array_member_name_walks_only_operator_free_single_choice_tag_layers() {
+    // Nested tags are handled by the same loop — probed, so pinned: two layers emit both tag heads
+    // over one minted struct. If the loop ever stopped at the first layer this would become the
+    // graceful rejection instead, which the boundary half below would not notice.
+    let nested = expect_custom_codec_source(
+        "tagdoor_nested_tags",
+        "t = [ inner: #6.1(#6.42([x: uint])) ; @name Inner\n, y: uint ]\n",
+    );
+    assert!(
+        nested.contains("pub struct Inner")
+            && nested.contains("serializer.write_tag(1u64)?;")
+            && nested.contains("serializer.write_tag(42u64)?;"),
+        "nested tag layers must mint the struct once and wrap it in BOTH tags, got:\n{nested}"
+    );
+
+    // TWO structurally identical tagged members in one group, each with its own name. The AST
+    // parent lookup resolves a node by VALUE, so a shape whose subtrees differ only by source
+    // position is where a per-rung climb could read the wrong member's comment — and the loop makes
+    // that climb longer. Distinct names in distinct fields is the observable that they did not
+    // collapse.
+    let twins = expect_custom_codec_source(
+        "tagdoor_identical_twins",
+        "t = [ f: #6.42([x: uint]) ; @name Alpha\n, g: #6.42([x: uint]) ; @name Beta\n]\n",
+    );
+    assert!(
+        twins.contains("pub struct Alpha")
+            && twins.contains("pub struct Beta")
+            && twins.contains("pub alpha: Alpha")
+            && twins.contains("pub beta: Beta"),
+        "identical tagged members must each read their OWN naming slot, got:\n{twins}"
+    );
+
+    // (tag, spec, the message the shape must KEEP) — each rejection is the one that fired before
+    // the walk learned about tags, so a widened walk shows up as a vanished message.
+    const ANON_GROUP: &str = "Anonymous groups not allowed";
+    for (tag, spec, needle) in [
+        // The `.cbor` carve-out: the array is the OPERATOR's target (its `Type2`'s parent is the
+        // `Operator`, not a `Type1`), tagged or not.
+        (
+            "cbor_payload",
+            "t = [ f: bytes .cbor [x: uint] ; @name Inner\n, y: uint ]\n",
+            ANON_GROUP,
+        ),
+        (
+            "tagged_cbor_payload",
+            "t = [ f: #6.42(bytes .cbor [x: uint]) ; @name Inner\n, y: uint ]\n",
+            ANON_GROUP,
+        ),
+        // A multi-choice member type — both spellings, since the parenthesized one interposes a
+        // `Type2::ParenthesizedType` the walk deliberately does not climb.
+        (
+            "multi_choice_paren",
+            "a = uint\nt = [ f: (a / [x: uint]) ; @name Inner\n, y: uint ]\n",
+            ANON_GROUP,
+        ),
+        (
+            "tagged_multi_choice",
+            "a = uint\nt = [ f: #6.42(a / [x: uint]) ; @name Inner\n, y: uint ]\n",
+            ANON_GROUP,
+        ),
+        // A tagged inline MAP keeps the MAP's own message: the map side has no naming door, so the
+        // walk must not make one reachable by proxy.
+        (
+            "tagged_inline_map",
+            "t = [ f: #6.42({x: uint}) ; @name Inner\n, y: uint ]\n",
+            "used as a member or element type is unsupported unless it is a table",
+        ),
+        // No `@name` at all: the tagged anonymous array keeps the rejection whose `@name` advice
+        // the walk has now made TRUE.
+        (
+            "tagged_no_name",
+            "t = [ f: #6.42([x: uint]), y: uint ]\n",
+            ANON_GROUP,
+        ),
+    ] {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(&format!("tagdoor_{tag}"), spec, extra);
+            assert!(
+                msg.contains(needle),
+                "[{tag}, {extra:?}] the shape must keep its own rejection, got:\n{msg}"
+            );
+            assert!(
+                !msg.contains("pub struct Inner"),
+                "[{tag}, {extra:?}] a refused shape must not have minted anything"
+            );
+        }
+    }
+
+    // The advice the no-`@name` rejection gives is now TRUE for the tagged spelling — which is the
+    // whole point of the walk, and the one claim the message text makes about this shape.
+    let advised = expect_graceful_rejection(
+        "tagdoor_advice",
+        "t = [ f: #6.42([x: uint]), y: uint ]\n",
+        &[],
+    );
+    assert!(
+        advised.contains("give it a name using the `@name` notation"),
+        "the rejection must still advertise the `@name` door, got:\n{advised}"
+    );
+    let taken = expect_custom_codec_source(
+        "tagdoor_advice_taken",
+        "t = [ f: #6.42([x: uint]) ; @name Inner\n, y: uint ]\n",
+    );
+    assert!(
+        taken.contains("pub struct Inner"),
+        "taking the advertised `@name` door on the tagged spelling must generate the struct, \
+         got:\n{taken}"
+    );
+}
+
 /// `@raw_bytes_flavor` anywhere other than a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition is
 /// rejected BY DESIGN — via a GRACEFUL `Err` (deferred through `record_rejection` → drained by
 /// `finalize`), never a `panic!` and never a silent no-op. One vector per rejecting seam: a
@@ -7026,9 +7278,9 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
 
 /// `@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm agrees with the ONE reader
 /// that slot has: honored exactly where `anon_array_member_name` consumes it — a member-position
-/// ANONYMOUS heterogeneous inline array, which the name mints the struct for — and refused
-/// everywhere else, where it was read by nothing (`// f: bytes ; @name renamed` still emitted
-/// variant `F`).
+/// ANONYMOUS heterogeneous inline array, bare or behind any number of tag wrappers, which the name
+/// mints the struct for — and refused everywhere else, where it was read by nothing
+/// (`// f: bytes ; @name renamed` still emitted variant `F`).
 ///
 /// The property this pins is the AGREEMENT, not a list of shapes: over a vocabulary of arm-entry
 /// member types, every `@name` is EITHER honored-as-mint (and only for the anon heterogeneous array)
@@ -7052,9 +7304,11 @@ fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
         ("homogeneous_array", "[* uint]", false),
         ("bare_primitive", "bytes", false),
         ("alias", "al", false),
-        // behind a tag the array is the tag's payload, not the member's whole type, so the reader's
-        // ascent stops — the same scoping the member-position naming door has.
-        ("tagged_anon_array", "#6.42([x: uint])", false),
+        // a TAG is transparent to the reader: it mints no type of its own, so the array behind it
+        // is still the sole nameable referent and the name mints its struct exactly as the untagged
+        // row above does — the tag then wraps that struct. This is the SAME consuming shape, which
+        // is why it agrees with the row above rather than forming a class of its own.
+        ("tagged_anon_array", "#6.42([x: uint])", true),
         // an inline MAP has no naming door at all (its own error points at the named form).
         ("anon_map", "{x: uint}", false),
     ];
