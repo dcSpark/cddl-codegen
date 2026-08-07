@@ -402,15 +402,11 @@
     },
     {
       "gate": "insta_orphan",
-      "warm_ms": 55000,
+      "warm_ms": 66000,
       "n": 20,
-      "measured": "2026-07-30",
+      "measured": "2026-08-07",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-26",
-          "warm_ms": 59000
-        },
         {
           "date": "2026-07-27",
           "warm_ms": 47000
@@ -426,6 +422,10 @@
         {
           "date": "2026-07-30",
           "warm_ms": 55000
+        },
+        {
+          "date": "2026-08-07",
+          "warm_ms": 66000
         }
       ]
     },
@@ -455,7 +455,17 @@
       ]
     },
     {
-      "gate": "ir_conformance_multifile"
+      "gate": "ir_conformance_multifile",
+      "warm_ms": 2000,
+      "n": 3,
+      "measured": "2026-08-07",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-07",
+          "warm_ms": 2000
+        }
+      ]
     },
     {
       "gate": "lint_doc_citations",

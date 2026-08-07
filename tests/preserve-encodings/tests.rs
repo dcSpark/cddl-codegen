@@ -1701,6 +1701,20 @@ mod tests {
         // decimal spellings `u64::from_str` accepts but `to_string` never re-emits
         assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("baad", "+1024")).is_err());
         assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("baad", "01024")).is_err());
+        // The STRING-ENCODING dimension of the same contract, on the pair with NO encoding slot at
+        // all (read_custom_record replaces the record's array with a text item, so the record's
+        // self-carrying sidecars describe nothing about it): the second libFuzzer artifact —
+        // indefinite text `7f 61 31 ff` ("1" in one chunk) — was accepted and re-encoded as the
+        // definite `61 31`. Only the writer's exact re-emission may be accepted: definite text,
+        // canonical length width, canonical decimal content.
+        assert!(CustomRecord::from_cbor_bytes(&[0x7f, 0x61, 0x31, 0xff]).is_err()); // the artifact
+        assert!(CustomRecord::from_cbor_bytes(&[0x78, 0x01, 0x31]).is_err()); // non-canonical width
+        assert!(CustomRecord::from_cbor_bytes(&[0x62, 0x2b, 0x31]).is_err()); // "+1"
+        assert!(CustomRecord::from_cbor_bytes(&[0x62, 0x30, 0x31]).is_err()); // "01"
+        // control: the writer's own spelling round-trips byte-identically
+        let rec = CustomRecord::from_cbor_bytes(&[0x61, 0x31]).unwrap();
+        assert_eq!(rec.value, 1);
+        assert_eq!(rec.to_cbor_bytes(), vec![0x61, 0x31]);
     }
 
     // A table's KEY domain and VALUE range are the two positions a type-level custom pair reaches
