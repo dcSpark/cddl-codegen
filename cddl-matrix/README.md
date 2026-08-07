@@ -506,7 +506,10 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   position and the member ones (array-element, map-value, occurrence-target), pinned by
   `dsl_position_tests` cells. It stays out of reach where the array belongs to some other construct
   the comment cannot be attributed to (a `bytes .cbor [ … ]` payload, a generic argument, a map
-  key), and the MAP bracket has no naming door at all — its message advertises only the named form.
+  key, and a TAGGED array `#6.42([ … ])`, whose `TaggedData` node breaks the reader's parent-chain
+  walk — that one's rejection message still advertises the door it cannot open, the advice gap
+  ledgered in `ROADMAP.md` § findings), and the MAP bracket has no naming door at all — its message
+  advertises only the named form.
   Where the door does not reach, the `@name` written for it is now REFUSED rather than dropped: on a
   SINGLE-ENTRY group-choice arm the entry-trailing slot is honored exactly where the door consumes
   it and is a hard error otherwise, naming the arm's own slot (the one after the `//`), so an author

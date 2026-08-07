@@ -83,6 +83,17 @@ emitted type name, rename the `foo` identifier. The same rejection covers the tw
 `Option<T>` alias, so its arms are not variants) and the tag-258 set idiom
 (`foo = #6.258([* uint]) / [* uint]`, which collapses to a set wrapper for the same reason).
 
+A directive that names a **type** or a **rule** belongs on the rule that defines it, and writing
+one in a *member's* trailing slot — an ordinary field of either representation, a single-entry
+group-choice arm's entry, an open-map rest row, or an open-array rest tail — is a hard error
+naming the rule spelling, never a silent no-op. That covers both rule-scoped families: the
+extern/collection tags (`@copy`, `@raw_bytes_flavor`, `@used_as_elem`, `@extern_companions`,
+`@duplicates`, `@ignore`) and the type-scoped ones (`@rust_name`, `@newtype`, `@no_alias`,
+`@used_as_key`, `@custom_json`, `@no_json_schema_export`). What a member's slot *does* carry
+depends on the member: an ordinary field's takes its `@name`, its `@doc` and the complete
+custom-codec pair; a rest row's takes its row-level directives; a single-entry arm's entry slot is
+narrower still (below).
+
 On a plain group rule the trailing comment belongs to the last group entry, not the rule:
 `grp = (a: uint) ; @name other` renames the *field* `a` to `other` (exactly like
 `grp = (a: uint ; @name other)`) — it neither renames the group nor errors, **provided some rule
