@@ -207,23 +207,6 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 
 ## Expansion (when relevant)
 
-- **A component-face emission leg (the wasm probe's sibling), execution-verified.** The emission
-  axis deliberately excludes the `component` profile because this pipeline's verdict is a
-  rust-crate round-trip and `--component` leaves every rust byte identical (`README.md`, the
-  annotations-table row) — true, and silent about the component face's OWN per-feature surface,
-  which does vary: cddl-codegen's corpus compile gate ledgers shapes whose component glue does
-  not compile (`EXPECTED_COMPILE_FAIL`, gate `component_corpus_compiles`), so a matrix row can
-  read `supported` while the feature's component glue would not build. Compile breadth is already
-  owned by that gate; what a matrix leg would add is exactly what the wasm leg added over compile
-  checks: per-feature EXECUTION verdicts — build the emitted component crate per feature, drive
-  its round-trip under a host, and thread `component_gen`/`minted_component`/`component_roundtrips`
-  stage fields into the evidence with stage-named clauses, per the wasm probe's taxonomy.
-  - **Reopening signal:** the first component-face defect that `component_corpus_compiles`
-    passes — glue that compiles but miscompiles a round-trip — found by any downstream party.
-    That is the defect class execution-gating exists for, it is measurable by whoever hits it,
-    and the wasm leg's own history (compile-only verdicts masking miscompiles) is why the signal
-    sits on this dimension rather than on ledger growth.
-
 - **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the IANA control-op registry (spans RFC
   8610/9090/9165/9741). The CDDL modules draft is now a pinned source
   (`sources/draft-ietf-cbor-cddl-modules-06.txt`; version-pinned URL — bump filename+URL+sum together)
