@@ -677,6 +677,47 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     `gate_cache_closure_audit` audits OUR cache keys, and here the key was right — the verdict
     cargo handed us was wrong.)
 
+21. **A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no
+    corpus cell exercises.** The c-style-enum deserialize arm has two emission forms, and the form
+    it picks is a frame decision: the IIFE (self-supplied frame) whenever the caller splices or —
+    since the annotate=false delivery — whenever the caller wants a plain value with no annotation
+    closure to catch the early `return`s; the bare statement form only where a `Result`-returning
+    closure is guaranteed. That guarantee was verified by HAND-ENUMERATING every
+    `DeserializeBeforeAfter::new("", "", true)` call site (all are annotate-gated or sit inside the
+    enums.rs variant-probe closure), because no gate exercises the kept leg: the corpus spells a
+    c-style enum standalone (`c_style_enum`), as a map key (`c_style_enum_map_key`), behind
+    `@newtype` (`c_style_enum_newtype`) and behind encoding-carrying wrappers
+    (`cbor_enum_payload`), but never as an arm of a DATA type choice (`t = fixed_enum / bytes`) —
+    the one spelling that routes through the probe-closure statement form. A hand enumeration is
+    evidence for the tree it was done on and nothing after it; one corpus input carrying that
+    spelling (plus a group-choice-arm sibling if it routes differently) turns the guarantee into a
+    standing cell: a compile-floor row under BOTH annotate=false flavors, a snapshot pin, and the
+    usual registration (snapshot bless, `CORPUS_PARITY_INPUTS` row). Same input-poverty class as
+    the both-nominal pair-map cell above: the emission branch exists, the fix cycle proved it
+    load-bearing, and no committed input reaches it.
+
+22. **An execution cell for `--binary-wrappers=true` — the last documented flag value whose only
+    coverage is a compile smoke while its emission risk is byte-level.** The annotate=false
+    delivery established the pattern for flag-conditioned emission branches whose failure is
+    byte-level rather than compile-level: a bespoke scratch spec + hand-derived round-trip vectors
+    + nested `cargo test`
+    (`no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly`), added because a
+    compile floor structurally cannot tell "compiles" from "compiles and re-encodes the same
+    bytes". Walking the other documented flag values against that standard:
+    `--annotate-fields=false` now has the semantic floor; `--canonical-form` (with preserve) has
+    real execution (`tests/canonical` via `run_test`, the `golden_hex_canonical` KATs,
+    `open_array_preserve_e2e`); `--to-from-bytes-methods=false` removes API surface, so its
+    failure mode is compile-level and `flag_value_smoke`'s compile cell is the right depth. That
+    leaves `--binary-wrappers=true`: it mints new rust types that OWN byte-string
+    serialize/deserialize, its wrongness would be byte-level (a wrapper that re-encodes with a
+    different width, drops a `bytes .size` bound check, or double-wraps), and its only gate is
+    `flag_value_smoke`'s `cargo check`. One semantic cell in the delivered pattern — generate a
+    byte-string-rich spec under the flag (default AND preserve rows; non-canonical byte-string
+    heads under preserve) and round-trip hand-derived vectors byte-exactly — closes the gap.
+    Scoped probe record for the claim above: "compile-only" was established by enumerating the
+    `--binary-wrappers` passers in `src/tests/` (`flag_value_smoke`, `config_tests`) on the
+    B3-052 tree, not by grep vocabulary alone.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
