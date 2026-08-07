@@ -4382,6 +4382,43 @@ fn record_plain_group_table_domain_rejection(
     ));
 }
 
+/// The rejection for an open struct-map REST ROW (`{ c: uint, * k => v }`) whose key or value slot
+/// is a plain group — the fixed-prefix sibling of `record_plain_group_table_domain_rejection`,
+/// refused for exactly the same reason and kept as its own message because the shapes are told
+/// apart by their fixed prefix, not by their problem (a table entry is not a rest row, and an
+/// author reading either message has to recognize the line they wrote).
+///
+/// A CBOR map entry holds exactly one item in each of its two slots and a keyless group has no
+/// single-item form, so the row has no wire: every spelling of it aborted generation on the
+/// plain-group registry assert in `is_enum`, reached from `finalize`'s wrapper-name collision walk
+/// (so on every profile — the shape never got as far as an emission face that could differ).
+///
+/// The remedy is the same array framing the table twin names — the array is the group's single-item
+/// carrier — and it is verified to generate and build on the default, `--preserve-encodings` and
+/// `--wasm` profiles for both slots and for the tagged spelling of each. A tag stays OUTSIDE the
+/// framing (`#6.10([kv])`, not `[#6.10(kv)]`): the array is the item the map slot holds, and the
+/// tag wraps that item, so only that placement keeps the tag on what the spec tagged.
+fn record_plain_group_rest_row_domain_rejection(
+    types: &mut IntermediateTypes,
+    src: &str,
+    entry_src: &str,
+    role: &str,
+    group_name: &str,
+    remedy_entry: &str,
+) {
+    types.record_rejection(format!(
+        "rule `{src}`: the open struct-map rest row `{entry_src}` uses the bare plain group \
+         `{group_name}` as its {role} domain, which is unsupported — a CBOR map entry holds \
+         exactly one item in each slot, and a keyless group has no single-item form, so it could \
+         only be spliced in with its members written flat. That contradicts the map's own entry \
+         count and emits bytes no other CBOR implementation reads back as the spec says. Wrap the \
+         group in an array, which gives the slot the one item it needs and has real nested-array \
+         semantics: `* {remedy_entry}` in place of this row. (A tag on the slot belongs OUTSIDE \
+         the framing, on the framed reference — `#6.10([{group_name}])`, not \
+         `[#6.10({group_name})]`.)"
+    ));
+}
+
 /// The rejection for a KEYED map-record member whose type is a plain group
 /// (`kv = (a: uint, b: uint)`, `t = { c: kv }`) — the struct-map twin of
 /// `record_plain_group_table_domain_rejection`, refused for the same reason.
@@ -7079,12 +7116,13 @@ fn recognize_rest_row(
         ));
         return (None, Some(candidate));
     }
-    // Extract the key (domain) and value (range) types from the arrow entry.
-    let (domain, range) = match candidate_ge {
+    // Extract the key (domain) and value (range) types from the arrow entry, keeping the SOURCE
+    // spellings of both slots — the slot-shape rejections below print the author's own row back.
+    let (domain, range, domain_src, range_src) = match candidate_ge {
         GroupEntry::ValueMemberKey { ge, .. } => {
-            let domain = match &ge.member_key {
+            let (domain, domain_src) = match &ge.member_key {
                 Some(MemberKey::Type1 { t1, .. }) => {
-                    rust_type_from_type1(types, parent_visitor, t1, cli)
+                    (rust_type_from_type1(types, parent_visitor, t1, cli), t1)
                 }
                 // A non-fixed key that is not a Type1 arrow (`NonMemberKey`) — unreachable for a
                 // classified NonFixed arrow row, but reject rather than panic if it ever appears.
@@ -7096,7 +7134,7 @@ fn recognize_rest_row(
                 }
             };
             let range = rust_type(types, parent_visitor, &ge.entry_type, cli);
-            (domain, range)
+            (domain, range, domain_src, &ge.entry_type)
         }
         _ => {
             types.record_rejection(format!(
@@ -7107,8 +7145,8 @@ fn recognize_rest_row(
     };
     // A general key domain is supported: bare `uint`/`text`/`any` keep the fast peeked-key dispatch,
     // everything else takes the typed seek path (`RestRow::map_key_uses_peeked_path` routes them, and
-    // is the ONE predicate parsing/IR/generation share). Two shapes stay rejected, for reasons the
-    // key type itself carries rather than the row's plumbing:
+    // is the ONE predicate parsing/IR/generation share). Three shapes stay rejected, for reasons the
+    // slot type itself carries rather than the row's plumbing:
     //
     //   * a NULL-ADMITTING domain (`k = text / null` → `Optional<..>`), rejected here — a `null` key
     //     arrives as CBOR major type 7, the same dispatch arm that carries the indefinite-map BREAK,
@@ -7117,6 +7155,9 @@ fn recognize_rest_row(
     //   * a FLOAT-containing domain, rejected in `IntermediateTypes::finalize` beside the table/set
     //     float instruments (floats have no total order, so they can key nothing) — the one place
     //     that also sees a float hidden behind a resolved generic instance.
+    //   * a PLAIN GROUP in EITHER slot, rejected here — the only one of the three that also applies
+    //     to the VALUE slot, because it is a property of the map ENTRY (each of its two slots holds
+    //     exactly one item) rather than of key dispatch.
     //
     // Fixed-value domains (`* 5 => v`, or an alias to one) never reach here: the zero-permitting
     // occurrence guard and the bare-fixed-value rule guard reject them first.
@@ -7130,6 +7171,49 @@ fn recognize_rest_row(
              both CBOR special values, so the row's key dispatch cannot tell them apart. Drop the \
              `null` arm from the key type (a missing entry already means absent)."
         ));
+        return (None, Some(candidate));
+    }
+    // A plain group in EITHER slot — see `record_plain_group_rest_row_domain_rejection`. The
+    // fixed-prefix sibling of the table twin's guard, sharing its `plain_group_table_domain`
+    // predicate (`is_basic` over the RESOLVED type), so the bare (`* kv => uint`), the ALIAS and the
+    // TAGGED (`* uint => #6.10(kv)`) spellings land on ONE message on every profile, and the
+    // array-WRAPPED forms keep their supported verdicts (an inline `[kv]` carries `basic_override`,
+    // so it is not `is_basic`). Both roles are reported when both offend — a silent slot would be
+    // the worse failure — and the guard sits BEFORE the row's directive reads, because a directive
+    // cannot be judged on a row that has no representable slot.
+    let key_group = plain_group_table_domain(types, &domain);
+    let value_group = plain_group_table_domain(types, &range);
+    if key_group.is_some() || value_group.is_some() {
+        let entry_src = format!("{domain_src} => {range_src}");
+        if let Some(group_name) = key_group {
+            record_plain_group_rest_row_domain_rejection(
+                types,
+                &src,
+                &entry_src,
+                "KEY",
+                &group_name,
+                &format!(
+                    "{} => {range_src}",
+                    array_wrapped_domain_src(&domain_src.to_string(), &domain_src.type2)
+                ),
+            );
+        }
+        if let Some(group_name) = value_group {
+            record_plain_group_rest_row_domain_rejection(
+                types,
+                &src,
+                &entry_src,
+                "VALUE",
+                &group_name,
+                &format!(
+                    "{domain_src} => {}",
+                    match single_type2(range_src) {
+                        Some(t2) => array_wrapped_domain_src(&range_src.to_string(), t2),
+                        None => format!("[{range_src}]"),
+                    }
+                ),
+            );
+        }
         return (None, Some(candidate));
     }
     // Both open struct-map flavors are now wired end-to-end. CAPTURE (default) has every generated

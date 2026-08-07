@@ -466,8 +466,19 @@ already ran, and every other key type (bytes, nint, sized ints, bool, unions, st
 `.cbor` domains, externs, generic instances, aliases) is read and written by its own codec. Two key
 domains are rejected: one containing a **float** (floats have no total order, so they cannot key a
 map) and one admitting **`null`** (a `null` key and the break ending an indefinite-length map are both
-CBOR special values, so the row's key dispatch cannot tell them apart). The value type is unrestricted
-(including `any`).
+CBOR special values, so the row's key dispatch cannot tell them apart). The value type is otherwise
+unrestricted (including `any`).
+
+A third shape is rejected on **either** slot, because it is a property of the map entry rather than of
+key dispatch: a **plain group** (`kv = (a: uint, b: uint)`, `t = { c: uint, * kv => uint }` or
+`t = { c: uint, * uint => kv }`). A CBOR map entry holds exactly one item in each of its two slots and
+a keyless group has no single-item form — it splices its members flat, contradicting the map's own
+entry count — so the row has no wire. The guard reads the *resolved* slot type, so the bare, alias and
+tagged (`* uint => #6.10(kv)`) spellings refuse alike, and both slots are reported when both offend.
+The remedy the message names is the group's array framing, which gives the slot the one item it needs:
+`t = { c: uint, * [kv] => uint }` / `t = { c: uint, * uint => [kv] }`; a tag belongs *outside* that
+framing, on the framed reference (`#6.10([kv])`, not `[#6.10(kv)]`). The prefix-less spelling
+(`t = { * kv => uint }`) is the pure table shape and keeps its own message for the same reason.
 
 Which path a domain takes is not a preference but a **fidelity rule**: the fast path can only rebuild
 a key the dispatch already told it everything about, so anything the dispatch does not see keeps its
