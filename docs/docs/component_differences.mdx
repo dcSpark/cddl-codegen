@@ -478,11 +478,13 @@ widening its row selection, and both are reproducible from a two-line spec:
   `no associated function … found for struct cddl_lib::T` plus a `type_guard not found for type
   parameter T`. Renaming the rule — `tt`, `tc`, anything whose camel-cased ident is longer than one
   letter — compiles clean, and `@name` renames a rule without touching its wire format.
-- **An `any`-typed member in a constructor position.** The projection makes the constructor
-  infallible (`constructor(x: any-cbor)`) while the emitted body decodes the `any-cbor` payload
-  fallibly, so the glue uses `?` inside a `-> Self` function: `the ? operator can only be used in a
-  method that returns Result` (E0277). Reading such a field back is unaffected — it is the
-  construction door only.
+- **An `any` member reached through a transparent alias** (`x = any` referenced from a member
+  position — a *direct* `any` member is fine and gets the correct fallible door). For the aliased
+  spelling the projection makes the constructor infallible (`constructor(x: any-cbor)`) while the
+  emitted body still decodes the `any-cbor` payload fallibly, so the glue uses `?` inside a
+  `-> Self` function: `the ? operator can only be used in a method that returns Result` (E0277).
+  Reading such a field back is unaffected — it is the construction door only. Spelling the member
+  as `any` directly is the workaround.
 
 Until these close, a spec relying on any of them should keep `--component` off or restructure
 the shape; every other corpus shape compiles and validates.
