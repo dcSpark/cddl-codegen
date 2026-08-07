@@ -1409,18 +1409,32 @@ fn run_test(
         eprintln!("{}", String::from_utf8(gen_result.stderr).unwrap());
     }
     assert!(gen_result.status.success());
+    // Everything the generator just wrote under these `src/` trees is generator-owned source, which
+    // is what the unused-import/variable scans below are entitled to fail on. The harness's own
+    // appends start immediately after, so each appended file records its pre-append line count first
+    // (see `GeneratedOwnership`).
+    let mut ownership = GeneratedOwnership::default();
+    for crate_src in ["rust/src", "wasm/src", "wasm/json-gen/src"] {
+        ownership.add_crate_src(&test_path.join(format!("{export_path}/{crate_src}")));
+    }
+    ownership.load_known_warnings(&test_path, &export_path);
     // Copy tests into generated code. The generated root scope (with the cross-module `use` imports
     // the appended tests' `use super::*;` relies on) now lives in `generated/mod.rs`, not the thin
     // seed-once `lib.rs`; append the tests there so they see exactly the imports they did when the old
     // monolithic `lib.rs` WAS the root scope. `generated/mod.rs` is regenerated every run, so appends
     // don't accumulate across reruns of the same throwaway export dir.
+    let generated_mod_path = test_path.join(format!("{export_path}/rust/src/generated/mod.rs"));
+    ownership.record_append_boundary(&generated_mod_path);
     let mut generated_mod = std::fs::OpenOptions::new()
         .append(true)
-        .open(test_path.join(format!("{export_path}/rust/src/generated/mod.rs")))
+        .open(&generated_mod_path)
         .unwrap();
-    // some pasted-in tests need this
+    // some pasted-in tests need this — and some don't, so the allow is the honest annotation for
+    // harness-owned convenience glue. (It is HARNESS content: the generator emits this glob
+    // nowhere, and the scans below exempt it by location anyway; the allow keeps the fixture builds
+    // quiet rather than teaching anything about generated code.)
     generated_mod
-        .write_all("\nuse serialization::*;\n".as_bytes())
+        .write_all("\n#[allow(unused_imports)]\nuse serialization::*;\n".as_bytes())
         .unwrap();
     // `external_rust_file_paths` carries two kinds of hand-written code that belong in DIFFERENT scopes
     // under the thin-root split:
@@ -1446,12 +1460,14 @@ fn run_test(
         .iter()
         .any(|p| is_extern_type_def(p))
     {
+        let root_lib_rs_path = test_path.join(format!("{export_path}/rust/src/lib.rs"));
+        ownership.record_append_boundary(&root_lib_rs_path);
         let mut root_lib_rs = std::fs::OpenOptions::new()
             .append(true)
-            .open(test_path.join(format!("{export_path}/rust/src/lib.rs")))
+            .open(&root_lib_rs_path)
             .unwrap();
         root_lib_rs
-            .write_all("\nuse serialization::*;\n".as_bytes())
+            .write_all("\n#[allow(unused_imports)]\nuse serialization::*;\n".as_bytes())
             .unwrap();
         for external_rust_file_path in external_rust_file_paths
             .iter()
@@ -1496,15 +1512,16 @@ fn run_test(
     }
     // run tests in generated code
     println!("   ------ testing ------");
+    let rust_crate_dir = test_path.join(format!("{export_path}/rust"));
     let cargo_test = tool_cmd("cargo")
         .arg("test")
-        .current_dir(test_path.join(format!("{export_path}/rust")))
+        .current_dir(&rust_crate_dir)
         .output()
         .unwrap();
     if !cargo_test.status.success() {
         eprintln!(
             "test stderr:\n{}",
-            String::from_utf8(cargo_test.stderr).unwrap()
+            String::from_utf8_lossy(&cargo_test.stderr)
         );
     }
     println!(
@@ -1512,6 +1529,12 @@ fn run_test(
         String::from_utf8(cargo_test.stdout).unwrap()
     );
     assert!(cargo_test.status.success());
+    assert_no_generator_owned_unused_warnings(
+        &format!("{dir} rust `cargo test`"),
+        &cargo_test.stderr,
+        &rust_crate_dir,
+        &ownership,
+    );
 
     // wasm
     let wasm_export_dir = test_path.join(format!("{export_path}/wasm"));
@@ -1566,9 +1589,11 @@ fn run_test(
             .iter()
             .any(|p| is_extern_wasm_type_def(p))
     {
+        let wasm_root_lib_path = test_path.join(format!("{export_path}/wasm/src/lib.rs"));
+        ownership.record_append_boundary(&wasm_root_lib_path);
         let mut wasm_root_lib = std::fs::OpenOptions::new()
             .append(true)
-            .open(test_path.join(format!("{export_path}/wasm/src/lib.rs")))
+            .open(&wasm_root_lib_path)
             .unwrap();
         wasm_root_lib
             .write_all(b"\nuse wasm_bindgen::prelude::{wasm_bindgen, JsError};\n")
@@ -1588,9 +1613,12 @@ fn run_test(
         println!("trying to open (generated): {external_wasm_file_path:?}");
         // non-extern wasm helpers reference the generated wrapper types via same-module resolution,
         // both resolved in `generated/mod.rs` (see the wasm half of `append_raw_bytes_defs`).
+        let wasm_generated_mod_path =
+            test_path.join(format!("{export_path}/wasm/src/generated/mod.rs"));
+        ownership.record_append_boundary(&wasm_generated_mod_path);
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
             .append(true)
-            .open(test_path.join(format!("{export_path}/wasm/src/generated/mod.rs")))
+            .open(&wasm_generated_mod_path)
             .unwrap();
         append_wasm(&mut wasm_lib_rs, external_wasm_file_path);
     }
@@ -1600,9 +1628,12 @@ fn run_test(
         // exactly like tests.rs into `rust/src/generated/mod.rs`. A generated wasm crate ships no
         // #[test]s of its own, so without the append `cargo test` runs zero tests and passes
         // vacuously (which is what this branch silently did before).
+        let wasm_generated_mod_path =
+            test_path.join(format!("{export_path}/wasm/src/generated/mod.rs"));
+        ownership.record_append_boundary(&wasm_generated_mod_path);
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
             .append(true)
-            .open(test_path.join(format!("{export_path}/wasm/src/generated/mod.rs")))
+            .open(&wasm_generated_mod_path)
             .unwrap();
         let test_wasm_rs = std::fs::read_to_string(&wasm_test_path).unwrap();
         wasm_lib_rs.write_all("\n\n".as_bytes()).unwrap();
@@ -1623,7 +1654,7 @@ fn run_test(
         if !cargo_test_wasm.status.success() {
             eprintln!(
                 "test stderr:\n{}",
-                String::from_utf8(cargo_test_wasm.stderr).unwrap()
+                String::from_utf8_lossy(&cargo_test_wasm.stderr)
             );
         }
         println!(
@@ -1631,6 +1662,12 @@ fn run_test(
             String::from_utf8(cargo_test_wasm.stdout).unwrap()
         );
         assert!(cargo_test_wasm.status.success());
+        assert_no_generator_owned_unused_warnings(
+            &format!("{dir} wasm `cargo test`"),
+            &cargo_test_wasm.stderr,
+            &wasm_export_dir,
+            &ownership,
+        );
     } else if wasm_expected {
         let cargo_build_wasm = tool_cmd("cargo")
             .arg("build")
@@ -1640,10 +1677,16 @@ fn run_test(
         if !cargo_build_wasm.status.success() {
             eprintln!(
                 "wasm build stderr:\n{}",
-                String::from_utf8(cargo_build_wasm.stderr).unwrap()
+                String::from_utf8_lossy(&cargo_build_wasm.stderr)
             );
         }
         assert!(cargo_build_wasm.status.success());
+        assert_no_generator_owned_unused_warnings(
+            &format!("{dir} wasm `cargo build`"),
+            &cargo_build_wasm.stderr,
+            &wasm_export_dir,
+            &ownership,
+        );
     }
     // If the test ships a node round-trip script, build the bindings with wasm-pack and run them
     // under node. This is the ONLY layer that executes generated bindings in a JS engine, so it's
@@ -1665,6 +1708,14 @@ fn run_test(
                 );
             }
             assert!(wasm_pack.status.success());
+            // wasm-pack drives cargo (cwd = the wasm crate) and passes its stderr through, so this
+            // is the wasm32-target build's warning capture.
+            assert_no_generator_owned_unused_warnings(
+                &format!("{dir} wasm-pack build"),
+                &wasm_pack.stderr,
+                &wasm_export_dir,
+                &ownership,
+            );
             // Absolute path: node's require() treats a bare relative path as a node_modules lookup.
             let pkg_dir = std::fs::canonicalize(wasm_export_dir.join("pkg")).unwrap();
             let node = std::process::Command::new("node")
@@ -1711,10 +1762,18 @@ fn run_test(
         if !cargo_run_json.status.success() {
             eprintln!(
                 "json-gen run stderr:\n{}",
-                String::from_utf8(cargo_run_json.stderr).unwrap()
+                String::from_utf8_lossy(&cargo_run_json.stderr)
             );
         }
         assert!(cargo_run_json.status.success());
+        // `cargo run` here BUILDS the json-gen crate and its path deps (the rust and wasm crates),
+        // so this capture carries their warnings too — attributed by the same ownership map.
+        assert_no_generator_owned_unused_warnings(
+            &format!("{dir} json-gen `cargo run`"),
+            &cargo_run_json.stderr,
+            &json_export_dir,
+            &ownership,
+        );
         // `export_schemas()` succeeding isn't enough: a no-op body would also exit 0. Assert it
         // wrote exactly ONE `*.schema.json` document and nothing else — `run-json2ts.js` rejects a
         // schemas dir holding anything but the single document, so a stray file here would be a
@@ -1829,6 +1888,12 @@ fn run_test(
             .output()
             .unwrap();
         assert!(rerun.status.success());
+        assert_no_generator_owned_unused_warnings(
+            &format!("{dir} json-gen `cargo run` (rerun)"),
+            &rerun.stderr,
+            &json_export_dir,
+            &ownership,
+        );
         assert_eq!(
             first_document,
             std::fs::read(schemas_dir.join(&written[0])).unwrap(),
@@ -1844,6 +1909,8 @@ fn run_test(
         // this run rather than paying a second `node` + `tsc`.
         assert_schema_projects_to_legal_ts(dir, &export_path);
     }
+    // Every known-finding pin this export loaded must have fired in one of the stages above.
+    ownership.assert_known_warnings_are_live();
 }
 
 /// Generate + gate every `tests/corpus/*.cddl` crate under each emission profile. The snapshot
@@ -1970,12 +2037,11 @@ fn unused_generated_variable_scan_flags_named_binding() {
 /// requested-collections sidecar can produce reaches consumers before any gate sees it. Near-zero
 /// cost — these gates already capture the stderr for their compile assertion.
 ///
-/// Applies only where the crate under cargo is 100% generated. The `run_test` fixture crates are
-/// NOT: they carry hand-appended `tests.rs`/`deser_test` modules and path deps on hand-written
-/// stand-in crates, whose own warnings the raw scan cannot tell from the generator's. Wiring those
-/// sites needs a generated-files-only restriction first — see `tests/TESTING_ROADMAP.md`
-/// § "`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
-/// reach" for that remainder and for the emission defect it is blocked behind.
+/// Applies only where the crate under cargo is 100% generated — no location attribution is needed
+/// there because every file in the build is the generator's. The `run_test` fixture crates are NOT
+/// 100% generated (hand-appended `tests.rs`/`deser_test` modules inside `generated/mod.rs`, path
+/// deps on hand-written stand-in crates); those sites use the location-aware
+/// [`assert_no_generator_owned_unused_warnings`] below instead.
 fn assert_no_unused_generated_warnings(label: &str, stderr: &[u8]) {
     let text = String::from_utf8_lossy(stderr);
     let mut hits = unused_generated_import_lines(&text);
@@ -1985,6 +2051,348 @@ fn assert_no_unused_generated_warnings(label: &str, stderr: &[u8]) {
         "{label}: the generated crate compiles with {} unused-import/variable warning(s) — these \
          crates are 100% generated, so each is a prune or emission imprecision that reaches a \
          consumer as build noise:\n{}",
+        hits.len(),
+        hits.join("\n")
+    );
+}
+
+/// Which bytes in a `run_test` export the TOOL wrote, expressed as source roots plus per-file line
+/// boundaries. This is what lets the unused-import/variable scans run over a crate that is NOT 100%
+/// generated: the scans themselves are line-based and carry no attribution (rustc renders the
+/// location on a separate `--> path:line:col` line), and a `run_test` crate compiles three kinds of
+/// code the generator does not own — the harness's own appends INSIDE `generated/mod.rs` and the
+/// crate-root `lib.rs`, and path deps on hand-written stand-in crates (`tests/extern-dep-crate`).
+///
+/// A file-level "generated files only" filter cannot make the first separation, because harness
+/// content lands inside generated FILES. The boundary is therefore positional: `run_test` records
+/// each appended file's line count BEFORE it appends, and everything at-or-below that line is the
+/// generator's. Path-dep warnings fall outside the roots and are exempt by that alone — rustc
+/// renders them absolute while the crate's own files come out relative to the cargo cwd, so both
+/// forms are resolved against that cwd before comparison.
+#[derive(Default)]
+pub(crate) struct GeneratedOwnership {
+    /// Normalized `src/` roots of the export's generated crates.
+    roots: Vec<std::path::PathBuf>,
+    /// Normalized file -> the last line the tool wrote. Lines beyond it are harness appends.
+    boundaries: Vec<(std::path::PathBuf, usize)>,
+    /// Normalized file + exact warning text of each [`KNOWN_GENERATOR_OWNED_WARNINGS`] row that
+    /// applies to this export. Exempted from the failure, asserted still-live at the end of the run.
+    known: Vec<(std::path::PathBuf, &'static str)>,
+    /// Which of `known` this run actually saw (`file|warning`), so a pin outliving its finding fails.
+    observed_known: std::cell::RefCell<std::collections::BTreeSet<String>>,
+}
+
+/// Escape hatch for a generator-owned unused-* warning this scan finds that CANNOT be fixed in the
+/// same change — the emission fix is large, or it belongs to another owner. A row is `(fixture dir,
+/// export dir name, export-relative file, exact warning text)`: deliberately no line number, which
+/// moves whenever emission shifts, and deliberately no wildcard, so a SECOND instance of the same
+/// class in the same file is a fresh failure rather than something an existing pin silently absorbs.
+/// A row never travels alone — it means an entry exists in `cddl-matrix/ROADMAP.md` § Findings
+/// describing the defect and what retires it.
+///
+/// **Empty, and expected to stay that way**: the only warning the wiring has ever surfaced (an
+/// `.enumerate()` index the emitted pair-map serialize body never read) was a one-line emission fix,
+/// delivered rather than pinned. The mechanism ships anyway because the alternative when a future
+/// hit is genuinely unfixable-in-place is to weaken the scan itself, which is unrecoverable.
+///
+/// Every row is asserted LIVE at the end of the `run_test` that owns its export
+/// ([`GeneratedOwnership::assert_known_warnings_are_live`]): fixing the emission fails the pin as
+/// stale instead of letting it outlive its finding.
+const KNOWN_GENERATOR_OWNED_WARNINGS: &[(&str, &str, &str, &str)] = &[];
+
+impl GeneratedOwnership {
+    /// Register a generated crate's `src/` tree. Absent dirs (e.g. `wasm/` under `--wasm=false`)
+    /// are skipped rather than rejected: which crates an export emits is the flags' business, and
+    /// the stages that compile them are already gated on the same condition.
+    pub(crate) fn add_crate_src(&mut self, dir: &std::path::Path) {
+        if dir.exists() {
+            self.roots.push(normalized_path(dir));
+        }
+    }
+
+    /// Record `file`'s CURRENT line count as its generator-owned boundary. First call wins, so a
+    /// file the harness appends to more than once keeps the pre-FIRST-append boundary.
+    pub(crate) fn record_append_boundary(&mut self, file: &std::path::Path) {
+        let lines = std::fs::read_to_string(file)
+            .unwrap_or_else(|e| panic!("cannot read {file:?} to record its append boundary: {e}"))
+            .lines()
+            .count();
+        self.set_boundary(file, lines);
+    }
+
+    /// First call wins (see [`Self::record_append_boundary`]).
+    pub(crate) fn set_boundary(&mut self, file: &std::path::Path, generator_owned_lines: usize) {
+        let file = normalized_path(file);
+        if !self.boundaries.iter().any(|(known, _)| *known == file) {
+            self.boundaries.push((file, generator_owned_lines));
+        }
+    }
+
+    /// Is `line` of `file` (already normalized) content this tool emitted?
+    fn owns(&self, file: &std::path::Path, line: usize) -> bool {
+        if !self.roots.iter().any(|root| file.starts_with(root)) {
+            return false;
+        }
+        match self
+            .boundaries
+            .iter()
+            .find(|(appended, _)| appended == file)
+        {
+            Some((_, generator_owned_lines)) => line <= *generator_owned_lines,
+            None => true,
+        }
+    }
+
+    /// Load the [`KNOWN_GENERATOR_OWNED_WARNINGS`] rows that belong to this export.
+    pub(crate) fn load_known_warnings(&mut self, export_root: &std::path::Path, export_dir: &str) {
+        let fixture = export_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("an export root always has a fixture-dir name");
+        for (pinned_fixture, pinned_export, file, warning) in KNOWN_GENERATOR_OWNED_WARNINGS {
+            if *pinned_fixture == fixture && *pinned_export == export_dir {
+                self.known.push((
+                    normalized_path(&export_root.join(export_dir).join(file)),
+                    warning,
+                ));
+            }
+        }
+    }
+
+    /// Is this hit a pinned known finding? Records the sighting when it is.
+    fn is_known(&self, file: &std::path::Path, warning: &str) -> bool {
+        let pinned = self
+            .known
+            .iter()
+            .any(|(known_file, known_warning)| known_file == file && *known_warning == warning);
+        if pinned {
+            self.observed_known
+                .borrow_mut()
+                .insert(format!("{}|{warning}", file.display()));
+        }
+        pinned
+    }
+
+    /// Every pin loaded for this export must have FIRED, or it outlived the finding it exempts.
+    pub(crate) fn assert_known_warnings_are_live(&self) {
+        let observed = self.observed_known.borrow();
+        for (file, warning) in &self.known {
+            let key = format!("{}|{warning}", file.display());
+            assert!(
+                observed.contains(&key),
+                "KNOWN_GENERATOR_OWNED_WARNINGS pins `{warning}` in {} but this run never saw it — \
+                 the emission finding is fixed (retire the pin and its \
+                 `cddl-matrix/ROADMAP.md` § Findings entry) or it moved (repoint the pin)",
+                file.display()
+            );
+        }
+    }
+}
+
+/// Absolute, `.`/`..`-free form of `path`. Canonicalization is used when the path exists (so a
+/// symlinked scratch root compares equal to itself) and a lexical fold otherwise (so the scan's own
+/// unit tests can reason about paths that were never created).
+fn normalized_path(path: &std::path::Path) -> std::path::PathBuf {
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        return canonical;
+    }
+    let mut out = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !out.pop() {
+                    out.push(component.as_os_str());
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Parse the `path:line:col` of a rendered rustc location line (`  --> src/generated/mod.rs:55:5`),
+/// resolving a relative path against `cwd` (the directory cargo ran in). Returns `None` for any line
+/// that is not a location.
+fn parse_warning_location(
+    line: &str,
+    cwd: &std::path::Path,
+) -> Option<(std::path::PathBuf, usize)> {
+    let rendered = line.trim().strip_prefix("-->")?.trim();
+    let mut parts = rendered.rsplitn(3, ':');
+    let _col: usize = parts.next()?.parse().ok()?;
+    let source_line: usize = parts.next()?.parse().ok()?;
+    let path = std::path::Path::new(parts.next()?);
+    let resolved = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    };
+    Some((normalized_path(&resolved), source_line))
+}
+
+/// The location-aware form of the two unused-* scans, for cargo runs over a crate that is only
+/// PARTLY generated. Each flagged `warning:` line is paired with the `-->` location rustc renders
+/// under it; only warnings `ownership` attributes to generator-written content are returned, minus
+/// the [`KNOWN_GENERATOR_OWNED_WARNINGS`] pins it loaded. A warning with no location to pair (a
+/// cargo-level summary line, a truncated capture) is exempt — it cannot be attributed, and
+/// attributing it by default would fail runs for the harness's own appended code.
+pub(crate) fn generator_owned_unused_warning_lines(
+    stderr: &str,
+    cwd: &std::path::Path,
+    ownership: &GeneratedOwnership,
+) -> Vec<String> {
+    let lines: Vec<&str> = stderr.lines().collect();
+    let mut hits = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        // Reuse the class scans verbatim (trait-residue carve-out included) by asking them about
+        // this one line, so there is exactly one definition of what each class flags.
+        let flagged = !unused_generated_import_lines(line).is_empty()
+            || !unused_generated_variable_lines(line).is_empty();
+        if !flagged {
+            continue;
+        }
+        // The primary span is the first `-->` under the warning; stop at the next diagnostic so a
+        // warning rustc rendered without a location can't borrow the following one's.
+        let location = lines[index + 1..]
+            .iter()
+            .take_while(|following| {
+                let trimmed = following.trim_start();
+                !trimmed.starts_with("warning:") && !trimmed.starts_with("error")
+            })
+            .find_map(|following| parse_warning_location(following, cwd));
+        if let Some((file, source_line)) = location
+            && ownership.owns(&file, source_line)
+            && !ownership.is_known(&file, line.trim())
+        {
+            hits.push(format!(
+                "{} ({}:{source_line})",
+                line.trim(),
+                file.display()
+            ));
+        }
+    }
+    hits
+}
+
+/// Red-path guard for the location-aware scan: a warning inside generator-written content fails,
+/// while the harness's own appended region, a hand-written path dep (absolute AND relative
+/// rendering), an unlocated warning and the documented trait residue do not.
+#[test]
+fn generator_owned_scan_attributes_by_location_and_append_boundary() {
+    let export = std::path::Path::new("/nonexistent/tests/some-fixture/export");
+    let crate_dir = export.join("rust");
+    let mut ownership = GeneratedOwnership::default();
+    ownership
+        .roots
+        .push(normalized_path(&crate_dir.join("src")));
+    ownership.set_boundary(&crate_dir.join("src/generated/mod.rs"), 53);
+
+    let generated = "warning: unused import: `governance::Voter`\n  --> src/generated/mod.rs:12:5";
+    assert_eq!(
+        generator_owned_unused_warning_lines(generated, &crate_dir, &ownership).len(),
+        1,
+        "a warning at a generator-written line must be flagged"
+    );
+    let unappended_generated_file =
+        "warning: unused variable: `x`\n  --> src/generated/serialization.rs:900:14";
+    assert_eq!(
+        generator_owned_unused_warning_lines(unappended_generated_file, &crate_dir, &ownership)
+            .len(),
+        1,
+        "a file the harness never appended to is generator-owned at every line"
+    );
+
+    let appended = "warning: unused import: `serialization::*`\n  --> src/generated/mod.rs:55:5";
+    assert!(
+        generator_owned_unused_warning_lines(appended, &crate_dir, &ownership).is_empty(),
+        "a warning past the recorded append boundary is harness content"
+    );
+
+    let foreign_absolute = "warning: unused import: `de::Deserializer`\n --> /nonexistent/tests/extern-dep-crate/src/error.rs:1:24";
+    assert!(
+        generator_owned_unused_warning_lines(foreign_absolute, &crate_dir, &ownership).is_empty(),
+        "an absolutely-rendered path dep is outside the export's generated trees"
+    );
+    let foreign_relative = "warning: unused import: `de::Deserializer`\n --> ../../../extern-dep-crate/src/error.rs:1:24";
+    assert!(
+        generator_owned_unused_warning_lines(foreign_relative, &crate_dir, &ownership).is_empty(),
+        "a relatively-rendered path dep resolves against the cargo cwd, still outside the roots"
+    );
+
+    // The first warning has no location of its own; the second's is generator-owned. Borrowing it
+    // would report TWO hits.
+    let unlocated = "warning: unused import: `governance::Voter`\nwarning: unused variable: `x`\n  --> src/generated/mod.rs:12:14";
+    assert_eq!(
+        generator_owned_unused_warning_lines(unlocated, &crate_dir, &ownership).len(),
+        1,
+        "an unlocated warning must not borrow the NEXT warning's location"
+    );
+
+    let trait_residue = "warning: unused import: `cbor_event::se::Serialize`\n  --> src/generated/serialization.rs:9:22";
+    assert!(
+        generator_owned_unused_warning_lines(trait_residue, &crate_dir, &ownership).is_empty(),
+        "the documented Serialize trait residue stays ignored at a generated location"
+    );
+
+    // A pinned known finding is exempt, but ONLY at its own file and text — and the pin is then
+    // live, so the staleness assert passes. An unpinned instance of the same class still fails.
+    let mut pinned = GeneratedOwnership::default();
+    pinned.roots.push(normalized_path(&crate_dir.join("src")));
+    pinned.known.push((
+        normalized_path(&crate_dir.join("src/generated/serialization.rs")),
+        "warning: unused variable: `i`",
+    ));
+    let known_hit = "warning: unused variable: `i`\n  --> src/generated/serialization.rs:1668:22";
+    assert!(
+        generator_owned_unused_warning_lines(known_hit, &crate_dir, &pinned).is_empty(),
+        "a pinned known finding is exempt at any line of its file"
+    );
+    pinned.assert_known_warnings_are_live();
+    let elsewhere = "warning: unused variable: `i`\n  --> src/generated/mod.rs:20:22";
+    assert_eq!(
+        generator_owned_unused_warning_lines(elsewhere, &crate_dir, &pinned).len(),
+        1,
+        "the pin exempts its own file only"
+    );
+    let other_text = "warning: unused variable: `j`\n  --> src/generated/serialization.rs:1668:22";
+    assert_eq!(
+        generator_owned_unused_warning_lines(other_text, &crate_dir, &pinned).len(),
+        1,
+        "the pin exempts its own warning text only"
+    );
+}
+
+/// A pin nothing observed is stale — it would otherwise silently outlive the emission finding it
+/// exempts, leaving the scan permanently blind to that file+text pair.
+#[test]
+#[should_panic(expected = "KNOWN_GENERATOR_OWNED_WARNINGS pins")]
+fn generator_owned_scan_rejects_a_stale_known_warning_pin() {
+    let mut ownership = GeneratedOwnership::default();
+    ownership.known.push((
+        std::path::PathBuf::from("/nonexistent/export/rust/src/generated/serialization.rs"),
+        "warning: unused variable: `i`",
+    ));
+    ownership.assert_known_warnings_are_live();
+}
+
+/// Fail if a nested cargo run over a PARTLY-generated crate reported an unused import or unused
+/// variable in content this tool wrote. The exemptions are positional, not by class, so a real
+/// prune imprecision inside `generated/**` still fails even in a fixture crate stuffed with
+/// hand-appended tests.
+fn assert_no_generator_owned_unused_warnings(
+    label: &str,
+    stderr: &[u8],
+    cwd: &std::path::Path,
+    ownership: &GeneratedOwnership,
+) {
+    let text = String::from_utf8_lossy(stderr);
+    let hits = generator_owned_unused_warning_lines(&text, cwd, ownership);
+    assert!(
+        hits.is_empty(),
+        "{label}: the export's GENERATED source compiles with {} unused-import/variable \
+         warning(s) — each is a prune or emission imprecision that reaches a consumer as build \
+         noise (harness-appended regions and hand-written path deps are exempt by location):\n{}",
         hits.len(),
         hits.join("\n")
     );

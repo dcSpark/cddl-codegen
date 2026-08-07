@@ -3046,9 +3046,27 @@ run — through `assert_no_unused_generated_warnings` — over the nested cargo 
 workspace-requests gates already capture: `workspace_requests_hosts_cross_scope_elements`,
 `workspace_requests_cohosted_keys_list_no_self_import` and
 `workspace_requests_hosts_borrowed_wrappers`. That is where the requested-collections sidecar's own
-imports are first observable. The call shape is restricted to crates that are 100% generated; the
-`run_test` fixture crates carry hand-appended test modules and hand-written path deps, so the raw
-line scan cannot attribute their warnings and is deliberately not wired there.
+imports are first observable. That call shape is restricted to crates that are 100% generated,
+where no attribution is needed.
+
+Every `run_test` fixture is scanned too, by the location-aware sibling
+`assert_no_generator_owned_unused_warnings`, wired on all six cargo-driving stages `run_test` runs
+(rust `cargo test`; wasm `cargo test` / `cargo build`; `wasm-pack build`; both json-gen
+`cargo run`s). These crates are NOT 100% generated — the harness appends its `tests.rs`/`deser_test`
+modules INSIDE the generated `generated/mod.rs`, and the extern-deps family path-depends on the
+hand-written `tests/extern-dep-crate` — so the restriction is positional rather than per-file: the
+`GeneratedOwnership` the run builds holds the export's generated `src/` roots plus each appended
+file's pre-append line count, and rustc's separate `--> path:line:col` line attributes each warning
+against them. Exempt: anything past an append boundary, anything outside those roots (path-dep
+warnings, which rustc renders ABSOLUTE where the crate's own files render relative to the cargo
+cwd), and a warning with no location to pair. `KNOWN_GENERATOR_OWNED_WARNINGS` is the escape hatch
+for a generator-owned warning that cannot be fixed in the same change — a pin by file and exact
+warning text, asserted still-live at the end of the run that owns its export so a fixed emission
+fails its pin as stale instead of blinding the scan forever. It ships EMPTY with its enforcement
+live (`KNOWN_POSITION_DROPS`' shape): the one warning this wiring surfaced was a one-line emission
+fix. The harness's own `use serialization::*;` append carries `#[allow(unused_imports)]` — it is
+convenience glue some pasted-in tests need and some do not, and the generator emits that glob
+nowhere.
 
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
