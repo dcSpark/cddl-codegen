@@ -317,7 +317,12 @@ slowest single gate but not prohibitive: ~170 examples × generate + `cargo test
 measured ~10-11 min on the dev machine when every cell runs (a `GATE_CACHE=0` or first/all-miss
 run; wasm + decode-foreign on), collapsing to ~4-5 min on a hit-heavy re-run against an unchanged
 tree (~715 of ~740 cells proven by key — see the gate-cache section below); hours cold, the
-shared-target warm-up dominating. The fuzz
+shared-target warm-up dominating. The component-execution leg (a BOUNDED thirteen-row selection —
+`cddl-matrix/README.md`'s annotations-table row describes it) adds ≈79 s to an all-miss run (a
+lazily-built wasmtime host plus thirteen wasip2 cells over a shared target) and near-zero to a
+hit-heavy one; its per-cell builds are defended against the same-name shared-target fingerprint
+hazard by an mtime touch of each cell's tree before its builds (the `COMPONENT_TARGET` comment in
+`verify.ts` carries the proof — sequential same-name cells cross-bound without it). The fuzz
 gates re-run `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed —
 either gate provisions it, whichever runs first, so neither depends on the other. `fuzz_bounded_run`
 then fuzzes each target for `FUZZ_BUDGET_S` seconds (default 120, one libFuzzer process at a time,
@@ -587,10 +592,14 @@ tree is byte-identical to the memoized one. It is off by default because it doub
 cost, and it is the check to reach for whenever a resolution input is suspected to be missing from
 the memo key.
 
-Covered sites: `verify.ts`'s per-example rust/wasm probe tests, failure-classifying checks, and
+Covered sites: `verify.ts`'s per-example rust/wasm probe tests, failure-classifying checks,
 decode-foreign replays (its warm-ups turn lazy — first miss only — behind an always-run
 generation-only self-test, so a generator that doesn't build still aborts the run before any
-verdict is written); and, via `src/tests/gate_cache.rs`, one cached unit per cell in
+verdict is written), and the component-execution cells (`verify.component_probe`: the wasip2
+build + native oracle + wasmtime drive memoized as ONE unit per selected row, with the generic
+host crate's CONTENT HASH folded into the key because the host is an input living outside the
+hashed generated tree — editing what the host checks re-runs every cell instead of serving stale
+PASSes); and, via `src/tests/gate_cache.rs`, one cached unit per cell in
 `feature_corpus_compiles`, `wasm_matrix_compiles`, `multifile_matrix_compiles`,
 `wasm_matrix_roundtrips`, `multifile_matrix_roundtrips`, and the recombination layer-2 batches.
 `decode_conformance_replay` is deliberately NOT cached: its success path parses libtest stdout
@@ -2165,7 +2174,11 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   `impl Deserialize`) is minted in **holder mode**: vectors wrap the rule in
   `__probe_holder = [0, <rule>]` (prepended FIRST — both oracles root validation at a spec's first
   rule) so decoding routes through the *generated* field-decode path rather than cbor_event's
-  blanket impls.
+  blanket impls. The catalog has a consumer beyond this layer: the matrix's component-execution
+  leg draws each selected row's `spec`/`type_name`/vectors from the SAME committed rows (the
+  annotations-table row in `cddl-matrix/README.md` describes the leg), so a re-mint that pins a
+  selected row, changes its `type_name`, or drops its last spec-valid accept vector fails
+  `verify.ts`'s startup selection self-test loudly rather than silently shrinking that leg.
 - **Refresh flow** — `cd cddl-matrix && bun run verify.ts --mint-decode-foreign` (or
   `--only=<id,…>` to re-mint a subset, preserving the rest byte-identically; an `--only` id that
   has LEFT the supported set but still has a committed row is DROPPED — the support-boundary
