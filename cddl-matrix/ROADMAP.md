@@ -108,8 +108,12 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   that would consume the group's arity per repetition is the occurrence/bounds family's scope). Its
   cell is a rep-carrying row too, and the row's own probing shows why: the ARRAY tail refuses,
   the SOLE-element homogeneous cell (`[* kv]`) generates, the pure TABLE form (`{ * kv => uint }`)
-  refuses on its own delivered message — and the MAP REST ROW, the array tail's exact twin, still
-  panics (§ findings). One marker, four verdicts, separating on container and on whether a fixed
+  refuses on its own delivered message — and the MAP REST ROW, the array tail's exact twin, refuses
+  on a THIRD delivered message, one per offending slot
+  (`plain_group_map_rest_row_rejects_gracefully_at_every_spelling`), because a map entry holds
+  exactly one item in each of its two slots. That is the same argument the pure table form's message
+  carries, so the rest row's cell separates from the table's on the fixed prefix alone, not on the
+  reason. One marker, four verdicts, separating on container and on whether a fixed
   prefix precedes it: no cell of this product is predictable from its neighbours, which is the
   argument for minting all of them rather than the ones a probe happened to reach. The TYPE-choice-arm
   PLACEMENT is the row where the grid's own verdict vocabulary is settled ahead
@@ -255,27 +259,6 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
-- **A plain group on a MAP REST ROW aborts on a raw `Option::unwrap()`, on either slot.**
-  `kv = (a: uint, b: uint)` + `t = { c: uint, * kv => uint }` (domain) and
-  `t = { c: uint, * uint => kv }` (range) panic at `src/generation/serialize.rs`'
-  `encoding_var_is_copy` on the default profile, and at the plain-group registry assert in
-  `src/intermediate/mod.rs` under `--preserve-encodings` and `--wasm` — the same unmaterialized
-  plain group, and the same two sites, as the array rest tail that
-  `plain_group_array_rest_tail_rejects_gracefully_at_every_spelling` now refuses. What makes this
-  the array tail's exact twin rather than a fresh class is that the FIXED PREFIX is what reaches it:
-  the prefix-less form of the same spelling (`t = { * kv => uint }`) is the pure TABLE shape, which
-  the delivered table-domain guard already refuses with its own message
-  (`plain_group_table_domain_rejects_gracefully_at_both_spellings`) — so the map rest-row seam has
-  no plain-group guard of its own on either slot, and the table guard it is next to does not cover
-  it. Scope of the probe (2026-08-07 at `37f92cbb`):
-  both slots, default profile plus `--preserve-encodings` and `--wasm`, `--wasm=false` where
-  unstated, generate-only; not probed: the json/component faces, an ALIAS-indirected or TAGGED
-  spelling on either slot (the array twin's guard covered all three through the resolved type, so
-  expect the same reach here), or a rest row carrying entry directives. Fix shape follows the twin
-  rather than being open: refuse at the map rest-row seam on the resolved slot type, naming the
-  array-framed remedy the table guard already names (`{ c: uint, * [kv] => uint }`), unless probing
-  shows a slot where a one-item form exists that the table guard's argument does not already
-  dispose of.
 - **A group RULE whose body carries two or more group choices aborts the pre-registration walk's
   single-choice assert — in every placement, and even unreferenced.** `pg = (a: uint // f: bytes)`
   panics at `src/api.rs`' `assert_eq!(group.group_choices.len(), 1)` in the plain-group

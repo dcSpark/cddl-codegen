@@ -5395,6 +5395,314 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
     );
 }
 
+/// The MAP twin of the test above: a plain group on an open struct-map REST ROW's key or value slot
+/// (`kv = (a: uint, b: uint)`, `t = { c: uint, * kv => uint }` / `t = { c: uint, * uint => kv }`).
+///
+/// A CBOR map entry holds exactly one item in each of its two slots and a keyless group has no
+/// single-item form, so the shape has no wire — the same reason the pure-table twin beside it is
+/// refused. Both slots are checked at ONE seam, on the RESOLVED type, so the bare, ALIAS and TAGGED
+/// spellings land on one message on every profile; and the message is made honest by remedies
+/// asserted here to generate (the array framing on either slot, plus the tag moved onto that
+/// framing).
+///
+/// Pins what the refusal must NOT swallow: the pure-table twin keeps its own message (a table entry
+/// is not a rest row), the mandatory-splice member keeps the keyless-map-field message, and every
+/// placement guard that runs before the slot types are computed keeps its own — one problem, one
+/// message.
+#[test]
+fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_grouprow_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "grouprow_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "kv = (a: uint, b: uint)\n";
+    const ALIAS: &str = "kv = (a: uint, b: uint)\nkv_alias = kv\n";
+
+    // The KEY-slot spelling, in full: names the rule, the row by its SOURCE spelling, the slot, why
+    // a map slot cannot hold a keyless group, and the array-framed remedy with the tag placement.
+    let key = run(
+        &format!("{GROUP}t = {{ c: uint, * kv => uint }}\n"),
+        "key",
+        &[],
+    )
+    .expect_err("a plain-group rest-row key must reject gracefully");
+    assert!(
+        key.contains(
+            "rule `t`: the open struct-map rest row `kv => uint` uses the bare plain group `kv` \
+             as its KEY domain"
+        ),
+        "rejection should name the rule, the row and the slot, got: {key}"
+    );
+    assert!(
+        key.contains("a CBOR map entry holds exactly one item in each slot"),
+        "rejection should explain why a map slot cannot hold a group, got: {key}"
+    );
+    assert!(
+        key.contains("`* [kv] => uint` in place of this row"),
+        "rejection should name the array-framed remedy for the key slot, got: {key}"
+    );
+    assert!(
+        key.contains("A tag on the slot belongs OUTSIDE the framing"),
+        "rejection should say where a tag goes, got: {key}"
+    );
+
+    // The VALUE-slot spelling is the same seam with the other role, and prints the remedy on the
+    // other side of the arrow.
+    let value = run(
+        &format!("{GROUP}t = {{ c: uint, * uint => kv }}\n"),
+        "value",
+        &[],
+    )
+    .expect_err("a plain-group rest-row value must reject gracefully");
+    assert!(
+        value.contains(
+            "rule `t`: the open struct-map rest row `uint => kv` uses the bare plain group `kv` \
+             as its VALUE domain"
+        ),
+        "rejection should name the VALUE slot, got: {value}"
+    );
+    assert!(
+        value.contains("`* uint => [kv]` in place of this row"),
+        "rejection should name the array-framed remedy for the value slot, got: {value}"
+    );
+
+    // Every other spelling reaches the same seam, because the guard reads the RESOLVED slot type
+    // rather than its surface shape. A TAG is an encoding operation, so the slot type is still the
+    // group — and the printed remedy keeps the tag OUTSIDE the framing it introduces.
+    for (spec, tag, needle) in [
+        (
+            format!("{ALIAS}t = {{ c: uint, * kv_alias => uint }}\n"),
+            "alias_key",
+            "`* [kv_alias] => uint` in place of this row",
+        ),
+        (
+            format!("{ALIAS}t = {{ c: uint, * uint => kv_alias }}\n"),
+            "alias_value",
+            "`* uint => [kv_alias]` in place of this row",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * #6.10(kv) => uint }}\n"),
+            "tagged_key",
+            "`* #6.10([kv]) => uint` in place of this row",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * uint => #6.10(kv) }}\n"),
+            "tagged_value",
+            "`* uint => #6.10([kv])` in place of this row",
+        ),
+        // a group whose own members are ALL optional is reachable and deliberately still refused:
+        // the remedy serves it identically.
+        (
+            "kv = (? a: uint, ? b: uint)\nt = { c: uint, * kv => uint }\n".to_owned(),
+            "all_optional_members",
+            "uses the bare plain group `kv` as its KEY domain",
+        ),
+        // rule ORDER must not matter: the plain-group registry is settled in a pre-pass.
+        (
+            "t = { c: uint, * uint => kv }\nkv = (a: uint, b: uint)\n".to_owned(),
+            "reversed",
+            "uses the bare plain group `kv` as its VALUE domain",
+        ),
+        // a longer fixed prefix changes nothing — the seam is the row's slot types.
+        (
+            format!("{GROUP}t = {{ c: uint, d: tstr, * kv => uint }}\n"),
+            "longer_prefix",
+            "uses the bare plain group `kv` as its KEY domain",
+        ),
+        // BOTH slots at once: each role is reported, so no spelling of the shape is silent.
+        (
+            format!("{GROUP}t = {{ c: uint, * kv => kv }}\n"),
+            "both_slots",
+            "as its VALUE domain",
+        ),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} spelling should carry `{needle}`, got: {msg}"
+        );
+    }
+
+    // Profile independence: the refusal is at parsing, so no flag combination reaches an emission
+    // that could differ. (All of these formerly aborted at exit 101 — on the `is_enum` plain-group
+    // registry assert, reached from `finalize`'s wrapper-name collision walk on every profile.)
+    for (extra, tag) in [
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        for (spec, spelling) in [
+            (format!("{GROUP}t = {{ c: uint, * kv => uint }}\n"), "key"),
+            (format!("{GROUP}t = {{ c: uint, * uint => kv }}\n"), "value"),
+            (
+                format!("{ALIAS}t = {{ c: uint, * kv_alias => uint }}\n"),
+                "alias",
+            ),
+            (
+                format!("{GROUP}t = {{ c: uint, * uint => #6.10(kv) }}\n"),
+                "tagged",
+            ),
+        ] {
+            let msg = run(&spec, &format!("{tag}_{spelling}"), &extra)
+                .expect_err("the refusal must fire on every profile");
+            assert!(
+                msg.contains("uses the bare plain group `kv` as its"),
+                "the {spelling} spelling on {tag} should carry the same body, got: {msg}"
+            );
+        }
+    }
+
+    // Every remedy the message names must actually work — a remedy string is an executable claim.
+    // (The generated crates additionally `cargo check`; that is verified out of band, not here.)
+    for (spec, tag) in [
+        (format!("{GROUP}t = {{ c: uint, * [kv] => uint }}\n"), "key"),
+        (
+            format!("{GROUP}t = {{ c: uint, * uint => [kv] }}\n"),
+            "value",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * #6.10([kv]) => uint }}\n"),
+            "tagged_key",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * uint => #6.10([kv]) }}\n"),
+            "tagged_value",
+        ),
+    ] {
+        for (extra, profile) in [
+            (vec![], "default"),
+            (vec!["--preserve-encodings=true"], "preserve"),
+            (vec!["--wasm=true"], "wasm"),
+        ] {
+            assert!(
+                run(&spec, &format!("remedy_{tag}_{profile}"), &extra).is_ok(),
+                "the remedy `{}` must generate on {profile}, got: {:?}",
+                spec.trim(),
+                run(&spec, &format!("remedy_{tag}_{profile}"), &extra).err()
+            );
+        }
+    }
+
+    // Neighbours the guard must NOT widen into, each keeping the message it already had. The pure
+    // TABLE twin is the prefix-less shape (a table entry, not a rest row) and is refused by its own
+    // seam; the mandatory splice is a keyless map field; and the inline `[kv]` framings above are
+    // the supported remedy, not this shape.
+    let table_twin = run(
+        &format!("{GROUP}t = {{ * kv => uint }}\n"),
+        "table_twin",
+        &[],
+    )
+    .expect_err("the pure table twin must keep rejecting");
+    assert!(
+        table_twin.contains("the table entry `kv => uint` uses the bare plain group `kv`"),
+        "the table twin should keep its own message, got: {table_twin}"
+    );
+    assert!(
+        !table_twin.contains("open struct-map rest row"),
+        "the table twin must not be re-reported as a rest row, got: {table_twin}"
+    );
+    let splice = run(&format!("{GROUP}t = {{ c: uint, kv }}\n"), "splice", &[])
+        .expect_err("the mandatory splice must keep rejecting");
+    assert!(
+        splice.contains("map field `kv` has no key"),
+        "the mandatory splice should keep its own message, got: {splice}"
+    );
+
+    // Guard ORDER. Everything that runs before the slot types are computed keeps its own message:
+    // one problem, one message, and never two.
+    for (spec, tag, needle) in [
+        (
+            format!("{GROUP}t = {{ x: uint // c: uint, * kv => uint }}\n"),
+            "choice_arm",
+            "inside a group-choice arm",
+        ),
+        (
+            format!("{GROUP}g = ( c: uint, * kv => uint )\nt = {{ g }}\n"),
+            "plain_group_owner",
+            "inside a plain group",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * kv => uint, * text => uint }}\n"),
+            "multiplicity",
+            "at most a single trailing rest row",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * kv => uint, d: uint }}\n"),
+            "non_final",
+            "must be the LAST entry of the map",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, + kv => uint }}\n"),
+            "plus_occurrence",
+            "must use the `*` occurrence",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, 2*3 kv => uint }}\n"),
+            "bounded_occurrence",
+            "must use the `*` occurrence",
+        ),
+    ] {
+        let msg = run(&spec, tag, &[]).expect_err(&format!("`{}` must reject", spec.trim()));
+        assert!(
+            msg.contains(needle),
+            "the {tag} neighbour should keep its own message (`{needle}`), got: {msg}"
+        );
+        assert!(
+            !msg.contains("uses the bare plain group `kv` as its"),
+            "the {tag} neighbour must not also report the slot-type problem, got: {msg}"
+        );
+    }
+
+    // …and the row-entry DIRECTIVE guards, which run AFTER the slot types are computed, are
+    // deliberately shadowed by it: a directive cannot be judged on a row with no representable
+    // slot, so the shape refusal is the one message. (Same precedence the placement guards already
+    // have over these.)
+    for (spec, tag) in [
+        (
+            format!("{GROUP}t = {{ c: uint, * kv => uint ; @ignore\n}}\n"),
+            "ignore",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * kv => uint ; @name xs\n}}\n"),
+            "name",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, * kv => uint ; @duplicates preserve\n}}\n"),
+            "duplicates",
+        ),
+        (
+            format!(
+                "{GROUP}t = {{ c: uint, * kv => uint ; @custom_serialize s @custom_deserialize d\n}}\n"
+            ),
+            "custom_codec",
+        ),
+    ] {
+        let msg = run(&spec, tag, &[]).expect_err(&format!("`{}` must reject", spec.trim()));
+        assert!(
+            msg.contains("uses the bare plain group `kv` as its KEY domain"),
+            "the {tag} directive should get the shape refusal, got: {msg}"
+        );
+    }
+}
+
 /// A plain group as a TYPE-choice arm (`x: kv / null`, `u = kv / tstr`) is refused, and the refusal
 /// is the durable contract rather than a deferred support branch.
 ///
