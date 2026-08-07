@@ -265,6 +265,23 @@ emission defect was exactly such an append (the unused `use serialization::*;` c
 2026-08-07 after a fresh-generation probe found the generator emits that glob nowhere — the
 retraction record is in `tests/TESTING_ROADMAP.md`'s unused-imports entry).
 
+- **Three `--annotate-fields=false` emission classes emit non-compiling rust at exit 0 — eight
+  corpus cells, ledgered live with tripwires.** Found by the corpus's new annotate=false compile
+  floor (`feature_corpus_compiles_no_annotate_shard_NN`) on its first run; the per-cell ledger is
+  `integration_tests::NO_ANNOTATE_KNOWN_RED` (four-state — a cell that starts compiling fails the
+  gate asking for the entry's retirement), and the full mechanism record with the recommended
+  C-then-A-then-B order of attack is `tests/TESTING_ROADMAP.md`'s work item titled "Three
+  `--annotate-fields=false` emission classes emit non-compiling rust, ledgered live in
+  `NO_ANNOTATE_KNOWN_RED`". One seam (without the flag there is no per-type scaffolding closure,
+  so emissions that assumed one land in `deserialize()` itself), three rustc classes: E0308
+  (optional-field-with-encodings bare tuple binding, preserve row), E0283 (unpinned
+  `{f}_len.into()`, preserve row), E0308 (the inlined c-style-enum dispatch's `return`, BOTH
+  rows). Class C is the P0-class member: it breaks plain `--annotate-fields=false` with no
+  preserve involved — exit-0 non-compiling output under an accepted flag. Harness-free repro:
+  `cbor_enum_payload.cddl` generated alone into scratch under `--wasm=false
+  --annotate-fields=false` exits 0 and fails `cargo check` with E0308 (probed 2026-08-07; the
+  floor's own cells run `--wasm=true`, so both postures are covered). Candidate card(s) for the
+  next audit; each fix retires its ledger rows while the floor stays green.
 - **No CHOICE-OF-BODIES for a group rule, so a body carrying two or more group choices is refused
   rather than honored.** `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
   `grpchoice *(S "//" S grpchoice)`), and today it is a graceful refusal at the `api::with_types`
