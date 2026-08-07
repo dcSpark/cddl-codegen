@@ -1378,6 +1378,17 @@ impl GenerationScope {
         //     emitted elsewhere) produces no serialization.rs, so an unconditional decl was E0583.
         //   - cbor_encodings.rs: a scope with no encoding structs (e.g. a root of only c-style enums)
         //     emits no such file, so the decl is conditioned on `cbor_encodings_scopes` the same way.
+        //
+        // The root's entry is MATERIALIZED first rather than assumed present: a spec whose rules are
+        // ALL `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` markers registers no
+        // generated struct, so nothing has created a root `rust_scopes` entry by the time this loop
+        // runs — the extern re-export glue below is what creates it. The loop then declared nothing
+        // while `merge_scopes_to_strings` still wrote `generated/serialization.rs` AND
+        // `extern_interface_check.rs` still named `crate::generated::serialization::RawBytesEncoding`,
+        // so the crate failed its own build with E0433 and no user-supplied definition could fix it.
+        // `or_default()` on an entry the ordinary path already created is a no-op, so every other
+        // crate's emitted byte order is unchanged.
+        self.rust_scopes.entry((*ROOT_SCOPE).clone()).or_default();
         for (scope, content) in self.rust_scopes.iter_mut() {
             if *scope == *ROOT_SCOPE || self.serialize_scopes.contains_key(scope) {
                 content.raw("pub mod serialization;");

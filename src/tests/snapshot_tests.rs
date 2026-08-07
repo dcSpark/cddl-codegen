@@ -2613,6 +2613,58 @@ fn extern_interface_check_refuses_generic_raw_bytes_base() {
     );
 }
 
+/// A spec whose rules are ALL extern / raw-bytes MARKERS registers no generated struct, so nothing
+/// creates a root `rust_scopes` entry before the module-declaration pass — while
+/// `merge_scopes_to_strings` still writes `generated/serialization.rs` and `extern_interface_check.rs`
+/// still names `crate::generated::serialization::RawBytesEncoding`. The crate then failed its OWN
+/// build with E0433 at exit 0, and no user-supplied definition could fix it: the missing item is a
+/// module declaration in a file the user does not own.
+///
+/// Pinned per marker flavor because the two reach the module by different routes (raw-bytes through
+/// the self-check's `_assert_raw_bytes` bound, extern through a hand-written `Serialize`/`Deserialize`
+/// impl the contract asks the user to write against `serialization::Deserialize`), and per
+/// `--preserve-encodings` because the preserve root additionally carries `cbor_encodings`.
+#[test]
+fn marker_only_root_declares_the_serialization_module() {
+    for (label, spec) in [
+        ("raw-bytes", "h = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n"),
+        (
+            "raw-bytes @copy",
+            "h = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\n",
+        ),
+        ("extern", "e = _CDDL_CODEGEN_EXTERN_TYPE_\n"),
+        ("generic extern", "g<T> = _CDDL_CODEGEN_EXTERN_TYPE_\n"),
+    ] {
+        for flags in [
+            &["--wasm", "false"][..],
+            &["--wasm", "false", "--preserve-encodings", "true"][..],
+        ] {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_marker_only_root_{}_{}.cddl",
+                std::process::id(),
+                label.replace([' ', '@', '-'], "_")
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let cli = cli_for(&path, flags);
+            let files = crate::api::generated_strings(&cli).unwrap();
+            std::fs::remove_file(&path).ok();
+
+            assert!(
+                files.contains_key("rust/src/generated/serialization.rs"),
+                "{label} {flags:?}: the root always materializes serialization.rs"
+            );
+            let root = files
+                .get("rust/src/generated/mod.rs")
+                .expect("root module emitted");
+            assert!(
+                root.contains("pub mod serialization;"),
+                "{label} {flags:?}: a marker-only root must still DECLARE the serialization module \
+                 it emits — an undeclared one is E0433 against the crate's own self-check:\n{root}"
+            );
+        }
+    }
+}
+
 // --- Emitted no-std-check shim crate (D3) --------------------------------------------------------
 
 /// The fixture family's one spec. Every test below points at it, including the ones whose assertion
