@@ -126,10 +126,10 @@ the remedy; and the rule-scoped tags (`@copy`, `@raw_bytes_flavor`, `@used_as_el
 get at an ordinary field. The one thing the entry slot **does** carry on such an arm is `@name`
 naming an **anonymous inline array** member type (immediately below) — that naming door is what the
 "Anonymous groups not allowed" error advertises, so it stays. It is scoped to exactly the member
-types that door covers: written on a member whose type is anything else — a homogeneous `[* uint]`,
-a primitive, a named rule, an array behind a tag, an inline map — the name is read by nothing, and
-it is a hard error naming the arm's own slot (`// ; @name <n>`) as the remedy. The arm's own name
-always comes from the arm slot; the entry slot never names the variant.
+types that door covers (an anonymous inline array, bare or tag-wrapped): written on a member whose
+type is anything else — a homogeneous `[* uint]`, a primitive, a named rule, an inline map — the
+name is read by nothing, and it is a hard error naming the arm's own slot (`// ; @name <n>`) as the
+remedy. The arm's own name always comes from the arm slot; the entry slot never names the variant.
 
 Note: `@name` also names an **anonymous inline array used as a member's type**, which is the remedy
 the "Anonymous groups not allowed" error advertises:
@@ -139,11 +139,26 @@ t = [0, [1, bytes] ; @name inner
 ```
 mints `struct Inner` and holds it in a field named `inner` — the trailing comment is the member's
 own slot, so the single directive names *both* the struct and the field, which is what makes the
-struct referenceable at all. The naming door is scoped to the case where the anonymous array is the
-member's **whole** type: behind a control operator (`bytes .cbor [1, bytes] ; @name inner`) the
-array belongs to the operator rather than the member, and the anonymous-group error stands. An
-inline **map** in the same position has no naming door at all — its own error points at the named
-form (`m = { a: int, b: uint }`, then reference `m`) and does not advertise `@name`.
+struct referenceable at all.
+
+**Tags are transparent to this door.** A tag mints no type of its own — it wraps whatever its
+payload is — so the array behind it is still the only thing the name can mean:
+```cddl
+t = [ point: #6.42([x: uint]) ; @name tagged_point
+    , label: text ]
+```
+mints `struct TaggedPoint`, holds it in a field named `tagged_point`, and writes the tag over it.
+Any number of nested tags (`#6.1(#6.42([x: uint]))`) works the same way. This emits exactly what
+the named-rule spelling emits (`p = [x: uint]`, then `#6.42(p)`), so the two are interchangeable —
+pick whichever reads better.
+
+The naming door is scoped to the case where the anonymous array is the member's **whole** type up
+to those tag wrappers. Behind a control operator (`bytes .cbor [1, bytes] ; @name inner`) the array
+belongs to the operator rather than the member, and the anonymous-group error stands; the same
+holds when the member's type is a choice (`a / [x: uint]`), tagged or not, since the name would be
+ambiguous between the arm and the member. An inline **map** in the same position has no naming door
+at all, tag or no tag — its own error points at the named form (`m = { a: int, b: uint }`, then
+reference `m`) and does not advertise `@name`.
 
 ## @rust_name
 

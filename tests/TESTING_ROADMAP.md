@@ -558,11 +558,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     message prints, not only the strings introduced by "instead" or "remedy". Second — and this is
     the half a generates-green vector alone cannot deliver — the claim must be exercised against
     each TRIGGERING construct class that can produce the message: the anonymous-group rejection's
-    "give it a name using the `@name` notation" is true for the bare inline array and UNREACHABLE
-    for the tag-wrapped one (`f: #6.42([x: uint]) ; @name Foo` — the `TaggedData` node breaks the
-    name reader's parent-chain walk; ledgered in `cddl-matrix/ROADMAP.md` § findings), so a
-    hand-chosen untagged vector stays green while the tagged trigger's advice is dead. A remedy
-    pin is per message-per-trigger-class, or the message must name the boundary itself.
+    "give it a name using the `@name` notation" was true for the bare inline array and dead advice
+    for the tag-wrapped trigger (`f: #6.42([x: uint]) ; @name Foo`), because the name reader's
+    parent-chain walk stopped at the interposed `TaggedData` node — one message, two trigger
+    classes, and the hand-chosen untagged vector stayed green throughout. The reader now walks tag
+    layers, pinned by `tagged_anon_array_member_name_emits_the_named_rule_remedy`, so the residual
+    is the sweep's shape, not that shape: a remedy pin is per message-per-trigger-class, or the
+    message must name the boundary itself.
 
 16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is

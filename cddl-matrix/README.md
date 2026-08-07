@@ -504,12 +504,15 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   works in every position; the `@name` naming route the array message advertises works wherever the
   anonymous ARRAY is the whole type of the group entry the comment sits on — the choice-member
   position and the member ones (array-element, map-value, occurrence-target), pinned by
-  `dsl_position_tests` cells. It stays out of reach where the array belongs to some other construct
-  the comment cannot be attributed to (a `bytes .cbor [ … ]` payload, a generic argument, a map
-  key, and a TAGGED array `#6.42([ … ])`, whose `TaggedData` node breaks the reader's parent-chain
-  walk — that one's rejection message still advertises the door it cannot open, the advice gap
-  ledgered in `ROADMAP.md` § findings), and the MAP bracket has no naming door at all — its message
-  advertises only the named form.
+  `dsl_position_tests` cells. TAG wrappers are transparent to it: `#6.42([ … ]) ; @name Foo` mints
+  the struct and wraps it in the tag, for any number of nested tags, because a tag mints no type of
+  its own and the array behind it is therefore the only referent the name can have — emitting
+  exactly what the named-rule spelling emits — an equality pinned by
+  `tagged_anon_array_member_name_emits_the_named_rule_remedy` across three profiles. It stays out of
+  reach where the array belongs to some other construct the comment cannot be attributed to (a
+  `bytes .cbor [ … ]` payload, a generic argument, a map key, a choice arm), pinned by
+  `tagged_anon_array_member_name_walks_only_operator_free_single_choice_tag_layers`; and the MAP
+  bracket has no naming door at all, tagged or not — its message advertises only the named form.
   Where the door does not reach, the `@name` written for it is now REFUSED rather than dropped: on a
   SINGLE-ENTRY group-choice arm the entry-trailing slot is honored exactly where the door consumes
   it and is a hard error otherwise, naming the arm's own slot (the one after the `//`), so an author

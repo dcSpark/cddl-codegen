@@ -195,6 +195,21 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // 9e. TAG spelling of cell 9 (`comment_dsl.mdx` § @name, "Tags are transparent to this door"):
+    //     a tag mints no type of its own, so the array behind it is still the member's whole type
+    //     for naming purposes — the name mints the struct and the tag wraps it. Both effects
+    //     asserted, since the dual naming is the position's semantics here exactly as in cell 9.
+    Cell {
+        directive: "@name",
+        position: "anon-group-member-behind-tag",
+        spec: "t = [0, #6.42([1, bytes]) ; @name inner\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["struct Inner", "pub inner: Inner", "write_tag(42u64)"],
+            must_not: &[],
+        },
+    },
     // 9c. SCOPE CONTROL for cell 9: the member-position slot is read ONLY when the anonymous array
     //     is the member's WHOLE type. Behind a `.cbor` payload the array is the control operator's
     //     target, so there is no unambiguous construct for the name to land on and the rejection
