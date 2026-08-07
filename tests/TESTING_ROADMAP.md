@@ -1553,7 +1553,12 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `snapshot_tests::extern_interface_check_refuses_generic_raw_bytes_base` beside the two skip
   tests); an extern base names an arbitrary hand-written type that MAY legitimately be
   parameterized, so its generic-ness is recorded and the extern-interface self-check and the
-  json-gen schema-row emitter skip it. What is NOT swept is the rest of the marker×directive
+  json-gen schema-row emitter skip it. Both directions are now enumerated as MATRIX rows too —
+  `ext.extern.generic` / `ext.extern.generic_instance` (the extern base with and without a bound
+  instance, whose two faces answer differently) beside `ext.raw_bytes.generic` (the refusal,
+  projected into `tests/matrix_reject/`) — so the asymmetry is a committed verdict a parser change
+  flips visibly rather than a fact three hand tests happen to agree on. What is NOT swept is the
+  rest of the marker×directive
   product at a generic base — `@copy`, `@raw_bytes_flavor` and `@extern_companions` each have their
   own reachability at these two branches, and each is pinned only where someone thought to look.
   Reopening signal: a second marker-branch directive found accepted-and-inert on a generic base

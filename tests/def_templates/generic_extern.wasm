@@ -1,0 +1,4 @@
+// The wasm face of a generic extern BASE with no bound instances. wasm-bindgen has no generics, so
+// the base is not a `#[wasm_bindgen]` class: the generated wasm glue re-exports the base name only
+// (an instance would instead demand a concrete `<Base><Arg>` wrapper, which `extern_type.wasm` is).
+pub struct __NAME__<T>(pub T);

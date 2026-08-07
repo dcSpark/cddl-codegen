@@ -249,30 +249,33 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.custom_encodings` | ✅ | @custom_encodings — the custom codec declares its own wire's encoding variables | `dsl_custom.cddl` |
 | `dsl.custom_json` | ✅ | @custom_json — suppress generated JSON traits | `dsl_custom.cddl` |
 | `dsl.custom_serialize` | ✅ | @custom_serialize — override serialization | `dsl_custom.cddl` |
-| `dsl.custom_wire_major` | ➕ | @custom_wire_major — the custom codec declares which CBOR major type its wire starts with | supported; references a user-provided codec pair (and a raw-bytes marker type |
+| `dsl.custom_wire_major` | ➕ | @custom_wire_major — the custom codec declares which CBOR major type its wire starts with | supported, no corpus fixture (cddl-codegen exit 0) |
 | `dsl.doc` | ✅ | @doc — rust doc comment | `dsl_doc.cddl` |
 | `dsl.duplicates.preserve` | ✅ | @duplicates preserve — duplicate-preserving pair-map tables | `table_preserve.cddl` |
 | `dsl.duplicates.reject` | ✅ | @duplicates reject — duplicate-free set/array collections | `tag_set_reject.cddl` |
-| `dsl.extern_companions` | ➕ | @extern_companions — reference a sibling crate's wasm companion classes | supported; declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate |
+| `dsl.extern_companions` | ➕ | @extern_companions — reference a sibling crate's wasm companion classes | supported; the directive defers the wasm companion classes to a SIBLING WASM CRATE, so the generated `use <path>::<Class>;` needs that crate to exist and a local definition would defeat the deferral it declares; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate |
 | `dsl.ignore` | ✅ | @ignore — tolerate-and-drop open struct-map rest row | `dsl_ignore.cddl` |
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
 | `dsl.no_json_schema_export` | ➕ | @no_json_schema_export — not a published JSON-schema root | supported, no corpus fixture (cddl-codegen exit 0) |
 | `dsl.raw_bytes_flavor` | ✅ | @raw_bytes_flavor — extern generic raw-bytes wrapper flavor | `extern_generic_raw_bytes.cddl` |
-| `dsl.rust_name` | ➕ | @rust_name — dependency-pinned Rust type name | supported; pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair |
+| `dsl.rust_name` | ➕ | @rust_name — dependency-pinned Rust type name | supported; the directive pins a DEPENDENCY crate's type name, so the generated `use extern_dep::…` needs that whole crate on the path — a local definition cannot supply a foreign crate root; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair |
 | `dsl.used_as_elem` | ✅ | @used_as_elem — mint the canonical loose-list wasm wrapper | `dsl_used_as_elem.cddl` |
 | `dsl.used_as_key` | ✅ | @used_as_key — force Ord/Hash derives | `dsl_used_as_key.cddl` |
 | `dsl.used_as_key.hash` | ✅ | @used_as_key hash — narrowed Hash derive family | `dsl_used_as_key_hash.cddl` |
 | `dsl.used_as_key.hash_ord` | ✅ | @used_as_key hash ord — union of the hash and ord families | `dsl_used_as_key_hash_ord.cddl` |
 | `dsl.used_as_key.ord` | ✅ | @used_as_key ord — narrowed Ord derive family | `dsl_used_as_key_ord.cddl` |
 
-### `sentinel` (2)
+### `sentinel` (5)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `ext.extern` | ✅ | _CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type | `extern_generic_raw_bytes.cddl` |
+| `ext.extern.generic` | ➕ | _CDDL_CODEGEN_EXTERN_TYPE_ generic base with NO instances — re-export only | supported, no corpus fixture (cddl-codegen exit 0) |
+| `ext.extern.generic_instance` | ➕ | _CDDL_CODEGEN_EXTERN_TYPE_ generic base WITH an instance — per-instance alias | supported, no corpus fixture (cddl-codegen exit 0) |
 | `ext.raw_bytes` | ✅ | _CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints | `extern_generic_raw_bytes.cddl` |
+| `ext.raw_bytes.generic` | ➖ | _CDDL_CODEGEN_RAW_BYTES_TYPE_ generic base — refused at parse time | a generic raw-bytes BASE (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) is rejected by name at parse time: a raw-bytes type is exactly its own bytes and carries no element type a parameter could name, so a parameterized base would emit extern-interface self-check rows and (under --json-schema-export) json-gen registration rows spelling a bare `Foo` — each E0107 against the parameterized type the marker promises, at exit 0 with empty stderr. The remedy the message names is to declare it non-generic. Deliberately the OPPOSITE disposition to a generic EXTERN base (`ext.extern.generic` / `ext.extern.generic_instance`), which names an arbitrary hand-written type that MAY legitimately be parameterized and is therefore recorded-and-skipped by both emitters. Pinned by `generic_raw_bytes_base_rejects_gracefully` and `extern_interface_check_refuses_generic_raw_bytes_base`.  [`element type for a parameter to name`] |
 
 ## Control operators (`ctlop`, §3.8 + IANA registry)
 
@@ -433,13 +436,13 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 3. Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap.
 4. Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes).
 5. Float works in every position under every profile, `--preserve-encodings` included: the CBOR head width (`0xf9`/`0xfa`/`0xfb`) is an `Option<cbor_event::Sz>` encoding variable, and a float window is enforced on the same value in both profiles. The corpus carries floats accordingly — `tests/corpus/optional_fixed_float.cddl` (an optional fixed FLOAT member, presence bit plus width) and `homogeneous_array.cddl`'s `float_holder` (per-element widths). Spec-anchored wire vectors live in the `golden_hex_preserve` / `golden_hex_canonical` KAT suites.
-6. Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested).
+6. Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A row whose generated code names USER-SUPPLIED items (the extern/raw-bytes sentinels, a @custom_serialize/@custom_deserialize pair) gets that code written for it rather than an exemption — the probe appends a name-parameterized definition from tests/def_templates/ into the crate roots and then runs the ordinary verdict on both faces plus, under the json profile, the emitted json-gen crate. Only a row whose missing piece is a whole OTHER CRATE stays exempt (see cddl-matrix/README.md § the execution-gate discussion).
 7. Gap — top-level fixed-value / null TYPES (`answer = 42`, `x = null`) have no standalone type representation, so the generator REJECTS them gracefully (not a panic), pinned by the `tests/matrix_reject/` expect-reject catalog (`tests/matrix_reject/prelude.null.cddl`, `tests/matrix_reject/type2.value.cddl`, `tests/matrix_reject/value.number.cddl`, `tests/matrix_reject/value.text.cddl`) via `robustness_tests::unsupported_construct_reject_catalog`. The same fixed values serialize fine as struct/array MEMBERS (`tests/corpus/fixed_bool_member.cddl`). A singleton-value type that materializes the constant is still a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
 8. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both (now rejected gracefully). Candidate cddl-codegen feature.
 
 ## Summary
 
-- Features: **120** — ✅ 67 covered · ➕ 29 supported-untested · ⚠️ 1 partial · ➖ 23 not supported
+- Features: **123** — ✅ 67 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 24 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 94
 

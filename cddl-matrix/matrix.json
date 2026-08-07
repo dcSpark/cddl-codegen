@@ -59,45 +59,45 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.copy",
         "status": "supported"
       },
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.custom_deserialize",
         "status": "supported"
       },
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips))",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips))",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips)); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.custom_encodings",
         "status": "supported"
       },
@@ -119,30 +119,30 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided serialize fn; integration-tested in tests/custom_serialization)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided serialize fn; integration-tested in tests/custom_serialization)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided serialize fn; integration-tested in tests/custom_serialization); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.custom_serialize",
         "status": "supported"
       },
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.custom_wire_major",
         "status": "supported"
       },
@@ -194,15 +194,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (the directive defers the wasm companion classes to a SIBLING WASM CRATE, so the generated `use <path>::<Class>;` needs that crate to exist and a local definition would defeat the deferral it declares; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (the directive defers the wasm companion classes to a SIBLING WASM CRATE, so the generated `use <path>::<Class>;` needs that crate to exist and a local definition would defeat the deferral it declares; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (the directive defers the wasm companion classes to a SIBLING WASM CRATE, so the generated `use <path>::<Class>;` needs that crate to exist and a local definition would defeat the deferral it declares; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.extern_companions",
         "status": "supported"
       },
@@ -284,30 +284,30 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.raw_bytes_flavor",
         "status": "supported"
       },
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (the directive pins a DEPENDENCY crate's type name, so the generated `use extern_dep::…` needs that whole crate on the path — a local definition cannot supply a foreign crate root; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (the directive pins a DEPENDENCY crate's type name, so the generated `use extern_dep::…` needs that whole crate on the path — a local definition cannot supply a foreign crate root; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (the directive pins a DEPENDENCY crate's type name, so the generated `use extern_dep::…` needs that whole crate on the path — a local definition cannot supply a foreign crate root; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.rust_name",
         "status": "supported"
       },
@@ -389,32 +389,67 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (requires a user-provided extern type; integration-tested in tests/extern-deps)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (requires a user-provided extern type; integration-tested in tests/extern-deps)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (requires a user-provided extern type; integration-tested in tests/extern-deps); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "ext.extern",
         "status": "supported"
       },
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "ext.extern.generic",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "ext.extern.generic_instance",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "ext.raw_bytes",
         "status": "supported"
+      },
+      {
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "ext.raw_bytes.generic",
+        "status": "unsupported"
       },
       {
         "emission": {
@@ -5433,6 +5468,36 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER",
       "title": "_CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints"
+    },
+    {
+      "alt": "_CDDL_CODEGEN_EXTERN_TYPE_",
+      "desc": "A generic extern base the spec never instantiates. Nothing is emitted for it beyond the re-export glue naming the bare base (`pub use crate::<Base>;`) in both faces: it names no concrete type, so the extern-interface self-check and the json-gen schema registrar must both SKIP it — a row spelling a bare `<Base>` would be E0107 against the parameterized type the marker declares.",
+      "example": "\next_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nplain = [x: uint]",
+      "id": "ext.extern.generic",
+      "production": "sentinel",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER",
+      "title": "_CDDL_CODEGEN_EXTERN_TYPE_ generic base with NO instances — re-export only"
+    },
+    {
+      "alt": "_CDDL_CODEGEN_EXTERN_TYPE_",
+      "desc": "A generic extern base the spec binds (`ext_gen<uint>`). The rust crate aliases the instance itself (`pub type ExtGenU64 = ExtGen<u64>;`) and re-exports only the BASE, so one hand-written generic definition serves every instance; the wasm crate, which has no generics, instead requires a user-provided concrete `ExtGenU64` wrapper and re-exports THAT name.",
+      "example": "\next_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [y: ext_gen<uint>]",
+      "id": "ext.extern.generic_instance",
+      "production": "sentinel",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER",
+      "title": "_CDDL_CODEGEN_EXTERN_TYPE_ generic base WITH an instance — per-instance alias"
+    },
+    {
+      "alt": "_CDDL_CODEGEN_RAW_BYTES_TYPE_",
+      "desc": "The raw-bytes marker's answer to the same generic-base axis the two extern rows above enumerate, and the opposite one: an extern base may legitimately be parameterized (it is an arbitrary hand-written type), but a raw-bytes type IS its own bytes and carries no element type for a parameter to name, so a generic base is refused by name at parse time rather than generating self-check and schema rows spelling a bare base that cannot compile against the parameterized type the marker declares. The remedy the message names is to declare it non-generic. Refused with and without instances, under --wasm=true and --wasm=false alike.",
+      "example": "\nrb_gen<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [x: rb_gen<uint>]",
+      "id": "ext.raw_bytes.generic",
+      "production": "sentinel",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER",
+      "title": "_CDDL_CODEGEN_RAW_BYTES_TYPE_ generic base — refused at parse time"
     },
     {
       "alt": "grpchoice *(S \"//\" S grpchoice)",

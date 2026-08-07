@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->120 features (95 RFC8610 + 1 RFC9682 + 24 `CDDL_CODEGEN` vendor profile), 135 containment cells, and 289 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->123 features (95 RFC8610 + 1 RFC9682 + 27 `CDDL_CODEGEN` vendor profile), 135 containment cells, and 292 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -705,33 +705,52 @@ retraction record is in `tests/TESTING_ROADMAP.md`'s unused-imports entry).
   `prelude.number` / `prelude.time` and the two float-range wrapper rows
   `rangeop.{inclusive,exclusive}.float`, and by `EXPECTED_GENERATION_FAIL` in the wasm API parity
   sweep, which pins `tests/core`'s `tagged_type_choice` on the preserve leg.
-- **Extern compile coverage at BREADTH — every extern corpus/matrix cell is still compile-exempt.**
-  Every extern corpus row is compile-gate-exempt (`COMPILE_GATE_EXEMPT` — extern references
-  user-supplied code) and the multifile matrix carries the same permanent extern exclusion. The
-  hand-fixture level is covered: the extern-only-scope root declarations derive from the post-glue
-  scope map (a non-root scope whose rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` gets its
-  `pub mod <scope>;` in the generated root, holding down the E0432 class; string-pinned
-  by `integration_extern_only_scope_declared_in_root`), and the full multi-scope composition —
-  extern-only scope, hand definition, crate-root re-export — `cargo check`s in a gate
-  (`facade_composition_compiles`, the documented facade consumer built over exactly this shape).
-  What remains is BREADTH: that gate compiles ONE hand-curated shape, so an extern break in any
-  OTHER corpus/matrix shape still ships unseen. The mechanical catch is the def-splice the compile
-  gate already does for `rawbytes` cells (`append_raw_bytes_defs`): seed a trivial extern
-  definition + crate-root re-export so extern cells stop being compile-exempt.
-  This entry OWNS the compile side of the emitted-check/schema-row class (execution is
-  `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry); two requirements, each justified
-  by a compile-error class that shipped because no gate compiled the crate it sat in
-  (content-pinned by
-  `json_gen_extern_schema_rows` and `extern_interface_check_skips_generic_base_without_instances`):
-  (1) the def-splice compile scope must include the emitted `wasm/json-gen` crate under the json
-  profile — the bare generic-extern-BASE rows (E0107) and extern-DEP-owned schema rows (E0433)
-  were plain compile errors in a crate the extern exemption kept un-built; and (2) the vendor
-  extern markers need their intra-alternative variation rows enumerated FIRST (the
-  "Intra-alternative variation rows" rule applied to the `CDDL_CODEGEN` profile): a generic extern
-  base WITH vs WITHOUT instances,
-  and the generic raw-bytes base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_` — still broken, repro
-  ledgered in `tests/TESTING_ROADMAP.md`; the likely honest fix is parse-time rejection, which
-  lands it as a reject row rather than a compile cell).
+- **Extern compile coverage at breadth — the RUST-side corpus and wasm-matrix legs still skip
+  instead of seeding.** The matrix leg is done: every user-code matrix row now compiles both faces
+  (plus the emitted `wasm/json-gen` crate under the json profile) against a seeded definition, and
+  only the two rows needing a whole OTHER CRATE stay exempt — `README.md` § "User-code rows are
+  SEEDED, not exempted" is the current state, and the mechanism is `DEF_SPLICE` in `verify.ts` over
+  the name-parameterized templates in `tests/def_templates/`. The hand-fixture level was already
+  covered (`integration_extern_only_scope_declared_in_root` for the extern-only-scope root
+  declarations, `facade_composition_compiles` for the whole multi-scope composition).
+  What remains is the same seeding on the two RUST-side gates that still skip:
+  1. `integration_tests::COMPILE_SKIP` — `dsl_custom`, `dsl_copy`, `extern_generic_raw_bytes` are
+     skipped with NO generation at all in `feature_corpus_compiles`. Two of the three have a
+     hand-written def in the tree already (`tests/extern-generic-raw-bytes/external_rust_defs_ext_set`
+     + `…_raw_bytes_pub_key` cover `extern_generic_raw_bytes` verbatim; the rest are template
+     substitutions), so the work is mechanical — with ONE obstacle found while delivering the matrix
+     leg: a crate generated from `tests/corpus/dsl_custom.cddl` emits a generator-owned
+     `unused import: Serialize` in `generated/serialization.rs`, which `feature_corpus_compiles`'
+     warning scan fails on. The mechanism is exact and worth writing down because it says which fix
+     is right: every emitted `impl` spells the trait FULLY QUALIFIED
+     (`impl cbor_event::se::Serialize for …`), so the `use cbor_event::se::{Serialize, Serializer};`
+     line earns its `Serialize` half only through METHOD-CALL resolution of a nested
+     `value.serialize(serializer)` — and a spec whose every such call is displaced by a custom codec
+     leaves it unused. The import is therefore usage-derived like the rest, just on a usage nobody
+     enumerated. Fix it (or explicitly allowlist it) before un-skipping that stem; it is a real
+     instance of the warning-cleanliness contract `docs/docs/output_format.mdx` states.
+  2. The single-owner const is consumed by FOUR more gates that currently inherit its reason rather
+     than stating their own — `regen_over_prior_output_corpus_compiles`, `ir_conformance_corpus`'s
+     `GEN_SKIP`, `feature_corpus_roundtrips_nondefault_profiles`, and
+     `component_corpus_compiles`. Each needs an individually-true decision: un-skip where the
+     splice mechanically applies (the thin `lib.rs` is seed-once, so appended defs SHOULD survive
+     the regen gate — that IS the real user contract), and where it does not, its own named reason
+     rather than an alias.
+  3. `integration_tests::WASM_MATRIX_SKIP` — `extern__array-element`, the one extern wasm-matrix
+     cell, is permanently skipped in BOTH `wasm_matrix_compiles_shard` and the full-tier
+     `wasm_matrix_roundtrips`, because no extern splice exists there (the `rawbytes__*` cells are
+     already un-skipped by `append_raw_bytes_defs`, which is the shape to copy).
+  Out of scope here, with owners: the multifile matrix's structural extern exclusion (extern/rawbytes
+  shapes never enter `project_multifile_matrix.ts`'s `SHAPES`; placement is covered by
+  `tests/extern-generic-scoped` + `facade_composition_compiles`), and EXECUTION of extern cells,
+  which is `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry.
+  Why it is worth finishing rather than declaring the hand fixtures enough: each leg seeded so far
+  immediately paid for itself with a shipped compile break the exemption had hidden — the
+  extern-only-scope undeclared module (E0432, consumer-reported), and then, on the very first
+  seeded matrix rows, a marker-ONLY spec emitting an undeclared `serialization` module that its own
+  `extern_interface_check.rs` named (E0433 at exit 0, unfixable by any user definition; now pinned
+  by `marker_only_root_declares_the_serialization_module`). Both sat in crates no
+  gate built.
 
 ## Upstream close-outs (waiting on external releases)
 

@@ -36,7 +36,7 @@
  *
  * Run from cddl-matrix/:  bun run build_matrix.ts && bun run verify.ts
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -99,28 +99,152 @@ const profileNewerThanTarget = (p: string | undefined) =>
 // Genuine reference-vs-ABNF conflicts kept as `uncertain` rather than hard-failing. Empty today.
 const CONFLICT_ALLOWLIST: Record<string, string> = {};
 
-// Features whose generated code REFERENCES user-supplied items (an extern type, a raw-bytes impl, a
-// custom ser/deser fn), so the crate cannot compile STANDALONE — by design (and a crate that can't
-// compile can't run its emitted tests either). The execution-gate would false-negative them; they ARE
-// supported (integration-tested where the user code is provided). Exempt = compile/test results ignored,
-// support from generation exit only. Reason cites the integration test that DOES cover them, so the
-// exemption isn't blind.
+// Features whose generated code REFERENCES user-supplied items and for which NO definition this
+// harness can write would make the crate compile: what is missing is a whole OTHER CRATE, not a type.
+// Exempt = compile/test results ignored, support from generation exit only. Reason names what
+// structurally blocks a def and cites the gate that does cover the shape, so the exemption isn't
+// blind. Every OTHER user-code-referencing row is seeded instead — see `DEF_SPLICE` below.
 const COMPILE_GATE_EXEMPT: Record<string, string> = {
-  "ext.extern": "requires a user-provided extern type; integration-tested in tests/extern-deps",
-  "ext.raw_bytes": "requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes",
-  "dsl.custom_serialize": "references a user-provided serialize fn; integration-tested in tests/custom_serialization",
-  "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
-  "dsl.custom_encodings":
-    "references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e (byte-exact declared-framing round trips)",
-  "dsl.custom_wire_major":
-    "references a user-provided codec pair (and a raw-bytes marker type) whose declared wire the fns must implement; the open-table dispatch it feeds is executed end-to-end in tests/open-table-e2e",
-  "dsl.raw_bytes_flavor": "references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes",
-  "dsl.copy": "references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e",
   "dsl.rust_name":
-    "pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair",
+    "the directive pins a DEPENDENCY crate's type name, so the generated `use extern_dep::…` needs that whole crate on the path — a local definition cannot supply a foreign crate root; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair",
   "dsl.extern_companions":
-    "declared on a user-provided extern type, and names a companion class in a sibling wasm crate, so neither side of the generated `use` exists standalone; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate",
+    "the directive defers the wasm companion classes to a SIBLING WASM CRATE, so the generated `use <path>::<Class>;` needs that crate to exist and a local definition would defeat the deferral it declares; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate",
 };
+
+// --- DEF SPLICE: seed the user-supplied side so extern rows COMPILE instead of being exempt --------
+// A `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule, and a
+// `@custom_serialize`/`@custom_deserialize` pair, name code the SPEC does not contain. That is a
+// reason to write that code, not a reason to stop compiling: the emitted crate is where the
+// bare-generic-base (E0107), dep-owned-schema-row (E0433) and undeclared-serialization-module (E0433)
+// classes live, and each of them shipped because no gate built the crate they sat in.
+//
+// Residence is the DOCUMENTED user contract (docs/docs/output_format.mdx § Generated crate roots):
+// type definitions and codec fns go into the seed-once thin `rust/src/lib.rs` / `wasm/src/lib.rs`,
+// never into `src/generated/**` (clobbered every run, and the extern glue's own `pub use crate::<Name>;`
+// would collide E0255). A codec FN additionally needs a hand `use` into the generated scope — the
+// remedy comment_dsl.mdx names for a bare (non-path-qualified) codec name — which is the `reexport`
+// field, emitted as `pub use crate::{…};` into `generated/mod.rs` so `serialization.rs`'s `use super::*;`
+// resolves it.
+//
+// The templates live in `tests/def_templates/` and are name-parameterized, so ONE definition serves
+// every rule name a shape can mint; `src/tests/integration_tests.rs` splices the same files for the
+// feature-corpus and wasm-matrix compile floors.
+interface SpliceDef {
+  template: string;              // tests/def_templates/<template>.<rust|wasm>
+  preserveTemplate?: string;     // substituted under --preserve-encodings (encoding-variable signature)
+  name?: string;                 // __NAME__ — the rust type the marker rule mints
+  ser?: string;                  // __SER__  — the @custom_serialize target
+  deser?: string;                // __DESER__ — the @custom_deserialize target
+  copy?: boolean;                // add `Copy` to __DERIVES__ (the @copy contract's compile-time assertion)
+  reexport?: string[];           // names to `pub use crate::{…};` into generated/mod.rs
+}
+const DEF_SPLICE: Record<string, { rust: SpliceDef[]; wasm: SpliceDef[] }> = {
+  "ext.extern": {
+    rust: [{ template: "extern_type", name: "Foo" }],
+    wasm: [{ template: "extern_type", name: "Foo" }],
+  },
+  "ext.extern.generic": {
+    rust: [{ template: "generic_extern", name: "ExtGen" }],
+    wasm: [{ template: "generic_extern", name: "ExtGen" }],
+  },
+  // WITH instances the two faces diverge: rust names the generic BASE (and aliases
+  // `pub type ExtGenU64 = ExtGen<u64>;` itself), while wasm — which has no generics — demands a
+  // concrete `ExtGenU64` wrapper. That asymmetry is the whole point of the paired cells.
+  "ext.extern.generic_instance": {
+    rust: [{ template: "generic_extern", name: "ExtGen" }],
+    wasm: [{ template: "extern_type", name: "ExtGenU64" }],
+  },
+  "ext.raw_bytes": {
+    rust: [{ template: "raw_bytes", name: "Rb" }],
+    wasm: [{ template: "raw_bytes", name: "Rb" }],
+  },
+  "dsl.copy": {
+    rust: [{ template: "raw_bytes", name: "Hash", copy: true }],
+    wasm: [{ template: "raw_bytes", name: "Hash" }],
+  },
+  "dsl.raw_bytes_flavor": {
+    rust: [{ template: "generic_extern", name: "ExtSet" }],
+    wasm: [{ template: "generic_extern", name: "ExtSet" }],
+  },
+  "dsl.custom_serialize": {
+    rust: [{ template: "custom_bytes_codec", preserveTemplate: "custom_bytes_codec_preserve", ser: "my_ser", deser: "my_deser", reexport: ["my_ser", "my_deser"] }],
+    wasm: [],
+  },
+  "dsl.custom_deserialize": {
+    rust: [{ template: "custom_bytes_codec", preserveTemplate: "custom_bytes_codec_preserve", ser: "my_ser", deser: "my_deser", reexport: ["my_ser", "my_deser"] }],
+    wasm: [],
+  },
+  // `@custom_encodings sz,str` is INERT without --preserve-encodings, so only the preserve flavor
+  // differs from the pair above — and a declaration/call/codec disagreement is exactly a compile error.
+  "dsl.custom_encodings": {
+    rust: [{ template: "custom_bytes_codec", preserveTemplate: "custom_bytes_codec_declared_preserve", ser: "my_ser", deser: "my_deser", reexport: ["my_ser", "my_deser"] }],
+    wasm: [],
+  },
+  "dsl.custom_wire_major": {
+    rust: [
+      { template: "raw_bytes", name: "Rb" },
+      { template: "custom_text_over_raw_bytes", preserveTemplate: "custom_text_over_raw_bytes_preserve", name: "Rb", ser: "my_ser", deser: "my_deser", reexport: ["my_ser", "my_deser"] },
+    ],
+    wasm: [{ template: "raw_bytes", name: "Rb" }],
+  },
+};
+
+// A row is un-mintable in the D3 decode catalog whenever its wire is not the one the reference oracle
+// would produce — which is true of BOTH families above, for the same reason and by different routes:
+// an extern/raw-bytes marker is a typename ruby rejects outright, and a custom codec writes a wire the
+// ruby-generated vectors for the REPLACED type do not describe. `mintRow` pins from the union, so
+// seeding a def (which makes the crate compile) never silently promotes a row into minting vectors
+// that would assert the wrong bytes.
+const decodeMintPinReason = (id: string): string | undefined =>
+  Object.hasOwn(COMPILE_GATE_EXEMPT, id)
+    ? `references user-supplied code; crate cannot compile standalone (${COMPILE_GATE_EXEMPT[id]})`
+    : Object.hasOwn(DEF_SPLICE, id)
+      ? "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
+      : undefined;
+
+const BASE_DEF_DERIVES = ["Clone", "Debug", "PartialEq", "Eq", "PartialOrd", "Ord", "Hash"];
+const JSON_DEF_DERIVES = ["serde::Serialize", "serde::Deserialize", "schemars::JsonSchema"];
+
+function renderDef(kind: "rust" | "wasm", d: SpliceDef, json: boolean, preserve: boolean): string {
+  const tpl = preserve && d.preserveTemplate ? d.preserveTemplate : d.template;
+  const src = readFileSync(`${CODEGEN_DIR}/tests/def_templates/${tpl}.${kind}`, "utf8");
+  // The json flags make generated code delegate a user type's JSON representation to that type, so a
+  // faithful fixture carries the derives that contract imposes. Rust side only: the wasm wrapper's
+  // json fns go through the rust type's serde.
+  const derives = [
+    ...BASE_DEF_DERIVES,
+    ...(d.copy ? ["Copy"] : []),
+    ...(json && kind === "rust" ? JSON_DEF_DERIVES : []),
+  ];
+  return src
+    .replaceAll("__NAME__", d.name ?? "")
+    .replaceAll("__DERIVES__", derives.join(", "))
+    .replaceAll("__SER__", d.ser ?? "")
+    .replaceAll("__DESER__", d.deser ?? "");
+}
+
+// The row currently being probed, set by `oracles()` alongside `setCodegenInput` and read by every
+// generation entry point below (the default probe, the wasm probe, each emission-profile probe and the
+// embed fallback's synthetic re-probe), so a splice can never be applied to one stage and skipped in
+// another. Non-feature loops (containment, control ops) set it to null by passing an id no row carries.
+let activeSplice: { rust: SpliceDef[]; wasm: SpliceDef[] } | null = null;
+function applyDefSplice(out: string, opts: { wasm: boolean; json: boolean; preserve: boolean }) {
+  if (!activeSplice) return;
+  const reexports: string[] = [];
+  let rustDefs = "";
+  for (const d of activeSplice.rust) {
+    rustDefs += "\n\n" + renderDef("rust", d, opts.json, opts.preserve);
+    reexports.push(...(d.reexport ?? []));
+  }
+  if (rustDefs) appendFileSync(join(out, "rust", "src", "lib.rs"), rustDefs);
+  if (reexports.length)
+    appendFileSync(join(out, "rust", "src", "generated", "mod.rs"), `\npub use crate::{${reexports.join(", ")}};\n`);
+  if (!opts.wasm || activeSplice.wasm.length === 0) return;
+  // The wasm crate root doesn't see the `wasm_bindgen` macro `generated/mod.rs` privately `use`s.
+  let wasmDefs = "\nuse wasm_bindgen::prelude::wasm_bindgen;\n";
+  for (const d of activeSplice.wasm) wasmDefs += "\n\n" + renderDef("wasm", d, opts.json, opts.preserve);
+  appendFileSync(join(out, "wasm", "src", "lib.rs"), wasmDefs);
+}
 
 // --- EMISSION-PROFILE axis (design rationale: see README.md + ROADMAP.md) ----------------------------------------------
 // Second, orthogonal axis on the support verdict: besides the DEFAULT-flags verdict (`status`), a
@@ -815,6 +939,21 @@ function runTest(cell: string, warmNeed: WarmNeed = { kind: "rust" }, timeoutS =
   return cacheableCargoPass("verify.rust_test", cell, argv, manifest, ccOut, warmNeed, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS);
 }
 
+// JSON-GEN stage, run ONLY for a def-spliced row under the json emission profile. The `wasm/json-gen`
+// crate is a THIRD emitted crate — a `schemars` registrar over the rust types — and no other stage of
+// this harness builds it for any row. Two compile-error classes shipped in exactly that crate
+// (a bare generic-extern base's E0107 schema row, a dep-owned row's E0433) while the extern exemption
+// kept it un-built, so the extern rows are precisely where the floor is worth its wall time. Kept
+// bounded to those rows deliberately: the corpus-side json-gen breadth is
+// `integration_tests::feature_corpus_compiles`', and widening it to every matrix row would pay a
+// schemars build on rows that carry none of this risk.
+function runJsonGenCheck(cell: string, timeoutS = PROBE_TIMEOUT): number {
+  const manifest = join(ccOut, "wasm", "json-gen", "Cargo.toml");
+  if (!existsSync(manifest)) return 0;
+  const argv = ["cargo", "check", "--manifest-path", manifest];
+  return cacheableCargoPass("verify.json_gen_check", cell, argv, manifest, ccOut, { kind: "rust" }, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS);
+}
+
 // The generator MERGES into an existing output dir (it never clears it), so a partially-written crate
 // from a panicking probe — or any future conditionally-emitted module — would leak into the next
 // probe's compile gate. Start every generation from an empty dir.
@@ -849,7 +988,17 @@ function setCodegenInput(example: string, externStub?: string) {
 }
 function runCodegen(extraFlags: string[] = []): number {
   cleanOut();
-  return runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...extraFlags], CODEGEN_DIR);
+  const exit = runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...extraFlags], CODEGEN_DIR);
+  // Seed the user-supplied side (see DEF_SPLICE) BEFORE any compile stage reads the crate. The flags
+  // decide the flavor: the encoding-variable signature under preserve, the serde/schemars derives the
+  // json contract imposes on user types.
+  if (exit === 0)
+    applyDefSplice(ccOut, {
+      wasm: false,
+      json: extraFlags.some(f => f.startsWith("--json-")),
+      preserve: extraFlags.includes("--preserve-encodings=true"),
+    });
+  return exit;
 }
 
 // WASM oracle (default-on): generate the SAME example with `--wasm=true` into a separate out dir, then
@@ -859,7 +1008,9 @@ function runCodegen(extraFlags: string[] = []): number {
 const cleanOutWasm = () => { rmSync(ccOutWasm, { recursive: true, force: true }); ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`); };
 function runCodegenWasm(): number {
   cleanOutWasm();
-  return runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR);
+  const exit = runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR);
+  if (exit === 0) applyDefSplice(ccOutWasm, { wasm: true, json: false, preserve: false });
+  return exit;
 }
 function runWasmTest(cell: string, timeoutS = PROBE_TIMEOUT): number {
   const manifest = join(ccOutWasm, "wasm", "Cargo.toml");
@@ -892,6 +1043,15 @@ function probeCodegenRust(cell: string, extraFlags: string[] = [], emissionProfi
   const libPath = join(ccOut, "rust", "src", "generated", "mod.rs");
   const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
   const warmNeed: WarmNeed = emissionProfile ? { kind: "emission", profile: emissionProfile } : { kind: "rust" };
+  // The def-spliced rows carry one extra emitted crate under the json profile. A failure there is a
+  // `cargo check` failure, so it is reported through `compile` (and `test`, which never ran) — reusing
+  // `codegenVerdict`'s existing "generates but does not compile" wording rather than teaching every
+  // downstream annotation consumer a new evidence token. Ordered BEFORE `runTest` so a json-gen break
+  // is not masked by a green rust round-trip.
+  if (activeSplice && emissionProfile?.flags.some(f => f.startsWith("--json-"))) {
+    const jsonGen = runJsonGenCheck(cell);
+    if (jsonGen !== 0) return { gen, compile: jsonGen, test: jsonGen, minted };
+  }
   const test = runTest(cell, warmNeed);
   const compile = test === 0 ? 0 : runCompile(cell, warmNeed);
   return { gen, compile, test, minted };
@@ -1059,6 +1219,10 @@ function probeEmissions(id: string, example: string): Record<string, EmissionOut
 function oracles(cell: string, example: string, externStub?: string): [number, number, CodegenProbe] {
   writeFileSync(probeFile, example + "\n");
   setCodegenInput(example, externStub);
+  // Set once per row, alongside the codegen input, so every downstream generation in this row's probe
+  // (the emission-profile re-probes and the embed fallback included) seeds the same defs. A cell/
+  // control-op id never matches a key, so those loops clear it here.
+  activeSplice = DEF_SPLICE[cell] ?? null;
   const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
   return [a, b, probeCodegen(cell)];
@@ -1364,8 +1528,8 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   // COMPILE_GATE_EXEMPT rows reference user-supplied code, so their crate GENERATES (exit 0) but can
   // never compile standalone — the replay `cargo test` would fail as a compile error, not a decode
   // verdict. Pin them upfront (same exemption, same reason, as the support probe's compile gate).
-  if (Object.hasOwn(COMPILE_GATE_EXEMPT, id))
-    return pin(`references user-supplied code; crate cannot compile standalone (${COMPILE_GATE_EXEMPT[id]})`);
+  const mintPin = decodeMintPinReason(id);
+  if (mintPin !== undefined) return pin(mintPin);
   const rule = firstRuleName(example);
   if (!rule) return pin("no parseable rule head in the example");
 

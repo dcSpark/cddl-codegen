@@ -854,7 +854,19 @@
       "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
     },
     {
+      "feature": "ext.extern.generic",
+      "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
+    },
+    {
+      "feature": "ext.extern.generic_instance",
+      "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
+    },
+    {
       "feature": "ext.raw_bytes",
+      "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
+    },
+    {
+      "feature": "ext.raw_bytes.generic",
       "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
     },
     {

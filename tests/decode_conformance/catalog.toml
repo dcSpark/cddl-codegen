@@ -5042,19 +5042,19 @@ expect_err = "65536 not in range 0 - 65535"
 id = "dsl.copy"
 axis = "feature"
 example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "dsl.custom_deserialize"
 axis = "feature"
 example = "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided deserialize fn; integration-tested in tests/custom_serialization)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "dsl.custom_encodings"
 axis = "feature"
 example = "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings sz,str\nholder = [f: cb]"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided codec pair whose declared wire the fns must implement; executed end-to-end in tests/custom-encodings-e2e)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "dsl.custom_json"
@@ -5118,13 +5118,13 @@ expect = "accept"
 id = "dsl.custom_serialize"
 axis = "feature"
 example = "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided serialize fn; integration-tested in tests/custom_serialization)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "dsl.custom_wire_major"
 axis = "feature"
 example = "\nrb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nt = { * rb_v1 => uint, * uint => uint }"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (a user-provided codec pair plus a raw-bytes marker type; the open-table dispatch the declared major feeds is executed end-to-end in tests/open-table-e2e)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "dsl.doc"
@@ -5590,7 +5590,7 @@ expect = "accept"
 id = "dsl.raw_bytes_flavor"
 axis = "feature"
 example = "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "dsl.rust_name"
@@ -5892,13 +5892,25 @@ expect = "accept"
 id = "ext.extern"
 axis = "feature"
 example = "\nfoo = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: uint, y: foo]"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (requires a user-provided extern type; integration-tested in tests/extern-deps)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
+
+[[row]]
+id = "ext.extern.generic"
+axis = "feature"
+example = "\next_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nplain = [x: uint]"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
+
+[[row]]
+id = "ext.extern.generic_instance"
+axis = "feature"
+example = "\next_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [y: ext_gen<uint>]"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "ext.raw_bytes"
 axis = "feature"
 example = "\nrb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [rb]"
-pinned_reason = "references user-supplied code; crate cannot compile standalone (requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes)"
+pinned_reason = "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
 
 [[row]]
 id = "genericarg.multiple"

@@ -1,0 +1,2 @@
+rb_gen<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+bar = [x: rb_gen<uint>]
