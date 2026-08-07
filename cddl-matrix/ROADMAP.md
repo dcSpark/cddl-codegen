@@ -272,10 +272,17 @@ fresh-generation probe found the generator emits that glob nowhere. The retracti
   `type.choice` and every `rangeop` row name their catalog rule `t`). Scope: only a rule whose
   camel-cased rust ident is exactly `T` is known reachable; other single-letter idents and other
   glue-bound names (e.g. wit-bindgen's own idents) are NOT probed. Verified remedy: rename the
-  rule (`@name` renames without touching the wire). Fix shape, two branches: qualify the glue's
-  emitted paths / rename the macro-expansion's type parameter so a user ident cannot shadow it
-  (honoring), or refuse the collision at the WIT projection's naming seam with the `@name` remedy
-  in the message (the wasm wrapper-name detectors' pattern). The test-side work (a corpus fixture
+  rule (`@name` renames without touching the wire). Fix shape — and note the LOCAL-HONORING
+  branch is DEAD, proven by a generator-free repro (a 20-line hand-written wit-bindgen 0.57.1
+  guest with a WIT `resource t` fails identically, zero cddl-codegen-written lines; the failing
+  code is `generate!`'s own expansion, so no change to OUR emitted glue can honor the name —
+  repro preserved in the gitignored `draft/wit-bindgen-t-resource-ident-collision.md`, candidate
+  upstream report): either refuse the collision at the WIT projection's naming seam with the
+  `@name` remedy in the message (the wasm wrapper-name detectors' pattern — the honest local
+  fix), or auto-rename the WIT resource ident (changes the component's public linking identity,
+  which `component_differences.mdx`'s unification rules treat as a composition-breaking change —
+  so refusal is the likely right local shape until an upstream fix lands and honoring becomes
+  free). The test-side work (a corpus fixture
   + `EXPECTED_COMPILE_FAIL` pin per class, so a fix announces itself) is
   `tests/TESTING_ROADMAP.md`'s "Corpus fixtures + ledger pins for the two component-glue compile
   classes no fixture reaches"; the user-facing statement is `component_differences.mdx` § "Known
