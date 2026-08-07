@@ -2596,7 +2596,7 @@ A comment-DSL directive is only carried to a marking site by the parse path its 
 and those paths differ — so a written directive can produce output byte-identical to omitting it,
 with nothing acknowledging it. This gate is the systematic catch for that class, and it sweeps the
 whole product rather than a hand corpus, so a shape whose parse path nobody thought about is covered
-by construction. `local` tier (never `fast` — CI cost policy), ~25 s warm.
+by construction. `local` tier (never `fast` — CI cost policy), ~37 s warm.
 
 Per (shape, directive) cell it generates the built binary twice into throwaway scratch dirs — once
 with the base directives, once with the toggled directive ADDED — and renders one of four verdicts:
@@ -2629,18 +2629,25 @@ explicit spelling of a default, a directive whose target already satisfies it, a
 excluded emission site), never a place to park a real drop. The 17 hand cells above the product each
 pin a specific shipped regression or placement control and are kept.
 
-The gate renders five placements: the rule slot, an arm's trailing comment (`armPlacement`), the
+The gate renders six placements: the rule slot, an arm's trailing comment (`armPlacement`), the
 ROW-ENTRY slot of an inline table (`rowEntryPlacement`) — a comment *inside* the braces, which the
 others structurally cannot reach and which was where the inline-table `@duplicates` drop hid —
-the closing-paren line of a multi-line plain group (`multilineGroupEntries`), and the ENTRY slot of
-a SINGLE-ENTRY group-choice arm (`single_entry_group_choice_arm_{array,map}`). That fifth
-placement exists because a one-entry arm mints no record, so the entry's trailing slot is the one
-member slot the record field walk never reaches — the whole field-directive family dropped there
-at exit 0 while this gate passed 413/413, the measurement that the position was ABSENT from the
-product, not tolerated by it. Cells there whose drop is a KNOWN, ledgered defect (the six
-rule-scoped directives with no member meaning) live on `KNOWN_POSITION_DROPS` instead of the
-allowlist and are held under measurement in both directions: the pin fails stale the moment the
-drop is fixed.
+the closing-paren line of a multi-line plain group (`multilineGroupEntries`), an ordinary FIELD's
+trailing slot in both reps (`record_field_{array,map}` — the member position every other shape
+reaches only incidentally through a holder, swept in its own right as the CONTROL for the arm
+shapes), and the ENTRY slot of a SINGLE-ENTRY group-choice arm
+(`single_entry_group_choice_arm_{array,map}`). That last placement exists because a one-entry arm
+mints no record, so the entry's trailing slot is the one member slot the record field walk never
+reaches — the whole field-directive family dropped there at exit 0 while this gate passed 413/413,
+the measurement that the position was ABSENT from the product, not tolerated by it. Both member
+placements now measure refusals for the whole family — the rule-scoped directives are refused at
+every member seam (with the plain-group LAST-entry slot exempt, because that slot doubles as the
+group rule's own directive slot), and an entry-slot `@name` is refused wherever the
+anonymous-inline-array reader does not consume it. `KNOWN_POSITION_DROPS` is the stale-pin
+mechanism for any future ledgered drop (an entry fails the gate the moment its drop is fixed); it
+is EMPTY today, and the one verdict this gate structurally cannot hold — the `@name` reader's
+HONORED leg, whose without-directive baseline does not generate and so reads as a fixture bug —
+is pinned in-process by the `robustness_tests` agreement test instead.
 
 That fourth placement measures a REFUSAL, not an effect. For a spliced plain group the pinned cddl
 AST binds a rule-position directive to the LAST ENTRY's trailing slot — indistinguishable from field
