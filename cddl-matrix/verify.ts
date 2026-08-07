@@ -419,7 +419,7 @@ const CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "catalo
 //
 // Rows carrying a committed REJECT vector are the load-bearing half of the set: only they exercise
 // the direction no static reading can reach — that a refusal crosses as `Err` and leaves the
-// instance usable. Six of the rows below have one.
+// instance usable. Five of the rows below have one.
 const COMPONENT_PROBE_ROWS: string[] = [
   // VALIDATES — `.size 2` narrows the member to `u16` in the projection (`constructor(x: u16)`), so
   // the boundary carries a width the CDDL only implies; the constraint vector (65536) proves the

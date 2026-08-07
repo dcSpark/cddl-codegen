@@ -739,8 +739,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     be invisible: a rule whose rust type name is exactly `T` (`wit_bindgen::generate!` binds `T` in
     the glue's scope, so every `cddl_lib::T::…` call stops resolving — shape-independent, proven on
     a record, a range and a type choice, and clean the moment the rule is renamed), and an
-    `any`-typed member in a CONSTRUCTOR position (the projection makes the constructor infallible
-    while the emitted body decodes the payload with `?`, E0277). Both are two-line specs, so the
+    `any` member reached THROUGH A TRANSPARENT ALIAS (`x = any` referenced from a member position
+    — the fallibility walk does not resolve the alias, so the constructor stays infallible while
+    the emitted body decodes the payload with `?`, E0277; a DIRECT `any` member gets the correct
+    fallible door and compiles). Both are two-line specs, so the
     work is one fixture each plus its ledger row — the same shape as the three pins already there.
     Found by widening `cddl-matrix/verify.ts`'s component-execution selection (they cost that leg
     three candidate rows: `type.choice` and every `rangeop` row name their rule `t`, and
