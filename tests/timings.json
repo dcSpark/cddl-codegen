@@ -455,6 +455,9 @@
       ]
     },
     {
+      "gate": "ir_conformance_multifile"
+    },
+    {
       "gate": "lint_doc_citations",
       "warm_ms": 398,
       "n": 20,

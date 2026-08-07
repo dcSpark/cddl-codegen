@@ -65,7 +65,7 @@ not interchangeable: a nominal reference to a collection typedef needed an `enco
 fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 19 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `wrapper_participation_mode_floors` / `wrapper_participation_requested_host_floor` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 20 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `ir_conformance_multifile` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `wrapper_participation_mode_floors` / `wrapper_participation_requested_host_floor` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the two byte-fuzzer gates (`fuzz_compile_rot`, the compile-rot check, and `fuzz_bounded_run`, a time-boxed live libFuzzer walk of both targets — `fuzz/README.md`), `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
 didn't run is always
@@ -1066,7 +1066,17 @@ and `wasm_cbor_json_api_macro_compiles` compile-gate them against the real macro
 [`tests/wasm-macro-crate`](wasm-macro-crate) (wired in as a path dependency, the same way
 extern-deps wires `tests/extern-dep-crate`). Those macros' arms mirror the inline emission, so the
 wrong-emission classes a snapshot would bless — swapped args, wrong `needs_into`/`is_copy`, an
-unreachable combination, a wrong arity — fail to compile (see the crate's README).
+unreachable combination, a wrong arity — fail to compile (see the crate's README). Those two gates
+feed the generator a single `.cddl`; the DIRECTORY-INPUT axis is gated by
+`wasm_macros_multifile_compiles`, which runs all three flags together over a temp-written two-module
+input and guards what only multifile emission produces: the submodule's own
+`use wasm_macro_crate::…;` import (the root module's does not reach it), invocations minted inside
+the submodule's file, and the SCOPED rust path each invocation must carry
+(`cddl_lib::sub::rec::Rec`, never a bare `cddl_lib::Rec`) — including the list wrapper, which is
+minted at the container's root scope while naming a cross-module element. Its input is temp-written
+rather than committed so it earns no fixture-registry obligations, and its verdict is compile-only,
+which is the decided permanent posture for macro-mode wasm surfaces (see the wasm-crate test module
+section's macro-mode skip).
 
 `extern_wrapper_index_defers_to_dep` pins the `--extern-wrapper-index` deferral surface (a consumer
 skips re-minting collection wrappers a dependency's committed `generated/collections.rs` index says
@@ -3310,7 +3320,26 @@ out of even the local tier's `cargo test` because it adds the heavy `cddl` dep t
 ```sh
 cargo test --bin cddl-codegen ir_conformance_corpus -- --ignored --nocapture   # ~1 min
 cargo test --bin cddl-codegen rust_oracle_fingerprint -- --ignored --nocapture # preflight only
+cargo test --bin cddl-codegen ir_conformance_multifile -- --ignored --nocapture # directory-input leg
 ```
+
+**The DIRECTORY-INPUT leg** is the sibling gate `ir_conformance_multifile`, and it asks this oracle's
+question of an input the corpus cannot express: every `tests/corpus/*.cddl` is a single file, so the
+multi-module emission — the generated test module minted at the crate's generated ROOT, naming
+submodule types bare through `use super::<scope>::*;` globs — sat outside the oracle's reach.
+(`emit_tests_multifile_scope_imports` pins that emission in-process; this gate executes it with the
+oracle on.) It generates the committed placement cell `tests/matrix_multifile/struct__named` with
+`--emit-tests --emit-tests-conformance`, wires the same `CDDL_ORACLE_DEP` + shared helpers, and hands
+the oracle a spec that is the **concatenation of the input tree's `.cddl` files** in sorted
+relative-path order — rule names are global across a multi-module input, so concatenating is lossless
+and its order does not change meaning, which is the contract `docs/docs/command_line_flags.mdx`
+states for the flag. Its vacuity guards are the multifile-specific pair: the generated root module
+must carry the scope glob for the non-root module, and must validate a rule *defined in* that module
+— plus a stale-pin guard, since the cell is committed and shared. Same `#[ignore]`d manual posture
+and the same first-fetch network need as its sibling; one cell and one crate, so solo iteration is
+seconds rather than the corpus sweep's minute. It does NOT re-run the fingerprint preflight (that is
+`rust_oracle_fingerprint`'s own gate) and it has no ruby half — breadth and decorrelation stay the
+corpus gate's.
 
 Before the corpus loop, the gate generates a tiny `fingerprint_probe` crate under the same scratch root,
 injects `CDDL_ORACLE_DEP`, and executes every shared fingerprint probe through the exact parser and

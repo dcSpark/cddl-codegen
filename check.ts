@@ -1626,6 +1626,12 @@ export const REGISTRY: Gate[] = [
   { id: "ir_conformance_corpus", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "ir_conformance_corpus", "--", "--ignored", "--nocapture"],
     ignoredTest: "ir_conformance_corpus", desc: "IR-bug conformance oracle at corpus breadth + decorrelated ruby `cddl` gem sweep (gem REQUIRED — FAILS if absent unless CDDL_RUBY_ORACLE=skip; manual, #[ignore]d)" },
+  // The sibling gate's DIRECTORY-INPUT leg: `ir_conformance_corpus` sweeps single files only, so the
+  // multi-module emission (root-level test module + scope globs) was outside the oracle's reach. Its
+  // filter substring is disjoint from every other cargo-test filter here, so it selects alone.
+  { id: "ir_conformance_multifile", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "ir_conformance_multifile", "--", "--ignored", "--nocapture"],
+    ignoredTest: "ir_conformance_multifile", desc: "IR-bug conformance oracle, directory-input leg: a multifile placement cell's non-root-module rule judged against the concatenated source spec (cddl git dep — first fetch needs network; manual, #[ignore]d)" },
   { id: "rust_oracle_fingerprint", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "rust_oracle_fingerprint", "--", "--ignored", "--nocapture"],
     ignoredTest: "rust_oracle_fingerprint", desc: "rust CDDL_ORACLE_DEP behavioral fingerprint preflight (shared oracle_fingerprint.json; manual, #[ignore]d)" },

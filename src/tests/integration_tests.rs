@@ -5275,6 +5275,118 @@ fn wasm_list_macro_compiles() {
     }
 }
 
+/// The DIRECTORY-INPUT axis of the wasm macro modes' compile verdict. `wasm_list_macro_compiles` and
+/// `wasm_cbor_json_api_macro_compiles` both feed the generator a SINGLE `.cddl`, so the macro-mode
+/// emission that exists only for multi-module input was ungated: per-module `use wasm_macro_crate::…;`
+/// imports (the root module's import does not reach a submodule), invocations minted INSIDE a
+/// submodule's own file, and the SCOPED rust path every invocation must carry
+/// (`cddl_lib::sub::rec::Rec`, never a bare `cddl_lib::Rec`). A wrong scope segment there is a
+/// semantic fact a source snapshot cannot judge and a single-file fixture cannot reach.
+///
+/// Compile-only is the DECIDED, PERMANENT posture for macro-mode wasm surfaces
+/// (`cddl-matrix/ROADMAP.md` § "Explicitly out of scope"): the macro bodies are user-supplied, so
+/// their runtime behaviour is not this project's to assert. This case adds the input-mode axis to
+/// that same compile verdict — it is not a behavioural row.
+///
+/// All three macro flags together, because the multifile risk is exactly that they interleave
+/// per module; the single-file gates keep the flag-ISOLATION coverage.
+///
+/// The input is written to a TEMP DIR rather than committed: a new `tests/<dir>/input.cddl` earns
+/// registry obligations (a `CORPUS_PARITY_INPUTS`/`CORPUS_PARITY_EXCLUDED` row, enforced by
+/// `wasm_api_parity_axes_and_pins_are_live`) that this case has no use for, and its whole subject —
+/// the module split — two tiny files express completely.
+///
+/// Tier: a plain `#[test]`, so `local` and later; `fast` runs only `snapshot_tests`.
+#[test]
+fn wasm_macros_multifile_compiles() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch_name = format!(
+        "cddl_codegen_wasm_macros_multifile_{:016x}",
+        checkout_hash()
+    );
+    // Same-checkout concurrent runs serialize on this instead of clobbering each other's crate.
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let inputs = root.join("inputs");
+    let out = root.join("out");
+    let _ = std::fs::remove_dir_all(&inputs);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(inputs.join("sub")).unwrap();
+    // Root module: a record with a CROSS-MODULE field (`inner: rec`), plus a list whose ELEMENT is
+    // cross-module (`recs = [* rec]`) — so the minted list wrapper sits at the container's (root)
+    // scope while its element resolves through the submodule's scoped rust path.
+    std::fs::write(
+        inputs.join("lib.cddl"),
+        "root = [x: uint, inner: rec]\nrecs = [* rec]\n",
+    )
+    .unwrap();
+    // Submodule: the shape both of the above reference.
+    std::fs::write(inputs.join("sub/rec.cddl"), "rec = [a: uint, b: text]\n").unwrap();
+
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={}", inputs.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .arg("--wasm-list-macro=wasm_macro_crate::impl_wasm_list")
+        .arg("--wasm-conversions-macro=wasm_macro_crate::impl_wasm_conversions")
+        .arg("--wasm-cbor-json-api-macro=wasm_macro_crate::cbor_json_api")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation failed\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    // --- vacuity guards: the multifile-specific half of the macro emission ------------------------
+    let submodule = std::fs::read_to_string(out.join("wasm/src/generated/sub/rec/mod.rs")).unwrap();
+    assert!(
+        submodule.contains("use wasm_macro_crate::"),
+        "wasm/src/generated/sub/rec/mod.rs mints macro invocations but carries no \
+         `use wasm_macro_crate::…;` of its own — per-module imports are what make multifile \
+         macro-mode output compile\n{submodule}"
+    );
+    assert!(
+        submodule.contains("cbor_json_api!(Rec);"),
+        "the submodule's own type mints no `cbor_json_api!(Rec);` — --wasm-cbor-json-api-macro \
+         stopped reaching non-root scopes, so this case no longer gates that flag under directory \
+         input\n{submodule}"
+    );
+    assert!(
+        submodule.contains("impl_wasm_conversions!(cddl_lib::sub::rec::Rec, Rec);"),
+        "the submodule's `impl_wasm_conversions!` invocation must name the SCOPED rust path \
+         (`cddl_lib::sub::rec::Rec`) — a root-scoped `cddl_lib::Rec` names a type that does not \
+         exist\n{submodule}"
+    );
+    let root_mod = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+    assert!(
+        root_mod.contains("impl_wasm_list!(cddl_lib::sub::rec::Rec, Rec, Recs,"),
+        "the list wrapper is minted at the CONTAINER's (root) scope, so its `impl_wasm_list!` \
+         invocation must name the cross-module element through the submodule's scoped path\n{root_mod}"
+    );
+
+    // The output lives in a temp dir, so the macro crate needs an ABSOLUTE path — the single-file
+    // gates' `../../../wasm-macro-crate` is relative to an output under `tests/`.
+    let macro_dep = format!(
+        "wasm-macro-crate = {{ path = \"{}/tests/wasm-macro-crate\" }}",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    append_manifest_deps(&out.join("wasm/Cargo.toml"), &[macro_dep.as_str()]);
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("wasm"))
+        .env("CARGO_TARGET_DIR", root.join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "cargo check of the multifile macro-mode wasm crate failed\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
 /// Smoke gate for documented flag *values* that no other test or profile exercises (closed the
 /// once-open "five documented flag values with zero coverage" gap for the rust-side four). Each selects a whole alternative emit path: `--annotate-fields=false` (a
 /// different deserialization / error-emission mode — 13+ branch sites in `generation/`),
@@ -12397,6 +12509,174 @@ fn ir_conformance_corpus() {
             );
         }
     }
+}
+
+/// The IR-bug conformance oracle's DIRECTORY-INPUT leg (`tests/README.md` § "IR-bug conformance
+/// oracle at breadth"). Its sibling `ir_conformance_corpus` sweeps `tests/corpus/*.cddl`, every one
+/// of them a SINGLE file, so the emission that exists only for multi-module input sat outside the
+/// oracle's reach: under directory input the generated test module lands at the generated ROOT
+/// (`generated/mod.rs`) and names submodule types bare, compiling only through the emitted scope
+/// globs (`use super::a::*;`). `emit_tests_multifile_scope_imports` pins that emission in-process;
+/// this gate is its EXECUTED half with the conformance oracle on, so a minted value for a rule
+/// DEFINED IN A NON-ROOT MODULE is judged against the source spec by the `cddl` crate's independent
+/// decode+constraint path.
+///
+/// A sibling gate rather than a leg inside `ir_conformance_corpus`: one cell and one crate keeps
+/// solo iteration cheap, and the gate carries its own `tests/timings.json` row.
+///
+/// SPEC-ON-DISK CONTRACT for directory input: `cddl_conformance_source.cddl` is the CONCATENATION of
+/// the input tree's `.cddl` files in sorted relative-path order. CDDL rule names are global across a
+/// cddl-codegen multi-module input, so concatenation is lossless and its order does not change
+/// meaning. `docs/docs/command_line_flags.mdx` (`--emit-tests-conformance`) states that contract for
+/// consumers; this gate is its executable proof.
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d for the corpus gate's reason: it adds the heavy `cddl` git dep,
+/// whose FIRST fetch needs network. Run with:
+///   `cargo test --bin cddl-codegen ir_conformance_multifile -- --ignored --nocapture`
+///
+/// Scope: one placement cell, default profile, `--wasm=false`. Whether the oracle DEP itself still
+/// behaves is `rust_oracle_fingerprint`'s question; breadth across fixtures (and the decorrelated
+/// ruby sweep) is `ir_conformance_corpus`'s.
+#[test]
+#[ignore = "manual/local IR-conformance gate, directory-input leg (heavy cddl dep, CI feature-frozen): cargo test --bin cddl-codegen ir_conformance_multifile -- --ignored --nocapture"]
+fn ir_conformance_multifile() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    // The committed placement-matrix cell `emit_tests_multifile_scope_imports` also pins: module `a`
+    // defines the shape (`st = [a: uint, b: text]`), module `b` the cross-module reference
+    // (`bholder = [field0: st]`), and the root `lib.cddl` an unrelated record (`rt`). `st` is what
+    // this gate needs — a rule defined in a NON-ROOT module, whose minted value compiles only
+    // through the emitted scope glob and validates only against a spec carrying every module's rules.
+    const CELL: &str = "tests/matrix_multifile/struct__named";
+    const NON_ROOT_MODULE: &str = "a";
+    const NON_ROOT_RULE: &str = "st";
+    let cell_dir = std::path::Path::new(CELL);
+    // Stale-pin guard: the cell is committed and shared with other gates, so a re-shaped cell must
+    // fail loudly here instead of silently emptying the vacuity guards below.
+    let module_src = std::fs::read_to_string(cell_dir.join(format!("{NON_ROOT_MODULE}.cddl")))
+        .unwrap_or_else(|e| {
+            panic!("cannot read the pinned cell module {CELL}/{NON_ROOT_MODULE}.cddl: {e}")
+        });
+    assert!(
+        module_src.lines().any(|line| line
+            .trim_start()
+            .strip_prefix(NON_ROOT_RULE)
+            .is_some_and(|rest| rest.trim_start().starts_with('='))),
+        "{CELL}/{NON_ROOT_MODULE}.cddl no longer defines rule `{NON_ROOT_RULE}` — this gate's \
+         non-root-rule pin is stale; re-point it at a rule the cell's non-root module defines"
+    );
+
+    // The spec handed to the oracle: every `.cddl` in the input tree, concatenated in sorted
+    // relative-path order (one shared root, so path order IS relative-path order).
+    fn collect_cddl(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+            .map(|e| e.unwrap().path())
+        {
+            if entry.is_dir() {
+                collect_cddl(&entry, found);
+            } else if entry.extension().and_then(|e| e.to_str()) == Some("cddl") {
+                found.push(entry);
+            }
+        }
+    }
+    let mut spec_files = vec![];
+    collect_cddl(cell_dir, &mut spec_files);
+    spec_files.sort();
+    // `api::with_types` splits scopes only when >1 file is found, so a one-file directory would make
+    // this a single-module gate wearing a directory path.
+    assert!(
+        spec_files.len() >= 2,
+        "{CELL} holds {} .cddl file(s) — the directory-input leg needs a genuinely multi-module tree",
+        spec_files.len()
+    );
+    let mut spec = String::new();
+    for path in &spec_files {
+        let text = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        spec.push_str(&text);
+        if !spec.ends_with('\n') {
+            spec.push('\n');
+        }
+    }
+
+    let scratch_name = format!(
+        "cddl_codegen_ir_conformance_multifile_{:016x}",
+        checkout_hash()
+    );
+    // Same-checkout concurrent runs serialize on this instead of deleting each other's crate.
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let out = root.join("out");
+    // The generated crate root `lib.rs` is seed-once and this gate APPENDS the oracle helpers to it,
+    // so a surviving output dir would append them twice (duplicate fn definitions). The sibling
+    // `target/` is deliberately kept — building the `cddl` dep is the expensive part of a re-run.
+    let _ = std::fs::remove_dir_all(&out);
+    let target_dir = root.join("target");
+
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={CELL}"))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .arg("--emit-tests-conformance=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation failed for {CELL}\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let rust_dir = out.join("rust");
+
+    // --- vacuity guards: the multifile-specific emission this gate exists to EXECUTE --------------
+    let generated_root = std::fs::read_to_string(rust_dir.join("src/generated/mod.rs")).unwrap();
+    let scope_glob = format!("use super::{NON_ROOT_MODULE}::*;");
+    assert!(
+        generated_root.contains(&scope_glob),
+        "the root-level generated test module names submodule types bare, so \
+         rust/src/generated/mod.rs must carry `{scope_glob}` — without it the module is \
+         E0433-uncompilable and this gate would be judging a single-module shape\n{generated_root}"
+    );
+    let conformance_call = format!("cddl_conformance::validate(&bytes, \"{NON_ROOT_RULE}\")");
+    assert!(
+        generated_root.contains(&conformance_call),
+        "no `{conformance_call}` in rust/src/generated/mod.rs — the oracle judges no rule defined in \
+         a NON-ROOT module, so the directory-input leg would pass vacuously\n{generated_root}"
+    );
+
+    // --- consumer contract (documented in docs/docs/command_line_flags.mdx) -----------------------
+    // (1) the shared oracle helpers the emitted `cddl_conformance::validate` calls resolve to as
+    //     `crate::…` — they belong at the seed-once crate root, NOT under `generated/`.
+    let conformance_helpers = std::fs::read_to_string("tests/deser_test_conformance.rs").unwrap();
+    let mut lib_rs = std::fs::OpenOptions::new()
+        .append(true)
+        .open(rust_dir.join("src/lib.rs"))
+        .unwrap();
+    lib_rs.write_all(b"\n\n").unwrap();
+    lib_rs.write_all(conformance_helpers.as_bytes()).unwrap();
+    std::mem::drop(lib_rs);
+    // (2) the spec on disk next to the crate's Cargo.toml (CARGO_MANIFEST_DIR), concatenated above.
+    std::fs::write(rust_dir.join("cddl_conformance_source.cddl"), &spec).unwrap();
+    // (3) the rev-pinned oracle dep (kept in sync with Cargo.toml by
+    //     `cddl_oracle_dep_rev_matches_cargo_toml` — one const, never duplicated).
+    append_manifest_deps(&rust_dir.join("Cargo.toml"), &[CDDL_ORACLE_DEP]);
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(&rust_dir)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        test.status.success(),
+        "conformance FAILED for the directory-input cell {CELL} — either the multifile emission \
+         mints spec-violating bytes, a round-trip failed, or the concatenated spec-on-disk contract \
+         broke:\n{}\n{}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
 }
 
 #[test]
