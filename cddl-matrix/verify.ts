@@ -141,7 +141,7 @@ interface SpliceDef {
 const DEF_SPLICE: Record<string, { rust: SpliceDef[]; wasm: SpliceDef[] }> = {
   "ext.extern": {
     rust: [{ template: "extern_type", name: "Foo" }],
-    wasm: [{ template: "extern_type", name: "Foo" }],
+    wasm: [{ template: "opaque_wrapper", name: "Foo" }],
   },
   "ext.extern.generic": {
     rust: [{ template: "generic_extern", name: "ExtGen" }],
@@ -152,15 +152,15 @@ const DEF_SPLICE: Record<string, { rust: SpliceDef[]; wasm: SpliceDef[] }> = {
   // concrete `ExtGenU64` wrapper. That asymmetry is the whole point of the paired cells.
   "ext.extern.generic_instance": {
     rust: [{ template: "generic_extern", name: "ExtGen" }],
-    wasm: [{ template: "extern_type", name: "ExtGenU64" }],
+    wasm: [{ template: "opaque_wrapper", name: "ExtGenU64" }],
   },
   "ext.raw_bytes": {
     rust: [{ template: "raw_bytes", name: "Rb" }],
-    wasm: [{ template: "raw_bytes", name: "Rb" }],
+    wasm: [{ template: "opaque_wrapper", name: "Rb" }],
   },
   "dsl.copy": {
     rust: [{ template: "raw_bytes", name: "Hash", copy: true }],
-    wasm: [{ template: "raw_bytes", name: "Hash" }],
+    wasm: [{ template: "opaque_wrapper", name: "Hash" }],
   },
   "dsl.raw_bytes_flavor": {
     rust: [{ template: "generic_extern", name: "ExtSet" }],
@@ -185,7 +185,7 @@ const DEF_SPLICE: Record<string, { rust: SpliceDef[]; wasm: SpliceDef[] }> = {
       { template: "raw_bytes", name: "Rb" },
       { template: "custom_text_over_raw_bytes", preserveTemplate: "custom_text_over_raw_bytes_preserve", name: "Rb", ser: "my_ser", deser: "my_deser", reexport: ["my_ser", "my_deser"] },
     ],
-    wasm: [{ template: "raw_bytes", name: "Rb" }],
+    wasm: [{ template: "opaque_wrapper", name: "Rb" }],
   },
 };
 

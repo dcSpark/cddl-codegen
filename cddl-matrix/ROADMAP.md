@@ -705,52 +705,44 @@ retraction record is in `tests/TESTING_ROADMAP.md`'s unused-imports entry).
   `prelude.number` / `prelude.time` and the two float-range wrapper rows
   `rangeop.{inclusive,exclusive}.float`, and by `EXPECTED_GENERATION_FAIL` in the wasm API parity
   sweep, which pins `tests/core`'s `tagged_type_choice` on the preserve leg.
-- **Extern compile coverage at breadth — the RUST-side corpus and wasm-matrix legs still skip
-  instead of seeding.** The matrix leg is done: every user-code matrix row now compiles both faces
-  (plus the emitted `wasm/json-gen` crate under the json profile) against a seeded definition, and
-  only the two rows needing a whole OTHER CRATE stay exempt — `README.md` § "User-code rows are
-  SEEDED, not exempted" is the current state, and the mechanism is `DEF_SPLICE` in `verify.ts` over
-  the name-parameterized templates in `tests/def_templates/`. The hand-fixture level was already
-  covered (`integration_extern_only_scope_declared_in_root` for the extern-only-scope root
-  declarations, `facade_composition_compiles` for the whole multi-scope composition).
-  What remains is the same seeding on the two RUST-side gates that still skip:
-  1. `integration_tests::COMPILE_SKIP` — `dsl_custom`, `dsl_copy`, `extern_generic_raw_bytes` are
-     skipped with NO generation at all in `feature_corpus_compiles`. Two of the three have a
-     hand-written def in the tree already (`tests/extern-generic-raw-bytes/external_rust_defs_ext_set`
-     + `…_raw_bytes_pub_key` cover `extern_generic_raw_bytes` verbatim; the rest are template
-     substitutions), so the work is mechanical — with ONE obstacle found while delivering the matrix
-     leg: a crate generated from `tests/corpus/dsl_custom.cddl` emits a generator-owned
-     `unused import: Serialize` in `generated/serialization.rs`, which `feature_corpus_compiles`'
-     warning scan fails on. The mechanism is exact and worth writing down because it says which fix
-     is right: every emitted `impl` spells the trait FULLY QUALIFIED
-     (`impl cbor_event::se::Serialize for …`), so the `use cbor_event::se::{Serialize, Serializer};`
-     line earns its `Serialize` half only through METHOD-CALL resolution of a nested
-     `value.serialize(serializer)` — and a spec whose every such call is displaced by a custom codec
-     leaves it unused. The import is therefore usage-derived like the rest, just on a usage nobody
-     enumerated. Fix it (or explicitly allowlist it) before un-skipping that stem; it is a real
-     instance of the warning-cleanliness contract `docs/docs/output_format.mdx` states.
-  2. The single-owner const is consumed by FOUR more gates that currently inherit its reason rather
-     than stating their own — `regen_over_prior_output_corpus_compiles`, `ir_conformance_corpus`'s
-     `GEN_SKIP`, `feature_corpus_roundtrips_nondefault_profiles`, and
-     `component_corpus_compiles`. Each needs an individually-true decision: un-skip where the
-     splice mechanically applies (the thin `lib.rs` is seed-once, so appended defs SHOULD survive
-     the regen gate — that IS the real user contract), and where it does not, its own named reason
-     rather than an alias.
-  3. `integration_tests::WASM_MATRIX_SKIP` — `extern__array-element`, the one extern wasm-matrix
-     cell, is permanently skipped in BOTH `wasm_matrix_compiles_shard` and the full-tier
-     `wasm_matrix_roundtrips`, because no extern splice exists there (the `rawbytes__*` cells are
-     already un-skipped by `append_raw_bytes_defs`, which is the shape to copy).
-  Out of scope here, with owners: the multifile matrix's structural extern exclusion (extern/rawbytes
-  shapes never enter `project_multifile_matrix.ts`'s `SHAPES`; placement is covered by
-  `tests/extern-generic-scoped` + `facade_composition_compiles`), and EXECUTION of extern cells,
-  which is `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry.
-  Why it is worth finishing rather than declaring the hand fixtures enough: each leg seeded so far
-  immediately paid for itself with a shipped compile break the exemption had hidden — the
-  extern-only-scope undeclared module (E0432, consumer-reported), and then, on the very first
-  seeded matrix rows, a marker-ONLY spec emitting an undeclared `serialization` module that its own
-  `extern_interface_check.rs` named (E0433 at exit 0, unfixable by any user definition; now pinned
-  by `marker_only_root_declares_the_serialization_module`). Both sat in crates no
-  gate built.
+- **The wasm extern re-export glue demands a wrapper the wasm crate never uses.** Every in-crate
+  `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule gets `pub use crate::<Name>;`
+  emitted into the wasm crate's generated module, and the "Own-spec extern re-export contract"
+  stderr line asks the consumer to supply that name — whether or not the wasm face references it.
+  A raw-bytes type reached only as a generic ARGUMENT is the shape where the two come apart:
+  `tests/corpus/extern_generic_raw_bytes.cddl` binds `ext_set<pub_key>`, so the wasm face names
+  `ExtSetPubKey` and never `PubKey`, and a consumer who dutifully writes the `PubKey` wrapper gets
+  `warning: unused import: crate::PubKey` at a generated location for their trouble. The rust side
+  does not have the problem here only by accident (its `pub type ExtSetPubKey = ExtSetRawBytes<PubKey>;`
+  names it). Everything about the fixture ALREADY compiles against seeded definitions on both faces
+  under all three profiles — the warning is the whole of what is left, and
+  `integration_tests::COMPILE_SKIP` holds that one fixture for exactly it.
+  Making the wasm re-export usage-conditional is the obvious fix and is NOT a test change: it
+  narrows a documented consumer obligation, and under-emitting it is an E0432 in someone else's
+  crate, so the emitter must be sure a name is unreachable rather than merely unreferenced by the
+  shapes a fixture happens to use.
+  **Reopening signal:** a consumer reports the unused-import warning (or silences it) on a wrapper
+  the tool asked them to write — they can see it in their own build, which we cannot, and it is the
+  same observable whether they hit it once or on twenty types.
+- **Corpus/matrix extern EXECUTION, and the multifile matrix's structural extern exclusion.** The
+  COMPILE side of extern breadth is delivered and is now current state, documented where it is
+  enforced rather than here: the matrix rows in `README.md` § "User-code rows are SEEDED, not
+  exempted", the corpus/wasm-matrix side in `tests/README.md` (`CORPUS_DEF_SPLICE`,
+  `append_extern_defs`, and the two per-gate skip lists that remain, each with its own reason).
+  Two deliberate holes are left, each with an owner rather than a plan here:
+  - EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —
+    is `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry. A seeded codec round-trips
+    because the seed says so, which is why `feature_corpus_roundtrips_nondefault_profiles` skips
+    those stems on an execution-side reason of its own rather than inheriting the compile floor's.
+  - The multifile matrix never enumerates extern/rawbytes shapes at all
+    (`project_multifile_matrix.ts`'s `SHAPES`), so its exclusion is structural rather than a skip
+    list. Extern PLACEMENT across scopes is covered by `tests/extern-generic-scoped` and
+    `facade_composition_compiles`.
+  **Reopening signal for the multifile half:** a cross-module extern break that
+  `facade_composition_compiles`' single hand-curated composition does not reach — i.e. a real
+  consumer's multi-scope spec fails to build on a shape that gate does not model. The magnitude that
+  grows here is the number of SCOPES a consumer's spec splits an extern surface across, not the
+  number of consumers.
 
 ## Upstream close-outs (waiting on external releases)
 

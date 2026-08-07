@@ -1,0 +1,27 @@
+// The wasm face of a user-owned rust type the generated wasm crate re-exports by name — an extern
+// type, a raw-bytes type, or a concrete instance of an extern generic (wasm-bindgen has no generics,
+// so each bound instance needs its own class). All three want the same thing and get one template:
+// a `#[wasm_bindgen]` newtype plus the boundary conversions the generated accessors call
+// (`self.0.f.clone().into()` one way, `arg.clone().into()` the other). No constructor — a wasm class
+// needs one only where the spec asks for it, and what the generated glue requires is the conversions.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct __NAME__(cddl_lib::__NAME__);
+
+impl From<cddl_lib::__NAME__> for __NAME__ {
+    fn from(native: cddl_lib::__NAME__) -> Self {
+        Self(native)
+    }
+}
+
+impl From<__NAME__> for cddl_lib::__NAME__ {
+    fn from(wasm: __NAME__) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::__NAME__> for __NAME__ {
+    fn as_ref(&self) -> &cddl_lib::__NAME__ {
+        &self.0
+    }
+}
