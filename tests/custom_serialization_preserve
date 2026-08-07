@@ -1,3 +1,30 @@
+// ==== The fidelity contract every reader in this file must satisfy ====
+//
+// This fragment is appended into the PRESERVE-ENCODINGS fuzz fixture, whose oracle asserts that
+// every ACCEPTED input re-serializes byte-identically. For a custom pair that means the reader may
+// accept ONLY wire it can re-emit from the decoded value plus whatever encoding variables the pair
+// returns — every tolerated-but-normalized spelling is a fidelity violation the fuzzer WILL find
+// (it has, twice). Audit each reader against every wire dimension, not just content: string
+// encoding (definite/indefinite, chunking), length/tag WIDTHS, tag VALUE, and content spelling.
+//
+// The closed reader list (every `@custom_deserialize` in tests/preserve-encodings/input.cddl) and
+// each one's per-dimension answer:
+//   - custom_deserialize_bytes  — encoding: accepts ONLY indefinite all-1-byte chunks (rejects
+//     definite and other chunkings); chunk widths captured in the returned StringEncoding and
+//     re-emitted by the writer. Content: verbatim bytes. Complete.
+//   - read_custom_record        — NO encoding slot exists (see its comment), so it accepts ONLY
+//     the writer's exact re-emission: definite text, canonical length width, canonical decimal.
+//   - read_hex_string /
+//     read_hex_table_string     — content: lowercase hex only (uppercase is rejected — case has no
+//     sidecar slot); even length enforced by hex::decode. Encoding: full StringEncoding captured
+//     and returned; to_str_len_sz re-emits recorded widths and indefinite chunking (swept with
+//     byte-equality by the fixture's custom_table_positions test). Complete.
+//   - read_tagged_uint_str      — tag VALUE pinned to 9 (writer hard-codes it); tag width captured
+//     and re-emitted via fit_sz; text: indefinite rejected (no slot for chunking in the returned
+//     Option<Sz>), definite width captured; content: canonical decimal only. Complete.
+//
+// A NEW reader added here must state its answer for each dimension the same way.
+
 // writes bytes using indefinite encoding chunked into 1-byte parts
 pub fn custom_serialize_bytes<'se>(
     serializer: &'se mut cbor_event::se::Serializer,
@@ -47,10 +74,41 @@ pub fn write_custom_record<'se>(
 pub fn read_custom_record(
     raw: &mut cbor_event::de::Deserializer,
 ) -> Result<CustomRecord, DeserializeError> {
-    let text = raw.text()?;
-    let value = text
+    // Fidelity: this pair has NO encoding slot at all (see the comment above — the record's
+    // self-carrying sidecars describe the array form this codec REPLACES, so nothing can store
+    // the text item's encoding), and the writer is `write_text` (definite, canonical width,
+    // canonical decimal). Every other wire spelling of the same value is therefore information
+    // this codec cannot reproduce and must REJECT: indefinite text (the fuzzer's artifact
+    // `7f 61 31 ff` re-encoded as `61 31`), a non-canonical definite length width, and the
+    // `+7`/`007` decimal spellings `parse` tolerates.
+    let (text, text_enc) = raw.text_sz()?;
+    match text_enc {
+        cbor_event::StringLenSz::Indefinite(_) => {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "record-as-text codec: indefinite text cannot re-encode to itself (no encoding slot)"
+                    .to_owned(),
+            ))
+            .into());
+        }
+        cbor_event::StringLenSz::Len(sz) => {
+            if sz != fit_sz(text.len() as u64, None) {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                    "record-as-text codec: non-canonical text length width cannot re-encode to itself"
+                        .to_owned(),
+                ))
+                .into());
+            }
+        }
+    }
+    let value: u64 = text
         .parse()
         .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)))?;
+    if value.to_string() != text {
+        return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+            "record-as-text codec: non-canonical decimal text cannot re-encode to itself".to_owned(),
+        ))
+        .into());
+    }
     Ok(CustomRecord::new(value))
 }
 
