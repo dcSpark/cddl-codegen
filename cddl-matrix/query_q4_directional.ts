@@ -154,7 +154,21 @@ function deriveAccept(status: string, ev: string): string {
   return "no";
 }
 
-function deriveRoundTrip(ev: string): string {
+// Round-trip is a RUST fact, so the derivation reads only the RUST SEGMENT of the evidence —
+// everything before the first corroborating clause. The corroborating legs (wasm, component,
+// decode-foreign) append to the same string and several of them speak the same words the rust
+// verdict does ("round-trips", "round-trip FAILED"), so matching over the whole string would let a
+// sibling leg's clause decide this projection: a row whose rust round-trip failed reads `yes` the
+// moment any leg reports its own success. Anchoring costs nothing (the projection is byte-identical
+// at HEAD) and removes the coupling.
+const CORROBORATING_CLAUSE = /; (?:wasm |component |accepts \d|foreign-vector decode |no committed decode vectors|ruby=)/;
+function rustSegment(ev: string): string {
+  const m = CORROBORATING_CLAUSE.exec(ev);
+  return m ? ev.slice(0, m.index) : ev;
+}
+
+function deriveRoundTrip(evidence: string): string {
+  const ev = rustSegment(evidence);
   if (/round-trip FAILED|round-trips=fail/.test(ev)) return "no";
   if (ev.includes("round-trips when embedded")) return "yes (embedded)";
   if (ev.includes("round-trips=n/a") || ev.includes("no minted round-trip surface")) return "n/a (no surface)";

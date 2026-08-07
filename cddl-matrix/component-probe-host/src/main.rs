@@ -38,8 +38,15 @@
 //! | `ok`       | `from-cbor-bytes` returned `Ok`, and (if an expectation was given) re-encoding  |
 //! |            | the handle through `to-cbor-bytes` produced exactly those bytes                |
 //! | `err`      | the door returned `Err(string)` — a refusal that CROSSED the boundary          |
-//! | `mismatch` | `Ok`, but the re-encoded bytes differ from the expectation                     |
+//! | `mismatch` | `Ok`, but the bytes could not be shown equal to the expectation — they differ, |
+//! |            | or the door handed back no handle to re-encode, or it returned something that  |
+//! |            | is not a `result` at all                                                       |
 //! | `trap`     | the call did not return a value at all                                         |
+//!
+//! `mismatch` is the "crossed, but not byte-equal" verdict, and every shape that cannot be SHOWN
+//! byte-equal belongs to it — including an `Ok` carrying no handle. Reporting that as `ok` would
+//! make the leg's central assertion unfalsifiable for that shape: the caller would record a
+//! round trip for a door that produced nothing to compare.
 //!
 //! `trap` deliberately covers the whole "no value crossed" class (a guest trap, or a call the host
 //! could not make); the detail text names which. That is the distinction the leg exists to make —
@@ -249,7 +256,9 @@ fn main() {
         let handle = match &results[0] {
             Val::Result(Ok(Some(h))) => (**h).clone(),
             Val::Result(Ok(None)) => {
-                emit("ok", "(door returned Ok with no handle)");
+                // `Ok` with no payload: nothing to re-encode, so byte equality cannot be shown.
+                // That is a mismatch, never an `ok` — see the verdict table in the module header.
+                emit("mismatch", "(door returned Ok with no handle to re-encode)");
                 continue;
             }
             Val::Result(Err(msg)) => {

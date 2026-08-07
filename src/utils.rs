@@ -79,6 +79,15 @@ pub fn convert_to_snake_case(ident: &str) -> String {
 ///
 /// Merging is non-injective (`index_0` and a sibling literally named `index0` converge), which is
 /// why a post-conversion collision detector exists rather than a converter that tries to be clever.
+///
+/// **This conversion is MIRRORED outside rust**: `cddl-matrix/verify.ts`'s component-execution leg
+/// re-implements it as `toKebabCase` to name the WIT resource its mint check and its wasmtime host
+/// look for. The mirror is pinned by a fixture table taken from
+/// [`convert_to_kebab_case_table`] below (verify.ts's "component kebab-ident mirror self-test"), so
+/// a rule changed HERE must be changed THERE in the same commit — the two tables are the lockstep.
+/// Drift fails in the understating direction on the matrix side (the resource lookup misses, the
+/// row reads "no minted component surface" and its round trip silently stops running), which is why
+/// the mirror is asserted at verify.ts startup rather than left to the annotations diff.
 pub fn convert_to_kebab_case(ident: &str) -> String {
     let snake = convert_to_snake_case(ident);
     let mut kebab = String::with_capacity(snake.len());
@@ -297,6 +306,11 @@ mod tests {
 
     /// The WIT identifier converter's pinned table. Every row is a name the component face actually
     /// emits, and the two interesting classes are the digit merge and the acronym runs.
+    ///
+    /// LOCKSTEP: `cddl-matrix/verify.ts` mirrors this converter (`toKebabCase`) and pins the SAME
+    /// rows in its "component kebab-ident mirror self-test". A row added or changed here belongs in
+    /// that fixture table in the same commit; see [`convert_to_kebab_case`]'s doc comment for why
+    /// the matrix side cannot notice drift on its own.
     #[test]
     fn convert_to_kebab_case_table() {
         // digit merge: the generator emits `index_0`/`index_1` accessors for unnamed array members
