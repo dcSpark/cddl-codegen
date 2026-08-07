@@ -5721,7 +5721,7 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
 /// `intermediate/rust_type.rs` (`rust struct Kv not found but referenced by …`) for the `/ null`
 /// collapse, the unwrap further down the same file for a non-collapsing arm, and — under `--wasm`,
 /// which is the DEFAULT — the plain-group registry assert in `intermediate/mod.rs` reached earlier,
-/// the same profile-widening B3-044's sibling found. Worst of the three was RULE position under the
+/// the same profile-widening the array rest-tail refusal's probing found. Worst of the three was RULE position under the
 /// collapse: `u = kv / null` exited 0 emitting `pub type U = Option<Kv>;` over a `Kv` the crate
 /// never defines, so the tool reported success on output that does not compile.
 ///
@@ -6966,7 +6966,7 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
         );
     }
 
-    // 5. One message per problem against B3-043's occurrence guard, and the two reps split on the
+    // 5. One message per problem against the group-choice-arm occurrence guard, and the two reps split on the
     //    shared `inline_group_occurrence_flattens` boundary rather than on this seam:
     //    - in an ARRAY the arm refuses on the OCCURRENCE first and the directive is never mentioned
     //      — the arm has to be rewritten wholesale, so a second message about a member that will not
