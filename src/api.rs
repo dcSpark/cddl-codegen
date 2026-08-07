@@ -905,6 +905,16 @@ pub fn with_types<R>(
             if let Some(msg) = parsing::generic_plain_group_def_rejection(cddl_rule) {
                 types.record_rejection(msg);
             }
+            // A group rule whose body carries 2+ group choices (`pg = (a: uint // f: bytes)`).
+            // Refused HERE for the same reason as the sibling above and at the same seam: its only
+            // reach is the `assert_eq!(group.group_choices.len(), 1)` in the plain-group marking
+            // loop below, which has no rejection channel and stays as a re-earning guard. Rule
+            // position is also the DEFECT's own trigger — the assert fired on the definition alone,
+            // with no reference to the rule anywhere — so refusing per RULE is what makes the
+            // message land exactly once however many references exist.
+            if let Some(msg) = parsing::multi_choice_group_def_rejection(cddl_rule) {
+                types.record_rejection(msg);
+            }
             // Incremental choice extension (`a /= tstr`, `g //= (...)`): `parse_rule` re-registers the
             // identifier on each statement, so the LAST definition wins and every earlier arm is
             // silently dropped. Reject the EXTENSION (identifier already seen) loudly; the initial
@@ -951,6 +961,11 @@ pub fn with_types<R>(
                         comments_after_group,
                         ..
                     } => {
+                        // RE-EARNING GUARD, not the refusal:
+                        // `parsing::multi_choice_group_def_rejection` refuses a 2+-choice group
+                        // body in the pre-scan above, which drains before this loop runs. Kept so a
+                        // NEW path that gets past the pre-scan fails loudly here rather than
+                        // registering only the first choice's members.
                         assert_eq!(group.group_choices.len(), 1);
                         let rule_metadata = RuleMetadata::from(comments_after_group.as_ref());
                         types.mark_plain_group(

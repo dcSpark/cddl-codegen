@@ -259,26 +259,26 @@ gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle ga
 on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
-- **A group RULE whose body carries two or more group choices aborts the pre-registration walk's
-  single-choice assert — in every placement, and even unreferenced.** `pg = (a: uint // f: bytes)`
-  panics at `src/api.rs`' `assert_eq!(group.group_choices.len(), 1)` in the plain-group
-  pre-registration walk (the `Rule::Group`/`InlineGroup` arm of `api::with_types`'s rule scan) with
-  NO reference to `pg` anywhere in the spec, and identically when referenced as an array
-  element (`h = [pg]`), a bare array member (`h = [c: uint, pg]`), a keyless map member
-  (`h = { c: uint, pg }`, fixed-key arms) and a group-choice arm (`h = [ x: uint // pg ]`). RFC 8610
-  admits the spelling (a group rule's body is `grpchoice *(S "//" S grpchoice)`), so this is a panic
-  on valid CDDL whose trigger is the DEFINITION alone — the placement axis never gets a say.
-  Probed bare 2026-08-07 at
-  `747e4de3` (default profile, `--wasm=false`, generate-only); not probed: other profiles (the
-  assert sits in the pre-registration scan, before any profile-dependent branch, so expect it
-  everywhere), `&pg` group references, generic parameters on such a rule. Fix shape is a choice, not
-  a detail: honor the multi-choice group body (a reference in a group-choice context concatenates
-  the alternatives; other placements mint a choice-of-bodies — a real design, since the arms must
-  stay tellable apart exactly as a named group-choice rule's are), or refuse gracefully at the
-  registration seam. Both remedies verified generating at exit 0 before being named: inline the
-  alternatives at the use site (`h = [ x: uint // a: uint // f: bytes ]`), or split the group into
-  single-choice named groups referenced as separate arms (`pga = (a: uint)`, `pgf = (f: bytes)`,
-  `h = [ x: uint // pga // pgf ]`).
+- **No CHOICE-OF-BODIES for a group rule, so a body carrying two or more group choices is refused
+  rather than honored.** `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
+  `grpchoice *(S "//" S grpchoice)`), and today it is a graceful refusal at the `api::with_types`
+  pre-scan, naming the rule, its choice count and two remedies verified to generate and build
+  (`multi_choice_group_rule_body_rejects_gracefully_at_every_placement`): write the alternatives
+  where the choice is actually made, as the referencing container's own group choices
+  (`h = [ x: uint // a: uint // f: bytes ]`), or split the body into single-choice group rules
+  referenced as separate arms (`pga = (a: uint)`, `pgf = (f: bytes)`, `h = [ x: uint // pga // pgf ]`).
+  Rule position is the seam because rule position is where the shape is decided: the refusal fires
+  on the DEFINITION alone, once per offending rule however many references exist, which is also
+  where the abort it replaced fired. The missing capability is the honoring design, not the guard: a
+  reference in group-choice context would concatenate the alternatives, while every other placement
+  would have to mint a CHOICE OF BODIES whose arms a decoder can tell apart — the same
+  naming/registration problem a named group-choice rule's arms already solve, which is public API of
+  the generated crate and wants a deliberate convention rather than an ad-hoc one. Until it exists,
+  the two remedies are the supported route and the refusal points at them. Reopening signal: a spec
+  in which one group rule's alternatives have to be re-spelled at more than a handful of reference
+  sites — the hand-expanded arm lists a spec author keeps in sync grow as references × alternatives
+  INSIDE one spec, so that count is the dimension to watch rather than a second consumer appearing.
+  Not already met: today's evidence is synthetic probes, each with at most one reference site.
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:

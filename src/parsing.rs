@@ -1453,6 +1453,57 @@ pub(crate) fn generic_plain_group_def_rejection(cddl_rule: &cddl::ast::Rule) -> 
     }
 }
 
+/// A group RULE whose body carries two or more group choices — `pg = (a: uint // f: bytes)`, which
+/// RFC 8610 admits (`grpchoice *(S "//" S grpchoice)`), so this is a refusal on VALID CDDL and its
+/// message has to carry a path rather than only a diagnosis.
+///
+/// A plain group is SPLICED into each rule that references it, so its body has to name ONE sequence
+/// of members. Honoring alternatives is a real feature and not a detail this guard could settle: a
+/// reference in group-choice context would concatenate the alternatives, while every other
+/// placement would have to mint a CHOICE OF BODIES whose arms stay tellable apart on the wire
+/// exactly as a named group-choice rule's are — a naming/registration design. Until that exists the
+/// refusal is the contract, and it is made honest by two remedies verified to generate and build on
+/// the default, `--preserve-encodings` and `--wasm` profiles: write the alternatives as the
+/// referencing container's own group choices, or split the body into single-choice group rules
+/// referenced as separate arms.
+///
+/// Refused from the `api::with_types` pre-scan, beside `generic_plain_group_def_rejection` and for
+/// the same reason: the shape's only reach is an `assert_eq!` with no rejection channel (the
+/// plain-group marking loop's `group_choices.len() == 1`), which stays as a re-earning guard the
+/// pre-scan makes unreachable. Rule position is also where the DEFECT's trigger is — the assert
+/// fired on the definition alone, with no reference to the rule anywhere — so refusing per RULE is
+/// what makes the message land once however many references exist.
+///
+/// A GENERIC multi-choice body defers to `generic_plain_group_def_rejection`: that refusal already
+/// disposes of the whole rule (a plain group registers no struct for an argument to substitute
+/// into, whatever its choice count), and one problem gets one message.
+pub(crate) fn multi_choice_group_def_rejection(cddl_rule: &cddl::ast::Rule) -> Option<String> {
+    let cddl::ast::Rule::Group { rule, .. } = cddl_rule else {
+        return None;
+    };
+    if rule.generic_params.is_some() {
+        return None;
+    }
+    let cddl::ast::GroupEntry::InlineGroup { group, .. } = &rule.entry else {
+        return None;
+    };
+    let count = group.group_choices.len();
+    (count > 1).then(|| {
+        format!(
+            "group rule `{name}`: its body carries {count} group choices (`{name} = ( … // … )`), \
+             which is unsupported. A plain group is SPLICED into each rule that references it, so \
+             its body has to name ONE sequence of members — alternatives would have to mint a \
+             choice of bodies at every reference, with arms a decoder can tell apart, which is a \
+             named-choice design rather than a splice. Write the alternatives where the choice is \
+             actually made: as the referencing container's own group choices (`h = [ x: uint // a: \
+             uint // f: bytes ]`), or give each alternative its own single-choice group rule and \
+             reference those as separate arms (`pga = (a: uint)`, `pgf = (f: bytes)`, `h = [ x: \
+             uint // pga // pgf ]`).",
+            name = rule.name
+        )
+    })
+}
+
 /// `@raw_bytes_flavor` on a rule that is not an extern marker. Shared verbatim by every
 /// type-rule seam that can reach the misplacement so the pinned wording cannot drift between them.
 fn raw_bytes_flavor_not_extern_rejection(type_name: &RustIdent) -> String {
@@ -6243,10 +6294,16 @@ fn parse_record_from_group_choice(
                          reject valid CBOR with other repetition counts). {remedy}"
                     ));
                 } else {
+                    // The remedy names spellings that GENERATE. Lifting the alternatives into a
+                    // named group (`g = (a // b)`) is NOT one of them — a group rule's body may
+                    // carry only one choice (`multi_choice_group_def_rejection`) — so point at the
+                    // container's own group choices, or at one named group per alternative.
                     types.record_rejection(format!(
                         "rule `{source_name}`: an inline group choice (`(a // b)`) in entry \
-                         position is unsupported. Name the group instead (e.g. `g = (a // b)`, \
-                         then reference `g`)."
+                         position is unsupported. Write the alternatives as the container's own \
+                         group choices (`h = [ a: uint // f: bytes ]`), or give each alternative \
+                         its own single-choice group rule and reference those as separate arms \
+                         (`pga = (a: uint)`, `pgf = (f: bytes)`, `h = [ pga // pgf ]`)."
                     ));
                 }
                 return None;
