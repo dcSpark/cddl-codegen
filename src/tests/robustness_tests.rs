@@ -6056,6 +6056,220 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
     }
 }
 
+/// A group RULE whose body carries two or more group choices (`pg = (a: uint // f: bytes)`) is
+/// refused at the pre-registration pre-scan — the same seam the generic-plain-group refusal uses,
+/// and for the same reason: every site that reaches the shape is an `assert_eq!` with no rejection
+/// channel (`api::with_types`' plain-group marking loop asserted `group_choices.len() == 1`).
+///
+/// RFC 8610 admits the spelling, so this is a refusal on VALID CDDL and the message has to carry a
+/// path rather than a diagnosis. Both remedies it names are asserted here to generate: writing the
+/// alternatives as the referencing container's own group choices, and splitting the body into
+/// single-choice group rules referenced as separate arms.
+///
+/// The defect's trigger is the DEFINITION alone — the panic fired with no reference to `pg`
+/// anywhere — so the seam has to be a rule-position pre-scan and not a use-site guard; that is what
+/// this test's placement vectors pin, together with the property the seam gives for free: the
+/// refusal is recorded once per offending RULE, not once per reference.
+///
+/// Honoring the shape is a real feature and stays a candidate: a reference in group-choice context
+/// could concatenate the alternatives, while other placements would have to mint a choice of bodies
+/// whose arms a decoder can tell apart — a naming/registration design, not a guard.
+#[test]
+fn multi_choice_group_rule_body_rejects_gracefully_at_every_placement() {
+    fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_multichoicegrp_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "multichoicegrp_unused",
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    const GROUP: &str = "pg = (a: uint // f: bytes)\n";
+
+    // The UNREFERENCED spelling, in full — the defect's own trigger. Names the rule, the choice
+    // count, why a spliced body cannot offer alternatives, and both verified remedies.
+    let bare = run(GROUP, "unreferenced", &[])
+        .expect_err("a multi-choice group rule must reject gracefully on its definition alone");
+    assert!(
+        bare.contains("group rule `pg`: its body carries 2 group choices"),
+        "rejection should name the rule and the choice count, got: {bare}"
+    );
+    assert!(
+        bare.contains("A plain group is SPLICED into each rule that references it"),
+        "rejection should explain why a spliced body names one sequence, got: {bare}"
+    );
+    assert!(
+        bare.contains("`h = [ x: uint // a: uint // f: bytes ]`"),
+        "rejection should name the inline-at-the-use-site remedy, got: {bare}"
+    );
+    assert!(
+        bare.contains("`pga = (a: uint)`, `pgf = (f: bytes)`, `h = [ x: uint // pga // pgf ]`"),
+        "rejection should name the split-into-single-choice-rules remedy, got: {bare}"
+    );
+
+    // Every PLACEMENT reaches the same seam, because the seam is the definition rather than the
+    // use. (All of these formerly aborted at exit 101 on `group_choices.len() == 1`.)
+    for (spec, tag) in [
+        (format!("{GROUP}h = [pg]\n"), "array_element"),
+        (format!("{GROUP}h = [c: uint, pg]\n"), "array_member"),
+        (format!("{GROUP}h = {{ c: uint, pg }}\n"), "map_member"),
+        (
+            format!("{GROUP}h = [ x: uint // pg ]\n"),
+            "group_choice_arm",
+        ),
+        (format!("{GROUP}h = &pg\n"), "group_to_choice"),
+        (format!("{GROUP}h = [* pg]\n"), "homogeneous_element"),
+    ] {
+        let msg =
+            run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
+        assert!(
+            msg.contains("group rule `pg`: its body carries 2 group choices"),
+            "the {tag} placement should carry the same body, got: {msg}"
+        );
+    }
+
+    // Once per offending RULE, never once per reference: the pre-scan walks rule definitions.
+    let many = run(
+        &format!("{GROUP}h = [pg]\ni = [c: uint, pg]\nj = [ x: uint // pg ]\n"),
+        "many_refs",
+        &[],
+    )
+    .expect_err("three references must still reject");
+    assert_eq!(
+        many.matches("group rule `pg`").count(),
+        1,
+        "three references must produce exactly ONE refusal, got: {many}"
+    );
+
+    // Two offending rules give two refusals — the count is per rule, not capped at one.
+    let two_rules = run(
+        "pg = (a: uint // f: bytes)\nqg = (c: uint // d: tstr // e: bool)\n",
+        "two_rules",
+        &[],
+    )
+    .expect_err("two offending rules must reject");
+    assert!(
+        two_rules.contains("group rule `pg`: its body carries 2 group choices")
+            && two_rules.contains("group rule `qg`: its body carries 3 group choices"),
+        "each offending rule should be named with its own choice count, got: {two_rules}"
+    );
+
+    // Profile independence: the pre-scan runs before any profile-dependent branch.
+    for (extra, tag) in [
+        (vec!["--preserve-encodings=true"], "preserve"),
+        (vec!["--wasm=true"], "wasm"),
+        (vec!["--wasm=false"], "no_wasm"),
+        (vec!["--json-serde-derives=true"], "json"),
+    ] {
+        for (spec, placement) in [
+            (GROUP.to_owned(), "unreferenced"),
+            (format!("{GROUP}h = [pg]\n"), "array_element"),
+            (format!("{GROUP}h = &pg\n"), "group_to_choice"),
+        ] {
+            let msg = run(&spec, &format!("{tag}_{placement}"), &extra)
+                .expect_err("the refusal must fire on every profile");
+            assert!(
+                msg.contains("group rule `pg`: its body carries 2 group choices"),
+                "the {placement} spelling on {tag} should carry the same body, got: {msg}"
+            );
+        }
+    }
+
+    // Both remedies the message names must actually work — a remedy string is an executable claim.
+    // (The generated crates additionally `cargo check`; that is verified out of band, not here.)
+    for (spec, tag) in [
+        ("h = [ x: uint // a: uint // f: bytes ]\n", "inline_at_use"),
+        (
+            "pga = (a: uint)\npgf = (f: bytes)\nh = [ x: uint // pga // pgf ]\n",
+            "split_rules",
+        ),
+    ] {
+        for (extra, profile) in [
+            (vec![], "default"),
+            (vec!["--preserve-encodings=true"], "preserve"),
+            (vec!["--wasm=true"], "wasm"),
+        ] {
+            assert!(
+                run(spec, &format!("remedy_{tag}_{profile}"), &extra).is_ok(),
+                "the remedy `{}` must generate on {profile}, got: {:?}",
+                spec.trim(),
+                run(spec, &format!("remedy_{tag}_{profile}"), &extra).err()
+            );
+        }
+    }
+
+    // Positive control: a SINGLE-choice group rule is the supported shape and keeps generating in
+    // every placement the refusal above enumerates.
+    for (spec, tag) in [
+        ("pg = (a: uint)\n".to_owned(), "single_unreferenced"),
+        ("pg = (a: uint)\nh = [pg]\n".to_owned(), "single_element"),
+        (
+            "pg = (a: uint)\nh = [c: uint, pg]\n".to_owned(),
+            "single_member",
+        ),
+        (
+            "pg = (a: uint, b: tstr)\nh = [ x: uint // pg ]\n".to_owned(),
+            "single_arm",
+        ),
+    ] {
+        assert!(
+            run(&spec, tag, &[]).is_ok(),
+            "`{}` must still generate, got: {:?}",
+            spec.trim(),
+            run(&spec, tag, &[]).err()
+        );
+    }
+
+    // Neighbours that must keep their OWN message, one problem one message. A GENERIC multi-choice
+    // group body is already fully disposed of by the generic-plain-group refusal in the same
+    // pre-scan (a plain group registers no struct for an argument to substitute into, whatever its
+    // choice count), so this guard defers to it rather than piling a second message on.
+    let generic = run(
+        "pg<T> = (a: T // f: bytes)\nh = [pg<uint>]\n",
+        "generic",
+        &[],
+    )
+    .expect_err("a generic multi-choice group rule must reject");
+    assert!(
+        generic.contains("generic rule `pg`: a plain-group body"),
+        "the generic neighbour should keep its own message, got: {generic}"
+    );
+    assert!(
+        !generic.contains("group choices"),
+        "the generic neighbour must not also report the choice count, got: {generic}"
+    );
+    // An INLINE group choice in entry position (`h = [ (a // b) ]`) is a different seam and keeps
+    // its own message — and that message's remedy is slot-precise now that the named-group spelling
+    // it used to advertise is itself refused.
+    let inline = run("h = [ (a: uint // f: bytes) ]\n", "inline_entry", &[])
+        .expect_err("an inline group choice in entry position must keep rejecting");
+    assert!(
+        inline.contains("an inline group choice (`(a // b)`) in entry position is unsupported"),
+        "the inline-entry neighbour should keep its own message, got: {inline}"
+    );
+    assert!(
+        !inline.contains("its body carries"),
+        "the inline-entry neighbour must not be re-reported as a group rule, got: {inline}"
+    );
+    assert!(
+        inline.contains("`h = [ a: uint // f: bytes ]`"),
+        "the inline-entry remedy must name a spelling that generates, got: {inline}"
+    );
+}
+
 /// An occurrence marker on the single entry of a single-entry group-choice ARM is refused — except
 /// where DROPPING it is sound, which `inline_group_occurrence_flattens` already decides and this
 /// seam defers to rather than restating.
