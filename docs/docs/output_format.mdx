@@ -86,7 +86,7 @@ What matters is which declaration owns the encoding operation, not that there is
 
 Three things are deliberately **not** covered:
 
-- **A member reached through an alias carrying a [`@custom_serialize`/`@custom_deserialize` pair](comment_dsl.mdx#custom_serialize--custom_deserialize).** Such an alias mints no Rust type — a `pub type` there would carry the aliased type's built-in codec as a standalone wire contradicting the one every embed site writes — so there is no ident for a member to keep, and the member spells the type the alias **resolves to** (`inner = uint ; @custom_serialize …` gives `pub a: u64`, and an alias of a marker gives `pub p: PolicyId`). The alias name still governs everything derived from the *name* rather than the type: enum variant idents, the structural wasm class of a collection over it (`InnerList`), and the encoding-sidecar shape. The suppressed alias was transparent, so the resolved spelling and the vanished one always denoted one type — no wire byte, `Ord`/`Hash` behaviour or JSON face changes with it.
+- **A member reached through an alias carrying a [`@custom_serialize`/`@custom_deserialize` pair](comment_dsl.mdx#custom_serialize--custom_deserialize).** Such an alias mints no Rust type ([why](comment_dsl.mdx#reaching-an-annotated-alias-through-another-rule)), so there is no ident for a member to keep: the member spells the type the alias **resolves to** (`inner = uint ; @custom_serialize …` gives `pub a: u64`, and an alias of a marker gives `pub p: PolicyId`). The alias name still governs everything derived from the *name* rather than the type — enum variant idents, the structural wasm class of a collection over it (`InnerList`), and the encoding-sidecar shape — and no wire byte, `Ord`/`Hash` behaviour or JSON face changes with it.
 
 - **Runtime error text and enum-variant paths.** The `NoVariantMatched` error a c-style enum member emits names the enum *struct* (`DeserializeError::new("Cenum", ..)`) even when the member is declared through an alias, and variant construction stays `Cenum::I0`. The first is output your code can match on — respelling it would make this a behaviour change rather than a spelling change — and the second names the enum's own variants, which have nothing to do with how the member was declared.
 - **Wasm collection wrapper names.** These are keyed by *structural* identity — one wrapper class can serve members declared under different aliases of the same shape — so "the member's alias" is not well defined for them. They are minted from the first requester's alias idents (`MapEpochToText`, `PolicyIdList`) and are stable API surface.
@@ -747,16 +747,18 @@ would stop at the declared arity). This is the array analog of the [open struct-
 rest row — structurally simpler because arrays are positional: there are no keys, so no duplicate
 policy, no key dispatch, and no ordering machinery. The rest tail must be the array's **last**
 element, must occur exactly `*`, and must follow ≥1 fixed member; other spellings (a bounded/`+`
-occurrence, a non-final `*`, a rest tail in a group-choice arm or a plain group, or a fixed-value
-element type like `* 5`, or a **plain group** element type) are graceful rejections naming the
-supported form. The plain-group case (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses
+occurrence, a non-final `*`, a rest tail inside a group-choice arm or inside a plain group's body,
+a fixed-value element type like `* 5`, or a **plain-group element type**) are graceful rejections
+naming the supported form. The plain-group element type
+(`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses
 because a rest tail collects one value per remaining array element and a plain group is not one —
 it has no type of its own, splicing its members flat instead — and the guard reads the *resolved*
 element type, so the bare, alias (`* kv_alias`) and tagged (`* #6.10(kv)`) spellings refuse alike.
 The remedy the message names is the group's array framing: `w = [kv]`, then `t = [ c: uint, * w ]`;
 a tag belongs on that framed reference (`* #6.10(w)`) rather than on the group. A single
 **mandatory** splice (`t = [ c: uint, kv ]`) and the sole-element homogeneous array (`[* kv]`) stay
-supported.
+supported; the full splice-position matrix is
+[Plain group placement](current_capacities#plain-group-placement).
 
 **The `rest` field.** A `pub Vec<T>` named `rest` (rename with `@name` on the tail entry), holding
 the captured trailing elements in wire order. It is **excluded from `new()`** and defaults empty, so
