@@ -2629,10 +2629,18 @@ explicit spelling of a default, a directive whose target already satisfies it, a
 excluded emission site), never a place to park a real drop. The 17 hand cells above the product each
 pin a specific shipped regression or placement control and are kept.
 
-The gate renders four placements: the rule slot, an arm's trailing comment (`armPlacement`), the
+The gate renders five placements: the rule slot, an arm's trailing comment (`armPlacement`), the
 ROW-ENTRY slot of an inline table (`rowEntryPlacement`) — a comment *inside* the braces, which the
-others structurally cannot reach and which was where the inline-table `@duplicates` drop hid — and
-the closing-paren line of a multi-line plain group (`multilineGroupEntries`).
+others structurally cannot reach and which was where the inline-table `@duplicates` drop hid —
+the closing-paren line of a multi-line plain group (`multilineGroupEntries`), and the ENTRY slot of
+a SINGLE-ENTRY group-choice arm (`single_entry_group_choice_arm_{array,map}`). That fifth
+placement exists because a one-entry arm mints no record, so the entry's trailing slot is the one
+member slot the record field walk never reaches — the whole field-directive family dropped there
+at exit 0 while this gate passed 413/413, the measurement that the position was ABSENT from the
+product, not tolerated by it. Cells there whose drop is a KNOWN, ledgered defect (the six
+rule-scoped directives with no member meaning) live on `KNOWN_POSITION_DROPS` instead of the
+allowlist and are held under measurement in both directions: the pin fails stale the moment the
+drop is fixed.
 
 That fourth placement measures a REFUSAL, not an effect. For a spliced plain group the pinned cddl
 AST binds a rule-position directive to the LAST ENTRY's trailing slot — indistinguishable from field
@@ -2839,7 +2847,8 @@ lets every later caller skip the lock entirely. Each work dir gets a `node_modul
 fixture rather than per opt-in.
 
 - **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over the committed schema document
-  (`tests/json2ts/schemas`) using the pinned `json-schema-to-typescript`, asserting the emitted
+  (`tests/json2ts/schemas`) using the shipped `json-schema-to-typescript` range (`^15.0.4` — a
+  range, not an exact pin), asserting the emitted
   `.d.ts`: every definition declared exactly once and JSON-suffixed (including one that nothing but
   another definition references — the shape that ships as an undeclared `TS2304` unless the whole
   document is compiled as one unit), resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
@@ -2907,9 +2916,10 @@ fixture rather than per opt-in.
   allowed class keeps `any` rather than gaining a `TS2304` dangling name, and a stale escape is
   itself an error so the list cannot rot) and the near-miss diagnostic (a class whose declaration
   differs from `<Class>JSON` only by json2ts's identifier normalization is named with both spellings
-  and excluded from the suggested escape, because its type is published already — and, since the
-  shipped `run-json2ts.js` no longer emits such a name, told to re-run that script rather than to
-  rename their rule); a second run
+  and excluded from the suggested escape, because its type is published already — and, because the
+  shipped `run-json2ts.js` emits declaration names verbatim and cannot produce such a near-miss
+  itself, told to re-run that script (the name can only come from a stale or foreign defs file)
+  rather than to rename their rule); a second run
   being byte-identical (the appended block is marker-delimited and truncated each run, so re-running
   without an intervening `rimraf ./pkg` can't duplicate every declaration); a method name the script
   cannot find exiting non-zero with the `--method=` override named and the `.d.ts` untouched (the
@@ -4142,7 +4152,9 @@ Three legs:
 
 The npm dependencies are `@bytecodealliance/jco` and `@bytecodealliance/preview2-shim`, pinned
 **exact** in a committed `package-lock.json` and installed with `npm ci` (never `npm install`, which
-would resolve a newer jco and answer a question about a version nobody committed). The shim is
+would resolve a newer jco and answer a question about a version nobody committed; the shared
+TS-toolchain install makes the opposite choice — caret ranges, no lockfile — and the dep-universe
+refresh work item in `tests/TESTING_ROADMAP.md` owns stating that universe's posture). The shim is
 installed but **not mapped**: jco rewrites the `wasi:*` imports to it by default, and a hand-written
 `wasi:*` map breaks the output. There is no test-framework dependency — `node --test` and
 `node:assert`.
@@ -4596,10 +4608,11 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   sweep's two preserve-only compile classes (tag/`.cbor`-wrapped constrained-int deserialize tuple
   arity; composite map-key move-then-reuse) are fixed, with their preserve compile + round-trip
   pinned by the `tagged_constrained_int` / `composite_map_key` corpus fixtures — so a preserve-only
-  compile failure surfaces as a NEW finding. Observed baseline (full runs at `3e235e03`, the tagged-optional
-  member-kind datum; the shared `LAYER2_KNOWN_BAD` is empty of rows there): 1624 classified
-  compositions (`ok=1001`, `graceful=607`, `panic=16`), 1001 executed / 0 shared known-bad
-  exclusions (~172 s cold at that commit). NAMING GOTCHA: the name deliberately does NOT contain the
+  compile failure surfaces as a NEW finding. Observed baseline (the committed generation datum
+  `tests/recombination-counts.json`, held exactly by `recombination_generation_sweep`; the shared
+  `LAYER2_KNOWN_BAD` is empty of rows there): 1624 classified
+  compositions (`ok=998`, `graceful=611`, `panic=15`), 998 executed / 0 shared known-bad
+  exclusions. NAMING GOTCHA: the name deliberately does NOT contain the
   `recombination_crates_execute` needle, and both check.ts gate cmds pass `--exact` on the full test
   path so cargo's substring selection can't cross-select.
 - `recombination_json_crates_execute` (`#[ignore]`, check.ts full tier): the JSON escalation of
@@ -4611,8 +4624,8 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   crate to the existing json profile compile/schema gates rather than running it per batch. Both
   json-only ledgers (`JSON_ONLY_PANIC_CLASSES`, `LAYER2_JSON_KNOWN_BAD`) are empty at HEAD — json
   derives do not rewire the panic surface, so classification matches the default profile exactly.
-  Observed baseline (full runs at `3e235e03`, the tagged-optional member-kind
-  datum): 1624 classified compositions (`ok=1001`, `graceful=607`, `panic=16`), 1001 executed /
+  Observed baseline (the committed generation datum `tests/recombination-counts.json`): 1624
+  classified compositions (`ok=998`, `graceful=611`, `panic=15`), 998 executed /
   0 shared known-bad exclusions.
 - `recombination_wasm_crates_check` (`#[ignore]`, check.ts full tier): the WASM escalation of
   layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
@@ -4621,9 +4634,9 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   through the same command. Both wasm-only ledgers (`WASM_ONLY_PANIC_CLASSES`,
   `LAYER2_WASM_KNOWN_BAD`) are empty at HEAD — tagged tables and alias-only-reachable table wrappers
   generate and check (pinned by the `tagged_table` / `cbor_bignint_table` corpus fixtures) — so a
-  wasm-only panic or compile class surfaces as a NEW finding. Observed baseline (full runs at
-  `3e235e03`, the tagged-optional member-kind datum): 1624 classified compositions (`ok=1001`,
-  `graceful=607`, `panic=16`), 1001 checked / 0 known-bad exclusions. This is
+  wasm-only panic or compile class surfaces as a NEW finding. Observed baseline (the committed
+  generation datum `tests/recombination-counts.json`): 1624 classified compositions (`ok=998`,
+  `graceful=611`, `panic=15`), 998 checked / 0 known-bad exclusions. This is
   a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains the
   systematic per-shape wasm surface owner.
 
