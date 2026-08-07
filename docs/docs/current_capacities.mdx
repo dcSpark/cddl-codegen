@@ -317,7 +317,10 @@ Depth is the only hostile-input class that needs an opt-in flag. The other class
 
 - **Directory input**: a directory of `.cddl` files generates one crate with a Rust module per
   file (subdirectories nest; see [Output format](./output_format)). Rule names must be unique
-  across the whole directory (duplicates are rejected at parse).
+  across the whole directory (duplicates are rejected at parse). A directory holding a **single**
+  `.cddl` file is not modular input: module scopes are only split when more than one file is
+  found, so a lone file's rules land at the crate root exactly as if the file itself had been
+  passed to `--input`.
 - **Cross-crate dependencies**: a spec can reference types generated (or hand-written) in another
   cddl-codegen crate — the dependency's regen emits a machine-generated `extern-interface/`
   description of its surface, consumed via `--extern-import`
