@@ -598,6 +598,26 @@ ledgered here (that's what the probe/gate error messages point at).
   would classify it `error (graceful)` and route it nowhere, so what that buys is a standing count
   of how often the composition arises across the sweep's own vocabulary, next to the consumer-side
   count above.
+- **A TAGGED anonymous inline array has no reachable naming door, so the anon-group rejection's
+  `@name` advice is unreachable advice for that spelling.** `f: #6.42([x: uint]) ; @name Foo`
+  refuses with "Anonymous groups not allowed … or give it a name using the `@name` notation" — but
+  no slot can deliver that name: `anon_array_member_name` walks the array's parent chain up to the
+  member entry, and a `TaggedData` node interposed between the array's `Type1` and the entry breaks
+  the walk, so the tag-wrapped spelling never reads the directive (the same structural break, not
+  the deliberate operator carve-out the reader documents for `.cbor` chains). Probed 2026-08-07 at
+  `dee38cc2`, default profile, `--wasm=false`: at an ordinary array-record member and at a
+  single-entry group-choice arm (where the entry-slot `@name` refusal now ALSO fires — two distinct
+  messages, the second correctly saying the slot names nothing for this member type); not probed:
+  map-rep members, other profiles (the reader runs at parse, expect position-independence of the
+  break itself). The message's OTHER remedy half is reachable and verified: name the array as its
+  own rule and tag the reference (`inner = [x: uint]`, `f: #6.42(inner)` — generates and
+  `cargo check`s green, tag kept outside the named rule). Fix shape is a choice: teach the reader
+  to walk through `TaggedData` nodes (the naming door then covers the tagged spelling — check the
+  minted struct interacts correctly with the tag's wrapper), or make the anon-group rejection
+  tag-aware so it advertises only the named-rule remedy there. Either way the message stops
+  advertising a door that does not open. The inline-MAP sibling (`f: {x: uint} ; @name Foo`) is NOT
+  this entry — the map side has no naming door by design, recorded in the anonymous-nested-MAP
+  entry below.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully
