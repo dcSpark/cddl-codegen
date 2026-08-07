@@ -507,6 +507,13 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `dsl_position_tests` cells. It stays out of reach where the array belongs to some other construct
   the comment cannot be attributed to (a `bytes .cbor [ … ]` payload, a generic argument, a map
   key), and the MAP bracket has no naming door at all — its message advertises only the named form.
+  Where the door does not reach, the `@name` written for it is now REFUSED rather than dropped: on a
+  SINGLE-ENTRY group-choice arm the entry-trailing slot is honored exactly where the door consumes
+  it and is a hard error otherwise, naming the arm's own slot (the one after the `//`), so an author
+  whose name landed one slot over is told which slot works instead of getting silence
+  (`robustness_tests::name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent`).
+  The refusal seam does not re-derive which member types the door covers — it observes the door's
+  own effect (the member's parsed type IS the struct the name mints), so the two cannot drift.
   The one
   exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the
