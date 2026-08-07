@@ -410,21 +410,63 @@ const CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "catalo
 // BUILDS but BEHAVES wrongly, which a handful of structurally-distinct rows can evidence. Growing
 // the set is one edit here — every row is validated against the committed catalog at startup.
 //
-// Each row is chosen for a translation class the WIT projection has to get right, and each must be a
-// FEATURE-axis catalog row (the only axis wired into a component clause today):
+// Each row is chosen for a translation class the WIT projection has to get right — VALIDATES (a
+// constraint the projection has to keep enforcing), DESPECIALIZES (a shape with no resource of its
+// own, reached through its embed site), BOUNDARY (a CDDL construct with no WIT counterpart, so the
+// projection has to translate it) or CONTROL — and each must be a FEATURE-axis catalog row (the
+// only axis wired into a component clause today; the selection self-test refuses the others rather
+// than probing nothing).
+//
+// Rows carrying a committed REJECT vector are the load-bearing half of the set: only they exercise
+// the direction no static reading can reach — that a refusal crosses as `Err` and leaves the
+// instance usable. Six of the rows below have one.
 const COMPONENT_PROBE_ROWS: string[] = [
-  // The bounds/VALIDATES class: `.size 2` narrows the member to `u16` in the projection
-  // (`constructor(x: u16)`), so the boundary carries a width the CDDL only implies — and the row's
-  // committed constraint vector (65536) proves the refusal crosses as `Err`, not as a trap or a
-  // silent truncation.
+  // VALIDATES — `.size 2` narrows the member to `u16` in the projection (`constructor(x: u16)`), so
+  // the boundary carries a width the CDDL only implies; the constraint vector (65536) proves the
+  // refusal crosses as `Err` rather than as a trap or a silent truncation.
   "ctl.size.uint",
-  // The DESPECIALIZED class: `[+ uint]` has no resource of its own — it despecializes to
-  // `list<u64>` at the embed site with a FALLIBLE constructor, so the non-emptiness lives in the
-  // guest glue rather than the type. Its reject vector is the empty list.
+  // VALIDATES — occurrence COUNT bounds (`[2*5 uint]`) despecialize to a plain `list<u64>`, so the
+  // count is enforced only by the guest glue the projection emits; two reject vectors bracket it.
+  "occur.bounded",
+  // VALIDATES — a float WIDTH (`float16`) is the one payload whose wire form carries a precision the
+  // WIT type (`f64`) does not, so re-encoding it byte-exactly is a real constraint rather than a
+  // formality; two reject vectors cover the out-of-width reads.
+  "prelude.float16",
+  // DESPECIALIZES — `[+ uint]` has no resource of its own: it becomes `list<u64>` at the embed site
+  // with a FALLIBLE constructor, so the non-emptiness lives in the glue. Reject vector = empty list.
   "occur.one_or_more",
-  // The plain-record CONTROL: a three-member heterogeneous record is the shape every other class is
-  // read against, and it is the one selected row whose resource IS the rule (standalone mode, not a
-  // synthetic holder). If this row ever fails, the failure is the face, not the class under test.
+  // DESPECIALIZES — a table (`{ * tstr => int }`) is the map-shaped sibling of the list above, and
+  // the only selected row whose despecialized payload is a key/value container.
+  "type2.map",
+  // BOUNDARY — a GROUP choice (`{ a: uint // b: tstr }`) is the variant class: arms that are whole
+  // record shapes crossing as one WIT type.
+  "group.choice",
+  // BOUNDARY — a c-enum (`0 / 1 / 2`) projects to a WIT `enum`, which is a DIFFERENT construct from
+  // the variant above: no payload, so the whole value is the discriminant.
+  "type.enum",
+  // BOUNDARY — an optional member (`[? name: tstr]`) is WIT `option<T>`, the place where "absent"
+  // and "present" have to survive a round trip through a representation that has both.
+  "occur.optional",
+  // BOUNDARY — a tag (`#6.30([uint, uint])`) has no WIT counterpart at all: the tag is carried
+  // inside the bytes, so the resource must re-emit it from a representation that never names it.
+  "type2.tag",
+  // BOUNDARY — a `bstr` member is `list<u8>`, the same WIT type the doors themselves speak, which
+  // is exactly why it is worth pinning: a byte payload must not be confused with the CBOR encoding
+  // of one.
+  "prelude.bstr",
+  // BOUNDARY — the set idiom under `@duplicates reject` (`#6.258([* uint]) / [* uint]`) is a
+  // container whose duplicate policy is guest-side behavior, invisible in the WIT type. It is also
+  // the selection's TYPE-choice arm shape (two alternatives), which is otherwise unreachable: every
+  // catalog row for the type-choice and range families names its rule `t`, and a rust ident of `T`
+  // collides with what `wit_bindgen::generate!` binds in the emitted glue's scope, so those crates
+  // do not compile at all (see this cycle's report; renaming the rule compiles clean).
+  "dsl.duplicates.reject",
+  // BOUNDARY — a cut-marked map member (`{ "a" ^ => int }`): the cut is a decode-time rejection
+  // rule with no representation on the boundary at all. Its reject vector is the wrong-typed value.
+  "memberkey.cut",
+  // CONTROL — a three-member heterogeneous record is the shape every other class is read against,
+  // and the one selected row whose resource IS the rule (standalone mode, not a synthetic holder).
+  // If this row ever fails, the failure is the face, not the class under test.
   "type2.array",
 ];
 
