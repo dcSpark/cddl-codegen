@@ -130,13 +130,142 @@ pub(crate) fn checkout_hash() -> u64 {
     h.finish()
 }
 
-/// Corpus fixtures whose generated crate references user-supplied code (for example,
-/// `@custom_serialize` / `@custom_deserialize` functions like `my_ser`/`my_deser`, or the extern /
-/// raw-bytes wrapper types an `@raw_bytes_flavor` extern generic references), so they cannot be
-/// compiled or round-tripped standalone under any emission profile. They remain covered by source
-/// snapshots — and, where a hand-written side exists, by a dedicated integration fixture (e.g.
-/// `extern_generic_raw_bytes`).
-pub(crate) const COMPILE_SKIP: &[&str] = &["dsl_custom", "dsl_copy", "extern_generic_raw_bytes"];
+/// One hand-written definition a corpus fixture's generated crate needs, as a
+/// `tests/def_templates/` template plus its substitutions. Same table `cddl-matrix/verify.ts`'s
+/// `DEF_SPLICE` keeps for the matrix rows, over the same template files — a fixture naming
+/// user-supplied code is a reason to WRITE that code, not to stop compiling the crate it sits in.
+pub(crate) struct DefTemplate {
+    /// `tests/def_templates/<template>.<rust|wasm>`.
+    template: &'static str,
+    /// Substituted under `--preserve-encodings` (the encoding-variable signature).
+    preserve_template: Option<&'static str>,
+    /// `__NAME__` — the rust type the marker rule mints (empty where the template has none).
+    name: &'static str,
+    /// `__SER__` / `__DESER__` — the `@custom_serialize` / `@custom_deserialize` targets.
+    ser: &'static str,
+    deser: &'static str,
+    /// Add `Copy` to `__DERIVES__` (the `@copy` contract's compile-time assertion demands it).
+    copy: bool,
+    /// Spliced ONLY under the json profile (`@custom_json`'s hand serde/schemars impls, which the
+    /// other profiles neither need nor can compile — no serde dependency is in scope there).
+    json_only: bool,
+    /// Names to `pub use crate::{…};` into `generated/mod.rs` — the hand import
+    /// `docs/docs/comment_dsl.mdx` names as the remedy for a bare (non-path-qualified) codec name.
+    reexport: &'static [&'static str],
+}
+
+impl DefTemplate {
+    /// A type definition (extern, raw-bytes, generic base, or a wasm wrapper).
+    const fn ty(template: &'static str, name: &'static str) -> Self {
+        Self {
+            template,
+            preserve_template: None,
+            name,
+            ser: "",
+            deser: "",
+            copy: false,
+            json_only: false,
+            reexport: &[],
+        }
+    }
+
+    /// A type whose rule carries `@copy`.
+    const fn copy_ty(template: &'static str, name: &'static str) -> Self {
+        Self {
+            copy: true,
+            ..Self::ty(template, name)
+        }
+    }
+
+    /// A `@custom_serialize`/`@custom_deserialize` pair, whose signature changes under preserve.
+    const fn codec(
+        template: &'static str,
+        preserve_template: &'static str,
+        pair: &'static [&'static str],
+    ) -> Self {
+        Self {
+            preserve_template: Some(preserve_template),
+            ser: pair[0],
+            deser: pair[1],
+            reexport: pair,
+            ..Self::ty(template, "")
+        }
+    }
+
+    /// The hand serde/schemars impls a `@custom_json` rule owes under the json flags.
+    const fn json_impls(name: &'static str) -> Self {
+        Self {
+            json_only: true,
+            ..Self::ty("custom_json_impls", name)
+        }
+    }
+}
+
+/// The definitions each user-code corpus fixture needs, so `feature_corpus_compiles` (and the regen
+/// gate) can COMPILE it instead of skipping it. Keyed by fixture stem; a stem absent here and absent
+/// from [`COMPILE_SKIP`] needs no user code at all.
+pub(crate) struct CorpusDefs {
+    stem: &'static str,
+    rust: &'static [DefTemplate],
+    wasm: &'static [DefTemplate],
+}
+
+pub(crate) const CORPUS_DEF_SPLICE: &[CorpusDefs] = &[
+    // `@copy` on both marker flavors. `Hash` keys a table (`{ * hash => uint }`), which is why the
+    // template's derive list carries `Ord`; both types must derive `Copy` or the generated
+    // `_assert_copy::<…>()` fails the crate's own build — which is the directive's whole contract.
+    CorpusDefs {
+        stem: "dsl_copy",
+        rust: &[
+            DefTemplate::copy_ty("raw_bytes", "Hash"),
+            DefTemplate::copy_ty("extern_type", "Ext"),
+        ],
+        wasm: &[
+            DefTemplate::ty("opaque_wrapper", "Hash"),
+            DefTemplate::ty("opaque_wrapper", "Ext"),
+        ],
+    },
+    // Two codec pairs with DIFFERENT preserve signatures — `my_ser`/`my_deser` sit on a `text`
+    // field (one inferred `StringEncoding`), while `my_ser2`/`my_deser2` carry
+    // `@custom_encodings sz,str` over `bytes` (a declared tag width the replaced type never
+    // inferred). Plus the `@custom_json` newtype's hand serde/schemars impls, which only the json
+    // profile needs: without them the emitted wasm `to_json` and the json-gen registrar name traits
+    // the directive deliberately suppressed.
+    CorpusDefs {
+        stem: "dsl_custom",
+        rust: &[
+            DefTemplate::codec(
+                "custom_text_codec",
+                "custom_text_codec_preserve",
+                &["my_ser", "my_deser"],
+            ),
+            DefTemplate::codec(
+                "custom_bytes_codec",
+                "custom_bytes_codec_declared_preserve",
+                &["my_ser2", "my_deser2"],
+            ),
+            DefTemplate::json_impls("CustomNewtype"),
+        ],
+        wasm: &[],
+    },
+];
+
+/// Corpus fixtures `feature_corpus_compiles` still skips outright — NOT "references user-supplied
+/// code" (that is now seeded, see [`CORPUS_DEF_SPLICE`]), but a blocker no definition can answer.
+///
+/// `extern_generic_raw_bytes`: its rust and wasm crates both compile against seeded defs under all
+/// three profiles — the blocker is a WARNING the gate treats as a failure, and it is a real
+/// generator finding rather than a fixture defect. The wasm extern re-export glue emits
+/// `pub use crate::<Name>;` for EVERY in-crate extern / raw-bytes rule, whether or not the wasm tree
+/// references it. Here `pub_key` is reached only as a generic ARGUMENT (`ext_set<pub_key>`), so the
+/// wasm face names `ExtSetPubKey` and never `PubKey` — the re-export is unused
+/// (`warning: unused import: crate::PubKey` at a generated location), while the user is still
+/// obliged to hand-write a wasm `PubKey` wrapper for it to resolve at all. Making the wasm
+/// re-export usage-conditional changes what the "Own-spec extern re-export contract" demands of a
+/// consumer, so it is a contract decision, not a test fix; ledgered in `cddl-matrix/ROADMAP.md`
+/// § findings. The fixture's behavioural coverage is the `extern-generic-raw-bytes` integration
+/// fixture; its matrix face (`dsl.raw_bytes_flavor`) is compile-gated on both crates.
+pub(crate) const COMPILE_SKIP: &[&str] = &["extern_generic_raw_bytes"];
 
 /// `(fixture stem, profile, reason)` triples whose GENERATION deliberately aborts under that
 /// profile because the fixture reaches a tracked unimplemented path. Unlike `COMPILE_SKIP` (whole
@@ -154,13 +283,18 @@ const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
          generate the closed-struct surface",
 )];
 
-/// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry pairs
-/// with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact `E####`,
-/// root cause):
-/// - `extern__array-element` references a user-supplied type (undefined standalone -> E0425), while
-///   the extern emit path is integration-tested separately in `tests/extern-deps`. Because the cell
-///   never compiles here, it never round-trips here either.
-const WASM_MATRIX_SKIP: &[&str] = &["extern__array-element"];
+/// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry would
+/// pair with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact
+/// `E####`, root cause).
+///
+/// EMPTY. Its one resident was `extern__array-element`, skipped because
+/// `_CDDL_CODEGEN_EXTERN_TYPE_` resolves to a user-supplied type (undefined standalone -> E0425).
+/// That is a reason to WRITE the type, which `append_extern_defs` now does from
+/// `tests/def_templates/` — the same treatment `rawbytes__*` already had, and no longer blocked on
+/// "the defs live only in tests/extern-deps" now that the definition is a template substitution
+/// rather than a fixture that has to exist under some other name. The list stays (with its
+/// four-state verdict and resurfaced guard) so a genuinely-red cell has a home.
+const WASM_MATRIX_SKIP: &[&str] = &[];
 
 /// Extract the DISTINCT rustc error codes (`E####`) from compiler output, keyed off the `error[E`
 /// prefix. Only a real diagnostic header (`error[E0583]: ...`) carries that prefix; the trailing
@@ -1210,6 +1344,122 @@ fn reference_codec_differential_self_check() {
 /// `RawBytesEncoding`/`Deserialize*`); the matrix never passes `--lib-name`, so the wasm def's `cddl_lib`
 /// path needs no substitution here.
 ///
+/// The base derives every seeded definition carries. `Ord`/`Hash` are unconditional rather than
+/// per-fixture because a marker type may key a table in one shape and not another, and a derive the
+/// generated code never demands costs nothing; `Copy` is opt-in because it is a CLAIM the `@copy`
+/// contract compile-asserts.
+const DEF_BASE_DERIVES: &str = "Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash";
+
+/// Derives the json flags impose on a user-supplied type: generated code delegates that type's JSON
+/// representation to it. Rust side only — a wasm wrapper's json fns go through the rust type's serde.
+const DEF_JSON_DERIVES: &str = "serde::Serialize, serde::Deserialize, schemars::JsonSchema";
+
+/// Render one `tests/def_templates/` template with its substitutions.
+fn render_def_template(kind: &str, def: &DefTemplate, json: bool, preserve: bool) -> String {
+    let template = match (preserve, def.preserve_template) {
+        (true, Some(preserve_template)) => preserve_template,
+        _ => def.template,
+    };
+    let src = std::fs::read_to_string(format!("tests/def_templates/{template}.{kind}"))
+        .unwrap_or_else(|e| panic!("def template tests/def_templates/{template}.{kind}: {e}"));
+    let mut derives = DEF_BASE_DERIVES.to_owned();
+    if def.copy {
+        derives.push_str(", Copy");
+    }
+    if json && kind == "rust" {
+        derives.push_str(", ");
+        derives.push_str(DEF_JSON_DERIVES);
+    }
+    src.replace("__NAME__", def.name)
+        .replace("__DERIVES__", &derives)
+        .replace("__SER__", def.ser)
+        .replace("__DESER__", def.deser)
+}
+
+/// Seed a freshly generated crate rooted at `out` with the user-supplied code a corpus fixture's
+/// spec names (see [`CORPUS_DEF_SPLICE`]). Residence is the DOCUMENTED contract — the seed-once thin
+/// `rust/src/lib.rs` / `wasm/src/lib.rs`, never `src/generated/**` (clobbered every run, and the
+/// generator's own `pub use crate::<Name>;` glue would collide E0255 there) — which is also what
+/// makes an appended def survive a regeneration, so the regen gate can splice the same way.
+/// [`append_corpus_defs`] keyed by fixture stem, for the gates that walk the corpus by name — a
+/// no-op for a stem that needs no user code. `wasm/src/lib.rs` is written only when the crate exists
+/// (the `--wasm=false` and component sweeps emit no wasm crate).
+pub(crate) fn append_corpus_defs_for(
+    out: &std::path::Path,
+    stem: &str,
+    json: bool,
+    preserve: bool,
+) {
+    if let Some(defs) = CORPUS_DEF_SPLICE.iter().find(|d| d.stem == stem) {
+        append_corpus_defs(out, defs, json, preserve);
+    }
+}
+
+fn append_corpus_defs(out: &std::path::Path, defs: &CorpusDefs, json: bool, preserve: bool) {
+    use std::io::Write;
+    let mut rust_body = String::new();
+    let mut reexports: Vec<&str> = Vec::new();
+    for def in defs.rust {
+        if def.json_only && !json {
+            continue;
+        }
+        rust_body.push_str("\n\n");
+        rust_body.push_str(&render_def_template("rust", def, json, preserve));
+        reexports.extend(def.reexport.iter().copied());
+    }
+    if !rust_body.is_empty() {
+        let mut lib = std::fs::OpenOptions::new()
+            .append(true)
+            .open(out.join("rust/src/lib.rs"))
+            .unwrap();
+        lib.write_all(rust_body.as_bytes()).unwrap();
+    }
+    if !reexports.is_empty() {
+        // A bare (non-path-qualified) codec name is resolved in the generated `serialization.rs`
+        // through its `use super::*;`, so the hand import must land in `generated/mod.rs` — the
+        // remedy `docs/docs/comment_dsl.mdx` names for exactly this spelling. It re-exports the
+        // definition that lives in the crate root; it is not a definition itself.
+        let mut generated_mod = std::fs::OpenOptions::new()
+            .append(true)
+            .open(out.join("rust/src/generated/mod.rs"))
+            .unwrap();
+        generated_mod
+            .write_all(format!("\npub use crate::{{{}}};\n", reexports.join(", ")).as_bytes())
+            .unwrap();
+    }
+    // The `--wasm=false` and component sweeps emit no wasm crate; a fixture whose wasm side has
+    // nothing to seed needs no touch either.
+    if defs.wasm.is_empty() || !out.join("wasm/src/lib.rs").exists() {
+        return;
+    }
+    let mut wasm_body = String::from("\nuse wasm_bindgen::prelude::wasm_bindgen;\n");
+    for def in defs.wasm {
+        wasm_body.push_str("\n\n");
+        wasm_body.push_str(&render_def_template("wasm", def, json, preserve));
+    }
+    let mut wasm_lib = std::fs::OpenOptions::new()
+        .append(true)
+        .open(out.join("wasm/src/lib.rs"))
+        .unwrap();
+    wasm_lib.write_all(wasm_body.as_bytes()).unwrap();
+}
+
+/// The `extern__*` sibling of [`append_raw_bytes_defs`]: append the hand-written `Ext` definition
+/// (rust) and its `#[wasm_bindgen]` wrapper that an `ext = _CDDL_CODEGEN_EXTERN_TYPE_` wasm-matrix
+/// cell references, so the cell compiles/tests standalone instead of being permanently skipped.
+///
+/// Written from the shared `tests/def_templates/` rather than a fixture file, because the type name
+/// is the cell's rule name — the same reason the corpus and matrix splices are templated. Same
+/// residence contract as the raw-bytes sibling (the thin crate roots, never `generated/**`).
+fn append_extern_defs(out: &std::path::Path, json: bool) {
+    const EXTERN_CELL_DEFS: CorpusDefs = CorpusDefs {
+        stem: "",
+        rust: &[DefTemplate::ty("extern_type", "Ext")],
+        wasm: &[DefTemplate::ty("opaque_wrapper", "Ext")],
+    };
+    append_corpus_defs(out, &EXTERN_CELL_DEFS, json, false);
+}
+
 /// `json` selects the json-flavored rust def: the json flags make generated code delegate its JSON
 /// representation to the user type (serde::Serialize/Deserialize + schemars::JsonSchema bounds —
 /// part of the documented `_CDDL_CODEGEN_RAW_BYTES_TYPE_` contract), so the fixture must model a
@@ -2459,6 +2709,40 @@ fn feature_corpus_compiles_pins_are_live() {
              tests/corpus — stale pin, remove or fix it"
         );
     }
+    // The splice table is a pin in the same sense as the skip lists: it names fixtures AND template
+    // files, and either can go away under it. A stale entry would silently stop seeding (the gate
+    // then fails confusingly at the compile stage) or panic mid-gate on a missing template — both
+    // worse than failing here by name. Both `.rust` and `.wasm` flavors are checked per side,
+    // including each preserve variant, because a template is read only under the profile that
+    // selects it and a gate run that never reaches that profile would not notice.
+    for defs in CORPUS_DEF_SPLICE {
+        assert!(
+            corpus_stems.contains(defs.stem),
+            "CORPUS_DEF_SPLICE names corpus fixture `{}` that no longer exists in tests/corpus — \
+             stale pin, remove or fix it",
+            defs.stem
+        );
+        assert!(
+            !COMPILE_SKIP.contains(&defs.stem),
+            "corpus fixture `{}` is BOTH seeded and skipped — one of the two is stale",
+            defs.stem
+        );
+        for (kind, side) in [("rust", defs.rust), ("wasm", defs.wasm)] {
+            for def in side {
+                for template in [Some(def.template), def.preserve_template]
+                    .into_iter()
+                    .flatten()
+                {
+                    let path = format!("tests/def_templates/{template}.{kind}");
+                    assert!(
+                        std::path::Path::new(&path).exists(),
+                        "CORPUS_DEF_SPLICE entry `{}` names missing def template `{path}`",
+                        defs.stem
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// How many `#[test]`s the corpus compile gate is split across. Sized against the gate's own
@@ -2595,6 +2879,10 @@ fn feature_corpus_compiles_shard(shard: usize) {
                 ));
                 continue;
             }
+            // Seed the user-supplied side BEFORE any compile stage reads the crate. A fixture whose
+            // spec names an extern type, a raw-bytes type or a custom codec is a fixture that needs
+            // that code WRITTEN, not one that cannot be compiled — see `CORPUS_DEF_SPLICE`.
+            append_corpus_defs_for(&out, stem, *profile == "json", *profile == "preserve");
             // cargo check the generated rust crate, then the wasm crate, and — under the json
             // profile — the json-gen crate. The wasm crate is a whole output mode nothing else
             // systematically compile-gates; a host `cargo check` catches type/signature errors in
@@ -3555,6 +3843,12 @@ fn wasm_matrix_compiles_shard(shard: usize) {
         if stem.starts_with("rawbytes__") {
             append_raw_bytes_defs(&out, false);
         }
+        // Same treatment for `extern__*`, whose `_CDDL_CODEGEN_EXTERN_TYPE_` resolves to a
+        // user-supplied type: the definition is a template substitution, not a fixture that has to
+        // exist somewhere, so there is nothing left to skip for.
+        if stem.starts_with("extern__") {
+            append_extern_defs(&out, false);
+        }
         let argv_for_key = vec![
             "cwd=wasm".to_string(),
             "cargo".to_string(),
@@ -4127,6 +4421,9 @@ fn wasm_matrix_roundtrips() {
             // json flags impose on user-supplied types.
             if stem.starts_with("rawbytes__") {
                 append_raw_bytes_defs(&out, *profile == "json");
+            }
+            if stem.starts_with("extern__") {
+                append_extern_defs(&out, *profile == "json");
             }
             let argv_for_key = vec![
                 "cwd=wasm".to_string(),
@@ -10792,14 +11089,26 @@ fn ir_conformance_corpus() {
     // the decorrelated ruby oracle its coverage (they are independent validators — one's blind spot
     // is not the other's).
     //
-    // GEN_SKIP: genuinely can't be generated/compiled standalone, so it's skipped ENTIRELY (no
-    // generation, no dump, no sweep of any kind). This is the SAME decision `feature_corpus_compiles`
-    // makes (a generated crate referencing user-supplied code — `@custom_serialize` fns, extern /
-    // raw-bytes wrapper types — cannot compile standalone), so it consumes that gate's ledger
-    // (`COMPILE_SKIP`) as the single owner rather than mirroring it: the twin-list form drifted once
-    // (`extern_generic_raw_bytes` landed in `COMPILE_SKIP` only, leaving this gate deterministically
-    // red from that registration until the next manual full-tier run surfaced it).
-    const GEN_SKIP: &[&str] = COMPILE_SKIP;
+    // GEN_SKIP: skipped ENTIRELY (no generation, no dump, no sweep of any kind), for a reason that
+    // is this gate's OWN and survives the compile floor learning to seed user code. Both oracles
+    // here judge minted bytes AGAINST THE FIXTURE'S CDDL, and for these three that judgement is not
+    // available in principle:
+    //   - `dsl_copy` / `extern_generic_raw_bytes` write the vendor sentinel typenames
+    //     (`_CDDL_CODEGEN_EXTERN_TYPE_`, `_CDDL_CODEGEN_RAW_BYTES_TYPE_`) into the spec text the
+    //     validators are handed. Those are cddl-codegen extensions, not CDDL: both reference
+    //     validators reject the spec outright, so there is nothing to compare minted bytes to.
+    //   - `dsl_custom` mints bytes a `@custom_serialize` pair wrote, and the whole point of that
+    //     directive is a wire the DECLARED type does not describe (its `@custom_encodings sz,str`
+    //     rule writes `#6.42(bytes)` where the spec says `bytes`). A spec-conformance oracle would
+    //     correctly reject conforming output — the fixture's bytes are right and the spec is not
+    //     what produced them.
+    // This is a DIFFERENT reason from the compile floor's, so it is stated here rather than aliased
+    // to `COMPILE_SKIP`: that list now seeds the user-supplied side and compiles two of these three,
+    // and an alias would have silently un-skipped them here on a reason that never applied.
+    // (The twin-list form drifted once before — `extern_generic_raw_bytes` landed in `COMPILE_SKIP`
+    // only, leaving this gate deterministically red — so the stale-pin guard below covers this list
+    // in its own right.)
+    const GEN_SKIP: &[&str] = &["dsl_copy", "dsl_custom", "extern_generic_raw_bytes"];
     // RUST_ORACLE_SKIP: fixtures whose minted bytes are valid but hit a documented RUST conformance
     // validator gap. Such fixtures still generate, round-trip, and dump, but are generated WITHOUT
     // --emit-tests-conformance (rust validate half off) so the decorrelated ruby gem can continue
@@ -19244,6 +19553,18 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
          default/json emitted round-trip surface runs normally",
     )];
 
+    // Fixtures this gate skips OUTRIGHT, for its own reason rather than the compile floor's. This
+    // gate EXECUTES the emitted round-trip module, and a user-code fixture's round trip is a
+    // statement about the USER'S code as much as the generator's: `dsl_custom`'s bytes are whatever
+    // its `@custom_serialize` pair writes, and a seeded codec round-trips because the seed says so.
+    // Compile coverage for these is `feature_corpus_compiles`' (which seeds them and builds all
+    // three crates); making their EXECUTION meaningful needs hand-written codecs whose wire is
+    // pinned independently, which is the extern-deps wasm-boundary entry's scope in
+    // `tests/TESTING_ROADMAP.md`, not this gate's. Deliberately NOT aliased to `COMPILE_SKIP`: that
+    // list now seeds and compiles two of these three, and an alias would silently have promoted
+    // them into an execution claim nothing backs.
+    const EXECUTION_SKIP: &[&str] = &["dsl_copy", "dsl_custom", "extern_generic_raw_bytes"];
+
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
     // mirroring `feature_corpus_compiles`. Discovered empirically (see the assert below).
     fn module_floor(profile: &str) -> usize {
@@ -19278,10 +19599,10 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
         .iter()
         .map(|p| p.file_stem().unwrap().to_str().unwrap())
         .collect();
-    for stem in COMPILE_SKIP {
+    for stem in EXECUTION_SKIP {
         assert!(
             corpus_stems.contains(stem),
-            "COMPILE_SKIP names corpus fixture `{stem}` that no longer exists in tests/corpus — \
+            "EXECUTION_SKIP names corpus fixture `{stem}` that no longer exists in tests/corpus — \
              stale pin, remove or fix it"
         );
     }
@@ -19313,7 +19634,7 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
         std::collections::BTreeMap::new();
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
-        if COMPILE_SKIP.contains(&stem) {
+        if EXECUTION_SKIP.contains(&stem) {
             continue;
         }
         for (profile, extra) in &profiles {

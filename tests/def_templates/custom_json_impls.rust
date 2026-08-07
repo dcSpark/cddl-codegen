@@ -1,0 +1,30 @@
+// `@custom_json` suppresses the generated serde/schemars derives "on the assumption the user
+// supplies their own". Under the json flags that assumption is a REQUIREMENT, not an option: the
+// emitted wasm `to_json`/`to_js_value` call `serde_json::to_string_pretty(&self.0)` and
+// `serde::Serialize::serialize(&self.0, …)` on the rust type, and the json-gen registrar emits
+// `reg.add::<cddl_lib::<Name>>()`, which needs `JsonSchema`. So a `@custom_json` rule owes three
+// impls in the hand-written crate root — the shape this template is.
+//
+// Written against the type's PUBLIC accessor rather than its field, because a `@newtype`'s field is
+// `pub(crate)`: the impls must be writable by a consumer who only has the generated API.
+impl serde::Serialize for __NAME__ {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(&self.get(), serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for __NAME__ {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        serde::Deserialize::deserialize(deserializer).map(__NAME__::new)
+    }
+}
+
+impl schemars::JsonSchema for __NAME__ {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("__NAME__")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+}

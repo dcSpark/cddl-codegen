@@ -2293,9 +2293,11 @@ fn component_corpus_compiles() {
         {
             continue;
         }
-        // A fixture whose RUST crate references user-supplied code cannot compile standalone under
-        // any profile, component or not. Shared with `feature_corpus_compiles` rather than restated,
-        // so the two gates can never disagree about which fixtures those are.
+        // A fixture whose RUST crate references user-supplied code that no definition can supply is
+        // skipped; one whose user code CAN be written gets it written below, after generation.
+        // Shared with `feature_corpus_compiles` rather than restated, so the two gates can never
+        // disagree about which fixtures are which — the component crate takes the rust crate as a
+        // path dependency, so it needs exactly the same seeding to build.
         if crate::tests::integration_tests::COMPILE_SKIP.contains(&stem.as_str()) {
             continue;
         }
@@ -2323,6 +2325,12 @@ fn component_corpus_compiles() {
              belongs in `snapshot_tests::PROFILE_GENERATION_SKIP` with a reason, never here\n{}",
             String::from_utf8_lossy(&generated.stderr)
         );
+        // Seed the user-supplied side the fixture's spec names (extern / raw-bytes types, custom
+        // codec fns) into the thin crate roots, exactly as `feature_corpus_compiles` does — this
+        // gate builds the rust crate as the component crate's path dependency, so without the seed
+        // those fixtures would fail on undefined names rather than on anything about the component
+        // face. The component profile is neither json nor preserve.
+        crate::tests::integration_tests::append_corpus_defs_for(&out, &stem, false, false);
         // A workspace root so the emitted crates share one lock and one target dir, and the rust
         // crate narrowed to `rlib` — the same two edits the build smoke makes, for the same reasons.
         std::fs::write(

@@ -1,0 +1,29 @@
+// The `@raw_bytes_flavor` sibling of `generic_extern`: a `<Base>RawBytes` wrapper whose parameter is
+// bound on `RawBytesEncoding` and framed as a byte string, rather than on the CBOR traits. The two
+// flavors exist because ONE wrapper type cannot serve both element contracts — the blanket impls
+// would conflict — which is exactly what the directive declares. `__NAME__` is the BASE name; the
+// `RawBytes` suffix is the flavored ident the generator's alias and re-export glue spell.
+#[derive(__DERIVES__)]
+pub struct __NAME__RawBytes<T: serialization::RawBytesEncoding>(pub T);
+
+impl<T: serialization::RawBytesEncoding> __NAME__RawBytes<T> {
+    pub fn new(inner: T) -> Self {
+        Self(inner)
+    }
+}
+
+impl<T: serialization::RawBytesEncoding> cbor_event::se::Serialize for __NAME__RawBytes<T> {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_bytes(self.0.to_raw_bytes())
+    }
+}
+
+impl<T: serialization::RawBytesEncoding> serialization::Deserialize for __NAME__RawBytes<T> {
+    fn deserialize(raw: &mut cbor_event::de::Deserializer) -> Result<Self, error::DeserializeError> {
+        let bytes = raw.bytes()?;
+        T::from_raw_bytes(&bytes).map(Self)
+    }
+}

@@ -1,0 +1,14 @@
+// `@custom_serialize __SER__ @custom_deserialize __DESER__` over a `text` position, NON-preserve
+// signature (no encoding variables). The wire is a plain text item: a compile floor's subject is that
+// the declaration, the emitted call and the codec agree on the signature, not that the codec writes
+// anything exotic.
+pub fn __SER__<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    text: &str,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_text(text)
+}
+
+pub fn __DESER__(raw: &mut cbor_event::de::Deserializer) -> Result<String, error::DeserializeError> {
+    Ok(raw.text()?)
+}

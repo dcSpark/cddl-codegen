@@ -1,0 +1,17 @@
+// The `--preserve-encodings` flavor of `custom_text_codec`: `text` infers exactly one
+// `StringEncoding`, so the pair takes/returns it and the item re-emits with the width and chunking it
+// was read at.
+pub fn __SER__<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    text: &str,
+    str_enc: &serialization::StringEncoding,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_text_sz(text, str_enc.to_str_len_sz(text.len() as u64))
+}
+
+pub fn __DESER__(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<(String, serialization::StringEncoding), error::DeserializeError> {
+    let (text, str_enc) = raw.text_sz()?;
+    Ok((text, str_enc.into()))
+}

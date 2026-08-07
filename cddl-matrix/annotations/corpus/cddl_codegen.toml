@@ -347,9 +347,11 @@ fixture = "dsl_custom.cddl"
 
 # Sentinel typenames + the flavor tag. `extern_generic_raw_bytes.cddl` composes all three (an
 # `@raw_bytes_flavor` extern generic instantiated with a raw-bytes element) — the first corpus cell
-# to exercise them. Its generated crate references user-owned wrapper/raw-bytes types, so it is
-# COMPILE_SKIP in the integration corpus gate; behavioral coverage is the
-# `extern_generic_raw_bytes` integration fixture.
+# to exercise them. Its generated crate references user-owned wrapper/raw-bytes types; both crates
+# compile against seeded definitions, but the fixture stays COMPILE_SKIP in the integration corpus
+# gate over the wasm extern re-export the glue emits for a raw-bytes type reached only as a generic
+# ARGUMENT (see that const's reason, and the findings ledger). Behavioral coverage is the
+# `extern_generic_raw_bytes` integration fixture; the matrix face is compile-gated on both crates.
 [[cover]]
 id = "ext.extern"
 fixture = "extern_generic_raw_bytes.cddl"
@@ -365,9 +367,10 @@ fixture = "extern_generic_raw_bytes.cddl"
 # `@copy` on an extern / raw-bytes rule: the Copy-ness channel that drops boundary clones.
 # `dsl_copy.cddl` composes both flavors (a raw-bytes `hash` + an extern `ext`, both `@copy`) across
 # every clone-dropping shape. Its generated crate references user-owned Copy extern/raw-bytes types,
-# so it is COMPILE_SKIP in the integration corpus gate; behavioral coverage is the scratch e2e in the
-# clippy-consumer-report delivery (rust + wasm `cargo clippy -D clippy::clone_on_copy`, plus the
-# false-declaration honesty-assertion twin).
+# which the integration corpus gate now SEEDS (`CORPUS_DEF_SPLICE`) and compiles across all three
+# profiles — the `@copy` contract's own `_assert_copy::<…>()` is what makes that a real check.
+# Behavioral coverage is the scratch e2e in the clippy-consumer-report delivery (rust + wasm
+# `cargo clippy -D clippy::clone_on_copy`, plus the false-declaration honesty-assertion twin).
 [[cover]]
 id = "dsl.copy"
 fixture = "dsl_copy.cddl"

@@ -996,9 +996,24 @@ fn regen_over_prior_output_corpus_compiles() {
 
     for input in feature_corpus_entries() {
         let stem = input.file_stem().unwrap().to_str().unwrap().to_owned();
-        // The corpus fixtures whose generated crate references user-supplied code never compile
-        // standalone under any profile — the same exclusion `feature_corpus_compiles` makes.
+        // A fixture no DEFINITION can make compile cannot compile after a regeneration either, so
+        // that list is legitimately shared rather than restated — it is the same reason, not an
+        // alias of convenience.
         if COMPILE_SKIP.contains(&stem.as_str()) {
+            continue;
+        }
+        // This gate's OWN exclusion, and the interesting half of the seed-once contract. A seeded
+        // TYPE definition lives in the thin `rust/src/lib.rs`, which is written once and then
+        // skipped, so it survives regeneration verbatim — that is exactly the contract a real
+        // consumer keeps, and why `dsl_copy` is swept here. A seeded CODEC import does not: a bare
+        // (non-path-qualified) `@custom_serialize` name is resolved through `generated/mod.rs`'s
+        // scope, and that subtree is clobbered every run, so the hand `use` the docs prescribe is
+        // gone after the second generation. The durable spelling for a consumer who regenerates is
+        // the fully-qualified codec path (`@custom_serialize crate::utils::my_ser`), which
+        // `tests/corpus/dsl_custom.cddl` deliberately does not use — its subject is the bare form.
+        // Sweeping it here would therefore assert the wrong contract, not find a bug.
+        const REGEN_SKIP: &[&str] = &["dsl_custom"];
+        if REGEN_SKIP.contains(&stem.as_str()) {
             continue;
         }
         let cell = root.join(&stem);
@@ -1010,6 +1025,10 @@ fn regen_over_prior_output_corpus_compiles() {
             failures.push(format!("{stem}: fresh generation failed\n{stderr}"));
             continue;
         }
+        // Seed the user-supplied side ONCE, before the regeneration — so the regeneration is the
+        // thing under test: a consumer's hand-written extern definitions must still be there, and
+        // still resolve, after the tool has run over their tree a second time.
+        crate::tests::integration_tests::append_corpus_defs_for(&out, &stem, false, false);
         let Some(injection) = inject_replace_block(&out) else {
             skips.push(format!("{stem}: no eligible replace-block injection site"));
             continue;

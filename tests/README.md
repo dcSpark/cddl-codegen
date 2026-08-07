@@ -3637,8 +3637,8 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   `cargo test` at full tier). It has its own scratch dir (`cddl_codegen_wasm_matrix_rt`) with one
   shared `CARGO_TARGET_DIR` across all profiles/cells and frees each per-cell output dir after its
   verdict. It uses the module-level `WASM_MATRIX_SKIP` (red in every profile) plus a
-  `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`; expected empty at HEAD, as
-  every cell round-trips green across all three profiles), each with
+  `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`); BOTH are empty at HEAD, as
+  every cell compiles and round-trips green across all three profiles, each with
   the four-state resurfaced-guard verdict. Every skip/pin ledger validates its keys up front against
   its gate's swept universe, so dead fixture/cell/profile pins fail before heavy work (when adding a
   guard, verify it the way these were: temporarily poison a key and watch the gate fail fast, then
@@ -3661,11 +3661,12 @@ stays a transparent `Vec`).
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entry in
 [`cddl-matrix/ROADMAP.md`](../cddl-matrix/ROADMAP.md) (which shape/role, the exact `E####`, root cause).
-At HEAD the list holds one permanent resident — `extern__array-element` (references a
-user-supplied type, so the cell can't compile standalone; the construct is integration-tested in
-`tests/extern-deps`), so any OTHER red appearing is a regression to fix, not a backlog item. The
-round-trip gate's `WASM_MATRIX_PROFILE_SKIP` (compile-clean cells red only under some profiles) is
-empty at HEAD — every cell round-trips green across all three profiles.
+At HEAD the list is EMPTY, so any red appearing is a regression to fix, not a backlog item. Its one
+former resident, `extern__array-element`, was skipped because `_CDDL_CODEGEN_EXTERN_TYPE_` resolves
+to a user-supplied type: a cell whose spec names code the spec does not contain is a cell that needs
+that code WRITTEN, and `append_extern_defs` now writes it from `tests/def_templates/` before both
+legs check, the same treatment `rawbytes__*` already had. The round-trip gate's
+`WASM_MATRIX_PROFILE_SKIP` (compile-clean cells red only under some profiles) is likewise empty.
 To close one:
 
 1. Remove its `<shape>__<role>` entry from `WASM_MATRIX_SKIP`.
@@ -4244,9 +4245,11 @@ emission conditions that replaced them are pinned in `src/tests/component_tests.
 `component_glue_emits_the_guest_block_only_where_generate_mints_one`,
 `a_value_only_interface_gets_no_guest_impl_beside_an_interface_that_does` and
 `a_free_function_alone_mints_a_guest_trait`. Fixtures that cannot generate belong in
-`snapshot_tests::PROFILE_GENERATION_SKIP` instead, and fixtures whose RUST crate references
-user-supplied code are excluded through `integration_tests::COMPILE_SKIP`, which this gate shares
-rather than restates.
+`snapshot_tests::PROFILE_GENERATION_SKIP` instead. Fixtures whose RUST crate references
+user-supplied code get that code SEEDED before the check (`integration_tests::append_corpus_defs_for`
+over `tests/def_templates/`, because the component crate takes the rust crate as a path dependency
+and needs exactly the seeding `feature_corpus_compiles` does); only the ones no definition can help
+are excluded, through `integration_tests::COMPILE_SKIP`, which this gate shares rather than restates.
 
 ### Regen over prior output at corpus breadth (`src/tests/regen_over_prior_tests.rs`, gates `regen_over_prior_output_corpus` `local` + `regen_over_prior_output_corpus_compiles` `full`)
 
@@ -4288,8 +4291,15 @@ for its compile gate, nested cargo, where a floor-and-deletion profile costs one
 **Why the compile half is its own gate.** Whether the regenerated crate still BUILDS warning-clean
 is the only leg that pays nested cargo, and it is the one that catches the orphaned-`use` class —
 `unused import` is a WARNING, so no assertion about generation exiting 0 can see it. It reuses
-`feature_corpus_compiles`' scans and `COMPILE_SKIP`, and is gate-cached per generated-crate content
-hash with its own `regen-edit=v1` verdict-logic marker.
+`feature_corpus_compiles`' scans, its `COMPILE_SKIP` (a fixture no definition can make compile cannot
+compile after a regeneration either — the same reason, not an alias of convenience) and its def
+splice, and is gate-cached per generated-crate content hash with its own `regen-edit=v1`
+verdict-logic marker. The splice is applied ONCE, before the regeneration, which makes the seed-once
+thin `lib.rs` contract part of what this gate asserts: a consumer's hand-written extern definitions
+must still be there, and still resolve, after the tool has run over their tree a second time. Its own
+`REGEN_SKIP` holds the other half of that contract — a bare (non-path-qualified) `@custom_serialize`
+name is resolved through the CLOBBERED `generated/` scope, so the hand `use` the docs prescribe does
+not survive a regen and the durable spelling is the fully-qualified codec path.
 
 A secondary profile's GENERATION verdict is deliberately not this gate's: a fixture that does not
 generate under `--preserve-encodings` is recorded as a skip, because `feature_corpus_compiles` owns
