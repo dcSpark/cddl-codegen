@@ -9739,6 +9739,154 @@ fn fixed_payloads_round_trip_and_reject_wrong_payloads() {{{COMMON_VECTORS}{extr
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// The three emissions `--annotate-fields=false` re-frames — a c-style enum's inline dispatch, an
+/// optional field's `Option`-over-the-value-slot distribution, and a map field's `tmp_` temporaries —
+/// still decode and re-encode NON-CANONICAL wire byte-exactly.
+///
+/// This is the SEMANTIC floor beside `feature_corpus_compiles_no_annotate_shard`'s compile floor,
+/// and it exists because the two failure modes of this seam are not the same failure. Losing the
+/// frame shows up as a build error, which a compile floor catches; losing an ENCODING does not show
+/// up at all. The map-field emission is where the difference bites: its inner deserialize's working
+/// vars shadowed the arm's outer encoding accumulators, so the trailing reassignments wrote the
+/// shadow — and where the shadow happens to be `mut` (`Vec`/`Map` sidecars, and any scalar a
+/// hand-applied `mut` silences the assign-twice error on) that compiles and silently re-encodes
+/// canonically. The generator's fix is to bind the temporaries out of the accumulators' way; typing
+/// the binding instead (`let {f}_encoding: LenEncoding = len.into();`) silences the ambiguity error
+/// and leaves the loss, which is the wrong fix a compile-only floor would have accepted. The
+/// `non_canonical` vectors below fail against exactly that shape and pass here, measured.
+///
+/// Shapes, one per re-framed emission, and each carrying MORE THAN ONE encoding slot on purpose —
+/// the distribution and the defaults have to agree slot-for-slot, and two same-typed slots swapped
+/// would compile and be silently wrong:
+///   * `b_map` — a map-rep record field with a length encoding AND per-element encodings.
+///   * `a_list` / `a_table` / `a_nullable` — optional array-record fields with 3, 4 and 2 slots.
+///   * `c_holder` — the c-style enum behind both encoding-carrying wrappers (`bytes .cbor` and a
+///     tag), the one class that is also red WITHOUT `--preserve-encodings`, so it is round-tripped
+///     under the plain flavor too.
+///
+/// Bespoke scratch generation from an inline spec rather than a `tests/<dir>` fixture: the shapes
+/// are a claim about ONE flag pair's emission, and a fixture dir would owe the corpus-parity and
+/// snapshot registries rows for axes with no stake in it. Tier: check.ts `local` (nested cargo).
+#[test]
+fn no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_no_annotate_depth_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let target_dir = scratch.join("target");
+
+    const SPEC: &str = "b_map = { f0: [* uint], f1: uint }\n\
+                        a_list = [x: uint, ? f: [* uint]]\n\
+                        a_table = [x: uint, ? t: { * uint => tstr }]\n\
+                        maybe_uint = uint / null\n\
+                        a_nullable = [pre: uint, ? f0: maybe_uint]\n\
+                        c_enum = 0 / 1 / 2\n\
+                        c_holder = [bp: bytes .cbor c_enum, tp: #6.42(c_enum)]\n";
+
+    // Canonical wire, round-tripped under BOTH flavors: minimal heads, definite lengths. The
+    // optional members are exercised absent as well as present, because the else arm's defaults are
+    // the half of the distribution the present case never reads.
+    const CANONICAL_VECTORS: &str = r#"
+    rt!(BMap, &[0xa2, 0x62, 0x66, 0x30, 0x82, 0x01, 0x02, 0x62, 0x66, 0x31, 0x05]);
+    rt!(AList, &[0x82, 0x01, 0x82, 0x01, 0x02]); // [1, [1, 2]] -> the optional member PRESENT
+    rt!(AList, &[0x81, 0x01]); // [1] -> absent
+    rt!(ATable, &[0x82, 0x01, 0xa1, 0x01, 0x61, 0x73]); // [1, {1: "s"}]
+    rt!(ATable, &[0x81, 0x01]);
+    rt!(ANullable, &[0x82, 0x01, 0x02]); // present with a value
+    rt!(ANullable, &[0x82, 0x01, 0xf6]); // present NULL, which is not the same state as absent
+    rt!(ANullable, &[0x81, 0x01]); // absent
+    rt!(CHolder, &[0x82, 0x41, 0x01, 0xd8, 0x2a, 0x02]); // [h'01', 42(2)]
+"#;
+
+    // Preserve-only: every one of these re-encodes to a DIFFERENT (canonical) byte string on any
+    // path that drops an encoding, so each is a live oracle rather than a restatement of the
+    // canonical set. Hand-derived, not read back off the generator.
+    const NON_CANONICAL_VECTORS: &str = r#"
+    // indefinite MAP, indefinite inner array, and a non-minimal element head inside it
+    rt!(BMap, &[0xbf, 0x62, 0x66, 0x30, 0x9f, 0x19, 0x00, 0x01, 0x02, 0xff, 0x62, 0x66, 0x31, 0x05, 0xff]);
+    // optional LIST present, indefinite inner array with a non-minimal element
+    rt!(AList, &[0x82, 0x01, 0x9f, 0x19, 0x00, 0x02, 0xff]);
+    // optional TABLE present, indefinite inner map with a non-minimal key
+    rt!(ATable, &[0x82, 0x01, 0xbf, 0x19, 0x00, 0x01, 0x61, 0x73, 0xff]);
+    // optional NULLABLE present, non-minimal heads on the mandatory member AND the optional one
+    rt!(ANullable, &[0x82, 0x19, 0x00, 0x01, 0x19, 0x00, 0x02]);
+    // non-minimal `.cbor` payload head, non-minimal TAG head, non-minimal tagged payload head
+    rt!(CHolder, &[0x82, 0x43, 0x19, 0x00, 0x00, 0xd9, 0x00, 0x2a, 0x19, 0x00, 0x01]);
+"#;
+
+    for (label, flags, extra_vectors) in [
+        (
+            "preserve_noannotate",
+            &["--preserve-encodings=true", "--annotate-fields=false"][..],
+            NON_CANONICAL_VECTORS,
+        ),
+        ("noannotate", &["--annotate-fields=false"][..], ""),
+    ] {
+        let case_root = scratch.join(label);
+        std::fs::create_dir_all(&case_root).unwrap();
+        let input = case_root.join("input.cddl");
+        std::fs::write(&input, SPEC).unwrap();
+        let out = case_root.join("out");
+        let generated = codegen_cmd()
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .args(flags)
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{label}: generation failed\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+
+        std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+        std::fs::write(
+            out.join("rust/tests/rt.rs"),
+            format!(
+                r#"use cbor_event::se::{{Serialize, Serializer}};
+use cddl_lib::serialization::Deserialize;
+use cddl_lib::*;
+
+/// Decode, re-encode, and demand the SAME bytes back.
+macro_rules! rt {{
+    ($t:ty, $bytes:expr) => {{{{
+        let b: &[u8] = $bytes;
+        let v = <$t>::from_cbor_bytes(b)
+            .unwrap_or_else(|e| panic!("{{b:02x?}} failed to decode: {{e}}"));
+        let mut s = Serializer::new_vec();
+        v.serialize(&mut s).unwrap();
+        assert_eq!(s.finalize(), b, "re-encoding {{b:02x?}} changed the bytes");
+    }}}};
+}}
+
+#[test]
+fn reframed_emissions_round_trip_byte_exactly() {{{CANONICAL_VECTORS}{extra_vectors}}}
+"#
+            ),
+        )
+        .unwrap();
+
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{label}: the generated crate failed to build or round-trip\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;

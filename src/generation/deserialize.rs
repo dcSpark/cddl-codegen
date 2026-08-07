@@ -1659,14 +1659,14 @@ impl GenerationScope {
                                 let mut enum_body = (!before_after.before.is_empty()
                                     || !before_after.after.is_empty()
                                     || force_iife_for_no_annotate)
-                                .then(|| {
-                                    let mut b = Block::new(format!(
-                                        "{}(|| -> Result<_, DeserializeError>",
-                                        before_after.before_str(true)
-                                    ));
-                                    b.after(format!(")(){}", before_after.after_str(true)));
-                                    b
-                                });
+                                    .then(|| {
+                                        let mut b = Block::new(format!(
+                                            "{}(|| -> Result<_, DeserializeError>",
+                                            before_after.before_str(true)
+                                        ));
+                                        b.after(format!(")(){}", before_after.after_str(true)));
+                                        b
+                                    });
                                 {
                                     let target: &mut dyn CodeBlock = match enum_body.as_mut() {
                                         Some(b) => b,
