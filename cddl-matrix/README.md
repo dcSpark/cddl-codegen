@@ -624,6 +624,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   A user-code row is also pinned in the D3 decode catalog, seeded or not, because the reference
   oracle does not describe its wire — an extern typename ruby rejects outright, and a custom codec
   writes bytes the ruby-generated vectors for the REPLACED type never describe.
+- **The execution gate is what makes a `supported` verdict mean more than "the tool exited 0".**
   `prelude.any` was the canonical execution-gate catch — `x = any` exited 0
   but emitted `pub type X = Any;`, an undefined type — and the gate held it ➖ until first-class
   `any` support landed (2026-07-23); the row is now execution-verified `supported` with the wasm

@@ -1066,7 +1066,9 @@ and `wasm_cbor_json_api_macro_compiles` compile-gate them against the real macro
 [`tests/wasm-macro-crate`](wasm-macro-crate) (wired in as a path dependency, the same way
 extern-deps wires `tests/extern-dep-crate`). Those macros' arms mirror the inline emission, so the
 wrong-emission classes a snapshot would bless — swapped args, wrong `needs_into`/`is_copy`, an
-unreachable combination, a wrong arity — fail to compile (see the crate's README). Those two gates
+unreachable combination, a wrong arity — fail to compile (see the crate's README).
+
+Those two gates
 feed the generator a single `.cddl`; the DIRECTORY-INPUT axis is gated by
 `wasm_macros_multifile_compiles`, which runs all three flags together over a temp-written two-module
 input and guards what only multifile emission produces: the submodule's own
@@ -2659,7 +2661,7 @@ is EMPTY today, and the one verdict this gate structurally cannot hold — the `
 HONORED leg, whose without-directive baseline does not generate and so reads as a fixture bug —
 is pinned in-process by the `robustness_tests` agreement test instead.
 
-That fourth placement measures a REFUSAL, not an effect. For a spliced plain group the pinned cddl
+The multi-line plain group's closing-paren placement measures a REFUSAL, not an effect. For a spliced plain group the pinned cddl
 AST binds a rule-position directive to the LAST ENTRY's trailing slot — indistinguishable from field
 metadata inside the parens — so the product measures the real field/rule effects, targeted
 rejections and justified redundant no-ops of that shared slot, and there is no separate rule-only
@@ -3005,12 +3007,30 @@ snapshot-blessed miscompiles (`.ne` bounds, preserve-encodings default-field ser
 its first corpus sweep. It shares the generator's IR, so IR-level bugs (wrong bounds computed at
 parse time) are the spec-anchored oracles' job (`tests/golden_hex/`).
 
+### The corpus compile gate (`feature_corpus_compiles`)
+
 The corpus gate `feature_corpus_compiles` `cargo check`s every `tests/corpus/*.cddl` crate (rust +
 wasm + json-gen) under all three profiles, and under the **default profile** additionally
 generates with `--emit-tests` and `cargo test`s **both** the rust and the wasm crate — so a corpus
 construct must round-trip, not just compile, on both the rust and the wasm side. (`cargo check`
 never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or runs the emitted
 `cddl_generated_wasm_tests` module below; the preserve/json profiles and json-gen stay check-only.)
+
+**A fixture that names user-supplied code is SEEDED, not skipped.** `CORPUS_DEF_SPLICE` keys the
+definitions each such fixture needs by stem, rendered per fixture from the shared
+`tests/def_templates/` and appended to the thin `rust/src/lib.rs` / `wasm/src/lib.rs` crate roots
+(never `generated/**`, which is clobbered every run and where the tool's own extern re-export glue
+would collide) — so a stem absent from that list and from `COMPILE_SKIP` needs no user code at all.
+`COMPILE_SKIP` is then the narrow residue: fixtures the gate skips outright for a blocker no
+definition can answer. Its one resident, `extern_generic_raw_bytes`, compiles on BOTH faces under
+all three profiles against seeded defs — what holds it out is a WARNING this gate treats as a
+failure, and a real generator finding rather than a fixture defect: the wasm extern re-export glue
+emits `pub use crate::<Name>;` for every in-crate extern / raw-bytes rule whether or not the wasm
+tree references it, and here `pub_key` is reached only as a generic ARGUMENT (`ext_set<pub_key>`),
+so the re-export is unused. That const's own doc comment carries the full story, and the contract
+decision it waits on is ledgered in `cddl-matrix/ROADMAP.md` § findings; the fixture's behavioural
+coverage meanwhile is the `extern-generic-raw-bytes` integration fixture. Both lists are read by
+the sibling gates that share this gate's compile machinery, each named where it uses them.
 
 **Why `tests/corpus/` is the input of record for a shape whose defect is not visible in-process.**
 Each cell SHELLS the real CLI (a subprocess writing a real crate to a scratch dir), so it exercises
@@ -3050,6 +3070,36 @@ count-match arm that should bind `_`), with no trait-residue analogue. This catc
 warning-severity under-prune (or unused-binding emission) the compile-error gates (E0412/E0433,
 over-prune only) cannot see. The scan is versioned into the gate-cache key via a
 `lint=unused-imports-v3` marker so a change to its verdict re-runs every cached cell.
+
+Those two scans reach beyond this gate's own cells, in two shapes. The corpus cells never generate
+under the cross-crate workspace flags, so both scans also run — through
+`assert_no_unused_generated_warnings` — over the nested cargo stderr the workspace-requests gates
+already capture: `workspace_requests_hosts_cross_scope_elements`,
+`workspace_requests_cohosted_keys_list_no_self_import` and
+`workspace_requests_hosts_borrowed_wrappers`. That is where the requested-collections sidecar's own
+imports are first observable. That call shape is restricted to crates that are 100% generated,
+where no attribution is needed.
+
+Every `run_test` fixture is scanned too, by the location-aware sibling
+`assert_no_generator_owned_unused_warnings`, wired on all six cargo-driving stages `run_test` runs
+(rust `cargo test`; wasm `cargo test` / `cargo build`; `wasm-pack build`; both json-gen
+`cargo run`s). These crates are NOT 100% generated — the harness appends its `tests.rs`/`deser_test`
+modules INSIDE the generated `generated/mod.rs`, and the extern-deps family path-depends on the
+hand-written `tests/extern-dep-crate` — so the restriction is positional rather than per-file: the
+`GeneratedOwnership` the run builds holds the export's generated `src/` roots plus each appended
+file's pre-append line count, and rustc's separate `--> path:line:col` line attributes each warning
+against them. Exempt: anything past an append boundary, anything outside those roots (path-dep
+warnings, which rustc renders ABSOLUTE where the crate's own files render relative to the cargo
+cwd), and a warning with no location to pair. `KNOWN_GENERATOR_OWNED_WARNINGS` is the escape hatch
+for a generator-owned warning that cannot be fixed in the same change — a pin by file and exact
+warning text, asserted still-live at the end of the run that owns its export so a fixed emission
+fails its pin as stale instead of blinding the scan forever. It ships EMPTY with its enforcement
+live (`KNOWN_POSITION_DROPS`' shape): the one warning this wiring surfaced was a one-line emission
+fix. The harness's own `use serialization::*;` append carries `#[allow(unused_imports)]` — it is
+convenience glue some pasted-in tests need and some do not, and the generator emits that glob
+nowhere. Those fixtures' generated output lands in `tests/<dir>/export*/` — disposable, gitignored,
+and safe to `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean
+each run.
 
 **The `--annotate-fields=false` leg.** A second set of shards,
 `feature_corpus_compiles_no_annotate_shard_NN`, sweeps the same corpus under two gate-local flavor
@@ -3104,36 +3154,6 @@ Measured directly: six pre-generated cells checked in sequence into one target d
 compiled and the other five reported `Finished` in 0.13 s with zero errors, four of them
 non-compiling; with distinct package names all six compiled and the four red ones failed. See
 `tests/TESTING_ROADMAP.md` for the same hazard in the sibling sharded shared-target gates.
-
-The corpus cells never generate under the cross-crate workspace flags, so the same two scans also
-run — through `assert_no_unused_generated_warnings` — over the nested cargo stderr the
-workspace-requests gates already capture: `workspace_requests_hosts_cross_scope_elements`,
-`workspace_requests_cohosted_keys_list_no_self_import` and
-`workspace_requests_hosts_borrowed_wrappers`. That is where the requested-collections sidecar's own
-imports are first observable. That call shape is restricted to crates that are 100% generated,
-where no attribution is needed.
-
-Every `run_test` fixture is scanned too, by the location-aware sibling
-`assert_no_generator_owned_unused_warnings`, wired on all six cargo-driving stages `run_test` runs
-(rust `cargo test`; wasm `cargo test` / `cargo build`; `wasm-pack build`; both json-gen
-`cargo run`s). These crates are NOT 100% generated — the harness appends its `tests.rs`/`deser_test`
-modules INSIDE the generated `generated/mod.rs`, and the extern-deps family path-depends on the
-hand-written `tests/extern-dep-crate` — so the restriction is positional rather than per-file: the
-`GeneratedOwnership` the run builds holds the export's generated `src/` roots plus each appended
-file's pre-append line count, and rustc's separate `--> path:line:col` line attributes each warning
-against them. Exempt: anything past an append boundary, anything outside those roots (path-dep
-warnings, which rustc renders ABSOLUTE where the crate's own files render relative to the cargo
-cwd), and a warning with no location to pair. `KNOWN_GENERATOR_OWNED_WARNINGS` is the escape hatch
-for a generator-owned warning that cannot be fixed in the same change — a pin by file and exact
-warning text, asserted still-live at the end of the run that owns its export so a fixed emission
-fails its pin as stale instead of blinding the scan forever. It ships EMPTY with its enforcement
-live (`KNOWN_POSITION_DROPS`' shape): the one warning this wiring surfaced was a one-line emission
-fix. The harness's own `use serialization::*;` append carries `#[allow(unused_imports)]` — it is
-convenience glue some pasted-in tests need and some do not, and the generator emits that glob
-nowhere.
-
-Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
-`git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
 
 ### Encoding-fidelity oracle (`--emit-tests` × `--preserve-encodings`)
 
@@ -3323,24 +3343,6 @@ cargo test --bin cddl-codegen rust_oracle_fingerprint -- --ignored --nocapture #
 cargo test --bin cddl-codegen ir_conformance_multifile -- --ignored --nocapture # directory-input leg
 ```
 
-**The DIRECTORY-INPUT leg** is the sibling gate `ir_conformance_multifile`, and it asks this oracle's
-question of an input the corpus cannot express: every `tests/corpus/*.cddl` is a single file, so the
-multi-module emission — the generated test module minted at the crate's generated ROOT, naming
-submodule types bare through `use super::<scope>::*;` globs — sat outside the oracle's reach.
-(`emit_tests_multifile_scope_imports` pins that emission in-process; this gate executes it with the
-oracle on.) It generates the committed placement cell `tests/matrix_multifile/struct__named` with
-`--emit-tests --emit-tests-conformance`, wires the same `CDDL_ORACLE_DEP` + shared helpers, and hands
-the oracle a spec that is the **concatenation of the input tree's `.cddl` files** in sorted
-relative-path order — rule names are global across a multi-module input, so concatenating is lossless
-and its order does not change meaning, which is the contract `docs/docs/command_line_flags.mdx`
-states for the flag. Its vacuity guards are the multifile-specific pair: the generated root module
-must carry the scope glob for the non-root module, and must validate a rule *defined in* that module
-— plus a stale-pin guard, since the cell is committed and shared. Same `#[ignore]`d manual posture
-and the same first-fetch network need as its sibling; one cell and one crate, so solo iteration is
-seconds rather than the corpus sweep's minute. It does NOT re-run the fingerprint preflight (that is
-`rust_oracle_fingerprint`'s own gate) and it has no ruby half — breadth and decorrelation stay the
-corpus gate's.
-
 Before the corpus loop, the gate generates a tiny `fingerprint_probe` crate under the same scratch root,
 injects `CDDL_ORACLE_DEP`, and executes every shared fingerprint probe through the exact parser and
 validator entrypoints the conformance oracle trusts. A mismatch panics with the failing probe names,
@@ -3455,6 +3457,24 @@ control (a malformed case must fail both codecs). The one place the codecs legit
 bytes differently — RFC 8949 §3.4.3 bignum tags 2/3, which `ciborium` folds into integers and
 `minicbor` leaves as `Tag(2/3, Bytes)` (our `biguint`/`bignint` prelude types) — is canonicalized by
 `fold_bignums` before comparison, so only a genuine structural divergence turns the gate red.
+
+**The DIRECTORY-INPUT leg** is the sibling gate `ir_conformance_multifile`, and it asks this oracle's
+question of an input the corpus cannot express: every `tests/corpus/*.cddl` is a single file, so the
+multi-module emission — the generated test module minted at the crate's generated ROOT, naming
+submodule types bare through `use super::<scope>::*;` globs — sat outside the oracle's reach.
+(`emit_tests_multifile_scope_imports` pins that emission in-process; this gate executes it with the
+oracle on.) It generates the committed placement cell `tests/matrix_multifile/struct__named` with
+`--emit-tests --emit-tests-conformance`, wires the same `CDDL_ORACLE_DEP` + shared helpers, and hands
+the oracle a spec that is the **concatenation of the input tree's `.cddl` files** in sorted
+relative-path order — rule names are global across a multi-module input, so concatenating is lossless
+and its order does not change meaning, which is the contract `docs/docs/command_line_flags.mdx`
+states for the flag. Its vacuity guards are the multifile-specific pair: the generated root module
+must carry the scope glob for the non-root module, and must validate a rule *defined in* that module
+— plus a stale-pin guard, since the cell is committed and shared. Same `#[ignore]`d manual posture
+and the same first-fetch network need as its sibling; one cell and one crate, so solo iteration is
+seconds rather than the corpus sweep's minute. It does NOT re-run the fingerprint preflight (that is
+`rust_oracle_fingerprint`'s own gate) and it has no ruby half — breadth and decorrelation stay the
+corpus gate's.
 
 ## Declared-type spelling (`src/tests/declared_spelling_tests.rs`)
 
@@ -3700,11 +3720,15 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
 - **The gate** (`integration_tests::wasm_matrix_compiles`) globs the fixtures, generates each
   `--wasm=true`, and `cargo check`s the wasm crate. The wasm crate path-depends on the rust crate, so
   rust-side type errors surface here too — which means some skip-listed reds are rust-crate generation
-  bugs rather than wasm-boundary ones. A `rawbytes__*` cell resolves `_CDDL_CODEGEN_RAW_BYTES_TYPE_` to a
-  user-supplied type (`PubKey`), so before `cargo check` the gate splices the in-repo defs
-  (`tests/external_{rust,wasm}_raw_bytes_def`) into the generated rust + wasm crates via
-  `append_raw_bytes_defs` — mirroring `run_test`'s external-file append. That's why `rawbytes` compiles for
-  real instead of being skipped like `extern` (whose defs live only in `tests/extern-deps`); it costs no
+  bugs rather than wasm-boundary ones. A cell whose spec NAMES code the spec does not contain is a cell
+  that needs that code written, so both marker families are seeded — before this gate's `cargo check`
+  and before the round-trip gate's `cargo test`, both legs — rather than
+  skipped: a `rawbytes__*` cell resolves `_CDDL_CODEGEN_RAW_BYTES_TYPE_` to a user-supplied type
+  (`PubKey`) and gets the in-repo defs (`tests/external_{rust,wasm}_raw_bytes_def`) spliced into the
+  generated rust + wasm crates via `append_raw_bytes_defs` — mirroring `run_test`'s external-file
+  append — while an `extern__*` cell's `_CDDL_CODEGEN_EXTERN_TYPE_` gets the same treatment from the
+  shared `tests/def_templates/` via `append_extern_defs` (templated because the type name is the
+  cell's rule name). Seeding costs no
   extra cargo invocation (same per-cell generate + check). It follows `feature_corpus_compiles`' shared-target-dir *pattern*
   but uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), separate so the two
   tests don't collide when `cargo test` runs them in parallel. The verdict is **compile**: a cell can
@@ -3720,9 +3744,9 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   `cargo test` at full tier). It has its own scratch dir (`cddl_codegen_wasm_matrix_rt`) with one
   shared `CARGO_TARGET_DIR` across all profiles/cells and frees each per-cell output dir after its
   verdict. It uses the module-level `WASM_MATRIX_SKIP` (red in every profile) plus a
-  `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`); BOTH are empty at HEAD, as
-  every cell compiles and round-trips green across all three profiles, each with
-  the four-state resurfaced-guard verdict. Every skip/pin ledger validates its keys up front against
+  `WASM_MATRIX_PROFILE_SKIP` (this gate only — `(profile, cell, reason)`), each with the four-state
+  resurfaced-guard verdict; BOTH are empty at HEAD, as every cell compiles and round-trips green
+  across all three profiles. Every skip/pin ledger validates its keys up front against
   its gate's swept universe, so dead fixture/cell/profile pins fail before heavy work (when adding a
   guard, verify it the way these were: temporarily poison a key and watch the gate fail fast, then
   revert). Run it with
@@ -3744,13 +3768,10 @@ stays a transparent `Vec`).
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entry in
 [`cddl-matrix/ROADMAP.md`](../cddl-matrix/ROADMAP.md) (which shape/role, the exact `E####`, root cause).
-At HEAD the list is EMPTY, so any red appearing is a regression to fix, not a backlog item. Its one
-former resident, `extern__array-element`, was skipped because `_CDDL_CODEGEN_EXTERN_TYPE_` resolves
-to a user-supplied type: a cell whose spec names code the spec does not contain is a cell that needs
-that code WRITTEN, and `append_extern_defs` now writes it from `tests/def_templates/` before both
-legs check, the same treatment `rawbytes__*` already had. The round-trip gate's
-`WASM_MATRIX_PROFILE_SKIP` (compile-clean cells red only under some profiles) is likewise empty.
-To close one:
+At HEAD the list is EMPTY — its one former resident, `extern__array-element`, came off it when the
+extern defs above started being seeded — so any red appearing is a regression to fix, not a backlog
+item. The round-trip gate's `WASM_MATRIX_PROFILE_SKIP` (compile-clean cells red only under some
+profiles) is likewise empty. To close one:
 
 1. Remove its `<shape>__<role>` entry from `WASM_MATRIX_SKIP`.
 2. Fix the emitter; `cargo test wasm_matrix_compiles` until green.
