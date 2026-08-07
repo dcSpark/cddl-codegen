@@ -3041,6 +3041,46 @@ warning-severity under-prune (or unused-binding emission) the compile-error gate
 over-prune only) cannot see. The scan is versioned into the gate-cache key via a
 `lint=unused-imports-v3` marker so a change to its verdict re-runs every cached cell.
 
+**The `--annotate-fields=false` leg.** A second set of shards,
+`feature_corpus_compiles_no_annotate_shard_NN`, sweeps the same corpus under two gate-local flavor
+rows — plain `--annotate-fields=false`, and `--preserve-encodings=true --annotate-fields=false` —
+with each row's other flags DERIVED from the `ALL_PROFILES` row it extends (`NO_ANNOTATE_FLAVORS`).
+The rows are gate-local rather than `ALL_PROFILES` entries because that const is the shared
+snapshot/matrix axis, and the flag's only effect is on emitted rust deserialize bodies: the emitted
+`wasm/` tree is byte-identical with the flag on or off across every corpus fixture under both rows,
+so this leg `cargo check`s `rust/` alone. It still generates `--wasm=true`, so
+`--annotate-fields=false` is the ONE variable between its crate and the base leg's and a red cell is
+attributable to the flag; it applies the same `CORPUS_DEF_SPLICE` seeding, honours the same
+`COMPILE_SKIP`, runs the same two warning scans, and reads `EXPECTED_GENERATION_FAIL` under its row's
+BASE profile name. The names contain `feature_corpus_compiles`, so `cargo test
+feature_corpus_compiles` selects both legs; `feature_corpus_compiles_no_annotate` selects this one
+alone. Measured on top of the base leg: +37 s cold (264 s → 301 s with `GATE_CACHE=0`), +14–19 s warm
+(33 s → 47–52 s).
+
+Two floors keep it honest. `NO_ANNOTATE_FLOOR_STEMS` names the three fixtures whose shapes are why
+the leg exists (`bounds_spellings`' bounded `nint` member, `fixed_bool_member` and
+`optional_fixed_member`'s encoding-less fixed members); the whole-corpus pin test asserts each is
+still in `tests/corpus`, and the shard that completes the set asserts each was actually swept — so
+neither pruning a fixture nor newly skipping one can silently delete the coverage.
+`NO_ANNOTATE_KNOWN_RED` ledgers the cells whose rust crate does NOT compile under a flavor row
+today, as `(stem, flavor, rustc error class, root cause)`, with a four-state verdict: listed + red
+with the pinned class is expected; listed + GREEN fails as "the fix landed, retire the entry";
+listed + red with a DIFFERENT class fails as "the failure changed shape"; unlisted + red is an
+ordinary gate failure. The ledger is a finding, not an exemption — its residents are three emission
+classes that all trace to one seam (with `--annotate-fields=false` there is no per-type scaffolding
+closure, so an emission that assumed one to re-shape a value, pin an inference variable, or `return`
+early lands in `deserialize()` itself), which is the seam `records.rs` already flags in a comment.
+
+Each cell of this leg also gets its own package name (`give_cell_its_own_package_identity`) before
+`cargo check`. Cargo's unit hash for the ROOT package of a build does not include the manifest path,
+so N generated crates all called `cddl-lib v0.1.0` share ONE `.fingerprint` entry under a shared
+`CARGO_TARGET_DIR`; with shards running concurrently a cell whose sources predate another shard's
+completed build is then judged fresh and reported `Finished` without being compiled — a false PASS.
+Measured directly: six pre-generated cells checked in sequence into one target dir, the first
+compiled and the other five reported `Finished` in 0.13 s with zero errors, four of them
+non-compiling; with distinct package names all six compiled and the four red ones failed. See
+`tests/TESTING_ROADMAP.md` for the same hazard in the sibling sharded shared-target gates.
+
 The corpus cells never generate under the cross-crate workspace flags, so the same two scans also
 run — through `assert_no_unused_generated_warnings` — over the nested cargo stderr the
 workspace-requests gates already capture: `workspace_requests_hosts_cross_scope_elements`,

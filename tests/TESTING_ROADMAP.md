@@ -648,6 +648,53 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     `feature_corpus_compiles` cell — standard corpus registration (snapshot bless,
     `CORPUS_PARITY_INPUTS` row).
 
+20. **Three `--annotate-fields=false` emission classes emit non-compiling rust, ledgered live in
+    `NO_ANNOTATE_KNOWN_RED`.** The corpus's annotate=false compile floor
+    (`feature_corpus_compiles_no_annotate_shard_NN`) found eight red cells on its first run, all
+    tracing to one seam: with the flag off there is no per-type scaffolding closure, so an emission
+    that assumed one lands in `deserialize()` itself. Class A — an optional field whose type carries
+    encodings binds `if <peek> { Some(<tuple>) } else { None }` to a bare tuple pattern (E0308;
+    `nullable_nested`, `table_preserve`, `wasm_nested_alias`, all under
+    `--preserve-encodings=true`), where the annotate=true path re-shapes through
+    `.map(|(v, …)| (Some(v), …))?` inside the closure. Class B — `let {f}_encoding = {f}_len.into();`
+    has nothing to pin its `Into` target (E0283; `alias_positions`, `dsl_copy`, `group_choice_map`,
+    preserve only). Class C — the inlined c-style-enum variant dispatch `return`s its `Ok` value, so
+    the `return` targets the enclosing `deserialize()` and the dispatch's own `Result` is left
+    un-`?`ed (E0308; `cbor_enum_payload` under BOTH rows — the only class that also breaks plain
+    `--annotate-fields=false`). The seam is the one `generation/records.rs` already flags in a
+    comment ("we might be able to write a nice way around this in the annotate_fields=false,
+    preserve_encodings=true case"), written when nothing compiled the combination; the floor now
+    does, so the classes are visible and each has a green-turning tripwire (a ledgered cell that
+    starts compiling fails the gate asking for the entry's retirement). Order of attack: C first
+    (it is the one class a consumer hits without `--preserve-encodings`, and its fix — emit the
+    dispatch as an immediately-invoked closure, as the annotate=true path already does — likely
+    subsumes nothing else); then A (one emission site, the optional-field-with-encodings binding);
+    then B (needs the encoding type at the emission site, or a `let … : _ =` ascription derived from
+    the sidecar field's declared type). Each fix retires its ledger rows; the leg's floor stems stay
+    green throughout.
+
+21. **Same-named generated crates silently share one cargo fingerprint under a shared
+    `CARGO_TARGET_DIR`, so a concurrent shard can report a non-compiling crate as `Finished`.**
+    Every emitted rust crate is `cddl-lib v0.1.0`, and cargo's unit hash for the ROOT package of a
+    build does not include the manifest path — N cells under one target dir share ONE
+    `.fingerprint/cddl-lib-<hash>` entry. Sequential generate-then-check is safe (each fresh crate is
+    newer than the previous build, so it rebuilds), which is why this went unseen; SHARDED gates are
+    not, because a cell generated before a different shard's build completes is judged fresh against
+    that build's fingerprint and never compiled. Measured: six pre-generated cells checked in
+    sequence into one target dir — the first compiled, the other five reported `Finished` in 0.13 s
+    with zero errors, four of them non-compiling; with distinct package names all six compiled and
+    the four red ones failed. Observed live as a run-to-run-varying false PASS while building the
+    annotate=false floor, which is immunized (`give_cell_its_own_package_identity` renames each
+    cell's root package before `cargo check`, keeping the shared target dir and the shared dep
+    build). Still exposed, by enumeration of the sharded generate+compile gates:
+    `feature_corpus_compiles`, `wasm_matrix_compiles`, `multifile_matrix_compiles`. Exposure is
+    WORST exactly when it matters most — the gate cache suppresses most nested cargo runs, so the
+    concurrent-cargo window opens widest right after a generator change invalidates the cache. The
+    fix is the same three-line rename per gate; what makes it a work item rather than a trivial edit
+    is that those gates also build `wasm/` and `wasm/json-gen`, which path-depend on `rust/` by its
+    generated name, so each gate needs the rename applied across its whole crate set (or the
+    dependency spellings rewritten with it) and its whole gate cache re-earned.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
@@ -3231,15 +3278,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   Cross-check at discovery: no cddl-matrix item covers this axis — the matrix enumerates INPUT
   surface under the named profiles, and the corpus already held the provoking shape
   (`bounds_spellings.cddl`'s `m_nint_range`, verified red-reproducing under annotate=false at the
-  pre-fix rev) — the unswept dimension was the FLAG value. Recur-first: this is the SECOND
-  input-poverty instance (a smoke sweeping a flag over an input too shape-poor to reach the
-  flag's divergent emission paths), so the trigger for that sub-class is ARMED; the named layer
-  is an `--annotate-fields=false` compile-floor leg over the feature corpus (or its
-  deserialize-shape subset) inside `feature_corpus_compiles`' machinery — the corpus is the
-  shape-rich input the canonical smoke is not, and gate-cache memoization bounds the added
-  nested-cargo cost. Build it on the next escaped annotate=false instance OR when touching that
-  gate's profile set for another reason, whichever comes first. Recur-first lesson from the first
-  three: a THIRD validating
+  pre-fix rev) — the unswept dimension was the FLAG value. That second input-poverty instance armed
+  the sub-class trigger, and the named layer is BUILT: the
+  `feature_corpus_compiles_no_annotate_shard_NN` leg sweeps the whole feature corpus under two
+  gate-local flavor rows (plain `--annotate-fields=false` and
+  `--preserve-encodings=true --annotate-fields=false`), rust-crate-only because the emitted `wasm/`
+  tree is byte-identical with the flag on or off on every corpus fixture under both rows. The corpus
+  is the shape-rich input the canonical smoke is not, and `NO_ANNOTATE_FLOOR_STEMS` pins the three
+  provoking stems (`bounds_spellings`, `fixed_bool_member`, `optional_fixed_member`) as present AND
+  swept so pruning cannot re-open the hole. `tests/README.md` § the corpus compile gate carries the
+  full description; what the leg found on its first run is the residual below. The remaining
+  recur-first lesson from the first three: a THIRD validating
   flag turning up mode-inert is the trigger
   to build the class-level validation-smoke sweep — each clap flag with documented startup
   validation invoked once with a deliberately invalid value under each `--wasm` mode, asserting
