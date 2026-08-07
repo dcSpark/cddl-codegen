@@ -730,6 +730,24 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     `--binary-wrappers` passers in `src/tests/` (`flag_value_smoke`, `config_tests`) on the tree
     that delivered the annotate=false floors, not by grep vocabulary alone.
 
+23. **Corpus fixtures + ledger pins for the two component-glue compile classes no fixture reaches.**
+    `component_corpus_compiles`' `EXPECTED_COMPILE_FAIL` is the mechanism that makes a
+    non-compiling component shape announce its own fix (the pin goes stale), and it covers only the
+    shapes its corpus happens to contain. Two classes outside that corpus are documented in
+    `docs/docs/component_differences.mdx` § "Known limitation: shapes whose glue does not yet
+    compile" with nothing watching them, so a fix — or a regression in the other direction — would
+    be invisible: a rule whose rust type name is exactly `T` (`wit_bindgen::generate!` binds `T` in
+    the glue's scope, so every `cddl_lib::T::…` call stops resolving — shape-independent, proven on
+    a record, a range and a type choice, and clean the moment the rule is renamed), and an
+    `any`-typed member in a CONSTRUCTOR position (the projection makes the constructor infallible
+    while the emitted body decodes the payload with `?`, E0277). Both are two-line specs, so the
+    work is one fixture each plus its ledger row — the same shape as the three pins already there.
+    Found by widening `cddl-matrix/verify.ts`'s component-execution selection (they cost that leg
+    three candidate rows: `type.choice` and every `rangeop` row name their rule `t`, and
+    `prelude.any` is the constructor case), which is evidence about the DETECTOR too: a compile
+    breadth gate whose corpus is hand-picked cannot be assumed to cover a class just because the
+    class is ordinary.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing

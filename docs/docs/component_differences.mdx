@@ -245,6 +245,14 @@ Anything that can refuse — a bounds-checking constructor, a despecialized coll
 a possible future refinement; today the text is the contract. A refusal is a normal `Err` and never
 a trap, so the instance stays usable afterwards.
 
+Both halves of that sentence are *executed*, not just asserted in prose. Beside the behavioural gate
+`component_host`, the CDDL matrix drives a bounded selection of feature rows through a real
+`wasm32-wasip2` component under wasmtime (`cddl-matrix/README.md`, the annotations-table row's
+component-execution clause): per selected row, every committed accept vector must decode and
+re-encode to the bytes the same spec's rust crate produces, and every reject vector must come back
+as `Err` — with a re-check vector after the rejects, so "the instance stays usable" is an observed
+line rather than a claim. A trap is a distinct verdict there and is never reported as a refusal.
+
 Note a template-level distinction visible in the WIT: a fallible **constructor** is
 `constructor(...) -> result<t, string>`, while a fallible **static** is
 `from-cbor-bytes: static func(...) -> result<t, string>`. A resource cannot carry both a
@@ -460,7 +468,23 @@ needing rediscovery:
   absence in) while the projection still treats it as optional, so the glue reads and writes an
   `Option` that does not exist.
 
-Until these close, a spec relying on either shape should keep `--component` off or restructure
+Two further classes are known and **not** in that ledger — no corpus fixture reaches either, so
+nothing turns their pins stale yet. Both were found by the matrix's component-execution leg while
+widening its row selection, and both are reproducible from a two-line spec:
+
+- **A rule whose rust type name is exactly `T`** (`t = …`, whatever the shape — a record, a range,
+  a type choice). `wit_bindgen::generate!` binds `T` in the glue's own scope for a resource named
+  `t`, so the emitted `cddl_lib::T::…` calls no longer resolve and the crate fails with
+  `no associated function … found for struct cddl_lib::T` plus a `type_guard not found for type
+  parameter T`. Renaming the rule — `tt`, `tc`, anything whose camel-cased ident is longer than one
+  letter — compiles clean, and `@name` renames a rule without touching its wire format.
+- **An `any`-typed member in a constructor position.** The projection makes the constructor
+  infallible (`constructor(x: any-cbor)`) while the emitted body decodes the `any-cbor` payload
+  fallibly, so the glue uses `?` inside a `-> Self` function: `the ? operator can only be used in a
+  method that returns Result` (E0277). Reading such a field back is unaffected — it is the
+  construction door only.
+
+Until these close, a spec relying on any of them should keep `--component` off or restructure
 the shape; every other corpus shape compiles and validates.
 
 ## Flag-semantics deltas
