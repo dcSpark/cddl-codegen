@@ -542,8 +542,10 @@ struct SharedScratch {
 }
 
 impl SharedScratch {
-    /// Enter the root, wiping it if no other shard is inside. `occupancy` must be a `static` unique
-    /// to the gate — two gates sharing one counter would wipe each other's roots.
+    /// Enter the root, wiping it if no other shard is inside. `occupancy` must be a `static` paired
+    /// one-to-one with the ROOT — two different roots sharing one counter would wipe each other,
+    /// while shards of different gates that deliberately share one root (the corpus compile floor's
+    /// two legs, so one `CARGO_TARGET_DIR` serves both) must share its counter.
     fn enter(occupancy: &'static std::sync::Mutex<usize>, root: std::path::PathBuf) -> Self {
         {
             // `unwrap_or_else(into_inner)`, never `unwrap()`: a shard that panics poisons the mutex,
@@ -2709,6 +2711,66 @@ fn feature_corpus_compiles_pins_are_live() {
              tests/corpus — stale pin, remove or fix it"
         );
     }
+    // The `--annotate-fields=false` leg's floor: the stems whose shapes are the reason it exists must
+    // still BE in the corpus. That they are also SWEPT is checked by the leg itself (no shard sees
+    // the whole corpus); this half fails by name the moment one is pruned, which is the cheaper and
+    // more legible of the two failures.
+    for stem in NO_ANNOTATE_FLOOR_STEMS {
+        assert!(
+            corpus_stems.contains(stem),
+            "NO_ANNOTATE_FLOOR_STEMS names corpus fixture `{stem}` that no longer exists in \
+             tests/corpus — it reproduced an escaped --annotate-fields=false failure, so removing \
+             it deletes that coverage; re-home the shape or retire the floor entry deliberately"
+        );
+    }
+    // The flavor rows derive their flags from an ALL_PROFILES row by NAME, so a renamed/removed row
+    // must fail here rather than at whichever shard first reaches the lookup.
+    for (flavor, base_profile) in NO_ANNOTATE_FLAVORS {
+        assert!(
+            super::ALL_PROFILES
+                .iter()
+                .any(|(name, _)| name == base_profile),
+            "NO_ANNOTATE_FLAVORS row `{flavor}` extends ALL_PROFILES row `{base_profile}`, which \
+             no longer exists — the flavor's flags and its EXPECTED_GENERATION_FAIL key both come \
+             from that row"
+        );
+    }
+    // The known-red ledger's own liveness. Its green-turning tripwire lives in the leg (a cell that
+    // starts compiling fails there); what a shard cannot see is an entry that no longer NAMES a cell
+    // the leg visits at all — which would retire the tripwire silently.
+    for (stem, flavor, _class, _reason) in NO_ANNOTATE_KNOWN_RED {
+        assert!(
+            corpus_stems.contains(stem),
+            "NO_ANNOTATE_KNOWN_RED names corpus fixture `{stem}` that no longer exists in \
+             tests/corpus — stale pin, remove or fix it"
+        );
+        assert!(
+            NO_ANNOTATE_FLAVORS.iter().any(|(f, _)| f == flavor),
+            "NO_ANNOTATE_KNOWN_RED entry `{stem}` names flavor `{flavor}`, which is not a \
+             NO_ANNOTATE_FLAVORS row — the cell it pins is never visited"
+        );
+        assert!(
+            !COMPILE_SKIP.contains(stem),
+            "corpus fixture `{stem}` is BOTH ledgered red under --annotate-fields=false and \
+             COMPILE_SKIPped — the leg never compiles it, so the ledger entry pins nothing"
+        );
+        assert!(
+            !NO_ANNOTATE_FLOOR_STEMS.contains(stem),
+            "corpus fixture `{stem}` is BOTH a --annotate-fields=false floor stem and ledgered red \
+             — the floor exists because that shape must COMPILE under the flag; one of the two is \
+             wrong"
+        );
+        assert!(
+            !EXPECTED_GENERATION_FAIL.iter().any(|(s, p, _)| {
+                s == stem
+                    && NO_ANNOTATE_FLAVORS
+                        .iter()
+                        .any(|(f, base)| f == flavor && base == p)
+            }),
+            "corpus fixture `{stem}`/`{flavor}` is ledgered as a COMPILE failure but its base \
+             profile is pinned in EXPECTED_GENERATION_FAIL — it never reaches a compile stage"
+        );
+    }
     // The splice table is a pin in the same sense as the skip lists: it names fixtures AND template
     // files, and either can go away under it. A stale entry would silently stop seeding (the gate
     // then fails confusingly at the compile stage) or panic mid-gate on a missing template — both
@@ -3038,6 +3100,449 @@ fn feature_corpus_compiles_shard(shard: usize) {
         assert!(
             total >= 38,
             "only {total} corpus fixtures emitted a generated-test module (expected >= 38) — emit_tests coverage shrank"
+        );
+    }
+}
+
+/// Rename a generated cell's root package so cargo cannot confuse it with another cell's.
+///
+/// Every generated rust crate is `cddl-lib v0.1.0`, and cargo's unit hash for the ROOT package of a
+/// build does not include the manifest path — so N cells sharing one `CARGO_TARGET_DIR` share ONE
+/// `.fingerprint/cddl-lib-<hash>` entry. Sequentially that is harmless (each freshly generated crate
+/// is newer than the previous build, so it rebuilds), but shards run CONCURRENTLY: a cell generated
+/// before a *different* shard's build completes is then judged fresh against that build's
+/// fingerprint and reported `Finished` without being compiled — a silent FALSE PASS whose victim
+/// varies run to run. Measured directly: six pre-generated cells, one green and four red, checked in
+/// sequence into one target dir — the first compiled, the other five reported `Finished` in 0.13 s
+/// with zero errors; with distinct package names all six compiled and the four red ones failed.
+///
+/// Renaming keeps the shared target dir (deps still build once) while giving each cell its own
+/// fingerprint. Safe here because this leg builds `rust/` alone: the emitted `wasm/` and
+/// `no-std-check/` crates path-depend on it by the original name, and are not built by this gate.
+///
+/// Asserts the substitution happened, so a change to the manifest emitter surfaces as a loud failure
+/// rather than as the silent return of the hazard.
+fn give_cell_its_own_package_identity(crate_dir: &std::path::Path, unique_name: &str) {
+    let manifest = crate_dir.join("Cargo.toml");
+    let Ok(text) = std::fs::read_to_string(&manifest) else {
+        return;
+    };
+    let generated = "name = \"cddl-lib\"\n";
+    assert!(
+        text.contains(generated),
+        "{manifest:?} does not declare `{}` — the corpus cell cannot be given a distinct package \
+         identity, and without one concurrent cells silently share a cargo fingerprint (false \
+         PASSes). Update this substitution to match the manifest emitter.",
+        generated.trim_end()
+    );
+    std::fs::write(
+        &manifest,
+        text.replacen(generated, &format!("name = \"{unique_name}\"\n"), 1),
+    )
+    .unwrap();
+}
+
+/// The `--annotate-fields=false` flavor rows the corpus compile floor sweeps, as
+/// `(row label, the [`super::ALL_PROFILES`] row whose flags it extends)`.
+///
+/// The flags are DERIVED from the named base row rather than spelled again, so the flavor can never
+/// drift from the profile it is the annotate=false counterpart of; `feature_corpus_compiles_pins_are_live`
+/// asserts each named base row still exists. The base row name is also the
+/// [`EXPECTED_GENERATION_FAIL`] key these cells look up under — a generation refusal is a property of
+/// the base profile's flags, and `--annotate-fields=false` (an emission detail of the rust
+/// deserialize body) does not lift one; probed over the whole corpus, see
+/// [`feature_corpus_compiles_no_annotate_shard`].
+///
+/// Two rows, because the two escaped interactions this leg exists to floor live on different sides of
+/// `--preserve-encodings`: the non-preserve bounded-`nint` member (E0277 — the N64 `.and_then` closure
+/// inferring the reader's native error where `error_convert` is empty) and the preserve fixed-member
+/// pair (a bare `()` value expr with no statement terminator, and the E0308 assign-to-shadow of an
+/// inline `{field}_encoding`).
+const NO_ANNOTATE_FLAVORS: &[(&str, &str)] = &[
+    ("noannotate", "default"),
+    ("preserve_noannotate", "preserve"),
+];
+
+/// Corpus stems whose SHAPE is why this leg exists — each one reproduced an escaped
+/// `--annotate-fields=false` failure that every other gate was blind to. Asserting they are present
+/// in `tests/corpus` AND actually swept keeps corpus pruning (or a new skip/pin) from silently
+/// deleting the coverage: a floor that only says "some cells ran" goes vacuous the moment the
+/// provoking fixture leaves.
+///
+/// `bounds_spellings` carries the bounded-`nint` MEMBER (`m_nint_range`); `fixed_bool_member` and
+/// `optional_fixed_member` carry the encoding-less fixed members in mandatory and optional-presence
+/// position.
+const NO_ANNOTATE_FLOOR_STEMS: &[&str] = &[
+    "bounds_spellings",
+    "fixed_bool_member",
+    "optional_fixed_member",
+];
+
+/// The corpus cells whose rust crate does NOT compile under an [`NO_ANNOTATE_FLAVORS`] row today,
+/// as `(stem, flavor, the rustc error CLASS, root cause read from the emitted source)`.
+///
+/// This leg is a compile FLOOR, so a red cell is ledgered rather than skipped: the entry is the
+/// finding. Four-state, like `WASM_MATRIX_SKIP`'s verdict — listed + red with the pinned class is the
+/// expected state; listed + GREEN fails as "the fix landed, retire the entry"; listed + red with a
+/// DIFFERENT class fails as "the failure changed shape, re-read it"; unlisted + red is an ordinary
+/// gate failure. So the ledger can go stale in neither direction, and the three bug classes below
+/// each get a green-turning tripwire without anyone having to remember them.
+///
+/// The seam is the one the generator's own `records.rs` comment already names ("we might be able to
+/// write a nice way around this in the annotate_fields=false, preserve_encodings=true case"): with
+/// `--annotate-fields=false` there is no per-type scaffolding closure, so any emission that assumed
+/// one — to re-shape a value, to pin an inference variable, or to `return` early — lands in
+/// `deserialize()` itself. Class C is the only one that also reaches the NON-preserve row, because
+/// its `return` is emitted whether or not encodings exist.
+///
+/// The three classes, none of which any other gate reaches:
+///   A. **optional field + encoding sidecars** (E0308) — the annotate=false path emits the
+///      `if <peek> { Some(<tuple>) } else { None }` form and binds it to the BARE tuple pattern
+///      `let (f, f_encoding, …) = …`; the annotate=true path re-shapes through
+///      `.map(|(v, …)| (Some(v), …))?` inside the closure, so only the flag-off spelling is
+///      ill-typed. Reached by an optional field whose type carries encodings: a nullable
+///      (`nullable_nested`), a table (`table_preserve`), a list (`wasm_nested_alias`).
+///   B. **untyped `.into()` for a length encoding** (E0283) — `let {f}_encoding = {f}_len.into();`
+///      has nothing to pin its type parameter once the closure that consumed it into a typed return
+///      tuple is gone (`LenSz: Into<_>` is ambiguous).
+///   C. **c-style-enum inline dispatch** (E0308) — the try-each-variant sequence inlined at a
+///      c-enum use site emits `return Ok(<Variant>)`, correct only inside the scaffolding closure;
+///      without it the `return` targets the enclosing `deserialize()` (a different type), and the
+///      dispatch's own `Result` is left un-`?`ed at its binding. The only NON-preserve entry — this
+///      one is red under plain `--annotate-fields=false`.
+const NO_ANNOTATE_KNOWN_RED: &[(&str, &str, &str, &str)] = &[
+    (
+        "alias_positions",
+        "preserve_noannotate",
+        "E0283",
+        "class B: `let key_1_encoding = key_1_len.into();` — no closure return type to pin the \
+         `Into` target",
+    ),
+    (
+        "cbor_enum_payload",
+        "noannotate",
+        "E0308",
+        "class C: the inlined c-style-enum variant dispatch `return`s its Ok value, which only \
+         reaches the right frame inside the annotate_fields scaffolding closure",
+    ),
+    (
+        "cbor_enum_payload",
+        "preserve_noannotate",
+        "E0308",
+        "class C under preserve — the same `return`, now carrying the encoding tuple \
+         (`return Ok((PayloadEnum::I0, Some(tag_enc), tagged_payload_encoding))`)",
+    ),
+    (
+        "dsl_copy",
+        "preserve_noannotate",
+        "E0283",
+        "class B: `let key_2_encoding = key_2_len.into();` — no closure return type to pin the \
+         `Into` target",
+    ),
+    (
+        "group_choice_map",
+        "preserve_noannotate",
+        "E0283",
+        "class B: `let f0_encoding = len.into();` — no closure return type to pin the `Into` target",
+    ),
+    (
+        "nullable_nested",
+        "preserve_noannotate",
+        "E0308",
+        "class A: optional NULLABLE field — `Option<(Option<u64>, Option<Sz>)>` bound to the bare \
+         tuple pattern `(field0, field0_encoding)`",
+    ),
+    (
+        "table_preserve",
+        "preserve_noannotate",
+        "E0308",
+        "class A: optional TABLE field — `Option<(PairMap<..>, _, Vec<Option<Sz>>, \
+         Vec<StringEncoding>)>` bound to the bare 4-tuple pattern",
+    ),
+    (
+        "wasm_nested_alias",
+        "preserve_noannotate",
+        "E0308",
+        "class A: optional LIST field — `Option<(Vec<u64>, _, Vec<Option<Sz>>)>` bound to the bare \
+         3-tuple pattern",
+    ),
+];
+
+/// Cross-shard accumulator for the floor pins above: which `<stem>/<flavor>` cells this leg actually
+/// swept. Whole-corpus property, so it is checked by whichever shard completes the set — the same
+/// shape as the execution half's emitted-module floor.
+static NO_ANNOTATE_SWEPT: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+static NO_ANNOTATE_SHARDS_COMPLETED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+macro_rules! feature_corpus_compiles_no_annotate_shards {
+    ($($name:ident = $shard:expr;)+) => {
+        $(
+            #[test]
+            fn $name() {
+                feature_corpus_compiles_no_annotate_shard($shard);
+            }
+        )+
+    };
+}
+
+feature_corpus_compiles_no_annotate_shards! {
+    feature_corpus_compiles_no_annotate_shard_00 = 0;
+    feature_corpus_compiles_no_annotate_shard_01 = 1;
+    feature_corpus_compiles_no_annotate_shard_02 = 2;
+    feature_corpus_compiles_no_annotate_shard_03 = 3;
+    feature_corpus_compiles_no_annotate_shard_04 = 4;
+    feature_corpus_compiles_no_annotate_shard_05 = 5;
+}
+
+/// The `--annotate-fields=false` compile floor over the feature corpus — the breadth sibling of
+/// `feature_corpus_compiles_shard`, sharing its corpus walk, its shard split, its scratch root and
+/// target dir, its def-splice and its warning scans, and differing in exactly one generation flag.
+///
+/// **Why a gate-local leg rather than an [`super::ALL_PROFILES`] row.** That const is the shared
+/// source of truth for the SNAPSHOT axis (and is regex-extracted by `cddl-matrix/verify.ts` as the
+/// matrix emission-profile axis), so a row added there would mint a snapshot tree and a matrix axis
+/// for a flag whose only effect is on emitted rust deserialize bodies. The flavor rows live here,
+/// keyed to the base rows they extend ([`NO_ANNOTATE_FLAVORS`]).
+///
+/// **Why rust-only.** `--annotate-fields=false` leaves the emitted `wasm/` tree byte-identical:
+/// probed over EVERY `tests/corpus/*.cddl` fixture under both flavor rows (187 generating cells,
+/// all byte-identical; the 188th is the `dsl_ignore`/preserve refusal), and the json profile's
+/// `wasm/json-gen` likewise on the fixtures this leg's floor stems name. Checking those trees would
+/// be duplicated work, not coverage — the `rust` crate is where the flag's divergent emission lives.
+///
+/// **Why `--wasm=true` generation even so.** Keeping the existing shards' posture makes
+/// `--annotate-fields=false` the ONLY variable between this leg's rust crate and the base row's, so a
+/// red cell is attributable to the flag and nothing else. The postures are NOT interchangeable —
+/// `rust/src` differs between `--wasm=true` and `--wasm=false` on 24 of the 188 cells (probed;
+/// wasm-driven collection wrappers reach the rust tree) — which is also why the focused
+/// `--wasm=false` cell `preserve_no_annotate_fixed_members_generate` stays rather than folding in
+/// here.
+///
+/// **Why the same skip and the same splice.** The flag changes rust deserialize internals only; it
+/// cannot make a fixture need different user-supplied code, nor answer [`COMPILE_SKIP`]'s resident
+/// (which has no [`CORPUS_DEF_SPLICE`] entry at all — no definitions to seed means no crate to
+/// compile, under any flag). Tier: check.ts `local` (the `test` gate).
+fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
+    let all_entries = feature_corpus_entries();
+    let entries: Vec<&std::path::PathBuf> = all_entries
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % FEATURE_CORPUS_SHARDS == shard)
+        .map(|(_, p)| p)
+        .collect();
+
+    // The SAME scratch root and occupancy counter as the base leg, deliberately: one root means one
+    // `CARGO_TARGET_DIR`, so this leg's rust cells reuse the dependency graph the base leg already
+    // built instead of paying for a second copy. (`SharedScratch`'s "counter unique to the gate"
+    // contract is about two gates with DIFFERENT roots sharing one counter; these two legs share the
+    // root, which is exactly what the counter is protecting.) Cell output dirs cannot collide: the
+    // flavor labels are disjoint from the ALL_PROFILES row names.
+    let scratch = SharedScratch::enter(
+        &FEATURE_CORPUS_SCRATCH,
+        std::env::temp_dir().join(format!(
+            "cddl_codegen_corpus_compile_{:016x}",
+            checkout_hash()
+        )),
+    );
+    let root = scratch.root().to_path_buf();
+    let target_dir = root.join("target");
+
+    let mut failures = vec![];
+    let mut swept = std::collections::BTreeSet::new();
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
+    for input in entries {
+        let stem = input.file_stem().unwrap().to_str().unwrap();
+        if COMPILE_SKIP.contains(&stem) {
+            continue;
+        }
+        for (flavor, base_profile) in NO_ANNOTATE_FLAVORS {
+            let base_flags = super::ALL_PROFILES
+                .iter()
+                .find(|(name, _)| name == base_profile)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "NO_ANNOTATE_FLAVORS row `{flavor}` names base profile `{base_profile}`, \
+                         which is not an ALL_PROFILES row"
+                    )
+                })
+                .1;
+            let label = format!("{stem}/{flavor}");
+            let out = root.join(format!("{stem}__{flavor}"));
+            let gen_out = codegen_cmd()
+                .arg(format!("--input={}", input.to_str().unwrap()))
+                .arg(format!("--output={}", out.to_str().unwrap()))
+                .arg("--wasm=true")
+                .arg("--annotate-fields=false")
+                .args(base_flags)
+                .output()
+                .unwrap();
+            // The pins are the BASE row's: a refusal is a property of the base profile's flags.
+            let expected_gen_fail = EXPECTED_GENERATION_FAIL
+                .iter()
+                .any(|(s, p, _)| s == &stem && p == base_profile);
+            if !gen_out.status.success() {
+                if !expected_gen_fail {
+                    failures.push(format!(
+                        "{label}: generation failed\n{}",
+                        String::from_utf8_lossy(&gen_out.stderr)
+                    ));
+                }
+                continue;
+            }
+            if expected_gen_fail {
+                // Resurfaced guard, same reading as the base leg's — except that here it can ALSO
+                // mean the pin's refusal became flag-conditional (it fires under `{base_profile}`
+                // but not under `{base_profile}` + annotate=false), which is a generator bug rather
+                // than a closed gap. Either way the pin must be revisited, not silently widened.
+                failures.push(format!(
+                    "{label}: generation SUCCEEDED but `{stem}`/`{base_profile}` is pinned in \
+                     EXPECTED_GENERATION_FAIL — either the gap closed (retire the pin) or the \
+                     refusal is annotate-fields-conditional (fix the generator)"
+                ));
+                continue;
+            }
+            append_corpus_defs_for(&out, stem, false, base_profile == &"preserve");
+            let crate_dir = out.join("rust");
+            give_cell_its_own_package_identity(
+                &crate_dir,
+                &format!("cddl-lib-noann-{stem}-{flavor}"),
+            );
+            if !crate_dir.exists() {
+                failures.push(format!(
+                    "{label} (rust): crate dir missing — the fixture is no longer being compile-gated"
+                ));
+                continue;
+            }
+            swept.insert(label.clone());
+            let known_red = NO_ANNOTATE_KNOWN_RED
+                .iter()
+                .find(|(s, f, _, _)| s == &stem && f == flavor);
+            // Same lint marker string as the base leg's: the two share
+            // `unused_generated_import_lines`/`unused_generated_variable_lines`, so a change to
+            // either scan's verdict must invalidate both legs' cached PASSes in one edit. The
+            // known-red pin joins the key so retiring (or re-classing) an entry re-runs its cell
+            // instead of reading a cached verdict taken under the old expectation.
+            let mut argv_for_key = vec![
+                "cwd=rust".to_string(),
+                "cargo".to_string(),
+                "check".to_string(),
+                "lint=unused-imports-v3".to_string(),
+            ];
+            argv_for_key.push(match known_red {
+                Some((_, _, class, _)) => format!("known-red={class}"),
+                None => "known-red=none".to_string(),
+            });
+            let outcome = gate_cache::run_cached(
+                "feature_corpus_compiles_no_annotate",
+                &label,
+                &out,
+                &[std::path::PathBuf::from("rust").join("Cargo.toml")],
+                &argv_for_key,
+                || {
+                    let mut ok = true;
+                    let check = tool_cmd("cargo")
+                        .arg("check")
+                        .current_dir(&crate_dir)
+                        .env("CARGO_TARGET_DIR", &target_dir)
+                        .output()
+                        .unwrap();
+                    let stderr = String::from_utf8_lossy(&check.stderr);
+                    match (known_red, check.status.success()) {
+                        (None, false) => {
+                            failures.push(format!(
+                                "{label} (rust): cargo check failed\n{}\n{}",
+                                String::from_utf8_lossy(&check.stdout),
+                                stderr
+                            ));
+                            ok = false;
+                        }
+                        (Some((_, _, class, reason)), true) => {
+                            failures.push(format!(
+                                "{label} (rust): compiles, but is ledgered in NO_ANNOTATE_KNOWN_RED \
+                                 as {class} ({reason}) — the emission was fixed; retire the entry so \
+                                 this cell is floored"
+                            ));
+                            ok = false;
+                        }
+                        (Some((_, _, class, reason)), false) => {
+                            // Red as ledgered — but the CLASS is the pin, not merely "it is red": a
+                            // different error code means a different defect wearing the entry's name.
+                            let found = rustc_error_codes(&stderr);
+                            let expected: std::collections::BTreeSet<String> =
+                                std::iter::once((*class).to_string()).collect();
+                            if found != expected {
+                                failures.push(format!(
+                                    "{label} (rust): ledgered in NO_ANNOTATE_KNOWN_RED as {class} \
+                                     ({reason}) but failed with {found:?} — the failure changed \
+                                     shape; re-read the emitted source before re-pinning\n{stderr}"
+                                ));
+                                ok = false;
+                            }
+                        }
+                        (None, true) => {}
+                    }
+                    let unused = unused_generated_import_lines(&stderr);
+                    if !unused.is_empty() {
+                        failures.push(format!(
+                            "{label} (rust): generated-code unused-import residue — import prune under-pruned:\n{}",
+                            unused.join("\n")
+                        ));
+                        ok = false;
+                    }
+                    let unused_vars = unused_generated_variable_lines(&stderr);
+                    if !unused_vars.is_empty() {
+                        failures.push(format!(
+                            "{label} (rust): generated-code unused-variable residue — generator emitted a named binding it never uses:\n{}",
+                            unused_vars.join("\n")
+                        ));
+                        ok = false;
+                    }
+                    ok
+                },
+            );
+            cache_run += outcome.ran();
+            cache_hit += outcome.cached();
+        }
+    }
+    if gate_cache::enabled() {
+        println!(
+            "feature_corpus_compiles_no_annotate shard {shard}/{FEATURE_CORPUS_SHARDS} gate-cache: {cache_run} run, {cache_hit} cached"
+        );
+    }
+    assert!(
+        failures.is_empty(),
+        "corpus crates failed to compile under --annotate-fields=false:\n\n{}",
+        failures.join("\n\n")
+    );
+
+    // Floor pins, corpus-wide: publish this shard's swept set BEFORE announcing completion, so the
+    // shard that completes the set observes every other shard's contribution (the base leg's
+    // ordering argument verbatim).
+    use std::sync::atomic::Ordering;
+    NO_ANNOTATE_SWEPT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .extend(swept);
+    if NO_ANNOTATE_SHARDS_COMPLETED.fetch_add(1, Ordering::SeqCst) + 1 == FEATURE_CORPUS_SHARDS {
+        let seen = NO_ANNOTATE_SWEPT.lock().unwrap_or_else(|e| e.into_inner());
+        let missing: Vec<String> = NO_ANNOTATE_FLOOR_STEMS
+            .iter()
+            .flat_map(|stem| {
+                NO_ANNOTATE_FLAVORS
+                    .iter()
+                    .map(move |(flavor, _)| format!("{stem}/{flavor}"))
+            })
+            .filter(|cell| !seen.contains(cell))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "the --annotate-fields=false floor did not sweep {missing:?} — each of \
+             NO_ANNOTATE_FLOOR_STEMS reproduced an escaped annotate=false failure, so a cell that \
+             stops being compiled deletes the coverage this leg exists for (a fixture removed, \
+             newly COMPILE_SKIPped, or newly EXPECTED_GENERATION_FAIL-pinned)"
         );
     }
 }
@@ -4918,7 +5423,13 @@ fn flag_value_smoke() {
 /// the two fixed-member corpus fixtures (mandatory: `fixed_bool_member.cddl`; optional presence
 /// bools: `optional_fixed_member.cddl`) under exactly that flag pair and `cargo check`s the
 /// result, so a regression fails here rather than only in a consumer running annotate=false.
-/// Tier: check.ts `local` (the `test` gate).
+///
+/// Kept alongside the breadth leg (`feature_corpus_compiles_no_annotate_shard`, which sweeps the
+/// WHOLE corpus under the same flag pair) because the two are not the same posture: this cell
+/// generates `--wasm=false`, the leg `--wasm=true`, and the emitted `rust/src` differs between the
+/// two postures on 24 of that leg's 188 cells (wasm-driven collection wrappers reach the rust tree).
+/// The leg's floor pins name these two stems, so the shapes cannot leave the corpus unnoticed on
+/// either side. Tier: check.ts `local` (the `test` gate).
 #[test]
 fn preserve_no_annotate_fixed_members_generate() {
     use std::str::FromStr;
