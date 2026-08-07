@@ -8,6 +8,16 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
+One authoring rule for this file: a sentence asserting COVERAGE — "gate X exercises Y", or the
+negative "nothing exercises Z" — must name the pin/gate it rests on (for a negative claim, the
+enumerated registry or mechanism it was established against). A named identifier dangles greppably
+when its referent moves and `lint_doc_citations` asserts it resolves; an unnamed coverage claim
+reads as fact indefinitely — a "the json-gen runner gate is single-file-only" sentence here
+outlived the contrary always-on test (`multifile_json_preserve`, executing json-gen over
+cross-module input since 2023) until a pickup probe caught it. Pickup re-probing stays the
+enforcement (a prose rule cannot enforce itself); naming the pin is what gives the probe a target
+and the reader a checkable referent.
+
 **Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->123 features (95 RFC8610 + 1 RFC9682 + 27 `CDDL_CODEGEN` vendor profile), 135 containment cells, and 292 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
