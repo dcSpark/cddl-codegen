@@ -4288,8 +4288,10 @@ emission conditions that replaced them are pinned in `src/tests/component_tests.
 `snapshot_tests::PROFILE_GENERATION_SKIP` instead. Fixtures whose RUST crate references
 user-supplied code get that code SEEDED before the check (`integration_tests::append_corpus_defs_for`
 over `tests/def_templates/`, because the component crate takes the rust crate as a path dependency
-and needs exactly the seeding `feature_corpus_compiles` does); only the ones no definition can help
-are excluded, through `integration_tests::COMPILE_SKIP`, which this gate shares rather than restates.
+and needs exactly the seeding `feature_corpus_compiles` does); the only exclusion is
+`integration_tests::COMPILE_SKIP`, which this gate shares rather than restates — its one resident
+compiles against seeded defs and is held by the wasm re-export warning that const's own doc
+comment records, not by compilability.
 
 ### Regen over prior output at corpus breadth (`src/tests/regen_over_prior_tests.rs`, gates `regen_over_prior_output_corpus` `local` + `regen_over_prior_output_corpus_compiles` `full`)
 
@@ -4331,9 +4333,10 @@ for its compile gate, nested cargo, where a floor-and-deletion profile costs one
 **Why the compile half is its own gate.** Whether the regenerated crate still BUILDS warning-clean
 is the only leg that pays nested cargo, and it is the one that catches the orphaned-`use` class —
 `unused import` is a WARNING, so no assertion about generation exiting 0 can see it. It reuses
-`feature_corpus_compiles`' scans, its `COMPILE_SKIP` (a fixture no definition can make compile cannot
-compile after a regeneration either — the same reason, not an alias of convenience) and its def
-splice, and is gate-cached per generated-crate content hash with its own `regen-edit=v1`
+`feature_corpus_compiles`' scans, its `COMPILE_SKIP` (whatever holds a fixture out of the base
+compile floor — today the one resident's wasm re-export warning, per that const's doc comment —
+holds after a regeneration too: the warning is emitted by the same glue, so sharing the list is
+the same reason, not an alias of convenience) and its def splice, and is gate-cached per generated-crate content hash with its own `regen-edit=v1`
 verdict-logic marker. The splice is applied ONCE, before the regeneration, which makes the seed-once
 thin `lib.rs` contract part of what this gate asserts: a consumer's hand-written extern definitions
 must still be there, and still resolve, after the tool has run over their tree a second time. Its own

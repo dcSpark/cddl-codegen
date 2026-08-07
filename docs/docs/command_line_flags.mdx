@@ -77,6 +77,8 @@ If the output lands inside a cargo workspace that already has a member of the sa
 :::info `--annotate-fields`
 Includes additional field-location context in generated deserialization errors. On by default; disabling it can slightly reduce generated code size.
 
+**Known limitation (current):** with `--annotate-fields=false`, a handful of shapes emit deserialize code that fails to compile even though generation exits 0 — a member position that inlines a tagged c-style enum's variant dispatch (with or without `--preserve-encodings`), and, under `--preserve-encodings=true`, optional fields whose type carries encoding variables and some length-encoding sidecar bindings. The default (`true`) is unaffected. These are tracked, each with a test that fails the moment its fix lands (the `NO_ANNOTATE_KNOWN_RED` ledger swept by the corpus compile floor); until then, keep `--annotate-fields=true` for specs that hit one.
+
 Possible values: true, false
 ```bash
 cddl-codegen --input=example --output=export --annotate-fields false

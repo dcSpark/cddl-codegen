@@ -1177,6 +1177,14 @@ deleted from the generated `mod.rs` via a [`cddl-codegen:replace`](./preserving_
 warning is decided from this run's *written* output, so once the `pub use crate::<Name>;` glue no
 longer survives there the tool no longer requires that re-export and stops nagging for it.
 
+One sharp edge of that demanded set, worth knowing before you write a wrapper: it is derived from
+every in-crate marker rule, not from what the wasm face actually references. A raw-bytes or extern
+type reached **only as a generic argument** (`ext_set<pub_key>`, where the wasm code names only the
+concrete `ExtSetPubKey` wrapper) is still demanded and re-exported, so the wrapper you dutifully
+supply earns an `unused import` warning at the generated re-export line. Supplying it is harmless
+beyond that warning; if you would rather not maintain a dead wrapper, delete that one glue line via
+the [`cddl-codegen:replace`](./preserving_edits) route above and the requirement disappears with it.
+
 ### Per-scope hand modules: the facade pattern
 
 To publish hand-written code under a *scope's* public path (e.g. `my_crate::assets::utils::…`
