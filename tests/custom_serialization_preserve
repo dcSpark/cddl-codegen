@@ -99,9 +99,29 @@ pub fn read_hex_string(
     raw: &mut cbor_event::de::Deserializer,
 ) -> Result<(Vec<u8>, StringEncoding), DeserializeError> {
     let (text, text_enc) = raw.text_sz()?;
+    // Fidelity: accept only wire the paired writer re-emits. `hex::decode` tolerates uppercase
+    // digits, but the writer is `hex::encode` (lowercase) and `StringEncoding` carries width, not
+    // case — an uppercase digit is wire information this codec cannot reproduce, so under
+    // --preserve-encodings (whose fuzz oracle asserts accepted input re-encodes byte-identically)
+    // it must be a rejection, not a normalization. Same posture as `custom_deserialize_bytes`
+    // above, which already rejects the chunkings its writer never emits.
+    reject_non_lowercase_hex(&text)?;
     hex::decode(text)
         .map(|bytes| (bytes, text_enc.into()))
         .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(HexDecodeError(e))).into())
+}
+
+// the fidelity precheck shared by both hex readers (see read_hex_string for why it exists —
+// found by the byte fuzzer: `"ffffCf"` was accepted and re-encoded as `"ffffcf"`)
+fn reject_non_lowercase_hex(text: &str) -> Result<(), DeserializeError> {
+    if text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        Ok(())
+    } else {
+        Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+            "hex codec: non-lowercase hex text cannot re-encode to itself".to_owned(),
+        ))
+        .into())
+    }
 }
 
 // The TABLE-position twin of write_hex_string/read_hex_string (same hex-TEXT-over-bytes wire), split
@@ -125,6 +145,9 @@ pub fn read_hex_table_string(
     raw: &mut cbor_event::de::Deserializer,
 ) -> Result<(Vec<u8>, StringEncoding), DeserializeError> {
     let (text, text_enc) = raw.text_sz()?;
+    // same fidelity precheck as read_hex_string — this twin is where the fuzzer's artifact hit
+    // (a table VALUE `"ffffCf"`)
+    reject_non_lowercase_hex(&text)?;
     hex::decode(text)
         .map(|bytes| (bytes, text_enc.into()))
         .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(HexDecodeError(e))).into())
@@ -165,8 +188,22 @@ pub fn read_tagged_uint_str(
     let (text, text_encoding) = raw.text_sz()?;
     match text_encoding {
         cbor_event::StringLenSz::Indefinite(_) => Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(format!("We only support definite encodings in order to use the uint one"))).into()),
-        cbor_event::StringLenSz::Len(text_encoding_sz) => u64::from_str(&text)
-            .map(|uint| (uint, Some(tag_encoding), Some(text_encoding_sz)))
-            .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into()),
+        cbor_event::StringLenSz::Len(text_encoding_sz) => {
+            let uint = u64::from_str(&text)
+                .map_err(|e| DeserializeError::from(DeserializeFailure::InvalidStructure(Box::new(e))))?;
+            // Fidelity, same reasoning as the tag check above: `u64::from_str` tolerates a leading
+            // `+` and leading zeros, but the write half emits `uint.to_string()` — canonical
+            // decimal — and no encoding variable carries the spelling, so text that is not its own
+            // re-emission must be rejected rather than normalized (comparing against the
+            // re-emission is the exact contract, whatever from_str tolerates).
+            if uint.to_string() != text {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                    "uint-as-text codec: non-canonical decimal text cannot re-encode to itself"
+                        .to_owned(),
+                ))
+                .into());
+            }
+            Ok((uint, Some(tag_encoding), Some(text_encoding_sz)))
+        }
     }
 }
