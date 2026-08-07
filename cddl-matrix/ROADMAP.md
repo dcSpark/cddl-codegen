@@ -16,9 +16,9 @@ mint no test surface (recorded honestly in the evidence). The orthogonal **emiss
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->93 `class="constraint"` enforcement reject vectors over 73 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
-rejectable constraint projects `enforce = yes (bounded-reject)` — the widened-occurrence-marker table
-class is CLOSED (`+`/`1*` is honored as a non-empty container and the other count-permitting markers
-are rejected gracefully, § findings); the green, unverified (empty), and over-accepts (empty) sets are
+rejectable constraint projects `enforce = yes (bounded-reject)` — `+`/`1*` is honored as a non-empty
+container and the other count-permitting table markers
+are rejected gracefully (§ findings); the green, unverified (empty), and over-accepts (empty) sets are
 each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
 for the next certified instance).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
@@ -33,10 +33,10 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 > **Limitations** section projects Q1's support gaps (`query_q1_gaps.ts`); more docs follow. The matrix is
 > "good enough" when regenerating a real hand doc from it is a **clear win**.
 
-> **Findings ledger (F#)** from the cold critique (full write-up in git history): everything in scope is
-> closed — the resulting machinery is current state in `README.md` (execution-gated support,
-> § "Directional support evidence", § "Upstream oracle gaps") — except **F8–F11, out of scope** (bottom).
-> Only still-open findings are sections below.
+> **Findings ledger (F#)**: F-numbered items are the cold critique's ledger (full write-up in git
+> history). The only ones still cited are **F8–F11, out of scope** (bottom); the machinery the rest
+> produced is current state in `README.md` (execution-gated support, § "Directional support
+> evidence", § "Upstream oracle gaps").
 
 ## Matrix-side work — the model and the projections it renders
 
@@ -50,23 +50,26 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   payoff is measured: every defect yet found in this kind's cells was caught by per-delivery ad-hoc
   probing rather than any projection, because each sat on an axis the grid does not model. The two
   TABLE roles (`{ * coords => uint }` / `{ * uint => coords }`) — one aborted on a raw unwrap, the
-  other emitted non-conformant CBOR at exit 0 — are now refused
-  (`plain_group_table_domain_rejects_gracefully_at_both_spellings`). The 2026-08-06 cycle then
-  proved the MODIFIER axis is live too, each flavor breaking DIFFERENTLY: the KEYED struct-map
+  other emitted non-conformant CBOR at exit 0 — are refused
+  (`plain_group_table_domain_rejects_gracefully_at_both_spellings`). The MODIFIER axis is live
+  too, each flavor breaking DIFFERENTLY: the KEYED struct-map
   member and its TAGGED flavor emitted silent non-conformant wire at exit 0, its OPTIONAL flavor
   panicked, and a single-entry map group-choice arm emitted a serializer and a deserializer that
-  disagreed with each other — all now refused
+  disagreed with each other — all refused
   (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`). The ALIAS-INDIRECTED
-  modifier then proved the axis a third time and in the other direction: in ARRAY placements it is
-  now SUPPORTED and byte-equal to the direct reference
+  modifier proves the axis in the other direction: in ARRAY placements it is
+  SUPPORTED and byte-equal to the direct reference
   (`alias_to_plain_group_in_array_positions_matches_the_direct_reference`), and reaching that
   verdict took four rep-stamp sites plus two emission sites — one of which had been emitting an
   array header counting elements against a body written in items, at exit 0 in a crate that
-  compiles. The `?`-OPTIONAL modifier completed the sweep in the third direction — refused, because
+  compiles. The `?`-OPTIONAL modifier is refused, because
   a splice writes no marker of its own and so leaves the array's LENGTH as the only evidence of
   presence, which an embedded decoder that length-checks just its own members cannot read
   (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`; real support is the
-  queue's "unify non-final optional/repeated array decoding" scope, and its guard covered a TAGGED
+  occurrence/bounds design owned by the findings entries "Honor non-final and `+`/bounded
+  count-permitting occurrences on heterogeneous ARRAY-record fields" and "Decode-disambiguate a
+  non-final `?` optional array-record field whose CBOR major types OVERLAP a later field's" —
+  cited below as "the occurrence/bounds family" — and its guard covered a TAGGED
   spelling that had been shipping a codec whose own decoder rejected its own bytes). So enumerate
   the product: placement (array
   element, array-rep field, struct-map member, table key, table value, map/array group-choice arm,
@@ -75,46 +78,46 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   `contain.occurrence-target.grpent.groupname` — tagged, alias-indirected), with truthful
   verdicts — accept rows where the splice is conformant (array placements, including every
   alias-indirected one) or a wrapping restores it (the named-array remedies), and reject rows
-  carrying the refusal evidence. The TYPE-choice-arm placement and the rest-tail modifier are the
-  2026-08-07 capture-pass correction: the two defects that cycle's probing left behind (the
-  final-position `* kv` rest-tail panic and the plain group in a TYPE-choice arm — both now refused,
-  see below) sat on an axis VALUE the product as first stated did
-  not list, which is this entry's
-  own opening lesson (a defect on an axis the grid does not model) applied to the grid's own
-  draft. The third of that cycle's findings — the group-choice arm's silently dropped `?` — sat
+  carrying the refusal evidence. The TYPE-choice-arm placement and the rest-tail modifier joined
+  the product late: each carried a live defect (the
+  final-position `* kv` rest-tail panic and the plain group in a TYPE-choice arm — both refused,
+  see below) while sitting on an axis VALUE the product as first stated did not list — this
+  entry's own opening lesson (a defect on an axis the grid does not model) applied to the grid's
+  own draft, and the reason the axis values above are enumerated exhaustively rather than by
+  example. The group-choice arm's silently dropped `?` sat
   INSIDE the stated product (group-choice arm × `?`-optional), which is exactly the cell class the
-  enumeration exists to mint, and is now refused
+  enumeration exists to mint, and is refused
   (`occurrence_on_single_entry_group_choice_arm_rejects_gracefully`): honoring it needs a zero-case
-  variant the sibling arms' length checks can tell apart on the wire, which is the queue's
-  occurrence/bounds scope. That delivery also marks where this grid STOPS being the instrument.
-  Probing widened the defect twice past the cell: to every occurrence marker an ARRAY arm can carry
+  variant the sibling arms' length checks can tell apart on the wire, which is the
+  occurrence/bounds family's scope. The same defect also marks where this grid STOPS being the
+  instrument. Probing widened it twice past the cell: to every occurrence marker an ARRAY arm can carry
   (`*`, `+`, `n*m`, all byte-identical to the unmarked arm at exit 0, not just `?`), and off the
   named-group reference kind entirely — an ordinary keyed member arm (`[ x: uint // ? a: tstr ]`)
   dropped its marker byte-identically too. So the guard reads the ENTRY's occurrence rather than its
   type, and the grid would have minted one cell of a defect whose real denominator is arm × marker
-  over every entry kind. It also narrowed in one direction the finding did not anticipate: in a MAP
+  over every entry kind. It also narrowed in one direction: in a MAP
   arm the byte identity is CORRECT for every lower-bound-≥1 marker, since unique keys mean a second
   repetition of a fixed-key alternative would duplicate its keys, so `+` / `2*3` / `2*` admit count
   1 and nothing else. Those keep generating — the f18d764 collapse boundary, asked of the one shared
   predicate (`inline_group_occurrence_flattens`) rather than restated, so the arm seam and the
   inline-group splice cannot come to disagree — and only the zero-permitting markers refuse there.
-  A grid row must therefore carry the REP, not just the marker. The rest-tail modifier the same
-  cycle added to the product is settled the same way — refused, because a rest tail collects one
+  A grid row must therefore carry the REP, not just the marker. The rest-tail modifier is settled
+  the same way — refused, because a rest tail collects one
   value per remaining array element and a plain group is not one, having no type of its own to
   collect (`plain_group_array_rest_tail_rejects_gracefully_at_every_spelling`; the splicing tail
-  that would consume the group's arity per repetition is the queue's occurrence/bounds scope). Its
-  cell is a rep-carrying row too, and the row's own probing shows why: the ARRAY tail now refuses,
+  that would consume the group's arity per repetition is the occurrence/bounds family's scope). Its
+  cell is a rep-carrying row too, and the row's own probing shows why: the ARRAY tail refuses,
   the SOLE-element homogeneous cell (`[* kv]`) generates, the pure TABLE form (`{ * kv => uint }`)
   refuses on its own delivered message — and the MAP REST ROW, the array tail's exact twin, still
   panics (§ findings). One marker, four verdicts, separating on container and on whether a fixed
   prefix precedes it: no cell of this product is predictable from its neighbours, which is the
   argument for minting all of them rather than the ones a probe happened to reach. The TYPE-choice-arm
-  PLACEMENT the same cycle added is the row where the grid's own verdict vocabulary is settled ahead
+  PLACEMENT is the row where the grid's own verdict vocabulary is settled ahead
   of the cells: every cell of it is a reject row, and permanently, because a type choice denotes
   exactly ONE data item — telling the arms apart on the wire is the whole of what a choice decoder
   does — while a plain group can only be spliced and a splice has no one-item form
-  (`plain_group_type_choice_arm_rejects_gracefully_at_every_spelling`). That closes the branch the
-  finding had left open, "stamp the group's Array rep on the choice walk's arms the way the array
+  (`plain_group_type_choice_arm_rejects_gracefully_at_every_spelling`). That closes the branch
+  "stamp the group's Array rep on the choice walk's arms the way the array
   PLACEMENTS do": the array placements splice into a container whose length already scales with the
   group's arity and absorbs the extra items, and an arm has no such container, so there is nothing to
   stamp a rep ONTO. The array framing the refusal names is therefore the semantics rather than a
@@ -124,15 +127,14 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   reached earlier under `--wasm`, and at RULE position under the `/ null` collapse an exit-0
   emission of `pub type U = Option<Kv>;` over a `Kv` defined nowhere, a non-compiling crate reported
   as success. A grid whose cells carry only "panics" would have flattened the third, which is the one
-  that matters most. NB this defect
-  class is also one
-  synthetic instance shy of the
-  grammar-denominator item's reopening signal below (a generation defect in a grid-BLANK cell): a
+  that matters most. NB this defect class is also one synthetic instance shy of the
+  "Grammar-derived legality denominator" item's reopening signal (a generation defect in a
+  grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
 - **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).**
   Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
-  cover the member and group-choice-arm positions, and the B3-013 due-diligence probe of the THIRD
+  cover the member and group-choice-arm positions, and a due-diligence probe of the THIRD
   arm position found `t = 1.5 / tstr` and `t = -1 / null / tstr` refused for an unspellable derived
   variant identifier (`F1.5`, `U-1` — § findings, "No auto-naming scheme for a DERIVED variant
   identifier…") while the uint/text kinds are fine — exactly the known-NON-uniform kind axis
@@ -154,7 +156,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   grid itself do not meet this signal: both sat in cells the corpus exercises and nothing models,
   which the grid now names `·`.
 - **Per-VALUE encoding reachability.** A head argument that is fixed by the construct's own definition
-  is no longer a judgment call: a prelude construct declares the exact cell its head lands in, and
+  is not a judgment call: a prelude construct declares the exact cell its head lands in, and
   `build_matrix.ts` re-derives that from the pinned prelude, so `bigfloat` (tag 5, at every value)
   claims `enc.major6.imm` and nothing else. What remains is the case where the argument **follows the
   value**: `enc.major0.ai27` needs a uint ≥ 2^32, `enc.major2.ai26` a byte string ≥ 2^16 bytes. Those
@@ -265,7 +267,7 @@ ledgered here (that's what the probe/gate error messages point at).
   the delivered table-domain guard already refuses with its own message
   (`plain_group_table_domain_rejects_gracefully_at_both_spellings`) — so the map rest-row seam has
   no plain-group guard of its own on either slot, and the table guard it is next to does not cover
-  it. Scope of the probe (2026-08-07 at `37f92cbb`, found while retiring the array tail's entry):
+  it. Scope of the probe (2026-08-07 at `37f92cbb`):
   both slots, default profile plus `--preserve-encodings` and `--wasm`, `--wasm=false` where
   unstated, generate-only; not probed: the json/component faces, an ALIAS-indirected or TAGGED
   spelling on either slot (the array twin's guard covered all three through the resolved type, so
@@ -282,9 +284,9 @@ ledgered here (that's what the probe/gate error messages point at).
   element (`h = [pg]`), a bare array member (`h = [c: uint, pg]`), a keyless map member
   (`h = { c: uint, pg }`, fixed-key arms) and a group-choice arm (`h = [ x: uint // pg ]`). RFC 8610
   admits the spelling (a group rule's body is `grpchoice *(S "//" S grpchoice)`), so this is a panic
-  on valid CDDL whose trigger is the DEFINITION alone — the placement axis never gets a say. Found
-  by B3-046's delivery probing (first seen behind a directive fixture; re-probed bare 2026-08-07 at
-  `747e4de3`, default profile, `--wasm=false`, generate-only); not probed: other profiles (the
+  on valid CDDL whose trigger is the DEFINITION alone — the placement axis never gets a say.
+  Probed bare 2026-08-07 at
+  `747e4de3` (default profile, `--wasm=false`, generate-only); not probed: other profiles (the
   assert sits in the pre-registration scan, before any profile-dependent branch, so expect it
   everywhere), `&pg` group references, generic parameters on such a rule. Fix shape is a choice, not
   a detail: honor the multi-choice group body (a reference in a group-choice context concatenates
@@ -317,7 +319,9 @@ ledgered here (that's what the probe/gate error messages point at).
   Until then `@name` is the supported route and the refusal points at it. Reopening signal: a spec
   in which the arms needing a hand-written `@name` outnumber the ones that do not, or a single crate
   carrying more than a handful of them — the hand-naming cost grows with that count inside one
-  consumer, so that is the dimension to watch rather than a second consumer appearing.
+  consumer, so that is the dimension to watch rather than a second consumer appearing. It is not
+  already met: today the evidence is synthetic probes only, and a synthetic probe writes no
+  `@name`.
 - **No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point.**
   A pair-carrying transparent alias mints no rust type (that is what gives one CDDL name one wire
   form: a `pub type` there would carry the aliased type's built-in codec as a standalone wire
@@ -332,8 +336,9 @@ ledgered here (that's what the probe/gate error messages point at).
   one-wire-form contract rather than against it, since an opted-in nominal type owns its whole wire
   in both directions. **Reopening signal:** a single consumer crate carrying more than a handful of
   such hand-written standalone wrappers — the hand-maintenance cost grows with that count inside one
-  crate, so that is the dimension to watch rather than a second consumer appearing.
-
+  crate, so that is the dimension to watch rather than a second consumer appearing. It is not
+  already met: the entry records that the hand-written route exists, not that anyone has been
+  observed paying for it.
 - **No member position — an ordinary record field included — reads the six RULE-SCOPED directives
   that have no member meaning, so each is silently dropped there.** `@rust_name`, `@newtype`,
   `@no_alias`, `@used_as_key`, `@custom_json` and `@no_json_schema_export` are read only at rule
@@ -341,18 +346,17 @@ ledgered here (that's what the probe/gate error messages point at).
   never looked at. Probed 2026-08-07 at `c950d6c5`, default profile, `--wasm=false`, each of the six
   at an ordinary array-record field (`u = [a: uint, f: bytes ; @newtype]` and siblings, all exit 0
   with the directive unread) and at a single-entry group-choice arm's entry slot; not probed: map-rep
-  fields, the row-entry slots, preserve/canonical profiles, wasm/json faces. This is the residue of
-  the member-position directive sweep: the six the field walk DOES refuse (`@copy`,
-  `@raw_bytes_flavor`, `@used_as_elem`, `@extern_companions`, `@duplicates`, `@ignore`) now live in
+  fields, the row-entry slots, preserve/canonical profiles, wasm/json faces. The six directives
+  the field walk DOES refuse (`@copy`,
+  `@raw_bytes_flavor`, `@used_as_elem`, `@extern_companions`, `@duplicates`, `@ignore`) live in
   one shared list that both member positions call, so the fix is to extend that list — but doing so
   also decides what a plain GROUP rule's TRAILING comment means, since that comment binds to the
   group's LAST MEMBER, and `pg = (…) ; @used_as_key` is a spelling authors plausibly write today.
-  That coupling is why it is filed rather than folded into the single-entry-arm delivery. The
+  That coupling is why it is filed as its own item. The
   single-entry arm's cells for these six are pinned in `no_silent_directive.ts`'s
   `KNOWN_POSITION_DROPS`, which fails loudly as a stale pin the moment the fix lands.
-  Reopening-through-delivery signal: this is a candidate card, not a deferral — every one of the six
-  ships as silence today.
-
+  This is a candidate card, not a signalled deferral — every one of the six
+  ships as silence today, so the problem is already observed rather than waiting on an observable.
 - **`@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm is half-honored, and
   which way it should be settled is open.** The slot HAS a reader — `anon_array_member_name` takes
   the name of a member-position anonymous inline array from exactly it, so
@@ -366,25 +370,12 @@ ledgered here (that's what the probe/gate error messages point at).
   variants in specs that generate today (`F(Inner)` → `Inner(Inner)`) while giving the variant a
   second naming slot beside the arm's own `// ; @name <n>`, which is the documented one. A third
   shape — refuse only where the anon-array reader did not consume it — has to restate that reader's
-  scope at a second site, which is the drift this codebase spends comments preventing. The rest of
-  the family at this position is delivered (honored or refused, `field_directives_on_single_entry_
-  group_choice_arm_reject_gracefully`), so this is the one spelling left. Reopening-through-delivery
-  signal: this is a candidate card, not a deferral — an author whose arm name lands in the wrong slot
+  scope at a second site, which is the drift this codebase spends comments preventing. Every other
+  directive at this position is honored or refused
+  (`field_directives_on_single_entry_group_choice_arm_reject_gracefully`), so this is the one
+  spelling left. This is a candidate card needing a ruling, not a signalled deferral — an author
+  whose arm name lands in the wrong slot already
   gets either silence or a rejection that names the remedy they already wrote.
-
-- **A type-choice ARM or member declared as `bytes .cbor <alias>` changes NAME, not wire, once the
-  alias survives to the arm.** Measured 2026-08-03 while fixing the wire half of the same seam (the
-  alias's `@custom_serialize`/`@custom_deserialize` pair, which the arm now routes through in both
-  directions). On a PAIRLESS alias the emitted CBOR operations are byte-identical before and after —
-  `write_unsigned_integer` / `raw.bytes()` in the same order — but every NAME derived from the arm
-  moves to the alias's: the rust enum variant (`ArmChoice::U64` → `ArmChoice::ScalarAlias`), its
-  constructor and accessor (`new_uint`/`as_uint` → `new_scalar_alias`/`as_scalar_alias`), the wasm
-  kind enum, and the WIT function names (`new-uint` → `new-scalar-alias`, the WIT TYPES staying
-  `u64`). `output_format.mdx` § "Type spelling at member positions" is what makes that the correct
-  spelling, and the same measurement found json-gen and the JSON schema byte-identical. Recorded
-  here because it is an API-surface move a consumer regenerating across this change will see with no
-  wire change to explain it.
-
 - **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
@@ -392,13 +383,10 @@ ledgered here (that's what the probe/gate error messages point at).
   print it once. A SINGLE-ELEMENT inline array is the same instance seen from the type-choice side:
   `x = [1.5 / tstr]` prints its rejection twice and `x = [tstr / tstr]` its arm-dedup warning twice,
   while the two-entry form `x = [1.5 / tstr, z: uint]` prints once — probed 2026-08-06 on an
-  UNMODIFIED binary (default profile, `--wasm=false`), so it is the pre-existing walk and not
-  anything the rejections converted since. The duplication is positional — the parse walk visits an
-  array-element / `.cbor`-controller type2 twice — and it is not new behaviour: the walk always did
-  this, and the `panic!`
-  that used to sit at those sites aborted on the FIRST visit, so nothing ever reached the second.
-  Converting them to record-and-continue is what made a pre-existing double-walk observable, which
-  is the general shape to expect from any further abort→rejection conversion.
+  UNMODIFIED binary (default profile, `--wasm=false`). The duplication is positional — the parse
+  walk visits an array-element / `.cbor`-controller type2 twice, and a `panic!` at such a site
+  masks the second visit by aborting on the first, so any abort→rejection conversion should expect
+  to make a pre-existing double-walk observable.
   `record_rejection` is a bare `Vec::push` and `rejections_error` joins the vector, so nothing
   dedups. The fix is NOT simply deduping that join, and that is the part worth recording: two
   genuinely distinct rules can hit one site and produce byte-identical messages (several rejection
@@ -440,10 +428,11 @@ ledgered here (that's what the probe/gate error messages point at).
   the remaining definite-length COUNT (repeats = len − fixed), plus the shared
   residue/indefinite-length policy decisions that entry spells out.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
-  marker on a single non-literal arrow map entry no longer silently widens to an unbounded `*` table
-  (the removed bug: the table-detection arm ignored the entry occurrence and `HomogenousMap` — unlike
-  `HomogenousArray` — carried no bounds, so the generated decoder wrongly accepted out-of-window maps).
-  Now `+` / `1*` is honored as a `NonEmptyMap<K, V>` whose single `TryFrom` door rejects the empty map
+  marker on a single non-literal arrow map entry never silently widens to an unbounded `*` table —
+  the widening the rejections below exist to prevent, since `HomogenousMap` — unlike
+  `HomogenousArray` — carries no bounds, so a decoder built from the widened form wrongly accepts
+  out-of-window maps.
+  `+` / `1*` is honored as a `NonEmptyMap<K, V>` whose single `TryFrom` door rejects the empty map
   identically at the API and the wire (`4fa3041`; enforcement model:
   `docs/docs/output_format.mdx` § "Non-empty containers"). That empty-map rejection is pinned by the
   `contain.occurrence-target.memberkey.type1.plus_table` `class="constraint"` decode vector, projected
@@ -464,7 +453,8 @@ ledgered here (that's what the probe/gate error messages point at).
   lower-bound-exactly-1 container shape. The remaining constraint classes still enforce via runtime
   checks that a `pub` field or direct mutation can bypass (the bypassability the `+` work removed):
   - **Bounded containers** (`[2*5 T]` / `*n` arrays — runtime-checked today — and the rejected
-    `?`/`n*m` table spellings owned by the sibling entry above): `BoundedVec`/`BoundedMap` statics
+    `?`/`n*m` table spellings owned by "Real bounded `?` / `n*m` table cardinality"):
+    `BoundedVec`/`BoundedMap` statics
     as SIBLINGS of the non-empty types, not a generalization the non-empty types alias into — Rust
     cannot vary a method's fallibility by const parameter, so a `MIN=1, MAX=∞` instantiation would
     force `Result` onto the shipped infallible `push`/`insert`. The mechanical `Min{N}`/`Max{N}`
@@ -492,7 +482,7 @@ ledgered here (that's what the probe/gate error messages point at).
   Each class lands tests-first when picked up; the `+` case's fixture surface (the `nev_*` rules in
   `tests/core/input.cddl`, the `tests/robustness/non_empty_*` collision/dedup pins) is the template,
   and any wasm-boundary shape a new class mints must be enumerated in the wasm-ABI/multifile matrix
-  `SHAPES` in the same change (the axis-honesty rule below).
+  `SHAPES` in the same change (the "Keep EVERY matrix axis honest" rule).
 - Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
   gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a
@@ -606,8 +596,9 @@ ledgered here (that's what the probe/gate error messages point at).
   enums of both flavors lose their own `Deserialize` transitively, and both `--emit-tests` minters
   skip the type with a named line. Position per se is NOT the gap: the emitter peek-disambiguates
   optional array-record fields against every reachable follower's `cbor_types`, so a type-disjoint
-  non-final `?` (`[ ? f0: uint, f1: tstr ]`) works today. Real support shares ONE design with the
-  middle-position `*` occurrence entry above: add the remaining definite-length COUNT to the
+  non-final `?` (`[ ? f0: uint, f1: tstr ]`) works today. Real support shares ONE design with
+  "Honor non-final and `+`/bounded count-permitting occurrences on heterogeneous ARRAY-record
+  fields": add the remaining definite-length COUNT to the
   existing PEEK signal (repeats = len − fixed), decide the genuinely ambiguous residue (count+peek
   admitting ≥2 assignments — the wire does not carry WHICH assignment produced the bytes, the same
   loss a type choice's overlapping arms have; that one is settled as first match, and this residue
@@ -663,7 +654,7 @@ ledgered here (that's what the probe/gate error messages point at).
   count above.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
-  group-choice-arm siblings). The abort is gone — every one of those shapes now rejects gracefully
+  group-choice-arm siblings). Every one of those shapes rejects gracefully
   under both profiles, naming the map's supported named form (`m = {x: int, y: uint}`, referenced by
   `m`); that rejection is pinned by `inline_map_member_rejects_gracefully` and its keyless spelling
   by `tests/robustness/inline_map_keyless_member.cddl`. But the
@@ -674,13 +665,13 @@ ledgered here (that's what the probe/gate error messages point at).
   spec reaches 5 — hoisting is a mechanical per-occurrence edit, so the cost grows inside a single
   spec rather than across consumers, and the consumer can count it from their own rejection output.
 - **Real support for an inline group as a group-choice arm's sole entry**
-  (`t = [ (uint, tstr) // bytes ]`, and the map-rep `t = { (a: uint) // b: tstr }`). Both now reject
-  gracefully in place of the former abort, pointing at the equivalent named form
+  (`t = [ (uint, tstr) // bytes ]`, and the map-rep `t = { (a: uint) // b: tstr }`). Both reject
+  gracefully, pointing at the equivalent named form
   (`pair = (uint, tstr)`, then `t = [ pair // bytes ]`) — pinned by
   `inline_group_choice_arm_rejects_gracefully`, with the map rep's outcome category held by
   `tests/robustness/inline_group_choice_arm_map.cddl`. Support means minting the arm's struct from
-  the parenthesized group the way a named plain group already is. Lower value than the anonymous-map
-  entry above because the remedy is fully equivalent here (naming the group changes nothing on the
+  the parenthesized group the way a named plain group already is. Lower value than the
+  anonymous-nested-MAP entry because the remedy is fully equivalent here (naming the group changes nothing on the
   wire), so the reopening signal is the same magnitude one on a higher threshold: the count of
   inline group-choice arms a consumer must name to compile ONE committed spec reaches 10.
 - Float-family table key domains are **rejected gracefully** at generation — a key domain that is
@@ -691,8 +682,9 @@ ledgered here (that's what the probe/gate error messages point at).
   behind a resolved generic instance (`{ gen<float64> => uint }`), checked at the one finalize seam
   that sees resolved instances. Pinned by `tests/robustness/float_table_key.cddl` (direct) and
   `tests/robustness/float_table_key_composite.cddl` (composite generic). Remedy: an integer/text/bytes
-  key domain. Real float-key support (e.g. an ordered-float wrapper) is a candidate feature only if a
-  consumer justifies it.
+  key domain. Real float-key support (e.g. an ordered-float wrapper) is a candidate feature.
+  Reopening signal: a consumer reports a spec whose table keys are floats in a wire format they do
+  not control — i.e. the integer/text/bytes remedy is not theirs to apply.
 - Nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
   implemented on the struct-map record path (pinned by
   `contain.map-key.memberkey.value.{nint,float}_colon_single`,
@@ -700,7 +692,7 @@ ledgered here (that's what the probe/gate error messages point at).
   `contain.group-choice-arm.memberkey.value.{nint,float}_map` in `tests/matrix_reject/`). The
   printed remedy differs by kind: for nint the table `{ * nint => v }` in its own rule keeps
   generating; for FLOAT the table form is itself rejected (the float-family table-key boundary
-  above — floats have no total order), so the float message advertises an integer/text key instead
+  entry — floats have no total order), so the float message advertises an integer/text key instead
   of the dead-end table (asserted by the `float arrow key` remedy check in
   `src/tests/robustness_tests.rs`). Real nint key support is the candidate feature (float key
   support is owned by the float-table-key boundary entry's ordered-float question); flipping either
@@ -718,7 +710,7 @@ ledgered here (that's what the probe/gate error messages point at).
   reaching for the extern escape to get it.
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
-  keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,
+  keys — rejected gracefully, its own entry; table domains and `@newtype` bounds — work; bare values, json,
   preserve-encodings — partial), so probing any role re-surfaces a nint cell and per-finding
   sessions keep landing small nint conversions without moving the support boundary. Two facts for
   whoever picks this up: (1) `cbor_event` is NOT a blocker — the crate ships full-range endpoints
@@ -730,7 +722,7 @@ ledgered here (that's what the probe/gate error messages point at).
   gone — `FixedValue::Nint` is `i128` and can represent the whole CBOR nint range — so the
   remaining full-range limiter is UPSTREAM: the `cddl` crate parses int literals as
   `isize`/`usize`, so a literal in -2^64..-(2^63+1) cannot reach us from CDDL text. Until a
-  consumer justifies the feature, new
+  consumer reports a spec they do not control that needs a full-range nint shape, new
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
@@ -740,7 +732,7 @@ ledgered here (that's what the probe/gate error messages point at).
   **refused gracefully in `IntermediateTypes::finalize`**, on the struct-KIND walk, keyed on exactly
   the predicate the tagged-enum serialize path's `assert!(!cli.preserve_encodings)` has — that assert
   is reached from precisely two places, the `TypeChoice` and `GroupChoice` arms of the rust-struct
-  dispatch, and stays in place as the guard that re-earns the retired panic-ledger entry. Pinned by
+  dispatch, and stays in place as the backstop guard behind the refusal. Pinned by
   `tagged_anonymous_choice_rejects_gracefully_under_preserve`.
   SUPPORT is what remains, and its shape is why it is parked: the tag belongs to the enum RULE while
   the encoding metadata preserve records is per-VARIANT, so support means giving the tag a home of
@@ -764,27 +756,27 @@ ledgered here (that's what the probe/gate error messages point at).
 - **Extern compile coverage at BREADTH — every extern corpus/matrix cell is still compile-exempt.**
   Every extern corpus row is compile-gate-exempt (`COMPILE_GATE_EXEMPT` — extern references
   user-supplied code) and the multifile matrix carries the same permanent extern exclusion. The
-  recorded cost is closed at the hand-fixture level: the extern-only-scope undeclared-module break
-  (a non-root scope whose rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` got its `mod.rs` emitted with
-  the re-export glue but no `pub mod <scope>;` in the generated root — E0432 wherever another scope
-  referenced its types) is fixed (declarations derive from the post-glue scope map), string-pinned
-  by `integration_extern_only_scope_declared_in_root`, and the full multi-scope composition —
-  extern-only scope, hand definition, crate-root re-export — now `cargo check`s in a gate
+  hand-fixture level is covered: the extern-only-scope root declarations derive from the post-glue
+  scope map (a non-root scope whose rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` gets its
+  `pub mod <scope>;` in the generated root, holding down the E0432 class; string-pinned
+  by `integration_extern_only_scope_declared_in_root`), and the full multi-scope composition —
+  extern-only scope, hand definition, crate-root re-export — `cargo check`s in a gate
   (`facade_composition_compiles`, the documented facade consumer built over exactly this shape).
   What remains is BREADTH: that gate compiles ONE hand-curated shape, so an extern break in any
   OTHER corpus/matrix shape still ships unseen. The mechanical catch is the def-splice the compile
   gate already does for `rawbytes` cells (`append_raw_bytes_defs`): seed a trivial extern
-  definition + crate-root re-export so extern cells stop being compile-exempt — shared machinery
-  with the extern half of "Mint the two remaining unminted wasm-surface classes" below.
+  definition + crate-root re-export so extern cells stop being compile-exempt.
   This entry OWNS the compile side of the emitted-check/schema-row class (execution is
   `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry); two requirements, each justified
-  by a shipped compile-error class no gate compiled (since fixed, content-pinned by
+  by a compile-error class that shipped because no gate compiled the crate it sat in
+  (content-pinned by
   `json_gen_extern_schema_rows` and `extern_interface_check_skips_generic_base_without_instances`):
   (1) the def-splice compile scope must include the emitted `wasm/json-gen` crate under the json
   profile — the bare generic-extern-BASE rows (E0107) and extern-DEP-owned schema rows (E0433)
   were plain compile errors in a crate the extern exemption kept un-built; and (2) the vendor
-  extern markers need their intra-alternative variation rows enumerated FIRST (the expansion rule
-  above applied to the `CDDL_CODEGEN` profile): a generic extern base WITH vs WITHOUT instances,
+  extern markers need their intra-alternative variation rows enumerated FIRST (the
+  "Intra-alternative variation rows" rule applied to the `CDDL_CODEGEN` profile): a generic extern
+  base WITH vs WITHOUT instances,
   and the generic raw-bytes base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_` — still broken, repro
   ledgered in `tests/TESTING_ROADMAP.md`; the likely honest fix is parse-time rejection, which
   lands it as a reject row rather than a compile cell).
@@ -906,8 +898,8 @@ remains is deleting the notes that explain why we do not have it yet.
 Current state — the grid, the three always-on axes (compile floor, round-trip, rust↔wasm API-surface
 parity) with their emission-profile sweeps, the minted wasm test surface and its loud-skip list, and
 the multifile placement sweep — is documented in `tests/README.md` (§ "wasm-ABI matrix", § "wasm-crate
-test module", § "rust↔wasm API-surface parity", § "multifile placement matrix") plus `README.md` §
-annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer's wasm leg
+test module", § "rust↔wasm API-surface parity", § "multifile placement matrix") plus the
+annotations-table row in `README.md` (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer's wasm leg
 (`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
@@ -951,7 +943,7 @@ composition-space cross-check that complements this matrix's curated per-shape g
   One residual is recorded rather than enumerated, in `tests/TESTING_ROADMAP.md`: the
   `gcvariant` mode extension over the Record-resolving shapes plus a generation-only leg over the
   excluded shapes (§ "Multifile reference-POSITION coverage"). (Input REALISM — consumer-scale
-  identifier length, a dimension no axis here enumerates — is no longer a residual: the
+  identifier length, a dimension no axis here enumerates — is not a residual here: the
   over-width-field class every short-named fixture kept unreachable is held by a standing
   cddl-codegen gate, the dense width ladder
   `integration_tuple_field_width_ladder_never_aborts_rustfmt`, whose step-1 rungs cannot let the
@@ -1009,7 +1001,7 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   2026-08-03. Reopening signal: a consumer-reported behavioral defect in a macro-mode wasm surface
   that the compile verdict passed.
 - **Behavioral emitted-test cells for extern / raw-bytes ctor args** — compile-verdict-permanent,
-  decided 2026-08-04, same class as the macro-mode posture above. This is about whether the
+  decided 2026-08-04, same class as the `--wasm-*-macro` posture. This is about whether the
   AUTO-MINTER (`emit_tests`) learns these classes, NOT about the feature going untested: hand
   fixtures already cover raw-bytes behaviorally on both sides (`tests/raw-bytes/tests.rs` and
   `tests/raw-bytes/tests_wasm.rs` round-trip through `RawBytesEncoding`, and the extern-generic
@@ -1017,13 +1009,12 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   An extern type has no contract a harness could construct against; raw-bytes has a knowable trait
   door (`RawBytesEncoding::from_raw_bytes`) but no knowable accepted LENGTH (the in-repo `PubKey`
   takes exactly 32 bytes), so an emitted mint would be runtime-red against a correct generator.
-  Why an earlier ruling flipped, recorded so this reads as consistent rather than a reversal: the
-  2026-08-03 opt-in-hook ruling rested on a cost premise `6ce3b6e0` falsified — the def-file
+  A harness-side opt-in hook is not an available middle ground: the def-file
   splice runs AFTER generation while the mint decision is taken DURING generation off the IR
   struct variant (`emit_tests::mint_struct` yields no `MintValue` for `RustStructType::Extern`
-  beyond the reserved `Int`, nor for `RustStructType::RawBytesType`), so no harness-side hook can
-  exist and what remained was a user-supplied-hint FEATURE (DSL surface, red-first vectors, docs,
-  matrix registration), which the original ruling's own "no test-harness metadata in production
+  beyond the reserved `Int`, nor for `RustStructType::RawBytesType`), so the only route is a
+  user-supplied-hint FEATURE (DSL surface, red-first vectors, docs,
+  matrix registration), which the "no test-harness metadata in production
   specs" reasoning rejects. Reopening signals: a consumer asking for minted extern/raw-bytes
   values (the request arrives carrying the valid-bytes knowledge the hint needs), or a
   consumer-reported wasm-boundary defect on such a ctor arg that the compile verdict passed.

@@ -104,6 +104,40 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   internal-error class, so the exit-contract tripwire it leans on stops being where formatter
   surprises surface).
 
+- **Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery —
+  blocked on publishing the reviewed fork revision.** At the pinned cddl revision (`ac1b98ec`) a
+  group rule's rule-position directive binds to its LAST GROUP ENTRY's trailing slot, so the
+  spelling that puts the closing paren on its own line (`grp = (\n a: uint\n) ; @x`) leaves the
+  trailing comment past every slot the AST offers — it is merged into the following rule's
+  leading-comment slot, or orphaned when the group rule is last. A directive is therefore
+  undeliverable in that position at this pin, and generation REFUSES the spelling pre-IR
+  (`parsing::multiline_group_trailing_directive_rejection`, named from `api::with_types` right after
+  the checked parse) so the formatting choice cannot decide silently what a spec means. Prose
+  comments there stay accepted, and both bindable spellings — the whole group on one line, and the
+  closing paren on the last entry's line — are unchanged and pinned by
+  `group_rule_directive_on_the_last_entry_line_is_honored`. That last-entry slot is
+  real field metadata and is correctly covered by `no_silent_directive`; it must not be
+  reinterpreted as a rule-only position. The current boundary is documented in `tests/README.md`
+  § “The directive×rule-shape sweep”.
+
+  The refusal is the interim posture, not the end state: it makes the spelling loud, where adoption
+  would make it WORK. Fork commit `a7ed0784e89689784ff78ed0e85c7434a3528937` (`local-fixes`,
+  unpushed) adds the `RuleTrailing` source-position anchor without disturbing the last-entry
+  binding, and publishing it is blocked on an explicit maintainer reversal of the 2026-08-04 no-fork-push
+  ruling — that reversal is the pending action. When the revision is published and adopted, the
+  delivery replaces the refusal seam with
+  the prepared `group_rule_pin_metadata` reader (`comments_after_rule` as a third source) and lands
+  both spellings' `no_silent_directive` vectors in the same change — the multi-line sweep shape
+  `plain_group_spliced_multiline_paren` flips from measuring a rejection to measuring an effect, and
+  the `robustness_tests` refusal vectors become honor vectors. At the new rule-only slot, honor
+  `@rust_name`, `@no_json_schema_export`, `@custom_json`, and `@used_as_key`; reject `@doc`,
+  `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`, `@duplicates`,
+  `@raw_bytes_flavor`, the custom-codec family, and `@extern_companions` with one site-bearing
+  diagnostic plus per-directive vectors. The path override was already green with the prepared
+  codegen side. Pressure signals for making the call: the fork is bumped for any reason (the
+  revision must be re-carried either way), or a consumer reports hitting the refusal on a
+  multi-line spelling their formatting tooling forces.
+
 ## Next work items, in priority order
 
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
@@ -469,7 +503,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     rather than per-minter.** The class this closes: a name-minting path whose output is not a
     spellable Rust identifier ships the bad token to rustfmt, which dies with an error naming its
     own confusion instead of the construct — loud, zero files, and misattributed. Three instances
-    in one 2026-08-06 cycle, each found by hand probing rather than by any gate: fixed float/nint
+    on 2026-08-06 alone, each found by hand probing rather than by any gate: fixed float/nint
     choice arms minted `F1.5`/`U-1` (variant idents), the anonymous nested choice minted the RULE
     ident `F1.5OrText` from the same lexemes, and a fixed-text arm camel-cased `"self"` into the
     keyword `Self` — identifier-shaped, still unspellable. The delivered repair guards the two
@@ -481,43 +515,44 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     a name is unspellable, so the next bad minter is a diagnosed refusal rather than a rustfmt
     autopsy. Enumerate the name families from the IR types (`RustIdent`, `VariantIdent`, field
     name storage) rather than grepping for minters — a negative claim ("no other minter emits bad
-    names") needs the registry, not a keyword search.
+    names") needs the registry, not a keyword search. That enumeration is shared surface: the
+    residuals "Nothing asserts that two IR sites cannot mint the SAME `RustIdent`" (uniqueness)
+    and the synthesized-name referenced-but-never-minted (E0425) flavor want predicates over the
+    same emitted-name registry — whichever is built first, the others become added predicates
+    rather than fresh enumerations.
 
 15. **A rejection message's remedy string is an executable claim — pin each one with a
-    generates-green vector.** Proven valuable twice in one delivery: the plain-group table-domain
-    refusal's first predicate (`is_plain_group`) refused the exact remedy its own message named
-    (`{ * uint => [coords] }` — the registry keeps materialized plain groups, so the lookup
-    over-matched), caught only because the delivery e2e-probed its printed remedy; and the tagged
-    domain's remedy spelling was imprecise (`[#6.5(coords)]` for the faithful `#6.5([coords])`)
-    until a pin asserted the printed remedy generates. The `*_rejects_gracefully` family already
-    pins message TEXT; this extends the convention so the remedy half of the contract is executed,
-    not just spelled. Sweep the existing family for remedies that are only text-pinned and add the
-    generate leg where one is missing; new refusals adopt the pattern from the start (the
-    table-domain and tagged-domain tests are the templates). Third proven instance, 2026-08-06,
-    and it extends the claim's reach to LEDGER prose: a findings entry's recommended remedy
-    (`{ c: [kv] }` for the keyed plain-group map member) was itself refused — as a conflicting
-    representation, a different wall — and only the pickup re-probe caught it before the refusal
-    message shipped naming it; the delivered test's "the remedy must actually work" legs are this
-    pattern applied from the start (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`).
-    A remedy string is executable wherever it lives: in an emitted message it gets a pinned
-    generate leg, in a findings entry it gets executed at pickup. Fourth proven instance
-    (2026-08-06, the tagged-preserve-table delivery's pickup probe) extends the same principle to
-    the DESCRIPTION half of a findings entry: the entry's operative sentence claimed the shape's
-    standalone codec "writes/accepts a bare map" when in fact no standalone codec existed at all
-    (`to_cbor_bytes` failed E0599 for the `PairMap` instantiation; `from_cbor_bytes` was absent) —
-    and the entry HAD two coupled test carriers, but both pinned an adjacent structural fact (the
-    transparent alias surviving, via source-text assertions) rather than executing the operative
-    sentence. Working rule: when a findings entry couples to carriers, at least one carrier
-    executes the entry's HEADLINE claim — for a claims-the-API-does-X sentence that means calling
-    X (a compile-fail probe is an execution too) — so the entry cannot drift from the code while
-    its carriers stay green. Pickup re-probe remains the enforcement of last resort, not the plan.
+    generates-green vector, and execute a findings entry's operative claims at pickup.** The
+    `*_rejects_gracefully` family already pins message TEXT; this extends the convention so the
+    remedy half of the contract is executed, not just spelled. Sweep the existing family for
+    remedies that are only text-pinned and add the generate leg where one is missing; new refusals
+    adopt the pattern from the start (the table-domain and tagged-domain tests are the templates,
+    and `plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`'s "the remedy must
+    actually work" legs are the pattern applied from day one). Four proven instances, each caught
+    only by executing the claim rather than reading it: a refusal's first predicate refused the
+    exact remedy its own message named (`{ * uint => [coords] }` — the registry keeps materialized
+    plain groups, so the lookup over-matched); a tagged remedy spelling was imprecise
+    (`[#6.5(coords)]` for the faithful `#6.5([coords])`) until a pin asserted the printed remedy
+    generates; a findings entry's recommended remedy (`{ c: [kv] }` for the keyed plain-group map
+    member) was itself refused — as a conflicting representation, a different wall — caught by the
+    pickup re-probe before the refusal message shipped naming it; and a findings entry's
+    DESCRIPTION claimed the shape's standalone codec "writes/accepts a bare map" when no
+    standalone codec existed at all (`to_cbor_bytes` failed E0599 for the `PairMap` instantiation;
+    `from_cbor_bytes` was absent), while both of the entry's coupled test carriers pinned an
+    adjacent structural fact rather than executing the operative sentence. Working rules: a remedy
+    string is executable wherever it lives — in an emitted message it gets a pinned generate leg,
+    in a findings entry it gets executed at pickup; and when a findings entry couples to carriers,
+    at least one carrier executes the entry's HEADLINE claim — for a claims-the-API-does-X
+    sentence that means calling X (a compile-fail probe is an execution too) — so the entry cannot
+    drift from the code while its carriers stay green. Pickup re-probe remains the enforcement of
+    last resort, not the plan.
 
 16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
     invisible to both existing systems: `no_silent_directive` measures whether a directive has an
     EFFECT (a routed single half passes it), and the executed custom-pair e2e fixtures assert
     round-trips only for the complete-pair placements someone hand-wrote. What slipped between
-    them, twice in one cycle (2026-08-06, both by ad-hoc probing rather than any gate): a single
+    them, twice on 2026-08-06 (both by ad-hoc probing rather than any gate): a single
     codec half on a transparent alias was accepted and ROUTED — every embed site wrote the custom
     wire and read the default one, a silent asymmetric round-trip; and the FIELD-level single half
     shipped exactly that asymmetry at exit 0. Both are refused now, and their GRID rejection cells
@@ -528,7 +563,8 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     canonical), generate with stub codecs that are true inverses of each other but NOT of the
     default wire (the hex-text pair from the e2e fixtures is the template), then execute
     `from_cbor_bytes(to_cbor_bytes(v)) == v` through a holder. Any placement whose two directions
-    disagree fails identity immediately. Include the rule-CLASS flavor axis the B3-007 cycle had
+    disagree fails identity immediately. Include the rule-CLASS flavor axis the transparent
+    custom-codec-alias delivery had
     to enumerate by hand (loose/non-empty/bounded/`@duplicates` collection flavors): a coherence
     sweep that misses a flavor leaves that flavor exactly the silent carrier the pair rejections
     just closed.
@@ -547,7 +583,32 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     determinism cost; keep the workspace fetch `--locked` (the workspace lock is committed and
     must NOT drift). Alternative if refresh-always proves noisy: pin the fingerprint probe crate's
     manifest to exact versions so it stops resolving fresh — either ends the class; the manual
-    `cargo update -p <dep>` tail below stays only until one of them lands.
+    `cargo update -p <dep>` tail (§ Operational watches, "Registry-fetch transients") stays only
+    until one of them lands. A SECOND unlocked dep universe sits beside this one with the inverse
+    failure mode: the shared TS-toolchain install (`/.ts-toolchain/<manifest-hash>/`) runs
+    `npm install` over caret ranges (`json-schema-to-typescript: ^15.0.4`, `TS_COMPILER_PIN`
+    `^5.9.0`) with no lockfile, and its `.installed` stamp means it never re-resolves — so two
+    checkouts under one manifest-hash key can hold different resolved trees, while the `<key>JSON`
+    declaration-name contract was established empirically against json2ts 15.0.4 only. Whichever
+    refresh policy this item lands should state that universe's posture too (lock it, or
+    re-resolve deliberately).
+
+18. **Check the merged `.d.ts` for name collisions BETWEEN its two halves.** `json-ts-types.js`
+    appends the `<key>JSON` declarations to the wasm-pack bindings under the claim that the suffix
+    cannot collide with a wasm class name — an assumption, not a check: `@name` can mint a wasm
+    class literally called `FooJSON` (and a contrived rule spelling that camelizes to one can too),
+    and TypeScript merges a class with a same-named `interface` silently and LEGALLY, so the merged
+    file's `tsc --noEmit` leg structurally cannot say so and the shipped type is the merge of two
+    unrelated shapes with nothing said. `run-json2ts.js`'s duplicate-declaration guard covers only
+    its own half, for the same reason it exists at all (`tsc` is not the oracle for declaration
+    merging). This is the missing TS sibling of the wasm wrapper-name collision-detector family:
+    per that family's ruling, a per-kind check with its own message rather than a generalization of
+    an existing one. The cheap mechanical layer sits where both halves are in hand —
+    `json-ts-types.js` already walks every `export class` line to place the splice, so collecting
+    those names and refusing an appended declaration equal to one is a set intersection plus a
+    diagnostic naming both the class and the `$defs` key, same fatal-and-file-untouched shape as
+    its existing failures; the vector is an `@name FooJSON` fixture through `js_d_ts_merge`'s
+    hand-laid harness.
 
 ## Standing-system residuals (recur-first)
 
@@ -1783,38 +1844,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `*-spec.md` files for id-like tokens (the probe-index/ruling tables are structured enough to
   extract) and fail if any harvested id is matched by NO ephemeral pattern — lockstep with the
   authority exactly where the authority is present.
-- **Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery —
-  blocked on publishing the reviewed fork revision.** At the pinned cddl revision (`ac1b98ec`) a
-  group rule's rule-position directive binds to its LAST GROUP ENTRY's trailing slot, so the
-  spelling that puts the closing paren on its own line (`grp = (\n a: uint\n) ; @x`) leaves the
-  trailing comment past every slot the AST offers — it is merged into the following rule's
-  leading-comment slot, or orphaned when the group rule is last. A directive is therefore
-  undeliverable in that position at this pin, and generation REFUSES the spelling pre-IR
-  (`parsing::multiline_group_trailing_directive_rejection`, named from `api::with_types` right after
-  the checked parse) so the formatting choice cannot decide silently what a spec means. Prose
-  comments there stay accepted, and both bindable spellings — the whole group on one line, and the
-  closing paren on the last entry's line — are unchanged and pinned by
-  `group_rule_directive_on_the_last_entry_line_is_honored`. That last-entry slot is
-  real field metadata and is correctly covered by `no_silent_directive`; it must not be
-  reinterpreted as a rule-only position. The current boundary is documented in `tests/README.md`
-  § “The directive×rule-shape sweep”.
-
-  The refusal is the interim posture, not the end state: it makes the spelling loud, where adoption
-  would make it WORK. Fork commit `a7ed0784e89689784ff78ed0e85c7434a3528937` (`local-fixes`,
-  unpushed) adds the `RuleTrailing` source-position anchor without disturbing the last-entry
-  binding, and publishing it is blocked on an explicit maintainer reversal of the 2026-08-04 no-fork-push
-  ruling. When that revision is published and adopted, the delivery replaces the refusal seam with
-  the prepared `group_rule_pin_metadata` reader (`comments_after_rule` as a third source) and lands
-  both spellings' `no_silent_directive` vectors in the same change — the multi-line sweep shape
-  `plain_group_spliced_multiline_paren` flips from measuring a rejection to measuring an effect, and
-  the `robustness_tests` refusal vectors become honor vectors. At the new rule-only slot, honor
-  `@rust_name`, `@no_json_schema_export`, `@custom_json`, and `@used_as_key`; reject `@doc`,
-  `@newtype`, `@no_alias`, `@copy`, `@used_as_elem`, `@ignore`, `@duplicates`,
-  `@raw_bytes_flavor`, the custom-codec family, and `@extern_companions` with one site-bearing
-  diagnostic plus per-directive vectors. The path override was already green with the prepared
-  codegen side. Reopening signal: the
-  fork is bumped for any reason, or a consumer cannot reformat a lossy multi-line group spelling.
-
 - **Extend the recombination member-kind table to the OPTIONAL-FIXED shape.** `MEMBER_KINDS` now
   carries a per-kind aux-rule slot (`%A%`), so a kind that needs a named rule of its own is a one-row
   edit rather than a mechanism change — the `tagged_optional` row (`%K%: #6.10(%A%)` over
@@ -1827,7 +1856,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   depth-2 fillers onto different compositions and can surface unrelated pre-existing defects that
   must be fixed or promoted before the row can land. Adding `tagged_optional` cost two emitter fixes
   and one promoted panic class; budget the next row the same way rather than as a table edit.
-  Reopening signal, on the axis the cost grows along and unchanged by this delivery: a SECOND exit-0
+  Reopening signal, on the axis the deferred cost grows along: a SECOND exit-0
   uncompilable-or-wrong-bytes crate in a supported composition the member-kind table does not span
   (each instance is a loud build or round-trip failure for whoever generates the shape, so the
   reporter exists by construction).
@@ -2553,22 +2582,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   spec carrying a construct no `tests/*/input.cddl` fixture has (a hand-written `JsonSchema` impl of
   its own, a cross-crate threaded row whose key is not an identifier), which is when its document
   stops being a simplification of a projected one.
-- **Check the merged `.d.ts` for name collisions BETWEEN its two halves.** `json-ts-types.js`
-  appends the `<key>JSON` declarations to the wasm-pack bindings under the claim that the suffix
-  cannot collide with a wasm class name — an assumption, not a check: `@name` can mint a wasm
-  class literally called `FooJSON` (and a contrived rule spelling that camelizes to one can too),
-  and TypeScript merges a class with a same-named `interface` silently and LEGALLY, so the merged
-  file's `tsc --noEmit` leg structurally cannot say so and the shipped type is the merge of two
-  unrelated shapes with nothing said. `run-json2ts.js`'s duplicate-declaration guard covers only
-  its own half, for the same reason it exists at all (`tsc` is not the oracle for declaration
-  merging). This is the missing TS sibling of the wasm wrapper-name collision-detector family:
-  per that family's ruling, a per-kind check with its own message rather than a generalization of
-  an existing one. The cheap mechanical layer sits where both halves are in hand —
-  `json-ts-types.js` already walks every `export class` line to place the splice, so collecting
-  those names and refusing an appended declaration equal to one is a set intersection plus a
-  diagnostic naming both the class and the `$defs` key, same fatal-and-file-untouched shape as
-  its existing failures; the vector is an `@name FooJSON` fixture through `js_d_ts_merge`'s
-  hand-laid harness.
 - **Propagating a deliberately-unpublished type's intent to the JSON → TS scripts.** A type whose
   CDDL rule carries `@no_json_schema_export` still mints a wasm class with `to_json_value(): any`
   (the directive removes the registration row, not the derives), so when nothing published
@@ -2649,7 +2662,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 - **An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain
   artifact until proven otherwise — and "fails identically on the baseline binary" is not that
   proof, because an environmental failure is binary-independent by construction.** Proven
-  2026-08-06 (B3-006 delivery): an implementation agent's scratch e2e pass ran a generated
+  2026-08-06 (the tagged-preserve-table delivery): an implementation agent's scratch e2e pass ran a generated
   `no-std-check/` shim outside the repo directory, where `rust-toolchain.toml` does not govern, so
   cargo used the DEFAULT toolchain — which lacks the `thumbv7m-none-eabi` target — and the run
   died E0463 on `core`. The agent controlled for its own change by re-running on the baseline
@@ -2908,8 +2921,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `warmup_manifest_covers_registry_dep_universe`). What remains under watch:
   - **Surfaces still online**: standalone script/gate runs outside check.ts (a bare
     `bun run verify.ts`, an isolated `cargo test --bin cddl-codegen <gate>` confirm) — prefix
-    `CARGO_NET_OFFLINE=true` there after any warm run; and the warm-up fetch itself (retried,
-    hard-stop before any gate if it can't fetch, `CHECK_ONLINE=1` to opt back into online runs).
+    `CARGO_NET_OFFLINE=true` there after any warm run; the warm-up fetch itself (retried,
+    hard-stop before any gate if it can't fetch, `CHECK_ONLINE=1` to opt back into online runs);
+    and the shared TS-toolchain install's FIRST run per manifest hash (`npm`, not cargo — an
+    `npm install` under `/.ts-toolchain/` that needs the network once, then serves every
+    TypeScript-side leg offline; unprobed against a fully-offline tier run).
   - **verify.ts evidence absorber stays**: a transient null replay would flip a row's
     decode-foreign clause to "FAILED", which `verify_cache_transparency` reads as an A/B
     divergence — absorbed by decodeForeignProbe's regenerate-retry-once (the same retry the mint
