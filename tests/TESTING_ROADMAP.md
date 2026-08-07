@@ -546,6 +546,23 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     sentence that means calling X (a compile-fail probe is an execution too) — so the entry cannot
     drift from the code while its carriers stay green. Pickup re-probe remains the enforcement of
     last resort, not the plan.
+    Three further proven instances (2026-08-07, the four-refusal cycle) sharpen the item's scope in
+    two directions it did not yet state. First, a message's advertised-VALID-PLACEMENT example is a
+    remedy string too: both `@ignore` rejections printed "`{ 1: a, * k => v } ; @ignore`" as the
+    one valid placement, and that exact spelling itself refuses (a type rule's after-brace comment
+    binds to the RULE slot, where `@ignore` is rejected) — the working entry-line spelling was
+    documented correctly in `comment_dsl.mdx` all along, so only the messages lied; and the inline
+    group-choice rejection's remedy ("`g = (a // b)`, then reference `g`") named a spelling that
+    PANICKED the pre-registration assert (now a refusal). Both fixed with the messages' pins in the
+    same commits; the sweep this item plans must therefore cover every advice-shaped spelling a
+    message prints, not only the strings introduced by "instead" or "remedy". Second — and this is
+    the half a generates-green vector alone cannot deliver — the claim must be exercised against
+    each TRIGGERING construct class that can produce the message: the anonymous-group rejection's
+    "give it a name using the `@name` notation" is true for the bare inline array and UNREACHABLE
+    for the tag-wrapped one (`f: #6.42([x: uint]) ; @name Foo` — the `TaggedData` node breaks the
+    name reader's parent-chain walk; ledgered in `cddl-matrix/ROADMAP.md` § findings), so a
+    hand-chosen untagged vector stays green while the tagged trigger's advice is dead. A remedy
+    pin is per message-per-trigger-class, or the message must name the boundary itself.
 
 16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
@@ -2658,6 +2675,21 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   it would unblock.
 
 ## Operational watches
+
+- **A no-flag `cddl-codegen` invocation is a WASM run — the `wasm` flag's PARSE default is true —
+  so a "default profile" probe that does not spell `--wasm=false` attributes wasm-profile facts to
+  the default profile.** Proven 2026-08-07 (the map rest-row refusal delivery): an implementation
+  agent probed a panic's site on "default / preserve / wasm / json" without `--wasm=false`,
+  observed the wasm-only `finalize` wrapper-collision walk's registry assert on every run (that
+  walk precedes generation, so with wasm enabled nothing else is reachable), and reported the
+  cycle spec's `--wasm=false` panic-site record — measured correctly with the flag spelled — as
+  falsified. The overclaim shipped in a commit message before orchestrator review caught it
+  against the spec's recorded probe outputs; the in-code comment was corrected in a follow-up
+  (`2a5208a6`). Working rule: a profile-coverage claim must list `--wasm=false` as its own probed
+  profile, never inferred from a no-flag run — and a reviewer seeing "premise falsified" should
+  first diff the two probes' FLAG VECTORS, because two contradictory observations are usually two
+  scopes, not one error. (`Cli`'s own doc comment documents the parse-default quirk; this watch is
+  the probe-discipline consequence.)
 
 - **An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain
   artifact until proven otherwise — and "fails identically on the baseline binary" is not that
