@@ -1,0 +1,153 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct AliasDefaultPositions(pub(crate) cddl_lib::AliasDefaultPositions);
+
+#[wasm_bindgen]
+impl AliasDefaultPositions {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<AliasDefaultPositions, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<AliasDefaultPositions, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn x(&self) -> AliasedDefault {
+        self.0.x
+    }
+
+    pub fn set_y(&mut self, y: AliasedDefault) {
+        self.0.y = y
+    }
+
+    pub fn y(&self) -> AliasedDefault {
+        self.0.y
+    }
+
+    pub fn new(x: AliasedDefault) -> Self {
+        Self(cddl_lib::AliasDefaultPositions::new(x))
+    }
+}
+
+impl From<cddl_lib::AliasDefaultPositions> for AliasDefaultPositions {
+    fn from(native: cddl_lib::AliasDefaultPositions) -> Self {
+        Self(native)
+    }
+}
+
+impl From<AliasDefaultPositions> for cddl_lib::AliasDefaultPositions {
+    fn from(wasm: AliasDefaultPositions) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::AliasDefaultPositions> for AliasDefaultPositions {
+    fn as_ref(&self) -> &cddl_lib::AliasDefaultPositions {
+        &self.0
+    }
+}
+
+pub type AliasedDefault = u64;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MandatoryDefault(pub(crate) cddl_lib::MandatoryDefault);
+
+#[wasm_bindgen]
+impl MandatoryDefault {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MandatoryDefault, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<MandatoryDefault, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> u64 {
+        self.0.b
+    }
+
+    pub fn set_c(&mut self, c: u64) {
+        self.0.c = c
+    }
+
+    pub fn c(&self) -> u64 {
+        self.0.c
+    }
+
+    pub fn new(a: u64, b: u64) -> Self {
+        Self(cddl_lib::MandatoryDefault::new(a, b))
+    }
+}
+
+impl From<cddl_lib::MandatoryDefault> for MandatoryDefault {
+    fn from(native: cddl_lib::MandatoryDefault) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MandatoryDefault> for cddl_lib::MandatoryDefault {
+    fn from(wasm: MandatoryDefault) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MandatoryDefault> for MandatoryDefault {
+    fn as_ref(&self) -> &cddl_lib::MandatoryDefault {
+        &self.0
+    }
+}

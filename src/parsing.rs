@@ -6650,7 +6650,7 @@ fn parse_record_from_group_choice(
                 ));
             }
             // does not exist for fixed values importantly
-            let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
+            let mut field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
             // Resolve aliases before stamping: an alias is transparent (one wire form, a value IS
             // the aliased type), so a field spelled through one (`t = [ c: uint, kv_alias ]`) must
             // materialize the plain group exactly like the direct `kv` reference does. Matching the
@@ -6837,6 +6837,34 @@ fn parse_record_from_group_choice(
                 }
                 Representation::Array => None,
             };
+            // RFC 8610 §3.8.2: a `.default` is what a decoder substitutes when the member is
+            // ABSENT, so it is meaningful only for an OPTIONAL occurrence — on a mandatory member
+            // there is no absent case for it to fill. Drop it here, at the one seam where a
+            // field's optionality is known (and the seam a plain group's spliced entries arrive
+            // through), so a mandatory member emits as a PLAIN mandatory field on every face:
+            // the rust `new()` keeps its argument, and the wasm and WIT constructors that mirror
+            // `new()` stay in agreement with it. (Left in place, the inert control moved the field
+            // out of `new()` on the rust face only, and the mirrored constructors called it with
+            // an argument it no longer took.)
+            //
+            // A warning rather than a refusal, because the default may be legitimately CARRIED
+            // rather than spelled: `d = uint .default 0` is well-formed and useful at its optional
+            // use sites (`? y: d`), while a mandatory `x: d` reference picks the same type up. This
+            // seam cannot tell the two apart, and warning on both is the honest reading — the
+            // control is inert either way.
+            if !optional_field && field_type.config.default.is_some() {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                crate::warn!(
+                    "rule `{source_name}`: `.default` on the mandatory member `{field_name}` has \
+                     no effect (RFC 8610: a default substitutes for an ABSENT value, which is \
+                     meaningful only for an optional occurrence) — ignored. Mark the member \
+                     optional (`? {field_name}: …`) if the default was meant to apply."
+                );
+                field_type.config.default = None;
+            }
             Some(RustField::new(
                 field_name,
                 field_type,

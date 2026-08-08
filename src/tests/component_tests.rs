@@ -2434,6 +2434,12 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
          projection keeps it optional — `as_ref` on a `u64` (E0599), `= Some(v)` into a `u64` \
          (E0308) and an unannotated binding (E0282)",
     ),
+    (
+        "default_mandatory",
+        "class 2: the fixture's OPTIONAL members (`? c`, and `? y` through the alias) are the same \
+         plain-`u64`-vs-optional-projection mismatch. Its mandatory-position members are NOT — a \
+         `.default` there is inert and stripped, so they project as ordinary mandatory fields",
+    ),
 ];
 
 /// Corpus-breadth companion to [`component_crate_builds_for_wasm32_wasip2`]: every
