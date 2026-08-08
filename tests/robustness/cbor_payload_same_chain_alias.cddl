@@ -3,15 +3,17 @@
 ; gives it a boundary.
 ;
 ; A `.cbor` rule body mints a wrapper struct (the same one the `@newtype` spelling mints), so `Inner`
-; is a real type with its own serialize fn and its own payload buffer, and `B` writes `43 41 05` for
-; the value 5 — a byte string holding a byte string holding a uint. The reference crosses a TYPE
-; rather than copying an encoding chain, which is why nothing here shares the `<var>_inner_se` buffer
-; that makes the inline sibling (tests/robustness/cbor_payload_same_chain_inline.cddl) unbuildable.
+; is a real type with its own serialize fn and its own payload buffer, and `B` writes `42 41 05` for
+; the value 5 — a byte string holding a byte string holding a uint (uint 5 = `05`; the inner byte
+; string over that one byte = `41 05`; the outer byte string over those two = `42 41 05`; executed,
+; not derived on paper). The reference crosses a TYPE rather than copying an encoding chain, so each
+; level's staging buffer belongs to a different serialize fn — where the inline sibling
+; (tests/robustness/cbor_payload_same_chain_inline.cddl) has both levels in one fn and separates
+; them by depth suffix instead.
 ;
-; This fixture is the CONTROL for that sibling's refusal: the refusal keys on the same-chain
-; composition, and a key that caught the named spelling too would refuse the documented remedy. It
-; also pins the rule-body force-wrap from the outside — were `inner` to register as a transparent
-; alias again, its own `.cbor` would ride on the `RustType` a reference copies whole, the chain would
-; be shared, and this file would go back to being an error.
+; This fixture pins the rule-body force-wrap from the OUTSIDE: were `inner` to register as a
+; transparent alias again, its own `.cbor` would ride on the `RustType` a reference copies whole and
+; the two spellings really would be one chain — which is what the sibling covers, and what makes the
+; two files a pair rather than duplicates.
 inner = bytes .cbor uint
 b = bytes .cbor inner

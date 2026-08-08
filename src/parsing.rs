@@ -9,7 +9,7 @@ use crate::intermediate::{
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
     ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow, RestSemantics,
     RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
-    nested_cbor_payload_rejection, reserved_pin_rejection,
+    reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -3745,28 +3745,12 @@ fn parse_type(
                             }
                             ControlOperator::CBOR(ty) => match ident_to_primitive(&cddl_ident) {
                                 Some(Primitive::Bytes) => {
-                                    // A second `CBORBytes` in ONE chain emits a crate that cannot
-                                    // build — see `nested_cbor_payload_rejection`. Record it and
-                                    // drop the outer application rather than returning early: the
-                                    // rule still registers, as the single-payload type it would
-                                    // have been, so every later reference to it resolves the way
-                                    // it always did and no second complaint is raised about a
-                                    // shape already refused. `finalize` drains the rejection
-                                    // before any of it is emitted.
-                                    let nested =
-                                        ty.encodings.contains(&CBOREncodingOperation::CBORBytes);
-                                    if nested {
-                                        types.record_rejection(format!(
-                                            "{}{}",
-                                            reject_rule_prefix(Some(type_name)),
-                                            nested_cbor_payload_rejection()
-                                        ));
-                                    }
-                                    let cbor_bytes_type = if nested {
-                                        ty.tag_if(outer_tag)
-                                    } else {
-                                        ty.as_bytes().tag_if(outer_tag)
-                                    };
+                                    // A second `CBORBytes` on this chain (the INLINE spelling
+                                    // `bytes .cbor (bytes .cbor T)`) is applied like any other: each
+                                    // `.cbor` level owns its own depth-suffixed staging buffer,
+                                    // reader and encoding member (`cbor_bytes_infix` and its
+                                    // siblings), so the levels no longer contend for one name.
+                                    let cbor_bytes_type = ty.as_bytes().tag_if(outer_tag);
                                     // A `.cbor` rule body ALWAYS wraps, `@newtype` or not: the
                                     // byte-string framing (and any outer tag riding on
                                     // `cbor_bytes_type` via `.tag_if(outer_tag)`) is a wire-affecting
@@ -5655,18 +5639,7 @@ fn rust_type_from_type1(
                 ));
                 return ty;
             }
-            // A second `CBORBytes` in ONE chain emits a crate that cannot build — see
-            // `nested_cbor_payload_rejection`. This seam has no rule name to prefix (it serves
-            // every member / element / choice-arm position), so the message stands alone. The
-            // already-single-payload `ty` is returned unwrapped as the inert placeholder: the walk
-            // continues over a type that is shaped like every other `.cbor` member, and `finalize`
-            // drains the rejection before it can be emitted.
-            if ty.encodings.contains(&CBOREncodingOperation::CBORBytes) {
-                types.record_rejection(nested_cbor_payload_rejection());
-                ty
-            } else {
-                ty.as_bytes()
-            }
+            ty.as_bytes()
         }
         Some(ControlOperator::Range((low, high))) => match &type1.type2 {
             Type2::Typename { ident, .. } => {
