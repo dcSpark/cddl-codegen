@@ -942,6 +942,11 @@ impl GenerationScope {
                                     element_type.clone(),
                                     rust_ident,
                                     non_empty,
+                                    // See the non-empty arm below: a generator-synthesized
+                                    // collection (a table rule's keys-list) must never claim
+                                    // `rule_declared` — no rule authored that wrapper, so the
+                                    // criterion-9 shadow warning would be about nobody's class.
+                                    !types.is_synthesized_collection(rust_ident),
                                     cli,
                                 );
                             } else if non_empty {

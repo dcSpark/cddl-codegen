@@ -224,6 +224,15 @@ impl GenerationScope {
                             (**inner).clone(),
                             &ident,
                             rt.is_non_empty_array(),
+                            // `false`, exactly as the loose/NonEmpty arms below: a hosted request is
+                            // not a rule of THIS dep's spec. The defer consult the emitter now makes
+                            // is naturally inert here for the same reason it already is for those
+                            // siblings — a requested shape's elements are reconstructed as the DEP's
+                            // OWN (exported) types, so `wrapper_placement` sees a consumer-owned
+                            // leaf and the index path's constituent screen returns local. A host that
+                            // itself carries `--workspace-dep`/index flags therefore changes nothing
+                            // for reject that it does not already change for the twins.
+                            false,
                             cli,
                         );
                     } else if rt.is_non_empty_array() {

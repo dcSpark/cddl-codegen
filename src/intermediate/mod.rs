@@ -1620,6 +1620,11 @@ impl<'a> IntermediateTypes<'a> {
                     // LOCKSTEP: this gate mirrors `generate_reject_ordered_set_type`'s /
                     // `generate_non_empty_array_type`'s `loose_list` decision — a reject rule emits
                     // `try_from(&Loose)` regardless of its `[*]`/`[+]` bound. Change them together.
+                    // A rule whose own wrapper DEFERRED (index mode unifying a rule ident with an
+                    // indexed structural name) emits no class and therefore no `try_from` — it still
+                    // reaches this gate, and the two helpers' own guards plus the usage-derived
+                    // import prune leave it importing nothing, so the gate stays keyed on the rule's
+                    // SHAPE rather than on a placement decision made in the generator.
                     if wasm
                         && (*bounds == Some((Some(1), None))
                             || rust_struct.config().duplicates
