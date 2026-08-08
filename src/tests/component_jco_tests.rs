@@ -290,16 +290,18 @@ fn component_jco_js_host() {
         format!("[workspace]\nresolver = \"3\"\nmembers = [{members}]\n"),
     )
     .unwrap();
-    // The rust crates' `cdylib` output exists for wasm-bindgen's `wasm32-unknown-unknown` target; the
-    // guest consumes the rlib, and asking the wasip2 linker for a cdylib is not what this gate is
-    // about. Same narrowing the other component build gates do, for the same reason.
+    // The emitted contract, asserted rather than arranged: all three crates generate component-only
+    // (`--wasm=false`), which the tool emits rlib-only — the guest links the rlib, and the cdylib
+    // exists only for wasm-bindgen's `wasm32-unknown-unknown` target. Same assertion the other
+    // component build gates make, for the same reason.
     for lib in [SURFACE_LIB, DEP_LIB, CONSUMER_LIB] {
         let manifest = out.join(lib).join("rust/Cargo.toml");
-        let narrowed = std::fs::read_to_string(&manifest).unwrap().replace(
-            "crate-type = [\"cdylib\", \"rlib\"]",
-            "crate-type = [\"rlib\"]",
+        let manifest_text = std::fs::read_to_string(&manifest).unwrap();
+        assert!(
+            manifest_text.contains("crate-type = [\"rlib\"]"),
+            "{lib}: a component-only tree must be emitted rlib-only, not narrowed by hand:\n\
+             {manifest_text}"
         );
-        std::fs::write(&manifest, narrowed).unwrap();
     }
 
     // The whole fixture tree, INSIDE the hashed root and before the key is taken — see this module's

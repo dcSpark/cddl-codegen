@@ -2208,6 +2208,13 @@ const EXTERN_DEFS_CANONICAL: &str = "tests/component-extern/external_rust_defs_c
 /// WIT can resolve, encode and validate perfectly while the glue implementing it names a trait method
 /// that does not exist.
 ///
+/// **Built from the WORKSPACE ROOT, over the manifests exactly as emitted.** A root build compiles
+/// every member's own lib targets for wasip2 — the rust crate's `[lib]` included — which is the
+/// posture a consumer building their workspace for that target has, and the one that reaches the
+/// rust crate's `crate-type`. Building only `component/` would reach the rust crate solely as a
+/// dependency and so could not see it. Nothing about the emitted tree is edited first: the assertion
+/// below states the narrowing this face's manifests carry, rather than arranging it.
+///
 /// Nested cargo, so it is memoized per generated-crate content hash by the gate cache; an unchanged
 /// tree re-runs as a visible cached PASS. `GATE_CACHE=0` forces the build.
 #[test]
@@ -2259,17 +2266,20 @@ fn component_crate_builds_for_wasm32_wasip2() {
             "[workspace]\nresolver = \"3\"\nmembers = [\"rust\", \"component\"]\n",
         )
         .unwrap();
-        // The rust crate's `cdylib` output exists for wasm-bindgen's `wasm32-unknown-unknown`
-        // target; asking the wasip2 linker for it is not something the component face needs (the
-        // guest consumes the rlib) and `wasm-component-ld` crashes on it for some specs. Narrowing
-        // the dependency to `rlib` HERE keeps the gate's verdict about the component crate, which is
-        // the thing under test.
+        // The emitted contract, asserted rather than arranged: under `--component=true
+        // --wasm=false` the tool narrows the rust crate to `crate-type = ["rlib"]` itself, because
+        // no face in such a tree wants the cdylib (the guest links the rlib; the cdylib exists for
+        // wasm-bindgen's `wasm32-unknown-unknown` target, and asking the wasip2 linker for it has
+        // crashed `wasm-component-ld` on some specs). This gate builds the manifest AS EMITTED —
+        // if that narrowing ever regresses, the workspace build below is what a consumer would hit,
+        // so the assertion has to fail here rather than the gate quietly re-arranging it.
         let rust_manifest = out.join("rust/Cargo.toml");
-        let narrowed = std::fs::read_to_string(&rust_manifest).unwrap().replace(
-            "crate-type = [\"cdylib\", \"rlib\"]",
-            "crate-type = [\"rlib\"]",
+        let manifest_text = std::fs::read_to_string(&rust_manifest).unwrap();
+        assert!(
+            manifest_text.contains("crate-type = [\"rlib\"]"),
+            "{label}: a component-only tree must be emitted rlib-only, not narrowed by hand:\n\
+             {manifest_text}"
         );
-        std::fs::write(&rust_manifest, narrowed).unwrap();
 
         // The extern definitions go into the user-owned THIN ROOT, never `generated/**` — that
         // subtree is clobbered every regen and already carries the glue's own `pub use crate::<Name>;`
@@ -2286,7 +2296,6 @@ fn component_crate_builds_for_wasm32_wasip2() {
             std::fs::write(&lib_rs, root).unwrap();
         }
 
-        let component_dir = out.join("component");
         let outcome = gate_cache::run_cached(
             "component_wasip2_build",
             &label,
@@ -2296,7 +2305,11 @@ fn component_crate_builds_for_wasm32_wasip2() {
                 std::path::PathBuf::from("rust/Cargo.toml"),
             ],
             &[
-                "cwd=component".to_owned(),
+                // The WORKSPACE ROOT, not `component/`: a root build compiles every member's own
+                // lib targets for wasip2, so the rust crate's emitted `[lib]` is under test too
+                // rather than being reached only as a dependency. That is the posture a consumer
+                // building their workspace for wasip2 actually has.
+                "cwd=workspace-root".to_owned(),
                 "cargo".to_owned(),
                 "build".to_owned(),
                 "--target".to_owned(),
@@ -2305,7 +2318,7 @@ fn component_crate_builds_for_wasm32_wasip2() {
             || {
                 let build = crate::tests::integration_tests::tool_cmd("cargo")
                     .args(["build", "--target", "wasm32-wasip2"])
-                    .current_dir(&component_dir)
+                    .current_dir(&out)
                     .env("CARGO_TARGET_DIR", &target_dir)
                     .output()
                     .unwrap();
@@ -2530,19 +2543,35 @@ fn component_corpus_compiles() {
         // those fixtures would fail on undefined names rather than on anything about the component
         // face. The component profile is neither json nor preserve.
         crate::tests::integration_tests::append_corpus_defs_for(&out, &stem, false, false);
-        // A workspace root so the emitted crates share one lock and one target dir, and the rust
-        // crate narrowed to `rlib` — the same two edits the build smoke makes, for the same reasons.
+        // A workspace root so the emitted crates share one lock and one target dir. Real consumers
+        // own this file; the tool never writes one.
         std::fs::write(
             out.join("Cargo.toml"),
             "[workspace]\nresolver = \"3\"\nmembers = [\"rust\", \"component\"]\n",
         )
         .unwrap();
+        // This sweep is a BOTH-FACES tree — the `ALL_PROFILES` component row leaves `--wasm` at its
+        // default `true` (see that row for the four reasons), so the tool keeps the cdylib the wasm
+        // face's `wasm32-unknown-unknown` build needs and the hand narrowing below is the remedy the
+        // flag doc prescribes for exactly this shape. Asserting the wide form first is what keeps
+        // the two halves honest: were this row ever to gain `--wasm=false`, the emitted manifest
+        // would already be rlib-only and this edit would silently become a no-op whose comment lied.
         let rust_manifest = out.join("rust/Cargo.toml");
-        let narrowed = std::fs::read_to_string(&rust_manifest).unwrap().replace(
-            "crate-type = [\"cdylib\", \"rlib\"]",
-            "crate-type = [\"rlib\"]",
+        let manifest_text = std::fs::read_to_string(&rust_manifest).unwrap();
+        assert!(
+            manifest_text.contains("crate-type = [\"cdylib\", \"rlib\"]"),
+            "{stem}: the component profile is a both-faces posture, so the rust manifest must still \
+             carry the wasm face's cdylib — if it no longer does, drop this narrowing\n\
+             {manifest_text}"
         );
-        std::fs::write(&rust_manifest, narrowed).unwrap();
+        std::fs::write(
+            &rust_manifest,
+            manifest_text.replace(
+                "crate-type = [\"cdylib\", \"rlib\"]",
+                "crate-type = [\"rlib\"]",
+            ),
+        )
+        .unwrap();
 
         let component_dir = out.join("component");
         let mut stderr = String::new();
