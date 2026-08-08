@@ -190,6 +190,10 @@ fixture = "group_choice.cddl"
 id = "type.enum"
 fixture = "c_style_enum.cddl"
 
+[[cover]]
+id = "assignt.extend"
+fixture = "assignt_extend.cddl"
+
 # literal-value features type2.value / value.number / value.text are ➖ at TOP LEVEL (a `version = 5` /
 #  `answer = 42` type panics — see the ➖ notes below) but SUPPORTED as array-element members. That
 #  per-cell coverage is role-keyed in the "per-cell (role × feature) coverage" section below (fixed_value.cddl

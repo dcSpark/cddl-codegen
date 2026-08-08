@@ -55,7 +55,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `assignt.extend` | ➖ | Incremental type-choice extension (/=) | cddl-codegen rejected at parse/lex (exit 1) — ⚠️ no rationale note yet (overlay gap) |
+| `assignt.extend` | ✅ | Incremental type-choice extension (/=) | `assignt_extend.cddl` |
 
 ### `genericarg` (2)
 
@@ -442,7 +442,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **123** — ✅ 67 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 24 not supported
+- Features: **123** — ✅ 68 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 23 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 98
 
@@ -455,6 +455,3 @@ rows above); constructs whose support doesn't vary by role stay feature-axis (th
 top-level). The full role × feature picture — every construct the corpus exercises or the containment
 relation models, in every role — is rendered above in **§ Role × feature containment grid**, joined from
 the whole-corpus floor; that is where a cell nothing models shows up.
-
-**Overlay rationale gap (disclosed).** 1 unsupported feature(s) render ➖ with no rationale note —
-add a `[[note]]` (reason + code_anchor) to the overlay: `assignt.extend`.

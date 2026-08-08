@@ -803,7 +803,18 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     machine's default toolchain, and any claim naming the pin must come from the rust-side
     gates or an explicit `rustup run` (the AGENTS unspelled-default rule's toolchain bullet).
 
-## Standing-system residuals (recur-first)
+26. **verify.ts should refuse an unknown flag instead of silently degrading to a plain run.**
+    Every mode flag is tested with a bare `process.argv.includes`, so a mistyped flag matches
+    nothing and the run proceeds as an ordinary full verify — same exit 0, same `RESULT: PASS`,
+    nothing distinguishing "did what you asked" from "ignored what you asked" except the absence
+    of the mode's own output lines. Proven expensive 2026-08-08 (B3-021 close): two ~14-minute
+    full sweeps ran under `--mint-decode` (the real flag is `--mint-decode-foreign`) before the
+    7.8-second mint itself; the log even *looks* plausible for a mint run until the missing
+    `wrote …catalog.toml` line is noticed. The fix is one seam: collect the known flag/`--k=v`
+    prefixes (they are all declared in one block at the top), and exit 2 at startup naming any
+    `--`-prefixed argv token that matches none — the same hard-fail posture `--only` already
+    takes for an unknown row id. Red-first: assert `verify.ts --mint-decode` exits 2 before
+    building the list.
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
 system (or working rule) owns it meanwhile, and the trigger — usually a SECOND instance — that

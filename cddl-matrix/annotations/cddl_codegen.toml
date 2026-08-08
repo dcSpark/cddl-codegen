@@ -74,8 +74,12 @@ evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "assignt.extend"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "ctl.ne.one"
