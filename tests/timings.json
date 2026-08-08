@@ -79,7 +79,17 @@
       ]
     },
     {
-      "gate": "component_build_sweep"
+      "gate": "component_build_sweep",
+      "warm_ms": 105000,
+      "n": 3,
+      "measured": "2026-08-08",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-08",
+          "warm_ms": 105000
+        }
+      ]
     },
     {
       "gate": "component_compose",
