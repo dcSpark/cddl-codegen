@@ -14,6 +14,32 @@ mod tests {
         assert_eq!(deserializer.position(), orig_bytes.len());
     }
 
+    /// Assert that `bytes` is REJECTED, and that the rejection is the one the vector claims — the
+    /// discriminated form of a bare `assert!(T::from_cbor_bytes(&bytes).is_err())`.
+    ///
+    /// A bare `is_err()` accepts ANY failure, so a hand-derived vector that fails EARLIER than the
+    /// boundary it was written to prove (one byte off; a wrong major type reached before the check
+    /// ever runs) stays green while the pinned boundary goes unexercised — outcome right,
+    /// provenance wrong, invisible to every gate by construction. Pinning a distinctive substring
+    /// of the message makes the provenance part of what the test asserts, and prints the real
+    /// message when it moves. A substring only discriminates failures whose messages DIFFER: two
+    /// defects sharing one message remain indistinguishable to it.
+    ///
+    /// Spelled IDENTICALLY in every fixture `tests.rs` that uses it, deliberately: each such file
+    /// is appended standalone into its own generated crate, so there is no module a shared
+    /// definition could live in and no import that could reach one.
+    fn assert_decode_reject_reason<T: Deserialize>(bytes: &[u8], reason_substring: &str) {
+        let err = T::from_cbor_bytes(bytes)
+            .map(|_| ())
+            .expect_err("expected this input to be REJECTED, but it decoded successfully");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(reason_substring),
+            "rejected for the WRONG reason: expected a message containing \
+             {reason_substring:?}, got: {msg}"
+        );
+    }
+
     // Second, independent oracle: validate our *encoder output* against the source .cddl via the
     // `cddl` crate (see tests/deser_test_conformance.rs). Round-trips only prove our encoder and
     // decoder agree with each other; this proves the bytes actually match the spec — catching an
@@ -233,7 +259,7 @@ mod tests {
             cbor_string("hi"),
         ]
         .concat();
-        assert!(OptFixedArr::from_cbor_bytes(&wrong).is_err());
+        assert_decode_reject_reason::<OptFixedArr>(&wrong, "Expected fixed value 5 found 6");
 
         // map rep: a fixed map value with a non-canonical width preserves byte-identically too
         let map_nc = [
@@ -392,7 +418,7 @@ mod tests {
             assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
         }
         let _ = String64::from_cbor_bytes(&cbor_str_sz(&(0..64).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).unwrap();
-        assert!(String64::from_cbor_bytes(&cbor_str_sz(&(0..65).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).is_err());
+        assert_decode_reject_reason::<String64>(&cbor_str_sz(&(0..65).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two)), "65 not in range 0 - 64");
     }
 
     #[test]
@@ -422,14 +448,14 @@ mod tests {
             cbor_tag_sz(7, Sz::Two),
             cbor_str_sz(&(0..32).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two)),
         ].into_iter().flatten().clone().collect::<Vec<u8>>()).unwrap();
-        assert!(String1632::from_cbor_bytes(&vec![
+        assert_decode_reject_reason::<String1632>(&vec![
             cbor_tag_sz(7, Sz::Inline),
             cbor_str_sz(&(0..15).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Inline)),
-        ].into_iter().flatten().clone().collect::<Vec<u8>>()).is_err());
-        assert!(String1632::from_cbor_bytes(&vec![
+        ].into_iter().flatten().clone().collect::<Vec<u8>>(), "15 not in range 16 - 32");
+        assert_decode_reject_reason::<String1632>(&vec![
             cbor_tag_sz(7, Sz::Eight),
             cbor_str_sz(&(0..33).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Eight)),
-        ].into_iter().flatten().clone().collect::<Vec<u8>>()).is_err());
+        ].into_iter().flatten().clone().collect::<Vec<u8>>(), "33 not in range 16 - 32");
     }
 
     #[test]
@@ -1311,19 +1337,20 @@ mod tests {
         deser_test(&tagged_ok);
         TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).unwrap();
         // untagged input is rejected (a bare `pub type = u64` alias would have accepted it)
-        assert!(
-            TopLevelTaggedRange::from_cbor_bytes(&cbor_int(7, cbor_event::Sz::Inline)).is_err()
+        assert_decode_reject_reason::<TopLevelTaggedRange>(
+            &cbor_int(7, cbor_event::Sz::Inline),
+            "expected `Tag' byte received `UnsignedInteger'",
         );
         // out-of-window tagged input is rejected
-        assert!(TopLevelTaggedRange::from_cbor_bytes(
-            &[cbor_tag(5), cbor_int(11, cbor_event::Sz::Inline)].concat()
-        )
-        .is_err());
+        assert_decode_reject_reason::<TopLevelTaggedRange>(
+            &[cbor_tag(5), cbor_int(11, cbor_event::Sz::Inline)].concat(),
+            "11 not in range 3 - 10",
+        );
         // wrong tag is rejected
-        assert!(TopLevelTaggedRange::from_cbor_bytes(
-            &[cbor_tag(4), cbor_int(7, cbor_event::Sz::Inline)].concat()
-        )
-        .is_err());
+        assert_decode_reject_reason::<TopLevelTaggedRange>(
+            &[cbor_tag(4), cbor_int(7, cbor_event::Sz::Inline)].concat(),
+            "Expected tag 5, found 4",
+        );
     }
 
     #[test]
@@ -1610,9 +1637,10 @@ mod tests {
         let direct = cbor_string("42");
         assert_eq!(record.to_cbor_bytes(), direct);
         assert_eq!(CustomRecord::from_cbor_bytes(&direct).unwrap().value, 42);
-        assert!(
-            CustomRecord::from_cbor_bytes(&[arr_def(1), cbor_int(42, Sz::One)].concat()).is_err(),
-            "the custom reader must reject the record's generated array wire"
+        // the custom reader must reject the record's generated array wire
+        assert_decode_reject_reason::<CustomRecord>(
+            &[arr_def(1), cbor_int(42, Sz::One)].concat(),
+            "expected `Text' byte received `Array'",
         );
 
         let holder = CustomRecordHolder::new(record);
@@ -1705,7 +1733,7 @@ mod tests {
             0xff, // break (valued)
             0xff, // break (array)
         ];
-        assert!(CustomTablePositions::from_cbor_bytes(&crash).is_err());
+        assert_decode_reject_reason::<CustomTablePositions>(&crash, "hex codec: non-lowercase hex text cannot re-encode to itself");
         // the same hole from the table KEY position (read_hex_table_string's other reach)
         let upper_key = vec![
             arr_def(2),
@@ -1717,7 +1745,7 @@ mod tests {
         .into_iter()
         .flatten()
         .collect::<Vec<u8>>();
-        assert!(CustomTablePositions::from_cbor_bytes(&upper_key).is_err());
+        assert_decode_reject_reason::<CustomTablePositions>(&upper_key, "hex codec: non-lowercase hex text cannot re-encode to itself");
         // and from the struct-field positions (read_hex_string, read_tagged_uint_str)
         let struct_bytes = |hexed: &str, tagged: &str| {
             vec![
@@ -1747,20 +1775,20 @@ mod tests {
             ok
         );
         // uppercase hex at the struct-field slot
-        assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("BAAD", "1024")).is_err());
+        assert_decode_reject_reason::<MapStructWithCustomSerialization>(&struct_bytes("BAAD", "1024"), "hex codec: non-lowercase hex text cannot re-encode to itself");
         // decimal spellings `u64::from_str` accepts but `to_string` never re-emits
-        assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("baad", "+1024")).is_err());
-        assert!(MapStructWithCustomSerialization::from_cbor_bytes(&struct_bytes("baad", "01024")).is_err());
+        assert_decode_reject_reason::<MapStructWithCustomSerialization>(&struct_bytes("baad", "+1024"), "uint-as-text codec: non-canonical decimal text cannot re-encode to itself");
+        assert_decode_reject_reason::<MapStructWithCustomSerialization>(&struct_bytes("baad", "01024"), "uint-as-text codec: non-canonical decimal text cannot re-encode to itself");
         // The STRING-ENCODING dimension of the same contract, on the pair with NO encoding slot at
         // all (read_custom_record replaces the record's array with a text item, so the record's
         // self-carrying sidecars describe nothing about it): the second libFuzzer artifact —
         // indefinite text `7f 61 31 ff` ("1" in one chunk) — was accepted and re-encoded as the
         // definite `61 31`. Only the writer's exact re-emission may be accepted: definite text,
         // canonical length width, canonical decimal content.
-        assert!(CustomRecord::from_cbor_bytes(&[0x7f, 0x61, 0x31, 0xff]).is_err()); // the artifact
-        assert!(CustomRecord::from_cbor_bytes(&[0x78, 0x01, 0x31]).is_err()); // non-canonical width
-        assert!(CustomRecord::from_cbor_bytes(&[0x62, 0x2b, 0x31]).is_err()); // "+1"
-        assert!(CustomRecord::from_cbor_bytes(&[0x62, 0x30, 0x31]).is_err()); // "01"
+        assert_decode_reject_reason::<CustomRecord>(&[0x7f, 0x61, 0x31, 0xff], "record-as-text codec: indefinite text cannot re-encode to itself"); // the artifact
+        assert_decode_reject_reason::<CustomRecord>(&[0x78, 0x01, 0x31], "record-as-text codec: non-canonical text length width cannot re-encode to itself"); // non-canonical width
+        assert_decode_reject_reason::<CustomRecord>(&[0x62, 0x2b, 0x31], "record-as-text codec: non-canonical decimal text cannot re-encode to itself"); // "+1"
+        assert_decode_reject_reason::<CustomRecord>(&[0x62, 0x30, 0x31], "record-as-text codec: non-canonical decimal text cannot re-encode to itself"); // "01"
         // control: the writer's own spelling round-trips byte-identically
         let rec = CustomRecord::from_cbor_bytes(&[0x61, 0x31]).unwrap();
         assert_eq!(rec.value, 1);
@@ -1893,10 +1921,8 @@ mod tests {
                     cbor_int(7, Sz::Inline),
                         cbor_string("baad"),
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        assert!(
-            CustomTablePositions::from_cbor_bytes(&default_shaped_key).is_err(),
-            "the custom reader must reject the default writer's shape in the table KEY domain"
-        );
+        // the custom reader must reject the default writer's shape in the table KEY domain
+        assert_decode_reject_reason::<CustomTablePositions>(&default_shaped_key, "expected `Text' byte received `Bytes'");
         let default_shaped_value = vec![
             arr_def(2),
                 map_def(1),
@@ -1906,10 +1932,8 @@ mod tests {
                     cbor_int(7, Sz::Inline),
                         cbor_bytes_sz(vec![0xBA, 0xAD], StringLenSz::Len(Sz::Inline)),
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
-        assert!(
-            CustomTablePositions::from_cbor_bytes(&default_shaped_value).is_err(),
-            "the custom reader must reject the default writer's shape in the table VALUE range"
-        );
+        // the custom reader must reject the default writer's shape in the table VALUE range
+        assert_decode_reject_reason::<CustomTablePositions>(&default_shaped_value, "expected `Text' byte received `Bytes'");
     }
 
     #[test]
@@ -2128,24 +2152,31 @@ mod tests {
         // the bool slot rejects as a type mismatch (not a mis-decode). Each vector keeps a VALID
         // float in the second slot so the rejection is attributable to the first one rather than
         // to the array arity.
-        for bad_bool in [
-            &[0xf8u8, 0xf5][..],
-            &[0xfc],
-            &[0xfd],
-            &[0xfe],
-            &[0xf8, 0x1f],
-            &[0xff],
-            &[0xf9, 0x42, 0x00],
+        for (bad_bool, expect) in [
+            (&[0xf8u8, 0xf5][..], "Expected Special::Bool, received Unassigned(245)"),
+            (&[0xfc][..], "non-well-formed encoding of simple value 28"),
+            (&[0xfd][..], "non-well-formed encoding of simple value 29"),
+            (&[0xfe][..], "non-well-formed encoding of simple value 30"),
+            (&[0xf8, 0x1f][..], "non-well-formed encoding of simple value 31"),
+            (&[0xff][..], "Expected Special::Bool, received Break"),
+            (&[0xf9, 0x42, 0x00][..], "Expected Special::Bool, received Float(3.0)"),
         ] {
             let bad: Vec<u8> =
                 [arr_def(2), bad_bool.to_vec(), vec![0xf9, 0x3c, 0x00]].concat();
-            assert!(NullableSpecials::from_cbor_bytes(&bad).is_err());
+            assert_decode_reject_reason::<NullableSpecials>(&bad, expect);
         }
-        // ...and the mirror: a non-float Special in the FLOAT slot is a type mismatch, including
-        // the reserved `0xfc-0xfe` codepoints the cbor_event fork rejects at read.
-        for bad_float in [&[0xf5u8][..], &[0xf8, 0x18], &[0xfc], &[0xff]] {
+        // ...and the mirror, in the FLOAT slot. Two mechanisms, one outcome, kept apart by the
+        // pinned reasons: a well-formed non-float Special (`true`, a Break) is a TYPE mismatch,
+        // while the non-well-formed simples — the reserved `0xfc-0xfe` codepoints AND the two-byte
+        // form below 32 (`f8 18`) — are rejected at READ, before anything types them.
+        for (bad_float, expect) in [
+            (&[0xf5u8][..], "Expected Special::Float, received Bool(true)"),
+            (&[0xf8, 0x18][..], "non-well-formed encoding of simple value 24"),
+            (&[0xfc][..], "non-well-formed encoding of simple value 28"),
+            (&[0xff][..], "Expected Special::Float, received Break"),
+        ] {
             let bad: Vec<u8> = [arr_def(2), vec![0xf5], bad_float.to_vec()].concat();
-            assert!(NullableSpecials::from_cbor_bytes(&bad).is_err());
+            assert_decode_reject_reason::<NullableSpecials>(&bad, expect);
         }
     }
 
@@ -2246,7 +2277,7 @@ mod tests {
             cbor_string("hi"),
         ]
         .concat();
-        assert!(OptFixedArrFloat::from_cbor_bytes(&wrong).is_err());
+        assert_decode_reject_reason::<OptFixedArrFloat>(&wrong, "Expected fixed value 2.5 found 1");
     }
 
     // --- OrderedHashMap mutation semantics, pinned at the WIRE level ---
@@ -2594,22 +2625,31 @@ mod tests {
     fn float_heads_reject_values_outside_their_class() {
         let in_class: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1E10, FA_1E10, FB_1_1, F9_1_5];
         FloatHeads::from_cbor_bytes(&float_heads_bytes(&in_class)).unwrap();
-        for (idx, bad, why) in [
-            (0usize, FA_1E10, "1e10 is a float32, not a float16"),
-            (0, FB_1_1, "1.1 is a float64, not a float16"),
-            (1, FB_1_1, "1.1 is a float64, not a float16-32"),
-            (2, FB_1_5, "an fb-headed 1.5 is still a float16, not a float32-64"),
-            (3, FA_1_5, "an fa-headed 1.5 is still a float16, not a float32"),
-            (3, FB_1_1, "1.1 is a float64, not a float32"),
-            (4, FB_1_5, "an fb-headed 1.5 is still a float16, not a float64"),
-            (4, FA_1E10, "1e10 is a float32, not a float64"),
+        // (member index, a value that member's class does NOT contain, the rejection it must
+        // produce). The reason column is the runtime's own spelling of each row's `why`, kept
+        // beside it as a comment: naming the width class BOTH sides is what keeps a row from
+        // passing on some other failure that happens to reach the same outcome.
+        for (idx, bad, expect) in [
+            // 1e10 is a float32, not a float16
+            (0usize, FA_1E10, "Expected a float16 value, found a float32 value"),
+            // 1.1 is a float64, not a float16
+            (0, FB_1_1, "Expected a float16 value, found a float64 value"),
+            // 1.1 is a float64, not a float16-32
+            (1, FB_1_1, "Expected a float16 - float32 value, found a float64 value"),
+            // an fb-headed 1.5 is still a float16, not a float32-64
+            (2, FB_1_5, "Expected a float32 - float64 value, found a float16 value"),
+            // an fa-headed 1.5 is still a float16, not a float32
+            (3, FA_1_5, "Expected a float32 value, found a float16 value"),
+            // 1.1 is a float64, not a float32
+            (3, FB_1_1, "Expected a float32 value, found a float64 value"),
+            // an fb-headed 1.5 is still a float16, not a float64
+            (4, FB_1_5, "Expected a float64 value, found a float16 value"),
+            // 1e10 is a float32, not a float64
+            (4, FA_1E10, "Expected a float64 value, found a float32 value"),
         ] {
             let mut items = in_class.clone();
             items[idx] = bad;
-            assert!(
-                FloatHeads::from_cbor_bytes(&float_heads_bytes(&items)).is_err(),
-                "member {idx}: {why}"
-            );
+            assert_decode_reject_reason::<FloatHeads>(&float_heads_bytes(&items), expect);
         }
     }
 
@@ -2704,16 +2744,21 @@ mod tests {
         }
         // no variant matched: `false` is the sharp one — it is a bool, so an arm that merely read
         // a bool instead of VERIFYING the constant would accept it as `True`.
-        for bad in [
-            &[0xf4u8][..],  // false: bool-typed, wrong constant
-            &[0x00],        // uint
-            &[0x40],        // empty bytes
-            &[0xf9, 0x3c, 0x00], // a float — major 7 like the two fixed arms, but neither of them
+        // Each row pins the CAUSE its own arm reported, not just the outer "no variant"
+        // verdict: the verdict is identical for every non-matching input, so on its own it cannot
+        // tell "the True arm verified the constant and refused" from "the True arm was never
+        // reached".
+        for (bad, expect) in [
+            // false: bool-typed, wrong constant
+            (&[0xf4u8][..], "Expected fixed value true found false"),
+            // uint
+            (&[0x00][..], "No variant matched"),
+            // empty bytes
+            (&[0x40][..], "No variant matched"),
+            // a float — major 7 like the two fixed arms, but neither of them
+            (&[0xf9, 0x3c, 0x00][..], "Expected Special::Bool, received Float(1.0)"),
         ] {
-            assert!(
-                FixedSpecialTypeChoiceBrute::from_cbor_bytes(bad).is_err(),
-                "{bad:?} matched a variant it must not",
-            );
+            assert_decode_reject_reason::<FixedSpecialTypeChoiceBrute>(bad, expect);
         }
     }
 }
