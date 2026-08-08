@@ -261,47 +261,9 @@ fixture trees" emission defect — an unused `use serialization::*;` — was suc
 fresh-generation probe found the generator emits that glob nowhere. The retraction record is in
 `tests/TESTING_ROADMAP.md`'s unused-imports entry.
 
-- **A rule named `t` emits non-compiling component glue at exit 0 — `wit_bindgen::generate!` binds
-  the type parameter `T` in the glue's scope, and the emitted `cddl_lib::T::…` stops resolving.**
-  Harness-free repro (2026-08-08, tool alone into scratch, `--component=true --wasm=false`,
-  default posture): `t = [uint, tstr]` generates at exit 0 and the component crate fails
-  `cargo build --target wasm32-wasip2` with `E0599: no associated function or constant named
-  'type_guard' found for type parameter T`; the identical shape as `tt = [uint, tstr]` compiles
-  clean, and the failure is shape-independent (a record, a range and a type choice all fail —
-  probed by the component execution leg's widening, which this cost three candidate rows:
-  `type.choice` and every `rangeop` row name their catalog rule `t`). Scope: only a rule whose
-  camel-cased rust ident is exactly `T` is known reachable; other single-letter idents and other
-  glue-bound names (e.g. wit-bindgen's own idents) are NOT probed. Verified remedy: rename the
-  rule (`@name` renames without touching the wire). Fix shape — and note the LOCAL-HONORING
-  branch is DEAD, proven by a generator-free repro (a 20-line hand-written wit-bindgen 0.57.1
-  guest with a WIT `resource t` fails identically, zero cddl-codegen-written lines; the failing
-  code is `generate!`'s own expansion, so no change to OUR emitted glue can honor the name —
-  repro preserved in the gitignored `draft/wit-bindgen-t-resource-ident-collision.md`, candidate
-  upstream report): either refuse the collision at the WIT projection's naming seam with the
-  `@name` remedy in the message (the wasm wrapper-name detectors' pattern — the honest local
-  fix), or auto-rename the WIT resource ident (changes the component's public linking identity,
-  which `component_differences.mdx`'s unification rules treat as a composition-breaking change —
-  so refusal is the likely right local shape until an upstream fix lands and honoring becomes
-  free). The test-side work (a corpus fixture
-  + `EXPECTED_COMPILE_FAIL` pin per class, so a fix announces itself) is
-  `tests/TESTING_ROADMAP.md`'s "Corpus fixtures + ledger pins for the two component-glue compile
-  classes no fixture reaches"; the user-facing statement is `component_differences.mdx` § "Known
-  limitation: shapes whose glue does not yet compile".
-- **An `any` member reached THROUGH A TRANSPARENT ALIAS emits non-compiling component glue at
-  exit 0 — the constructor-fallibility walk does not resolve the alias, while the body's decode
-  does.** Harness-free repro (2026-08-08, same scope as above): `__probe_holder = [0, x]` +
-  `x = any` generates at exit 0 and the component crate fails with E0277 (`?` inside
-  `fn new(x: Vec<u8>) -> Self`); the DIRECT spelling `h = [x: any]` compiles clean and emits the
-  correct fallible door (`constructor(x: any-cbor) -> result<h, string>`, glue
-  `fn new(..) -> Result<Self, String>`) — so the defect is the alias resolution in the
-  fallibility decision (the `wit_param_validates`/`fallible` walk in `src/generation/wit.rs`
-  treats the aliased occurrence as non-validating while `component.rs`'s body still decodes the
-  `any-cbor` payload fallibly), not `any`-in-constructor as such. Read-back is unaffected. Scope:
-  probed on the two spellings above, default posture; other validates-classes behind an alias
-  (bounds, despecialized collections) are NOT probed for the same walk divergence and are worth
-  one probe each when this is picked up. Fix shape: resolve transparent aliases before the
-  fallibility/validates decision so the two walks agree (the module's own "two walks must agree"
-  contract names this failure class). Same test-side and doc cross-refs as the entry above. `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
+- **A group RULE whose body carries multiple group choices is refused with two verified remedies —
+  the honoring design (a choice of bodies) is the missing capability, not the guard.**
+  `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
   `grpchoice *(S "//" S grpchoice)`), and today it is a graceful refusal at the `api::with_types`
   pre-scan, naming the rule, its choice count and two remedies verified to generate and build
   (`multi_choice_group_rule_body_rejects_gracefully_at_every_placement`): write the alternatives
