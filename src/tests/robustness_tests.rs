@@ -13071,3 +13071,90 @@ fn array_rep_default_present_is_tracked_under_preserve_encodings() {
          got:\n{ser}"
     );
 }
+
+/// `true` / `false` / `null` / `nil` are CDDL prelude CONSTANTS spelled as typenames rather than as
+/// their own literal syntax, so a `.default` carrying one arrives as a `Type2::Typename`. Lowering
+/// them here is what makes a bool default reachable at all — the operand lowering used to abort on
+/// any non-literal-shaped `Type2`, so `? f: bool .default true` killed the run.
+///
+/// `null` is lowered too, deliberately: it is a real value, so the verdict belongs to the HEAD check
+/// (no primitive holds `Null`), which names the head and the value.
+#[test]
+fn bool_and_null_defaults_lower_from_their_typename_spelling() {
+    let src = run_spec(
+        "mb = { a: uint, ? f: bool .default true, ? g: bool .default false }\n",
+        "bool_default",
+    )
+    .expect("a bool default must generate")
+    .get("rust/src/generated/mod.rs")
+    .expect("rust mod emitted")
+    .clone();
+    assert!(
+        src.contains("f: true") && src.contains("g: false"),
+        "both bool spellings must initialize the field from the default, got:\n{src}"
+    );
+
+    let null_err = run_spec("m = { a: uint, ? f: uint .default null }\n", "null_default")
+        .expect_err("`null` cannot be held by any primitive head");
+    assert!(
+        null_err.contains("`.default null`") && null_err.contains("`uint`"),
+        "a null default is refused by the HEAD check, naming both, got:\n{null_err}"
+    );
+}
+
+/// A `.default` operand that is not a literal at all (a rule name, a group reference) has no value
+/// to lower. That is ordinary user CDDL, so it is a recorded rejection naming the operand — never an
+/// abort, and never routed into the head check, which has nothing to say about a non-value.
+#[test]
+fn non_literal_default_operand_rejects_gracefully() {
+    let err = run_spec(
+        "other = uint\nm = { a: uint, ? f: uint .default other }\n",
+        "nonliteral_default",
+    )
+    .expect_err("a non-literal `.default` operand must reject gracefully");
+    assert!(
+        err.contains("`.default other`") && err.contains("is not a default VALUE"),
+        "the rejection must name the operand and say it is not a value, got:\n{err}"
+    );
+    assert!(
+        !err.contains("cannot be applied to"),
+        "a non-value must NOT also produce the head-check message, got:\n{err}"
+    );
+}
+
+/// Bare `int` is bignum-capable: it resolves to the hand-written `Int` struct, not to a rust
+/// primitive, so it is one of the heads the `.default` head check refuses. The refusal's remedy list
+/// must therefore not name it — it did, which read as "`int` is a valid target" while refusing
+/// exactly that. The honest signed remedy is a RANGE, which does collapse onto a signed primitive.
+#[test]
+fn default_head_remedy_does_not_name_the_head_it_refuses() {
+    let err = run_spec("m = { a: uint, ? n: int .default -2 }\n", "int_default")
+        .expect_err("a default on bare `int` has no primitive to land on");
+    assert!(
+        err.contains("cannot be applied to `int`"),
+        "the refusal must name the head, got:\n{err}"
+    );
+    assert!(
+        !err.contains("(`uint`, `int`,"),
+        "the remedy list must not offer the head it just refused, got:\n{err}"
+    );
+    assert!(
+        err.contains("-128..127"),
+        "the remedy must point at the range spelling that DOES collapse onto a signed primitive, \
+         got:\n{err}"
+    );
+
+    // …and that spelling really does work, which is what makes the remedy honest.
+    let src = run_spec(
+        "si = -128..127\nm = { a: uint, ? n: si .default -2 }\n",
+        "range_default",
+    )
+    .expect("a signed range head accepts a signed default")
+    .get("rust/src/generated/mod.rs")
+    .expect("rust mod emitted")
+    .clone();
+    assert!(
+        src.contains("n: -2"),
+        "the range-headed member must initialize from the default, got:\n{src}"
+    );
+}

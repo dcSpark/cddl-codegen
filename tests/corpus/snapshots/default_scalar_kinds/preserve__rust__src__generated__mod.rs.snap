@@ -1,0 +1,74 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{BoolDefaultArrayEncoding, BoolDefaultEncoding, FloatDefaultEncoding};
+
+#[derive(Clone, Debug)]
+pub struct BoolDefault {
+    pub a: u64,
+    pub f: bool,
+    pub g: bool,
+    pub encodings: Option<BoolDefaultEncoding>,
+}
+
+impl BoolDefault {
+    pub fn new(a: u64) -> Self {
+        Self {
+            a,
+            f: true,
+            g: false,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BoolDefaultArray {
+    pub a: u64,
+    pub f: bool,
+    pub encodings: Option<BoolDefaultArrayEncoding>,
+}
+
+impl BoolDefaultArray {
+    pub fn new(a: u64) -> Self {
+        Self {
+            a,
+            f: false,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FloatDefault {
+    pub a: u64,
+    pub f: f64,
+    pub encodings: Option<FloatDefaultEncoding>,
+}
+
+impl FloatDefault {
+    pub fn new(a: u64) -> Self {
+        Self {
+            a,
+            f: 1.5,
+            encodings: None,
+        }
+    }
+}

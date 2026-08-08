@@ -1,0 +1,221 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BoolDefault(pub(crate) cddl_lib::BoolDefault);
+
+#[wasm_bindgen]
+impl BoolDefault {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoolDefault, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<BoolDefault, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn set_f(&mut self, f: bool) {
+        self.0.f = f
+    }
+
+    pub fn f(&self) -> bool {
+        self.0.f
+    }
+
+    pub fn set_g(&mut self, g: bool) {
+        self.0.g = g
+    }
+
+    pub fn g(&self) -> bool {
+        self.0.g
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::BoolDefault::new(a))
+    }
+}
+
+impl From<cddl_lib::BoolDefault> for BoolDefault {
+    fn from(native: cddl_lib::BoolDefault) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoolDefault> for cddl_lib::BoolDefault {
+    fn from(wasm: BoolDefault) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoolDefault> for BoolDefault {
+    fn as_ref(&self) -> &cddl_lib::BoolDefault {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BoolDefaultArray(pub(crate) cddl_lib::BoolDefaultArray);
+
+#[wasm_bindgen]
+impl BoolDefaultArray {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoolDefaultArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<BoolDefaultArray, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn set_f(&mut self, f: bool) {
+        self.0.f = f
+    }
+
+    pub fn f(&self) -> bool {
+        self.0.f
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::BoolDefaultArray::new(a))
+    }
+}
+
+impl From<cddl_lib::BoolDefaultArray> for BoolDefaultArray {
+    fn from(native: cddl_lib::BoolDefaultArray) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoolDefaultArray> for cddl_lib::BoolDefaultArray {
+    fn from(wasm: BoolDefaultArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoolDefaultArray> for BoolDefaultArray {
+    fn as_ref(&self) -> &cddl_lib::BoolDefaultArray {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FloatDefault(pub(crate) cddl_lib::FloatDefault);
+
+#[wasm_bindgen]
+impl FloatDefault {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FloatDefault, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<FloatDefault, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn set_f(&mut self, f: f64) {
+        self.0.f = f
+    }
+
+    pub fn f(&self) -> f64 {
+        self.0.f
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::FloatDefault::new(a))
+    }
+}
+
+impl From<cddl_lib::FloatDefault> for FloatDefault {
+    fn from(native: cddl_lib::FloatDefault) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FloatDefault> for cddl_lib::FloatDefault {
+    fn from(wasm: FloatDefault) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FloatDefault> for FloatDefault {
+    fn as_ref(&self) -> &cddl_lib::FloatDefault {
+        &self.0
+    }
+}

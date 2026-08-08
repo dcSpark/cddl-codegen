@@ -2440,6 +2440,11 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
          ARRAY-representation record instead of a map",
     ),
     (
+        "default_scalar_kinds",
+        "class 2: the same mismatch for the remaining default value kinds — a plain `bool`/`f64` in \
+         the rust struct against an optional projection",
+    ),
+    (
         "default_mandatory",
         "class 2: the fixture's OPTIONAL members (`? c`, and `? y` through the alias) are the same \
          plain-`u64`-vs-optional-projection mismatch. Its mandatory-position members are NOT — a \
