@@ -2693,23 +2693,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   of hand-written umbrella exporter files a consumer maintains rising above one, which is what a
   project publishing a second npm package over generated crates produces.
 
-- **Consumer-side auto-deferral of reject-set wrappers (`--wrapper-requests`).** The dep-side
-  hosting leg is complete: a `@duplicates reject` array shape in a committed
-  `borrowed_collections.rs` sidecar round-trips the request grammar and emits the
-  `OrderedSet`/`NonEmptyOrderedSet` twin wrapper in the dep
-  (`workspace_requests_hosts_reject_ordered_set_twins`). What is NOT built: a CONSUMER's own
-  generation writing a reject shape into its request sidecar automatically
-  (`generate_reject_ordered_set_type` does not call `try_defer_wrapper` — threading it needs a
-  signature change across three call sites inside the deferral-placement logic, which is delicate
-  enough that it warrants its own reviewed change rather than riding a doc-and-closure commit).
-  Consequence and why it is safe to defer: a consumer that hits the shape emits the wrapper
-  locally, which is at worst the documented cross-crate duplicate-symbol link class — loud at
-  link time, never a silent data-behavior skew. Reopening signal: a real multi-crate consumer
-  puts a reject set behind a wrapper-request boundary (hand-authoring the sidecar row is the
-  interim workaround). Note the well-known-tag registry
-  (`parsing::well_known_tag_default_duplicates`) WIDENS who hits this: every no-directive
-  tag-258 set is now the reject shape, not just rules with an explicit `; @duplicates reject` —
-  same loud failure class, larger audience, so the reopening signal fires sooner.
+- **A wasm32 LINK floor for the deferred reject twin.** `workspace_dep_defers_reject_ordered_set_twins`
+  compiles both generated crates on the HOST target, which is blind to the failure the deferral
+  exists to remove: two `#[wasm_bindgen]` classes of one name are a `rust-lld: duplicate symbol`
+  and nothing else. The reject family therefore inherits its link evidence from the loose-list
+  cell (`extern_wrapper_index_defers_to_dep`'s RED leg) rather than owning it. Adding the floor
+  means teaching the committed hand dep pair (`tests/index-dep-crate{,-wasm}`) an
+  `IdxFooOrderedSet` class — a shared fixture several index-mode cells read, so the change has to
+  be made with their expectations in hand rather than as a drive-by. Reopening signal
+  (magnitude, consumer-side): a workspace whose consumers borrow reject sets from more than one
+  dependency, where a placement mistake stops being reproducible from the single-dep cells the
+  host-target check covers.
 - **Extern-interface export dialect v2 candidates.** Each bumps the seam header
   (`_CDDL_CODEGEN_EXTERN_INTERFACE_ v1` — unknown versions hard-error, pinned by
   `extern_import_unknown_version_hard_errors`), so batch them when one gets a real consumer:

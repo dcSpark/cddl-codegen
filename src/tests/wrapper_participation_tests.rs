@@ -540,7 +540,8 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
         class: "IdxFooOrderedSet",
         expect: Outcome::Host,
         pinned_by: Some("workspace_requests_hosts_reject_ordered_set_twins"),
-        why: "the participation fact's other half: a reject set CAN be hosted, though it can never defer",
+        why: "the hosting half of the reject seam: the same shape column a consumer's borrow writes \
+              is what the dep rebuilds the uniqueness twin from",
     },
     Row {
         mode: Mode::RequestedHosted,

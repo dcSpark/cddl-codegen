@@ -1137,8 +1137,8 @@ configuration it is. `extern_wrapper_index_deferred_try_from_sources` (`inputs_s
 companion `try_from` SOURCES: the map-side deferred source (`{+ uint => idx_foo}` over a dep-indexed
 loose `MapU64ToIdxFoo`), its sole-owner-screened variant (a loose shape with a sole table-rule owner
 resolves to that owner's local alias, never a dep import), and the reject-set combination (a
-`@duplicates reject` wrapper can never defer, so it mints locally and is indexed here, while its
-loose source defers). Both floor on the generated CONSUMER wasm crate's `cargo check` through
+`@duplicates reject` RULE whose ident differs from the structural name is the consumer's own class,
+so it mints locally and is indexed here, while its loose source defers). Both floor on the generated CONSUMER wasm crate's `cargo check` through
 `gate_cache::run_cached`; the wasm32 link is deliberately not re-run, since
 `extern_wrapper_index_defers_to_dep`'s RED leg already demonstrates that failure mode.
 `inputs_sources` generates at the preserve profile because its cross-crate MAP conversion resolves
@@ -1169,10 +1169,12 @@ REFERENCED rather than rebuilt — so the module's generated crates cover exactl
 did, and a new shape or mode is one table row rather than a new function. Each row's CDDL is DERIVED
 from its axes, and each owns a distinct element ident, so one generated crate carries a whole mode.
 
-Two participation facts the grid encodes rather than assumes: a reject set can be HOSTED but can
-never DEFER (its emitter reaches no defer seam — so under `--extern-wrapper-index` an indexed name
-is a collision only the mint-seam backstop can announce), while its loose `try_from` source IS
-defer-capable; and the name-only index is flavor-SAFE by construction, because the structural name
+Two participation facts the grid encodes rather than assumes: a reject set participates in every mode
+like the loose and NonEmpty twins (one seam, so an inline occurrence defers/borrows and a
+rule-declared one is either the index mode's name-only unification or criterion 9's local shadow),
+and a reject wrapper that DEFERS borrows the dependency's `try_from` door with it, so the
+loose-source companion belongs only to the rows that mint locally; and the name-only index is
+flavor-SAFE by construction, because the structural name
 carries the container (`PairMapKToV` vs `MapKToV`), which makes a preserve table an ordinary shape
 row rather than a hazard cell. `wrapper_participation_table_is_complete_and_live` is the grid's own
 guard: rows are unique, every mode covers every shape that participates in it (the one documented

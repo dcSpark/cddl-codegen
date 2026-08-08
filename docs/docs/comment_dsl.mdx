@@ -1604,10 +1604,10 @@ structural name is listed.
   the same rule every cross-crate import obeys. It only bites when you spell a dependency's *rust*
   crate name here, where the remap yields the wasm crate you meant anyway; spell the wasm crate
   directly and nothing rewrites.
-- **`@duplicates reject` set wrappers cannot be deferred.** The `<Elem>OrderedSet` /
-  `NonEmpty<Elem>OrderedSet` emitters consult no deferral seam, so listing such a name has no effect
-  today. Every other structural family (loose/restricted lists, loose/restricted maps, both duplicate
-  flavors) defers.
+- **Every structural family defers, this one included.** `<Elem>OrderedSet` /
+  `NonEmpty<Elem>OrderedSet` (the `@duplicates reject` uniqueness twins) consult the same seam as
+  loose/restricted lists, loose/restricted maps and the `@duplicates preserve` pair maps, so listing
+  such a name works exactly as listing any other does.
 
 ### When to use this vs the dependency-keyed flags
 

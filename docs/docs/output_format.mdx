@@ -1316,6 +1316,23 @@ legend included — live in the fixed banner, never inside the const body, per
 [the banner-only comment contract](#the-banner-only-comment-contract) shared by every generated
 sidecar/check file.
 
+**Flavored shapes carry a trailing policy marker in the shape column.** The structural wrapper name
+encodes the container for the two [`@duplicates`](./comment_dsl#duplicates) twins
+(`<Elem>OrderedSet` / `NonEmpty<Elem>OrderedSet` for reject, `PairMapKToV` /
+`NonEmptyPairMapKToV` for preserve), so the shape a dependency rebuilds from must carry the policy
+too: rows read `("cml_dep", "FooOrderedSet", "[* foo] @duplicates reject")` and
+`("cml_dep", "PairMapKToV", "{* k => v} @duplicates preserve")`. The marker rides the column **bare**
+(no `;`) because the column is round-tripped by parse and is not CDDL to begin with — the paste-able
+rule-line hint the not-in-index warning prints moves it into comment position, where it *is* CDDL.
+Without the marker the dependency would rebuild a loose list or a keyed table under a name that
+promises uniqueness or duplicate-preservation, which is the one skew this column exists to prevent.
+
+**A borrowed reject set also obliges the key-derive channel.** Its hosted class wraps
+`OrderedSet<Elem>`, whose uniqueness scan needs `Elem: Ord` — a derive that lives in the
+dependency's crate. The consumer records that demand in `borrowed_key_types.rs` (below), so a
+workspace regen passes [`--key-requests`](./command_line_flags) beside `--wrapper-requests`; with
+only the latter the dependency hosts the class and its own build fails `E0277` on the missing bound.
+
 A user may hand-add a row via the overlay's `// cddl-codegen:insert-start/end` (or `replace`) blocks —
 honored like any preserved edit **when the payload conforms** to the fixed row format. A
 `compile_error!` / `cddl-codegen:unpreserved-comment` trap block, an unknown line, or a mangled row is
