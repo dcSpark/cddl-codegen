@@ -43,7 +43,6 @@ const BARE_DECODE_REJECT_BASELINE: &[(&str, usize)] = &[
     ("open-struct-map-preserve-e2e/tests.rs", 3),
     ("open-table-cip25-acceptance/tests.rs", 6),
     ("open-table-e2e/tests.rs", 3),
-    ("preserve-encodings/tests.rs", 24),
     ("raw-bytes-preserve/tests.rs", 2),
     ("recursive-collection-ref/tests.rs", 1),
 ];
