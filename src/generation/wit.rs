@@ -532,6 +532,13 @@ pub(crate) enum WitMemberOp {
     /// (the re-entrancy invariant).
     Setter {
         field: String,
+        /// Whether the rust struct stores this field PLAIN rather than behind a presence-`Option`
+        /// — true exactly for a `.default`-carrying member, whose default fills the absent case.
+        /// Carried from the projection rather than re-derived in the guest emitter, for the same
+        /// reason every other rust-side half is: the projection is the single decision point for
+        /// what the WIT surface means, and a glue that re-read the IR could disagree with the
+        /// getter's own (plain) result type.
+        plain_storage: bool,
     },
     /// Read the `bool` presence flag a mandatory-less fixed-value field stores.
     PresenceGetter {
@@ -1691,11 +1698,23 @@ fn project_record(
         }
         let ty = map_rust_type(&field.rust_type, ctx)?;
         let validates = wit_param_validates(&field.rust_type, ctx.types);
+        // A `.default`-carrying member is stored PLAIN by the rust struct — the default substitutes
+        // for absence — so the component face reads and writes it as a bare value, exactly as the
+        // wasm face does. The record-field construction seam guarantees the other half of that
+        // pairing (see `RustField::rust_type`'s invariant): a `.default` on a MANDATORY member is
+        // inert by RFC 8610 §3.8.2 and is stripped before the field is built, so every defaulted
+        // field reaching this projection is optional and therefore still gets a setter.
+        let plain_storage = field.rust_type.config.default.is_some();
+        debug_assert!(
+            !plain_storage || field.optional,
+            "a mandatory member's `.default` must be stripped at field construction before it \
+             reaches the WIT projection"
+        );
         members.push(WitMember {
             name: field_name.clone(),
             is_static: false,
             params: Vec::new(),
-            result: Some(if field.optional {
+            result: Some(if field.optional && !plain_storage {
                 WitType::Option(Box::new(ty.clone()))
             } else {
                 ty.clone()
@@ -1707,7 +1726,9 @@ fn project_record(
         });
         if field.optional {
             // The setter takes the BARE type, as the wasm face's does — it sets a value, it never
-            // clears one. The getter reports absence, so the two are deliberately asymmetric.
+            // clears one. For a presence-`Option` field the getter reports absence, so the two are
+            // deliberately asymmetric; for a defaulted (plain) field the getter reports the default,
+            // so neither side can express clearing.
             members.push(WitMember {
                 name: format!("set-{field_name}"),
                 is_static: false,
@@ -1722,6 +1743,7 @@ fn project_record(
                 fallible: validates,
                 op: WitMemberOp::Setter {
                     field: field.name.clone(),
+                    plain_storage,
                 },
             });
         } else {

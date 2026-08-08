@@ -42,13 +42,13 @@ impl wit_types::GuestArrayDefault for WitArrayDefault {
         me.a
     }
 
-    fn b(&self) -> Option<u64> {
+    fn b(&self) -> u64 {
         let me = self.0.borrow();
-        me.b.as_ref().map(|x| *x)
+        me.b
     }
 
     fn set_b(&self, b: u64) {
-        self.0.borrow_mut().b = Some(b);
+        self.0.borrow_mut().b = b;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {
@@ -77,13 +77,13 @@ impl wit_types::GuestArrayDefaultText for WitArrayDefaultText {
         me.a
     }
 
-    fn s(&self) -> Option<String> {
+    fn s(&self) -> String {
         let me = self.0.borrow();
-        me.s.as_ref().map(|x| x.clone())
+        me.s.clone()
     }
 
     fn set_s(&self, s: String) {
-        self.0.borrow_mut().s = Some(s);
+        self.0.borrow_mut().s = s;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {

@@ -611,15 +611,11 @@ interface ComponentVectorCounts { accepts: number; rejects: number }
 //
 // The reason string names the CLASS, not the symptom, so a second reacher of a known class is
 // recognizable as one rather than filed as new.
-const SWEEP_EXPECTED_BUILD_FAIL: Record<string, string> = {
-  "ctl.default":
-    "the defaulted-scalar projection class: a `.default`-carrying optional member is a plain `u64` " +
-    "in the rust struct while the WIT projection keeps it optional, so the glue calls `as_ref` on a " +
-    "`u64` (E0599) and assigns `Some(v)` into one (E0308). The class `component_tests`' " +
-    "EXPECTED_COMPILE_FAIL holds for the corpus fixture `default_value`, reached independently here " +
-    "from the decode catalog's own row (`m = { a: uint, ? b: uint .default 0 }`) — see " +
-    "cddl-matrix/ROADMAP.md § \"Findings — open\", which is where the harness-free repro lives",
-};
+//
+// Empty is the healthy state: every drivable row's component crate builds. An entry is added when
+// this instrument finds a row that generates and does not build, and removed in the same change as
+// the fix — the sweep's own stale-entry arm is what forces that pairing.
+const SWEEP_EXPECTED_BUILD_FAIL: Record<string, string> = {};
 // The `--component-build-sweep` cell classifier and the policy that says which classes FAIL a sweep.
 // Declared here, above its self-test, because the block below reads `SWEEP_FAILING`.
 //

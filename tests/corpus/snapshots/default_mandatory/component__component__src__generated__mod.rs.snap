@@ -42,13 +42,13 @@ impl wit_types::GuestAliasDefaultPositions for WitAliasDefaultPositions {
         me.x
     }
 
-    fn y(&self) -> Option<u64> {
+    fn y(&self) -> u64 {
         let me = self.0.borrow();
-        me.y.as_ref().map(|x| *x)
+        me.y
     }
 
     fn set_y(&self, y: u64) {
-        self.0.borrow_mut().y = Some(y);
+        self.0.borrow_mut().y = y;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {
@@ -84,13 +84,13 @@ impl wit_types::GuestMandatoryDefault for WitMandatoryDefault {
         me.b
     }
 
-    fn c(&self) -> Option<u64> {
+    fn c(&self) -> u64 {
         let me = self.0.borrow();
-        me.c.as_ref().map(|x| *x)
+        me.c
     }
 
     fn set_c(&self, c: u64) {
-        self.0.borrow_mut().c = Some(c);
+        self.0.borrow_mut().c = c;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {

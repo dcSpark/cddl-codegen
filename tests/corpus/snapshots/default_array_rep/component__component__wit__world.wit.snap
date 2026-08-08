@@ -11,7 +11,7 @@ interface types {
   resource array-default {
     constructor(a: u64);
     a: func() -> u64;
-    b: func() -> option<u64>;
+    b: func() -> u64;
     set-b: func(b: u64);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<array-default, string>;
@@ -19,7 +19,7 @@ interface types {
   resource array-default-text {
     constructor(a: u64);
     a: func() -> u64;
-    s: func() -> option<string>;
+    s: func() -> string;
     set-s: func(s: string);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<array-default-text, string>;

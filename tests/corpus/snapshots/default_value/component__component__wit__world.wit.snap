@@ -11,9 +11,9 @@ interface types {
   resource defaulted {
     constructor(a: u64);
     a: func() -> u64;
-    b: func() -> option<u64>;
+    b: func() -> u64;
     set-b: func(b: u64);
-    c: func() -> option<string>;
+    c: func() -> string;
     set-c: func(c: string);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<defaulted, string>;

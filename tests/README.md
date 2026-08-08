@@ -4365,12 +4365,11 @@ lockfile preflight per cell, which is most of what is left.
 `EXPECTED_COMPILE_FAIL` is the ledger of fixtures whose glue does NOT compile, keyed
 `(stem, reason)` and guarded both ways: a listed fixture that starts compiling fails as "the bug is
 fixed — remove the pin", an unlisted one that stops fails as a regression. Every entry is a FINDING
-this gate made rather than a decision. Two emitter classes remain, both in the emitted
-`component/src/generated/mod.rs` and both reproducing under either `--wasm` posture: a despecialized
+this gate made rather than a decision. One emitter class remains, in the emitted
+`component/src/generated/mod.rs` and reproducing under either `--wasm` posture: a despecialized
 `[+ T]` / `{+ K => V}` reached through a named collection rule as a list ELEMENT or a map KEY, which
 `.collect()`s straight into `NonEmptyVec`/`NonEmptyMap` because the `TryFrom` routing sees only the
-TOP level of a parameter; and a `.default`-carrying scalar field, which is a plain `T` in the rust struct
-while the projection still treats it as optional. The two classes the gate found in the GUEST BLOCK
+TOP level of a parameter. The two classes the gate found in the GUEST BLOCK
 itself — a world exporting no interface still emitting `export!(Component);`, and an interface of
 only value types still emitting `impl wit_types::Guest for Component {}` — are fixed, and the
 emission conditions that replaced them are pinned in `src/tests/component_tests.rs` by
@@ -4438,12 +4437,9 @@ entry naming a row the catalog no longer offers fails the same way. That is what
 from degrading into a skip-list, and the ledger dimension rides the same pure self-test the
 classifier does.
 
-One row is ledgered today: `ctl.default` (`m = { a: uint, ? b: uint .default 0 }`) generates at exit
-0 and then fails the wasip2 build. It is the defaulted-scalar projection class — the rust struct
-stores a `.default`-carrying optional member as a plain `u64` while the projection keeps it
-`option<u64>`, so the glue calls `as_ref` on a `u64` (E0599) and assigns `Some(v)` into one (E0308).
-The corpus gate above holds the same class for its hand-authored `default_value` fixture; the two
-enumerations reached it independently, which is the argument for running both.
+No row is ledgered today — every drivable row's component crate builds. Empty is the healthy state
+for this ledger, not an unused one: the both-ways guard above is what keeps it that way, and an
+entry is added the moment the sweep finds a row that generates and does not build.
 
 **Subsetting**: `--only=<row-id>[,<row-id>…]`, validated against the drivable set, so a typo fails
 loudly instead of sweeping nothing.

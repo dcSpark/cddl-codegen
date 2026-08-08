@@ -97,6 +97,17 @@ Getter and setter are deliberately asymmetric: the getter of an optional field r
 An optional *fixed-value* field — one whose only information is whether it is present — instead
 gets a `bool` presence getter and a `set-<field>(present: bool)`.
 
+A **`.default`-carrying** optional member (`? b: uint .default 0`) is the one optional field whose
+getter is *not* `option<t>`. The rust struct stores such a member plain — the default substitutes
+for an absent value, so there is no absence to report — and this face mirrors that storage exactly
+as the wasm face does: the getter returns the bare `t` and the setter assigns it directly. The
+consequence is the same on both faces: **absent** and **explicitly set to the default** are
+indistinguishable here, and no setter can put the member back to absent. That is the rust face's
+contract showing through rather than a component-face simplification. (Under
+`--preserve-encodings` the rust crate does remember whether the member was written on the wire, so
+a decode/re-encode round trip stays byte-exact — that memory simply is not part of this face's
+surface.)
+
 A setter whose type carries a bound is fallible (`result<_, string>`); one whose type does not is
 infallible, so the signature tells you whether a value can be refused.
 
@@ -458,9 +469,9 @@ face on meets it; that account is the single source for it and is not restated h
 
 ## Known limitation: shapes whose glue does not yet compile
 
-Two shape classes (three corpus fixtures) currently emit a component crate whose glue does not
+One shape class (two corpus fixtures) currently emits a component crate whose glue does not
 compile. The failure is loud — the generated component crate's own build fails; the `rust/` and
-`wasm/` faces are unaffected — the WIT itself is valid, and each shape is pinned with its
+`wasm/` faces are unaffected — the WIT itself is valid, and the shape is pinned with its
 diagnosis in the corpus compile gate's ledger (`EXPECTED_COMPILE_FAIL`, gate
 `component_corpus_compiles`), so a fix announces itself by turning the pin stale rather than
 needing rediscovery:
@@ -471,16 +482,14 @@ needing rediscovery:
   `result<_, string>` such a re-check reports through (the fallibility walk resolves the alias a
   named collection rule registers); what remains is the conversion walk below the top level, which
   sees WIT types only, so the constrained rust type's `TryFrom` door is never re-entered.
-- **`.default` fields** (the CDDL control operator — there is no comment-DSL spelling): a
-  defaulted field is a plain `T` on the rust side (the default fills
-  absence in) while the projection still treats it as optional, so the glue reads and writes an
-  `Option` that does not exist.
 
-Until these close, a spec relying on either should keep `--component` off or restructure the
-shape; every other corpus shape compiles and validates. (A transparent alias of `any` used from a
-member position was a third class here — an infallible constructor over a `?`-decoding body — and
-is fixed: the aliased spelling now gets the same fallible door as a directly-written `any`,
-pinned by the `component-any-alias` corpus fixture.)
+Until this closes, a spec relying on it should keep `--component` off or restructure the
+shape; every other corpus shape compiles and validates. (Two further classes lived here and are
+fixed: a transparent alias of `any` used from a member position — an infallible constructor over a
+`?`-decoding body, now given the same fallible door as a directly-written `any`, pinned by the
+`component-any-alias` corpus fixture; and `.default` fields, whose plain rust storage the
+projection now mirrors, described under
+[Setters exist only for optional fields](#setters-exist-only-for-optional-fields).)
 
 ## Known limitation: a rule named `t` is unexported on this face
 
