@@ -10,7 +10,6 @@ expression: catalog
 # pins each row's expected label to its matrix evidence class. Source: cddl-matrix/project_robustness.ts.
 
 assigng.extend                     error (graceful)
-assignt.extend                     error (graceful)
 contain.array-element.prelude.undefined error (graceful)
 contain.array-element.type2.array  error (graceful)
 contain.array-element.type2.map    error (graceful)

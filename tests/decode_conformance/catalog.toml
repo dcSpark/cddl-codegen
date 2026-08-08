@@ -44,6 +44,64 @@
 # pinned_reason: the row could not be minted mechanically (names the cause); it then has no vectors.
 
 [[row]]
+id = "assignt.extend"
+axis = "feature"
+example = "a = int\na /= tstr"
+spec = "a = int\na /= tstr"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "190489"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190949"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3838"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3901ac"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "65497277696e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "69616e74616369642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "69726174696679696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6a63616e6e616269732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6a7269676f726f75736c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6b766967696c616e74652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.array-element.grpent.groupname"
 axis = "containment"
 example = "a = [pt]\npt = (uint, uint)"

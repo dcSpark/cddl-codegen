@@ -450,7 +450,6 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | Construct | CDDL example | Behavior |
 |-----------|--------------|----------|
 | Incremental group-choice extension (//=) | `tcpopts = (1: int); tcpopts //= (2: tstr)` | rejected gracefully at parse |
-| Incremental type-choice extension (/=) | `a = int; a /= tstr` | rejected gracefully at parse |
 | _CDDL_CODEGEN_RAW_BYTES_TYPE_ generic base — refused at parse time | `rb_gen<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_; bar = [x: rb_gen<uint>]` | rejected gracefully at parse |
 | Generic group definition | `set<a> = (* a)` | rejected gracefully at parse |
 | cbor-any | `x = cbor-any` | rejected gracefully at parse |
