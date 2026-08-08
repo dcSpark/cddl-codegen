@@ -492,8 +492,11 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     bytes are spec-valid (RFC 8610 §3.9 arm accumulation). Surfaced 2026-08-08 by the first corpus fixture spelling
     `/=` (`tests/corpus/assignt_extend.cddl`): the generated conformance harness always
     references the tested rule through its synthetic `__cddl_oracle_root = <rule>` alias, so
-    every incremental-chain fixture hits the gap; the fixture rides `RUST_ORACLE_SKIP`, keeping
-    the ruby gem as its enforcing oracle. Minimal repro, discriminating probes and commands in
+    every incremental-chain fixture hits the gap; both incremental fixtures ride
+    `RUST_ORACLE_SKIP` (`assignt_extend`, whose enforcing oracle stays the ruby gem, and
+    `assignt_extend_ext_first`, whose ext-first spelling the gem separately crashes on — its
+    conformance rides the equivalence pin instead; the split's reasoning lives with the
+    fixtures and ledgers). Minimal repro, discriminating probes and commands in
     `upstream-reports/rust-cddl-incremental-extension-reference-resolution.md`. No upstream
     issue filed yet.
 
