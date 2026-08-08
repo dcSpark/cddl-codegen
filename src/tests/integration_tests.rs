@@ -17006,6 +17006,250 @@ fn workspace_requests_hosts_reject_ordered_set_twins() {
     );
 }
 
+/// The CONSUMER side of the reject-set deferral, and the round trip that closes it: a
+/// `--workspace-dep` consumer whose spec spells `@duplicates reject` sets over the dependency's
+/// elements borrows the dependency's uniqueness twins and WRITES the request rows itself, so the leg
+/// `workspace_requests_hosts_reject_ordered_set_twins` proves from a hand-authored sidecar is reached
+/// by generation alone. Both halves are asserted end to end in one scratch workspace: consumer regen
+/// → its real `borrowed_collections.rs` → dep regen consuming it → both wasm crates compile against
+/// each other.
+///
+/// Four cells, one per participation answer the reject seam can give (the wrapper name is what
+/// distinguishes them, so one crate carries all four):
+///
+/// * `wp_oset<idx_foo>` — an inline (anonymous generic-instance) `[*]` set: structural name, all-one
+///   -dep elements ⇒ BORROW.
+/// * `wp_neset<idx_bar>` — the `[+]` flavor of the same, proving the non-empty twin rides the same
+///   seam and that its `[+ …]` shape column survives to the host (a `[*]` rebuild would hand the
+///   consumer a class whose min-1 bound is gone).
+/// * `idx_baz_ordered_set = [* idx_baz]` — a RULE whose ident coincides with the structural name:
+///   criterion 9, so it is the consumer's own class, minted locally and warned about, never borrowed.
+/// * `qux_set = [* idx_qux]` — a rule whose ident DIFFERS from the structural name: the consumer's
+///   own class, minted locally and SILENTLY (the ident screen is a correct verdict about the
+///   deferral, and there is no dep index here for the mint-seam backstop to speak about).
+///
+/// The dep run passes `--key-requests` alongside `--wrapper-requests` exactly as a real workspace
+/// regen does: a hosted `OrderedSet<Elem>` needs `Elem: Ord`, which only the key-request channel
+/// conveys (the consumer records the set element's `ord` demand in `borrowed_key_types.rs`).
+///
+/// Bespoke harness (not `run_test`) for the same reasons as `workspace_dep_defers_to_dep`: the stderr
+/// text is half the contract, and the subject is a two-crate workspace. Generated into a scratch root
+/// outside the checkout so nothing here writes into `tests/`.
+#[test]
+fn workspace_dep_defers_reject_ordered_set_twins() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_wsp_reject_{:016x}", checkout_hash()));
+    let _lock = acquire_scratch_lock(&format!("cddl_codegen_wsp_reject_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let write = |rel: &str, body: &str| {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    };
+    write(
+        "consumer/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/wr_dep/mod.cddl",
+        "idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         idx_bar = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         idx_baz = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         idx_qux = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    );
+    write(
+        "consumer/lib.cddl",
+        "wp_oset<a0> = [* a0] ; @duplicates reject\n\n\
+         wp_neset<a0> = [+ a0] ; @duplicates reject\n\n\
+         idx_baz_ordered_set = [* idx_baz] ; @duplicates reject\n\n\
+         qux_set = [* idx_qux] ; @duplicates reject\n\n\
+         holder = [\n  \
+           a: wp_oset<idx_foo>,\n  \
+           b: wp_neset<idx_bar>,\n  \
+           c: idx_baz_ordered_set,\n  \
+           d: qux_set\n\
+         ]\n",
+    );
+    write(
+        "dep/lib.cddl",
+        "idx_foo = [x: uint]\n\nidx_bar = [y: uint]\n\nidx_baz = [z: uint]\n\nidx_qux = [w: uint]\n",
+    );
+
+    // ===== Consumer: the borrows and the sidecar it writes without any hand editing =============
+    let consumer_export = root.join("consumer-export");
+    let run = codegen_cmd()
+        .arg(format!("--input={}", root.join("consumer").display()))
+        .arg(format!("--output={}", consumer_export.display()))
+        .arg("--wasm=true")
+        .arg("--common-import-override=wr_dep")
+        .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+        .arg("--workspace-dep=wr_dep")
+        .output()
+        .unwrap();
+    let gen_stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    assert!(
+        run.status.success(),
+        "consumer generation failed:\n{gen_stderr}"
+    );
+    let read_consumer =
+        |rel: &str| -> String { std::fs::read_to_string(consumer_export.join(rel)).unwrap() };
+    let wasm_mod = read_consumer("wasm/src/generated/mod.rs");
+    let own_index = read_consumer("wasm/src/generated/collections.rs");
+    let sidecar = read_consumer("wasm/src/generated/borrowed_collections.rs");
+
+    // A `use dep::collections::…;` statement can be one name or a rustfmt-wrapped brace list, so
+    // match the whole statement rather than a line.
+    let imported_from_dep = |class: &str| -> bool {
+        wasm_mod
+            .match_indices("use wr_dep_wasm::collections::")
+            .any(|(start, _)| {
+                let rest = &wasm_mod[start..];
+                rest[..=rest.find(';').expect("unterminated use statement")].contains(class)
+            })
+    };
+    for borrowed in ["IdxFooOrderedSet", "NonEmptyIdxBarOrderedSet"] {
+        assert!(
+            !wasm_mod.contains(&format!("pub struct {borrowed}(")),
+            "the deferred reject twin {borrowed} must NOT be minted locally:\n{wasm_mod}"
+        );
+        assert!(
+            imported_from_dep(borrowed),
+            "the deferred reject twin {borrowed} must be imported from the dep:\n{wasm_mod}"
+        );
+        assert!(
+            !own_index.contains(&format!("::{borrowed};")),
+            "a deferred wrapper leaves this crate's own collections.rs index: {borrowed}\n{own_index}"
+        );
+    }
+    // The sidecar rows, byte-exact: the shape column is the cross-crate contract, and the flavor
+    // marker is what stops the dep rebuilding a loose list under the uniqueness twin's name. The
+    // marker is the SHARED const the dep-side parser consumes — asserted here so a reworded literal
+    // in the writer fails a test rather than a downstream dep's parse.
+    assert_eq!(crate::generation::REJECT_MARKER, "@duplicates reject");
+    for (name, shape) in [
+        ("IdxFooOrderedSet", "[* idx_foo]"),
+        ("NonEmptyIdxBarOrderedSet", "[+ idx_bar]"),
+    ] {
+        let row = format!(
+            "\"wr_dep\",\n        \"{name}\",\n        \"{shape} {}\",",
+            crate::generation::REJECT_MARKER
+        );
+        assert!(
+            sidecar.contains(&row),
+            "the consumer must record {name} with its flavored shape column:\n{sidecar}"
+        );
+        assert!(
+            sidecar.contains(&format!("use wr_dep_wasm::collections::{name};")),
+            "the sidecar's compiled self-check must name {name}:\n{sidecar}"
+        );
+    }
+    // Criterion 9: a rule-declared set whose ident IS the structural name stays the consumer's own
+    // class, warned; a rule-declared set whose ident is NOT stays the consumer's own class, silent.
+    assert!(
+        gen_stderr.contains(
+            "warning: rule-declared type IdxBazOrderedSet shadows the collection wrapper this \
+             crate would otherwise borrow from workspace dependency \"wr_dep\""
+        ),
+        "the criterion-9 shadow warning must reach the reject seam:\n{gen_stderr}"
+    );
+    for local in ["IdxBazOrderedSet", "QuxSet"] {
+        assert!(
+            wasm_mod.contains(&format!("pub struct {local}(")),
+            "the rule-declared set {local} must keep the consumer's own class:\n{wasm_mod}"
+        );
+        assert!(
+            own_index.contains(&format!("::{local};")),
+            "a locally-minted wrapper stays in this crate's own index: {local}\n{own_index}"
+        );
+        assert!(
+            !sidecar.contains(&format!("\"{local}\"")),
+            "a rule-declared set is never recorded as a borrow: {local}\n{sidecar}"
+        );
+    }
+    assert!(
+        !gen_stderr.contains("QuxSet"),
+        "a rule ident that is not the structural name is a silent, correct decline:\n{gen_stderr}"
+    );
+
+    // ===== Dep: the sidecar the consumer just wrote is the whole input to the hosting run ========
+    let dep_export = root.join("dep-export");
+    let dep = codegen_cmd()
+        .arg(format!("--input={}", root.join("dep").display()))
+        .arg(format!("--output={}", dep_export.display()))
+        .arg("--lib-name=wr-dep")
+        .arg("--wasm=true")
+        .arg(format!(
+            "--wrapper-requests=consumer={}",
+            consumer_export
+                .join("wasm/src/generated/borrowed_collections.rs")
+                .display()
+        ))
+        // A hosted `OrderedSet<Elem>` needs `Elem: Ord`; the consumer records that demand in
+        // borrowed_key_types.rs and only this channel conveys it (the shape column cannot).
+        .arg(format!(
+            "--key-requests=consumer={}",
+            consumer_export
+                .join("rust/src/generated/borrowed_key_types.rs")
+                .display()
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        dep.status.success(),
+        "dep generation failed:\n{}",
+        String::from_utf8_lossy(&dep.stderr)
+    );
+    let hosted =
+        std::fs::read_to_string(dep_export.join("wasm/src/generated/requested_collections.rs"))
+            .unwrap();
+    assert!(
+        hosted.contains("pub struct IdxFooOrderedSet(pub(crate) OrderedSet<wr_dep::IdxFoo>)"),
+        "the auto-written [*] row must host the OrderedSet twin:\n{hosted}"
+    );
+    assert!(
+        hosted.contains(
+            "pub struct NonEmptyIdxBarOrderedSet(pub(crate) NonEmptyOrderedSet<wr_dep::IdxBar>)"
+        ),
+        "the auto-written [+] row must host the NonEmptyOrderedSet twin — a [*] rebuild would drop \
+         the min-1 bound:\n{hosted}"
+    );
+
+    // ===== Both crates compile against each other ================================================
+    append_manifest_deps(
+        &consumer_export.join("rust/Cargo.toml"),
+        &[&format!(
+            "wr-dep = {{ path = \"{}\" }}",
+            dep_export.join("rust").display()
+        )],
+    );
+    append_manifest_deps(
+        &consumer_export.join("wasm/Cargo.toml"),
+        &[
+            &format!(
+                "wr-dep = {{ path = \"{}\" }}",
+                dep_export.join("rust").display()
+            ),
+            &format!(
+                "wr-dep-wasm = {{ path = \"{}\" }}",
+                dep_export.join("wasm").display()
+            ),
+        ],
+    );
+    for (label, export) in [("dep", &dep_export), ("consumer", &consumer_export)] {
+        let check = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(export.join("wasm"))
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "the {label} wasm crate must compile — a borrowed reject twin the dep does not host \
+             (or hosts under the wrong container) is E0432/E0277 here and nowhere else:\n{}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The `--wrapper-requests` DEP-hosting path for the `@duplicates preserve` pair-map twins — the
 /// map-side counterpart of `workspace_requests_hosts_reject_ordered_set_twins`. A preserve table's
 /// structural wasm name ENCODES its container (`PairMapKToV`), so the consumer's
