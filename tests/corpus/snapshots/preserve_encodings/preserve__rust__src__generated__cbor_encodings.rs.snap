@@ -100,6 +100,19 @@ pub struct CborInCborEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct CborInlineNestedPayloadsEncoding {
+    pub len_encoding: LenEncoding,
+    pub pair_bytes_encoding: StringEncoding,
+    pub pair_bytes2_encoding: StringEncoding,
+    pub pair_encoding: Option<cbor_event::Sz>,
+    pub triple_bytes_encoding: StringEncoding,
+    pub triple_bytes2_encoding: StringEncoding,
+    pub triple_bytes3_encoding: StringEncoding,
+    pub triple_encoding: Option<cbor_event::Sz>,
+    pub tail_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct CborNestedPayloadsEncoding {
     pub len_encoding: LenEncoding,
     pub elem_payloads_bytes_encoding: StringEncoding,

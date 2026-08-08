@@ -1,0 +1,438 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for CborInlineNested {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(5),
+        )?;
+        let mut pair_inner_se = Serializer::new_vec();
+        let mut pair_inner_se2 = Serializer::new_vec();
+        pair_inner_se2.write_unsigned_integer_sz(
+            self.pair,
+            fit_sz(
+                self.pair,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.pair_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        let pair_bytes2 = pair_inner_se2.finalize();
+        pair_inner_se.write_bytes_sz(
+            &pair_bytes2,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.pair_bytes2_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(pair_bytes2.len() as u64),
+        )?;
+        let pair_bytes = pair_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &pair_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.pair_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(pair_bytes.len() as u64),
+        )?;
+        let mut triple_inner_se = Serializer::new_vec();
+        let mut triple_inner_se2 = Serializer::new_vec();
+        let mut triple_inner_se3 = Serializer::new_vec();
+        triple_inner_se3.write_unsigned_integer_sz(
+            self.triple,
+            fit_sz(
+                self.triple,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.triple_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        let triple_bytes3 = triple_inner_se3.finalize();
+        triple_inner_se2.write_bytes_sz(
+            &triple_bytes3,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.triple_bytes3_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(triple_bytes3.len() as u64),
+        )?;
+        let triple_bytes2 = triple_inner_se2.finalize();
+        triple_inner_se.write_bytes_sz(
+            &triple_bytes2,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.triple_bytes2_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(triple_bytes2.len() as u64),
+        )?;
+        let triple_bytes = triple_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &triple_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.triple_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(triple_bytes.len() as u64),
+        )?;
+        let mut tagged_inner_se = Serializer::new_vec();
+        tagged_inner_se.write_tag_sz(
+            7u64,
+            fit_sz(
+                7u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.tagged_tag_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        let mut tagged_inner_se2 = Serializer::new_vec();
+        tagged_inner_se2.write_unsigned_integer_sz(
+            self.tagged,
+            fit_sz(
+                self.tagged,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.tagged_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        let tagged_bytes2 = tagged_inner_se2.finalize();
+        tagged_inner_se.write_bytes_sz(
+            &tagged_bytes2,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.tagged_bytes2_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(tagged_bytes2.len() as u64),
+        )?;
+        let tagged_bytes = tagged_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &tagged_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.tagged_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(tagged_bytes.len() as u64),
+        )?;
+        let mut fixed_inner_se = Serializer::new_vec();
+        let mut fixed_inner_se2 = Serializer::new_vec();
+        fixed_inner_se2.write_unsigned_integer_sz(
+            42u64,
+            fit_sz(
+                42u64,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.fixed_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        let fixed_bytes2 = fixed_inner_se2.finalize();
+        fixed_inner_se.write_bytes_sz(
+            &fixed_bytes2,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.fixed_bytes2_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(fixed_bytes2.len() as u64),
+        )?;
+        let fixed_bytes = fixed_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &fixed_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.fixed_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(fixed_bytes.len() as u64),
+        )?;
+        serializer.write_text_sz(
+            &self.tail,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.tail_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.tail.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for CborInlineNested {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(5)?;
+            read_len.finish()?;
+            let (pair, pair_bytes_encoding, pair_bytes2_encoding, pair_encoding) =
+                (|| -> Result<_, DeserializeError> {
+                    let (pair_bytes, pair_bytes_encoding) = raw.bytes_sz()?;
+                    let inner_de = &mut Deserializer::from(pair_bytes);
+                    let (pair_bytes2, pair_bytes2_encoding) = inner_de.bytes_sz()?;
+                    let inner_de2 = &mut Deserializer::from(pair_bytes2);
+                    let pair_payload = inner_de2.unsigned_integer_sz().map(|(x, enc)| {
+                        (
+                            x,
+                            StringEncoding::from(pair_bytes_encoding),
+                            StringEncoding::from(pair_bytes2_encoding),
+                            Some(enc),
+                        )
+                    })?;
+                    if !inner_de2.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(pair_payload)
+                })()
+                .map_err(|e| e.annotate("pair"))?;
+            let (
+                triple,
+                triple_bytes_encoding,
+                triple_bytes2_encoding,
+                triple_bytes3_encoding,
+                triple_encoding,
+            ) = (|| -> Result<_, DeserializeError> {
+                let (triple_bytes, triple_bytes_encoding) = raw.bytes_sz()?;
+                let inner_de = &mut Deserializer::from(triple_bytes);
+                let (triple_bytes2, triple_bytes2_encoding) = inner_de.bytes_sz()?;
+                let inner_de2 = &mut Deserializer::from(triple_bytes2);
+                let (triple_bytes3, triple_bytes3_encoding) = inner_de2.bytes_sz()?;
+                let inner_de3 = &mut Deserializer::from(triple_bytes3);
+                let triple_payload = inner_de3.unsigned_integer_sz().map(|(x, enc)| {
+                    (
+                        x,
+                        StringEncoding::from(triple_bytes_encoding),
+                        StringEncoding::from(triple_bytes2_encoding),
+                        StringEncoding::from(triple_bytes3_encoding),
+                        Some(enc),
+                    )
+                })?;
+                if !inner_de3.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                if !inner_de2.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(triple_payload)
+            })()
+            .map_err(|e| e.annotate("triple"))?;
+            let (
+                tagged,
+                tagged_bytes_encoding,
+                tagged_tag_encoding,
+                tagged_bytes2_encoding,
+                tagged_encoding,
+            ) = (|| -> Result<_, DeserializeError> {
+                let (tagged_bytes, tagged_bytes_encoding) = raw.bytes_sz()?;
+                let inner_de = &mut Deserializer::from(tagged_bytes);
+                let tagged_payload = match inner_de.tag_sz()? {
+                    (7, tag_enc) => {
+                        let (tagged_bytes2, tagged_bytes2_encoding) = inner_de.bytes_sz()?;
+                        let inner_de2 = &mut Deserializer::from(tagged_bytes2);
+                        let tagged_payload2 = inner_de2.unsigned_integer_sz().map(|(x, enc)| {
+                            (
+                                x,
+                                StringEncoding::from(tagged_bytes_encoding),
+                                Some(tag_enc),
+                                StringEncoding::from(tagged_bytes2_encoding),
+                                Some(enc),
+                            )
+                        })?;
+                        if !inner_de2.as_slice().is_empty() {
+                            return Err(
+                                DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                            );
+                        }
+                        tagged_payload2
+                    }
+                    (tag, _enc) => {
+                        return Err(DeserializeFailure::TagMismatch {
+                            found: tag,
+                            expected: 7,
+                        }
+                        .into());
+                    }
+                };
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(tagged_payload)
+            })()
+            .map_err(|e| e.annotate("tagged"))?;
+            let (fixed_bytes_encoding, fixed_bytes2_encoding, fixed_encoding) =
+                (|| -> Result<_, DeserializeError> {
+                    let (fixed_bytes, fixed_bytes_encoding) = raw.bytes_sz()?;
+                    let inner_de = &mut Deserializer::from(fixed_bytes);
+                    let (fixed_bytes2, fixed_bytes2_encoding) = inner_de.bytes_sz()?;
+                    let inner_de2 = &mut Deserializer::from(fixed_bytes2);
+                    let (fixed_value, fixed_encoding) = inner_de2.unsigned_integer_sz()?;
+                    if fixed_value != 42 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(fixed_value),
+                            expected: Key::Uint(42),
+                        }
+                        .into());
+                    }
+                    let fixed_payload = (
+                        StringEncoding::from(fixed_bytes_encoding),
+                        StringEncoding::from(fixed_bytes2_encoding),
+                        Some(fixed_encoding),
+                    );
+                    if !inner_de2.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(fixed_payload)
+                })()
+                .map_err(|e| e.annotate("fixed"))?;
+            let (tail, tail_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("tail"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CborInlineNested {
+                pair,
+                triple,
+                tagged,
+                tail,
+                encodings: Some(CborInlineNestedEncoding {
+                    len_encoding,
+                    pair_bytes_encoding,
+                    pair_bytes2_encoding,
+                    pair_encoding,
+                    triple_bytes_encoding,
+                    triple_bytes2_encoding,
+                    triple_bytes3_encoding,
+                    triple_encoding,
+                    tagged_bytes_encoding,
+                    tagged_tag_encoding,
+                    tagged_bytes2_encoding,
+                    tagged_encoding,
+                    fixed_bytes_encoding,
+                    fixed_bytes2_encoding,
+                    fixed_encoding,
+                    tail_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("CborInlineNested"))
+    }
+}
+
+impl cbor_event::se::Serialize for CborInlineNestedBody {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        let mut inner_inner_se2 = Serializer::new_vec();
+        inner_inner_se2.write_unsigned_integer_sz(
+            self.inner,
+            fit_sz(
+                self.inner,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        let inner_bytes2 = inner_inner_se2.finalize();
+        inner_inner_se.write_bytes_sz(
+            &inner_bytes2,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_bytes2_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(inner_bytes2.len() as u64),
+        )?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes_sz(
+            &inner_bytes,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_bytes_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(inner_bytes.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for CborInlineNestedBody {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner_bytes, inner_bytes_encoding) = raw.bytes_sz()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let (inner_bytes2, inner_bytes2_encoding) = inner_de.bytes_sz()?;
+            let inner_de2 = &mut Deserializer::from(inner_bytes2);
+            let (inner, inner_bytes_encoding, inner_bytes2_encoding, inner_encoding) =
+                inner_de2.unsigned_integer_sz().map(|(x, enc)| {
+                    (
+                        x,
+                        StringEncoding::from(inner_bytes_encoding),
+                        StringEncoding::from(inner_bytes2_encoding),
+                        Some(enc),
+                    )
+                })?;
+            if !inner_de2.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(CborInlineNestedBodyEncoding {
+                    inner_bytes_encoding,
+                    inner_bytes2_encoding,
+                    inner_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("CborInlineNestedBody"))
+    }
+}

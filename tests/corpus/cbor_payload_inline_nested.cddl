@@ -1,0 +1,35 @@
+; The INLINE spelling of a nested `.cbor` payload: `bytes .cbor (bytes .cbor T)`, both depths in ONE
+; type expression and therefore in one `RustType`'s encoding chain. Unlike the collection nesting in
+; cbor_payload_nested.cddl, nothing here crosses a type boundary — every name the payload machinery
+; mints (the staging buffer, the byte vector, the reader over it, the staging local, and the
+; `--preserve-encodings` sidecar member) belongs to the SAME owning variable at both depths, and the
+; levels are told apart only by the depth suffix each of those names carries. Undepthed, the outer
+; write borrowed a buffer the inner `finalize()` had moved, the sidecar declared one field twice, and
+; the outer leftover-bytes check silently re-probed the inner reader.
+;
+; `triple` is the level-3 vector rather than a bigger version of `pair`: two levels can be separated
+; by any two-name scheme, three cannot, so it is what pins the counter. `tagged` mixes the two
+; independent counters — a tag BETWEEN two payload levels advances only the tag one, so the byte
+; strings must still come out at levels 1 and 2. `fixed` composes the nesting with a VALUE-LESS
+; payload, which stores nothing on the default/json profiles and so must take the discarding leg.
+;
+; This is the all-profile snapshot/compile half; the executed byte evidence lives where it can be
+; executed — `cbor_payload_inline_nesting` in tests/core/tests.rs (hand-derived RFC 8949 oracle,
+; including the rule-BODY wrapper spelling and both leftover-byte refusals) and
+; `cbor_inline_nested_payloads` in tests/preserve-encodings (each level's byte-string encoding driven
+; independently through an irregular re-encoding).
+;
+; Unlike cbor_payload_nested.cddl this fixture stays ruby-judgeable: the gem's parse gap is for an
+; inline ARRAY/MAP composite as a control argument (`bytes .cbor [* ...]` — exit 65), and a
+; parenthesized type2 is not one. Both oracles accept every rule here.
+cbor_inline_nested = [
+  pair: bytes .cbor (bytes .cbor uint),
+  triple: bytes .cbor (bytes .cbor (bytes .cbor uint)),
+  tagged: bytes .cbor (#6.7(bytes .cbor uint)),
+  fixed: bytes .cbor (bytes .cbor 42),
+  tail: text,
+]
+
+; The rule-BODY spelling of the same composition: a `.cbor` rule body force-wraps, so both depths
+; land in the wrapper struct's own serialize fn rather than in a member's.
+cbor_inline_nested_body = bytes .cbor (bytes .cbor uint)

@@ -410,3 +410,18 @@ cbor_nested_payloads = [
   value_payloads: bytes .cbor {* uint => bytes .cbor uint},
   after_payload: bytes .cbor uint,
 ]
+
+; --- the INLINE nested `.cbor` spelling under --preserve-encodings ---
+; `bytes .cbor (bytes .cbor T)` puts both depths in ONE encoding chain, so both byte strings are
+; framed by the SAME owning member and their sidecar members are told apart only by the depth suffix
+; (`pair_bytes_encoding` / `pair_bytes2_encoding`). Undepthed, the struct declared one field twice
+; (E0124) and the outer level's final expr read the inner level's `StringEncoding`. This flag is
+; where that second half is observable: an irregular encoding on the OUTER byte string only survives
+; a round trip if the outer level reads its own encoding var, so the test drives both levels
+; independently (each byte-string head sized separately, including indefinite chunking).
+; `triple` carries the level-3 case, which is what pins the counter rather than a two-name scheme.
+cbor_inline_nested_payloads = [
+  pair: bytes .cbor (bytes .cbor uint),
+  triple: bytes .cbor (bytes .cbor (bytes .cbor uint)),
+  tail: text,
+]

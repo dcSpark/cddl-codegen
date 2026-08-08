@@ -878,6 +878,56 @@ mod tests {
         }
     }
 
+    // The INLINE nested spelling: both `.cbor` depths on ONE chain, so each level's byte-string
+    // `StringEncoding` lands in a sidecar member of the SAME owning name and the depth suffix is all
+    // that separates them (`pair_bytes_encoding` / `pair_bytes2_encoding`). Driving the levels
+    // INDEPENDENTLY is the point — a shared member, or an outer final expr reading the inner level's
+    // encoding, still round-trips whenever the two levels happen to be encoded alike, so every
+    // combination of (outer head, inner head) is walked and each must re-encode byte-identically.
+    #[test]
+    fn cbor_inline_nested_payloads() {
+        // Each byte-string head gets its own spelling: minimal, deliberately over-wide, and
+        // indefinite chunking (which a level can only reproduce from its own recorded encoding).
+        let bstr_enc = |bytes: &[u8], which: usize| -> StringLenSz {
+            match which {
+                0 => StringLenSz::Len(Sz::Inline),
+                1 => StringLenSz::Len(Sz::Eight),
+                _ if bytes.len() >= 2 => StringLenSz::Indefinite(vec![
+                    (1, Sz::Inline),
+                    ((bytes.len() - 1) as u64, Sz::Four),
+                ]),
+                _ => StringLenSz::Indefinite(vec![(bytes.len() as u64, Sz::Two)]),
+            }
+        };
+        for def_enc in [Sz::Inline, Sz::One, Sz::Four].iter() {
+            for outer in 0..3 {
+                for inner in 0..3 {
+                    // pair = bytes .cbor (bytes .cbor uint), value 5
+                    let pair_val = cbor_int(5, *def_enc);
+                    let pair_l1 = cbor_bytes_sz(pair_val.clone(), bstr_enc(&pair_val, inner));
+                    let pair = cbor_bytes_sz(pair_l1.clone(), bstr_enc(&pair_l1, outer));
+                    // triple = bytes .cbor (bytes .cbor (bytes .cbor uint)), value 7 — the level-3
+                    // vector: its middle level takes the third spelling so no two levels agree.
+                    let tri_val = cbor_int(7, *def_enc);
+                    let tri_l1 = cbor_bytes_sz(tri_val.clone(), bstr_enc(&tri_val, inner));
+                    let tri_l2 = cbor_bytes_sz(tri_l1.clone(), bstr_enc(&tri_l1, (outer + inner + 1) % 3));
+                    let tri = cbor_bytes_sz(tri_l2.clone(), bstr_enc(&tri_l2, outer));
+                    let irregular_bytes = vec![
+                        arr_sz(3, *def_enc),
+                            pair,
+                            tri,
+                            cbor_str_sz("z", StringLenSz::Len(*def_enc)),
+                    ].into_iter().flatten().collect::<Vec<u8>>();
+                    let irregular = CborInlineNestedPayloads::from_cbor_bytes(&irregular_bytes).unwrap();
+                    assert_eq!(irregular.pair, 5);
+                    assert_eq!(irregular.triple, 7);
+                    assert_eq!(irregular.tail, "z");
+                    assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
+                }
+            }
+        }
+    }
+
     #[test]
     fn signed_ints() {
         use std::cmp::min;

@@ -1,0 +1,75 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{CborInlineNestedBodyEncoding, CborInlineNestedEncoding};
+
+#[derive(Clone, Debug)]
+pub struct CborInlineNested {
+    pub pair: u64,
+    pub triple: u64,
+    pub tagged: u64,
+    pub tail: String,
+    pub encodings: Option<CborInlineNestedEncoding>,
+}
+
+impl CborInlineNested {
+    pub fn new(pair: u64, triple: u64, tagged: u64, tail: String) -> Self {
+        Self {
+            pair,
+            triple,
+            tagged,
+            tail,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborInlineNestedBody {
+    pub(crate) inner: u64,
+    pub encodings: Option<CborInlineNestedBodyEncoding>,
+}
+
+impl CborInlineNestedBody {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<u64> for CborInlineNestedBody {
+    fn from(inner: u64) -> Self {
+        CborInlineNestedBody::new(inner)
+    }
+}
+
+impl From<CborInlineNestedBody> for u64 {
+    fn from(wrapper: CborInlineNestedBody) -> Self {
+        wrapper.inner
+    }
+}

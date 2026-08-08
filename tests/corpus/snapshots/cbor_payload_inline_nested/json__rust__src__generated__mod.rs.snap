@@ -1,0 +1,97 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+pub mod error;
+mod extern_interface_check;
+pub mod json_schema_gen;
+pub mod json_value_ser;
+pub mod serialization;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct CborInlineNested {
+    pub pair: u64,
+    pub triple: u64,
+    pub tagged: u64,
+    pub tail: String,
+}
+
+impl CborInlineNested {
+    pub fn new(pair: u64, triple: u64, tagged: u64, tail: String) -> Self {
+        Self {
+            pair,
+            triple,
+            tagged,
+            tail,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct CborInlineNestedBody(pub(crate) u64);
+
+impl CborInlineNestedBody {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for CborInlineNestedBody {
+    fn from(inner: u64) -> Self {
+        CborInlineNestedBody::new(inner)
+    }
+}
+
+impl serde::Serialize for CborInlineNestedBody {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for CborInlineNestedBody {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for CborInlineNestedBody {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("CborInlineNestedBody")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<CborInlineNestedBody> for u64 {
+    fn from(wrapper: CborInlineNestedBody) -> Self {
+        wrapper.0
+    }
+}

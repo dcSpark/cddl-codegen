@@ -397,6 +397,38 @@ impl CborPayloadCollections {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct CborPayloadInlineBody(pub(crate) u64);
+
+impl CborPayloadInlineBody {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for CborPayloadInlineBody {
+    fn from(inner: u64) -> Self {
+        CborPayloadInlineBody::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborPayloadInlineNesting {
+    pub pair: u64,
+    pub triple: u64,
+    pub tail: String,
+}
+
+impl CborPayloadInlineNesting {
+    pub fn new(pair: u64, triple: u64, tail: String) -> Self {
+        Self { pair, triple, tail }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CborPayloadLeaves {
     pub f64_payload: f64,
@@ -2390,6 +2422,12 @@ impl From<TaggedFloatRange> for f64 {
 
 impl From<TopLevelNegRange> for i64 {
     fn from(wrapper: TopLevelNegRange) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<CborPayloadInlineBody> for u64 {
+    fn from(wrapper: CborPayloadInlineBody) -> Self {
         wrapper.0
     }
 }

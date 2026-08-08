@@ -1,0 +1,30 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource cbor-inline-nested {
+    constructor(pair: u64, triple: u64, tagged: u64, tail: string);
+    pair: func() -> u64;
+    triple: func() -> u64;
+    tagged: func() -> u64;
+    tail: func() -> string;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-inline-nested, string>;
+  }
+  resource cbor-inline-nested-body {
+    constructor(inner: u64);
+    get: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-inline-nested-body, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}
