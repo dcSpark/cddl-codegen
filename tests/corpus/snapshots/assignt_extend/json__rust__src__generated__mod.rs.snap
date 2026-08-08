@@ -21,22 +21,6 @@ pub mod json_value_ser;
 pub mod serialization;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-pub enum ExtFirst {
-    Text(String),
-    U64(u64),
-}
-
-impl ExtFirst {
-    pub fn new_text(text: String) -> Self {
-        Self::Text(text)
-    }
-
-    pub fn new_uint(uint: u64) -> Self {
-        Self::U64(uint)
-    }
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum Extended {
     U64(u64),
     Words(String),

@@ -1,0 +1,9 @@
+; The extension-FIRST /= ordering (base `=` statement written last) — split from
+; assignt_extend.cddl because each conformance oracle chokes on this SPELLING, not these bytes:
+; the ruby gem hard-errors "Duplicate rule definition" parsing it (poisoning every rule in the
+; file, which is why it cannot share a fixture with the base-first chain), and the rust fork
+; drops the `=` arm (gap #15). Wire conformance for this ordering rides the equivalence pin
+; (incremental_type_choice_extension_equals_the_folded_spelling): it generates byte-identically
+; to the folded rule, whose bytes the oracles do judge.
+ext_first /= text
+ext_first = uint
