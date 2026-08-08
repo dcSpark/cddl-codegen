@@ -9,7 +9,7 @@ package cddl:cddl-lib@0.1.0;
 
 interface types {
   resource holder {
-    constructor(table: list<tuple<list<u64>, u64>>);
+    constructor(table: list<tuple<list<u64>, u64>>) -> result<holder, string>;
     table: func() -> list<tuple<list<u64>, u64>>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;

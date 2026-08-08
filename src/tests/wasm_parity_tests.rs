@@ -164,6 +164,23 @@ const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
         "TopAlias",
         "top-level `any` alias -> `pub type TopAlias = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
     ),
+    // The SAME class, on the component face's alias-of-`any` fixture: its two rules exist to make the
+    // member reach `any` through a CHAIN, and each link is a top-level alias of exactly the shape
+    // above. The chain is the point — one link would not distinguish a walk that resolves one from a
+    // walk that resolves all — so both links are ledgered rather than the fixture being reshaped to
+    // dodge a known-accepted class.
+    (
+        "default",
+        "tests/component-any-alias",
+        "ShallowAny",
+        "top-level `any` alias -> `pub type ShallowAny = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
+    ),
+    (
+        "default",
+        "tests/component-any-alias",
+        "DeepAny",
+        "top-level `any` alias chained onto another -> `pub type DeepAny = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
+    ),
 ];
 
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
@@ -216,6 +233,21 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         // The component face's `@name` remedy fixture. The `@name` directives are what keep it
         // generating under `--component`; they are plain comment-DSL rows on every other face.
         "component-rename",
+        &[("default", &[])],
+    ),
+    (
+        // The component face's alias-of-`any` fixture. Plain CDDL — two transparent aliases and a
+        // record — carrying no component-only construct, so it is swept here on the same terms as
+        // `component-core`; the component gates over it live in `component_tests`. Its two alias
+        // rules are the top-level `any`-alias class the ledger above already documents.
+        "component-any-alias",
+        &[("default", &[])],
+    ),
+    (
+        // The component face's WIT ident-hazard fixture. The hazard is a WIT-side fact only: on the
+        // wasm face `t` is an ordinary rule with an ordinary wrapper, which is exactly why this row
+        // is worth having — it pins that the component-face exclusion took nothing off this face.
+        "component-ident-hazard",
         &[("default", &[])],
     ),
     (

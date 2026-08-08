@@ -103,6 +103,14 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
     // The `@name` remedy every collision message names, applied to the two collision classes a
     // rename can actually move.
     ("tests/component-rename/input.cddl", &[]),
+    // CDDL `any` reached from a member position through a transparent alias CHAIN, beside the
+    // direct spelling as its in-fixture control: the class where the projection's type walk and its
+    // FALLIBILITY walk can disagree, producing valid WIT whose glue does not compile.
+    ("tests/component-any-alias/input.cddl", &[]),
+    // The WIT ident hazard: a rule whose resource name is exactly `t`, which `wit_bindgen`'s macro
+    // cannot expand. Swept here for the half no build gate states — that the refusal is an
+    // exclusion RECORD in the WIT rather than a missing type, and that the interface survives it.
+    ("tests/component-ident-hazard/input.cddl", &[]),
     ("tests/multifile/inputs", &[]),
 ];
 
@@ -136,15 +144,21 @@ fn wit_files(input: &str, extra: &[&str]) -> Result<BTreeMap<String, String>, St
     crate::api::wit_strings(&cli_for(input, extra)).map_err(|e| e.to_string())
 }
 
-/// The single emitted `.wit` of a spec written to a scratch file. Panics on a generation failure —
-/// callers testing REJECTION use [`generate_error`].
-fn wit_for_spec(spec: &str, extra: &[&str]) -> String {
+/// The `component/wit/**` map of a spec written to a scratch file — what a caller needs when the
+/// claim is about the FILES (resolving them as a package) rather than about their text.
+fn wit_files_for_spec(spec: &str, extra: &[&str]) -> BTreeMap<String, String> {
     let dir = scratch_dir("spec");
     let path = dir.join("input.cddl");
     std::fs::write(&path, spec).unwrap();
     let out = wit_files(path.to_str().unwrap(), extra);
     std::fs::remove_dir_all(&dir).ok();
     out.unwrap_or_else(|e| panic!("generating the spec failed: {e}"))
+}
+
+/// The single emitted `.wit` of a spec written to a scratch file. Panics on a generation failure —
+/// callers testing REJECTION use [`generate_error`].
+fn wit_for_spec(spec: &str, extra: &[&str]) -> String {
+    wit_files_for_spec(spec, extra)
         .into_values()
         .collect::<Vec<_>>()
         .join("\n")
@@ -470,6 +484,145 @@ fn component_wit_excludes_a_generic_extern_base_and_everything_that_reaches_it()
         "the extern or the generic INSTANCE stopped being bridged, which would make the exclusion \
          above prove something else entirely:\n{wit}"
     );
+}
+
+/// A WIT `resource` named exactly `t` is refused — through the projection's own exclusion channel,
+/// not through an abort.
+///
+/// The WIT is valid; what cannot survive is `wit_bindgen::generate!`, which binds its own type
+/// parameter `T` unhygienically in the scope it expands the guest bindings into, so the resource's
+/// rust name `T` resolves to that parameter (E0599 on the pinned 0.57.1). It is the same
+/// "valid WIT the guest macro cannot expand" family as the `list<borrow<imported>>` E0506 class, and
+/// it takes the same answer: exclude and record, so the rest of the spec's component face still
+/// generates AND still builds, and the exclusion lifts by itself when upstream fixes the hygiene.
+///
+/// The reason is pinned by fragment rather than verbatim because it is a user-facing diagnosis: the
+/// rule it names, the CAUSE (so the reader knows it is not their spec's shape), and the REMEDY.
+#[test]
+fn a_wit_resource_named_t_is_unexported_with_the_wit_bindgen_reason() {
+    let wit = wit_for_spec(
+        "t = [uint, tstr]\nholder = [0, t]\nsibling = [n: uint]\n",
+        &[],
+    );
+    assert!(
+        !wit.contains("resource t {"),
+        "the hazardous resource is still exported:\n{wit}"
+    );
+    let row = wit
+        .lines()
+        .find(|l| l.trim_start().starts_with("// unexported: T —"))
+        .unwrap_or_else(|| {
+            panic!("the hazardous resource vanished with no exclusion record:\n{wit}")
+        })
+        .to_owned();
+    for fragment in [
+        // The rule, so the reader knows WHICH name to change.
+        "`T`",
+        // The cause, so it reads as an upstream toolchain fact rather than a defect in their spec.
+        "wit_bindgen",
+        "type parameter `T`",
+        // The remedy. `@name` does NOT rename a top-level rule (the parser refuses it outright), so
+        // the message names what actually works: renaming the identifier.
+        "rename the identifier",
+        "@name",
+        // The reassurance that makes the remedy cheap to take.
+        "wire format",
+    ] {
+        assert!(
+            row.contains(fragment),
+            "the exclusion reason does not name {fragment:?}:\n{row}"
+        );
+    }
+    assert!(
+        wit.contains("// unexported: Holder — references excluded T"),
+        "the reference closure did not carry the refusal to a type that names the hazard, or does \
+         not name the chain root:\n{wit}"
+    );
+    assert!(
+        wit.contains("resource sibling {"),
+        "an unrelated type was dropped along with the hazardous one — the refusal is scoped to the \
+         name and what reaches it, never to the interface:\n{wit}"
+    );
+}
+
+/// The remedy the message names, applied. Same spec, one identifier renamed: the full surface
+/// projects and nothing is excluded — which is what makes the refusal above a NAME refusal rather
+/// than a shape refusal.
+#[test]
+fn renaming_the_rule_restores_the_resource_the_t_hazard_unexports() {
+    let wit = wit_for_spec(
+        "tee = [uint, tstr]\nholder = [0, tee]\nsibling = [n: uint]\n",
+        &[],
+    );
+    assert!(
+        !wit.contains("unexported"),
+        "the renamed twin still excludes something — the refusal is not keyed on the name alone:\n\
+         {wit}"
+    );
+    for resource in ["tee", "holder", "sibling"] {
+        assert!(
+            wit.contains(&format!("resource {resource} {{")),
+            "the renamed twin lost `{resource}`:\n{wit}"
+        );
+    }
+}
+
+/// The refusal is RESOURCE-only, pinned by the three ways a rule can be named `t` and not mint one.
+///
+/// Each control is a shape that reaches the projection differently, and every one of them compiles
+/// clean today — so widening the predicate to "any WIT item named `t`" would cost surface for
+/// nothing.
+#[test]
+fn the_t_refusal_leaves_every_shape_that_mints_no_resource_alone() {
+    // A c-style enum is a plain WIT `enum`: a value type the guest bridges by matching, with no rust
+    // type of the resource kind for the macro's parameter to shadow.
+    let enum_wit = wit_for_spec("t = 1 / 2\nholder = [0, t]\n", &[]);
+    assert!(
+        enum_wit.contains("enum t {") && !enum_wit.contains("unexported"),
+        "a c-style enum named `t` was refused, or stopped projecting:\n{enum_wit}"
+    );
+    // A transparent alias mints NO WIT type at all — it is resolved through at the use site, so
+    // `holder`'s constructor takes the resolved `u64` and nothing claims the name.
+    let alias_wit = wit_for_spec("t = uint\nholder = [0, t]\n", &[]);
+    assert!(
+        !alias_wit.contains("unexported") && alias_wit.contains("constructor(t: u64)"),
+        "a transparent alias named `t` was refused, or stopped being resolved through:\n{alias_wit}"
+    );
+    // A named COLLECTION takes the same resolved-through route, and this is the one committed input
+    // that already carries a rule named `t` — so the refusal must be invisible to it.
+    let collection_wit = wit_of("tests/corpus/composite_map_key.cddl", &[]);
+    assert!(
+        !collection_wit.contains("unexported") && collection_wit.contains("resource holder {"),
+        "the committed `t = {{ * [+ uint] => uint }}` input started excluding something:\n\
+         {collection_wit}"
+    );
+}
+
+/// The degenerate shape of the refusal: a spec whose ONLY rule is the hazard leaves an interface
+/// carrying nothing but the exclusion record. That is still a package `wit-parser` resolves,
+/// `wit-component` encodes and `wasmparser` validates — the same four-stage oracle every fixture
+/// meets — so the refusal never turns a generable spec into an unusable one.
+#[test]
+fn a_spec_whose_only_rule_is_the_hazard_still_renders_a_valid_package() {
+    let files = wit_files_for_spec("t = [uint, tstr]\n", &[]);
+    let joined = files.values().cloned().collect::<Vec<_>>().join("\n");
+    // A DECLARATION, not a mention: the exclusion reason names the resource kind in its prose, so
+    // the absence claim reads the line's own shape rather than the word.
+    let declares_a_resource = joined
+        .lines()
+        .any(|l| l.trim_start().starts_with("resource "));
+    assert!(
+        joined.contains("// unexported: T —") && !declares_a_resource,
+        "the lone hazardous rule did not leave an empty-but-recorded interface:\n{joined}"
+    );
+    let bytes = resolve_and_encode(&files).unwrap_or_else(|e| {
+        panic!(
+            "an interface holding only an exclusion record failed to \
+             resolve/encode: {e}\n{joined}"
+        )
+    });
+    validate_component(&bytes)
+        .unwrap_or_else(|e| panic!("the encoded component failed validation: {e}\n{joined}"));
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -929,6 +1082,43 @@ fn component_reject_tables_stay_plain_maps_while_reject_sets_reenter_try_from() 
         inline_policy,
         Some(DuplicatesPolicy::Reject),
         "the inline table parser silently dropped its explicit @duplicates reject policy"
+    );
+}
+
+/// CDDL `any` reached through a transparent alias must take the SAME fallible door as `any` written
+/// directly.
+///
+/// The projection runs two walks over one parameter — the TYPE walk that decides how it is spelled
+/// and the FALLIBILITY walk that decides whether its door returns a `result` — and the module's
+/// contract is that they agree. The type walk resolves a CDDL alias at the use site (`x = any` is
+/// `any-cbor` there, indistinguishable from a directly-written `any`), so a fallibility walk that
+/// stops AT the alias produces an infallible `constructor` over a body that decodes the caller's
+/// bytes with `?` — valid WIT, exit 0, and E0277 in the guest crate. The chain is two links deep so a
+/// walk resolving exactly one is caught here too, and the directly-spelled member is the control that
+/// keeps this an AGREEMENT claim rather than a claim about `any` doors in general.
+#[test]
+fn a_door_taking_any_through_an_alias_is_fallible_like_the_direct_spelling() {
+    let wit = wit_for_spec(
+        "shallow_any = any\n\
+         deep_any = shallow_any\n\
+         aliased = [chained: deep_any, single: shallow_any]\n\
+         direct = [d: any]\n",
+        &[],
+    );
+    let control = resource_body(&wit, "direct");
+    assert!(
+        control.contains("constructor(d: any-cbor) -> result<direct, string>;"),
+        "the CONTROL door — `any` written directly — is not fallible, so this test can prove \
+         nothing about the aliased one:\n{wit}"
+    );
+    let aliased = resource_body(&wit, "aliased");
+    assert!(
+        aliased.contains(
+            "constructor(chained: any-cbor, single: any-cbor) -> result<aliased, string>;"
+        ),
+        "a door taking `any` through an alias is INFALLIBLE while the direct spelling is fallible — \
+         the fallibility walk stopped at the alias, and the guest body decoding those bytes with \
+         `?` will not compile:\n{wit}"
     );
 }
 
@@ -1981,6 +2171,14 @@ const BUILD_SMOKE_FIXTURES: &[BuildSmokeRow] = &[
         &["--preserve-encodings=true", "--canonical-form=true"],
         Some(EXTERN_DEFS_CANONICAL),
     ),
+    // The two classes whose ONLY symptom is a compile failure: the WIT they produce resolves,
+    // encodes and validates, and the tool exits 0, so nothing short of compiling the guest crate can
+    // judge either. `component-any-alias` pins that an `any` reached through an alias chain gets the
+    // FALLIBLE door its `?`-decoding body needs (an infallible one is E0277);
+    // `component-ident-hazard` pins the other direction — that unexporting the resource named `t`
+    // leaves a crate that BUILDS, which is what makes exclusion a better answer than an abort.
+    ("tests/component-any-alias/input.cddl", &[], None),
+    ("tests/component-ident-hazard/input.cddl", &[], None),
     // The two flag-gated SEAMS, in the one posture that carries both: `to-canonical-cbor-bytes`
     // (which names a trait method the runtime composes only here) and the JSON pair (which names
     // `serde_json` and the rust crate's derived serde impls, and needs the dependency the component
@@ -2191,10 +2389,11 @@ fn component_crate_builds_for_wasm32_wasip2() {
 ///    `TryFrom` door those types own is re-entered only for a parameter that is despecialized at its
 ///    TOP level (`materialize` routes off `wit::wit_param_despecialized` of the whole parameter), and
 ///    the conversion walk below that point sees WIT types only, so a nested despecialization is
-///    invisible to it. Closing it needs the rust type threaded through the conversion walk beside
-///    the WIT type, AND `wit_param_validates` descending through an alias and a named collection
-///    rule so the WIT signature turns fallible — a surface change, since the door has to have a
-///    `result<_, string>` to report through.
+///    invisible to it. What remains is exactly that: the rust type threaded through the conversion
+///    walk beside the WIT type, so the nested door can re-enter `TryFrom`. The SURFACE half is
+///    already in place — `wit_param_validates` resolves through the alias a named collection rule
+///    registers, so these doors carry the `result<_, string>` such a re-check has to report
+///    through.
 /// 2. **`@default` fields.** A `.default`ed field is a PLAIN `T` on the rust side (the default fills
 ///    absence in), while the projection still treats it as optional — so the glue reads
 ///    `me.b.as_ref()` on a `u64` (E0599) and writes `field = Some(v)` into a `u64` (E0308). The fix

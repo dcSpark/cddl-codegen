@@ -31,13 +31,13 @@ fn err<E: core::fmt::Display>(e: E) -> String {
 pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
 
 impl wit_types::GuestHolder for WitHolder {
-    fn new(table: Vec<(Vec<u64>, u64)>) -> Self {
+    fn new(table: Vec<(Vec<u64>, u64)>) -> Result<Self, String> {
         let table = table
             .into_iter()
             .map(|(x0, x1)| (x0.into_iter().collect(), x1))
             .collect();
         let inner = cddl_lib::Holder::new(table);
-        WitHolder(RefCell::new(inner))
+        Ok(WitHolder(RefCell::new(inner)))
     }
 
     fn table(&self) -> Vec<(Vec<u64>, u64)> {

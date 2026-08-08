@@ -232,19 +232,24 @@ impl std::fmt::Display for WitPackageId {
 // is a silent-drift source between the two faces and between the emitter and the parity gate.
 // =================================================================================================
 
-/// A shape the phase-1 projection cannot render. Never surfaced to the user as an error: the walk
-/// converts it to an EXCLUSION record (R5), so a spec carrying a phase-2 type class generates a WIT
-/// WITHOUT that type rather than failing.
+/// A reason the phase-1 projection keeps a type OUT of the WIT. Never surfaced to the user as an
+/// error: the walk converts it to an EXCLUSION record (R5), so a spec carrying such a type generates
+/// a WIT WITHOUT it rather than failing.
 #[derive(Clone, Debug)]
 pub(crate) enum WitError {
     /// The type's own shape has no phase-1 WIT projection.
     Unprojectable { shape: String },
+    /// The type's WIT NAME — not its shape — is one the guest toolchain cannot compile. Its own
+    /// variant because the remedy is the opposite of `Unprojectable`'s: the spec need not change
+    /// shape at all, only spelling.
+    IdentHazard { reason: String },
 }
 
 impl std::fmt::Display for WitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WitError::Unprojectable { shape } => write!(f, "{shape}"),
+            WitError::IdentHazard { reason } => write!(f, "{reason}"),
         }
     }
 }
@@ -753,6 +758,48 @@ struct StagedType {
 // The projection walk
 // =================================================================================================
 
+/// The one WIT name a `resource` may not carry on this face.
+///
+/// `wit_bindgen::generate!` expands the guest bindings inside a scope where the macro has bound its
+/// OWN type parameter `T`, unhygienically. A WIT `resource t` lowers to a rust type `T` in that same
+/// scope, so every use of the resource's name resolves to the macro's parameter instead of the
+/// resource — measured on the pinned 0.57.1 as `E0599: no method ... on type parameter `T``. It is
+/// an UPSTREAM hygiene bug, not a property of the rule's shape, so no spelling of the emitted glue
+/// avoids it and the name is refused instead.
+const WIT_BINDGEN_RESOURCE_IDENT_HAZARD: &str = "t";
+
+/// Whether this type's projected defs mint the hazardous resource name, and the reason to record if
+/// they do.
+///
+/// Deliberately keyed on the projected DEFS rather than on the struct kind: every resource-minting
+/// path (record, wrapper, choice, range newtype, extern bridge, raw-bytes bridge) funnels through
+/// `project_struct`'s return, so one predicate here covers all of them and a future seventh path
+/// gets the guard for free. Just as deliberately narrow:
+/// - a c-style enum named `t` is a plain WIT `enum`, not a resource — no rust type parameter is ever
+///   spelled for it and it compiles clean, so it stays exported;
+/// - a choice's `t-kind` discriminant and an accumulator's `t-list` are not the bare name and are
+///   not resources anyway;
+/// - a transparent alias and a named collection never reach this point at all (both are resolved
+///   through at their use sites), so a rule `t = uint` or `t = {* [+ uint] => uint}` is untouched.
+fn wit_bindgen_resource_ident_hazard(ident: &RustIdent, defs: &[WitTypeDef]) -> Option<String> {
+    let hazard = defs.iter().any(
+        |def| matches!(def, WitTypeDef::Resource(r) if r.name == WIT_BINDGEN_RESOURCE_IDENT_HAZARD),
+    );
+    if !hazard {
+        return None;
+    }
+    Some(format!(
+        "`{ident}` projects to a WIT `resource {WIT_BINDGEN_RESOURCE_IDENT_HAZARD}`, which cannot \
+         compile inside `wit_bindgen::generate!` — the macro binds its own type parameter `T` \
+         unhygienically in the guest scope, so the resource's rust name resolves to that parameter \
+         instead (upstream wit-bindgen 0.57, independent of this rule's shape). Rename it off \
+         `{WIT_BINDGEN_RESOURCE_IDENT_HAZARD}`: a top-level rule's identifier IS its emitted type \
+         name, so rename the identifier (`@name` does not rename a rule); a name that came from a \
+         group-choice arm's `@name` is changed there. Neither renaming touches the CBOR wire format, \
+         and the exclusion lifts on its own once upstream fixes the hygiene"
+    ))
+}
+
 /// Walk the FINALIZED IR into a [`WitPackage`]. INFALLIBLE by construction (R5): a type whose shape
 /// has no phase-1 projection — or which references one — is EXCLUDED AND RECORDED, and the package
 /// still renders.
@@ -832,6 +879,15 @@ pub(crate) fn project(
         );
         let (uses_int, uses_any_cbor) = (ctx.uses_int, ctx.uses_any_cbor);
         import_errors.extend(errors);
+        // A resource named `t` is valid WIT that the guest macro cannot expand, so it is refused
+        // HERE, through the projection's own refusal channel, rather than in the user's build.
+        let projected =
+            projected.and_then(
+                |defs| match wit_bindgen_resource_ident_hazard(ident, &defs) {
+                    Some(reason) => Err(WitError::IdentHazard { reason }),
+                    None => Ok(defs),
+                },
+            );
         match projected {
             Ok(defs) => {
                 staged.insert(
@@ -2338,7 +2394,13 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
     {
         return true;
     }
-    match &ty.conceptual_type {
+    // Read the SHAPE through any alias chain. A CDDL alias is transparent to the projection —
+    // `map_conceptual` spells `x = any` at a use site as `any-cbor`, exactly as a directly-written
+    // `any` — so the fallibility walk has to see the same thing the type walk does, or the two walks
+    // disagree and the door's WIT signature contradicts the body the guest emitter writes for it (an
+    // infallible `constructor` over a body that decodes with `?`, which is E0277 in generated code).
+    // `resolve_alias_shallow` resolves the whole chain, so the `Alias` arm below is unreachable.
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Optional(inner) | ConceptualRustType::Array(inner) => {
             wit_param_validates(inner, types)
         }
@@ -2387,6 +2449,11 @@ pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) 
     {
         return true;
     }
+    // No final shape match, deliberately: unlike [`wit_param_validates`], the only despecialized
+    // carriers are the two read above, and both are read through `resolve_alias_shallow` already. A
+    // despecialization NESTED under a collection is a real residue, but closing it needs the rust
+    // type threaded through the conversion walk as well — it is ledgered as class 1 of
+    // `component_tests::EXPECTED_COMPILE_FAIL`, not silently absent here.
     false
 }
 
