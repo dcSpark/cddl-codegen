@@ -655,7 +655,7 @@ impl<'a> IntermediateTypes<'a> {
     /// bit), a wrapper body and a type-choice arm hold the nullable directly, and a group-choice arm
     /// either becomes a record of its own (this position) or is inlined into an enum variant, where
     /// the variant tag IS the presence bit (`can_embed_fields`, ≤1 non-fixed field). A member with a
-    /// `@default` is not `Option`-wrapped at all, so it is excluded here exactly as it is at the
+    /// `.default` is not `Option`-wrapped at all, so it is excluded here exactly as it is at the
     /// emission site.
     pub fn uses_double_option(&self) -> bool {
         self.rust_structs.values().any(|rs| {

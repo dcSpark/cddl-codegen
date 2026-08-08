@@ -4369,7 +4369,7 @@ this gate made rather than a decision. Two emitter classes remain, both in the e
 `component/src/generated/mod.rs` and both reproducing under either `--wasm` posture: a despecialized
 `[+ T]` / `{+ K => V}` reached through a named collection rule as a list ELEMENT or a map KEY, which
 `.collect()`s straight into `NonEmptyVec`/`NonEmptyMap` because the `TryFrom` routing sees only the
-TOP level of a parameter; and a `@default`ed scalar field, which is a plain `T` in the rust struct
+TOP level of a parameter; and a `.default`-carrying scalar field, which is a plain `T` in the rust struct
 while the projection still treats it as optional. The two classes the gate found in the GUEST BLOCK
 itself — a world exporting no interface still emitting `export!(Component);`, and an interface of
 only value types still emitting `impl wit_types::Guest for Component {}` — are fixed, and the

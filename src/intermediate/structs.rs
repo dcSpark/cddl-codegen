@@ -295,7 +295,7 @@ impl RustField {
     /// `double_option` adapter's emission condition, the runtime module's usage gate and the wasm
     /// face's flatten condition are all the same predicate, so they cannot drift.
     ///
-    /// A member with a `@default` is NOT stored behind a presence-`Option` (the default fills the
+    /// A member with a `.default` is NOT stored behind a presence-`Option` (the default fills the
     /// absent case), so it is excluded: its rust type is the nullable's single `Option`.
     pub fn is_double_option(&self) -> bool {
         self.optional
