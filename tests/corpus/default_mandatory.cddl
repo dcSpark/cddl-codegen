@@ -1,0 +1,14 @@
+; `.default` at a MANDATORY member position, and the same control carried in through an ALIAS rule.
+; RFC 8610 §3.8.2 makes a default meaningful only for an OPTIONAL occurrence — it substitutes for an
+; ABSENT value, and a mandatory member is never absent — so the generator strips it (warning on
+; stderr) at field construction. `b` and `x` below therefore emit as PLAIN mandatory fields that keep
+; their `new()` arguments, which is what keeps the wasm and WIT constructors (both mirror `new()`) in
+; agreement with the rust one.
+;
+; The alias rule is why the decision is per USE SITE rather than a refusal: `aliased_default` is
+; legitimate at `? y`, and the same rule referenced mandatorily at `x` must not make the spec
+; unusable. Both use sites appear here so the split is pinned in one place.
+mandatory_default = { a: uint, b: uint .default 3, ? c: uint .default 4 }
+
+aliased_default = uint .default 9
+alias_default_positions = { x: aliased_default, ? y: aliased_default }

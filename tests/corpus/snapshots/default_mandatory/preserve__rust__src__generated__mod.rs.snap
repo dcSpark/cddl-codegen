@@ -1,0 +1,59 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{AliasDefaultPositionsEncoding, MandatoryDefaultEncoding};
+
+#[derive(Clone, Debug)]
+pub struct AliasDefaultPositions {
+    pub x: AliasedDefault,
+    pub y: AliasedDefault,
+    pub encodings: Option<AliasDefaultPositionsEncoding>,
+}
+
+impl AliasDefaultPositions {
+    pub fn new(x: AliasedDefault) -> Self {
+        Self {
+            x,
+            y: 9,
+            encodings: None,
+        }
+    }
+}
+
+pub type AliasedDefault = u64;
+
+#[derive(Clone, Debug)]
+pub struct MandatoryDefault {
+    pub a: u64,
+    pub b: u64,
+    pub c: u64,
+    pub encodings: Option<MandatoryDefaultEncoding>,
+}
+
+impl MandatoryDefault {
+    pub fn new(a: u64, b: u64) -> Self {
+        Self {
+            a,
+            b,
+            c: 4,
+            encodings: None,
+        }
+    }
+}

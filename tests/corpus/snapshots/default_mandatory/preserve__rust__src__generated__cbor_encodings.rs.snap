@@ -1,0 +1,34 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::vec::Vec;
+
+#[derive(Clone, Debug, Default)]
+pub struct AliasDefaultPositionsEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub x_encoding: Option<cbor_event::Sz>,
+    pub x_key_encoding: StringEncoding,
+    pub y_encoding: Option<cbor_event::Sz>,
+    pub y_default_present: bool,
+    pub y_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MandatoryDefaultEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub a_encoding: Option<cbor_event::Sz>,
+    pub a_key_encoding: StringEncoding,
+    pub b_encoding: Option<cbor_event::Sz>,
+    pub b_key_encoding: StringEncoding,
+    pub c_encoding: Option<cbor_event::Sz>,
+    pub c_default_present: bool,
+    pub c_key_encoding: StringEncoding,
+}

@@ -1,0 +1,109 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type AliasDefaultPositions = WitAliasDefaultPositions;
+    type MandatoryDefault = WitMandatoryDefault;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitAliasDefaultPositions(pub RefCell<cddl_lib::AliasDefaultPositions>);
+
+impl wit_types::GuestAliasDefaultPositions for WitAliasDefaultPositions {
+    fn new(x: u64) -> Self {
+        let inner = cddl_lib::AliasDefaultPositions::new(x);
+        WitAliasDefaultPositions(RefCell::new(inner))
+    }
+
+    fn x(&self) -> u64 {
+        let me = self.0.borrow();
+        me.x
+    }
+
+    fn y(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        me.y.as_ref().map(|x| *x)
+    }
+
+    fn set_y(&self, y: u64) {
+        self.0.borrow_mut().y = Some(y);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::AliasDefaultPositions as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::AliasDefaultPositions, String> {
+        <cddl_lib::AliasDefaultPositions as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::AliasDefaultPositions::new(WitAliasDefaultPositions(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitMandatoryDefault(pub RefCell<cddl_lib::MandatoryDefault>);
+
+impl wit_types::GuestMandatoryDefault for WitMandatoryDefault {
+    fn new(a: u64, b: u64) -> Self {
+        let inner = cddl_lib::MandatoryDefault::new(a, b);
+        WitMandatoryDefault(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn b(&self) -> u64 {
+        let me = self.0.borrow();
+        me.b
+    }
+
+    fn c(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        me.c.as_ref().map(|x| *x)
+    }
+
+    fn set_c(&self, c: u64) {
+        self.0.borrow_mut().c = Some(c);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MandatoryDefault as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MandatoryDefault, String> {
+        <cddl_lib::MandatoryDefault as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::MandatoryDefault::new(WitMandatoryDefault(RefCell::new(v))))
+        .map_err(err)
+    }
+}

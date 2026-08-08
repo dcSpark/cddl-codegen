@@ -264,6 +264,11 @@ fn fixed_value_cbor_type(value: &FixedValue) -> CBORType {
 #[derive(Clone, Debug)]
 pub struct RustField {
     pub name: String,
+    /// Invariant held by the record-field construction seam (`parse_record_from_group_choice`):
+    /// `rust_type.config.default` is `Some` only when `optional` — a `.default` on a mandatory
+    /// member is inert by RFC 8610 §3.8.2 (a default fills an ABSENT value) and is stripped, with
+    /// a warning, before the field is built. Every face may therefore read a defaulted field as
+    /// an optional one.
     pub rust_type: RustType,
     pub optional: bool,
     // None for array fields, Some for map fields. FixedValue for (de)serialization for map keys

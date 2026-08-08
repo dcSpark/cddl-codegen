@@ -12883,3 +12883,105 @@ fn multiline_group_rule_refusal_names_the_rule_in_a_multi_module_input() {
         "the refusal must name the rule in the second module and its directive, got:\n{err}"
     );
 }
+
+/// A `.default` written at a MANDATORY member position is inert by RFC 8610 §3.8.2 — a default is
+/// what a decoder substitutes for an ABSENT value, and a mandatory member is never absent. The
+/// generator strips it at field construction, so the member emits as a PLAIN mandatory field:
+/// it keeps its `new()` argument, which is what keeps the wasm and WIT constructors (which mirror
+/// `new()`) in agreement with the rust one. Left in place, the inert control moved the member out
+/// of `new()` on the rust face ALONE and the mirrored constructors called it with an argument it
+/// no longer took (E0061).
+///
+/// The optional sibling in the same rule pins that the strip is per-USE-SITE, not per-rule: `? y`
+/// still gets its default (plain field, initialized from it, excluded from `new()`).
+#[test]
+fn mandatory_member_default_is_inert() {
+    let src = run_spec(
+        "md = { a: uint, b: uint .default 3, ? y: uint .default 4 }\n",
+        "mandatory_default",
+    )
+    .expect("a mandatory-position `.default` must be ignored, not abort generation")
+    .get("rust/src/generated/mod.rs")
+    .expect("rust mod emitted")
+    .clone();
+    assert!(
+        src.contains("pub fn new(a: u64, b: u64)"),
+        "the mandatory-defaulted member must stay a `new()` argument, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub b: u64") && src.contains("pub y: u64"),
+        "both members store plain (mandatory by occurrence, defaulted by control), got:\n{src}"
+    );
+    assert!(
+        src.contains("y: 4"),
+        "the OPTIONAL member's default must still initialize it in `new()`, got:\n{src}"
+    );
+}
+
+/// The same strip, reached through an ALIAS rule that carries the default (`d = uint .default 0`).
+/// Refusing the alias is not an option — it is legitimate at its optional use sites — so the
+/// decision is made per use site, and the mandatory reference is the one that loses the control.
+#[test]
+fn alias_carried_default_is_inert_at_a_mandatory_use_site() {
+    let src = run_spec(
+        "d = uint .default 9\nma = { x: d, ? y: d }\n",
+        "alias_carried_default",
+    )
+    .expect("an alias-carried default at a mandatory use site must not abort generation")
+    .get("rust/src/generated/mod.rs")
+    .expect("rust mod emitted")
+    .clone();
+    assert!(
+        src.contains("pub fn new(x: D)"),
+        "the mandatory use site keeps its `new()` argument, got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub fn new(x: D, y: D)") && src.contains("y: 9"),
+        "the optional use site still applies the carried default, got:\n{src}"
+    );
+}
+
+/// The strip is a behaviour change the user must see, so it WARNS on stderr — naming the rule by
+/// its SOURCE spelling and the member, and pointing at the occurrence that would make the default
+/// meaningful. Asserted out of process because the warning is a stderr diagnostic, not a return
+/// value.
+#[test]
+fn mandatory_member_default_warns_on_stderr() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_mandatory_default_warn_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "md = { a: uint, b2: uint .default 3 }\n").unwrap();
+    let out_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_mandatory_default_warn_out_{}",
+        std::process::id()
+    ));
+    let out = crate::tests::integration_tests::codegen_cmd()
+        .args([
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            out_dir.to_str().unwrap(),
+            "--wasm",
+            "false",
+        ])
+        .output()
+        .expect("the generator binary must be spawnable");
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir_all(&out_dir).ok();
+    assert!(
+        out.status.success(),
+        "an inert `.default` warns, it does not abort (exit {:?})\nstderr:\n{}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("rule `md`") && stderr.contains("`b2`") && stderr.contains("has no effect"),
+        "the warning must name the rule by source spelling and the member, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("RFC 8610") && stderr.contains("optional occurrence"),
+        "the warning must say WHY the control is inert, got:\n{stderr}"
+    );
+}

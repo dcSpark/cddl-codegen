@@ -2104,6 +2104,186 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "default_mandatory.alias_default_positions"
+axis = "corpus"
+example = "aliased_default = uint .default 9\nalias_default_positions = { x: aliased_default, ? y: aliased_default }"
+fixture = "default_mandatory"
+rule = "alias_default_positions"
+spec = "__probe_holder = [0, alias_default_positions]\naliased_default = uint .default 9\nalias_default_positions = { x: aliased_default, ? y: aliased_default }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a16178190201"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16178190601"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16178190939"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16178190a58"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16178190b58"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16178190d78"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1617819114d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a261781904086179190719"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2617819047b6179190773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26178190a2d6179190d68"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "default_mandatory.aliased_default"
+axis = "corpus"
+example = "aliased_default = uint .default 9"
+fixture = "default_mandatory"
+rule = "aliased_default"
+spec = "__probe_holder = [0, aliased_default]\naliased_default = uint .default 9"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820019030c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190466"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820019051f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190525"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190653"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190b13"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190b93"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190d28"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190f5b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820019105b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "default_mandatory.mandatory_default"
+axis = "corpus"
+example = "mandatory_default = { a: uint, b: uint .default 3, ? c: uint .default 4 }"
+fixture = "default_mandatory"
+rule = "mandatory_default"
+spec = "__probe_holder = [0, mandatory_default]\nmandatory_default = { a: uint, b: uint .default 3, ? c: uint .default 4 }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a2616118ea61621902a7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2616119035a61621903b4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190ea661621907f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190eec6162190b10"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190f40616218b6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3616119035761621903016163191072"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a361611904d06162190999616319086b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3616119051961621903416163190196"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36161190c95616219046a61631910be"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a361611910ab61621904376163190673"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "default_value.defaulted"
 axis = "corpus"
 example = "defaulted = { a: uint, ? b: uint .default 1337, ? c: text .default \"he\\\"llo\\\\world\" }"
