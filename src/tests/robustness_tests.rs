@@ -12212,88 +12212,96 @@ fn generic_raw_bytes_base_rejects_gracefully() {
 }
 
 /// A `.cbor` payload applied to a target that is ALREADY a `.cbor` payload — the INLINE spelling
-/// `bytes .cbor (bytes .cbor uint)` — used to generate at exit 0 and emit a crate that cannot
-/// build: the serialize walk names the payload buffer after the OWNING variable, so every depth in
-/// one chain mints `<var>_inner_se` and the outer write borrows what the inner `finalize()` moved
-/// (E0382, once per extra depth). Now a parse-time graceful rejection at both seams that can apply
-/// the operation: the rule-BODY registration (which has a rule name to prefix) and
-/// `rust_type_from_type1` (every member / element / choice-arm position, which does not).
+/// `bytes .cbor (bytes .cbor uint)`, where both depths live in ONE type expression and therefore in
+/// one `RustType`'s encoding chain. SUPPORTED on every profile: each `.cbor` level owns its own
+/// depth-suffixed staging buffer, reader, payload local and encoding member (`cbor_bytes_infix` and
+/// its siblings in `generation/mod.rs`), so the levels no longer contend for one name.
 ///
-/// NAMING the inner payload is the boundary, and it is why the alias-flattened spelling
-/// (`inner = bytes .cbor uint` + `bytes .cbor inner`) is in the CONTROLS rather than the vectors: a
-/// `.cbor` rule body mints a wrapper struct with its own serialize fn and its own buffer, so the
-/// reference crosses a real type instead of copying a chain that already carried a `CBORBytes`. The
-/// transparent-alias flattening that made the two spellings one chain is unrepresentable now
-/// (`register_type_alias`'s wire-facts assert).
+/// This test is a GENERATE-and-BUILD pin at the parse seams, not a wire pin: it asserts that both
+/// seams which can apply the operation accept the composition — the rule-BODY registration and
+/// `rust_type_from_type1` (every member / element / choice-arm position) — across the profiles that
+/// change the names involved. The executed byte evidence lives where it can be executed:
+/// `cbor_payload_inline_nesting` in `tests/core/tests.rs` (hand-derived RFC 8949 oracle, both
+/// spellings, triple nesting, a value-less payload and the two leftover-byte refusals) and
+/// `cbor_inline_nested_payloads` in `tests/preserve-encodings/tests.rs` (each level's byte-string
+/// `StringEncoding` driven independently through an irregular re-encoding).
 ///
-/// The controls are the load-bearing half, because the refusal keys on the SAME-CHAIN composition
-/// only and a sloppier key would take the whole `.cbor` feature down with it. Nesting through a
-/// named payload (with or without `@newtype`) and nesting inside a payload's COLLECTION
-/// (`tests/corpus/cbor_payload_nested.cddl`'s shape) both give the inner payload its own serialize
-/// fn and its own buffer, emit the same nested wire shape, and must keep generating; so must a
-/// single payload, a payload over a tag, and a payload over a struct.
+/// The remaining rows are the controls the former refusal needed: every OTHER way to nest a payload
+/// — through a named payload (with or without `@newtype`), through a payload's COLLECTION
+/// (`tests/corpus/cbor_payload_nested.cddl`'s shape), through a struct — kept working while the
+/// inline spelling was refused, and must keep working now that it is not. A regression that
+/// re-broke depth threading would most plausibly show up as one of these losing ITS name, so they
+/// stay.
 #[test]
-fn nested_cbor_payload_rejects_gracefully() {
-    // Rule-BODY spellings carry the rule-name prefix; every other position does not.
+fn nested_cbor_payload_generates_on_every_profile() {
+    // The five spellings that used to be the refusal's vectors, one per position that reaches a
+    // parse seam: the rule BODY (which force-wraps) and four member/arm/element positions.
     let vectors = [
-        ("inline_body", "b = bytes .cbor (bytes .cbor uint)\n", true),
+        ("inline_body", "b = bytes .cbor (bytes .cbor uint)\n"),
         (
             "inline_member",
             "foo = [b: bytes .cbor (bytes .cbor uint)]\n",
-            false,
         ),
         (
             "triple_member",
             "foo = [b: bytes .cbor (bytes .cbor (bytes .cbor uint))]\n",
-            false,
         ),
         (
             "inline_choice_arm",
             "a = bytes .cbor (bytes .cbor uint) / tstr\n",
-            false,
         ),
         (
             "inline_array_element",
             "a = [* bytes .cbor (bytes .cbor uint)]\n",
-            false,
+        ),
+        // The composition that mixes the two counters: a tag BETWEEN two payload levels advances
+        // only `tag_depth`, so the byte-string members must still come out `bytes` / `bytes2`.
+        (
+            "tag_between_levels",
+            "foo = [b: bytes .cbor (#6.7(bytes .cbor uint))]\n",
+        ),
+        // A value-less payload under the nesting: without encodings neither level stores anything,
+        // so the whole member must take the discarding leg.
+        (
+            "fixed_payload_member",
+            "foo = [b: bytes .cbor (bytes .cbor 42), t: uint]\n",
         ),
     ];
-    // Profile-INDEPENDENT: `finalize` short-circuits on a recorded rejection before any emission,
-    // so no flag can rescue the shape.
-    for (tag, spec, rule_prefixed) in vectors {
+    // Profile-INDEPENDENT, and the profiles are the point: `--preserve-encodings` is where the two
+    // levels each mint a sidecar member, and `--wasm` mints the wrapper API over them.
+    for (tag, spec) in vectors {
         for extra in [
             &["--wasm", "false"][..],
             &["--wasm", "true"][..],
             &["--wasm", "false", "--preserve-encodings", "true"][..],
         ] {
-            let msg = expect_graceful_rejection(&format!("nested_cbor_{tag}"), spec, extra);
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_nested_cbor_{tag}_{}.cddl",
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "nested_cbor_unused",
+            ];
+            argv.extend_from_slice(extra);
+            let cli = Cli::parse_from(argv);
+            let result = crate::api::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
             assert!(
-                msg.contains(
-                    "a `.cbor` payload whose own target is already a `.cbor` payload is unsupported"
-                ),
-                "the rejection must name the composition ({tag}, {extra:?}), got: {msg}"
-            );
-            assert!(
-                msg.contains("This is the INLINE spelling"),
-                "the rejection must name the composition it keys on ({tag}, {extra:?}), got: {msg}"
-            );
-            assert!(
-                msg.contains("`inner = bytes .cbor T`")
-                    && msg.contains("bytes .cbor [* bytes .cbor T]"),
-                "the rejection must point at the two supported ways to nest a payload ({tag}, \
-                 {extra:?}), got: {msg}"
-            );
-            assert_eq!(
-                msg.starts_with("rule `B`: "),
-                rule_prefixed,
-                "only the rule-BODY seam knows a rule name to prefix ({tag}, {extra:?}), got: {msg}"
+                result.is_ok(),
+                "the INLINE nested `.cbor` spelling must generate ({tag}, {extra:?}), got: {:?}",
+                result.err().map(|e| e.to_string())
             );
         }
     }
 
-    // Controls: every currently-working `.cbor` shape must keep generating. `nested_collection`
-    // mirrors tests/corpus/cbor_payload_nested.cddl and `newtype_boundary` is the remedy the
-    // rejection advertises, so both are asserted rather than assumed.
+    // Controls: every OTHER `.cbor` nesting shape must keep generating. `nested_collection`
+    // mirrors tests/corpus/cbor_payload_nested.cddl and `newtype_boundary` crosses a real type
+    // boundary, so both are asserted rather than assumed.
     for (tag, spec) in [
         ("single", "x = bytes .cbor uint\n"),
         (
@@ -12305,8 +12313,8 @@ fn nested_cbor_payload_rejects_gracefully() {
             "inner = bytes .cbor uint ; @newtype\nb = [f: bytes .cbor inner]\n",
         ),
         // The same boundary WITHOUT `@newtype`: a `.cbor` rule body force-wraps either way, so
-        // these four (rule body, member, choice arm, array element) are the spellings that used to
-        // be same-chain vectors and are supported now.
+        // these four (rule body, member, choice arm, array element) nest through a real type
+        // instead of through one chain.
         (
             "named_boundary_body",
             "inner = bytes .cbor uint\nb = bytes .cbor inner\n",
@@ -12356,8 +12364,7 @@ fn nested_cbor_payload_rejects_gracefully() {
             std::fs::remove_file(&path).ok();
             assert!(
                 result.is_ok(),
-                "the {tag} control must keep generating ({extra:?}) — only a payload nested in the \
-                 SAME chain is refused, got: {:?}",
+                "the {tag} control must keep generating ({extra:?}), got: {:?}",
                 result.err().map(|e| e.to_string())
             );
         }

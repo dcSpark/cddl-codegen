@@ -36,6 +36,17 @@ pub(super) struct SerializeConfig<'a> {
     /// across a name boundary WITHOUT the reset leaks the parent's depth, so serialize reads
     /// `{elem}_tag2_encoding` while the struct only minted `{elem}_tag_encoding` (E0425).
     tag_depth: usize,
+    /// number of `.cbor` payload levels already crossed on this member name (0 at the field root).
+    /// Drives `cbor_bytes_infix` (the `bytes`/`bytes2`/… encoding-var and byte-vector infix) and
+    /// `cbor_payload_buffer_suffix` (the `inner_se`/`inner_se2`/… staging buffer) so the INLINE
+    /// `bytes .cbor (bytes .cbor T)` spelling gives each depth its own buffer instead of borrowing
+    /// one the inner `finalize()` moved (E0382).
+    ///
+    /// INVARIANT: same lockstep as `tag_depth` above, against the same `encoding_fields_impl`
+    /// counter — reset to 0 at exactly the name boundaries (array element, map key, map value,
+    /// CStyleEnum variant hand-off) and thread it everywhere else, +1 at a `.cbor` level. The two
+    /// counters are independent: a tag between two payloads advances only `tag_depth`.
+    cbor_depth: usize,
 }
 
 impl<'a> SerializeConfig<'a> {
@@ -51,6 +62,7 @@ impl<'a> SerializeConfig<'a> {
             custom_serialize: None,
             custom_encodings: None,
             tag_depth: 0,
+            cbor_depth: 0,
         }
     }
 
@@ -128,6 +140,11 @@ impl<'a> SerializeConfig<'a> {
 
     pub(super) fn tag_depth(mut self, tag_depth: usize) -> Self {
         self.tag_depth = tag_depth;
+        self
+    }
+
+    pub(super) fn cbor_depth(mut self, cbor_depth: usize) -> Self {
+        self.cbor_depth = cbor_depth;
         self
     }
 
@@ -676,6 +693,7 @@ impl GenerationScope {
                         serializing_rust_type,
                         cli,
                         0,
+                        0,
                         AliasDeclarations::Blind,
                     ),
                 };
@@ -797,25 +815,36 @@ impl GenerationScope {
                     self.generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
                 }
                 SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
-                    let inner_se = format!("{}_inner_se", config.var_name);
+                    // level (cbor_depth + 1) counted outside-in; the buffer, the finalized byte
+                    // vector and the encoding var all take the level's names, and the child recurses
+                    // one level deeper. Level 1 keeps the historical spellings, so single-payload
+                    // output is byte-identical; without the suffix the INLINE
+                    // `bytes .cbor (bytes .cbor T)` spelling has both depths write to one buffer and
+                    // the outer write borrows what the inner `finalize()` moved (E0382).
+                    let cbor_level = config.cbor_depth + 1;
+                    let bytes_infix = cbor_bytes_infix(cbor_level);
+                    let inner_se = format!(
+                        "{}_{}",
+                        config.var_name,
+                        cbor_payload_buffer_suffix(cbor_level)
+                    );
                     body.line(&format!("let mut {inner_se} = Serializer::new_vec();"));
                     let inner_config = config
                         .clone()
                         .is_end(false)
-                        .serializer_name_overload((&inner_se, true));
+                        .serializer_name_overload((&inner_se, true))
+                        .cbor_depth(cbor_level);
                     self.generate_serialize(types, *child, body, inner_config, cli);
-                    body.line(&format!(
-                        "let {}_bytes = {}.finalize();",
-                        config.var_name, inner_se
-                    ));
+                    let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
+                    body.line(&format!("let {bytes_local} = {inner_se}.finalize();"));
                     write_string_sz(
                         body,
                         "write_bytes",
                         serializer_use,
-                        &format!("{}_bytes", config.var_name),
+                        &bytes_local,
                         false,
                         line_ender,
-                        &config.encoding_var(Some("bytes"), encoding_var_is_copy),
+                        &config.encoding_var(Some(&bytes_infix), encoding_var_is_copy),
                         cli,
                     );
                 }
@@ -1136,10 +1165,10 @@ impl GenerationScope {
                                     types,
                                     (variant.rust_type()).into(),
                                     &mut variant_match,
-                                    // the CStyleEnum variant hand-off resets tag depth to 0 to match
-                                    // `encoding_fields_impl` (which recurses the variant through the
-                                    // `encoding_fields` wrapper, i.e. reset).
-                                    config.clone().is_end(true).tag_depth(0),
+                                    // the CStyleEnum variant hand-off resets BOTH depths to 0 to
+                                    // match `encoding_fields_impl` (which recurses the variant
+                                    // through the `encoding_fields` wrapper, i.e. reset).
+                                    config.clone().is_end(true).tag_depth(0).cbor_depth(0),
                                     cli,
                                 );
                                 enum_body.push_block(variant_match);
@@ -1280,10 +1309,11 @@ impl GenerationScope {
                         .is_end(false)
                         .encoding_var_no_option_struct()
                         .encoding_var_is_ref(false)
-                        // fresh `{name}_elem` name namespace: reset tag depth to 0 to match
+                        // fresh `{name}_elem` name namespace: reset both depths to 0 to match
                         // `encoding_fields_impl`'s array-element reset (else the element's own tag
-                        // reads a depth-inflated var the struct never minted).
-                        .tag_depth(0);
+                        // or `.cbor` payload reads a depth-inflated var the struct never minted).
+                        .tag_depth(0)
+                        .cbor_depth(0);
                     self.generate_serialize(
                         types,
                         (&**ty).into(),
@@ -1457,9 +1487,10 @@ impl GenerationScope {
                                 .is_end(false)
                                 .encoding_var_no_option_struct()
                                 .encoding_var_is_ref(false)
-                                // fresh `{name}_key` namespace: reset tag depth to match
+                                // fresh `{name}_key` namespace: reset both depths to match
                                 // `encoding_fields_impl`'s map-key reset.
-                                .tag_depth(0);
+                                .tag_depth(0)
+                                .cbor_depth(0);
                             self.generate_serialize(
                                 types,
                                 (&**key).into(),
@@ -1484,9 +1515,10 @@ impl GenerationScope {
                             .is_end(false)
                             .encoding_var_no_option_struct()
                             .encoding_var_is_ref(false)
-                            // fresh `{name}_value` namespace: reset tag depth to match
+                            // fresh `{name}_value` namespace: reset both depths to match
                             // `encoding_fields_impl`'s map-value reset.
-                            .tag_depth(0);
+                            .tag_depth(0)
+                            .cbor_depth(0);
                         self.generate_serialize(
                             types,
                             (&**value).into(),
@@ -1506,14 +1538,16 @@ impl GenerationScope {
                             .is_end(false)
                             .encoding_var_no_option_struct()
                             .encoding_var_is_ref(false)
-                            // fresh `{name}_key` namespace: reset tag depth (as above).
-                            .tag_depth(0);
+                            // fresh `{name}_key` namespace: reset both depths (as above).
+                            .tag_depth(0)
+                            .cbor_depth(0);
                         let value_config = key_config
                             .clone()
                             .expr("value")
                             // `{name}_value` namespace; key_config already reset, kept explicit.
                             .var_name(format!("{}_value", config.var_name))
-                            .tag_depth(0);
+                            .tag_depth(0)
+                            .cbor_depth(0);
                         self.generate_serialize(
                             types,
                             (&**key).into(),

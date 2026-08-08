@@ -2982,7 +2982,7 @@ fn encoding_fields_decls(
 ) -> Vec<EncodingField> {
     assert!(cli.preserve_encodings);
     // TODO: how do we handle defaults for nested things? e.g. inside of a ConceptualRustType::Map
-    let mut encs = encoding_fields_impl(types, name, ty.into(), cli, 0, decls);
+    let mut encs = encoding_fields_impl(types, name, ty.into(), cli, 0, 0, decls);
     if include_default && ty.config.default.is_some() {
         encs.push(default_present_encoding_field(name));
     }
@@ -3021,10 +3021,68 @@ pub(super) fn tag_enc_binding(tag_level: usize) -> String {
     }
 }
 
+/// The `.cbor`-level names a payload's byte string owns, for a chain that crosses more than one
+/// `CBORBytes` operation on ONE member name (the INLINE spelling `bytes .cbor (bytes .cbor T)`).
+/// Levels count OUTSIDE-IN, exactly as [`tag_encoding_infix`]'s do, and level 1 keeps the historical
+/// spelling so all existing single-payload output stays byte-identical; each deeper level appends
+/// its 1-based number.
+///
+/// Four names move together per level, which is why they share one derivation: the encoding member
+/// infix (`{name}_bytes_encoding`), the serializer's staging buffer and the byte vector it
+/// finalizes into (`{var}_inner_se`, `{var}_bytes`), the deserializer's reader over those bytes
+/// (`inner_de`) and the local a non-statement payload is staged in (`{var}_payload`). All of them
+/// are minted per OWNING VARIABLE, so at two depths of one chain the undepthed spellings collide:
+/// the buffer is used after `finalize()` moved it (E0382), the sidecar declares one field twice
+/// (E0124), and the outer reader's leftover-bytes check silently re-reads the INNER reader.
+///
+/// Shared by the member declaration (`encoding_fields_impl`), the serialize write and the
+/// deserialize read so the three can never drift on the scheme — the same reason
+/// [`tag_encoding_infix`] is shared.
+fn cbor_level_name(base: &str, cbor_level: usize) -> String {
+    if cbor_level <= 1 {
+        base.to_owned()
+    } else {
+        format!("{base}{cbor_level}")
+    }
+}
+
+/// The `.cbor` payload byte string's encoding-member infix: `bytes` / `bytes2` / … Callers combine
+/// it as `{name}_{infix}_encoding` (declaration, serialize read) and as `{var}_{infix}` for the
+/// serialized/deserialized byte vector itself. See [`cbor_level_name`].
+pub(super) fn cbor_bytes_infix(cbor_level: usize) -> String {
+    cbor_level_name("bytes", cbor_level)
+}
+
+/// The serializer's payload staging buffer suffix: `{var}_inner_se` / `{var}_inner_se2` / …
+/// See [`cbor_level_name`].
+pub(super) fn cbor_payload_buffer_suffix(cbor_level: usize) -> String {
+    cbor_level_name("inner_se", cbor_level)
+}
+
+/// The deserializer's reader over the payload bytes: `inner_de` / `inner_de2` / … Unlike the other
+/// three this one is NOT prefixed by the owning variable (it is a reader overload, not a member
+/// name), so the depth suffix is the only thing keeping two levels of one chain apart. See
+/// [`cbor_level_name`].
+pub(super) fn cbor_payload_reader(cbor_level: usize) -> String {
+    cbor_level_name("inner_de", cbor_level)
+}
+
+/// The local a payload read at a non-statement position is staged in: `{var}_payload` /
+/// `{var}_payload2` / … See [`cbor_level_name`].
+pub(super) fn cbor_payload_binding_suffix(cbor_level: usize) -> String {
+    cbor_level_name("payload", cbor_level)
+}
+
 /// `tag_depth` is the number of tag levels already crossed on THIS member name (0 at the member
 /// root, incremented each time a `Tagged`/`OptionallyTagged` op recurses into its child under the
 /// same name). It drives `tag_encoding_infix` so stacked tags get distinct members. Name-changing
 /// recursions (array element, map key/value) start a fresh sub-member and reset it to 0.
+///
+/// `cbor_depth` is the same counter for `.cbor` payload levels, driving `cbor_bytes_infix` so the
+/// INLINE `bytes .cbor (bytes .cbor T)` spelling declares one byte-string sidecar per depth instead
+/// of the same field twice (E0124). It threads and resets at exactly the same boundaries
+/// `tag_depth` does — the two are independent counters over the same name, so a tag between two
+/// payloads advances only the tag one.
 ///
 /// `decls` decides whether an `Alias` node may answer with its rule's own `@custom_encodings`
 /// declaration instead of recursing — see [`AliasDeclarations`]. It threads UNCHANGED through every
@@ -3036,6 +3094,7 @@ fn encoding_fields_impl(
     ty: SerializingRustType,
     cli: &Cli,
     tag_depth: usize,
+    cbor_depth: usize,
     decls: AliasDeclarations,
 ) -> Vec<EncodingField> {
     assert!(cli.preserve_encodings);
@@ -3054,6 +3113,7 @@ fn encoding_fields_impl(
                 &format!("{name}_elem"),
                 (&**elem_ty).into(),
                 cli,
+                0,
                 0,
                 decls,
             );
@@ -3083,13 +3143,21 @@ fn encoding_fields_impl(
                 enc_conversion_after: "",
                 is_copy: true,
             }];
-            let key_encs =
-                encoding_fields_impl(types, &format!("{name}_key"), (&**k).into(), cli, 0, decls);
+            let key_encs = encoding_fields_impl(
+                types,
+                &format!("{name}_key"),
+                (&**k).into(),
+                cli,
+                0,
+                0,
+                decls,
+            );
             let val_encs = encoding_fields_impl(
                 types,
                 &format!("{name}_value"),
                 (&**v).into(),
                 cli,
+                0,
                 0,
                 decls,
             );
@@ -3197,6 +3265,7 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::I64)).into(),
                 cli,
                 tag_depth,
+                cbor_depth,
                 decls,
             ),
             FixedValue::Uint(_) => encoding_fields_impl(
@@ -3205,6 +3274,7 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::U64)).into(),
                 cli,
                 tag_depth,
+                cbor_depth,
                 decls,
             ),
             FixedValue::Float(_) => encoding_fields_impl(
@@ -3213,6 +3283,7 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::Float)).into(),
                 cli,
                 tag_depth,
+                cbor_depth,
                 decls,
             ),
             FixedValue::Text(_) => encoding_fields_impl(
@@ -3221,6 +3292,7 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Primitive(Primitive::Str)).into(),
                 cli,
                 tag_depth,
+                cbor_depth,
                 decls,
             ),
         },
@@ -3250,6 +3322,7 @@ fn encoding_fields_impl(
                     SerializingRustType::Root(ty, cfg),
                     cli,
                     tag_depth,
+                    cbor_depth,
                     AliasDeclarations::Blind,
                 );
             }
@@ -3270,13 +3343,22 @@ fn encoding_fields_impl(
                 SerializingRustType::Root(ty, cfg),
                 cli,
                 tag_depth,
+                cbor_depth,
                 decls,
             )
         }
         SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
             // same-name recursion (a nullable can still carry a tagged inner), so thread the depth
             // rather than resetting it via the `encoding_fields` wrapper.
-            encoding_fields_impl(types, name, (&**ty).into(), cli, tag_depth, decls)
+            encoding_fields_impl(
+                types,
+                name,
+                (&**ty).into(),
+                cli,
+                tag_depth,
+                cbor_depth,
+                decls,
+            )
         }
         SerializingRustType::Root(ConceptualRustType::Rust(rust_ident), _cfg) => {
             match &types.rust_struct(rust_ident).unwrap().variant() {
@@ -3293,6 +3375,7 @@ fn encoding_fields_impl(
                     (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
                     cli,
                     tag_depth,
+                    cbor_depth,
                     decls,
                 ),
                 // a named table/array rule is a bare rust typedef onto a collection — there is no
@@ -3313,6 +3396,7 @@ fn encoding_fields_impl(
                         SerializingRustType::Root(&structural, cfg),
                         cli,
                         tag_depth,
+                        cbor_depth,
                         decls,
                     )
                 }
@@ -3325,6 +3409,7 @@ fn encoding_fields_impl(
                         SerializingRustType::Root(&structural, cfg),
                         cli,
                         tag_depth,
+                        cbor_depth,
                         decls,
                     )
                 }
@@ -3347,10 +3432,11 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Fixed(FixedValue::Uint(*tag as u64))).into(),
                 cli,
                 tag_depth,
+                cbor_depth,
                 decls,
             );
             encs.append(&mut encoding_fields_impl(
-                types, name, *child, cli, tag_level, decls,
+                types, name, *child, cli, tag_level, cbor_depth, decls,
             ));
             encs
         }
@@ -3371,21 +3457,28 @@ fn encoding_fields_impl(
                 is_copy: true,
             }];
             encs.append(&mut encoding_fields_impl(
-                types, name, *child, cli, tag_level, decls,
+                types, name, *child, cli, tag_level, cbor_depth, decls,
             ));
             encs
         }
         SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
+            // This byte string is the (cbor_depth + 1)th `.cbor` level crossed on this member name;
+            // its member keeps `bytes` at level 1 and gains a numeric infix deeper, so the INLINE
+            // `bytes .cbor (bytes .cbor T)` spelling declares one sidecar per depth instead of
+            // `{name}_bytes_encoding` twice. The child recurses one level deeper.
+            let cbor_level = cbor_depth + 1;
+            let bytes_infix = cbor_bytes_infix(cbor_level);
             let mut encs = encoding_fields_impl(
                 types,
-                &format!("{name}_bytes"),
+                &format!("{name}_{bytes_infix}"),
                 (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
                 cli,
                 tag_depth,
+                cbor_depth,
                 decls,
             );
             encs.append(&mut encoding_fields_impl(
-                types, name, *child, cli, tag_depth, decls,
+                types, name, *child, cli, tag_depth, cbor_level, decls,
             ));
             encs
         }

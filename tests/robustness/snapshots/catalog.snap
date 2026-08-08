@@ -15,7 +15,7 @@ any_member                 ok
 bytes_member               error (graceful)
 cbor_fixed_payload         ok
 cbor_payload_same_chain_alias ok
-cbor_payload_same_chain_inline error (graceful)
+cbor_payload_same_chain_inline ok
 cbor_ref_alias_chain       ok
 cbor_ref_rule_body         ok
 choice_any_arm             error (graceful)

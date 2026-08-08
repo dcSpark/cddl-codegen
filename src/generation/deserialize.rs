@@ -43,6 +43,19 @@ pub(super) struct DeserializeConfig<'a> {
     /// `tag`/`tag2`/… encoding-var infix (and the `tag_enc`/`tag_enc2` binding) so stacked tags each
     /// record their own level's size instead of shadowing. See `tag_encoding_infix`.
     tag_depth: usize,
+    /// number of `.cbor` payload levels already crossed on this member name (0 at the field root).
+    /// Drives `cbor_bytes_infix` (the `{var}_bytes`/`{var}_bytes2` byte vector and its encoding
+    /// var), `cbor_payload_reader` (the `inner_de`/`inner_de2` reader overload) and
+    /// `cbor_payload_binding_suffix` (the `{var}_payload`/`{var}_payload2` staging local) so the
+    /// INLINE `bytes .cbor (bytes .cbor T)` spelling keeps its two depths apart. Undepthed, the
+    /// inner level SHADOWS the outer in the same block: the outer's leftover-bytes check re-reads
+    /// the inner reader (silent over-acceptance) and, under `--preserve-encodings`, the outer's
+    /// final expr reads the inner's string encoding.
+    ///
+    /// Same lockstep invariant as `tag_depth`, against the same `encoding_fields_impl` counter.
+    /// Name-boundary recursions (array element, map key/value) build a FRESH `DeserializeConfig`,
+    /// which is where the reset comes from on this side.
+    cbor_depth: usize,
 }
 
 impl<'a> DeserializeConfig<'a> {
@@ -58,6 +71,7 @@ impl<'a> DeserializeConfig<'a> {
             custom_encodings: None,
             declared_spelling: None,
             tag_depth: 0,
+            cbor_depth: 0,
         }
     }
 
@@ -99,6 +113,11 @@ impl<'a> DeserializeConfig<'a> {
 
     pub(super) fn tag_depth(mut self, tag_depth: usize) -> Self {
         self.tag_depth = tag_depth;
+        self
+    }
+
+    pub(super) fn cbor_depth(mut self, cbor_depth: usize) -> Self {
+        self.cbor_depth = cbor_depth;
         self
     }
 
@@ -354,14 +373,19 @@ fn line_unit_value(deser_code: &mut DeserializationCode, before_after: &Deserial
 /// discarding STATEMENT slots a fixed member is read in (an array struct's field sequence, a map
 /// entry's presence closure), which is not Rust and aborted at rustfmt rather than refusing.
 ///
-/// Two operations are deliberately NOT seen through. `CBORBytes` — a `.cbor` inside a `.cbor` on one
-/// chain — is refused at parse before generation ever sees it (`nested_cbor_payload_rejects_gracefully`),
-/// so there is no such child to recurse into. `OptionallyTagged` records the tag's PRESENCE, which
-/// is a value the caller's position has to receive in every profile.
+/// A nested `CBORBytes` is seen through for the same reason: without encodings a byte string that
+/// merely FRAMES a value-less payload stores nothing either — its bytes are re-derived from the
+/// payload on the way out — so `bytes .cbor (bytes .cbor 42)` is exactly as value-less as
+/// `bytes .cbor 42`. Testing only the outer level staged `let b_payload = ();` in the discarding
+/// statement slots, the same rustfmt-aborting shape described above.
+///
+/// `OptionallyTagged` is the one operation deliberately NOT seen through: it records the tag's
+/// PRESENCE, which is a value the caller's position has to receive in every profile.
 fn payload_is_value_less(child: &SerializingRustType) -> bool {
     match child {
         SerializingRustType::Root(ConceptualRustType::Fixed(_), _) => true,
-        SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(_), inner) => {
+        SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(_), inner)
+        | SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, inner) => {
             payload_is_value_less(inner)
         }
         _ => false,
@@ -800,6 +824,7 @@ impl GenerationScope {
                         config.var_name,
                         serializing_rust_type,
                         cli,
+                        0,
                         0,
                         AliasDeclarations::Blind,
                     ),
@@ -2676,31 +2701,36 @@ impl GenerationScope {
                     // consumed the next OUTER item as the element's payload. Only the decode side
                     // was affected (the serializer writes the nested payload correctly), so the
                     // shape compiled, encoded to spec, and then rejected its own output.
+                    // level (cbor_depth + 1) counted outside-in, in lockstep with
+                    // `encoding_fields_impl`: the byte vector, its encoding var, the reader over it
+                    // and the staging local all take the level's names, and the payload recurses one
+                    // level deeper. Level 1 keeps the historical spellings.
+                    let cbor_level = config.cbor_depth + 1;
+                    let bytes_infix = cbor_bytes_infix(cbor_level);
+                    let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
                     if cli.preserve_encodings {
-                        config.final_exprs.push(format!(
-                            "StringEncoding::from({}_bytes_encoding)",
-                            config.var_name
-                        ));
+                        config
+                            .final_exprs
+                            .push(format!("StringEncoding::from({bytes_local}_encoding)"));
                         deser_code.content.line(&format!(
-                            "let ({}_bytes, {}_bytes_encoding) = {deserializer_name}.bytes_sz()?;",
-                            config.var_name, config.var_name
+                            "let ({bytes_local}, {bytes_local}_encoding) = {deserializer_name}.bytes_sz()?;"
                         ));
                     } else {
                         deser_code.content.line(&format!(
-                            "let {}_bytes = {deserializer_name}.bytes()?;",
-                            config.var_name
+                            "let {bytes_local} = {deserializer_name}.bytes()?;"
                         ));
                     };
-                    // Shadowing `inner_de` is safe for the nested-collection shape because the inner
+                    // Shadowing `inner_de` is safe for the nested-COLLECTION shape because the inner
                     // rebind is scoped to the loop-BODY block: the next iteration's length/break
                     // probe and the map arm's key read both sit before it and still see the enclosing
-                    // payload's reader. A same-block SEQUEL to a `.cbor` member (direct nesting
-                    // within one op chain) would capture the inner binding instead, which is why
-                    // that shape needs depth-suffixed names and is out of scope here.
-                    let name_overload = "inner_de";
+                    // payload's reader — and that element is a fresh member name, so its level
+                    // restarts at 1 and the historical spelling is kept. DIRECT nesting within one op
+                    // chain has no such block: both readers live in one scope, and the outer's
+                    // leftover-bytes check below would silently re-probe the INNER reader. Hence the
+                    // level suffix, which is the only thing separating the two here.
+                    let name_overload = cbor_payload_reader(cbor_level);
                     deser_code.content.line(&format!(
-                        "let {} = &mut Deserializer::from({}_bytes);",
-                        name_overload, config.var_name
+                        "let {name_overload} = &mut Deserializer::from({bytes_local});"
                     ));
                     // `.cbor` says the byte string IS the payload type's encoding, so bytes left over
                     // after the payload are not a value this type admits. Without the check below the
@@ -2754,7 +2784,9 @@ impl GenerationScope {
                             types,
                             *child,
                             DeserializeBeforeAfter::new("", "", false),
-                            config.overload_deserializer(name_overload),
+                            config
+                                .overload_deserializer(&name_overload)
+                                .cbor_depth(cbor_level),
                             cli,
                         )
                         .add_to_code(&mut deser_code);
@@ -2765,13 +2797,19 @@ impl GenerationScope {
                             types,
                             *child,
                             before_after,
-                            config.overload_deserializer(name_overload),
+                            config
+                                .overload_deserializer(&name_overload)
+                                .cbor_depth(cbor_level),
                             cli,
                         )
                         .add_to_code(&mut deser_code);
                         deser_code.content.push_block(trailing_check());
                     } else {
-                        let payload_binding = format!("{}_payload", config.var_name);
+                        let payload_binding = format!(
+                            "{}_{}",
+                            config.var_name,
+                            cbor_payload_binding_suffix(cbor_level)
+                        );
                         self.generate_deserialize(
                             types,
                             *child,
@@ -2780,7 +2818,9 @@ impl GenerationScope {
                                 ";",
                                 false,
                             ),
-                            config.overload_deserializer(name_overload),
+                            config
+                                .overload_deserializer(&name_overload)
+                                .cbor_depth(cbor_level),
                             cli,
                         )
                         .add_to_code(&mut deser_code);
