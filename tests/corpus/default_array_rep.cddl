@@ -1,0 +1,14 @@
+; A `.default` on an ARRAY-representation record member. The struct stores such a member PLAIN (the
+; default fills the absent case) exactly as the map representation does, so the array deserializer
+; has to collapse the presence `Option` the trailing-element peek binds — the twin of the map path's
+; `unwrap_or`. Under `--preserve-encodings` the same collapse also settles the member's
+; `_default_present` flag, which is what lets a wire that SPELLED the default value re-emit it
+; instead of dropping it.
+;
+; Both members sit in FINAL position: a defaulted member is optional by occurrence, and a non-final
+; optional array member is a separate (unsupported) ambiguity class that this fixture must not drag
+; in. The two rules differ only in the default's kind, which is what picks the `unwrap_or` vs the
+; owned-value `unwrap_or_else` spelling.
+array_default = [ a: uint, ? b: uint .default 7 ]
+
+array_default_text = [ a: uint, ? s: tstr .default "hi" ]

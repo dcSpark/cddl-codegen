@@ -2104,6 +2104,126 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "default_array_rep.array_default"
+axis = "corpus"
+example = "array_default = [ a: uint, ? b: uint .default 7 ]"
+fixture = "default_array_rep"
+rule = "array_default"
+spec = "__probe_holder = [0, array_default]\narray_default = [ a: uint, ? b: uint .default 7 ]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820081190331"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008119060d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190797"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190b56"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190e6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821842190588"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821864191083"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821902de1899"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821904551901c1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190bfc190258"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "default_array_rep.array_default_text"
+axis = "corpus"
+example = "array_default_text = [ a: uint, ? s: tstr .default \"hi\" ]"
+fixture = "default_array_rep"
+rule = "array_default_text"
+spec = "__probe_holder = [0, array_default_text]\narray_default_text = [ a: uint, ? s: tstr .default \"hi\" ]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200811854"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190c74"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821901ea6a436f7573746561752773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190562684c656e696e697374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821905ab6b636f726b73637265772773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821907e8636c6f67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821909ff676465706f727473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190e4666666f72636573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190f15666d6174746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190f846a666f7265686561642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "default_mandatory.alias_default_positions"
 axis = "corpus"
 example = "aliased_default = uint .default 9\nalias_default_positions = { x: aliased_default, ? y: aliased_default }"

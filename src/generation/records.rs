@@ -82,8 +82,10 @@ pub(super) fn generate_array_struct_serialization(
                 (
                     if cli.preserve_encodings {
                         if vars_in_self {
+                            // `as_ref()`: the encoding struct is not `Copy`, and a bare `map` over
+                            // `self.encodings` behind `&self` moves out of it (E0507).
                             format!(
-                                "if {} != {} || self.encodings.map(|encs| encs.{}_default_present).unwrap_or(false)",
+                                "if {} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false)",
                                 field_expr,
                                 default_value.to_primitive_str_compare(),
                                 field.name
@@ -682,6 +684,46 @@ pub(super) fn generate_array_struct_deserialization(
                 }
                 type_check_else.after(after);
                 deser_code.content.push_block(type_check_else);
+                // A `.default` member is stored PLAIN — the default fills the absent case — so the
+                // `Option<T>` the presence peek above binds has to collapse before the constructor
+                // reads it. This is the twin of the map path's `unwrap_or` (`Ok(Self)` assembly),
+                // and it must live here rather than at the constructor because the array path's
+                // binding is a tuple under --preserve-encodings.
+                if let Some(default_value) = &field.rust_type.config.default {
+                    if cli.preserve_encodings {
+                        // The serializer skips a member equal to its default UNLESS it was
+                        // explicitly present on the wire, which is what keeps a byte-exact re-emit
+                        // byte-exact. Computed BEFORE the collapse — after it, present-and-equal
+                        // and absent are the same value.
+                        deser_code.content.line(&format!(
+                            "let {}_default_present = {} == Some({});",
+                            field.name,
+                            field.name,
+                            default_value.to_primitive_str_assign()
+                        ));
+                    }
+                    // `unwrap_or_else` for the one owned kind, to avoid clippy::or_fun_call —
+                    // the same split the map path makes.
+                    let collapse = match default_value {
+                        FixedValue::Text(_) => format!(
+                            "let {} = {}.unwrap_or_else(|| {});",
+                            field.name,
+                            field.name,
+                            default_value.to_primitive_str_assign()
+                        ),
+                        FixedValue::Bool(_)
+                        | FixedValue::Nint(_)
+                        | FixedValue::Null
+                        | FixedValue::Float(_)
+                        | FixedValue::Uint(_) => format!(
+                            "let {} = {}.unwrap_or({});",
+                            field.name,
+                            field.name,
+                            default_value.to_primitive_str_assign()
+                        ),
+                    };
+                    deser_code.content.line(&collapse);
+                }
             }
         } else {
             // mandatory fields

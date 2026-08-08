@@ -1,0 +1,147 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrayDefault(pub(crate) cddl_lib::ArrayDefault);
+
+#[wasm_bindgen]
+impl ArrayDefault {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrayDefault, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<ArrayDefault, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn set_b(&mut self, b: u64) {
+        self.0.b = b
+    }
+
+    pub fn b(&self) -> u64 {
+        self.0.b
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::ArrayDefault::new(a))
+    }
+}
+
+impl From<cddl_lib::ArrayDefault> for ArrayDefault {
+    fn from(native: cddl_lib::ArrayDefault) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrayDefault> for cddl_lib::ArrayDefault {
+    fn from(wasm: ArrayDefault) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrayDefault> for ArrayDefault {
+    fn as_ref(&self) -> &cddl_lib::ArrayDefault {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrayDefaultText(pub(crate) cddl_lib::ArrayDefaultText);
+
+#[wasm_bindgen]
+impl ArrayDefaultText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrayDefaultText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<ArrayDefaultText, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn set_s(&mut self, s: String) {
+        self.0.s = s
+    }
+
+    pub fn s(&self) -> String {
+        self.0.s.clone()
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::ArrayDefaultText::new(a))
+    }
+}
+
+impl From<cddl_lib::ArrayDefaultText> for ArrayDefaultText {
+    fn from(native: cddl_lib::ArrayDefaultText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrayDefaultText> for cddl_lib::ArrayDefaultText {
+    fn from(wasm: ArrayDefaultText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrayDefaultText> for ArrayDefaultText {
+    fn as_ref(&self) -> &cddl_lib::ArrayDefaultText {
+        &self.0
+    }
+}
