@@ -7,13 +7,13 @@
 ; the value 5 — a byte string holding a byte string holding a uint (uint 5 = `05`; the inner byte
 ; string over that one byte = `41 05`; the outer byte string over those two = `42 41 05`; executed,
 ; not derived on paper). The reference crosses a TYPE rather than copying an encoding chain, so each
-; level's staging buffer belongs to a different serialize fn — where the inline sibling
-; (tests/robustness/cbor_payload_same_chain_inline.cddl) has both levels in one fn and separates
-; them by depth suffix instead.
+; level's staging buffer belongs to a different serialize fn — where the INLINE spelling
+; (`bytes .cbor (bytes .cbor uint)`, tests/corpus/cbor_payload_inline_nested.cddl) has both levels in
+; one fn and separates them by the depth suffix on every name instead.
 ;
-; This fixture pins the rule-body force-wrap from the OUTSIDE: were `inner` to register as a
-; transparent alias again, its own `.cbor` would ride on the `RustType` a reference copies whole and
-; the two spellings really would be one chain — which is what the sibling covers, and what makes the
-; two files a pair rather than duplicates.
+; What this fixture pins, and the reason it is not a duplicate of that one, is the rule-body
+; force-wrap seen from the OUTSIDE: were `inner` to register as a transparent alias again, its own
+; `.cbor` would ride on the `RustType` a reference copies whole, the two spellings really would be
+; one chain, and this file would stop testing a type boundary at all.
 inner = bytes .cbor uint
 b = bytes .cbor inner
