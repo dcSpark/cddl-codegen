@@ -262,6 +262,18 @@ Rules:
   session whose CWD is a different checkout silently generates with THAT checkout's runtime
   (proven 2026-07-20: a worktree e2e check picked up master's pre-feature `static/` and failed on
   a type the feature had just added, masquerading as a real bug).
+- **An unspelled default silently selects a coordinate your claim doesn't name — spell every
+  coordinate a probe's conclusion depends on.** Three proven instances of the one class: the
+  `--static-dir` CWD trap above; the `wasm` flag PARSE-DEFAULTS TRUE, so any flag list without
+  `--wasm=false` is a wasm run — REGISTRY/PROFILE ROWS included, not just ad-hoc probe commands
+  (proven 2026-07-19 on a probe run; again 2026-08-08 when a spec's "every component run pairs
+  `--wasm=false`" claim missed that the corpus profile row `&["--component=true"]` is a
+  both-faces run); and a `cargo build` OUTSIDE the repo root runs the rustup DEFAULT toolchain,
+  not `rust-toolchain.toml`'s pin — proven 2026-08-08, expensively: a scratch-dir repro "at the
+  same toolchain pin" actually ran stable 1.97.1, and the false all-clear it produced shipped in
+  a committed doc for a day before a follow-up probe (whose stack dump happened to print the
+  toolchain path) caught it. For any claim naming the pin, build with
+  `rustup run <pin> cargo ...` or from inside the repo tree.
 - **Check `free` as well as `df` before launching a tier, and treat PEAK RESOURCE as the thing to
   bound — not gate count.** The quantity a tier must keep under the machine's memory is the product
   `(gates in flight) × (rustc per gate) × (per-rustc resident set)`, and **no factor of it may scale

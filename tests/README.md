@@ -4400,7 +4400,12 @@ an `any` member reached through a transparent alias — both sat in ORDINARY mat
 generation+build over candidate rows. The sweep is that procedure made repeatable over an enumeration
 nobody curated for the component face. The section above asks the same question of the corpus
 fixtures; the two enumerations are independent by construction, which is the whole argument for
-having both.
+having both. The breadth BOUND is the catalog itself: the sweep sees exactly the combinations the
+catalog spells, and the catalog carries control operators only as their dedicated `ctl.*` rows —
+one position each; no `contain.*` row crosses a control op with a containment position — so a
+compile class living only in an unspelled combination (say, `.default` on an array-record member)
+is invisible to it. Growing that cross-product is the matrix's own enumeration program, not a gap
+in the sweep.
 
 **Depth of exactly two stages**, deliberately: generate, then build. No host, no oracle, no vectors,
 no drive — that is `verify.ts`'s component EXECUTION leg, which asks whether thirteen chosen rows
