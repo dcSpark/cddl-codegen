@@ -1,0 +1,102 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type CborInlineNested = WitCborInlineNested;
+    type CborInlineNestedBody = WitCborInlineNestedBody;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitCborInlineNested(pub RefCell<cddl_lib::CborInlineNested>);
+
+impl wit_types::GuestCborInlineNested for WitCborInlineNested {
+    fn new(pair: u64, triple: u64, tagged: u64, tail: String) -> Self {
+        let inner = cddl_lib::CborInlineNested::new(pair, triple, tagged, tail);
+        WitCborInlineNested(RefCell::new(inner))
+    }
+
+    fn pair(&self) -> u64 {
+        let me = self.0.borrow();
+        me.pair
+    }
+
+    fn triple(&self) -> u64 {
+        let me = self.0.borrow();
+        me.triple
+    }
+
+    fn tagged(&self) -> u64 {
+        let me = self.0.borrow();
+        me.tagged
+    }
+
+    fn tail(&self) -> String {
+        let me = self.0.borrow();
+        me.tail.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborInlineNested as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborInlineNested, String> {
+        <cddl_lib::CborInlineNested as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::CborInlineNested::new(WitCborInlineNested(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitCborInlineNestedBody(pub RefCell<cddl_lib::CborInlineNestedBody>);
+
+impl wit_types::GuestCborInlineNestedBody for WitCborInlineNestedBody {
+    fn new(inner: u64) -> Self {
+        let inner = cddl_lib::CborInlineNestedBody::new(inner);
+        WitCborInlineNestedBody(RefCell::new(inner))
+    }
+
+    fn get(&self) -> u64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborInlineNestedBody as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborInlineNestedBody, String> {
+        <cddl_lib::CborInlineNestedBody as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::CborInlineNestedBody::new(WitCborInlineNestedBody(RefCell::new(v))))
+        .map_err(err)
+    }
+}

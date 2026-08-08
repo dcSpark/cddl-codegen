@@ -1,0 +1,35 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+
+#[derive(Clone, Debug, Default)]
+pub struct CborInlineNestedBodyEncoding {
+    pub inner_bytes_encoding: StringEncoding,
+    pub inner_bytes2_encoding: StringEncoding,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CborInlineNestedEncoding {
+    pub len_encoding: LenEncoding,
+    pub pair_bytes_encoding: StringEncoding,
+    pub pair_bytes2_encoding: StringEncoding,
+    pub pair_encoding: Option<cbor_event::Sz>,
+    pub triple_bytes_encoding: StringEncoding,
+    pub triple_bytes2_encoding: StringEncoding,
+    pub triple_bytes3_encoding: StringEncoding,
+    pub triple_encoding: Option<cbor_event::Sz>,
+    pub tagged_bytes_encoding: StringEncoding,
+    pub tagged_tag_encoding: Option<cbor_event::Sz>,
+    pub tagged_bytes2_encoding: StringEncoding,
+    pub tagged_encoding: Option<cbor_event::Sz>,
+    pub fixed_bytes_encoding: StringEncoding,
+    pub fixed_bytes2_encoding: StringEncoding,
+    pub fixed_encoding: Option<cbor_event::Sz>,
+    pub tail_encoding: StringEncoding,
+}

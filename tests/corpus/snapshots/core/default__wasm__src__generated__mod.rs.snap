@@ -869,6 +869,100 @@ impl AsRef<cddl_lib::CborPayloadCollections> for CborPayloadCollections {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct CborPayloadInlineBody(pub(crate) cddl_lib::CborPayloadInlineBody);
+
+#[wasm_bindgen]
+impl CborPayloadInlineBody {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborPayloadInlineBody, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::CborPayloadInlineBody::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::CborPayloadInlineBody> for CborPayloadInlineBody {
+    fn from(native: cddl_lib::CborPayloadInlineBody) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborPayloadInlineBody> for cddl_lib::CborPayloadInlineBody {
+    fn from(wasm: CborPayloadInlineBody) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborPayloadInlineBody> for CborPayloadInlineBody {
+    fn as_ref(&self) -> &cddl_lib::CborPayloadInlineBody {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborPayloadInlineNesting(pub(crate) cddl_lib::CborPayloadInlineNesting);
+
+#[wasm_bindgen]
+impl CborPayloadInlineNesting {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborPayloadInlineNesting, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn pair(&self) -> u64 {
+        self.0.pair
+    }
+
+    pub fn triple(&self) -> u64 {
+        self.0.triple
+    }
+
+    pub fn tail(&self) -> String {
+        self.0.tail.clone()
+    }
+
+    pub fn new(pair: u64, triple: u64, tail: String) -> Self {
+        Self(cddl_lib::CborPayloadInlineNesting::new(pair, triple, tail))
+    }
+}
+
+impl From<cddl_lib::CborPayloadInlineNesting> for CborPayloadInlineNesting {
+    fn from(native: cddl_lib::CborPayloadInlineNesting) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborPayloadInlineNesting> for cddl_lib::CborPayloadInlineNesting {
+    fn from(wasm: CborPayloadInlineNesting) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborPayloadInlineNesting> for CborPayloadInlineNesting {
+    fn as_ref(&self) -> &cddl_lib::CborPayloadInlineNesting {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct CborPayloadLeaves(pub(crate) cddl_lib::CborPayloadLeaves);
 
 #[wasm_bindgen]

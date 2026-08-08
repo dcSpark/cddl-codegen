@@ -90,14 +90,14 @@ use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
-    CborNestedPayloadsEncoding, CustomFieldHolderEncoding, CustomRecordEncoding,
-    CustomRecordHolderEncoding, CustomTablePositionsEncoding, DeeplyNestedEncoding, EdEncoding,
-    EeEncoding, EnumsEncoding, FirstEncoding, FloatHeadsEncoding, FooBytesEncoding, FooEncoding,
-    HashEncoding, MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding,
-    NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
-    OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding,
-    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
-    SignedIntsEncoding, String64Encoding, String1632Encoding,
+    CborInlineNestedPayloadsEncoding, CborNestedPayloadsEncoding, CustomFieldHolderEncoding,
+    CustomRecordEncoding, CustomRecordHolderEncoding, CustomTablePositionsEncoding,
+    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FloatHeadsEncoding,
+    FooBytesEncoding, FooEncoding, HashEncoding, MapStructWithCustomSerializationEncoding,
+    MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding,
+    OptFixedArrEncoding, OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding,
+    PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding, SecondEncoding,
+    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
     TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
@@ -427,6 +427,25 @@ impl CborInCbor {
             foo_bytes,
             uint_bytes,
             tagged_foo_bytes,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborInlineNestedPayloads {
+    pub pair: u64,
+    pub triple: u64,
+    pub tail: String,
+    pub encodings: Option<CborInlineNestedPayloadsEncoding>,
+}
+
+impl CborInlineNestedPayloads {
+    pub fn new(pair: u64, triple: u64, tail: String) -> Self {
+        Self {
+            pair,
+            triple,
+            tail,
             encodings: None,
         }
     }

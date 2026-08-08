@@ -1,0 +1,143 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborInlineNested(pub(crate) cddl_lib::CborInlineNested);
+
+#[wasm_bindgen]
+impl CborInlineNested {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborInlineNested, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<CborInlineNested, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn pair(&self) -> u64 {
+        self.0.pair
+    }
+
+    pub fn triple(&self) -> u64 {
+        self.0.triple
+    }
+
+    pub fn tagged(&self) -> u64 {
+        self.0.tagged
+    }
+
+    pub fn tail(&self) -> String {
+        self.0.tail.clone()
+    }
+
+    pub fn new(pair: u64, triple: u64, tagged: u64, tail: String) -> Self {
+        Self(cddl_lib::CborInlineNested::new(pair, triple, tagged, tail))
+    }
+}
+
+impl From<cddl_lib::CborInlineNested> for CborInlineNested {
+    fn from(native: cddl_lib::CborInlineNested) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborInlineNested> for cddl_lib::CborInlineNested {
+    fn from(wasm: CborInlineNested) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborInlineNested> for CborInlineNested {
+    fn as_ref(&self) -> &cddl_lib::CborInlineNested {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborInlineNestedBody(pub(crate) cddl_lib::CborInlineNestedBody);
+
+#[wasm_bindgen]
+impl CborInlineNestedBody {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborInlineNestedBody, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<CborInlineNestedBody, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::CborInlineNestedBody::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::CborInlineNestedBody> for CborInlineNestedBody {
+    fn from(native: cddl_lib::CborInlineNestedBody) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborInlineNestedBody> for cddl_lib::CborInlineNestedBody {
+    fn from(wasm: CborInlineNestedBody) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborInlineNestedBody> for CborInlineNestedBody {
+    fn as_ref(&self) -> &cddl_lib::CborInlineNestedBody {
+        &self.0
+    }
+}

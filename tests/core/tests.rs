@@ -865,6 +865,59 @@ mod tests {
         assert_eq!(deser.tail, "z");
     }
 
+    // The INLINE spelling — both `.cbor` depths in ONE encoding chain, so both are emitted into one
+    // scope and are kept apart only by the depth suffix on every name the payload machinery mints.
+    // The oracle is hand-derived per RFC 8949 rather than taken from `to_cbor_bytes`, for the same
+    // reason `cbor_payload_nested_payloads` above does it: a self-minted oracle agrees with the
+    // encoder by construction, and the failure mode this shape had was a decoder reading the wrong
+    // reader. The `tail` assertion is the framing control — it is the member a mis-framed payload
+    // read shows up in.
+    #[test]
+    fn cbor_payload_inline_nesting() {
+        // CborPayloadInlineNesting { pair: 5, triple: 7, <fixed: 42, unstored>, tail: "z" }
+        let oracle = [
+            0x84, // outer array(4)
+            0x42, 0x41, 0x05, // pair:   bstr(2) = bstr(1) = 5
+            0x43, 0x42, 0x41, 0x07, // triple: bstr(3) = bstr(2) = bstr(1) = 7
+            0x43, 0x42, 0x18, 0x2a, // fixed:  bstr(3) = bstr(2) = 42 (0x18 0x2a)
+            0x61, 0x7a, // tail: "z"
+        ];
+        // `fixed` carries no value of its own, so it is not a constructor argument: the constant is
+        // still written on the way out and still verified on the way in.
+        let orig = CborPayloadInlineNesting::new(5, 7, String::from("z"));
+        assert_eq!(orig.to_cbor_bytes(), oracle);
+        deser_test(&orig);
+        let deser = CborPayloadInlineNesting::from_cbor_bytes(&oracle).unwrap();
+        assert_eq!(deser.pair, 5);
+        assert_eq!(deser.triple, 7);
+        assert_eq!(deser.tail, "z");
+
+        // Each byte string is the payload's WHOLE encoding, so bytes left over inside either level
+        // are refused — at both depths, which is what proves the outer check probes the outer reader
+        // rather than re-probing the inner one.
+        let trailing_inner = [
+            0x84, 0x43, 0x42, 0x41, 0x05, // pair: inner bstr(2) = 5 plus a stray byte
+            0x43, 0x42, 0x41, 0x07, 0x43, 0x42, 0x18, 0x2a, 0x61, 0x7a,
+        ];
+        assert!(CborPayloadInlineNesting::from_cbor_bytes(&trailing_inner).is_err());
+        let trailing_outer = [
+            0x84, 0x43, 0x41, 0x05, 0x00, // pair: outer bstr(3) holds the payload plus a stray 0
+            0x43, 0x42, 0x41, 0x07, 0x43, 0x42, 0x18, 0x2a, 0x61, 0x7a,
+        ];
+        assert!(CborPayloadInlineNesting::from_cbor_bytes(&trailing_outer).is_err());
+
+        // The rule-BODY spelling: the wrapper struct's own serialize fn holds both depths.
+        let body = CborPayloadInlineBody::new(5);
+        assert_eq!(body.to_cbor_bytes(), vec![0x42, 0x41, 0x05]);
+        deser_test(&body);
+        assert_eq!(
+            CborPayloadInlineBody::from_cbor_bytes(&[0x42, 0x41, 0x05])
+                .unwrap()
+                .get(),
+            5
+        );
+    }
+
     #[test]
     fn test_prelude_numbers() {
         assert_eq!(0u8, U8::from(0u8));

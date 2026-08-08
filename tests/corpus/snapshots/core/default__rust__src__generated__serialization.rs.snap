@@ -1395,6 +1395,154 @@ impl Deserialize for CborPayloadCollections {
     }
 }
 
+impl cbor_event::se::Serialize for CborPayloadInlineBody {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        let mut inner_inner_se2 = Serializer::new_vec();
+        inner_inner_se2.write_unsigned_integer(self.0)?;
+        let inner_bytes2 = inner_inner_se2.finalize();
+        inner_inner_se.write_bytes(&inner_bytes2)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for CborPayloadInlineBody {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let inner_bytes2 = inner_de.bytes()?;
+            let inner_de2 = &mut Deserializer::from(inner_bytes2);
+            let inner_payload = inner_de2.unsigned_integer()?;
+            if !inner_de2.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
+        })()
+        .map_err(|e| e.annotate("CborPayloadInlineBody"))
+    }
+}
+
+impl cbor_event::se::Serialize for CborPayloadInlineNesting {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(4))?;
+        let mut pair_inner_se = Serializer::new_vec();
+        let mut pair_inner_se2 = Serializer::new_vec();
+        pair_inner_se2.write_unsigned_integer(self.pair)?;
+        let pair_bytes2 = pair_inner_se2.finalize();
+        pair_inner_se.write_bytes(&pair_bytes2)?;
+        let pair_bytes = pair_inner_se.finalize();
+        serializer.write_bytes(&pair_bytes)?;
+        let mut triple_inner_se = Serializer::new_vec();
+        let mut triple_inner_se2 = Serializer::new_vec();
+        let mut triple_inner_se3 = Serializer::new_vec();
+        triple_inner_se3.write_unsigned_integer(self.triple)?;
+        let triple_bytes3 = triple_inner_se3.finalize();
+        triple_inner_se2.write_bytes(&triple_bytes3)?;
+        let triple_bytes2 = triple_inner_se2.finalize();
+        triple_inner_se.write_bytes(&triple_bytes2)?;
+        let triple_bytes = triple_inner_se.finalize();
+        serializer.write_bytes(&triple_bytes)?;
+        let mut fixed_inner_se = Serializer::new_vec();
+        let mut fixed_inner_se2 = Serializer::new_vec();
+        fixed_inner_se2.write_unsigned_integer(42u64)?;
+        let fixed_bytes2 = fixed_inner_se2.finalize();
+        fixed_inner_se.write_bytes(&fixed_bytes2)?;
+        let fixed_bytes = fixed_inner_se.finalize();
+        serializer.write_bytes(&fixed_bytes)?;
+        serializer.write_text(&self.tail)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for CborPayloadInlineNesting {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
+            let pair = (|| -> Result<_, DeserializeError> {
+                let pair_bytes = raw.bytes()?;
+                let inner_de = &mut Deserializer::from(pair_bytes);
+                let pair_bytes2 = inner_de.bytes()?;
+                let inner_de2 = &mut Deserializer::from(pair_bytes2);
+                let pair_payload = inner_de2.unsigned_integer()?;
+                if !inner_de2.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(pair_payload)
+            })()
+            .map_err(|e| e.annotate("pair"))?;
+            let triple = (|| -> Result<_, DeserializeError> {
+                let triple_bytes = raw.bytes()?;
+                let inner_de = &mut Deserializer::from(triple_bytes);
+                let triple_bytes2 = inner_de.bytes()?;
+                let inner_de2 = &mut Deserializer::from(triple_bytes2);
+                let triple_bytes3 = inner_de2.bytes()?;
+                let inner_de3 = &mut Deserializer::from(triple_bytes3);
+                let triple_payload = inner_de3.unsigned_integer()?;
+                if !inner_de3.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                if !inner_de2.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(triple_payload)
+            })()
+            .map_err(|e| e.annotate("triple"))?;
+            (|| -> Result<_, DeserializeError> {
+                let fixed_bytes = raw.bytes()?;
+                let inner_de = &mut Deserializer::from(fixed_bytes);
+                let fixed_bytes2 = inner_de.bytes()?;
+                let inner_de2 = &mut Deserializer::from(fixed_bytes2);
+                let fixed_value = inner_de2.unsigned_integer()?;
+                if fixed_value != 42 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(fixed_value),
+                        expected: Key::Uint(42),
+                    }
+                    .into());
+                }
+                if !inner_de2.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(())
+            })()
+            .map_err(|e| e.annotate("fixed"))?;
+            let tail = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("tail"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CborPayloadInlineNesting { pair, triple, tail })
+        })()
+        .map_err(|e| e.annotate("CborPayloadInlineNesting"))
+    }
+}
+
 impl cbor_event::se::Serialize for CborPayloadLeaves {
     fn serialize<'se>(
         &self,
