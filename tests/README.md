@@ -4402,9 +4402,15 @@ fixtures; the two enumerations are independent by construction, which is the who
 having both. The breadth BOUND is the catalog itself: the sweep sees exactly the combinations the
 catalog spells, and the catalog carries control operators only as their dedicated `ctl.*` rows —
 one position each; no `contain.*` row crosses a control op with a containment position — so a
-compile class living only in an unspelled combination (say, `.default` on an array-record member)
-is invisible to it. Growing that cross-product is the matrix's own enumeration program, not a gap
-in the sweep.
+compile class living only in an unspelled combination is invisible to it. That bound is proven,
+not hypothetical: the 2026-08 `.default` coherence cycle found FOUR such classes by hand
+boundary-probing — among them `.default` on an array-record member (exit-0 non-compiling RUST
+output) and on a mandatory member (exit-0 E0061 on the wasm and component faces) — all invisible
+to the sweep and to every other breadth gate until the product was spelled into the corpus
+(fixed; `default_mandatory`, `default_array_rep`, `default_scalar_kinds`). Growing that
+cross-product is the matrix's own enumeration program, not a gap in the sweep — owned by
+`cddl-matrix/ROADMAP.md` § Expansion's "A supported control's HOST-PLACEMENT spelling space"
+entry.
 
 **Depth of exactly two stages**, deliberately: generate, then build. No host, no oracle, no vectors,
 no drive — that is `verify.ts`'s component EXECUTION leg, which asks whether thirteen chosen rows

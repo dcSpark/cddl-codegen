@@ -1507,7 +1507,9 @@ spliced record member delegates through `SerializeEmbeddedGroup`/`DeserializeEmb
 spelling round-trips by construction: an array-position field carries its post-DSL Rust field name as
 the label (so a `; @name` rename is baked in, no annotation needed), a map-position field carries its
 fixed member key, a `T / null` renders `… / null` (an occurrence-optional `?` field is distinct), and
-a member `.default` rides in member position. Plain groups that materialize a *non*-group shape, or
+a member `.default` rides in member position (on an *optional* member — a mandatory member's
+`.default` is inert per RFC 8610 §3.8.2 and was stripped, with a warning, before the field was
+built, so the export spells the plain mandatory member the IR actually holds). Plain groups that materialize a *non*-group shape, or
 that are never referenced at all, are excluded-with-record instead — see the exclusion reasons below.
 
 **`; unexported:` records and reference-closure.** The projection runs on *every* regenerated spec —

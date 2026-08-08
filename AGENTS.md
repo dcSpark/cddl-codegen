@@ -473,6 +473,15 @@ Given this means we actively prune ROADMAP as features are implemented, code sho
 
 Note: there is no roadmap that isn't related to the testing framework. That's because a "feature" roadmap is encoded indirectly in tests: any test that fail is a feature we need to support, and any new feature we decide to add should be encoded as a test (that first fails, then passes when the test is implemented)
 
+Every delivery cycle ends with a **completeness sweep over the durable docs** — `docs/docs/*.mdx`,
+`cddl-matrix/README.md` + `ROADMAP.md`, `tests/README.md` + `TESTING_ROADMAP.md` — checking each
+surface against the cycle's implications and either confirming it accurate WITH the reason or
+fixing it in the sweep's own commit. The classes it exists to catch, each proven by a shipped
+instance: a delta documented on one face while the sibling face's doc stays silent (a
+"described-as-shared" delta is two docs' delta); prose mirrors of registries/consts rotting when
+the registry changes (a "N classes remain" sentence outliving the count); and a retired
+limitation or refusal lingering as if still current. Confirm-or-fix per doc, never sampled.
+
 Additionally, `draft/` is the recommended location for scratchpads (for agents to write/iterate on investigations, etc.). Run LOGS do not go in the `draft/` root — they go in `draft/logs/` (`check.ts` writes its own there automatically; put ad-hoc command logs there too), so the root stays readable as documents-only.
 
 ## Testing & further docs
