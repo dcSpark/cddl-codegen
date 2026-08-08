@@ -4,10 +4,10 @@ expression: ir
 ---
 {
     RustIdent(
-        "Extended",
+        "ExtFirst",
     ): RustStruct {
         ident: RustIdent(
-            "Extended",
+            "ExtFirst",
         ),
         tag: None,
         tag_optional: false,
@@ -26,30 +26,7 @@ expression: ir
             variants: [
                 EnumVariant {
                     name: Custom(
-                        "U64",
-                    ),
-                    data: RustType(
-                        RustType {
-                            conceptual_type: Primitive(
-                                U64,
-                            ),
-                            encodings: [],
-                            config: RustTypeSerializeConfig {
-                                default: None,
-                                bounds: None,
-                                duplicates: None,
-                                float_bounds: None,
-                                basic_override: false,
-                            },
-                        },
-                    ),
-                    serialize_as_embedded_group: false,
-                    doc: None,
-                    key: None,
-                },
-                EnumVariant {
-                    name: Custom(
-                        "Words",
+                        "Text",
                     ),
                     data: RustType(
                         RustType {
@@ -72,12 +49,12 @@ expression: ir
                 },
                 EnumVariant {
                     name: Custom(
-                        "Bytes",
+                        "U64",
                     ),
                     data: RustType(
                         RustType {
                             conceptual_type: Primitive(
-                                Bytes,
+                                U64,
                             ),
                             encodings: [],
                             config: RustTypeSerializeConfig {

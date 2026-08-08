@@ -481,6 +481,22 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     complete commands, and careful binary-provenance statement are in the committed paste-ready
     `upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md`. No upstream issue filed yet.
 
+15. **incremental `/=` chains lose the plain `=` statement's arm when resolved through a
+    REFERENCE** (OPEN at `ac1b98e`): a rule defined incrementally (`extended = uint` +
+    `extended /= text`) validates every arm when it is the validation ROOT of a BASE-FIRST chain
+    (first rule / CLI default), but a REFERENCE to it (`r = extended`) resolves to the `/=`
+    alternates only — `00` (uint 0) is rejected with `expected type text, got
+    Integer(Integer(0))` while `6178` (`"x"`) passes; both statement orders lose the `=` arm in
+    the referenced form, and an extension-FIRST chain loses it even at root position.
+    Base-first root-position validation and the ruby gem both accept the uint instance, so the
+    bytes are spec-valid (RFC 8610 §3.9 arm accumulation). Surfaced 2026-08-08 by the first corpus fixture spelling
+    `/=` (`tests/corpus/assignt_extend.cddl`): the generated conformance harness always
+    references the tested rule through its synthetic `__cddl_oracle_root = <rule>` alias, so
+    every incremental-chain fixture hits the gap; the fixture rides `RUST_ORACLE_SKIP`, keeping
+    the ruby gem as its enforcing oracle. Minimal repro, discriminating probes and commands in
+    `upstream-reports/rust-cddl-incremental-extension-reference-resolution.md`. No upstream
+    issue filed yet.
+
 ## Gotchas (read before touching the support seam or probe examples)
 
 The recurring rule: **a panic/compile-failure on minimal *valid* CDDL is a finding to surface

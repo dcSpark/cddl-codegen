@@ -10,29 +10,27 @@ use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
-impl cbor_event::se::Serialize for Extended {
+impl cbor_event::se::Serialize for ExtFirst {
     fn serialize<'se>(
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
-            Extended::U64(uint) => serializer.write_unsigned_integer(*uint),
-            Extended::Words(words) => serializer.write_text(words),
-            Extended::Bytes(bytes) => serializer.write_bytes(bytes),
+            ExtFirst::Text(text) => serializer.write_text(text),
+            ExtFirst::U64(uint) => serializer.write_unsigned_integer(*uint),
         }
     }
 }
 
-impl Deserialize for Extended {
+impl Deserialize for ExtFirst {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
-                cbor_event::Type::UnsignedInteger => Ok(Extended::U64(raw.unsigned_integer()?)),
-                cbor_event::Type::Text => Ok(Extended::Words(raw.text()?)),
-                cbor_event::Type::Bytes => Ok(Extended::Bytes(raw.bytes()?)),
+                cbor_event::Type::Text => Ok(ExtFirst::Text(raw.text()?)),
+                cbor_event::Type::UnsignedInteger => Ok(ExtFirst::U64(raw.unsigned_integer()?)),
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()
-        .map_err(|e| e.annotate("Extended"))
+        .map_err(|e| e.annotate("ExtFirst"))
     }
 }

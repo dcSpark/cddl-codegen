@@ -7,7 +7,7 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
-    reg.add::<cddl_lib::Extended>();
+    reg.add::<cddl_lib::ExtFirst>();
 }
 
 pub fn export_schemas() {

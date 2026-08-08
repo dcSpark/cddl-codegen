@@ -8,19 +8,6 @@ expression: content
 package cddl:cddl-lib@0.1.0;
 
 interface types {
-  resource ext-first {
-    new-text: static func(text: string) -> ext-first;
-    as-text: func() -> option<string>;
-    new-uint: static func(uint: u64) -> ext-first;
-    as-uint: func() -> option<u64>;
-    kind: func() -> ext-first-kind;
-    to-cbor-bytes: func() -> list<u8>;
-    from-cbor-bytes: static func(bytes: list<u8>) -> result<ext-first, string>;
-  }
-  enum ext-first-kind {
-    text,
-    uint,
-  }
   resource extended {
     new-uint: static func(uint: u64) -> extended;
     as-uint: func() -> option<u64>;

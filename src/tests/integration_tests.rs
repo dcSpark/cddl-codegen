@@ -11849,7 +11849,25 @@ fn ir_conformance_corpus() {
     //   the fixture's rules carry the named-rule `md` row, so all three fail with the signature;
     //   the ruby gem judges them instead (the gate's own run is the check — a wrongly-added
     //   resident that starts passing trips the stale guard).
-    const RUST_ORACLE_SKIP: &[&str] = &["alias_positions", "open_table"];
+    //   assignt_extend and assignt_extend_ext_first ride gap #15 (`cddl-matrix/README.md`
+    //   § "Upstream oracle gaps", OPEN at `ac1b98e`): a rule defined incrementally
+    //   (`extended = uint` + `extended /= text`) keeps every arm when it is the validation ROOT
+    //   of a base-first chain, but resolving it through a REFERENCE drops the plain `=`
+    //   statement's arm — and this harness always references the tested rule through its
+    //   synthetic `__cddl_oracle_root = <rule>` alias, so EVERY incremental-chain fixture hits
+    //   the gap. Both chains failed with the signature (`[00]`, the base `uint` arm, `expected
+    //   type text`); the same bytes validate at root position and the ruby gem accepts them for
+    //   the base-first chain, so the second oracle keeps judging assignt_extend. (The ext-first
+    //   chain lives in its own fixture because the GEM chokes on that spelling — see its
+    //   RUBY_EXPECTED_FAIL entry — and its parse crash would poison the base-first chain's ruby
+    //   half if they shared a file.) Both come off this list when the fork fix lands (repro:
+    //   `cddl-matrix/upstream-reports/rust-cddl-incremental-extension-reference-resolution.md`).
+    const RUST_ORACLE_SKIP: &[&str] = &[
+        "alias_positions",
+        "assignt_extend",
+        "assignt_extend_ext_first",
+        "open_table",
+    ];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
@@ -11891,6 +11909,20 @@ fn ir_conformance_corpus() {
     // bytes. Investigate before ledgering. A ledgered (fixture, rule) that STOPS diverging (all its
     // cases accepted) while still being swept is flagged stale, like the rust oracle's fixed_or_toothless.
     const RUBY_EXPECTED_FAIL: &[(&str, &str, &str)] = &[
+        (
+            "assignt_extend_ext_first",
+            "ext_first",
+            "gem PARSER gap (cddl 0.12.14): an extension-FIRST `/=` chain (`ext_first /= text` \
+             written before `ext_first = uint`) is a hard RuntimeError — `Duplicate rule \
+             definition ext_first` from cddl.rb `rules` — though RFC 8610 §3.9 makes rule order \
+             insignificant for arm accumulation (the base-first spelling of the same chain \
+             parses and validates correctly, both arms). The crash poisons every rule in the \
+             file, which is why this ordering lives in its own fixture. The rust half is \
+             gap-#15-skipped too, so NEITHER oracle judges this fixture; wire conformance for \
+             the ordering rides the equivalence pin \
+             (incremental_type_choice_extension_equals_the_folded_spelling — byte-identity with \
+             the folded spelling, whose bytes the oracles do judge on assignt_extend).",
+        ),
         (
             "cbor_wrapped_group_array",
             "holder",
