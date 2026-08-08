@@ -79,6 +79,9 @@
       ]
     },
     {
+      "gate": "component_build_sweep"
+    },
+    {
       "gate": "component_compose",
       "warm_ms": 2000,
       "n": 3,

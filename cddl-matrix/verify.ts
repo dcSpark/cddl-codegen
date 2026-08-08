@@ -602,49 +602,83 @@ interface ComponentVectorCounts { accepts: number; rejects: number }
   }
   if (SELFTEST) console.log(`component kebab-ident mirror self-test OK (${cases.length} fixtures)`);
 }
+// Catalog rows whose component crate GENERATES and does not BUILD today — the sweep's expectation
+// ledger, the direct sibling of `component_tests::EXPECTED_COMPILE_FAIL` and held to the same
+// discipline: every entry is a FINDING this instrument made, ledgered as an open defect in
+// `cddl-matrix/ROADMAP.md` § "Findings — open", never a decision to stop looking. Guarded BOTH ways
+// by `sweepVerdict` below — a listed row that starts building (or stops generating) fails as a stale
+// entry to retire, an unlisted row that stops building fails as the new finding.
+//
+// The reason string names the CLASS, not the symptom, so a second reacher of a known class is
+// recognizable as one rather than filed as new.
+const SWEEP_EXPECTED_BUILD_FAIL: Record<string, string> = {
+  "ctl.default":
+    "the defaulted-scalar projection class: a `.default`-carrying optional member is a plain `u64` " +
+    "in the rust struct while the WIT projection keeps it optional, so the glue calls `as_ref` on a " +
+    "`u64` (E0599) and assigns `Some(v)` into one (E0308). The class `component_tests`' " +
+    "EXPECTED_COMPILE_FAIL holds for the corpus fixture `default_value`, reached independently here " +
+    "from the decode catalog's own row (`m = { a: uint, ? b: uint .default 0 }`) — see " +
+    "cddl-matrix/ROADMAP.md § \"Findings — open\", which is where the harness-free repro lives",
+};
 // The `--component-build-sweep` cell classifier and the policy that says which classes FAIL a sweep.
 // Declared here, above its self-test, because the block below reads `SWEEP_FAILING`.
 //
 // A row the generator REFUSES is not a component-face defect — the sweep enumerates every drivable
 // catalog row, including shapes cddl-codegen declines at generation, and those are already the
 // matrix's own business. What the sweep is for is the row that GENERATES and then does not BUILD.
-type SweepVerdict = "refused" | "built" | "build-failed";
-function sweepVerdict(gen: number, build: number | null): SweepVerdict {
+type SweepVerdict = "refused" | "built" | "build-failed" | "expected-build-fail" | "stale-ledger";
+function sweepVerdict(gen: number, build: number | null, ledgered: boolean): SweepVerdict {
+  if (ledgered) {
+    // A ledgered row must reach the build AND still fail it, or the entry no longer describes
+    // reality. Both other shapes are the SAME staleness: the ledger asserts something untrue.
+    if (gen !== 0) return "stale-ledger";
+    return build === null || build === 0 ? "stale-ledger" : "expected-build-fail";
+  }
   if (gen !== 0) return "refused";            // never reached the build stage — later fields say nothing
   if (build === null) return "build-failed";  // generated but no build verdict: never silently green
   return build === 0 ? "built" : "build-failed";
 }
-const SWEEP_FAILING: ReadonlySet<SweepVerdict> = new Set<SweepVerdict>(["build-failed"]);
+const SWEEP_FAILING: ReadonlySet<SweepVerdict> = new Set<SweepVerdict>(["build-failed", "stale-ledger"]);
 // (7) The sweep's cell classifier. Its failure is silent in exactly the way the composers above are:
 // a `build-failed` cell misread as `refused` (or a refusal admitted into `SWEEP_FAILING`) turns the
 // sweep's whole product — "this row generates but does not compile" — into a green run or a false
-// alarm, with no other symptom. Pure, so it runs on every invocation and stands alone under
-// `--selftest`.
+// alarm, with no other symptom. The ledger dimension doubles that: an expectation that has silently
+// stopped describing reality is how a both-ways guard degrades into a skip-list. Pure, so it runs on
+// every invocation and stands alone under `--selftest`.
 {
-  const cases: [number, number | null, SweepVerdict][] = [
-    [1, null, "refused"],          // generator declined the shape
-    [101, null, "refused"],        // generator PANICKED — still a generation-stage outcome
-    [1, 0, "refused"],             // a refused cell stays refused whatever a later field says
-    [0, 0, "built"],               // the only green shape
-    [0, 1, "build-failed"],        // generated, glue does not compile — the class the sweep exists for
-    [0, 101, "build-failed"],
-    [0, null, "build-failed"],     // generated with no build verdict is never reported as built
+  const cases: [number, number | null, boolean, SweepVerdict][] = [
+    [1, null, false, "refused"],          // generator declined the shape
+    [101, null, false, "refused"],        // generator PANICKED — still a generation-stage outcome
+    [1, 0, false, "refused"],             // a refused cell stays refused whatever a later field says
+    [0, 0, false, "built"],               // the only green shape
+    [0, 1, false, "build-failed"],        // generated, glue does not compile — the class the sweep exists for
+    [0, 101, false, "build-failed"],
+    [0, null, false, "build-failed"],     // generated with no build verdict is never reported as built
+    [0, 101, true, "expected-build-fail"], // the ledgered shape: generates, still fails to build
+    [0, 1, true, "expected-build-fail"],
+    [0, 0, true, "stale-ledger"],         // it BUILDS now — retire the entry, never pass quietly
+    [1, null, true, "stale-ledger"],      // it no longer generates — the entry asserts an unreachable build
+    [0, null, true, "stale-ledger"],      // no build verdict cannot corroborate the expectation either
   ];
-  const failures = cases.filter(([gen, build, want]) => sweepVerdict(gen, build) !== want);
-  const greenLeak = cases.filter(([gen, build]) => sweepVerdict(gen, build) === "built" && !(gen === 0 && build === 0));
-  const policy = (["refused", "built"] as SweepVerdict[]).filter(v => SWEEP_FAILING.has(v));
-  if (failures.length || greenLeak.length || policy.length) {
+  const failures = cases.filter(([gen, build, led, want]) => sweepVerdict(gen, build, led) !== want);
+  const greenLeak = cases.filter(([gen, build, led]) => sweepVerdict(gen, build, led) === "built" && !(gen === 0 && build === 0 && !led));
+  const pinLeak = cases.filter(([gen, build, led]) => sweepVerdict(gen, build, led) === "expected-build-fail" && !(led && gen === 0 && build !== null && build !== 0));
+  const policy = (["refused", "built", "expected-build-fail"] as SweepVerdict[]).filter(v => SWEEP_FAILING.has(v));
+  const unguarded = (["build-failed", "stale-ledger"] as SweepVerdict[]).filter(v => !SWEEP_FAILING.has(v));
+  if (failures.length || greenLeak.length || pinLeak.length || policy.length || unguarded.length) {
     console.error(
       "HARNESS FAILURE: component-build-sweep classifier self-test failed — " +
-      failures.map(([gen, build, want]) => `(gen=${gen}, build=${build}): expected ${want}, got ${sweepVerdict(gen, build)}`)
-        .concat(greenLeak.map(([gen, build]) => `a non-(0,0) cell classified 'built' (gen=${gen}, build=${build})`))
+      failures.map(([gen, build, led, want]) => `(gen=${gen}, build=${build}, ledgered=${led}): expected ${want}, got ${sweepVerdict(gen, build, led)}`)
+        .concat(greenLeak.map(([gen, build, led]) => `a cell that is not an unledgered (0,0) classified 'built' (gen=${gen}, build=${build}, ledgered=${led})`))
+        .concat(pinLeak.map(([gen, build, led]) => `a cell that is not a ledgered generated-and-failed build classified 'expected-build-fail' (gen=${gen}, build=${build}, ledgered=${led})`))
         .concat(policy.map(v => `'${v}' is in SWEEP_FAILING — a sweep must not fail on it`))
+        .concat(unguarded.map(v => `'${v}' is NOT in SWEEP_FAILING — the sweep would pass over it`))
         .join("; ") +
       " — the sweep would misreport a component-face compile failure; refusing to run.",
     );
     process.exit(2);
   }
-  if (SELFTEST) console.log(`component-build-sweep classifier self-test OK (${cases.length} fixtures)`);
+  if (SELFTEST) console.log(`component-build-sweep classifier self-test OK (${cases.length} fixtures, ledger both-ways)`);
 }
 if (SELFTEST) process.exit(0);
 // K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
@@ -1785,6 +1819,8 @@ function runComponentBuildSweep(): never {
   const specFile = join(probeDir, "component_build_sweep.cddl");
   const refused: string[] = [];
   const failed: { id: string; exit: number; stderr: string }[] = [];
+  const expectedFail: string[] = [];
+  const stale: string[] = [];
   let built = 0;
   for (const [i, row] of selected.entries()) {
     // The scratch volume is what 165 generated crates plus one shared wasip2 target dir consume, and
@@ -1798,8 +1834,9 @@ function runComponentBuildSweep(): never {
     // The workspace root real consumers own; the tool never writes one (same line the execution leg
     // writes, for the same reason — it is what makes `component/`'s path dependency resolve).
     if (gen === 0) writeFileSync(join(out, "Cargo.toml"), '[workspace]\nresolver = "3"\nmembers = ["rust", "component"]\n');
+    const ledgered = Object.hasOwn(SWEEP_EXPECTED_BUILD_FAIL, row.id);
     const build = gen === 0 ? componentBuildSweepCell(row.id, out) : null;
-    const verdict = sweepVerdict(gen, build ? build.exit : null);
+    const verdict = sweepVerdict(gen, build ? build.exit : null, ledgered);
     const where = `[sweep ${i + 1}/${selected.length}] ${row.id}`;
     if (verdict === "refused") {
       refused.push(`${row.id} (generator exit ${gen})`);
@@ -1808,18 +1845,35 @@ function runComponentBuildSweep(): never {
       built++;
       // A cached cell already announced itself through the `[gate-cache]` line — see that call site.
       if (!build!.cached) console.log(`${where}: built (${formatElapsed(Date.now() - started)})`);
+    } else if (verdict === "expected-build-fail") {
+      expectedFail.push(`${row.id} (cargo exit ${build!.exit}): ${SWEEP_EXPECTED_BUILD_FAIL[row.id]}`);
+      console.log(`${where}: build failed as LEDGERED (cargo exit ${build!.exit}) — open finding, not a regression`);
+    } else if (verdict === "stale-ledger") {
+      stale.push(
+        gen !== 0
+          ? `${row.id}: the row no longer GENERATES (generator exit ${gen}), so its ledgered build failure is unreachable`
+          : `${row.id}: the component crate now BUILDS — the class closed; retire the SWEEP_EXPECTED_BUILD_FAIL entry (and its ROADMAP findings entry) in the same change`,
+      );
+      console.log(`${where}: STALE LEDGER ENTRY (generator exit ${gen}, cargo exit ${build ? build.exit : "none"})`);
     } else {
       failed.push({ id: row.id, exit: build ? build.exit : -1, stderr: build ? build.stderr : "" });
       console.log(`${where}: BUILD FAILED (cargo exit ${build ? build.exit : "none"})`);
     }
   }
+  // A ledger entry naming a row this run never reached says nothing and rots invisibly — the same
+  // stale-pin class the per-row arm above catches from the other side. A `--only` subset legitimately
+  // reaches only its selection, so the check is scoped to the enumeration, not to the run.
+  const orphanLedger = Object.keys(SWEEP_EXPECTED_BUILD_FAIL)
+    .filter(id => !drivable.some(r => r.id === id))
+    .map(id => `${id}: SWEEP_EXPECTED_BUILD_FAIL names a row the catalog does not offer as drivable`);
+  stale.push(...orphanLedger);
 
   // Second harness-health layer, the twin of the probe pipeline's "no feature probed supported": a
   // whole-catalog sweep in which NOTHING generated is a broken generator reported as 165 quiet
   // refusals — a green run covering nothing. (The upstream generation self-test / rust warm-up makes
   // this near-unreachable; it is the floor that stays true if either ever moves.) A `--only` subset
   // is exempt: one deliberately-refused row is a legitimate selection.
-  if (!MINT_ONLY && built === 0 && failed.length === 0) {
+  if (!MINT_ONLY && built === 0 && failed.length === 0 && expectedFail.length === 0) {
     console.error(
       `HARNESS FAILURE: all ${selected.length} swept row(s) refused at generation — an implausible verdict shape ` +
       "for the whole catalog (a generator that does not build refuses every row identically). Refusing to report a pass.",
@@ -1835,11 +1889,27 @@ function runComponentBuildSweep(): never {
   console.log(`swept               : ${selected.length}`);
   console.log(`built               : ${built}`);
   console.log(`generation refused  : ${refused.length}`);
+  console.log(`ledgered failures   : ${expectedFail.length} of ${Object.keys(SWEEP_EXPECTED_BUILD_FAIL).length} SWEEP_EXPECTED_BUILD_FAIL entry(s)`);
   console.log(`build failures      : ${failed.length}`);
+  console.log(`stale ledger        : ${stale.length}`);
   if (GATE_CACHE_ENABLED) console.log(`gate-cache          : ${gateCacheStats.run} run, ${gateCacheStats.cached} cached`);
   if (refused.length) {
     console.log("\nGENERATION REFUSED (a matrix support fact, not a component-face defect):");
     for (const r of refused) console.log(`  - ${r}`);
+  }
+  if (expectedFail.length) {
+    console.log("\nLEDGERED BUILD FAILURES (open findings in cddl-matrix/ROADMAP.md § \"Findings — open\"):");
+    for (const e of expectedFail) console.log(`  - ${e}`);
+  }
+  if (stale.length) {
+    console.log("\nSTALE LEDGER (SWEEP_EXPECTED_BUILD_FAIL no longer describes reality):");
+    for (const s of stale) console.log(`  - ${s}`);
+    console.log(
+      `\nRESULT: COMPONENT BUILD SWEEP FAIL — ${stale.length} stale expectation(s). An expectation that has ` +
+      "stopped describing reality is how a both-ways guard degrades into a skip-list; update the ledger " +
+      "and its ROADMAP findings entry in the same change.",
+    );
+    process.exit(1);
   }
   if (failed.length) {
     console.log("\nBUILD FAILURES (rows that GENERATE but whose component crate does not compile):");
