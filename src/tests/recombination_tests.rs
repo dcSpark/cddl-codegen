@@ -288,7 +288,18 @@ const TYPE_TEMPLATES: &[Template] = &[
         name: "cbor_payload",
         role: "role.cbor-payload",
         feature: "type1.ctlop",
-        build: |h, _p, _a| format!("bytes .cbor {h}"),
+        // PARENTHESIZED, which is what makes this template compose with ITSELF. RFC 8610's grammar
+        // is `type1 = type2 [S (rangeop / ctlop) S type2]`, so a control operator's right-hand side
+        // is a `type2`: the unparenthesized `bytes .cbor bytes .cbor uint` is not merely unparsed by
+        // our front end, it is illegal CDDL, and the sweep spent that slot on a parse error instead
+        // of on the generator. Wrapping the hole makes the RHS a `type2` for every filler.
+        //
+        // It also FIXES THE MEANING of fillers that are bare type-level expressions, which is a
+        // deliberate re-baselining rather than a side effect: unparenthesized, `bytes .cbor x / tstr`
+        // parses as a CHOICE whose first arm carries the payload, so the composition was measuring
+        // `role.choice-member` while claiming `role.cbor-payload`. Parenthesized, the choice IS the
+        // payload — which is the cell this template's role names.
+        build: |h, _p, _a| format!("bytes .cbor ({h})"),
     },
     Template {
         name: "generic_arg",
@@ -1187,6 +1198,19 @@ fn recombination_generation_sweep() {
     // re-draw within the same ingredient set, so it moves classes between compositions; it cannot
     // invent an outcome the generator does not already produce.
     //
+    // A TEMPLATE SPELLING change moves them a fourth way, without touching the composition SET:
+    // parenthesizing the `cbor_payload` hole (`bytes .cbor ({h})`) migrated 14 graceful -> ok
+    // (998/611 -> 1012/597) with `swept` and every panic class unchanged. The 14 split cleanly, and
+    // the split is the point: 12 were fillers that are `type1`s rather than `type2`s (`int .ne 1`,
+    // `uint .size 2`, the six range spellings, `tstr .size 4`, …), whose unparenthesized composition
+    // was ILLEGAL CDDL by RFC 8610's `type1 = type2 [S (rangeop / ctlop) S type2]` — so those slots
+    // were measuring the `cddl` crate's correct parse rejection, not this generator; the other 2 are
+    // the self-composition (`bytes .cbor (bytes .cbor (…))`), which became legal at the same edit and
+    // generates because the INLINE nested payload gained support. A further 4 compositions changed
+    // MEANING while staying `ok` — those whose filler is a top-level choice (`bytes .cbor uint / tstr
+    // / bytes` was a CHOICE whose first arm carried the payload; parenthesized, the payload IS the
+    // choice), which is a re-baselining onto the cell this template's role actually names.
+    //
     // Earlier panic -> ok movements, kept because each names the fixture that owns the shape:
     // generic INSTANTIATION in bare member position, when the `TypeGroupname` group-entry arm was
     // routed through `generic_instance_or_new_type` — tests/corpus/generic_call_member.cddl; fixed
@@ -1383,7 +1407,12 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // Bytes)`: minted `Bytes([0])`, decoded `U64(0)` — both the pinned "deserialized value must equal
     // the minted original" failure) and from the fix (both green), plus the four dedup-class arms red
     // at the parent and green after. Pinned by
-    // `wire_ambiguous_type_choice_arms_dedup_and_first_match` (`local` tier). NOTE for whoever runs
+    // `wire_ambiguous_type_choice_arms_dedup_and_first_match` (`local` tier), which spells both
+    // shapes in its OWN fixture text — so the property survived the `cbor_payload` template gaining
+    // its parentheses, which stopped the sweep composing the `.cbor` face at all: that composition is
+    // now `bytes .cbor (uint / tstr / bytes)`, a payload that IS a choice rather than a choice whose
+    // first arm carries a payload, and it has no cross-arm ambiguity to be wrong about.
+    // NOTE for whoever runs
     // the full tier: this retirement was NOT confirmed by `recombination_crates_execute` itself (a
     // full-tier `#[ignore]`d gate). If a class survives, the gate now reports it as an unledgered
     // layer-2 failure naming the composition, which is the loud direction — the entries staying would
