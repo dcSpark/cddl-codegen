@@ -843,6 +843,74 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "assignt_extend.ext_first"
+axis = "corpus"
+example = "ext_first /= text\next_first = uint"
+fixture = "assignt_extend"
+rule = "ext_first"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
+id = "assignt_extend.extended"
+axis = "corpus"
+example = "extended = uint\nextended /= text ; @name Words\nextended /= bytes"
+fixture = "assignt_extend"
+rule = "extended"
+spec = "__probe_holder = [0, extended]\nextended = uint\nextended /= text ; @name Words\nextended /= bytes"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200190994"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190c11"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190c9f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004969736f6c6174652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820065466c6f7261"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006645726f732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200676269706f6c6172"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006762757474657279"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820067636f636b696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006b636f6e7472616374696c65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "bool.has_bool"
 axis = "corpus"
 example = "has_bool = [flag: bool]"
