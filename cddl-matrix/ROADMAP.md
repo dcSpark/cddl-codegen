@@ -270,6 +270,25 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   authoring rule enforced per supported op): a SECOND op found broken at an unenumerated
   host-placement point — measurable by whoever hits the break, and lying on the dimension the
   deferred cost grows along (the count of ops with proven multi-point breakage; `.default` is one).
+- **A REFUSED construct's spelling space — a refusal probed on one spelling is not a refusal of
+  the class.** The reject-side sibling of the two supported-op entries above: every layer that
+  certifies a rejection (the matrix row's one `example`, the reject-catalog projection built from
+  it, and the `*_rejects_gracefully` pin's hand-written vectors) walks committed
+  one-spelling-per-row inputs, so a sibling spelling of the refused class can generate WRONGLY at
+  exit 0 while every layer stays green — the worst outcome, because the refusal's existence reads
+  as the class being handled. Proven 2026-08-08 (B3-021 pickup): the incremental-extension guard
+  keyed on the REPEAT statement's own alternate flag, and every certifying layer spelled the
+  base-first ordering — so the extension-FIRST orderings (`a /= tstr` before `a = int`, legal
+  CDDL, three shapes) silently generated a type modelling one arm at exit 0, found only by hand
+  ordering-probes at pickup and retired by keying the guard on the name's whole statement set,
+  with both orders pinned. The rule going forward: when a refusal's trigger is a property of a
+  STATEMENT SET or a placement (ordering, statement count, host position) rather than of one
+  statement, its rejection pin must enumerate the trigger space's orderings — the delivered
+  `incremental_choice_extension_rejects_gracefully` (both orders, per class) is the model.
+  Reopening signal for the mechanical version (an ordering/permutation leg in the reject-catalog
+  projector): a SECOND guard found bypassable at an unenumerated point of its trigger space —
+  measurable by whoever hits the bypass, on the dimension the deferred cost grows along (the
+  count of guards with proven ordering-bypass history; the incremental-extension guard is one).
 
 ## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
 
