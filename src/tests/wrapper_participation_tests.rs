@@ -22,9 +22,15 @@
 //! never rebuilt, so this module's generated crates cover exactly the rows nothing else did. Two
 //! participation facts the grid ENCODES rather than assumes:
 //!
-//! * a `@duplicates reject` set can be HOSTED but can never DEFER — `generate_reject_ordered_set_type`
-//!   consults no defer seam — while its loose `try_from` SOURCE is defer-capable, so
-//!   "reject wrapper local + loose source deferred" is an ordinary row rather than a contradiction;
+//! * a `@duplicates reject` set participates in EVERY mode like the loose and NonEmpty twins —
+//!   `generate_reject_ordered_set_type` consults the same `try_defer_wrapper` seam, and its shape
+//!   column carries the `@duplicates reject` marker so a deferral and its dep-side host agree on the
+//!   container. What separates its cells is the POSITION, exactly as for the twins: an inline
+//!   (anonymous generic-instance) occurrence carries the structural name and defers, while a
+//!   rule-declared set is the consumer's own class — deferred under the index mode's name-only
+//!   unification, kept local (criterion 9) under workspace mode. A reject wrapper that DEFERS names
+//!   no loose `try_from` source at all (it borrows the dependency's whole class, door included), so
+//!   the "loose source deferred" companion belongs only to the rows that mint locally;
 //! * the index is NAME-only and therefore flavor-SAFE by CONSTRUCTION: the structural name carries
 //!   the container (`PairMapKToV` vs `MapKToV`), so a cross-flavor match is unrepresentable and the
 //!   grid needs no hazard cell for it — a preserve table is an ordinary SHAPE ROW, owed one cell per
@@ -218,12 +224,23 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
     Row {
         mode: Mode::Local,
         shape: Shape::RejectSet,
+        position: Position::InlineAnonymous,
+        elem: "loc_rej_inl",
+        class: "LocRejInlOrderedSet",
+        expect: Outcome::LocalSilent("no dependency is configured"),
+        pinned_by: None,
+        why: "the control for the position that CAN defer: an anonymous generic-set instance binds \
+              to the structural wrapper, and its loose source LocRejInlList is minted locally too",
+    },
+    Row {
+        mode: Mode::Local,
+        shape: Shape::RejectSet,
         position: Position::NamedDeclaration,
         elem: "loc_rej_dec",
         class: "LocRejDecOrderedSet",
-        expect: Outcome::LocalSilent("a reject set is never a defer candidate in ANY mode"),
+        expect: Outcome::LocalSilent("a rule-declared wrapper is always the consumer's own class"),
         pinned_by: None,
-        why: "the participation fact's control: its emitter consults no defer seam at all",
+        why: "ident == structural name is the coincidence the deferring modes decide on; here it is inert",
     },
     Row {
         mode: Mode::Local,
@@ -320,14 +337,25 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
     Row {
         mode: Mode::IndexDeferred,
         shape: Shape::RejectSet,
+        position: Position::InlineAnonymous,
+        elem: "idx_rej_inl",
+        class: "IdxRejInlOrderedSet",
+        expect: Outcome::Defer,
+        pinned_by: None,
+        why: "the uniqueness twin over an indexed dependency element defers like its loose and \
+              NonEmpty siblings; borrowing the dep's class borrows its `try_from` door too, so no \
+              loose source companion is owed here",
+    },
+    Row {
+        mode: Mode::IndexDeferred,
+        shape: Shape::RejectSet,
         position: Position::NamedDeclaration,
         elem: "idx_rej_dec",
         class: "IdxRejDecOrderedSet",
-        expect: Outcome::LocalWarned("reached no deferral decision"),
+        expect: Outcome::Defer,
         pinned_by: None,
-        why: "the participation fact: a reject set can never DEFER, so an indexed name is a collision \
-              only the MINT-SEAM backstop can announce (no defer seam sees it at all); its loose \
-              source IdxRejDecList defers",
+        why: "a reject rule whose ident coincides with an indexed structural name unifies with the \
+              dep's class, exactly as the loose-list declaration row does",
     },
     Row {
         mode: Mode::IndexDeferred,
@@ -431,15 +459,25 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
     Row {
         mode: Mode::WorkspaceBorrowed,
         shape: Shape::RejectSet,
+        position: Position::InlineAnonymous,
+        elem: "wsp_rej_inl",
+        class: "WspRejInlOrderedSet",
+        expect: Outcome::Borrow,
+        pinned_by: None,
+        why: "the cell the dep-side hosting leg had no consumer for: the borrow's sidecar row carries \
+              the `@duplicates reject` marker, which is what makes the host rebuild the uniqueness \
+              twin instead of a loose list",
+    },
+    Row {
+        mode: Mode::WorkspaceBorrowed,
+        shape: Shape::RejectSet,
         position: Position::NamedDeclaration,
         elem: "wsp_rej_dec",
         class: "WspRejDecOrderedSet",
-        expect: Outcome::LocalSilent(
-            "a reject set consults no defer seam, in workspace mode either",
-        ),
+        expect: Outcome::LocalWarned("shadows the collection wrapper"),
         pinned_by: None,
-        why: "the participation fact under the mode that defers UNCONDITIONALLY — the one place it \
-              could plausibly have been made to borrow, and is not",
+        why: "criterion 9 reaches the reject seam too: a rule-declared set is the consumer's own \
+              class and NEVER borrows, however unconditional the mode is otherwise",
     },
     Row {
         mode: Mode::WorkspaceBorrowed,
@@ -573,12 +611,17 @@ struct SpecFiles {
     files: Vec<(String, String)>,
 }
 
+/// The generic set def an inline flavored (reject) occurrence is instantiated from. Its own ident
+/// never becomes a class: an anonymous instance binds to the STRUCTURAL `<Elem>OrderedSet`.
+const REJECT_GENERIC: &str = "wp_oset";
+
 fn build_spec(mode: Mode, rows: &[&Row]) -> SpecFiles {
     let mut root = String::new();
     let mut sub = String::new();
     let mut extern_stub = String::new();
     let mut holder_members: Vec<String> = vec![];
     let mut sub_members: Vec<String> = vec![];
+    let mut needs_reject_generic = false;
 
     for row in rows {
         // The element declaration: consumer-owned in Local mode, a dep extern otherwise.
@@ -590,17 +633,28 @@ fn build_spec(mode: Mode, rows: &[&Row]) -> SpecFiles {
         let shape = row.shape.cddl(row.elem);
         let policy = row.shape.policy();
         match row.position {
-            Position::InlineAnonymous => {
-                // A flavored shape cannot ride an inline member (the directive comment would swallow
-                // the rest of the line), so the table never pairs one with this position.
-                assert!(
-                    policy.is_none(),
-                    "a flavored shape needs a rule of its own; {:?} row for {} must use NamedDeclaration",
-                    row.shape,
-                    row.elem
-                );
-                holder_members.push(format!("  {}_m: {shape}", row.elem));
-            }
+            Position::InlineAnonymous => match policy {
+                None => holder_members.push(format!("  {}_m: {shape}", row.elem)),
+                // A flavored shape cannot ride a bare member line — the directive lives in a rule
+                // COMMENT, which would swallow the rest of the line. The spelling a real spec uses
+                // for an inline flavored occurrence is a GENERIC def carrying the directive,
+                // instantiated ANONYMOUSLY at the use site (no named alias rule in between), so the
+                // member binds to the STRUCTURAL wrapper rather than to a rule's own class. Only the
+                // reject set reaches this arm; a preserve table's inline occurrence carries no
+                // directive of its own (the policy is per-rule), so the table keeps it declared.
+                Some(_) => {
+                    assert_eq!(
+                        row.shape,
+                        Shape::RejectSet,
+                        "only the reject set has an inline flavored spelling; {} must use \
+                         NamedDeclaration",
+                        row.elem
+                    );
+                    needs_reject_generic = true;
+                    holder_members
+                        .push(format!("  {}_m: {REJECT_GENERIC}<{}>", row.elem, row.elem));
+                }
+            },
             Position::NamedDeclaration | Position::NamedReference => {
                 let ident = row.shape.declared_rule_ident(row.class);
                 let comment = policy.map(|p| format!(" ; {p}")).unwrap_or_default();
@@ -618,6 +672,11 @@ fn build_spec(mode: Mode, rows: &[&Row]) -> SpecFiles {
             }
             Position::NotApplicable => unreachable!("request rows build no consumer spec"),
         }
+    }
+    if needs_reject_generic {
+        root.push_str(&format!(
+            "{REJECT_GENERIC}<a0> = [* a0] ; @duplicates reject\n\n"
+        ));
     }
     if !holder_members.is_empty() {
         root.push_str(&format!("holder = [\n{}\n]\n", holder_members.join(",\n")));
@@ -761,6 +820,10 @@ fn loose_source_class(row: &Row) -> Option<String> {
     match row.shape {
         Shape::NonEmptyList => Some(row.class.trim_start_matches("NonEmpty").to_owned()),
         Shape::NonEmptyMap => Some(row.class.trim_start_matches("NonEmpty").to_owned()),
+        // A DEFERRED reject wrapper borrows the dependency's whole class — its `try_from` door
+        // included — so it names no loose source in this crate at all and owes no companion. Only a
+        // locally-minted one does.
+        Shape::RejectSet if matches!(row.expect, Outcome::Defer | Outcome::Borrow) => None,
         Shape::RejectSet => Some(format!("{}List", row.class.trim_end_matches("OrderedSet"))),
         _ => None,
     }

@@ -661,21 +661,58 @@ impl GenerationScope {
         element_type: RustType,
         wrapper_ident: &RustIdent,
         non_empty: bool,
+        // `true` when `wrapper_ident` is an explicit RULE ident (`foo = [* bar] ; @duplicates
+        // reject`), so a structural-name coincidence never workspace-defers the consumer's own class
+        // (criterion 9).
+        rule_declared: bool,
         cli: &Cli,
     ) {
-        if !self.already_generated.insert(wrapper_ident.clone()) {
-            return;
-        }
         let twin = if non_empty {
             "NonEmptyOrderedSet"
         } else {
             "OrderedSet"
         };
+        // The shape column the sidecar round-trips: the marker is the SHARED const the dep-side
+        // parser consumes, so the writer and the reader cannot drift apart on its spelling.
         let shape = format!(
-            "[{} {}] @duplicates reject",
+            "[{} {}] {}",
             if non_empty { "+" } else { "*" },
-            render_wrapper_shape(&element_type)
+            render_wrapper_shape(&element_type),
+            crate::generation::requests::REJECT_MARKER
         );
+        // `--extern-wrapper-index` / `--workspace-dep`: the uniqueness twin over a dependency's
+        // elements is a defer candidate exactly like the loose list and the NonEmpty twin — the
+        // dependency's class is the one JS class for this shape, and re-minting it here is a
+        // `rust-lld: duplicate symbol __wbg_<class>_free` the moment both crates link into one
+        // cdylib. The shape column carries the `@duplicates reject` marker, so a dep hosting the
+        // request rebuilds the uniqueness twin rather than a loose list. Only the STRUCTURAL name is
+        // a candidate (`try_defer_wrapper`'s screen: a named reject rule whose ident differs from the
+        // structural name is the consumer's own class and is never suppressed).
+        // LOCKSTEP: this spelling is deliberately the owner-INDEPENDENT structural name — what
+        // `RustType::reject_ordered_set_wasm_wrapper_name` synthesizes for an inline (anonymous)
+        // reject set, which cannot be called here because a rule-named wrapper must never look
+        // deferrable. If that helper's synthesized spelling changes, change this format! too (and the
+        // list/map twins above).
+        let variant = element_type.conceptual_type.for_variant();
+        let structural_name = if non_empty {
+            format!("NonEmpty{variant}OrderedSet")
+        } else {
+            format!("{variant}OrderedSet")
+        };
+        if self.try_defer_wrapper(
+            types,
+            wrapper_ident,
+            &structural_name,
+            &[&element_type.conceptual_type],
+            &shape,
+            rule_declared,
+            cli,
+        ) {
+            return;
+        }
+        if !self.already_generated.insert(wrapper_ident.clone()) {
+            return;
+        }
         self.record_collection_wrapper(types, wrapper_ident, &shape);
         // mint any NonEmpty wrappers the element itself needs first (parity with the twins)
         self.ensure_non_empty_wrappers(types, &element_type, cli);
@@ -687,6 +724,8 @@ impl GenerationScope {
         // the import tracker's struct-walk Array arm (`scope_references`/`mark_refs`, intermediate/mod.rs)
         // registers the loose source for reject rules under the SAME condition — its gate keys on
         // `duplicates == Reject` (not just the non-empty bound). Change the two together.
+        // Only the LOCAL-mint path reaches here: a deferred wrapper returned above and borrows the
+        // dependency's class together with its `try_from` door, so it names no loose source at all.
         let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types)
             && !element_type.is_non_empty_array())
         .then(|| element_type.name_as_wasm_array(types));
@@ -1073,6 +1112,10 @@ impl GenerationScope {
                         (**inner).clone(),
                         &ident,
                         rt.is_non_empty_array(),
+                        // an inline (anonymous) occurrence: no rule authored this class, so the
+                        // criterion-9 shadow screen does not apply — the sibling twins pass `false`
+                        // from this same seam.
+                        false,
                         cli,
                     );
                 } else if rt.is_non_empty_array() {
