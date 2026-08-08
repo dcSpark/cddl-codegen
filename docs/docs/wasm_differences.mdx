@@ -383,6 +383,20 @@ The flattening is a **read**-side effect only; the **write** side is fully three
 
 (The only thing a setter can't do is *remove* a slot back to absent once set — but that state is the constructor default and needs no setter.) So unlike the read side, no fidelity is lost on write, and there is no need to detour through the rust crate to build a present-null value.
 
+## `.default` members read and write plain
+
+A **`.default`-carrying** optional member (`? b: uint .default 0`) is the one optional field whose
+getter does *not* return an `Option`. The rust struct stores such a member plain — the default
+substitutes for an absent value, so there is no absence to report — and this face mirrors that
+storage: the getter returns the bare value and `set_b(value)` assigns it directly (no presence
+wrap). The consequence: **absent** and **explicitly set to the default** are indistinguishable on
+this face, there is no `has_b()` companion, and no setter can put the member back to absent. That
+is the rust face's contract showing through rather than a wasm-face simplification. (Under
+`--preserve-encodings` the rust crate does remember whether the member was written on the wire, so
+a decode/re-encode round trip stays byte-exact — that memory simply is not part of this face's
+surface.) This cannot combine with the nullable flattening above: a `.default` lands only on a
+primitive-backed head, and a nullable (`T / null`) head refuses the control with a message.
+
 ## JSON and large integers
 
 With `--json-serde-derives` a wasm type exposes two ways to produce JSON: `to_json()` returns a string (via `serde_json`) and `to_json_value()` returns a live JS value (via `serde-wasm-bindgen`). They agree for every value inside JavaScript's safe-integer range (`|n| ≤ 2^53 − 1`).
