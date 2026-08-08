@@ -22,6 +22,32 @@ mod tests {
         assert_eq!(deserializer.position(), orig_bytes.len());
     }
 
+    /// Assert that `bytes` is REJECTED, and that the rejection is the one the vector claims — the
+    /// discriminated form of a bare `assert!(T::from_cbor_bytes(&bytes).is_err())`.
+    ///
+    /// A bare `is_err()` accepts ANY failure, so a hand-derived vector that fails EARLIER than the
+    /// boundary it was written to prove (one byte off; a wrong major type reached before the check
+    /// ever runs) stays green while the pinned boundary goes unexercised — outcome right,
+    /// provenance wrong, invisible to every gate by construction. Pinning a distinctive substring
+    /// of the message makes the provenance part of what the test asserts, and prints the real
+    /// message when it moves. A substring only discriminates failures whose messages DIFFER: two
+    /// defects sharing one message remain indistinguishable to it.
+    ///
+    /// Spelled IDENTICALLY in every fixture `tests.rs` that uses it, deliberately: each such file
+    /// is appended standalone into its own generated crate, so there is no module a shared
+    /// definition could live in and no import that could reach one.
+    fn assert_decode_reject_reason<T: Deserialize>(bytes: &[u8], reason_substring: &str) {
+        let err = T::from_cbor_bytes(bytes)
+            .map(|_| ())
+            .expect_err("expected this input to be REJECTED, but it decoded successfully");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(reason_substring),
+            "rejected for the WRONG reason: expected a message containing \
+             {reason_substring:?}, got: {msg}"
+        );
+    }
+
     #[test]
     fn hash() {
         let hash = Hash::new(vec![0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
@@ -178,7 +204,7 @@ mod tests {
             cbor_int(6, cbor_event::Sz::Inline),
         ]
         .concat();
-        assert!(OptFixedMap::from_cbor_bytes(&wrong).is_err());
+        assert_decode_reject_reason::<OptFixedMap>(&wrong, "Expected fixed value 5 found 6");
         // present NINT key with the WRONG constant (m_nint => -8, expected -7). The message must
         // name the value the CDDL AUTHORED on BOTH sides, so it is greppable against the spec.
         // A `Key` with no signed variant forces the nint through its CBOR wire representation
@@ -309,21 +335,21 @@ mod tests {
         let bytes3 = vec![0x43u8, 1, 2, 3]; // cbor bytes(3)
         let foo_ok = [arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone()].concat();
         Foo::from_cbor_bytes(&foo_ok).unwrap();
-        assert!(Foo::from_cbor_bytes(&[]).is_err()); // empty input
+        assert_decode_reject_reason::<Foo>(&[], "not enough bytes"); // empty input
         // trailing bytes after a complete value are rejected, not silently ignored (from_cbor_bytes
         // checks the cursor reached the end of the buffer)
         let foo_trailing_err = Foo::from_cbor_bytes(&[foo_ok.clone(), vec![0xff]].concat()).unwrap_err();
         assert!(foo_trailing_err.to_string().contains("trailing data"), "{foo_trailing_err}");
         // array too short: the bytes field is missing
-        assert!(Foo::from_cbor_bytes(&[arr_def(2), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a")].concat()).is_err());
+        assert_decode_reject_reason::<Foo>(&[arr_def(2), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a")].concat(), "Definite length mismatch: found 2");
         // wrong outer container: a map where the array is required
-        assert!(Foo::from_cbor_bytes(&[map_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone()].concat()).is_err());
+        assert_decode_reject_reason::<Foo>(&[map_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), bytes3.clone()].concat(), "expected `Array' byte received `Map'");
         // wrong type in the uint slot (text where a uint is required)
-        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_string("x"), cbor_string("a"), bytes3.clone()].concat()).is_err());
+        assert_decode_reject_reason::<Foo>(&[arr_def(3), cbor_string("x"), cbor_string("a"), bytes3.clone()].concat(), "expected `UnsignedInteger' byte received `Text'");
         // wrong type in the text slot (bytes where text is required)
-        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_int(1, cbor_event::Sz::Inline), bytes3.clone(), bytes3.clone()].concat()).is_err());
+        assert_decode_reject_reason::<Foo>(&[arr_def(3), cbor_int(1, cbor_event::Sz::Inline), bytes3.clone(), bytes3.clone()].concat(), "expected `Text' byte received `Bytes'");
         // wrong type in the bytes slot (uint where bytes is required)
-        assert!(Foo::from_cbor_bytes(&[arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), cbor_int(7, cbor_event::Sz::Inline)].concat()).is_err());
+        assert_decode_reject_reason::<Foo>(&[arr_def(3), cbor_int(1, cbor_event::Sz::Inline), cbor_string("a"), cbor_int(7, cbor_event::Sz::Inline)].concat(), "expected `Bytes' byte received `UnsignedInteger'");
 
         // `bytes .cbor T` says the byte string IS T's encoding, so bytes left over after the payload
         // are not a value the type admits — the same fact the top-level `from_cbor_bytes` check
@@ -372,12 +398,12 @@ mod tests {
 
         // Hash = bytes .size (0..8): wrong major type (uint where bytes is required).
         Hash::from_cbor_bytes(&bytes3).unwrap();
-        assert!(Hash::from_cbor_bytes(&cbor_int(5, cbor_event::Sz::Inline)).is_err());
+        assert_decode_reject_reason::<Hash>(&cbor_int(5, cbor_event::Sz::Inline), "expected `Bytes' byte received `UnsignedInteger'");
 
         // WrapperTable = { * uint => uint }: wrong major type (array where a map is required).
         let wrapper_table_ok = [map_def(1), cbor_int(1, cbor_event::Sz::Inline), cbor_int(2, cbor_event::Sz::Inline)].concat();
         WrapperTable::from_cbor_bytes(&wrapper_table_ok).unwrap();
-        assert!(WrapperTable::from_cbor_bytes(&arr_def(0)).is_err());
+        assert_decode_reject_reason::<WrapperTable>(&arr_def(0), "expected `Map' byte received `Array'");
 
         // Duplicate map keys are rejected (DeserializeFailure::DuplicateKey).
         // WrapperTable = { * uint => uint } is a definite-map table (no read_elems pre-check), so the
@@ -1030,7 +1056,7 @@ mod tests {
         FloatFixedWhole::from_cbor_bytes(&expected).unwrap();
         // A wrong value in a whole-fixed slot rejects (FixedValueMismatch).
         let wrong: Vec<u8> = [arr_def(3), cbor_float(3.5), cbor_float(3.0), cbor_float(3.5)].concat();
-        assert!(FloatFixedWhole::from_cbor_bytes(&wrong).is_err());
+        assert_decode_reject_reason::<FloatFixedWhole>(&wrong, "Expected fixed value 3 found 3.5");
     }
 
     #[test]
@@ -1487,19 +1513,20 @@ mod tests {
         deser_test(&tagged_ok);
         TopLevelTaggedRange::from_cbor_bytes(&tagged_bytes).unwrap();
         // untagged input is rejected (a bare `pub type = u64` alias would have accepted it)
-        assert!(
-            TopLevelTaggedRange::from_cbor_bytes(&cbor_int(7, cbor_event::Sz::Inline)).is_err()
+        assert_decode_reject_reason::<TopLevelTaggedRange>(
+            &cbor_int(7, cbor_event::Sz::Inline),
+            "expected `Tag' byte received `UnsignedInteger'",
         );
         // out-of-window tagged input is rejected
-        assert!(TopLevelTaggedRange::from_cbor_bytes(
-            &[cbor_tag(5), cbor_int(11, cbor_event::Sz::Inline)].concat()
-        )
-        .is_err());
+        assert_decode_reject_reason::<TopLevelTaggedRange>(
+            &[cbor_tag(5), cbor_int(11, cbor_event::Sz::Inline)].concat(),
+            "11 not in range 3 - 10",
+        );
         // wrong tag is rejected
-        assert!(TopLevelTaggedRange::from_cbor_bytes(
-            &[cbor_tag(4), cbor_int(7, cbor_event::Sz::Inline)].concat()
-        )
-        .is_err());
+        assert_decode_reject_reason::<TopLevelTaggedRange>(
+            &[cbor_tag(4), cbor_int(7, cbor_event::Sz::Inline)].concat(),
+            "Expected tag 5, found 4",
+        );
         assert!(TopLevelTaggedRange::new(11).is_err());
     }
 
@@ -1622,11 +1649,11 @@ mod tests {
         deser_test(&tagged);
         TaggedFloatRange::from_cbor_bytes(&tagged_bytes).unwrap();
         // untagged input rejected (a bare alias would drop the tag)
-        assert!(TaggedFloatRange::from_cbor_bytes(&cbor_float(7.5)).is_err());
+        assert_decode_reject_reason::<TaggedFloatRange>(&cbor_float(7.5), "expected `Tag' byte received `Special'");
         // out-of-window tagged input rejected
-        assert!(TaggedFloatRange::from_cbor_bytes(&[cbor_tag(5), cbor_float(10.6)].concat()).is_err());
+        assert_decode_reject_reason::<TaggedFloatRange>(&[cbor_tag(5), cbor_float(10.6)].concat(), "10.6 not in float range (>=0.5, <=10.5)");
         // wrong tag rejected
-        assert!(TaggedFloatRange::from_cbor_bytes(&[cbor_tag(4), cbor_float(7.5)].concat()).is_err());
+        assert_decode_reject_reason::<TaggedFloatRange>(&[cbor_tag(4), cbor_float(7.5)].concat(), "Expected tag 5, found 4");
         assert!(TaggedFloatRange::new(10.6).is_err());
     }
 
@@ -1742,10 +1769,10 @@ mod tests {
         let direct = cbor_string("42");
         assert_eq!(record.to_cbor_bytes(), direct);
         assert_eq!(CustomRecord::from_cbor_bytes(&direct).unwrap().value, 42);
-        assert!(
-            CustomRecord::from_cbor_bytes(&[arr_def(1), cbor_int(42, cbor_event::Sz::One)].concat())
-                .is_err(),
-            "the custom reader must reject the record's generated array wire"
+        // the custom reader must reject the record's generated array wire
+        assert_decode_reject_reason::<CustomRecord>(
+            &[arr_def(1), cbor_int(42, cbor_event::Sz::One)].concat(),
+            "expected `Text' byte received `Array'",
         );
 
         let holder = CustomRecordHolder::new(record);
@@ -1812,9 +1839,10 @@ mod tests {
                 cbor_string("chunked"),
                     cbor_bytes_sz(vec![0xCA, 0xFE, 0xF0, 0x0D], StringLenSz::Len(Sz::Inline)),
         ].concat();
-        assert!(
-            MapStructWithCustomSerialization::from_cbor_bytes(&default_shaped).is_err(),
-            "the custom reader must reject the default writer's shape for `chunked`"
+        // the custom reader must reject the default writer's shape for `chunked`
+        assert_decode_reject_reason::<MapStructWithCustomSerialization>(
+            &default_shaped,
+            "needs indefinite chunking",
         );
     }
 
@@ -2304,7 +2332,7 @@ mod tests {
         assert_eq!(d.f, Some(1.5));
         // two-byte simple `f8 f5` in the nullable-bool slot: the 2.4.0 peek consumed 2 bytes,
         // rewound 1, and re-read the PAYLOAD byte f5 as `true` — accepting malformed input. Reject.
-        assert!(NullableSpecials::from_cbor_bytes(&[0x82, 0xf8, 0xf5, 0xf6]).is_err());
+        assert_decode_reject_reason::<NullableSpecials>(&[0x82, 0xf8, 0xf5, 0xf6], "Expected Special::Bool, received Unassigned(245)");
         // RFC 8949 §3.3: fc/fd/fe and two-byte simples < 0x20 are not well-formed — reject
         for bad in [
             &[0x82u8, 0xfc, 0xf6][..],
@@ -2312,10 +2340,10 @@ mod tests {
             &[0x82, 0xfe, 0xf6],
             &[0x82, 0xf8, 0x1f, 0xf6],
         ] {
-            assert!(NullableSpecials::from_cbor_bytes(bad).is_err());
+            assert_decode_reject_reason::<NullableSpecials>(bad, "non-well-formed encoding of simple value");
         }
         // a lone Break where the bool item should be — an error, not a mis-decode
-        assert!(NullableSpecials::from_cbor_bytes(&[0x82, 0xff, 0xf6]).is_err());
+        assert_decode_reject_reason::<NullableSpecials>(&[0x82, 0xff, 0xf6], "Expected Special::Bool, received Break");
     }
 
     #[test]
@@ -2323,7 +2351,7 @@ mod tests {
         // UTF-8 strictness fence: 2.4.0 and 3.1.0+ are strict (the yanked 3.0.0 was lossy) — an
         // invalid-UTF-8 major-type-3 payload must reject, never decode lossily.
         // foo = [uint, text, bytes] → [0, <2-byte text ff fe>, h'']
-        assert!(Foo::from_cbor_bytes(&[0x83, 0x00, 0x62, 0xff, 0xfe, 0x40]).is_err());
+        assert_decode_reject_reason::<Foo>(&[0x83, 0x00, 0x62, 0xff, 0xfe, 0x40], "expected a valid utf8 string text");
     }
 
     #[test]
@@ -2331,7 +2359,7 @@ mod tests {
         // Absorbed-fix fences for the cbor_event 3.2.0 upgrade (hostile/truncated input must yield
         // Err — never panic, never pre-allocate a claimed length).
         // truncated 8-byte length argument on an array head
-        assert!(Foo::from_cbor_bytes(&[0x9b, 0xff, 0xff]).is_err());
+        assert_decode_reject_reason::<Foo>(&[0x9b, 0xff, 0xff], "not enough bytes");
         // definite bytes head claiming ~2 GiB with no payload: must Err promptly instead of
         // pre-allocating the claimed length (the 2.4.0 over-allocation class)
         let huge: Vec<u8> = [
@@ -2339,20 +2367,24 @@ mod tests {
             &[0x5b, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00],
         ]
         .concat();
-        assert!(Foo::from_cbor_bytes(&huge).is_err());
+        assert_decode_reject_reason::<Foo>(&huge, "not enough bytes");
         // a lone Break as the whole document
-        assert!(Foo::from_cbor_bytes(&[0xff]).is_err());
+        assert_decode_reject_reason::<Foo>(&[0xff], "expected `Array' byte received `Special'");
         // Break where the first element of a definite array should be
-        assert!(Foo::from_cbor_bytes(&[0x83, 0xff, 0x60, 0x40]).is_err());
+        assert_decode_reject_reason::<Foo>(&[0x83, 0xff, 0x60, 0x40], "expected `UnsignedInteger' byte received `Special'");
         // ALIAS-typed target: `top_level_array = [* uint]` is a bare `pub type = Vec<u64>`, so its
         // from_cbor_bytes routes through cbor_event's own generic container impls (the one
         // generated-code route into the upstream indefinite-loop helper).
         // truncated indefinite array (no Break)
-        assert!(TopLevelArray::from_cbor_bytes(&[0x9f, 0x00]).is_err());
-        // reserved simple value as an element
-        assert!(TopLevelArray::from_cbor_bytes(&[0x9f, 0xfc, 0xff]).is_err());
+        assert_decode_reject_reason::<TopLevelArray>(&[0x9f, 0x00], "not enough bytes");
+        // a reserved simple value in an element slot. This lands on the ELEMENT's type check,
+        // not on the RFC 8949 §3.3 well-formedness check the byte itself violates: a `[* uint]`
+        // element can never reach the latter, because nothing decodes the special before its major
+        // type is judged. `nullable_specials` owns the well-formedness boundary, on a member whose
+        // reader does call `special()`.
+        assert_decode_reject_reason::<TopLevelArray>(&[0x9f, 0xfc, 0xff], "expected `UnsignedInteger' byte received `Special'");
         // truncated definite element list
-        assert!(TopLevelArray::from_cbor_bytes(&[0x83, 0x00]).is_err());
+        assert_decode_reject_reason::<TopLevelArray>(&[0x83, 0x00], "not enough bytes");
     }
 
     // ---- the six float prelude names: six VALUE classes -----------------------------------------
@@ -2414,25 +2446,34 @@ mod tests {
     #[test]
     fn float_heads_reject_values_outside_their_class() {
         FloatHeads::from_cbor_bytes(&float_heads_shortest()).unwrap();
-        // (member index, a value that member's class does NOT contain, at some head). `f`
-        // (`float`) is every float value, so it has none.
-        for (idx, bad, why) in [
-            (0usize, FA_1E10, "1e10 is a float32, not a float16"),
-            (0, FB_1_1, "1.1 is a float64, not a float16"),
-            (1, FB_1_1, "1.1 is a float64, not a float16-32"),
-            (2, F9_1_5, "1.5 is a float16, not a float32-64"),
-            (2, FB_1_5, "an fb-headed 1.5 is still a float16"),
-            (3, FA_1_5, "an fa-headed 1.5 is still a float16, not a float32"),
-            (3, FB_1_1, "1.1 is a float64, not a float32"),
-            (4, FB_1_5, "an fb-headed 1.5 is still a float16, not a float64"),
-            (4, FA_1E10, "1e10 is a float32, not a float64"),
+        // (member index, a value that member's class does NOT contain, at some head, the
+        // rejection it must produce). `f` (`float`) is every float value, so it has none. The
+        // reason column is the runtime's own spelling of each row's `why`, kept beside it as a
+        // comment: naming the width class BOTH sides is what keeps a row from passing on some
+        // other failure that happens to reach the same outcome.
+        for (idx, bad, expect) in [
+            // 1e10 is a float32, not a float16
+            (0usize, FA_1E10, "Expected a float16 value, found a float32 value"),
+            // 1.1 is a float64, not a float16
+            (0, FB_1_1, "Expected a float16 value, found a float64 value"),
+            // 1.1 is a float64, not a float16-32
+            (1, FB_1_1, "Expected a float16 - float32 value, found a float64 value"),
+            // 1.5 is a float16, not a float32-64
+            (2, F9_1_5, "Expected a float32 - float64 value, found a float16 value"),
+            // an fb-headed 1.5 is still a float16
+            (2, FB_1_5, "Expected a float32 - float64 value, found a float16 value"),
+            // an fa-headed 1.5 is still a float16, not a float32
+            (3, FA_1_5, "Expected a float32 value, found a float16 value"),
+            // 1.1 is a float64, not a float32
+            (3, FB_1_1, "Expected a float32 value, found a float64 value"),
+            // an fb-headed 1.5 is still a float16, not a float64
+            (4, FB_1_5, "Expected a float64 value, found a float16 value"),
+            // 1e10 is a float32, not a float64
+            (4, FA_1E10, "Expected a float64 value, found a float32 value"),
         ] {
             let mut items: Vec<&[u8]> = vec![F9_1_5, F9_1_5, FA_1E10, FA_1E10, FB_1_1, F9_1_5];
             items[idx] = bad;
-            assert!(
-                FloatHeads::from_cbor_bytes(&float_heads_bytes(&items)).is_err(),
-                "member {idx}: {why}"
-            );
+            assert_decode_reject_reason::<FloatHeads>(&float_heads_bytes(&items), expect);
         }
     }
 
