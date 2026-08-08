@@ -621,6 +621,10 @@ entry, so the atomicity is the rule).
   becoming a choice arm), it is a deliberate re-baselining of those cells rather than a one-character
   edit. What it buys is a standing count of how often the composition arises across the sweep's own
   vocabulary — the sweep-side counterpart to a consumer-side grep.
+  A matrix containment row for the self-composition was considered and DECLINED this cycle: the
+  corpus cell (`ctl.cbor` x `cbor-payload`), the minted decode rows and the sweep's own count already
+  carry the evidence, no completeness lint obliges one (all four projection gates pass without it),
+  and a row costs a full annotations sweep for no additional discriminating power.
   **Reopening signal:** the sweep's outcome tables show a `cbor_payload`-outer cell whose classified
   result is a parse error, i.e. the sweep is spending a composition slot on a spelling that cannot
   reach the generator at all.
