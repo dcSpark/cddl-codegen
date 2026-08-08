@@ -4112,6 +4112,21 @@ message — so the control cannot go vacuous in either direction. The posture-pu
 `--wasm=true` and `--wasm=false`: the projection resolves through the wasm-gated IR convergence
 rather than reflecting it.
 
+The same gate carries the **wasip2 build smoke**
+(`component_crate_builds_for_wasm32_wasip2`), which compiles `BUILD_SMOKE_FIXTURES` from the
+**workspace root** — every member's own lib targets, not just the component package reached as a
+dependency — over manifests exactly **as emitted**. Both halves are the point. A root build is the
+posture a consumer building their workspace for that target has, and it is the only one that
+reaches the rust crate's `[lib]`; and nothing about the tree is edited first, so the assertion that
+a component-only tree carries `crate-type = ["rlib"]` fails here rather than being arranged away.
+The sibling component build gates (`component_host`, `component_compose`, `component_jco`,
+`component_import`) make the same assertion for the same reason. The one both-faces sweep,
+full-tier `component_corpus_compiles`, is the exception that proves it: the `ALL_PROFILES`
+component row leaves `--wasm` at its default `true`, so its manifests keep the wasm face's
+`cdylib` and it applies the hand narrowing the [`--component` flag
+doc](../docs/docs/command_line_flags.mdx) prescribes for that shape — after asserting the wide form
+is what it was handed.
+
 ### rust↔WIT API-surface parity (`component_parity_tests::component_api_parity`)
 
 The component face's sibling of the gate above, asking the same one-directional question of the

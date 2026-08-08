@@ -1962,7 +1962,8 @@ preserved byte-for-byte.
 
 Every key falls into one of three categories:
 
-- **Tool-owned (rewritten every run).** `package.name`, `package.edition`, `lib.crate-type`, and the
+- **Tool-owned (rewritten every run).** `package.name`, `package.edition`, `lib.crate-type` (whose
+  value tracks the faces this run emits — see the [`--component` flag](./command_line_flags)), and the
   entire `[dependencies]` set the generator emits (e.g. `cbor_event`, and the flag/type-conditional
   deps `hashlink`, `derivative`, `serde`, `serde_json`, `schemars`, `hex`, `wasm-bindgen`,
   `serde-wasm-bindgen`). Non-dependency keys here are rewritten wholesale — **your edits to them are
