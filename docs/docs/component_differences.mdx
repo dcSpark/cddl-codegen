@@ -462,32 +462,37 @@ needing rediscovery:
 
 - **Nested despecialization**: a constrained collection (`NonEmptyVec`, `NonEmptyMap`) sitting
   *below* the top level of a parameter — a named table rule whose map key is a non-empty list, or
-  a non-empty list as a list element. The conversion walk sees WIT types only below the top
-  level, so the constrained rust type's `TryFrom` door is never routed.
+  a non-empty list as a list element. The door's WIT signature already carries the
+  `result<_, string>` such a re-check reports through (the fallibility walk resolves the alias a
+  named collection rule registers); what remains is the conversion walk below the top level, which
+  sees WIT types only, so the constrained rust type's `TryFrom` door is never re-entered.
 - **`@default` fields**: a defaulted field is a plain `T` on the rust side (the default fills
   absence in) while the projection still treats it as optional, so the glue reads and writes an
   `Option` that does not exist.
 
-Two further classes are known and **not** in that ledger — no corpus fixture reaches either, so
-nothing turns their pins stale yet. Both were found by the matrix's component-execution leg while
-widening its row selection, and both are reproducible from a two-line spec:
+Until these close, a spec relying on either should keep `--component` off or restructure the
+shape; every other corpus shape compiles and validates. (A transparent alias of `any` used from a
+member position was a third class here — an infallible constructor over a `?`-decoding body — and
+is fixed: the aliased spelling now gets the same fallible door as a directly-written `any`,
+pinned by the `component-any-alias` corpus fixture.)
 
-- **A rule whose rust type name is exactly `T`** (`t = …`, whatever the shape — a record, a range,
-  a type choice). `wit_bindgen::generate!` binds `T` in the glue's own scope for a resource named
-  `t`, so the emitted `cddl_lib::T::…` calls no longer resolve and the crate fails with
-  `no associated function … found for struct cddl_lib::T` plus a `type_guard not found for type
-  parameter T`. Renaming the rule — `tt`, `tc`, anything whose camel-cased ident is longer than one
-  letter — compiles clean, and `@name` renames a rule without touching its wire format.
-- **An `any` member reached through a transparent alias** (`x = any` referenced from a member
-  position — a *direct* `any` member is fine and gets the correct fallible door). For the aliased
-  spelling the projection makes the constructor infallible (`constructor(x: any-cbor)`) while the
-  emitted body still decodes the `any-cbor` payload fallibly, so the glue uses `?` inside a
-  `-> Self` function: `the ? operator can only be used in a method that returns Result` (E0277).
-  Reading such a field back is unaffected — it is the construction door only. Spelling the member
-  as `any` directly is the workaround.
+## Known limitation: a rule named `t` is unexported on this face
 
-Until these close, a spec relying on any of them should keep `--component` off or restructure
-the shape; every other corpus shape compiles and validates.
+A rule whose WIT resource name would be exactly `t` — a CDDL identifier `t` or `T`, whatever its
+shape — is **excluded and recorded** rather than projected: `wit_bindgen::generate!` (the pinned
+0.57 line) binds its own type parameter `T` unhygienically in the scope it expands the guest
+bindings into, so a WIT `resource t`, whose rust name is `T`, resolves to the macro's parameter
+instead of the resource and the guest crate cannot compile. It is an upstream hygiene bug, not a
+property of the rule's shape, so the projection refuses the NAME through the standard exclusion
+channel: `t` and everything referencing it get `// unexported: <ident> — <reason>` rows, and the
+rest of the spec's component face still generates **and still builds** (pinned by the
+`component-ident-hazard` corpus fixture).
+
+The remedy is in the recorded reason: rename the identifier (`@name` does not rename a top-level
+rule; a name that came from a group-choice arm's `@name` is changed there). Renaming does not
+touch the CBOR wire format. Only a rule that mints a WIT *resource* is affected — a c-style enum
+named `t` (plain WIT `enum`), a transparent alias, and a named collection all keep their current
+behavior — and the exclusion lifts on its own once upstream fixes the macro's hygiene.
 
 ## Flag-semantics deltas
 
