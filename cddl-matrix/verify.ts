@@ -31,6 +31,11 @@
  * rewrites every row's evidence WITHOUT the wasm bits (wholesale diff churn), so keep wasm ON for any
  * run whose annotations will be committed.
  *
+ * EARLY-EXIT modes, each of which skips the probe pipeline entirely: `--selftest` (the pure startup
+ * deciders alone), `--mint-decode-foreign` / `--mint-decode-corpus` (write only their catalog), and
+ * `--component-build-sweep` (generate + wasip2-build every drivable catalog row's component crate,
+ * writing nothing — the class-level finder for component-face compile classes; oracle-free).
+ *
  * Exit codes: 0 PASS · 1 hard failure (gate) · 2 HARNESS failure (broken environment / oracle paths /
  * repeated timeouts — verdicts were not trustworthy, so no verdict files were (re)written).
  *
@@ -321,6 +326,17 @@ const MINT_DECODE = process.argv.includes("--mint-decode-foreign");
 // triage/pin posture). `--only=` accepts corpus row ids AND bare fixture stems (expanding to the
 // fixture's rows). See runMintDecodeCorpus.
 const MINT_DECODE_CORPUS = process.argv.includes("--mint-decode-corpus");
+// --component-build-sweep (the component face's class-level compile finder): for EVERY drivable
+// catalog row (spec + type_name present), generate `--component=true --wasm=false` and build the
+// emitted `component/` package for wasm32-wasip2, then EXIT. Same early-exit shape as the mint modes
+// and writes even less: no catalog, no annotations, no verify_report.json — a sweep run leaves the
+// committed tree byte-identical. It exists because a hand-picked compile corpus cannot be assumed to
+// cover a class just because the class is ordinary: the two 2026-08 component-glue compile classes
+// (a rule whose WIT resource name is exactly `t`; an `any` member reached through a transparent
+// alias) both sat in ORDINARY matrix rows no fixture spelled. Breadth is the whole point, so it
+// asserts strictly LESS per row than the execution leg — generation and build, no host, no vectors,
+// no oracle. `--only=id,id,…` runs a subset. See runComponentBuildSweep.
+const COMPONENT_BUILD_SWEEP = process.argv.includes("--component-build-sweep");
 const onlyArg = process.argv.find(a => a.startsWith("--only="));
 const MINT_ONLY = onlyArg
   ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
@@ -586,6 +602,50 @@ interface ComponentVectorCounts { accepts: number; rejects: number }
   }
   if (SELFTEST) console.log(`component kebab-ident mirror self-test OK (${cases.length} fixtures)`);
 }
+// The `--component-build-sweep` cell classifier and the policy that says which classes FAIL a sweep.
+// Declared here, above its self-test, because the block below reads `SWEEP_FAILING`.
+//
+// A row the generator REFUSES is not a component-face defect — the sweep enumerates every drivable
+// catalog row, including shapes cddl-codegen declines at generation, and those are already the
+// matrix's own business. What the sweep is for is the row that GENERATES and then does not BUILD.
+type SweepVerdict = "refused" | "built" | "build-failed";
+function sweepVerdict(gen: number, build: number | null): SweepVerdict {
+  if (gen !== 0) return "refused";            // never reached the build stage — later fields say nothing
+  if (build === null) return "build-failed";  // generated but no build verdict: never silently green
+  return build === 0 ? "built" : "build-failed";
+}
+const SWEEP_FAILING: ReadonlySet<SweepVerdict> = new Set<SweepVerdict>(["build-failed"]);
+// (7) The sweep's cell classifier. Its failure is silent in exactly the way the composers above are:
+// a `build-failed` cell misread as `refused` (or a refusal admitted into `SWEEP_FAILING`) turns the
+// sweep's whole product — "this row generates but does not compile" — into a green run or a false
+// alarm, with no other symptom. Pure, so it runs on every invocation and stands alone under
+// `--selftest`.
+{
+  const cases: [number, number | null, SweepVerdict][] = [
+    [1, null, "refused"],          // generator declined the shape
+    [101, null, "refused"],        // generator PANICKED — still a generation-stage outcome
+    [1, 0, "refused"],             // a refused cell stays refused whatever a later field says
+    [0, 0, "built"],               // the only green shape
+    [0, 1, "build-failed"],        // generated, glue does not compile — the class the sweep exists for
+    [0, 101, "build-failed"],
+    [0, null, "build-failed"],     // generated with no build verdict is never reported as built
+  ];
+  const failures = cases.filter(([gen, build, want]) => sweepVerdict(gen, build) !== want);
+  const greenLeak = cases.filter(([gen, build]) => sweepVerdict(gen, build) === "built" && !(gen === 0 && build === 0));
+  const policy = (["refused", "built"] as SweepVerdict[]).filter(v => SWEEP_FAILING.has(v));
+  if (failures.length || greenLeak.length || policy.length) {
+    console.error(
+      "HARNESS FAILURE: component-build-sweep classifier self-test failed — " +
+      failures.map(([gen, build, want]) => `(gen=${gen}, build=${build}): expected ${want}, got ${sweepVerdict(gen, build)}`)
+        .concat(greenLeak.map(([gen, build]) => `a non-(0,0) cell classified 'built' (gen=${gen}, build=${build})`))
+        .concat(policy.map(v => `'${v}' is in SWEEP_FAILING — a sweep must not fail on it`))
+        .join("; ") +
+      " — the sweep would misreport a component-face compile failure; refusing to run.",
+    );
+    process.exit(2);
+  }
+  if (SELFTEST) console.log(`component-build-sweep classifier self-test OK (${cases.length} fixtures)`);
+}
 if (SELFTEST) process.exit(0);
 // K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
 const FOREIGN_K = 10;
@@ -655,7 +715,12 @@ function resolveRubyCddl(): string | null {
 const RUBY_CDDL = resolveRubyCddl();
 // Validate the rust oracle upfront too: Bun.spawnSync throws ENOENT on a missing binary, which would
 // otherwise surface as a raw stack trace minutes into the probe loop.
-if (!existsSync(RUST_CDDL)) {
+//
+// `--component-build-sweep` is the one mode exempt, because it consults NO oracle: its per-row
+// verdict is a cargo exit code over the emitted component crate, and its inputs are the committed
+// catalog's `spec` strings. Requiring the pinned fork there would refuse the sweep on a machine that
+// can build components perfectly well, in exchange for validating a tool the run never invokes.
+if (!COMPONENT_BUILD_SWEEP && !existsSync(RUST_CDDL)) {
   console.error(`HARNESS FAILURE: rust cddl oracle not found at '${RUST_CDDL}' (set RUST_CDDL or build the sibling repo).`);
   process.exit(2);
 }
@@ -953,9 +1018,12 @@ function diskHeadroomPreflight(context: string): void {
 const probeDir = mkdtempSync(join(tmpdir(), "cddl_verify_"));
 scratchProbeDir = probeDir;
 const probeFile = join(probeDir, "probe.cddl");
-// Oracle-identity fingerprint runs FIRST (before the shared-target warm-up), on every path — a wrong
-// RUST_CDDL fails in under a second instead of minting mixed-oracle evidence minutes in.
-runOracleFingerprint(probeDir);
+// Oracle-identity fingerprint runs FIRST (before the shared-target warm-up), on every ORACLE-CONSUMING
+// path — a wrong RUST_CDDL fails in under a second instead of minting mixed-oracle evidence minutes
+// in. `--component-build-sweep` is the sole exemption, on the same ground as its `existsSync(RUST_CDDL)`
+// exemption above: it derives no verdict from any oracle, so an oracle-identity check there would
+// gate a cargo-exit-code sweep on a tool it never runs.
+if (!COMPONENT_BUILD_SWEEP) runOracleFingerprint(probeDir);
 // Its designated sibling: fail fast on a near-full scratch volume before any generation (Change B).
 diskHeadroomPreflight("scratch-preflight");
 // Every generation gets a FRESH output dir (a monotonic counter suffix; the previous dir is deleted
@@ -1029,7 +1097,11 @@ let ccOutComponent = join(probeDir, `cc_out_component_${outSeq++}`);
 // package name+version, and every cell's crates are `cddl-lib`/`cddl-lib-component` 0.1.0 (proven
 // while bringing this leg up: without the touch, cell 2's oracle compiled against cell 1's rlib and
 // failed with `cannot find type ProbeHolder in crate cddl_lib`).
-const COMPONENT_TARGET = COMPONENT_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_component_target_")) : "";
+// `--component-build-sweep` shares it for the same reason and on the same terms (its cells are the
+// execution leg's first two stages), so the sweep keeps working under an explicit `--no-component`.
+const COMPONENT_TARGET = COMPONENT_PROBE || COMPONENT_BUILD_SWEEP
+  ? mkdtempSync(join(tmpdir(), "cddl_verify_component_target_"))
+  : "";
 if (COMPONENT_TARGET) scratchTargets.push(COMPONENT_TARGET);
 // Per-row vector counts for the evidence clause (a property of the committed catalog, not of the
 // run — see componentEvidence), and the per-row roll-up the summary section prints.
@@ -1438,9 +1510,9 @@ function componentBuildAndDrive(cell: string, out: string, resource: string, vec
   touchTree(out);   // same-name stale-fingerprint defense — see touchTree's comment and COMPONENT_TARGET's
   gateCacheStats.run++;
 
-  // Stage 3: build ONLY the component package for wasm32-wasip2. The rust crate's `cdylib` output
-  // exists for wasm-bindgen's target and `wasm-component-ld` has been seen to crash on it, so the
-  // manifest was narrowed to `rlib` during preparation and the workspace build is never used.
+  // Stage 3: build the component package for wasm32-wasip2. Its path dependency pulls the rust crate
+  // in as an rlib, which is the whole rust-side link the component face needs — the tool emits a
+  // component-only tree with `crate-type = ["rlib"]`, so the manifests build exactly as emitted.
   const build = runProbe(["cargo", "build", "--target", "wasm32-wasip2"], join(out, "component"), { CARGO_TARGET_DIR: COMPONENT_TARGET }, COMPILE_WARM_TIMEOUT);
   if (build !== 0) return build;   // POSITIVE => the build's own cargo exit (see the verdict codes)
   const pkg = /name\s*=\s*"([^"]+)"/.exec(readFileSync(componentManifest, "utf8"))?.[1] ?? "cddl-lib-component";
@@ -1592,6 +1664,199 @@ fn main() {
     }
 }
 `;
+}
+
+// ==================================================================================================
+// COMPONENT BUILD SWEEP (`--component-build-sweep`) — breadth over the catalog, depth of two stages.
+// ==================================================================================================
+// The execution leg above answers "does this component BEHAVE" for thirteen chosen rows. This answers
+// "does this row's component crate COMPILE at all" for EVERY drivable row, which is the question a
+// hand-picked corpus cannot be trusted with: the class-level finder exists because both 2026-08
+// component-glue compile classes lived in ordinary matrix rows nobody had thought to spell as a
+// fixture. It is the by-hand procedure that found them, made repeatable.
+//
+// It reuses the execution leg's first two stages verbatim (generate `--component=true --wasm=false`,
+// build `component/` for wasm32-wasip2 under the shared COMPONENT_TARGET with the same `touchTree`
+// stale-fingerprint defense) and stops there — no host, no oracle bin, no vectors, no drive.
+
+/**
+ * The build, with stderr captured. The execution leg's `runProbe` discards output because its cells
+ * are judged by verdict tokens; here the failing cell's compiler text IS the product, so the sweep
+ * cannot afford to throw it away and re-run to get it back. Keeps `runProbe`'s harness-condition
+ * retry: a timeout or a signal kill is a statement about the machine, not about the row.
+ */
+function runSweepBuild(cmd: string[], cwd: string): { exit: number; stderr: string } {
+  const spawn = () => Bun.spawnSync(cmd, {
+    cwd, env: { ...process.env, CARGO_TARGET_DIR: COMPONENT_TARGET },
+    stdout: "ignore", stderr: "pipe", timeout: COMPILE_WARM_TIMEOUT * 1000,
+  });
+  let r = spawn();
+  if (r.exitedDueToTimeout || r.exitCode === null) {
+    harness_timeouts_retried++;
+    r = spawn();
+  }
+  if (r.exitedDueToTimeout || r.exitCode === null) {
+    console.error(`HARNESS FAILURE: component-build-sweep build timed out / was killed twice: ${cmd.join(" ")} (cwd ${cwd})`);
+    process.exit(2);
+  }
+  return { exit: r.exitCode, stderr: r.stderr?.toString() ?? "" };
+}
+
+/**
+ * One memoized cell. A DISJOINT cache namespace from `verify.component_probe` on purpose: this
+ * closure asserts strictly less about the same tree (build only), so serving it a hit from the
+ * execution leg — or the reverse — would claim more than was checked in one direction and re-run
+ * needlessly in the other. The verdict marker in the argv is what keys them apart.
+ *
+ * CACHE CLOSURE: everything this closure reads is inside the hashed tree. The generated crates and
+ * the workspace `Cargo.lock` (written by the preflight BEFORE the hash) are the whole input; the
+ * toolchain, RUSTFLAGS and the cargo config are folded in by `gateCacheKey` itself. Unlike the
+ * execution leg there is no host binary and no oracle, so nothing outside the tree needs a hash of
+ * its own — the reason its argv carries a `host=` component and this one does not.
+ */
+function componentBuildSweepCell(cell: string, out: string): { exit: number; stderr: string; cached: boolean } {
+  const componentManifest = join(out, "component", "Cargo.toml");
+  const argv = ["verdict=component-build-sweep-v1", "cwd=component", "cargo", "build", "--target", "wasm32-wasip2"];
+  let key: string | null = null;
+  let entryBase: Omit<GateCacheEntry, "cell" | "created"> | null = null;
+  // One `generate-lockfile` covers both crates: the sweep writes a workspace root over them, so the
+  // rust and component manifests resolve to the SAME `Cargo.lock` inside the hashed tree.
+  if (GATE_CACHE_ENABLED && runGenerateLockfile(componentManifest) === 0) {
+    const tree = hashTree(out);
+    const keyParts = gateCacheKey({ gate: "verify.component_build_sweep", argv, tree });
+    key = keyParts.key;
+    entryBase = { schema: GATE_CACHE_SCHEMA, gate: "verify.component_build_sweep", argv, rustc: keyParts.rustc, tree };
+    if (readGateCacheEntry(key, CODEGEN_DIR)) {
+      gateCacheStats.cached++;
+      // The repo-wide "skips are never silent" rule (tests/README § "The gate cache"): a hit prints
+      // the same `[gate-cache] <cell>: cached PASS` line every other cached site prints, and the
+      // sweep's own per-cell line is then reserved for cells it actually ran.
+      console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
+      return { exit: 0, stderr: "", cached: true };
+    }
+  }
+  touchTree(out);   // same-name stale-fingerprint defense — see touchTree's comment and COMPONENT_TARGET's
+  gateCacheStats.run++;
+  const r = runSweepBuild(["cargo", "build", "--target", "wasm32-wasip2"], join(out, "component"));
+  if (r.exit === 0 && key && entryBase)
+    writeGateCacheEntry(key, { ...entryBase, cell, created: new Date().toISOString() }, CODEGEN_DIR);
+  return { ...r, cached: false };
+}
+
+/** Last `n` lines of a compiler stream — enough to name the class, short enough to read 165 of. */
+const tailLines = (s: string, n = 24): string =>
+  s.split("\n").filter(l => l.trim().length).slice(-n).map(l => `    ${l}`).join("\n");
+
+/**
+ * The sweep. Enumerates every DRIVABLE catalog row — `spec` + `type_name` present, which is exactly
+ * the complement of the pinned rows (pinned entries are vector-less AND spec-less by construction) —
+ * and reports one verdict per row. Writes nothing at all.
+ */
+function runComponentBuildSweep(): never {
+  const rows = existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map<string, CatalogRow>();
+  const drivable = [...rows.values()]
+    .filter(r => r.spec !== undefined && r.type_name !== undefined)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // Vacuity floor, the mint's `supported.length < 80` guard applied to this enumeration: a sweep that
+  // silently enumerates a handful of rows would PASS while covering nothing, which is the one way a
+  // breadth instrument fails without saying so.
+  const DRIVABLE_FLOOR = 120;
+  if (drivable.length < DRIVABLE_FLOOR) {
+    console.error(
+      `HARNESS FAILURE: the committed catalog ${CATALOG_PATH} yields only ${drivable.length} drivable row(s) ` +
+      `(spec + type_name present; floor ${DRIVABLE_FLOOR}, ${rows.size} row(s) read) — a sweep over that would pass ` +
+      "while covering almost nothing. Re-mint the catalog before sweeping.",
+    );
+    process.exit(2);
+  }
+  if (MINT_ONLY) {
+    const known = new Set(drivable.map(r => r.id));
+    const unknown = [...MINT_ONLY].filter(id => !known.has(id));
+    if (unknown.length) {
+      console.error(
+        `HARNESS FAILURE: --only names row(s) that are not drivable catalog rows: ${unknown.join(", ")} ` +
+        "(a pinned row has no spec to generate from).",
+      );
+      process.exit(2);
+    }
+  }
+  const selected = MINT_ONLY ? drivable.filter(r => MINT_ONLY.has(r.id)) : drivable;
+
+  const specFile = join(probeDir, "component_build_sweep.cddl");
+  const refused: string[] = [];
+  const failed: { id: string; exit: number; stderr: string }[] = [];
+  let built = 0;
+  for (const [i, row] of selected.entries()) {
+    // The scratch volume is what 165 generated crates plus one shared wasip2 target dir consume, and
+    // the ENOSPC signature is a run of identical bogus failures rather than one loud error — so the
+    // startup preflight is re-run periodically rather than only once.
+    if (i > 0 && i % 25 === 0) diskHeadroomPreflight("component-build-sweep");
+    const started = Date.now();
+    writeFileSync(specFile, row.spec!.replace(/\n*$/, "\n"));
+    const out = nextComponentOut();
+    const gen = runProbe(["cargo", "run", "-q", "--", `--input=${specFile}`, `--output=${out}`, "--component=true", "--wasm=false"], CODEGEN_DIR);
+    // The workspace root real consumers own; the tool never writes one (same line the execution leg
+    // writes, for the same reason — it is what makes `component/`'s path dependency resolve).
+    if (gen === 0) writeFileSync(join(out, "Cargo.toml"), '[workspace]\nresolver = "3"\nmembers = ["rust", "component"]\n');
+    const build = gen === 0 ? componentBuildSweepCell(row.id, out) : null;
+    const verdict = sweepVerdict(gen, build ? build.exit : null);
+    const where = `[sweep ${i + 1}/${selected.length}] ${row.id}`;
+    if (verdict === "refused") {
+      refused.push(`${row.id} (generator exit ${gen})`);
+      console.log(`${where}: generation REFUSED (generator exit ${gen}) — not a component-face failure`);
+    } else if (verdict === "built") {
+      built++;
+      // A cached cell already announced itself through the `[gate-cache]` line — see that call site.
+      if (!build!.cached) console.log(`${where}: built (${formatElapsed(Date.now() - started)})`);
+    } else {
+      failed.push({ id: row.id, exit: build ? build.exit : -1, stderr: build ? build.stderr : "" });
+      console.log(`${where}: BUILD FAILED (cargo exit ${build ? build.exit : "none"})`);
+    }
+  }
+
+  // Second harness-health layer, the twin of the probe pipeline's "no feature probed supported": a
+  // whole-catalog sweep in which NOTHING generated is a broken generator reported as 165 quiet
+  // refusals — a green run covering nothing. (The upstream generation self-test / rust warm-up makes
+  // this near-unreachable; it is the floor that stays true if either ever moves.) A `--only` subset
+  // is exempt: one deliberately-refused row is a legitimate selection.
+  if (!MINT_ONLY && built === 0 && failed.length === 0) {
+    console.error(
+      `HARNESS FAILURE: all ${selected.length} swept row(s) refused at generation — an implausible verdict shape ` +
+      "for the whole catalog (a generator that does not build refuses every row identically). Refusing to report a pass.",
+    );
+    process.exit(2);
+  }
+
+  const eq = "=".repeat(80);
+  console.log(`\n${eq}`);
+  console.log(`COMPONENT BUILD SWEEP ${MINT_ONLY ? `(--only=${[...MINT_ONLY].sort().join(",")})` : "(full)"}`);
+  console.log(eq);
+  console.log(`catalog rows        : ${rows.size} (${drivable.length} drivable, ${rows.size - drivable.length} pinned/spec-less)`);
+  console.log(`swept               : ${selected.length}`);
+  console.log(`built               : ${built}`);
+  console.log(`generation refused  : ${refused.length}`);
+  console.log(`build failures      : ${failed.length}`);
+  if (GATE_CACHE_ENABLED) console.log(`gate-cache          : ${gateCacheStats.run} run, ${gateCacheStats.cached} cached`);
+  if (refused.length) {
+    console.log("\nGENERATION REFUSED (a matrix support fact, not a component-face defect):");
+    for (const r of refused) console.log(`  - ${r}`);
+  }
+  if (failed.length) {
+    console.log("\nBUILD FAILURES (rows that GENERATE but whose component crate does not compile):");
+    for (const f of failed) {
+      console.log(`  - ${f.id} (cargo exit ${f.exit}):`);
+      console.log(tailLines(f.stderr));
+    }
+    console.log(
+      `\nRESULT: COMPONENT BUILD SWEEP FAIL — ${failed.length} row(s) generate but do not build. ` +
+      "Reproduce one harness-free: generate its catalog `spec` with `--component=true --wasm=false " +
+      "--static-dir <checkout>/static` into a scratch dir, then `cargo check --target wasm32-wasip2` " +
+      "the emitted `component/` package.",
+    );
+    process.exit(1);
+  }
+  console.log("\nRESULT: COMPONENT BUILD SWEEP PASS");
+  process.exit(0);
 }
 
 // The cddl-codegen half of the support verdict, shared by the feature / per-cell / control-op loops so
@@ -2760,9 +3025,11 @@ function ensureWarm(need: WarmNeed): void {
 if (!GATE_CACHE_ENABLED) {
   ensureRustWarm();
   // Mint modes run per-row and EXIT, skipping the wasm/emission warm-ups and all probe loops below.
-  // They write ONLY their catalog, never annotations/verify_report.json.
+  // They write ONLY their catalog, never annotations/verify_report.json. The component build sweep is
+  // the same early-exit class and writes nothing at all.
   if (MINT_DECODE) runMintDecodeForeign();
   if (MINT_DECODE_CORPUS) runMintDecodeCorpus();
+  if (COMPONENT_BUILD_SWEEP) runComponentBuildSweep();
   ensureWasmWarm();
   for (const prof of PROBED_EMISSION_PROFILES) ensureEmissionWarm(prof);
 } else {
@@ -2782,6 +3049,7 @@ if (!GATE_CACHE_ENABLED) {
   }
   if (MINT_DECODE) runMintDecodeForeign();
   if (MINT_DECODE_CORPUS) runMintDecodeCorpus();
+  if (COMPONENT_BUILD_SWEEP) runComponentBuildSweep();
 }
 
 const probe_results: ProbeResult[] = [];

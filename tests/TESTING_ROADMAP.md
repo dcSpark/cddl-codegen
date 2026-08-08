@@ -740,25 +740,24 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     `--binary-wrappers` passers in `src/tests/` (`flag_value_smoke`, `config_tests`) on the tree
     that delivered the annotate=false floors, not by grep vocabulary alone.
 
-23. **A component-face BUILD sweep over the matrix's own enumeration — the class-level finder for
-    unknown-unknown compile classes.** A compile breadth gate whose corpus is hand-picked cannot
-    be assumed to cover a class just because the class is ordinary: the two component-glue compile
-    classes fixed in 2026-08 (a rule whose WIT resource name is exactly `t`, now excluded with a
-    remedy; an `any` member reached through a transparent alias, now given its fallible door) both
-    sat in ORDINARY matrix rows (`type.choice`, `prelude.any`) that no hand-picked fixture ever
-    spelled — they were found only by hand-running generation+build over candidate rows while
-    widening `cddl-matrix/verify.ts`'s component-execution selection. The two KNOWN instances are
-    now pinned (compiling corpus fixtures `tests/component-any-alias` and
-    `tests/component-ident-hazard`, plus in-process fallibility/exclusion tests in
-    `component_tests`), but instance pins do not discharge the detector lesson. The class-level
-    instrument is a component-face BUILD sweep over the matrix's own enumeration (per drivable
-    catalog row: generate `--component=true --wasm=false`, build the `component/` package for
-    wasip2 — generation and build stages of the execution leg's per-cell flow, breadth instead of
-    its bounded selection, no host run), which is exactly the by-hand procedure that surfaced both
-    known classes. Same memoization discipline as the execution leg (the cells are cheap when
-    warm); acceptable as an occasional/mint-style sweep rather than an every-run gate if the cold
-    cost measures badly — what matters is that unknown-unknown compile classes have a systematic
-    finder, not that it runs on every tier.
+23. **Register the component build sweep as a `full`-tier gate — the instrument exists and is
+    measured; what is missing is the disposition of the one row it reports.** The sweep
+    (`cddl-matrix/verify.ts --component-build-sweep`, documented in `tests/README.md` § "component
+    build sweep over the decode catalog") builds every drivable decode-catalog row's component
+    crate for wasip2, and its cost belongs in the `full` tier beside `component_corpus_compiles`
+    rather than in an occasional hand run: measured 3 m 3 s cold / 2 m 10 s warm, it is the same
+    cost class as the corpus sibling, and an instrument nobody is obliged to run goes quiet
+    exactly when a regression lands. Registering it TODAY would put the tier red — one row
+    (`ctl.default`, `m = { a: uint, ? b: uint .default 0 }`) generates and does not build, a
+    second instance of the defaulted-scalar class `component_tests`' `EXPECTED_COMPILE_FAIL`
+    already pins for the `default_value` fixture — and a full-tier gate that fail-fasts skips
+    every gate after it. So the registration lands WITH that disposition, one of two ways: the
+    emitter class closes (the projection stops treating a defaulted scalar as optional, which
+    retires the corpus pin in the same change), or the sweep grows the both-ways-guarded
+    expectation ledger its corpus sibling already has — keyed by catalog row id, each entry naming
+    the class and carrying its harness-free repro, failing both when a listed row starts building
+    and when an unlisted one stops. A bare skip-list is the one shape to refuse: it would let the
+    breadth instrument go quiet about precisely the classes it exists to find.
 
 24. **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
     no generated component can reach never gets red-proven.** The matrix's generic wasmtime host
