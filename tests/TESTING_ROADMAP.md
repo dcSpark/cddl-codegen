@@ -2576,6 +2576,23 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   before concluding either way — the leg **loud-skips alone** when the ambient `wac` is absent or
   below 0.9, so a green run whose log does not name a `wac` version is silence, not evidence.
 
+- **Make a fixture comment's claimed WIRE BYTES executable, or stop writing them.** A robustness
+  fixture's header comment may state the bytes its rule produces (`tests/robustness/`
+  `cbor_payload_same_chain_alias.cddl` claimed `43 41 05` for the value 5; the crate writes
+  `42 41 05`, off by one byte-string head length). Nothing could have caught it: the robustness
+  catalog asserts an OUTCOME per fixture (`ok` / `error (graceful)`) and never compiles or runs the
+  crate, so a byte claim in that tree is prose no gate reads — and prose that looks like evidence is
+  worse than none, because the next reader derives from it instead of from the RFC. The error stood
+  for as long as the file did and was found only by executing the claim by hand during an unrelated
+  delivery. Two shapes would close it: teach the catalog an optional per-fixture `expect_bytes`
+  (constructor args + hex), which turns the claim into the thing the gate reads; or forbid byte
+  claims in `tests/robustness/*.cddl` outright and require them to cite the executed test that owns
+  them (`tests/core/tests.rs`'s hand-derived oracles), which is what the corrected comment now does.
+  The second is nearly free and catches the class by construction; the first is worth more only if
+  robustness fixtures start carrying wire facts no other tree covers.
+  **Reopening signal:** a second robustness fixture comment is found stating bytes that differ from
+  what its rule emits — i.e. the citation convention was written down and did not hold.
+
 ## Deferred features (build when a real consumer needs them)
 
 - **A workspace-mode `wasm32-wasip2` build gate for a BOTH-FACES tree.** `component_wasip2_build`
