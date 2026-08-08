@@ -1821,6 +1821,126 @@ rule = "wrapped_nonempty_map"
 pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
 
 [[row]]
+id = "cbor_payload_inline_nested.cbor_inline_nested"
+axis = "corpus"
+example = "cbor_inline_nested = [\n  pair: bytes .cbor (bytes .cbor uint),\n  triple: bytes .cbor (bytes .cbor (bytes .cbor uint)),\n  tagged: bytes .cbor (#6.7(bytes .cbor uint)),\n  fixed: bytes .cbor (bytes .cbor 42),\n  tail: text,\n]\n\n; The rule-BODY spelling of the same composition: a `.cbor` rule body force-wraps, so both depths\n; land in the wrapper struct's own serialize fn rather than in a member's."
+fixture = "cbor_payload_inline_nested"
+rule = "cbor_inline_nested"
+spec = "__probe_holder = [0, cbor_inline_nested]\ncbor_inline_nested = [\n  pair: bytes .cbor (bytes .cbor uint),\n  triple: bytes .cbor (bytes .cbor (bytes .cbor uint)),\n  tagged: bytes .cbor (#6.7(bytes .cbor uint)),\n  fixed: bytes .cbor (bytes .cbor 42),\n  tail: text,\n]\n\n; The rule-BODY spelling of the same composition: a `.cbor` rule body force-wraps, so both depths\n; land in the wrapper struct's own serialize fn rather than in a member's."
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008544431901b945444319012145c7431905194342182a6a43617069746f6c696e65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008544431902544544431905ea45c74319029d4342182a69666c61677374616666"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200854443190353454443190cab44c742183a4342182a65706f757273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200854443190408454443190d8d45c7431904924342182a69706c75636b69657374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008544431904904544431910a145c743190a214342182a6d70617261706865726e616c6961"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008544431904fc444342187645c7431904f04342182a63657765"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008544431906764544431906c345c7431908664342182a66646174652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008544431909a74544431911fb45c7431906d24342182a6d6f75746d616e6f657576726564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200854443190cb8454443190c5045c743190a2b4342182a6748616d6d657474"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200854443190f06444342186f45c7431908f94342182a6a70726f64756365722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "cbor_payload_inline_nested.cbor_inline_nested_body"
+axis = "corpus"
+example = "cbor_inline_nested_body = bytes .cbor (bytes .cbor uint)"
+fixture = "cbor_payload_inline_nested"
+rule = "cbor_inline_nested_body"
+spec = "__probe_holder = [0, cbor_inline_nested_body]\ncbor_inline_nested_body = bytes .cbor (bytes .cbor uint)"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820044431903d8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044431905f7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004443190652"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004443190858"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004443190cb8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004443190cfc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004443190d58"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004443190db5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044431910d3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820044431911b3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "cbor_payload_nested.cbor_payload_nested"
 axis = "corpus"
 example = "cbor_payload_nested = [\n  elem_payloads: bytes .cbor [* bytes .cbor uint],\n  value_payloads: bytes .cbor {* uint => bytes .cbor uint},\n  after_payload: bytes .cbor uint,\n  tail: text,\n]"

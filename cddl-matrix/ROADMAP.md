@@ -609,52 +609,21 @@ entry, so the atomicity is the rule).
   indefinite-length story (no count signal there; peek-only makes acceptance encoding-dependent).
   **Reopening signal:** a spec author reports a rule they cannot decode at all — i.e. the refusal
   reaches a type they need on the wire, not merely a shape a fuzzer composed.
-- **Make a SAME-CHAIN nested `bytes .cbor` payload GENERATE.** A `.cbor` payload whose own target
-  carries a second `.cbor` control in the SAME op chain — `bytes .cbor (bytes .cbor uint)`, and
-  equally the named-alias spelling `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the
-  `.cbor` single-alias strip flattens into the identical chain — is **refused gracefully at parse
-  time**, keyed on two `CBORBytes` in one `RustType`'s chain (exactly the broken set), at both seams
-  that can apply the operation: the rule-BODY registration and `rust_type_from_type1`. Pinned by
-  `nested_cbor_payload_rejects_gracefully` plus the outcome rows
-  `tests/robustness/cbor_payload_same_chain_inline.cddl` and
-  `tests/robustness/cbor_payload_same_chain_alias.cddl`. The refusal is what the
-  no-uncompilable-crate invariant demands; SUPPORT is what remains.
-  Support needs the payload-framing NAMES to become depth-aware, the way the tag path already
-  threads a `tag_depth`: a `cbor_depth` threaded the same way. That is the whole fix, and it is
-  sized by what breaks without it — the serializer emits two `<var>_inner_se = Serializer::new_vec()`
-  bindings at one name, so the inner `finalize()` moves the binding the outer write then uses
-  (`error[E0382]`); the deserializer's depth-agnostic names collide the same way (two `<var>_bytes`
-  frames, a same-block `inner_de` shadow the sequel statements would capture); and under
-  `--preserve-encodings` the encoding-sidecar minting recurses under one name and declares the
-  struct field twice (E0124/E0062).
-  The boundary the refusal draws is narrow, and everything outside it stays supported: nesting
-  through a NAME-CHANGING recursion gets a fresh fn scope and therefore its own buffer — the
-  long-standing named-struct form (`cbor_in_cbor` in `tests/core/input.cddl`), the `; @newtype`
-  boundary the rejection message advertises (`inner = bytes .cbor uint ; @newtype`, referenced as
-  `bytes .cbor inner`, emits the same two-level wire shape and builds), and, since the CBORBytes arm
-  reads its byte string from the stream that reached it rather than a hardcoded `raw`, a payload's
-  own collection elements/values (`bytes .cbor [* bytes .cbor uint]` and the map-value twin; pinned
-  by `tests/corpus/cbor_payload_nested.cddl`, `cbor_payload_nested_payloads` in
-  `tests/core/tests.rs` against hand-derived RFC 8949 bytes, and `cbor_nested_payloads` in
-  `tests/preserve-encodings/input.cddl`).
-  **Reopening signal:** a CDDL specification a consumer must implement but does not control (a
-  published wire format, not one they can rewrite) contains one or more `bytes .cbor` members whose
-  payload type itself carries a `.cbor` control, directly or through a named alias. That is a `grep`
-  over a spec they already hold, and the count of such members is the size of the hand-written
-  serialization they would have to maintain alongside the generated crate.
-  The recombination sweep does not supply this signal today, but it is one character from doing so,
-  and that is the cheap way to reach the shape rather than a reason it cannot be reached. Its
-  `cbor_payload` builder composes `bytes .cbor {h}` unparenthesized, so a self-composition spells
-  `bytes .cbor bytes .cbor uint` — which is not merely unparsed by our front end but **illegal
-  CDDL**: RFC 8610's grammar is `type1 = type2 [S (rangeop / ctlop) S type2]`, so a control
-  operator's right-hand side is a `type2`, and `bytes .cbor uint` is a `type1`. The parse rejection
-  is the `cddl` crate behaving correctly, not a front-end gap. Parenthesizing that builder
-  (`bytes .cbor ({h})`) makes the RHS a `type2` and the self-composition legal, which would put the
-  shape in front of the sweep's classifier — worth doing deliberately, with the composition churn
-  that implies, rather than treating the shape as unreachable. With the refusal in place the sweep
-  would classify it `error (graceful)` and route it nowhere, so what that buys is a standing count
-  of how often the composition arises across the sweep's own vocabulary, next to the consumer-side
-  count above.
+- **Parenthesize the recombination sweep's `cbor_payload` builder so self-compositions are visible.**
+  The builder composes `bytes .cbor {h}` unparenthesized, so a self-composition spells
+  `bytes .cbor bytes .cbor uint` — not merely unparsed by our front end but **illegal CDDL**: RFC
+  8610's grammar is `type1 = type2 [S (rangeop / ctlop) S type2]`, so a control operator's right-hand
+  side is a `type2` and `bytes .cbor uint` is a `type1`. The parse rejection is the `cddl` crate
+  behaving correctly, not a front-end gap. Parenthesizing the builder (`bytes .cbor ({h})`) makes the
+  RHS a `type2`, which puts the now-supported INLINE nesting in front of the sweep's classifier —
+  and, because a parenthesized RHS also changes the MEANING of compositions whose inner expression is
+  a bare type-level one (an inner choice `x / tstr` becomes the payload instead of the payload
+  becoming a choice arm), it is a deliberate re-baselining of those cells rather than a one-character
+  edit. What it buys is a standing count of how often the composition arises across the sweep's own
+  vocabulary — the sweep-side counterpart to a consumer-side grep.
+  **Reopening signal:** the sweep's outcome tables show a `cbor_payload`-outer cell whose classified
+  result is a parse error, i.e. the sweep is spending a composition slot on a spelling that cannot
+  reach the generator at all.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully
