@@ -3419,10 +3419,15 @@ the same `__cddl_oracle_root = <rule>` trick aims it). The gem is **harness-side
 dep, so shipped output stays ruby-free. Teeth and posture:
 
 - **`RUBY_EXPECTED_FAIL`** — `(fixture, rule, reason)` triples the gem diverges on for a documented,
-  non-bug reason (a gem construct gap the fork legitimately supports). Two at HEAD —
+  non-bug reason (a gem construct gap the fork legitimately supports). Three at HEAD —
   `(cbor_wrapped_group_array, holder)` and `(cbor_bignint_table, holder)`, both the gem's
   inline-composite `.cbor`-controller parse gap (exit 65 poisons the whole spec;
-  `draft/ruby-cddl-inline-composite-control-arg-gap.md`). Ledgering is **per (fixture, rule)**, not per
+  `draft/ruby-cddl-inline-composite-control-arg-gap.md`), and `(assignt_extend_ext_first,
+  ext_first)`, the gem's extension-first `/=` chain crash ("Duplicate rule definition", a parse
+  RuntimeError that equally poisons the whole spec — the committed paste-ready report is
+  `cddl-matrix/upstream-reports/ruby-cddl-ext-first-incremental-chain-crash.md`, and the entry's
+  reason carries the conformance-transfer argument for the ordering, since that fixture's rust
+  half rides `RUST_ORACLE_SKIP` too). Ledgering is **per (fixture, rule)**, not per
   fixture: a fixture may have one rule the gem can't judge while its *other* rules must still be
   sound. A divergence is *signal*: an unledgered one is either a gem gap to record here **with a
   reason**, or — the class this oracle exists to catch — a fork misparse minting spec-violating bytes.
@@ -3433,9 +3438,14 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   *rust*-validator gap that still generate, round-trip, and dump fine: they are generated **without**
   `--emit-tests-conformance` (rust validate half off) while their minted bytes are **still** swept by
   the ruby gem — a rust-validator blind spot must not cost the decorrelated oracle its coverage.
-  Empty at HEAD: the sole past resident, `cbor_bignint_table`, came off the list when the fork's
-  bignum map-key fix shipped (`cddl-matrix/README.md` § "Upstream oracle gaps" gap #6; its ruby
-  half is separately on `RUBY_EXPECTED_FAIL` above, so it keeps the decode-side reference-codec
+  Four at HEAD (each entry's comment cites its gap): `alias_positions` and `open_table` on the
+  named-rule map-key over-rejection (gap #11), `assignt_extend` and `assignt_extend_ext_first` on
+  the referenced-`/=`-chain arm drop (gap #15) — the latter fixture is on BOTH ledgers, so
+  neither cddl oracle judges it and its conformance rides the equivalence pin's byte-identity
+  transfer to the folded spelling (the fixture's own header comment and the ledger reasons say
+  so). A past resident, `cbor_bignint_table`, came off the list when the fork's bignum map-key
+  fix shipped (`cddl-matrix/README.md` § "Upstream oracle gaps" gap #6; its ruby half is
+  separately on `RUBY_EXPECTED_FAIL` above, so it keeps the decode-side reference-codec
   differential AND the rust conformance half as its checks).
 - **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
   hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
