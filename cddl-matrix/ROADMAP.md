@@ -240,7 +240,36 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   the wasm-matrix `struct`/`generic`/`ralias` gchoice cells) was untagged, so an alternative
   discriminant that hand-mapped `record.rep` (always Array/Map, never Tag) would have gone green
   through every existing gate while mis-dispatching tagged-record arms — this row is what makes
-  that mis-mapping fail loudly.
+  that mis-mapping fail loudly. A controller OPERAND's value classes are the same axis on the
+  generation side: the `.default` operand kinds (`true`/`false`/`null`/`nil` — prelude constants
+  arriving as typenames, a lexeme class no example enumerated) reached a parse-time `panic!` on
+  valid CDDL while every gate stayed green, because the one committed `.default` example spelled a
+  `0`. Delivered enumeration: `tests/corpus/default_scalar_kinds.cddl` + the fallible
+  `type2_to_fixed_value` lowering (a non-literal operand is a recorded rejection, so the panic
+  class cannot return through a shape nobody enumerated).
+- **A supported control's HOST-PLACEMENT spelling space — one support example proves ONE point of
+  it.** Distinct from the intra-alternative axis above (variation inside the controller): a
+  control also varies by where its TARGET sits — occurrence (mandatory vs optional member),
+  representation (map vs array member), and carriage (spelled at the member vs carried through a
+  rule-position alias) — and every breadth layer (the per-op support probe, `wasm_matrix_compiles`,
+  `feature_corpus_compiles`, the component build sweep) walks committed one-spelling-per-op inputs,
+  so a second point of that product can be broken, or panic, while all of them stay green.
+  Proven across one whole product (2026-08, the `.default` coherence cycle): the single committed
+  spelling (optional map member, uint) hid FOUR defects at other points — a mandatory-defaulted
+  member emitted exit-0 E0061 glue on the wasm AND component faces, an array-rep defaulted member
+  emitted exit-0 E0308 rust, a bool operand panicked, and the head-refusal message named a head it
+  refuses. All were found by hand boundary-probing at pickup, none by a gate. The rule going
+  forward: when a supported control or feature is found broken at a SECOND point of its spelling
+  space, the closing change enumerates that op's full product into corpus fixtures rather than
+  fixing the one probed point — `.default` is the delivered model (`default_value`,
+  `default_mandatory`, `default_array_rep`, `default_scalar_kinds` jointly cover
+  occurrence × representation × operand kind × carriage, and flow into every corpus-input gate on
+  all faces). Enumerating every op's product up front is deferred: the supported-op count times
+  the product is large, and one probed point per op is the measured-adequate posture for the ops
+  with no breakage history. Reopening signal for the mechanical version (a product-enumeration
+  authoring rule enforced per supported op): a SECOND op found broken at an unenumerated
+  host-placement point — measurable by whoever hits the break, and lying on the dimension the
+  deferred cost grows along (the count of ops with proven multi-point breakage; `.default` is one).
 
 ## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
 

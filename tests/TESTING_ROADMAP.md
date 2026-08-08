@@ -571,6 +571,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       reader now walks tag layers, pinned by
       `tagged_anon_array_member_name_emits_the_named_rule_remedy`, so what that instance leaves is
       the sweep's shape rather than the shape itself.
+    - The `.default` head-refusal's remedy list offered bare `int` — a head that very check
+      refuses (`int` resolves to the bignum `Int` extern struct, not a rust primitive), so the
+      advice was dead for the exact value kind (signed) most likely to send a reader to it. Caught
+      by executing the advertised remedy at pickup, not by any gate; the corrected message (now
+      naming `nint` and the signed-RANGE spelling) adopted the pattern day-one via
+      `default_head_remedy_does_not_name_the_head_it_refuses`, whose generate leg emits the
+      printed range remedy so the message cannot go stale against it.
 
 16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
