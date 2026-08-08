@@ -141,6 +141,19 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
         &[],
     ),
     ("component-rename", "tests/component-rename/input.cddl", &[]),
+    (
+        "component-any-alias",
+        "tests/component-any-alias/input.cddl",
+        &[],
+    ),
+    // The ident-hazard fixture is differentialled for the exclusion RULE's sake: `T` and the type
+    // reaching it are rust structs with no WIT counterpart, and what makes that legitimate rather
+    // than a silent drop is the `// unexported:` record the gate reads out of the emitted `.wit`.
+    (
+        "component-ident-hazard",
+        "tests/component-ident-hazard/input.cddl",
+        &[],
+    ),
     // Externs and type choices: the exclusion path, on a spec nobody wrote for this face.
     ("multifile", "tests/multifile/inputs", &[]),
     // Mutually-referencing scopes — rejected under `--component` by the cycle detector.

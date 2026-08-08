@@ -1,0 +1,24 @@
+; The alias-of-`any` fixture. CDDL `any` crosses the component face as the transparent `any-cbor`
+; byte alias and comes back through `AnyCbor::from_cbor_bytes` at the consuming door, so every door
+; that takes one must be FALLIBLE — the decode of arbitrary caller-supplied bytes IS the re-check.
+; The projection's TYPE walk resolves a transparent CDDL alias at the use site, so the FALLIBILITY
+; walk has to resolve it too: a walk that stops at the alias emits an infallible `constructor` over
+; a body that decodes with `?`, which is perfectly valid WIT whose emitted glue does not compile
+; (E0277). Nothing else in the committed corpus reaches `any` from a member position through an
+; alias, which is why this fixture exists rather than a row on an existing one.
+
+; A two-link alias CHAIN, so a walk that resolves exactly ONE link is caught here as well as one
+; that resolves none.
+shallow_any = any
+deep_any = shallow_any
+
+aliased = [
+  ; Through the chain.
+  chained: deep_any,
+  ; Through a single link.
+  single: shallow_any,
+  ; The IN-FIXTURE CONTROL: the same `any`, written directly. Its door has always been fallible, so
+  ; it is what the two aliased ones are compared against — an agreement failure in either direction
+  ; is visible without leaving the fixture.
+  direct: any,
+]

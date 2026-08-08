@@ -1,0 +1,18 @@
+; The WIT ident-hazard fixture: a rule whose WIT resource name is exactly `t`.
+;
+; `wit_bindgen::generate!` expands the guest bindings in a scope where the macro has bound its own
+; type parameter `T`, unhygienically — so a WIT `resource t`, whose rust type is `T`, resolves to
+; that parameter instead of to the resource and the guest crate does not compile. It is an upstream
+; hygiene bug rather than anything about the rule's shape, so the projection refuses the NAME: `t`
+; and everything that references it are unexported with a reason, and the rest of the spec's
+; component face still generates and still builds. That "still builds" half is the whole point of
+; the fixture — an exclusion that took the crate down with it would be no better than the E0599.
+t = [uint, tstr]
+
+; The reference closure's end of it: a type reaching `t` cannot be exported either, and its record
+; names the chain root rather than its neighbour.
+holder = [0, t]
+
+; The independent sibling that keeps the crate's surface: the exclusion is scoped to the hazardous
+; name and what reaches it, never to the interface.
+sibling = [n: uint]
