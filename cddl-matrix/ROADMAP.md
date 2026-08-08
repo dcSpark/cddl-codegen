@@ -290,8 +290,11 @@ entry, so the atomicity is the rule).
   tree — evidence this section's own rule does not accept for a generator-defect entry, because the
   harness appends into generated files — so the class could not be ledgered here from it; the
   repro above comes from the component build sweep's first full run over the committed decode
-  catalog (row `ctl.default`), re-run harness-free at `b01de637` under the pinned 1.96.1 toolchain
-  and `wit_bindgen` 0.57.1, component-only (`--wasm=false`) at default emission flags. Not probed:
+  catalog (row `ctl.default`), re-run harness-free at `b01de637` and re-measured under BOTH rustc
+  1.96.1 (the repo pin, spelled via `rustup run` — a scratch-dir cargo otherwise resolves the
+  rustup default) and stable 1.97.1, identical E0599+E0308 each time (a type error in the glue,
+  not a toolchain artifact), under `wit_bindgen` 0.57.1, component-only (`--wasm=false`) at
+  default emission flags. Not probed:
   other emission profiles, and the `.default` positions that do NOT reach it — a tag-wrapped inner
   default (`tagged_default = #6.42(uint .default 5)`) builds clean, because the default is dropped
   inside the wrapper rather than becoming a struct field at all. The sweep holds the row in

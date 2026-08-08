@@ -774,6 +774,28 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     comment survives a refactor mechanically), and the corpus-detect mirror's gate-enforced
     precedent is the model.
 
+25. **Pin the toolchain of verify.ts's nested cargo — its scratch-cwd spawns resolve the rustup
+    DEFAULT toolchain, and the cache key claims otherwise.** Measured 2026-08-08, both halves:
+    a `cargo` child of the repo's `cargo test` resolves the PIN even with a scratch cwd (the
+    rustup proxy exports `RUSTUP_TOOLCHAIN` into the process tree — probed with a crate whose
+    test spawns `cargo -V` from `/tmp`), so every rust-side nested-cargo gate is pinned; but
+    verify.ts is reached via bun from a plain shell env, so every `Bun.spawnSync` cargo whose
+    cwd is a scratch tree — the main pipeline's `cargo test` legs, the component execution
+    leg's builds, the build sweep — resolves the machine's default toolchain (stable 1.97.1
+    today, vs the 1.96.1 pin). Two consequences, one latent and one structural: verify's
+    verdicts are measured on a toolchain no file in the repo names (link-class verdicts are
+    toolchain-knife-edge — the wasip2 LLD crash matrix is the proof), and
+    `lib.ts::gateCacheKey` folds `rustc -vV` measured with the CALLING process's cwd (in-repo →
+    the pin), so cached cells record a compiler identity their builds did not use — a
+    default-toolchain bump changes build behavior without changing the key, which is the
+    stale-PASS shape the cache audit exists to prevent. The fix is one funnel wide: parse
+    `rust-toolchain.toml`'s channel once, set `RUSTUP_TOOLCHAIN` in the spawn env of verify's
+    cargo/rustc invocations (and make the key's `rustc -vV` measurement use the same env), with
+    a startup self-test asserting a scratch-cwd spawn resolves the pin — red-first by asserting
+    it BEFORE threading the env. Until it lands, a verify/sweep verdict is evidence about the
+    machine's default toolchain, and any claim naming the pin must come from the rust-side
+    gates or an explicit `rustup run` (the AGENTS unspelled-default rule's toolchain bullet).
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
