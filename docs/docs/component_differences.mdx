@@ -216,7 +216,11 @@ type any-cbor = list<u8>;
 A structural recursive variant is impossible (WIT forbids recursive value types), and a resource
 would fail composability exactly where `any` matters most — metadata extension points shared
 between libraries. Bytes are the one representation two independently generated packages can agree
-on without a shared package. Three consequences, all of which have bitten in probing:
+on without a shared package. A CDDL *alias* of `any` (`x = any`, referenced from a member) is
+resolved through and is indistinguishable from `any` written directly — the same `any-cbor`
+spelling and the same fallible doors, however many alias links sit between the member and `any`
+(pinned by the `component-any-alias` corpus fixture). Three consequences, all of which have bitten
+in probing:
 
 - **Exactly one CBOR item.** Validity is checked where the bytes are *consumed*; getters always
   return valid bytes. Trailing data is an error rather than a silent truncation: handing `0102`
@@ -484,9 +488,10 @@ shape — is **excluded and recorded** rather than projected: `wit_bindgen::gene
 bindings into, so a WIT `resource t`, whose rust name is `T`, resolves to the macro's parameter
 instead of the resource and the guest crate cannot compile. It is an upstream hygiene bug, not a
 property of the rule's shape, so the projection refuses the NAME through the standard exclusion
-channel: `t` and everything referencing it get `// unexported: <ident> — <reason>` rows, and the
-rest of the spec's component face still generates **and still builds** (pinned by the
-`component-ident-hazard` corpus fixture).
+channel: `t` and everything referencing it get `// unexported: <ident> — <reason>` rows (a
+dependent's row names the chain root, not its immediate neighbour), and the rest of the spec's
+component face still generates **and still builds** (pinned by the `component-ident-hazard` corpus
+fixture).
 
 The remedy is in the recorded reason: rename the identifier (`@name` does not rename a top-level
 rule; a name that came from a group-choice arm's `@name` is changed there). Renaming does not
