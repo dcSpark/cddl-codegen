@@ -1474,6 +1474,26 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   snapshot loudly. Same recur-first policy as the invariant-softening/vacuity design rules below;
   meanwhile the working rule for new rejection work is the float_table_key header comment: check
   which existing reject fixtures the new guard can reach, and respell or reason-assert them.
+  **The class HAS recurred (2026-08-09), in a THIRD home neither catalog covers — the hand-derived
+  negative byte vectors in the executed fixture tests** (`tests/core/tests.rs` and its
+  preserve sibling): the inline-nested `.cbor` level-2 leftover vector shipped one byte off, so
+  decode failed on WRONG MAJOR TYPE before the leftover check the vector claimed to prove ever
+  ran — a bare `is_err()` passed for the wrong reason, invisible to every gate by construction
+  (the test is green), caught only by review re-deriving the bytes by hand. Same shape as the
+  catalog near-miss above: outcome right, provenance wrong, pinned boundary unexercised. The fix
+  set the pattern (fixed `890f8a72`): `unwrap_err()` plus a distinctive message substring
+  (`trailing data`, the same fingerprint idiom the decode catalog's `expect_err` pins use). The
+  recurrence makes the mechanical layer due for THIS home, and its shape is constrained by the
+  measured ground: the two files hold 117 + 62 bare `is_err()` sites overall but only 27 + 20
+  same-statement `from_cbor_bytes(..)…is_err()` sites (measured 2026-08-09), so the buildable
+  gate is scoped to the latter — (1) make the discriminated form the cheap one (a shared
+  assert-reject-reason helper in the fixture test files), then (2) a text-scan check over the
+  fixture tests holding the same-statement bare count at a committed RATCHET baseline (may only
+  decrease; red-first: adding one new bare site fails the scan; a 47-row allowlist would drown
+  where a ratchet floor stays readable — and the baseline row carries the observed-baseline-rot
+  caveat this file records separately). Residue stated plainly, same as the catalog fingerprint
+  accepts: a message substring discriminates failures whose messages DIFFER; two defects sharing
+  one message remain indistinguishable to it.
 - **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind
   gate branches) have untested first-use paths — six review-caught instances recorded, no
   machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents

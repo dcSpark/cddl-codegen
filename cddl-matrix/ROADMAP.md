@@ -609,25 +609,6 @@ entry, so the atomicity is the rule).
   indefinite-length story (no count signal there; peek-only makes acceptance encoding-dependent).
   **Reopening signal:** a spec author reports a rule they cannot decode at all — i.e. the refusal
   reaches a type they need on the wire, not merely a shape a fuzzer composed.
-- **Parenthesize the recombination sweep's `cbor_payload` builder so self-compositions are visible.**
-  The builder composes `bytes .cbor {h}` unparenthesized, so a self-composition spells
-  `bytes .cbor bytes .cbor uint` — not merely unparsed by our front end but **illegal CDDL**: RFC
-  8610's grammar is `type1 = type2 [S (rangeop / ctlop) S type2]`, so a control operator's right-hand
-  side is a `type2` and `bytes .cbor uint` is a `type1`. The parse rejection is the `cddl` crate
-  behaving correctly, not a front-end gap. Parenthesizing the builder (`bytes .cbor ({h})`) makes the
-  RHS a `type2`, which puts the now-supported INLINE nesting in front of the sweep's classifier —
-  and, because a parenthesized RHS also changes the MEANING of compositions whose inner expression is
-  a bare type-level one (an inner choice `x / tstr` becomes the payload instead of the payload
-  becoming a choice arm), it is a deliberate re-baselining of those cells rather than a one-character
-  edit. What it buys is a standing count of how often the composition arises across the sweep's own
-  vocabulary — the sweep-side counterpart to a consumer-side grep.
-  A matrix containment row for the self-composition was considered and DECLINED this cycle: the
-  corpus cell (`ctl.cbor` x `cbor-payload`), the minted decode rows and the sweep's own count already
-  carry the evidence, no completeness lint obliges one (all four projection gates pass without it),
-  and a row costs a full annotations sweep for no additional discriminating power.
-  **Reopening signal:** the sweep's outcome tables show a `cbor_payload`-outer cell whose classified
-  result is a parse error, i.e. the sweep is spending a composition slot on a spelling that cannot
-  reach the generator at all.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully
@@ -1025,6 +1006,17 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   `extern_import_unknown_annotation_hard_errors` (`src/tests/extern_import_tests.rs`). A matrix row
   would restate that enforcement as model surface for constructs no user authors. Reopening signal:
   a concrete matrix consumer query that needs vendor-sentinel rows.
+- **A containment-matrix row for the INLINE nested `.cbor` self-composition**
+  (`bytes .cbor (bytes .cbor T)`, beside the four existing `contain.cbor-payload.*` rows). Declined
+  because a row's whole job — keeping the construct's support claim measured — is already done at
+  every layer a row would feed: the corpus cell (`ctl.cbor` × `cbor-payload` exercised, COVERAGE.md),
+  the active decode-corpus vectors judged by both oracles
+  (`cbor_payload_inline_nested` rows), and the recombination sweep's standing composition count
+  (its `cbor_payload` template parenthesizes its hole, so the self-composition is swept as `ok`).
+  No completeness lint obliges the row — all four projection gates pass without it — while its
+  marginal cost is a full annotations sweep with no additional discriminating power. Reopening
+  signal: a concrete matrix consumer query that needs the self-composition row — the same signal
+  class as the seam-sentinel decline above.
 
 ## Pending decisions (need a human call)
 
