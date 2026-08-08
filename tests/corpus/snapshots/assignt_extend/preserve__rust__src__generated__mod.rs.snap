@@ -1,0 +1,90 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::serialization::StringEncoding;
+
+#[derive(Clone, Debug)]
+pub enum ExtFirst {
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl ExtFirst {
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Extended {
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    Words {
+        words: String,
+        words_encoding: StringEncoding,
+    },
+    Bytes {
+        bytes: Vec<u8>,
+        bytes_encoding: StringEncoding,
+    },
+}
+
+impl Extended {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_words(words: String) -> Self {
+        Self::Words {
+            words,
+            words_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes {
+            bytes,
+            bytes_encoding: StringEncoding::default(),
+        }
+    }
+}

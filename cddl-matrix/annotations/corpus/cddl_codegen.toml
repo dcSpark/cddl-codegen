@@ -430,16 +430,10 @@ reason = "a literal-key `k ^ => v` routes to the record path as a 1-field struct
 code_anchor = "Do we need to handle cuts"
 
 [[note]]
-id = "assignt.extend"
-status = "unsupported"
-reason = "incremental type-choice extension (/=) that extends an already-defined ident is rejected gracefully at generation — silently dropping every arm but the last (only the final extension arm survives) generated a wrong type, so api.rs rejects the second definition; fold the arms into one rule (`a = int / tstr`) instead"
-code_anchor = "incremental_choice_extension_rejection"
-
-[[note]]
 id = "assigng.extend"
 status = "unsupported"
-reason = "incremental group-choice extension (//=) that extends an already-defined ident is rejected gracefully at generation — same silent last-wins drop as the type socket; a plain group rule cannot itself carry a group choice, so give each arm its own named group and select at the use site (`t = [ grpA // grpB ]`)"
-code_anchor = "incremental_choice_extension_rejection"
+reason = "incremental group-choice extension (//=) is refused gracefully at generation, in EITHER statement order (the classification keys on the name's whole statement set, not on the repeat's own operator). Honoring it would merge the arms into a plain group rule carrying 2+ group choices — exactly the shape `mark_plain_group` asserts against — so it is blocked on the choice-of-bodies design rather than merely unbuilt; give each arm its own named group and select at the use site (`t = [ grpA // grpB ]`). Its type-side sibling `/=` IS honored: those statements merge into one type-choice rule"
+code_anchor = "repeated_rule_definition_rejections"
 
 # ---- ➖ not supported — where the generator gives up (anchors for the boundary) ----
 [[note]]
@@ -586,7 +580,7 @@ text = "Misleading panic message — the control-op catch-all says 'not seen in 
 text = "Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap."
 
 [[finding]]
-text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes)."
+text = "Socket NAMES aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. The `/=` half of the plug idiom IS honored: every `/=` statement for one name contributes its arms to a single type-choice rule, in statement order, generating byte-identically to the folded spelling (`tests/corpus/assignt_extend.cddl`; pinned by `incremental_type_choice_extension_equals_the_folded_spelling`). The `//=` group half stays refused gracefully — in either statement order — because merging its arms mints the multi-choice plain-group shape that is itself unsupported (see the assigng.extend note)."
 
 [[finding]]
 text = "Float works in every position under every profile, `--preserve-encodings` included: the CBOR head width (`0xf9`/`0xfa`/`0xfb`) is an `Option<cbor_event::Sz>` encoding variable, and a float window is enforced on the same value in both profiles. The corpus carries floats accordingly — `tests/corpus/optional_fixed_float.cddl` (an optional fixed FLOAT member, presence bit plus width) and `homogeneous_array.cddl`'s `float_holder` (per-element widths). Spec-anchored wire vectors live in the `golden_hex_preserve` / `golden_hex_canonical` KAT suites."

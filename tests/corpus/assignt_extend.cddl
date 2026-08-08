@@ -1,0 +1,6 @@
+extended = uint
+extended /= text ; @name Words
+extended /= bytes
+
+ext_first /= text
+ext_first = uint

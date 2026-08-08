@@ -1,0 +1,145 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ExtFirst = WitExtFirst;
+    type Extended = WitExtended;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitExtFirst(pub RefCell<cddl_lib::ExtFirst>);
+
+impl wit_types::GuestExtFirst for WitExtFirst {
+    fn new_text(text: String) -> wit_types::ExtFirst {
+        let inner = cddl_lib::ExtFirst::new_text(text);
+        wit_types::ExtFirst::new(WitExtFirst(RefCell::new(inner)))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ExtFirst::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn new_uint(uint: u64) -> wit_types::ExtFirst {
+        let inner = cddl_lib::ExtFirst::new_uint(uint);
+        wit_types::ExtFirst::new(WitExtFirst(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ExtFirst::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::ExtFirstKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ExtFirst::Text(_) => wit_types::ExtFirstKind::Text,
+            cddl_lib::ExtFirst::U64(_) => wit_types::ExtFirstKind::Uint,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ExtFirst as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ExtFirst, String> {
+        <cddl_lib::ExtFirst as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ExtFirst::new(WitExtFirst(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitExtended(pub RefCell<cddl_lib::Extended>);
+
+impl wit_types::GuestExtended for WitExtended {
+    fn new_uint(uint: u64) -> wit_types::Extended {
+        let inner = cddl_lib::Extended::new_uint(uint);
+        wit_types::Extended::new(WitExtended(RefCell::new(inner)))
+    }
+
+    fn as_uint(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Extended::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    fn new_words(words: String) -> wit_types::Extended {
+        let inner = cddl_lib::Extended::new_words(words);
+        wit_types::Extended::new(WitExtended(RefCell::new(inner)))
+    }
+
+    fn as_words(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Extended::Words(words) => Some(words.clone()),
+            _ => None,
+        }
+    }
+
+    fn new_bytes(bytes: Vec<u8>) -> wit_types::Extended {
+        let bytes = bytes.into_iter().collect();
+        let inner = cddl_lib::Extended::new_bytes(bytes);
+        wit_types::Extended::new(WitExtended(RefCell::new(inner)))
+    }
+
+    fn as_bytes(&self) -> Option<Vec<u8>> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Extended::Bytes(bytes) => Some(bytes.iter().map(|x| *x).collect()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::ExtendedKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Extended::U64(_) => wit_types::ExtendedKind::Uint,
+            cddl_lib::Extended::Words(_) => wit_types::ExtendedKind::Words,
+            cddl_lib::Extended::Bytes(_) => wit_types::ExtendedKind::Bytes,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Extended as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Extended, String> {
+        <cddl_lib::Extended as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Extended::new(WitExtended(RefCell::new(v))))
+            .map_err(err)
+    }
+}
