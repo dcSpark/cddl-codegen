@@ -297,6 +297,24 @@ line (a partial deletion once merged the following entry's body into the previou
 continuation lines, headerless and invisible as an entry; no lint can tell that merge from a long
 entry, so the atomicity is the rule).
 
+- **An extension-FIRST statement ordering of `/=` / `//=` bypasses the incremental-extension guard —
+  exit 0, and every arm but the LAST statement's is silently dropped.** The guard
+  (`api::with_types`' seen-idents pre-scan + `parsing::incremental_choice_extension_rejection`)
+  classifies only the REPEAT statement's own alternate flag, so it fires only when the `/=`/`//=`
+  statement comes second. CDDL rule order is insignificant (RFC 8610 §3.1 — extending a name whose
+  base rule appears later is legal), and the pinned parser accepts these orderings while rejecting
+  a plain `=` redefinition outright ("rule ... is already defined" — probed), so both statements
+  reach `parse_rule`, which re-registers the ident per statement, last statement winning. Probed
+  harness-free 2026-08-08 at `b3cb12d0` (tool alone into a scratch dir, default profile,
+  `--wasm=false`, `--static-dir` spelled; parse-time behavior, toolchain-independent): `a /= tstr`
+  + `a = int` → exit 0, `pub type A = Int;` (the `tstr` arm gone); `g //= (2: tstr)` +
+  `g = (1: int)` + `t = [g]` → exit 0, `G { key_1: Int }` (the second branch gone); mixed-kind
+  `a /= tstr` + `a = (1: int)` + `t = [a]` → exit 0, `A { key_1: Int }`. This is the same
+  silent-arm-drop class the guard was built to close (its own doc comment names it); the fix must
+  key on the NAME having multiple defining statements, not on which statement carries the operator.
+  Scope note: probed exactly the orderings above; the ext-then-ext orderings (`/=` + `/=`,
+  `//=` + `//=`) DO reject today (the repeat carries the flag). Picked up by the in-progress
+  B3-021 cycle (2026-08-08), which closes it for both operators.
 - **A group RULE whose body carries multiple group choices is refused with two verified remedies —
   the honoring design (a choice of bodies) is the missing capability, not the guard.**
   `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
