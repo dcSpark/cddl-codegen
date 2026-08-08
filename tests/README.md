@@ -4385,6 +4385,68 @@ and needs exactly the seeding `feature_corpus_compiles` does); the only exclusio
 compiles against seeded defs and is held by the wasm re-export warning that const's own doc
 comment records, not by compilability.
 
+### component build sweep over the decode catalog (`cddl-matrix/verify.ts --component-build-sweep`)
+
+Every drivable row of `tests/decode_conformance/catalog.toml`, generated `--component=true
+--wasm=false` and BUILT for `wasm32-wasip2`. 165 of the catalog's 184 rows are drivable; the other 19
+are pinned entries, which are vector-less AND spec-less by construction and so have nothing to
+generate from.
+
+It is the class-level finder for component-face compile classes, and it exists because a hand-picked
+compile corpus cannot be assumed to cover a class just because the class is ordinary. The two
+component-glue compile classes closed in 2026-08 — a rule whose WIT resource name is exactly `t`, and
+an `any` member reached through a transparent alias — both sat in ORDINARY matrix rows
+(`type.choice`, `prelude.any`) that no fixture spelled, and both were found by hand-running
+generation+build over candidate rows. The sweep is that procedure made repeatable over an enumeration
+nobody curated for the component face. The section above asks the same question of the corpus
+fixtures; the two enumerations are independent by construction, which is the whole argument for
+having both.
+
+**Depth of exactly two stages**, deliberately: generate, then build. No host, no oracle, no vectors,
+no drive — that is `verify.ts`'s component EXECUTION leg, which asks whether thirteen chosen rows
+BEHAVE. Breadth and depth are separate instruments and this is the breadth one. A consequence worth
+stating: the sweep consults no CDDL oracle at all (its per-row verdict is a cargo exit code over
+committed `spec` strings), so it is the one `verify.ts` path that skips the oracle-identity
+fingerprint — requiring the pinned fork would refuse the sweep on a machine that builds components
+perfectly well, to validate a tool the run never invokes.
+
+**Writes nothing** — no annotations, no `verify_report.json`, no catalog. A sweep leaves the
+committed tree byte-identical, which is what makes it safe to run at any time.
+
+**Verdicts.** A row the generator REFUSES is counted and printed but is NOT a failure: the sweep
+enumerates every drivable row, including shapes cddl-codegen declines, and refusal is the matrix's
+own business. A row that GENERATES and does not BUILD is the finding; the run exits nonzero listing
+each such cell with its compiler stderr tail and the harness-free repro recipe. The classifier behind
+that split is pinned by a pure startup self-test (gate `verify_selftest`), because a build failure
+misread as a refusal is a green run with no other symptom. Two further floors: a catalog yielding
+fewer than 120 drivable rows is refused rather than swept (a breadth instrument that covers almost
+nothing must not pass), and a whole-catalog sweep in which NO row generated is a harness failure
+rather than a pass.
+
+**Subsetting**: `--only=<row-id>[,<row-id>…]`, validated against the drivable set, so a typo fails
+loudly instead of sweeping nothing.
+
+**Cost**, measured over all 165 rows: **3 m 3 s cold** (every cell builds — the first pays the shared
+wasip2 dependency graph, then ~1 s each) and **2 m 10 s warm**. A warm run still pays generation, the
+lockfile preflight and the tree hash per cell, which is nearly all of what is left.
+
+**Memoization** under the cache label `verify.component_build_sweep` — a namespace DISJOINT from the
+execution leg's `verify.component_probe` on purpose: this closure asserts strictly less about the
+same tree, so serving one leg's hit to the other would overclaim in one direction and re-run
+needlessly in the other. Its argv carries the verdict marker `component-build-sweep-v1`. The whole
+closure lives inside the hashed tree — the generated crates plus the workspace `Cargo.lock` the
+preflight writes before the hash, with toolchain, `RUSTFLAGS` and cargo config folded in by the key
+function; unlike the execution leg there is no host binary to hash, which is why its argv carries no
+`host=` component. `cddl-matrix/audit_gate_cache_closure.ts` does not trace TS-side `verify.*`
+labels, so this label shares its siblings' posture: the closure argument rests on review at the call
+site plus `GATE_CACHE=0`, not on the strace audit.
+
+One row does not build. `ctl.default` (`m = { a: uint, ? b: uint .default 0 }`) generates at exit 0
+and then fails the wasip2 build — a second instance of the class `component_tests`'
+`EXPECTED_COMPILE_FAIL` pins for the `default_value` fixture: a defaulted scalar is a plain `u64` in
+the rust struct while the projection keeps it optional, so the emitted glue calls `as_ref` on a `u64`
+(E0599) and assigns `Some(v)` into one (E0308).
+
 ### Regen over prior output at corpus breadth (`src/tests/regen_over_prior_tests.rs`, gates `regen_over_prior_output_corpus` `local` + `regen_over_prior_output_corpus_compiles` `full`)
 
 The comment-preservation overlay runs on exactly one path — `export()` over a tree a previous run
