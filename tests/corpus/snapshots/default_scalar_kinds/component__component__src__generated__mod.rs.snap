@@ -1,0 +1,147 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type BoolDefault = WitBoolDefault;
+    type BoolDefaultArray = WitBoolDefaultArray;
+    type FloatDefault = WitFloatDefault;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitBoolDefault(pub RefCell<cddl_lib::BoolDefault>);
+
+impl wit_types::GuestBoolDefault for WitBoolDefault {
+    fn new(a: u64) -> Self {
+        let inner = cddl_lib::BoolDefault::new(a);
+        WitBoolDefault(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn f(&self) -> Option<bool> {
+        let me = self.0.borrow();
+        me.f.as_ref().map(|x| *x)
+    }
+
+    fn set_f(&self, f: bool) {
+        self.0.borrow_mut().f = Some(f);
+    }
+
+    fn g(&self) -> Option<bool> {
+        let me = self.0.borrow();
+        me.g.as_ref().map(|x| *x)
+    }
+
+    fn set_g(&self, g: bool) {
+        self.0.borrow_mut().g = Some(g);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BoolDefault as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BoolDefault, String> {
+        <cddl_lib::BoolDefault as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::BoolDefault::new(WitBoolDefault(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitBoolDefaultArray(pub RefCell<cddl_lib::BoolDefaultArray>);
+
+impl wit_types::GuestBoolDefaultArray for WitBoolDefaultArray {
+    fn new(a: u64) -> Self {
+        let inner = cddl_lib::BoolDefaultArray::new(a);
+        WitBoolDefaultArray(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn f(&self) -> Option<bool> {
+        let me = self.0.borrow();
+        me.f.as_ref().map(|x| *x)
+    }
+
+    fn set_f(&self, f: bool) {
+        self.0.borrow_mut().f = Some(f);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BoolDefaultArray as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BoolDefaultArray, String> {
+        <cddl_lib::BoolDefaultArray as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::BoolDefaultArray::new(WitBoolDefaultArray(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitFloatDefault(pub RefCell<cddl_lib::FloatDefault>);
+
+impl wit_types::GuestFloatDefault for WitFloatDefault {
+    fn new(a: u64) -> Self {
+        let inner = cddl_lib::FloatDefault::new(a);
+        WitFloatDefault(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn f(&self) -> Option<f64> {
+        let me = self.0.borrow();
+        me.f.as_ref().map(|x| *x)
+    }
+
+    fn set_f(&self, f: f64) {
+        self.0.borrow_mut().f = Some(f);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::FloatDefault as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::FloatDefault, String> {
+        <cddl_lib::FloatDefault as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::FloatDefault::new(WitFloatDefault(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -387,13 +387,13 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.bigint` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.bignint` |  | · |  | · |  |  |  |  |  |  |
 | `prelude.biguint` |  | · |  |  |  |  |  |  |  |  |
-| `prelude.bool` |  | · |  | · |  | · |  | · |  |  |
+| `prelude.bool` |  | · | · | · |  | · |  | · |  |  |
 | `prelude.bstr` |  | · |  | · |  |  |  |  |  |  |
 | `prelude.bytes` | · | · | · | · |  | · |  | · |  | · |
 | `prelude.decfrac` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.encoded-cbor` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.false` |  | ✅ | ✅ |  |  |  |  | · |  |  |
-| `prelude.float64` |  | · |  |  |  |  |  | · |  |  |
+| `prelude.float64` |  | · | · |  |  |  |  | · |  |  |
 | `prelude.int` | · | · | · | · | · | · |  | · | · |  |
 | `prelude.integer` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.mime-message` |  | · |  |  |  |  |  |  |  |  |
@@ -425,9 +425,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `value.text` |  | ✅ | ✅ | · |  |  |  | · |  |  |
 
 - Modelled `(role × feature)` cells: **68** (over 135 shape-granular containment rows).
-- Exercised by the corpus **and** modelled: **32**.
-- Exercised by the corpus, modelled by **nothing**: **152** (the `·` cells).
-- Modelled but not exercised by any corpus fixture: **36**.
+- Exercised by the corpus **and** modelled: **33**.
+- Exercised by the corpus, modelled by **nothing**: **154** (the `·` cells).
+- Modelled but not exercised by any corpus fixture: **35**.
 
 ## Notable findings
 
@@ -444,7 +444,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **123** — ✅ 67 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 24 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 96
+- Corpus fixtures: 97
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

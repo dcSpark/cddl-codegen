@@ -2404,6 +2404,186 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "default_scalar_kinds.bool_default"
+axis = "corpus"
+example = "bool_default = { a: uint, ? f: bool .default true, ? g: bool .default false }"
+fixture = "default_scalar_kinds"
+rule = "bool_default"
+spec = "__probe_holder = [0, bool_default]\nbool_default = { a: uint, ? f: bool .default true, ? g: bool .default false }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a16161190180"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a161611903f3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190579"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190eb0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a261611905d46166f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190ad96167f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190b4e6166f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190c606167f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a261611911446167f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36161190af86166f56167f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "default_scalar_kinds.bool_default_array"
+axis = "corpus"
+example = "bool_default_array = [ a: uint, ? f: bool .default false ]\n\n; A float default lands on the float carrier the head names (`float64` -> `f64`), and the\n; skip-compare that decides whether to write the member is the same NaN-safe comparison the rest of\n; the float path uses."
+fixture = "default_scalar_kinds"
+rule = "bool_default_array"
+spec = "__probe_holder = [0, bool_default_array]\nbool_default_array = [ a: uint, ? f: bool .default false ]\n\n; A float default lands on the float carrier the head names (`float64` -> `f64`), and the\n; skip-compare that decides whether to write the member is the same NaN-safe comparison the rest of\n; the float path uses."
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200811901bf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190453"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190c51"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811910e3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821860f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190435f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219067df4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190a99f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190b47f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190d6ef4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "default_scalar_kinds.float_default"
+axis = "corpus"
+example = "float_default = { a: uint, ? f: float64 .default 1.5 }"
+fixture = "default_scalar_kinds"
+rule = "float_default"
+spec = "__probe_holder = [0, float_default]\nfloat_default = { a: uint, ? f: float64 .default 1.5 }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a161611903e7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190a26"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190a3c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190af7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190d19"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190d4e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16161190fe9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a261611902b06166fbe686a8008869f09c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190a196166fbf5e0aa4c24f956dc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26161190ebd6166fbed5275e960dd7d48"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "default_value.defaulted"
 axis = "corpus"
 example = "defaulted = { a: uint, ? b: uint .default 1337, ? c: text .default \"he\\\"llo\\\\world\" }"

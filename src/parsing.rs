@@ -1499,6 +1499,12 @@ fn unmapped_control_head_rejection(type_name: &RustIdent, cddl_ident: &CDDLIdent
 /// already made survives to be reported instead of being destroyed by an abort one step later.
 ///
 /// `head` is the head as WRITTEN, so the message points at the CDDL the user has in front of them.
+///
+/// The remedy list names the heads a default ACTUALLY lands on, which is why bare `int` is not among
+/// them: `int` is bignum-capable and resolves to the hand-written `Int` struct, not to a rust
+/// primitive, so it is one of the heads this very check refuses. A signed default belongs on `nint`
+/// or on a signed integer RANGE, which does collapse onto a primitive (`si = -128..127`, then
+/// `? n: si .default -2` → `i8`).
 fn unmappable_default_head_rejection(
     rule_name: Option<&RustIdent>,
     head: &Type2,
@@ -1508,7 +1514,10 @@ fn unmappable_default_head_rejection(
         "{}`.default {}` cannot be applied to `{head}` — a default substitutes for an absent value \
          and is written into the rust primitive backing the constrained type, which `{head}` either \
          has none of or cannot hold a value of this kind. Apply the default to a concrete type of \
-         the value's own kind (`uint`, `int`, `float64`, `tstr`, `bool`), or remove it.",
+         the value's own kind (`uint`, `nint`, `float64`, `tstr`, `bool`), or — for a signed value — \
+         to an integer RANGE, which does collapse onto a signed primitive (`si = -128..127`, then \
+         `? n: si .default -2`). Bare `int` is not such a head: it is bignum-capable and has no rust \
+         primitive behind it.",
         reject_rule_prefix(rule_name),
         fixed_value_as_written(default_value)
     )
@@ -2385,17 +2394,43 @@ fn try_float_or_reject(
     }
 }
 
-fn type2_to_fixed_value(type2: &Type2) -> FixedValue {
+/// The literal a control operand denotes, or `None` when the operand is not a literal at all.
+///
+/// `None` is an ordinary user input (`? f: uint .default some_rule`), not a tool bug, so the single
+/// caller records a graceful rejection over it. `true`/`false`/`null`/`nil` are CDDL prelude
+/// CONSTANTS spelled as typenames rather than as their own `Type2` kinds — the same classification
+/// the fixed map-key path makes — so they are lowered here instead of falling into the `None` arm
+/// and reading as "not a value".
+fn type2_to_fixed_value(type2: &Type2) -> Option<FixedValue> {
     match type2 {
-        Type2::UintValue { value, .. } => FixedValue::Uint(*value as u64),
-        Type2::IntValue { value, .. } => FixedValue::Nint(*value as i128),
-        Type2::FloatValue { value, .. } => FixedValue::Float(*value),
-        Type2::TextValue { value, .. } => FixedValue::Text(value.to_string()),
-        _ => panic!(
-            "Type2: {:?} does not correspond to a supported FixedValue",
-            type2
-        ),
+        Type2::UintValue { value, .. } => Some(FixedValue::Uint(*value as u64)),
+        Type2::IntValue { value, .. } => Some(FixedValue::Nint(*value as i128)),
+        Type2::FloatValue { value, .. } => Some(FixedValue::Float(*value)),
+        Type2::TextValue { value, .. } => Some(FixedValue::Text(value.to_string())),
+        Type2::Typename { ident, .. } if ident.ident == "true" => Some(FixedValue::Bool(true)),
+        Type2::Typename { ident, .. } if ident.ident == "false" => Some(FixedValue::Bool(false)),
+        // Lowered so the head check owns the verdict: `FixedValue::Null` never matches a primitive,
+        // so `try_default` refuses it with the message that names the head and the value — which is
+        // the accurate account of `? f: uint .default null`, where the value IS a literal and the
+        // head simply cannot hold it.
+        Type2::Typename { ident, .. } if ident.ident == "null" || ident.ident == "nil" => {
+            Some(FixedValue::Null)
+        }
+        _ => None,
     }
+}
+
+/// A `.default` whose OPERAND is not a literal value at all (a type name, a group reference, a
+/// nested expression). Distinct from [`unmappable_default_head_rejection`], which is about a literal
+/// the HEAD cannot hold: here there is no value to lower in the first place.
+fn non_literal_default_operand_rejection(rule_name: Option<&RustIdent>, operand: &Type2) -> String {
+    format!(
+        "{}`.default {operand}` is not a default VALUE — a default substitutes for an absent value \
+         at deserialization, so it must be a literal the head can hold: an integer (`0`, `-2`), a \
+         float (`1.5`), a text string (`\"hi\"`), `true`/`false`, or `null`. Spell the value \
+         literally, or remove the control.",
+        reject_rule_prefix(rule_name)
+    )
 }
 
 fn parse_control_operator(
@@ -2476,9 +2511,20 @@ fn parse_control_operator(
                 ));
                 ControlOperator::Range((None, None))
             }
-            token::ControlOperator::DEFAULT => {
-                ControlOperator::Default(type2_to_fixed_value(&operator.type2))
-            }
+            token::ControlOperator::DEFAULT => match type2_to_fixed_value(&operator.type2) {
+                Some(value) => ControlOperator::Default(value),
+                // Same graceful shape as the `.within`/`.and` arm above: record the rejection and
+                // hand back the inert full-range placeholder, which `finalize` drains into an
+                // `Err` before generation runs. One message — the operand never reaches the head
+                // check, which has nothing to say about a non-value.
+                None => {
+                    types.record_rejection(non_literal_default_operand_rejection(
+                        rule_name,
+                        &operator.type2,
+                    ));
+                    ControlOperator::Range((None, None))
+                }
+            },
             // The `.cbor` TARGET is handed on WHOLE — an `Alias` node included. This seam serves
             // every position the operator can be written at, and the two of them want opposite
             // things from a strip, so neither is done here:
