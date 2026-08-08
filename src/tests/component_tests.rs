@@ -2435,6 +2435,11 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
          (E0308) and an unannotated binding (E0282)",
     ),
     (
+        "default_array_rep",
+        "class 2: the same plain-`u64`/`String`-vs-optional-projection mismatch, reached through an \
+         ARRAY-representation record instead of a map",
+    ),
+    (
         "default_mandatory",
         "class 2: the fixture's OPTIONAL members (`? c`, and `? y` through the alias) are the same \
          plain-`u64`-vs-optional-projection mismatch. Its mandatory-position members are NOT — a \

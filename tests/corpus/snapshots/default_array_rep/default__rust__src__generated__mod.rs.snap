@@ -1,0 +1,46 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+
+#[derive(Clone, Debug)]
+pub struct ArrayDefault {
+    pub a: u64,
+    pub b: u64,
+}
+
+impl ArrayDefault {
+    pub fn new(a: u64) -> Self {
+        Self { a, b: 7 }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ArrayDefaultText {
+    pub a: u64,
+    pub s: String,
+}
+
+impl ArrayDefaultText {
+    pub fn new(a: u64) -> Self {
+        Self {
+            a,
+            s: "hi".to_owned(),
+        }
+    }
+}

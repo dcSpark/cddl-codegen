@@ -1,0 +1,111 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::borrow::ToOwned;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for ArrayDefault {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1 + if self.b != 7 { 1 } else { 0 }))?;
+        serializer.write_unsigned_integer(self.a)?;
+        if self.b != 7 {
+            serializer.write_unsigned_integer(self.b)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ArrayDefault {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let a = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("a"))?;
+            let b = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::UnsignedInteger)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    Ok(raw.unsigned_integer()?)
+                })()
+                .map_err(|e| e.annotate("b"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            let b = b.unwrap_or(7);
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ArrayDefault { a, b })
+        })()
+        .map_err(|e| e.annotate("ArrayDefault"))
+    }
+}
+
+impl cbor_event::se::Serialize for ArrayDefaultText {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1 + if self.s != "hi" { 1 } else { 0 }))?;
+        serializer.write_unsigned_integer(self.a)?;
+        if self.s != "hi" {
+            serializer.write_text(&self.s)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ArrayDefaultText {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let a = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("a"))?;
+            let s = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Text)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    Ok(raw.text()?)
+                })()
+                .map_err(|e| e.annotate("s"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            let s = s.unwrap_or_else(|| "hi".to_owned());
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ArrayDefaultText { a, s })
+        })()
+        .map_err(|e| e.annotate("ArrayDefaultText"))
+    }
+}

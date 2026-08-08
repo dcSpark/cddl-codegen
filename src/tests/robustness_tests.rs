@@ -12985,3 +12985,89 @@ fn mandatory_member_default_warns_on_stderr() {
         "the warning must say WHY the control is inert, got:\n{stderr}"
     );
 }
+
+/// A `.default` on an ARRAY-representation member. The struct stores it PLAIN — the default fills
+/// the absent case — so the presence `Option` the array path's trailing-element peek binds must
+/// collapse before the constructor reads it. The map path has always emitted that `unwrap_or`; the
+/// array path did not, and built an `Option<T>` into a `T` field (E0308, exit 0).
+///
+/// Both kinds are pinned because the collapse has two spellings (`unwrap_or` for the copy kinds,
+/// `unwrap_or_else` for the owned `String`, to avoid `clippy::or_fun_call`).
+#[test]
+fn array_rep_deserializer_applies_the_default() {
+    let src = |spec: &str, tag: &str| {
+        run_spec(spec, tag)
+            .expect("an array-rep defaulted member must generate")
+            .get("rust/src/generated/serialization.rs")
+            .expect("rust serialization emitted")
+            .clone()
+    };
+    let uint = src(
+        "arr = [ a: uint, ? b: uint .default 7 ]\n",
+        "array_default_u",
+    );
+    assert!(
+        uint.contains("let b = b.unwrap_or(7);"),
+        "the array deserializer must collapse the presence Option onto the default, got:\n{uint}"
+    );
+    let text = src(
+        "arrs = [ a: uint, ? s: tstr .default \"hi\" ]\n",
+        "array_default_t",
+    );
+    assert!(
+        text.contains("let s = s.unwrap_or_else(|| \"hi\".to_owned());"),
+        "an owned default collapses through `unwrap_or_else`, got:\n{text}"
+    );
+}
+
+/// The `--preserve-encodings` flavor of the same member. A byte-exact re-emit has to tell "absent"
+/// from "explicitly written and equal to the default" apart, which is what the `_default_present`
+/// flag records — and the flag has to be computed BEFORE the collapse, because after it the two
+/// cases hold the same value. The encoding struct always declared the flag; the array deserializer
+/// never bound it (E0425), and the serializer's read of it moved out of `self.encodings` behind a
+/// shared reference (E0507).
+#[test]
+fn array_rep_default_present_is_tracked_under_preserve_encodings() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_array_default_preserve_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "arr = [ a: uint, ? b: uint .default 7 ]\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "array_default_preserve_unused",
+        "--wasm",
+        "false",
+        "--preserve-encodings",
+        "true",
+    ]);
+    let files = crate::api::generated_strings(&cli).expect("must generate");
+    std::fs::remove_file(&path).ok();
+    let ser = files
+        .get("rust/src/generated/serialization.rs")
+        .expect("rust serialization emitted");
+    let present = ser
+        .find("let b_default_present = b == Some(7);")
+        .expect("the flag must be bound from the still-optional binding");
+    let collapse = ser
+        .find("let b = b.unwrap_or(7);")
+        .expect("the collapse must follow");
+    assert!(
+        present < collapse,
+        "the `_default_present` flag must be computed BEFORE the collapse, got:\n{ser}"
+    );
+    // rustfmt wraps that read across several lines, so match a whitespace-collapsed copy rather
+    // than one particular line breaking.
+    let flat = ser
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>();
+    assert!(
+        flat.contains("self.encodings.as_ref().map(|encs|encs.b_default_present).unwrap_or(false)"),
+        "the serializer must READ the flag through a reference (the encoding struct is not Copy), \
+         got:\n{ser}"
+    );
+}
