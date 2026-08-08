@@ -993,6 +993,30 @@ pub fn ops_for_rust(
 ) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     let mut ops = ops_from_log(cli, "manifest_changes/rust.toml")?;
 
+    // The COMPONENT-ONLY `lib.crate-type`, overriding the change log's `["cdylib", "rlib"]` by
+    // sequence — the computed-op precedent `features.std` sets, for the same reason: only the run
+    // that emits a manifest knows which faces it wrote, so the base belongs in the log and the
+    // per-flag-set answer belongs here.
+    //
+    // The cdylib exists for ONE consumer: the `--wasm` face's `wasm32-unknown-unknown` build. The
+    // component face never wants it — the wasip2 guest links the rust crate as an rlib — and asking
+    // the wasip2 linker for a cdylib has crashed `wasm-component-ld` on some specs, so a
+    // component-only tree carries a target nothing builds and something can choke on.
+    //
+    // Scoped to `component && !wasm`, which is what keeps this a narrowing rather than a change of
+    // contract: a tree with the wasm face on (both faces, or wasm alone) is byte-identical to
+    // before, and a plain-rust tree is untouched — narrowing that would change every rust-face
+    // consumer for no component payoff.
+    if cli.component && !cli.wasm {
+        ops.push((
+            key_path(&["lib", "crate-type"]),
+            ManifestOp::Set {
+                value: val("[\"rlib\"]"),
+                assert_source: false,
+            },
+        ));
+    }
+
     // flag-conditional deps
     ops.push(dep("hashlink", "\"0.12.1\"", cli.preserve_encodings));
     // Permanent tombstone: `linked-hash-map` was this dep's name before `OrderedHashMap`'s backing
@@ -3189,6 +3213,76 @@ used_from_wasm = [\"wasm-bindgen\"]
                 "substituted lib-name dep key did not gain the feature:\n{out}"
             );
         });
+    }
+
+    // ---- the component-only `crate-type` narrowing --------------------------------------------
+
+    /// The rust crate's `lib.crate-type` under each of the four face postures.
+    ///
+    /// `["cdylib", "rlib"]` is the change log's value and stays the default; the ONE posture that
+    /// narrows to `["rlib"]` is `--component=true --wasm=false`, where no face wants the cdylib.
+    /// Written as one test over the four postures because the contract IS the contrast — a
+    /// per-posture test would let the narrowing widen a step at a time without anything failing.
+    #[test]
+    fn the_component_only_face_narrows_the_rust_crate_type_to_rlib() {
+        const SPEC: &str = "foo = [x: uint]\n";
+        for (flags, expected) in [
+            // component-only: the guest links the rust crate as an rlib, and nothing else here
+            // wants a cdylib.
+            (
+                &["--component=true", "--wasm=false"][..],
+                "crate-type = [\"rlib\"]",
+            ),
+            // both faces: the wasm face's `wasm32-unknown-unknown` build needs the cdylib, so it
+            // stays — a both-faces tree is byte-identical to before this narrowing existed.
+            (
+                &["--component=true"][..],
+                "crate-type = [\"cdylib\", \"rlib\"]",
+            ),
+            // wasm-only (the default posture) and neither face: untouched. Narrowing a plain-rust
+            // tree would change every rust-face consumer for no component payoff.
+            (&[][..], "crate-type = [\"cdylib\", \"rlib\"]"),
+            (&["--wasm=false"][..], "crate-type = [\"cdylib\", \"rlib\"]"),
+        ] {
+            with_manifest_ops(SPEC, flags, |rust, _| {
+                let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains(expected),
+                    "under {flags:?} the rust manifest must carry `{expected}`:\n{out}"
+                );
+            });
+        }
+    }
+
+    /// Regeneration CONVERGES: a manifest already carrying the wide `["cdylib", "rlib"]` — every
+    /// component-only tree generated before this narrowing existed — is rewritten on the next run.
+    /// `lib.crate-type` is neither a dependency entry nor a feature list, so the op hard-replaces
+    /// rather than merging; asserting that on an `existing` document is what proves a shipped tree
+    /// converges instead of the narrowing landing only on fresh output.
+    #[test]
+    fn regenerating_a_component_only_tree_rewrites_an_already_written_crate_type() {
+        let existing = "\
+[lib]
+crate-type = [\"cdylib\", \"rlib\"]
+
+[dependencies]
+anyhow = \"1\"
+";
+        with_manifest_ops(
+            "foo = [x: uint]\n",
+            &["--component=true", "--wasm=false"],
+            |rust, _| {
+                let out = apply(rust, Some(existing), "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains("crate-type = [\"rlib\"]") && !out.contains("cdylib"),
+                    "an already-written wide crate-type must be replaced, not merged:\n{out}"
+                );
+                // an unrelated user dep the tool has no opinion on survives the rewrite
+                assert!(out.contains("anyhow = \"1\""), "{out}");
+            },
+        );
     }
 
     // ---- the unconditional `std` feature -----------------------------------------------------

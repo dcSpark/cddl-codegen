@@ -1535,9 +1535,10 @@ function componentProbe(cell: string): ComponentFields {
   const minted_component = witDeclaresDecodeDoor(join(out, "component", "wit", "world.wit"), resource);
 
   // Prepare everything the cached closure reads, INSIDE the hashed tree (the cache-closure rule):
-  // the narrowed manifest, a workspace root, the oracle bin, and the vector manifest.
-  const rustManifest = join(out, "rust", "Cargo.toml");
-  writeFileSync(rustManifest, readFileSync(rustManifest, "utf8").replace('crate-type = ["cdylib", "rlib"]', 'crate-type = ["rlib"]'));
+  // a workspace root, the oracle bin, and the vector manifest. The rust manifest needs no
+  // preparation — generation above is component-only (`--wasm=false`), and the tool emits such a
+  // tree with `crate-type = ["rlib"]`: the guest links the rlib, and the cdylib exists only for
+  // wasm-bindgen's `wasm32-unknown-unknown` target.
   writeFileSync(join(out, "Cargo.toml"), '[workspace]\nresolver = "3"\nmembers = ["rust", "component"]\n');
   const vectors: ComponentVector[] = [
     ...accepts.map((v, i) => ({ name: `accept_${i}`, expect: "accept" as const, hex: v.hex })),

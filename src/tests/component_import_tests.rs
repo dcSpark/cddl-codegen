@@ -686,16 +686,18 @@ fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
          \"consumer/component\", \"collections/rust\", \"collections/component\"]\n",
     )
     .unwrap();
-    // The rust crates' `cdylib` output exists for wasm-bindgen's `wasm32-unknown-unknown` target;
-    // the guest consumes the rlib, and asking the wasip2 linker for a cdylib is not what this gate
-    // is about. Same narrowing the single-crate build smoke does, for the same reason.
+    // The emitted contract, asserted rather than arranged: all three crates generate component-only
+    // (`--wasm=false`), which the tool emits rlib-only — the guest links the rlib, and the cdylib
+    // exists only for wasm-bindgen's `wasm32-unknown-unknown` target. Same assertion the
+    // single-crate build smoke makes, for the same reason.
     for lib in ["dep", "consumer", "collections"] {
         let manifest = root.join(lib).join("rust/Cargo.toml");
-        let narrowed = std::fs::read_to_string(&manifest).unwrap().replace(
-            "crate-type = [\"cdylib\", \"rlib\"]",
-            "crate-type = [\"rlib\"]",
+        let manifest_text = std::fs::read_to_string(&manifest).unwrap();
+        assert!(
+            manifest_text.contains("crate-type = [\"rlib\"]"),
+            "{lib}: a component-only tree must be emitted rlib-only, not narrowed by hand:\n\
+             {manifest_text}"
         );
-        std::fs::write(&manifest, narrowed).unwrap();
     }
 
     let mut failure = None;

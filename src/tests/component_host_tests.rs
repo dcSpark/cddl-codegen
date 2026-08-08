@@ -195,15 +195,17 @@ fn component_host_behavior() {
             "[workspace]\nresolver = \"3\"\nmembers = [\"rust\", \"component\", \"host\"]\n",
         )
         .unwrap();
-        // The rust crate's `cdylib` output exists for wasm-bindgen's `wasm32-unknown-unknown`
-        // target; asking the wasip2 linker for it is not something the component face needs (the
-        // guest consumes the rlib) and `wasm-component-ld` crashes on it for some specs.
+        // The emitted contract, asserted rather than arranged: a component-only tree
+        // (`--wasm=false` above) is narrowed to `crate-type = ["rlib"]` by the tool itself — the
+        // guest links the rlib, and the cdylib exists only for wasm-bindgen's
+        // `wasm32-unknown-unknown` target.
         let rust_manifest = out.join("rust/Cargo.toml");
-        let narrowed = std::fs::read_to_string(&rust_manifest).unwrap().replace(
-            "crate-type = [\"cdylib\", \"rlib\"]",
-            "crate-type = [\"rlib\"]",
+        let manifest_text = std::fs::read_to_string(&rust_manifest).unwrap();
+        assert!(
+            manifest_text.contains("crate-type = [\"rlib\"]"),
+            "{label}: a component-only tree must be emitted rlib-only, not narrowed by hand:\n\
+             {manifest_text}"
         );
-        std::fs::write(&rust_manifest, narrowed).unwrap();
 
         // INSIDE the hashed root, before the key is taken — see this module's header.
         copy_tree(Path::new("tests/component-host/host"), &out.join("host"));
