@@ -259,7 +259,14 @@ own content INTO generated files, so a harness-written emission is indistinguish
 generator-written one. One entry was retracted on exactly that (2026-08-07): its "greppable in the
 fixture trees" emission defect — an unused `use serialization::*;` — was such an append, and a
 fresh-generation probe found the generator emits that glob nowhere. The retraction record is in
-`tests/TESTING_ROADMAP.md`'s unused-imports entry.
+`tests/TESTING_ROADMAP.md`'s unused-imports entry. Two corollaries, each learned from a shipped
+imprecision: a verified remedy's MECHANISM gloss is part of the claim — write only what the probe
+executed (a 2026-08 entry glossed its executed rename-the-rule remedy as "`@name` renames a rule",
+which the parser refuses; the gloss outlived the entry into a delegation spec before a parse probe
+caught it) — and edits to this section delete or move entries WHOLE, bold header through final
+line (a partial deletion once merged the following entry's body into the previous one's
+continuation lines, headerless and invisible as an entry; no lint can tell that merge from a long
+entry, so the atomicity is the rule).
 
 - **A group RULE whose body carries multiple group choices is refused with two verified remedies —
   the honoring design (a choice of bodies) is the missing capability, not the guard.**
