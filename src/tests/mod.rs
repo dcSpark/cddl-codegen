@@ -21,6 +21,7 @@ pub(crate) mod component_parity_tests;
 pub(crate) mod component_tests;
 pub(crate) mod config_tests;
 pub(crate) mod declared_spelling_tests;
+pub(crate) mod decode_reject_reason_tests;
 pub(crate) mod dsl_position_tests;
 pub(crate) mod extern_companions_tests;
 pub(crate) mod extern_import_tests;
