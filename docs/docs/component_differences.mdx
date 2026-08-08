@@ -445,15 +445,16 @@ about a component; check its version before believing it. This project's own gat
 to an ambient binary for that reason: `component_wit_validates` uses in-process `wit-parser` /
 `wit-component` / `wasmparser` pinned at the floor.
 
-## Known limitation: the `wasm32-wasip2` cdylib link crash
+## The rust crate's `crate-type` on this face
 
-The generated `rust/Cargo.toml` declares `crate-type = ["cdylib", "rlib"]` for the wasm face's sake,
-and on `wasm32-wasip2` that `cdylib` can crash the linker in the rust sysroot with a SIGSEGV inside
-`wasm-component-ld`/LLD. It is spec-dependent, it is not a diagnostic about your spec, and building
-only the `component/` crate does not avoid it. The fix — narrowing the rust crate to
-`crate-type = ["rlib"]` in the consuming workspace — and the exact failure signature are documented
-on the [`--component` flag](command_line_flags.mdx), which is where a user turning this face on
-meets it; that account is the single source for it and is not restated here.
+A component-only tree (`--component=true --wasm=false`) is emitted with
+`crate-type = ["rlib"]`: the wasip2 guest links the rust crate as an `rlib`, and the `cdylib` exists
+only for the wasm face's `wasm32-unknown-unknown` build. A tree generated with **both** faces on
+keeps the `cdylib` the wasm face needs, and on `wasm32-wasip2` that `cdylib` can crash the linker in
+the rust sysroot with a SIGSEGV inside `wasm-component-ld`/LLD — so such a workspace is narrowed by
+hand before a wasip2 build. The posture table, the exact failure signature and the hand narrowing are
+documented on the [`--component` flag](command_line_flags.mdx), which is where a user turning this
+face on meets it; that account is the single source for it and is not restated here.
 
 ## Known limitation: shapes whose glue does not yet compile
 
@@ -723,7 +724,8 @@ underlying feature is exercised elsewhere:
 ## Binary size
 
 Measured on this project's own generated output under rustc 1.96.1, `--target wasm32-wasip2`,
-`[profile.release] opt-level = "s"`, with the rust crate narrowed to `crate-type = ["rlib"]`:
+`[profile.release] opt-level = "s"`, over a component-only tree (whose rust crate is emitted
+`crate-type = ["rlib"]`):
 
 | Spec | Component `.wasm` | With `[profile.release] strip = true` |
 |---|---|---|
