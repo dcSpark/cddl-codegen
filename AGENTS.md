@@ -273,7 +273,11 @@ Rules:
   same toolchain pin" actually ran stable 1.97.1, and the false all-clear it produced shipped in
   a committed doc for a day before a follow-up probe (whose stack dump happened to print the
   toolchain path) caught it. For any claim naming the pin, build with
-  `rustup run <pin> cargo ...` or from inside the repo tree.
+  `rustup run <pin> cargo ...` or from inside the repo tree. Nuance, measured: a cargo spawned
+  FROM the repo's own `cargo test` stays pinned even in a scratch cwd (the rustup proxy exports
+  `RUSTUP_TOOLCHAIN` down the process tree) — the exposed spawns are those whose env lacks it,
+  i.e. anything shell- or bun-launched (verify.ts's nested cargo is the known instance;
+  tests/TESTING_ROADMAP.md item "Pin the toolchain of verify.ts's nested cargo").
 - **Check `free` as well as `df` before launching a tier, and treat PEAK RESOURCE as the thing to
   bound — not gate count.** The quantity a tier must keep under the machine's memory is the product
   `(gates in flight) × (rustc per gate) × (per-rustc resident set)`, and **no factor of it may scale
