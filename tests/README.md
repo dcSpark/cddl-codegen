@@ -4333,9 +4333,9 @@ It exists because nothing else can reach that breadth.
 `integration_tests::feature_corpus_compiles` structurally cannot: it hardcodes its crate list to the
 rust and wasm trees and runs a HOST `cargo check` with no `--target`, so the wasip2 component crate
 is invisible to it — which is why the `ALL_PROFILES` component row filters OUT of that gate rather
-than flowing into it. `component_tests::component_crate_builds_for_wasm32_wasip2` compiles five
-representative fixtures; this asks the same question of all of them, and the answer differs, which
-is the whole argument for it.
+than flowing into it. `component_tests::component_crate_builds_for_wasm32_wasip2` compiles its
+`BUILD_SMOKE_FIXTURES` set of representative fixtures; this asks the same question of all of them,
+and the answer differs, which is the whole argument for it.
 
 **`check`, not `build`.** The link is already asserted on the representative fixtures by the build
 smoke; the class corpus breadth catches is glue naming a trait, method or macro the bindings never
