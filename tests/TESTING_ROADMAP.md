@@ -2912,6 +2912,19 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   scopes, not one error. (`Cli`'s own doc comment documents the parse-default quirk; this watch is
   the probe-discipline consequence.)
 
+- **A failing snapshot test surfaces ONE mismatch per test run — the first assertion that panics —
+  so a "N snapshots changed" count read off a single failure list understates multi-snapshot
+  churn.** Proven 2026-08-08 (the component fallibility delivery): a `whole_program` fixture
+  snapshots several files per profile, the run stored `.snap.new` only for the first mismatching
+  assertion of each failing test, and the full churn (4 files across 2 fixtures — glue AND
+  `world.wit` per fixture) was visible only by checking the still-committed twins for the stale
+  content the fix must move (the committed `world.wit` snaps still carried infallible
+  constructors). A reviewer ruling on churn SCOPE from the stored `.snap.new` set alone would have
+  ruled on half of it. Working rule: before ruling on snapshot churn, derive the expected-change
+  set from the CHANGE (which emitted surfaces the edit touches, per fixture), check each expected
+  twin's committed content, and iterate run-and-bless to exhaustion — the suite's final fully-green
+  run is the only complete enumeration; one failure list never is.
+
 - **An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain
   artifact until proven otherwise — and "fails identically on the baseline binary" is not that
   proof, because an environmental failure is binary-independent by construction.** Proven
