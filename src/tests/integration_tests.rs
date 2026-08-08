@@ -16192,11 +16192,12 @@ fn extern_wrapper_index_named_rule_reference_unifies_with_dep() {
 ///   lists MapU64ToText too. The screen inside `register_deferred_non_empty_map_source` is what
 ///   keeps a dep import out of this case; without it the alias and the import contend for one name.
 /// * REJECT set over dep-owned elements (`reject_foos = [* idx_foo] ; @duplicates reject`): the
-///   participation fact, asserted rather than assumed — a reject wrapper can never defer (its
-///   emitter reaches no defer seam), so it is minted locally AND recorded in this crate's own
-///   collection index, while its loose `IdxFooList` source IS deferred and its import routed at the
-///   rule's own emission scope (nothing else in the spec spells a loose `[* idx_foo]`, so that
-///   routing is the only thing that can produce the `use`).
+///   participation fact, asserted rather than assumed — the reject emitter consults the same defer
+///   seam as every other wrapper family, and this rule's ident is NOT the structural name
+///   (`IdxFooOrderedSet`), so the ident screen makes it the consumer's own class: minted locally AND
+///   recorded in this crate's own collection index, while its loose `IdxFooList` source IS deferred
+///   and its import routed at the rule's own emission scope (nothing else in the spec spells a loose
+///   `[* idx_foo]`, so that routing is the only thing that can produce the `use`).
 #[test]
 fn extern_wrapper_index_deferred_try_from_sources() {
     let (export, gen_stderr) =
@@ -16247,11 +16248,13 @@ fn extern_wrapper_index_deferred_try_from_sources() {
         "a sole-owned loose shape must never import the dep's class of the same name:\n{wasm_mod}"
     );
 
-    // Reject set: local wrapper + own-index row (it can never defer), deferred loose source.
+    // Reject set: local wrapper + own-index row (its ident is not the structural name, so the
+    // defer seam's ident screen declines), deferred loose source.
     assert!(wasm_mod.contains("pub struct RejectFoos"));
     assert!(
         wasm_index.contains("RejectFoos"),
-        "a reject set can never defer, so it is always recorded in this crate's own index"
+        "a reject rule whose ident is not the structural name is the consumer's own class, so it is \
+         recorded in this crate's own index"
     );
     assert!(
         !wasm_mod.contains("pub struct IdxFooList"),
@@ -16376,8 +16379,8 @@ fn extern_wrapper_index_local_mint_under_indexed_name_warns() {
 /// Reachability of the flavored hint is the premise this gate also pins: an all-extern-of-one-dep
 /// `@duplicates preserve` REST ROW is a defer candidate, because the rest-row table mint runs through
 /// `try_defer_wrapper` exactly like a declared table's does. (The array-side `@duplicates reject`
-/// twin has no such path — its ordered-set mint consults no defer seam — so no reject hint exists to
-/// pin.)
+/// twin reaches the same seam, so its hint is reachable too; this gate pins the MAP flavor, whose
+/// marker is the one whose loss silently swaps the container for a keyed table of the same name.)
 ///
 /// End to end, not by eyeball: the rule line is taken from stderr VERBATIM, pasted into a dep spec,
 /// and the dep's own collection index must gain the FLAVORED name backed by `PairMap`. The

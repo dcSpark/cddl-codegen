@@ -19,9 +19,11 @@ text_table = { * uint => tstr }
 
 nb_text_table = { + uint => tstr }
 
-; (3) REJECT set over dep-owned elements. A `@duplicates reject` wrapper can never defer (its
-;     emitter consults no defer seam), so `RejectFoos` is minted locally and recorded in this
-;     crate's own collection index — while its loose `try_from` source IS the dep-indexed
+; (3) REJECT set over dep-owned elements, under a rule ident that is NOT the structural name. The
+;     reject emitter consults the same defer seam as every other wrapper family, and its ident
+;     screen is what decides this cell: the structural name of `[* idx_foo]` under reject is
+;     `IdxFooOrderedSet`, so `RejectFoos` is the consumer's OWN class — minted locally and recorded
+;     in this crate's own collection index — while its loose `try_from` source IS the dep-indexed
 ;     `IdxFooList`, which defers. No other rule here spells a loose `[* idx_foo]`, so the source's
 ;     `use` can come ONLY from the reject rule's own emission-scope routing.
 reject_foos = [* idx_foo] ; @duplicates reject
