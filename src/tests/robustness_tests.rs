@@ -8098,63 +8098,128 @@ fn generic_arg_no_occurrence_table_rejects_gracefully() {
         .expect("the advertised `+` non-empty table spelling must generate through a generic arg");
 }
 
-/// Incremental choice extension (`/=` type-choice, `//=` group-choice) that EXTENDS an
-/// already-defined identifier is rejected gracefully: `parse_rule` re-registers the identifier on
-/// each statement, so the LAST definition wins and every earlier arm is silently dropped
-/// (`a = int` / `a /= tstr` generated a `tstr`-only type, discarding the `int` base arm — a
-/// decoder that rejects spec-valid CBOR, invisible to round-trip tests). This pins the graceful
-/// rejection, that the message names the operator and an actionable remedy, that the advertised
-/// remedy spellings actually generate, and the boundary the guard must preserve: a LONE alternate
-/// rule whose identifier is its FIRST definition (the shelley precedent — valid CDDL, equivalent
-/// to `=`) must keep generating.
+/// Write `spec` to a uniquely-named temp `.cddl` file and generate from it, returning the file map
+/// or the rejection text. Shared by the incremental-extension pin below and the equivalence test
+/// beside it so the two cannot drift over how a one-file spec is driven.
+fn run_incremental_extension_spec(
+    spec: &str,
+    tag: &str,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_incr_choice_{}_{}.cddl",
+        tag,
+        std::process::id()
+    ));
+    std::fs::write(&path, spec).unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "incr_choice_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+    std::fs::remove_file(&path).ok();
+    result
+}
+
+/// The extension shapes that CANNOT be merged into one rule are rejected gracefully, in BOTH
+/// statement orders.
+///
+/// Ordering is the axis this pins hardest, because the guard's older per-repeat form silently lost
+/// it. That form asked whether the SECOND statement carried an alternate flag, so writing the
+/// extension FIRST (`g //= (2: tstr)` then `g = (1: int)`) left a flagless `=` statement as the
+/// repeat: the check passed, and `parse_rule` re-registered the identifier and kept only the last
+/// arm — a group modelling one of its two arms, at exit 0, reachable by swapping two lines. The
+/// guard now classifies the name's whole STATEMENT SET, which makes order irrelevant by
+/// construction; these vectors hold that both ways round.
+///
+/// `//=` stays refused in every order: honoring it means merging the arms into a plain-group rule
+/// carrying 2+ group choices, which is the shape `multi_choice_group_def_rejection` refuses
+/// (`mark_plain_group` asserts a single group choice). The `/=` half is no longer here — it is
+/// HONORED, and `incremental_type_choice_extension_equals_the_folded_spelling` pins that.
+///
+/// Each refusal names the rule and an actionable remedy, and each advertised remedy is asserted to
+/// generate. The boundary the guard must preserve is pinned too: a LONE alternate rule whose
+/// identifier is its FIRST definition (the shelley precedent — valid CDDL, equivalent to `=`) keeps
+/// generating.
 #[test]
 fn incremental_choice_extension_rejects_gracefully() {
-    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
-        let path = std::env::temp_dir().join(format!(
-            "cddl_codegen_incr_choice_{}_{}.cddl",
-            tag,
-            std::process::id()
-        ));
-        std::fs::write(&path, spec).unwrap();
-        let cli = Cli::parse_from([
-            "cddl-codegen",
-            "--input",
-            path.to_str().unwrap(),
-            "--output",
-            "incr_choice_unused",
-        ]);
-        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
-        std::fs::remove_file(&path).ok();
-        result
+    let run = run_incremental_extension_spec;
+
+    // `//=` in BOTH orders. The base-first spelling was always refused; the extension-first one
+    // exited 0 with `tcpopts` modelling only `(1: int)`.
+    for (spec, tag) in [
+        (
+            "tcpopts = (1: int)\ntcpopts //= (2: tstr)\nt = [tcpopts]\n",
+            "group_ext_base_first",
+        ),
+        (
+            "tcpopts //= (2: tstr)\ntcpopts = (1: int)\nt = [tcpopts]\n",
+            "group_ext_ext_first",
+        ),
+    ] {
+        let group_ext = run(spec, tag).expect_err(
+            "`//=` extending an already-defined group must reject in EITHER order (silent \
+             arm-drop to the last is wrong)",
+        );
+        assert!(
+            group_ext.contains("//=") && group_ext.contains("rule `tcpopts`"),
+            "group-choice extension rejection should name the operator and the rule, got: {group_ext}"
+        );
+        assert!(
+            group_ext.contains("t = [ tcpopts_a // tcpopts_b ]"),
+            "group-choice extension rejection should advertise the use-site remedy, got: {group_ext}"
+        );
     }
 
-    // `/=` extending an already-defined type: Err naming `/=` and the fold remedy.
-    let type_ext = run("a = int\na /= tstr\n", "type_ext").expect_err(
-        "`/=` extending an already-defined type must reject (silent arm-drop to the last is wrong)",
-    );
-    assert!(
-        type_ext.contains("/=") && type_ext.contains("rule `a`"),
-        "type-choice extension rejection should name the operator and the rule, got: {type_ext}"
-    );
-    assert!(
-        type_ext.contains("a = int / tstr") || type_ext.contains("<arm1> / <arm2>"),
-        "type-choice extension remedy should advertise folding into one type-choice rule, got: {type_ext}"
-    );
+    // MIXED kind — one name defined as both a type and a group — in both orders. There is no single
+    // rule the statements could merge into, so this is a refusal rather than a merge.
+    for (spec, tag) in [
+        ("a = (1: int)\na /= tstr\nt = [a]\n", "mixed_group_first"),
+        ("a /= tstr\na = (1: int)\nt = [a]\n", "mixed_type_first"),
+    ] {
+        let mixed = run(spec, tag)
+            .expect_err("a name defined as both a TYPE and a GROUP must reject in EITHER order");
+        assert!(
+            mixed.contains("rule `a`") && mixed.contains("TYPE") && mixed.contains("GROUP"),
+            "mixed-kind rejection should name the rule and both statement kinds, got: {mixed}"
+        );
+        assert!(
+            mixed.contains("a = <arm1> / <arm2>") && mixed.contains("t = [ a_a // a_b ]"),
+            "mixed-kind rejection should advertise both remedies, got: {mixed}"
+        );
+    }
 
-    // `//=` extending an already-defined group: the analogue.
-    let group_ext = run("tcpopts = (1: int)\ntcpopts //= (2: tstr)\n", "group_ext").expect_err(
-        "`//=` extending an already-defined group must reject (silent arm-drop to the last is wrong)",
-    );
-    assert!(
-        group_ext.contains("//=") && group_ext.contains("rule `tcpopts`"),
-        "group-choice extension rejection should name the operator and the rule, got: {group_ext}"
-    );
+    // GENERICS — on the base statement and on the extension statement. The merged body would have
+    // to substitute arguments into arms declared under different parameter lists.
+    for (spec, tag) in [
+        ("a<t> = [t]\na /= tstr\nx = a<int>\n", "generic_base"),
+        ("a = int\na<t> /= [t]\nx = a<int>\n", "generic_ext"),
+        ("a<t> /= [t]\na = int\nx = a<int>\n", "generic_ext_first"),
+    ] {
+        let generic = run(spec, tag).expect_err(
+            "incremental extension involving a GENERIC rule must reject in EITHER order",
+        );
+        assert!(
+            generic.contains("rule `a`") && generic.contains("GENERIC"),
+            "generic extension rejection should name the rule and the generic cause, got: {generic}"
+        );
+        assert!(
+            generic.contains("a_a<t> = [t]") && generic.contains("a = <arm1> / <arm2>"),
+            "generic extension rejection should advertise both remedies (use-site choice over \
+             named rules, and folding into a non-generic type choice), got: {generic}"
+        );
+    }
 
-    // Boundary: a LONE `/=` rule (first definition of `b`) is valid CDDL and must keep generating.
+    // Boundary: a LONE alternate rule (first definition of the name) is valid CDDL and must keep
+    // generating — for both operators.
     run("b /= tstr\n", "lone_type_alt")
         .expect("a lone `/=` rule (initial definition) must keep generating (shelley precedent)");
+    run("g //= (1: int)\nt = [g]\n", "lone_group_alt")
+        .expect("a lone `//=` rule (initial definition) must keep generating");
 
-    // Remedy-works: the advertised folded/restructured spellings generate ok.
+    // Remedy-works: every advertised spelling generates.
     run("a = int / tstr\n", "type_fold")
         .expect("the folded type-choice remedy `a = int / tstr` must generate");
     run(
@@ -8162,6 +8227,162 @@ fn incremental_choice_extension_rejects_gracefully() {
         "group_usesite",
     )
     .expect("the use-site group-choice remedy `t = [ grpA // grpB ]` must generate");
+    run("a_a<t> = [t]\nx = a_a<int> / tstr\n", "generic_usesite").expect(
+        "the generic remedy — each arm its own named rule, chosen at the use site — must generate",
+    );
+}
+
+/// **The equivalence invariant.** An incremental `/=` chain generates BYTE-IDENTICAL output to the
+/// folded type-choice rule its statements spell out.
+///
+/// This is the whole contract of `merge_incremental_type_choice_extensions`, and stating it as
+/// byte-identity rather than as a list of expected outputs is what makes it cheap to keep true: the
+/// merge produces one `TypeRule` holding every arm, so from `ParentVisitor` onward there is no
+/// incremental path at all — every downstream face (serialization, wasm, json, preserve-encodings,
+/// the extern-interface export) inherits type-choice behaviour it already had, and cannot acquire a
+/// separate incremental behaviour to drift.
+///
+/// Arm order is STATEMENT source order, carrier first — so the extension-FIRST spelling
+/// `a /= tstr` + `a = int` is `a = tstr / int`, NOT `a = int / tstr`. The `=` statement is not
+/// promoted to the front: a reader's arm order is the order on the page. That vector is the one the
+/// ordering hole made reachable (it used to exit 0 as an `int`-only type), so it is pinned here as
+/// an equality against the folded spelling with the arms in that order.
+#[test]
+fn incremental_type_choice_extension_equals_the_folded_spelling() {
+    let run = run_incremental_extension_spec;
+    let generate = |spec: &str, tag: &str| {
+        run(spec, tag).unwrap_or_else(|e| panic!("`{spec}` must generate, got rejection: {e}"))
+    };
+
+    for (what, incremental, folded) in [
+        (
+            "base + extension",
+            "a = int\na /= tstr\n",
+            "a = int / tstr\n",
+        ),
+        // The P4 ordering vector: arms follow STATEMENT order, so the base arm lands LAST.
+        (
+            "extension first",
+            "a /= tstr\na = int\n",
+            "a = tstr / int\n",
+        ),
+        (
+            "three-statement chain",
+            "a = int\na /= tstr\na /= bytes\n",
+            "a = int / tstr / bytes\n",
+        ),
+        (
+            "extension statement carrying two arms",
+            "a = int\na /= tstr / bytes\n",
+            "a = int / tstr / bytes\n",
+        ),
+        // The Option collapse reached through an extension: two arms, one of them `null`, so the
+        // merged rule takes `parse_type_choices`' optional-inner path exactly as the folded one does.
+        (
+            "null collapse via extension",
+            "a = int\na /= null\n",
+            "a = int / null\n",
+        ),
+        (
+            "tagged-arm base",
+            "a = #6.1(int)\na /= tstr\n",
+            "a = #6.1(int) / tstr\n",
+        ),
+        // `@name` on an extension arm names the VARIANT that arm becomes — the non-last-arm
+        // convention applies to the merged rule unchanged, because the merged arm list IS the
+        // folded one.
+        (
+            "@name on an extension arm",
+            "a = int\na /= tstr ; @name Textual\n",
+            "a = int / tstr ; @name Textual\n",
+        ),
+        // A RULE-position directive rides the LAST arm's trailing comment, which after the merge is
+        // the LAST STATEMENT's last arm.
+        (
+            "rule-position directive on the final statement",
+            "a = int\na /= tstr ; @no_json_schema_export\n",
+            "a = int / tstr ; @no_json_schema_export\n",
+        ),
+        // Duplicate-arm parity: the merged rule hits the same drop-and-warn path as the folded one
+        // (the warning goes to stderr; what is pinned here is that the OUTPUT agrees).
+        (
+            "duplicate arm via extension",
+            "a = int\na /= int\n",
+            "a = int / int\n",
+        ),
+        // The RFC socket/plug idiom: `$a` is its own AST-level name (distinct from `a`), so a plug
+        // chain merges exactly like a plain one. This is the idiom `/=` exists for.
+        (
+            "socket plug chain",
+            "$a /= int\n$a /= tstr\nx = [$a]\n",
+            "$a = int / tstr\nx = [$a]\n",
+        ),
+    ] {
+        let tag = what.replace([' ', '-', '@'], "_");
+        let incremental_files = generate(incremental, &format!("inc_{tag}"));
+        let folded_files = generate(folded, &format!("fold_{tag}"));
+        assert_eq!(
+            incremental_files, folded_files,
+            "{what}: the incremental spelling must generate byte-identically to the folded one\n\
+             incremental:\n{incremental}\nfolded:\n{folded}"
+        );
+    }
+}
+
+/// Cross-scope ownership: a `/=` extension written in a DIFFERENT input file contributes arms to
+/// the rule, and the CARRIER statement's file owns the emitted type.
+///
+/// Directory input gives each file its own module scope, so "which scope owns the merged type" is a
+/// real question the merge has to answer rather than a detail — and the answer is the first
+/// statement's, with the extension file contributing nothing of its own. Pinned as byte-identity
+/// against the folded rule written in the base file with an EMPTY sibling, which is the same file
+/// set (the file count decides whether scopes are emitted at all, so an unmatched set would compare
+/// two different layouts).
+#[test]
+fn incremental_type_choice_extension_across_files_is_owned_by_the_base_file() {
+    fn generate(files: &[(&str, &str)], tag: &str) -> std::collections::BTreeMap<String, String> {
+        let dir = std::env::temp_dir().join(format!(
+            "cddl_codegen_incr_choice_dir_{}_{}",
+            tag,
+            std::process::id()
+        ));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, content) in files {
+            std::fs::write(dir.join(name), content).unwrap();
+        }
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            dir.to_str().unwrap(),
+            "--output",
+            "incr_choice_dir_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_dir_all(&dir).ok();
+        result.unwrap_or_else(|e| panic!("`{tag}` must generate, got rejection: {e}"))
+    }
+
+    let split = generate(
+        &[
+            ("base.cddl", "a = int\nuse = [a]\n"),
+            ("ext.cddl", "a /= tstr\n"),
+        ],
+        "split",
+    );
+    let folded = generate(
+        &[
+            ("base.cddl", "a = int / tstr\nuse = [a]\n"),
+            ("ext.cddl", "\n"),
+        ],
+        "folded",
+    );
+    assert_eq!(
+        split, folded,
+        "a `/=` extension in another file must contribute arms only — the base file's scope owns \
+         the merged type, so the split spelling must generate byte-identically to the folded rule \
+         written in the base file"
+    );
 }
 
 /// A bareword map/array key that is a Rust keyword (`{ if: uint }`, `[if: uint]`, `{ true: uint }`)

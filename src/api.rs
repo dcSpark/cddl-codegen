@@ -815,7 +815,7 @@ pub fn with_types<R>(
     // Note: we use the checked parse entry (validates that every referenced type/group name is defined)
     //       so an undefined reference is a graceful error here rather than downstream panic during IR build
     //       (i.e. we don't use the unchecked `cddl_from_str`)
-    let cddl = match cddl::ast::CDDL::from_slice(input_files_content.as_bytes()) {
+    let mut cddl = match cddl::ast::CDDL::from_slice(input_files_content.as_bytes()) {
         Ok(cddl) => cddl,
         // Staleness diagnostic: the checked parse validates every referenced type/group name is
         // defined, so a consumer referencing an ident absent from a dep's export fails HERE with the
@@ -838,6 +838,15 @@ pub fn with_types<R>(
     {
         return Err(msg.into());
     }
+    // Incremental type-choice extension (`a = int` + `a /= tstr`) is resolved HERE, at the AST
+    // level: the extension statements' arms are appended to the first statement's and the
+    // extension statements are removed, leaving one type rule indistinguishable from the folded
+    // spelling. Placed between the refusal above and `ParentVisitor::new` below for two reasons the
+    // seam alone gives: the refusal reads the SOURCE BUFFER through spans, so it must see the
+    // un-spliced rule set (a splice does not edit the buffer, so the moved arms' spans stay valid
+    // for it either way), and the parent visitor — built next — is therefore constructed over the
+    // MERGED AST, so parent identity never sees two rules with one name.
+    parsing::merge_incremental_type_choice_extensions(&mut cddl);
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     // The IR build runs in a LOOP because one of its inputs is decided from its own OUTPUT: the
     // recursive-type boundary (`crate::recursion_boundary`) classifies the finalized IR's cycles,
@@ -872,11 +881,17 @@ pub fn with_types<R>(
         // where they enter and abort through the normal rejection channel. Because a reserved name can
         // also be REFERENCED by another rule (a reference reaches `RustIdent::new` too), we surface the
         // rejection immediately rather than after IR build — nothing may proceed to the assert.
-        // Track identifiers already seen in source order so a `/=`/`//=` rule that EXTENDS an
-        // already-defined identifier can be rejected loudly. Source-order iteration makes the "already
-        // defined" test (and thus determinism) inherent; the FIRST definition of a name via `/=` is
-        // valid CDDL (the shelley precedent) and must pass through, so we only reject on a repeat.
-        let mut seen_idents = std::collections::BTreeSet::new();
+        //
+        // A name with more than one defining statement that the merge pass above did NOT combine —
+        // a `//=` group-choice extension, a mixed type/group pair, generics, or a plain `=`
+        // redefinition — is refused here, per NAME rather than per repeat statement. Keying on the
+        // whole statement set is what makes the refusal order-INDEPENDENT: the older per-repeat form
+        // read the second statement's own alternate flag, so writing the extension FIRST left a
+        // flagless `=` statement as the repeat and the whole check silently passed while `parse_rule`
+        // kept only the last arm. Between this and the merge, no repeated name reaches `parse_rule`.
+        for msg in parsing::repeated_rule_definition_rejections(&cddl) {
+            types.record_rejection(msg);
+        }
         for cddl_rule in cddl.rules.iter() {
             if rule_is_scope_marker(cddl_rule).is_some() {
                 continue;
@@ -913,15 +928,6 @@ pub fn with_types<R>(
             // with no reference to the rule anywhere — so refusing per RULE is what makes the
             // message land exactly once however many references exist.
             if let Some(msg) = parsing::multi_choice_group_def_rejection(cddl_rule) {
-                types.record_rejection(msg);
-            }
-            // Incremental choice extension (`a /= tstr`, `g //= (...)`): `parse_rule` re-registers the
-            // identifier on each statement, so the LAST definition wins and every earlier arm is
-            // silently dropped. Reject the EXTENSION (identifier already seen) loudly; the initial
-            // definition via `/=`/`//=` (identifier not yet seen) is valid CDDL and passes through.
-            if !seen_idents.insert(cddl_rule.name())
-                && let Some(msg) = parsing::incremental_choice_extension_rejection(cddl_rule)
-            {
                 types.record_rejection(msg);
             }
         }

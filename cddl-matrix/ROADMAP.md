@@ -297,24 +297,6 @@ line (a partial deletion once merged the following entry's body into the previou
 continuation lines, headerless and invisible as an entry; no lint can tell that merge from a long
 entry, so the atomicity is the rule).
 
-- **An extension-FIRST statement ordering of `/=` / `//=` bypasses the incremental-extension guard —
-  exit 0, and every arm but the LAST statement's is silently dropped.** The guard
-  (`api::with_types`' seen-idents pre-scan + `parsing::incremental_choice_extension_rejection`)
-  classifies only the REPEAT statement's own alternate flag, so it fires only when the `/=`/`//=`
-  statement comes second. CDDL rule order is insignificant (RFC 8610 §3.1 — extending a name whose
-  base rule appears later is legal), and the pinned parser accepts these orderings while rejecting
-  a plain `=` redefinition outright ("rule ... is already defined" — probed), so both statements
-  reach `parse_rule`, which re-registers the ident per statement, last statement winning. Probed
-  harness-free 2026-08-08 at `b3cb12d0` (tool alone into a scratch dir, default profile,
-  `--wasm=false`, `--static-dir` spelled; parse-time behavior, toolchain-independent): `a /= tstr`
-  + `a = int` → exit 0, `pub type A = Int;` (the `tstr` arm gone); `g //= (2: tstr)` +
-  `g = (1: int)` + `t = [g]` → exit 0, `G { key_1: Int }` (the second branch gone); mixed-kind
-  `a /= tstr` + `a = (1: int)` + `t = [a]` → exit 0, `A { key_1: Int }`. This is the same
-  silent-arm-drop class the guard was built to close (its own doc comment names it); the fix must
-  key on the NAME having multiple defining statements, not on which statement carries the operator.
-  Scope note: probed exactly the orderings above; the ext-then-ext orderings (`/=` + `/=`,
-  `//=` + `//=`) DO reject today (the repeat carries the flag). Picked up by the in-progress
-  B3-021 cycle (2026-08-08), which closes it for both operators.
 - **A group RULE whose body carries multiple group choices is refused with two verified remedies —
   the honoring design (a choice of bodies) is the missing capability, not the guard.**
   `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
@@ -401,20 +383,19 @@ entry, so the atomicity is the rule).
   makes the number of DISTINCT problems unreadable — three or more copies of one message, or
   duplicates interleaved with genuinely different rejections — reported by someone reading that
   output to fix their own spec.
-- **Real incremental choice extension (`/=` type-choice, `//=` group-choice) is a candidate
-  feature.** Extending an already-defined ident is rejected gracefully at the `api.rs` pre-scan
-  (pinned by `incremental_choice_extension_rejects_gracefully`; the initial-definition-via-`/=`
-  spelling keeps generating), to avoid the silent last-wins arm drop the old parse produced. Real
-  support means merging the arms, and the plausible route is an AST-level pre-pass at that same
-  seam: concatenate the extension rules' `type_choices`/group choices into the base rule before
-  `parse_rule` ever sees them, so the existing `parse_type_choices` path does the rest. Known
-  hazards to design for (why the rejection shipped instead of a quick merge): the `ParentVisitor`
-  is built over the ORIGINAL AST, so synthesized/merged nodes must keep resolving for the
-  comment-DSL walks (`get_comment_after` ascends node identity); per-arm `RuleMetadata` from each
-  statement's comments must merge, not drop; and a cross-module extension (base and `/=` statement
-  in different scope-marked files) needs an ownership decision before it can generate. On
-  implementation: flip the `assignt.extend`/`assigng.extend` reject rows (verify.ts re-probe),
-  re-mint their decode rows, and retire the rejection + this entry.
+- **Incremental GROUP-choice extension (`//=`) stays refused; honoring it is blocked on the
+  choice-of-bodies design, not on this seam.** The type half is done — `merge_incremental_type_choice_extensions`
+  splices every `/=` statement's arms into the first statement's before `ParentVisitor` is built, so
+  a `/=` chain generates byte-identically to the folded type-choice rule
+  (`incremental_type_choice_extension_equals_the_folded_spelling`), in any statement order and
+  across input files. `//=` cannot take the same route: merging group-choice arms into a plain-group
+  rule mints exactly the multi-choice group-rule shape refused above, whose honoring design is that
+  entry's, not this one's. So the refusal here (`repeated_rule_definition_rejections`, pinned by
+  `incremental_choice_extension_rejects_gracefully`) is order-independent and will remain correct
+  however that design lands; what changes on the day it lands is that this refusal's arm is deleted
+  and the merge generalized to group statements. On implementation: flip the `assigng.extend` reject
+  row (verify.ts re-probe) and re-mint its decode rows. Reopening signal — it is the
+  choice-of-bodies entry's signal, since nothing here can move first.
 - **Honor non-final and `+`/bounded count-permitting occurrences on heterogeneous ARRAY-record
   fields.** A **final-position** `* t` after ≥1 fixed member is now an open-array rest tail
   (captured `Vec`, or dropped under `@ignore`; user doc: `docs/docs/output_format.mdx` § "Open

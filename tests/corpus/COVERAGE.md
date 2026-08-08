@@ -49,13 +49,13 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `assigng.extend` | ➖ | Incremental group-choice extension (//=) | incremental group-choice extension (//=) that extends an already-defined ident is rejected gracefully at generation — same silent last-wins drop as the type socket; a plain group rule cannot itself carry a group choice, so give each arm its own named group and select at the use site (`t = [ grpA // grpB ]`)  [`incremental_choice_extension_rejection`] |
+| `assigng.extend` | ➖ | Incremental group-choice extension (//=) | incremental group-choice extension (//=) is refused gracefully at generation, in EITHER statement order (the classification keys on the name's whole statement set, not on the repeat's own operator). Honoring it would merge the arms into a plain group rule carrying 2+ group choices — exactly the shape `mark_plain_group` asserts against — so it is blocked on the choice-of-bodies design rather than merely unbuilt; give each arm its own named group and select at the use site (`t = [ grpA // grpB ]`). Its type-side sibling `/=` IS honored: those statements merge into one type-choice rule  [`repeated_rule_definition_rejections`] |
 
 ### `assignt` (1)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `assignt.extend` | ➖ | Incremental type-choice extension (/=) | incremental type-choice extension (/=) that extends an already-defined ident is rejected gracefully at generation — silently dropping every arm but the last (only the final extension arm survives) generated a wrong type, so api.rs rejects the second definition; fold the arms into one rule (`a = int / tstr`) instead  [`incremental_choice_extension_rejection`] |
+| `assignt.extend` | ➖ | Incremental type-choice extension (/=) | cddl-codegen rejected at parse/lex (exit 1) — ⚠️ no rationale note yet (overlay gap) |
 
 ### `genericarg` (2)
 
@@ -434,7 +434,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 1. Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness).
 2. Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here).
 3. Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap.
-4. Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes).
+4. Socket NAMES aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. The `/=` half of the plug idiom IS honored: every `/=` statement for one name contributes its arms to a single type-choice rule, in statement order, generating byte-identically to the folded spelling (`tests/corpus/assignt_extend.cddl`; pinned by `incremental_type_choice_extension_equals_the_folded_spelling`). The `//=` group half stays refused gracefully — in either statement order — because merging its arms mints the multi-choice plain-group shape that is itself unsupported (see the assigng.extend note).
 5. Float works in every position under every profile, `--preserve-encodings` included: the CBOR head width (`0xf9`/`0xfa`/`0xfb`) is an `Option<cbor_event::Sz>` encoding variable, and a float window is enforced on the same value in both profiles. The corpus carries floats accordingly — `tests/corpus/optional_fixed_float.cddl` (an optional fixed FLOAT member, presence bit plus width) and `homogeneous_array.cddl`'s `float_holder` (per-element widths). Spec-anchored wire vectors live in the `golden_hex_preserve` / `golden_hex_canonical` KAT suites.
 6. Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A row whose generated code names USER-SUPPLIED items (the extern/raw-bytes sentinels, a @custom_serialize/@custom_deserialize pair) gets that code written for it rather than an exemption — the probe appends a name-parameterized definition from tests/def_templates/ into the crate roots and then runs the ordinary verdict on both faces plus, under the json profile, the emitted json-gen crate. Only a row whose missing piece is a whole OTHER CRATE stays exempt (see cddl-matrix/README.md § the execution-gate discussion).
 7. Gap — top-level fixed-value / null TYPES (`answer = 42`, `x = null`) have no standalone type representation, so the generator REJECTS them gracefully (not a panic), pinned by the `tests/matrix_reject/` expect-reject catalog (`tests/matrix_reject/prelude.null.cddl`, `tests/matrix_reject/type2.value.cddl`, `tests/matrix_reject/value.number.cddl`, `tests/matrix_reject/value.text.cddl`) via `robustness_tests::unsupported_construct_reject_catalog`. The same fixed values serialize fine as struct/array MEMBERS (`tests/corpus/fixed_bool_member.cddl`). A singleton-value type that materializes the constant is still a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
@@ -444,7 +444,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **123** — ✅ 67 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 24 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 97
+- Corpus fixtures: 98
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk
@@ -455,3 +455,6 @@ rows above); constructs whose support doesn't vary by role stay feature-axis (th
 top-level). The full role × feature picture — every construct the corpus exercises or the containment
 relation models, in every role — is rendered above in **§ Role × feature containment grid**, joined from
 the whole-corpus floor; that is where a cell nothing models shows up.
+
+**Overlay rationale gap (disclosed).** 1 unsupported feature(s) render ➖ with no rationale note —
+add a `[[note]]` (reason + code_anchor) to the overlay: `assignt.extend`.

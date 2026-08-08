@@ -1,0 +1,116 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for ExtFirst {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ExtFirst::Text {
+                text,
+                text_encoding,
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
+            ExtFirst::U64 {
+                uint,
+                uint_encoding,
+            } => serializer.write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding)),
+        }
+    }
+}
+
+impl Deserialize for ExtFirst {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                    })
+                }
+                cbor_event::Type::UnsignedInteger => {
+                    let (uint, uint_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    Ok(Self::U64 {
+                        uint,
+                        uint_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("ExtFirst"))
+    }
+}
+
+impl cbor_event::se::Serialize for Extended {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Extended::U64 {
+                uint,
+                uint_encoding,
+            } => serializer.write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding)),
+            Extended::Words {
+                words,
+                words_encoding,
+            } => serializer.write_text_sz(words, words_encoding.to_str_len_sz(words.len() as u64)),
+            Extended::Bytes {
+                bytes,
+                bytes_encoding,
+            } => serializer.write_bytes_sz(bytes, bytes_encoding.to_str_len_sz(bytes.len() as u64)),
+        }
+    }
+}
+
+impl Deserialize for Extended {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let (uint, uint_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    Ok(Self::U64 {
+                        uint,
+                        uint_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let (words, words_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Words {
+                        words,
+                        words_encoding,
+                    })
+                }
+                cbor_event::Type::Bytes => {
+                    let (bytes, bytes_encoding) = raw
+                        .bytes_sz()
+                        .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+                    Ok(Self::Bytes {
+                        bytes,
+                        bytes_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Extended"))
+    }
+}

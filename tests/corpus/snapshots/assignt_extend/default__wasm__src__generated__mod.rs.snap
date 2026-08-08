@@ -1,0 +1,168 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ExtFirst(pub(crate) cddl_lib::ExtFirst);
+
+#[wasm_bindgen]
+impl ExtFirst {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ExtFirst, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::ExtFirst::new_text(text))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::ExtFirst::new_uint(uint))
+    }
+
+    pub fn kind(&self) -> ExtFirstKind {
+        match &self.0 {
+            cddl_lib::ExtFirst::Text(_) => ExtFirstKind::Text,
+            cddl_lib::ExtFirst::U64(_) => ExtFirstKind::U64,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::ExtFirst::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::ExtFirst::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::ExtFirst> for ExtFirst {
+    fn from(native: cddl_lib::ExtFirst) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ExtFirst> for cddl_lib::ExtFirst {
+    fn from(wasm: ExtFirst) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ExtFirst> for ExtFirst {
+    fn as_ref(&self) -> &cddl_lib::ExtFirst {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ExtFirstKind {
+    Text,
+    U64,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Extended(pub(crate) cddl_lib::Extended);
+
+#[wasm_bindgen]
+impl Extended {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Extended, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::Extended::new_uint(uint))
+    }
+
+    pub fn new_words(words: String) -> Self {
+        Self(cddl_lib::Extended::new_words(words))
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self(cddl_lib::Extended::new_bytes(bytes))
+    }
+
+    pub fn kind(&self) -> ExtendedKind {
+        match &self.0 {
+            cddl_lib::Extended::U64(_) => ExtendedKind::U64,
+            cddl_lib::Extended::Words(_) => ExtendedKind::Words,
+            cddl_lib::Extended::Bytes(_) => ExtendedKind::Bytes,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::Extended::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_words(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::Extended::Words(words) => Some(words.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::Extended::Bytes(bytes) => Some(bytes.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Extended> for Extended {
+    fn from(native: cddl_lib::Extended) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Extended> for cddl_lib::Extended {
+    fn from(wasm: Extended) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Extended> for Extended {
+    fn as_ref(&self) -> &cddl_lib::Extended {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ExtendedKind {
+    U64,
+    Words,
+    Bytes,
+}

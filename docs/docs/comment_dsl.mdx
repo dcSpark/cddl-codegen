@@ -671,6 +671,30 @@ reorder could switch off several unrelated contracts at once. A single arm annot
 contract, and a reorder dropped both — the JSON half silently, the key half as a missing derive that
 `generated/key_demand_assertions.rs` at least names.
 
+#### Incremental extension chains
+
+A type choice written incrementally — one `/=` statement per arm, the socket/plug idiom described in
+[Incremental type-choice extension](current_capacities#incremental-type-choice-extension) — is combined into a single
+type-choice rule before any directive is read, so **everything above applies unchanged, to the
+combined arm list**:
+
+* the rule-position slot is the **last arm of the last statement** — the final line of the chain;
+* every arm keeps its own `@name` / `@doc`, naming and documenting the variant it becomes, wherever
+  in the chain it is written;
+* a rule-level directive on any earlier statement is the same **hard error** as on any other
+  non-last arm, with the same remedy: move it to the end of the chain.
+
+```cddl
+$currency /= "usd" ; @name dollars
+$currency /= "eur" ; @name euros
+$currency /= uint  ; @name code @custom_json
+```
+
+The consequence worth internalising is that **adding a statement to the chain moves the slot**.
+Appending a fourth `$currency /= …` line puts the rule position on *that* line, and the
+`@custom_json` above becomes a directive on a non-last arm — caught loudly, not silently dropped,
+but it is your edit that has to move it.
+
 The suppression covers `serde::Serialize`/`serde::Deserialize` and `schemars::JsonSchema`
 together — one decision, not two — so `--json-schema-export` never leaves a `JsonSchema` derive
 behind on a type whose JSON form you own. With `--preserve-encodings`, the `#[serde(skip)]`
