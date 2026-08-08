@@ -142,7 +142,7 @@ error: linking with `wasm-component-ld` failed: exit status: 1
 error: failed to invoke LLD: signal: 11 (SIGSEGV) (core dumped)
 ```
 
-That is a crash inside `wasm-component-ld`/LLD, not a diagnostic about your spec. It is **input-sensitive**: a multi-scope spec reproduced it under rustc 1.96.1 in July 2026, while several single-file specs built cleanly, and the same reproducer at the same toolchain pin no longer reproduces on a current dependency resolution — the linker input changed, not the crash class. Treat it as latent rather than fixed, and note that building only the `component/` crate does not reliably avoid it: cargo builds the `crate-type`s a path dependency declares.
+That is a crash inside `wasm-component-ld`/LLD, not a diagnostic about your spec. It is **current, deterministic, and knife-edge input-sensitive** (measured 2026-08-08 on one multi-scope spec, repeated links agreeing): the tool's current output crashes under rustc 1.96.1 (LLVM 22.1.2) and links clean under 1.97.1 (LLVM 22.1.6), while a mid-2026 vintage of the same generated crate flips exactly the other way — clean at 1.96.1, crash at 1.97.1. No toolchain and no emission vintage is safely clear of the class, so treat any single green link as luck rather than clearance. Building only the `component/` crate does not avoid it: cargo builds the `crate-type`s a path dependency declares.
 
 **If you generate with both faces on and build that workspace for `wasm32-wasip2`, narrow the rust crate by hand** — the tool cannot do it for you there, because the `cdylib` is load-bearing for the wasm face you also asked for:
 

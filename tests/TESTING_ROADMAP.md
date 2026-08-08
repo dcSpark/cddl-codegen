@@ -2539,14 +2539,18 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   (`component_corpus_compiles`) `cargo check`s the component package alone, over a rust crate it
   narrows by hand first — exactly what the `--component` flag doc prescribes for a both-faces
   consumer. Such a gate would assert a claim about the LINKER rather than about anything this tool
-  emits, and it needs a crash reproducer that holds: the July 2026 one
-  (`tests/component-multifile`'s spec, rustc 1.96.1) no longer crashes at the same toolchain pin
-  under a current dependency resolution, so a red-first leg has nothing to be red against and a
-  green one would assert only that today's resolution happens to link.
-  - **Reopening signal:** a consumer reporting the linker SIGSEGV from their own both-faces
-    workspace's wasip2 build. The flag doc names the exact failure signature, so the report arrives
-    pre-diagnosed, and it carries the one input this entry cannot supply itself — a spec plus a
-    resolution that reproduces.
+  emits, and that claim is red against a LIVE upstream LLD defect (measured 2026-08-08, each cell
+  deterministic across repeated links: the current emission's cdylib crashes rustc 1.96.1's LLD
+  (LLVM 22.1.2) and links clean on 1.97.1 (LLVM 22.1.6); the 2026-08-01-era emission flips exactly
+  the other way — so no pin choice gives the gate a green side to be red-FIRST against, and a
+  permanently-red gate asserts nothing a doc does not). The unfiled upstream report with both
+  reproducer recipes and the full matrix is the gitignored `draft/` LLD-crash note (conclusion and
+  numbers recorded here because that note is checkout-local).
+  - **Reopening signal:** an upstream LLD fix reaching the pinned toolchain (re-measure BOTH
+    matrix cells before believing it — a single green cell is what the 2026-08-08 correction was
+    shipped on), or a consumer reporting the linker SIGSEGV from their own both-faces workspace's
+    wasip2 build — the flag doc names the exact failure signature, so the report arrives
+    pre-diagnosed with the input that reproduces in their environment.
 
 - **Probe the component face's JS surface on the axes the JS-host gate left untouched.** The
   `component_jco` gate drives one jco version (1.26.1) and one node version (22) over the default
