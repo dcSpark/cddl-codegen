@@ -1468,32 +1468,38 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the no-occurrence-arrow rejection would have absorbed `tests/robustness/float_table_key{,_composite}.cddl`
   (their occur-less spellings matched the new guard before the float-key finalize check ever
   ran); the fixtures were respelled `*` and their headers document the pattern. The mechanical
-  layer, if the class recurs: extend the reject-catalog snapshots from bare labels to a stable
-  rejection-reason fingerprint per fixture (e.g. a distinctive message substring, as the decode
-  catalog's `expect_err` pins already do for decode errors), so a provenance swap flips the
-  snapshot loudly. Same recur-first policy as the invariant-softening/vacuity design rules below;
-  meanwhile the working rule for new rejection work is the float_table_key header comment: check
-  which existing reject fixtures the new guard can reach, and respell or reason-assert them.
-  **The class HAS recurred (2026-08-09), in a THIRD home neither catalog covers — the hand-derived
-  negative byte vectors in the executed fixture tests** (`tests/core/tests.rs` and its
-  preserve sibling): the inline-nested `.cbor` level-2 leftover vector shipped one byte off, so
-  decode failed on WRONG MAJOR TYPE before the leftover check the vector claimed to prove ever
-  ran — a bare `is_err()` passed for the wrong reason, invisible to every gate by construction
-  (the test is green), caught only by review re-deriving the bytes by hand. Same shape as the
-  catalog near-miss above: outcome right, provenance wrong, pinned boundary unexercised. The fix
-  set the pattern (fixed `890f8a72`): `unwrap_err()` plus a distinctive message substring
-  (`trailing data`, the same fingerprint idiom the decode catalog's `expect_err` pins use). The
-  recurrence makes the mechanical layer due for THIS home, and its shape is constrained by the
-  measured ground: the two files hold 117 + 62 bare `is_err()` sites overall but only 27 + 20
-  same-statement `from_cbor_bytes(..)…is_err()` sites (measured 2026-08-09), so the buildable
-  gate is scoped to the latter — (1) make the discriminated form the cheap one (a shared
-  assert-reject-reason helper in the fixture test files), then (2) a text-scan check over the
-  fixture tests holding the same-statement bare count at a committed RATCHET baseline (may only
-  decrease; red-first: adding one new bare site fails the scan; a 47-row allowlist would drown
-  where a ratchet floor stays readable — and the baseline row carries the observed-baseline-rot
-  caveat this file records separately). Residue stated plainly, same as the catalog fingerprint
-  accepts: a message substring discriminates failures whose messages DIFFER; two defects sharing
-  one message remain indistinguishable to it.
+  layer: extend the reject-catalog snapshots from bare labels to a stable rejection-reason
+  fingerprint per fixture (e.g. a distinctive message substring, as the decode catalog's
+  `expect_err` pins already do for decode errors), so a provenance swap flips the snapshot loudly.
+  Deferred because the catalogs' guard against it is a HAND step that has held so far — the working
+  rule the float_table_key header states: an author adding a parse-time guard checks which existing
+  reject fixtures it can reach, and respells or reason-asserts them. Reopening signal, on the
+  dimension where that hand step actually fails: **a reject-catalog fixture found exercising a
+  guard other than the one its header documents** — read off by whoever next re-derives a fixture's
+  rejection, and evidence that the check was skipped rather than merely tedious.
+  The same class in the EXECUTED fixture tests — the hand-derived negative byte vectors in
+  `tests/*/tests.rs` — is machinery, not a hand step, since 2026-08-09: `assert_decode_reject_reason`
+  (a per-file helper, spelled identically in each file because each is appended standalone into its
+  own generated crate) plus `decode_reject_reason_tests`, whose
+  `fixture_bare_decode_rejects_hold_at_their_ratchet_baseline` enumerates `tests/*/tests*.rs` by
+  `read_dir` and holds each file's undiscriminated site count at an exact per-file baseline — above
+  it names the new bare site and points at the helper, below it (or a stale row) says lower the row
+  in the same commit. Exact both directions rather than a ceiling with a note beside it, for the
+  reason the observed-baseline entry below records. The match rule is statement-scoped, not
+  line-scoped: these files are rustfmt-shaped, so a site wraps across lines the moment its byte
+  vector grows, and a line-scoped count would drop it for free (the two rules read the same files as
+  27+20 and 30+24 respectively). Two residues, stated as plainly as the catalog fingerprint's:
+  a message substring discriminates failures whose messages DIFFER, so two defects sharing one
+  message stay indistinguishable to it; and the ratchet counts SAME-STATEMENT sites only, so a
+  decode routed through a local closure — body holds the `from_cbor_bytes`, the `is_err()` is on the
+  call — is neither counted nor converted.
+  What is left there is volume, not design: **41 undiscriminated sites across 13 fixtures still
+  carry baseline rows** (largest `open-struct-map-e2e` at 12), each convertible exactly as
+  `tests/core` and `tests/preserve-encodings` were — derive the substring from the boundary the
+  vector claims, then confirm it against the message the runtime actually produces, since it is that
+  confirmation step, not the helper, that catches a vector rejecting for the wrong reason. Signal to
+  convert the rest rather than let the ratchet hold them: **that count rising**, or a wrong-reason
+  vector surfacing in any file that still has a row.
 - **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind
   gate branches) have untested first-use paths — six review-caught instances recorded, no
   machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents
