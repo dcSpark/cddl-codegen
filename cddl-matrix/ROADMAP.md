@@ -268,6 +268,37 @@ line (a partial deletion once merged the following entry's body into the previou
 continuation lines, headerless and invisible as an entry; no lint can tell that merge from a long
 entry, so the atomicity is the rule).
 
+- **A `.default`-carrying optional map member emits component glue that does not compile, at tool
+  exit 0 — the projection keeps the member optional while the rust struct stores it plain.**
+  Harness-free repro, the tool alone into a scratch dir:
+  `printf 'm = { a: uint, ? b: uint .default 0 }\n' > in.cddl`, then
+  `cargo run -q -- --input=in.cddl --output=out --component=true --wasm=false --static-dir <checkout>/static`
+  (exit 0), then a workspace root over `rust`+`component` and
+  `cargo check --target wasm32-wasip2` in `out/component` — exit 101 with
+  `error[E0599]: no method named 'as_ref' found for type 'u64' in the current scope` at
+  `component/src/generated/mod.rs` on `me.b.as_ref().map(|x| *x)`, and
+  `error[E0308]: mismatched types ... expected 'u64', found 'Option<u64>'` on
+  `self.0.borrow_mut().b = Some(b)`. Both sites are the same disagreement: the rust struct field for
+  a defaulted member is a plain `u64` (a default substitutes for an absent value, so the rust side
+  stores one unconditionally), while the WIT projection still renders the member as `option<u64>`
+  and the guest glue is written against that. What is probed is exactly that disagreement and
+  nothing further — no remedy mechanism is asserted here, because none has been executed. The
+  CLASS is not new: `component_tests`' `EXPECTED_COMPILE_FAIL` has held it since the corpus gate
+  found it on the hand-authored fixture `tests/corpus/default_value.cddl`. What is new is
+  independent reach and admissible evidence. Which probe establishes which half, with scope:
+  the corpus half comes from `component_corpus_compiles`, a `cargo check` over a committed fixture
+  tree — evidence this section's own rule does not accept for a generator-defect entry, because the
+  harness appends into generated files — so the class could not be ledgered here from it; the
+  repro above comes from the component build sweep's first full run over the committed decode
+  catalog (row `ctl.default`), re-run harness-free at `b01de637` under the pinned 1.96.1 toolchain
+  and `wit_bindgen` 0.57.1, component-only (`--wasm=false`) at default emission flags. Not probed:
+  other emission profiles, and the `.default` positions that do NOT reach it — a tag-wrapped inner
+  default (`tagged_default = #6.42(uint .default 5)`) builds clean, because the default is dropped
+  inside the wrapper rather than becoming a struct field at all. The sweep holds the row in
+  `cddl-matrix/verify.ts`'s `SWEEP_EXPECTED_BUILD_FAIL` under the id `ctl.default`, guarded both
+  ways: the entry failing to reproduce — the row building, or no longer generating — fails the
+  sweep as a stale expectation naming this entry, and an unlisted row that stops building fails as
+  a new finding. Closing the class retires the sweep entry, the corpus pin and this entry together.
 - **A group RULE whose body carries multiple group choices is refused with two verified remedies —
   the honoring design (a choice of bodies) is the missing capability, not the guard.**
   `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is

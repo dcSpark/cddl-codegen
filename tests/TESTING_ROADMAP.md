@@ -740,26 +740,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     `--binary-wrappers` passers in `src/tests/` (`flag_value_smoke`, `config_tests`) on the tree
     that delivered the annotate=false floors, not by grep vocabulary alone.
 
-23. **Register the component build sweep as a `full`-tier gate — the instrument exists and is
-    measured; what is missing is the disposition of the one row it reports.** The sweep
-    (`cddl-matrix/verify.ts --component-build-sweep`, documented in `tests/README.md` § "component
-    build sweep over the decode catalog") builds every drivable decode-catalog row's component
-    crate for wasip2, and its cost belongs in the `full` tier beside `component_corpus_compiles`
-    rather than in an occasional hand run: measured 3 m 3 s cold / 2 m 10 s warm, it is the same
-    cost class as the corpus sibling, and an instrument nobody is obliged to run goes quiet
-    exactly when a regression lands. Registering it TODAY would put the tier red — one row
-    (`ctl.default`, `m = { a: uint, ? b: uint .default 0 }`) generates and does not build, a
-    second instance of the defaulted-scalar class `component_tests`' `EXPECTED_COMPILE_FAIL`
-    already pins for the `default_value` fixture — and a full-tier gate that fail-fasts skips
-    every gate after it. So the registration lands WITH that disposition, one of two ways: the
-    emitter class closes (the projection stops treating a defaulted scalar as optional, which
-    retires the corpus pin in the same change), or the sweep grows the both-ways-guarded
-    expectation ledger its corpus sibling already has — keyed by catalog row id, each entry naming
-    the class and carrying its harness-free repro, failing both when a listed row starts building
-    and when an unlisted one stops. A bare skip-list is the one shape to refuse: it would let the
-    breadth instrument go quiet about precisely the classes it exists to find.
-
-24. **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
+23. **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
     no generated component can reach never gets red-proven.** The matrix's generic wasmtime host
     (`cddl-matrix/component-probe-host/`) maps boundary outcomes to verdict tokens
     (`ok`/`err`/`mismatch`/`trap`), and the execution leg's red-first controls proved every arm a
@@ -775,7 +756,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     `cargo test` drives with every arm, including the unreachable ones), so a future arm added
     wrong fails the host's build, not a review. Small — the mapping is one match today.
 
-25. **A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional
+24. **A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional
     and the rust side can drift silently-soft.** `cddl-matrix/verify.ts::toKebabCase` mirrors
     `src/utils.rs::convert_to_kebab_case` to name the WIT resource the component leg's mint check
     and host look for; the verify startup self-test pins the TS side against a fixture table

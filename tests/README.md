@@ -4385,7 +4385,7 @@ and needs exactly the seeding `feature_corpus_compiles` does); the only exclusio
 compiles against seeded defs and is held by the wasm re-export warning that const's own doc
 comment records, not by compilability.
 
-### component build sweep over the decode catalog (`cddl-matrix/verify.ts --component-build-sweep`)
+### component build sweep over the decode catalog (`cddl-matrix/verify.ts --component-build-sweep`, gate `component_build_sweep`, `full`)
 
 Every drivable row of `tests/decode_conformance/catalog.toml`, generated `--component=true
 --wasm=false` and BUILT for `wasm32-wasip2`. 165 of the catalog's 184 rows are drivable; the other 19
@@ -4423,11 +4423,28 @@ fewer than 120 drivable rows is refused rather than swept (a breadth instrument 
 nothing must not pass), and a whole-catalog sweep in which NO row generated is a harness failure
 rather than a pass.
 
+**`SWEEP_EXPECTED_BUILD_FAIL`** holds the rows that generate and do not build today — the sibling of
+`component_tests`' `EXPECTED_COMPILE_FAIL`, on the same terms. Every entry is a FINDING this
+instrument made and an open defect in `cddl-matrix/ROADMAP.md` § "Findings — open", never a decision
+to stop looking, and each is guarded BOTH ways: a listed row that starts building — or stops
+generating, which makes its expectation unreachable — fails the sweep as a stale entry to retire
+alongside its findings entry, and an unlisted row that stops building fails as the new finding. An
+entry naming a row the catalog no longer offers fails the same way. That is what keeps the ledger
+from degrading into a skip-list, and the ledger dimension rides the same pure self-test the
+classifier does.
+
+One row is ledgered today: `ctl.default` (`m = { a: uint, ? b: uint .default 0 }`) generates at exit
+0 and then fails the wasip2 build. It is the defaulted-scalar projection class — the rust struct
+stores a `.default`-carrying optional member as a plain `u64` while the projection keeps it
+`option<u64>`, so the glue calls `as_ref` on a `u64` (E0599) and assigns `Some(v)` into one (E0308).
+The corpus gate above holds the same class for its hand-authored `default_value` fixture; the two
+enumerations reached it independently, which is the argument for running both.
+
 **Subsetting**: `--only=<row-id>[,<row-id>…]`, validated against the drivable set, so a typo fails
 loudly instead of sweeping nothing.
 
 **Cost**, measured over all 165 rows: **3 m 3 s cold** (every cell builds — the first pays the shared
-wasip2 dependency graph, then ~1 s each) and **2 m 10 s warm**. A warm run still pays generation, the
+wasip2 dependency graph, then ~1 s each) and **2 m 6 s warm**. A warm run still pays generation, the
 lockfile preflight and the tree hash per cell, which is nearly all of what is left.
 
 **Memoization** under the cache label `verify.component_build_sweep` — a namespace DISJOINT from the
@@ -4440,12 +4457,6 @@ function; unlike the execution leg there is no host binary to hash, which is why
 `host=` component. `cddl-matrix/audit_gate_cache_closure.ts` does not trace TS-side `verify.*`
 labels, so this label shares its siblings' posture: the closure argument rests on review at the call
 site plus `GATE_CACHE=0`, not on the strace audit.
-
-One row does not build. `ctl.default` (`m = { a: uint, ? b: uint .default 0 }`) generates at exit 0
-and then fails the wasip2 build — a second instance of the class `component_tests`'
-`EXPECTED_COMPILE_FAIL` pins for the `default_value` fixture: a defaulted scalar is a plain `u64` in
-the rust struct while the projection keeps it optional, so the emitted glue calls `as_ref` on a `u64`
-(E0599) and assigns `Some(v)` into one (E0308).
 
 ### Regen over prior output at corpus breadth (`src/tests/regen_over_prior_tests.rs`, gates `regen_over_prior_output_corpus` `local` + `regen_over_prior_output_corpus_compiles` `full`)
 

@@ -1672,6 +1672,34 @@ export const REGISTRY: Gate[] = [
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_corpus_compiles", "--", "--ignored", "--nocapture"],
     ignoredTest: "component_corpus_compiles",
     desc: "component face at corpus breadth: cargo check --target wasm32-wasip2 per fixture (manual, #[ignore]d)" },
+  // The same question over an enumeration NOBODY CURATED for the component face: every drivable row
+  // of the decode catalog, generated component-only and BUILT for wasip2. It sits beside its corpus
+  // sibling above rather than replacing it because the two enumerations are independent by
+  // construction — the corpus is hand-authored fixtures, this is the matrix's own row set — and a
+  // hand-picked compile corpus cannot be assumed to cover a class just because the class is
+  // ordinary: both component-glue compile classes closed in 2026-08 sat in ordinary matrix rows no
+  // fixture spelled, and this loop is the by-hand procedure that found them. It has since found a
+  // third instance nobody was looking for.
+  //
+  // `build` rather than `check` because the wasip2 LINK is what the emitted rlib-only manifest makes
+  // possible, and the sweep is the only place that link is asserted at breadth.
+  //
+  // Rows that generate and do not build are held BOTH WAYS by `SWEEP_EXPECTED_BUILD_FAIL` in
+  // verify.ts — a listed row that starts building (or stops generating) fails as a stale entry, an
+  // unlisted one that stops building fails as a new finding. Each entry is an open defect ledgered
+  // in `cddl-matrix/ROADMAP.md` § "Findings — open", never a decision to stop looking.
+  //
+  // Bun, not cargo, and no `#[ignore]` test behind it: the enumeration is the committed catalog,
+  // which only the matrix scripts parse. It needs no CDDL oracle (its per-row verdict is a cargo
+  // exit code), so unlike `verify` it is a plain `cmd` gate and a member of the batch on the same
+  // terms as its neighbours. `script:` is deliberately absent — meta-check 2's verify.ts mapping
+  // belongs to the `verify` gate, as it does for `verify_selftest`. Per-cell nested cargo, memoized
+  // by the gate cache under its own label. Measured on the delivering machine: 3 m 3 s cold (every
+  // cell builds; the first pays the shared wasip2 dependency graph, then ~1 s each), 2 m 6 s warm —
+  // a warm run still pays generation, the lockfile preflight and the tree hash per cell.
+  { id: "component_build_sweep", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
+    cmd: ["bun", "run", "verify.ts", "--component-build-sweep"], cwd: MATRIX,
+    desc: "component face at matrix breadth: generate + wasip2 BUILD every drivable decode-catalog row, with non-building rows held both ways by verify.ts's SWEEP_EXPECTED_BUILD_FAIL (manual)" },
   // The compile half of the corpus-wide user-EDIT regen leg, split from its `local` sibling because
   // its cost class is nested cargo per fixture rather than a generator subprocess. It is the only
   // gate that asks whether a crate regenerated over a `cddl-codegen:replace` block still BUILDS
