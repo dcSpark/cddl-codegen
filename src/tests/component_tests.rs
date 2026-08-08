@@ -2407,7 +2407,8 @@ fn component_crate_builds_for_wasm32_wasip2() {
 ///    already in place — `wit_param_validates` resolves through the alias a named collection rule
 ///    registers, so these doors carry the `result<_, string>` such a re-check has to report
 ///    through.
-/// 2. **`@default` fields.** A `.default`ed field is a PLAIN `T` on the rust side (the default fills
+/// 2. **`.default` fields** (the CDDL control operator; no comment-DSL spelling exists). A
+///    `.default`-carrying field is a PLAIN `T` on the rust side (the default fills
 ///    absence in), while the projection still treats it as optional — so the glue reads
 ///    `me.b.as_ref()` on a `u64` (E0599) and writes `field = Some(v)` into a `u64` (E0308). The fix
 ///    is in the projection's optionality rule, not in the glue.
@@ -2429,7 +2430,7 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
     ),
     (
         "default_value",
-        "class 2: a `@default`ed scalar is a plain `u64`/`String` in the rust struct, but the \
+        "class 2: a `.default`-carrying scalar is a plain `u64`/`String` in the rust struct, but the \
          projection keeps it optional — `as_ref` on a `u64` (E0599), `= Some(v)` into a `u64` \
          (E0308) and an unannotated binding (E0282)",
     ),

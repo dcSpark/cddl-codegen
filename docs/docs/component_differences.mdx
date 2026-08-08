@@ -471,7 +471,8 @@ needing rediscovery:
   `result<_, string>` such a re-check reports through (the fallibility walk resolves the alias a
   named collection rule registers); what remains is the conversion walk below the top level, which
   sees WIT types only, so the constrained rust type's `TryFrom` door is never re-entered.
-- **`@default` fields**: a defaulted field is a plain `T` on the rust side (the default fills
+- **`.default` fields** (the CDDL control operator — there is no comment-DSL spelling): a
+  defaulted field is a plain `T` on the rust side (the default fills
   absence in) while the projection still treats it as optional, so the glue reads and writes an
   `Option` that does not exist.
 
