@@ -892,19 +892,31 @@ mod tests {
         assert_eq!(deser.triple, 7);
         assert_eq!(deser.tail, "z");
 
-        // Each byte string is the payload's WHOLE encoding, so bytes left over inside either level
-        // are refused — at both depths, which is what proves the outer check probes the outer reader
-        // rather than re-probing the inner one.
-        let trailing_inner = [
-            0x84, 0x43, 0x42, 0x41, 0x05, // pair: inner bstr(2) = 5 plus a stray byte
+        // Each byte string is the payload's WHOLE encoding, so bytes left over inside EITHER level
+        // are refused. Both vectors keep `pair`'s level-1 byte string at 3 bytes and move the stray
+        // byte between the levels, so the only thing distinguishing them is which reader is left
+        // non-empty — which is what proves the level-1 check probes the level-1 reader rather than
+        // re-probing the level-2 one.
+        //
+        // The error KIND is asserted, not merely that decode failed: a leftover-byte vector that is
+        // one byte off decodes into a WRONG MAJOR TYPE and rejects for an unrelated reason, passing
+        // an `is_err()` assertion while exercising nothing. `TrailingData` is the deliberately-shared
+        // error the payload arm raises (same spelling as the top-level check in `structural_rejects`
+        // above), so naming it is what makes each vector prove its own level.
+        let trailing_level2 = [
+            0x84, // level-2 leftover: bstr(3) = bstr(2) whose content is `05 00` — the uint plus a
+            0x43, 0x42, 0x05, 0x00, // stray byte, so level 2 decodes and then has bytes left
             0x43, 0x42, 0x41, 0x07, 0x43, 0x42, 0x18, 0x2a, 0x61, 0x7a,
         ];
-        assert!(CborPayloadInlineNesting::from_cbor_bytes(&trailing_inner).is_err());
-        let trailing_outer = [
-            0x84, 0x43, 0x41, 0x05, 0x00, // pair: outer bstr(3) holds the payload plus a stray 0
+        let err = CborPayloadInlineNesting::from_cbor_bytes(&trailing_level2).unwrap_err();
+        assert!(err.to_string().contains("trailing data"), "{err}");
+        let trailing_level1 = [
+            0x84, // level-1 leftover: bstr(3) = bstr(1) = 5, then a stray byte — level 2 consumes
+            0x43, 0x41, 0x05, 0x00, // its byte string exactly, so only level 1 is left non-empty
             0x43, 0x42, 0x41, 0x07, 0x43, 0x42, 0x18, 0x2a, 0x61, 0x7a,
         ];
-        assert!(CborPayloadInlineNesting::from_cbor_bytes(&trailing_outer).is_err());
+        let err = CborPayloadInlineNesting::from_cbor_bytes(&trailing_level1).unwrap_err();
+        assert!(err.to_string().contains("trailing data"), "{err}");
 
         // The rule-BODY spelling: the wrapper struct's own serialize fn holds both depths.
         let body = CborPayloadInlineBody::new(5);
