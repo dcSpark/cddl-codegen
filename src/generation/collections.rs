@@ -678,7 +678,7 @@ impl GenerationScope {
             "[{} {}] {}",
             if non_empty { "+" } else { "*" },
             render_wrapper_shape(&element_type),
-            crate::generation::requests::REJECT_MARKER
+            REJECT_MARKER
         );
         // `--extern-wrapper-index` / `--workspace-dep`: the uniqueness twin over a dependency's
         // elements is a defer candidate exactly like the loose list and the NonEmpty twin — the
