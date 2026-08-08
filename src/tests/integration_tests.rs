@@ -11921,7 +11921,9 @@ fn ir_conformance_corpus() {
              gap-#15-skipped too, so NEITHER oracle judges this fixture; wire conformance for \
              the ordering rides the equivalence pin \
              (incremental_type_choice_extension_equals_the_folded_spelling — byte-identity with \
-             the folded spelling, whose bytes the oracles do judge on assignt_extend).",
+             the folded spelling, whose bytes the oracles do judge on assignt_extend). Repro + \
+             upstream steps: \
+             cddl-matrix/upstream-reports/ruby-cddl-ext-first-incremental-chain-crash.md",
         ),
         (
             "cbor_wrapped_group_array",

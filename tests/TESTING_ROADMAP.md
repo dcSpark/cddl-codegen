@@ -543,7 +543,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       claim — for a claims-the-API-does-X sentence that means calling X (a compile-fail probe is an
       execution too) — so the entry cannot drift from the code while its carriers stay green.
 
-    Pickup re-probe remains the enforcement of last resort, not the plan. Seven proven instances,
+    Pickup re-probe remains the enforcement of last resort, not the plan. Nine proven instances,
     each caught only by executing the claim rather than reading it:
     - A refusal's first predicate refused the exact remedy its own message named
       (`{ * uint => [coords] }` — the registry keeps materialized plain groups, so the lookup
@@ -578,6 +578,14 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       naming `nint` and the signed-RANGE spelling) adopted the pattern day-one via
       `default_head_remedy_does_not_name_the_head_it_refuses`, whose generate leg emits the
       printed range remedy so the message cannot go stale against it.
+    - The generics-repeat refusal's first drafted remedy advertised `a<t> = <arm1> / <arm2>` — a
+      choice-bodied generic definition, which is itself refused — and was caught BEFORE shipping
+      by the day-one adoption of this item's pattern: the new refusal's test asserted every
+      advertised remedy generates, and the assert went red on the drafted message (B3-021 cycle,
+      2026-08-08). The instance is recorded because it is the pattern working as designed
+      pre-ship — the first refusal family authored since this item whose remedy defect never
+      reached a commit — which is the evidence the day-one half of the convention pays for
+      itself, not only the sweep half.
 
 16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
