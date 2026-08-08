@@ -41,22 +41,22 @@ impl wit_types::GuestDefaulted for WitDefaulted {
         me.a
     }
 
-    fn b(&self) -> Option<u64> {
+    fn b(&self) -> u64 {
         let me = self.0.borrow();
-        me.b.as_ref().map(|x| *x)
+        me.b
     }
 
     fn set_b(&self, b: u64) {
-        self.0.borrow_mut().b = Some(b);
+        self.0.borrow_mut().b = b;
     }
 
-    fn c(&self) -> Option<String> {
+    fn c(&self) -> String {
         let me = self.0.borrow();
-        me.c.as_ref().map(|x| x.clone())
+        me.c.clone()
     }
 
     fn set_c(&self, c: String) {
-        self.0.borrow_mut().c = Some(c);
+        self.0.borrow_mut().c = c;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {

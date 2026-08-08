@@ -43,22 +43,22 @@ impl wit_types::GuestBoolDefault for WitBoolDefault {
         me.a
     }
 
-    fn f(&self) -> Option<bool> {
+    fn f(&self) -> bool {
         let me = self.0.borrow();
-        me.f.as_ref().map(|x| *x)
+        me.f
     }
 
     fn set_f(&self, f: bool) {
-        self.0.borrow_mut().f = Some(f);
+        self.0.borrow_mut().f = f;
     }
 
-    fn g(&self) -> Option<bool> {
+    fn g(&self) -> bool {
         let me = self.0.borrow();
-        me.g.as_ref().map(|x| *x)
+        me.g
     }
 
     fn set_g(&self, g: bool) {
-        self.0.borrow_mut().g = Some(g);
+        self.0.borrow_mut().g = g;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {
@@ -87,13 +87,13 @@ impl wit_types::GuestBoolDefaultArray for WitBoolDefaultArray {
         me.a
     }
 
-    fn f(&self) -> Option<bool> {
+    fn f(&self) -> bool {
         let me = self.0.borrow();
-        me.f.as_ref().map(|x| *x)
+        me.f
     }
 
     fn set_f(&self, f: bool) {
-        self.0.borrow_mut().f = Some(f);
+        self.0.borrow_mut().f = f;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {
@@ -124,13 +124,13 @@ impl wit_types::GuestFloatDefault for WitFloatDefault {
         me.a
     }
 
-    fn f(&self) -> Option<f64> {
+    fn f(&self) -> f64 {
         let me = self.0.borrow();
-        me.f.as_ref().map(|x| *x)
+        me.f
     }
 
     fn set_f(&self, f: f64) {
-        self.0.borrow_mut().f = Some(f);
+        self.0.borrow_mut().f = f;
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {

@@ -2391,10 +2391,10 @@ fn component_crate_builds_for_wasm32_wasip2() {
 /// staleness is guarded BOTH ways, a listed fixture that starts compiling fails as "the bug is
 /// fixed — remove the pin", an unlisted one that stops compiling fails as a regression.
 ///
-/// Two classes remain, both in `component/src/generated/mod.rs` and both reproducing under
-/// `--wasm=true` and `--wasm=false` alike. Neither is a nested-position accident the emitter can
-/// spell its way out of: each needs a fact the projection does not carry today, which is why they
-/// are ledgered rather than fixed.
+/// One class remains, in `component/src/generated/mod.rs` and reproducing under `--wasm=true` and
+/// `--wasm=false` alike. It is not a nested-position accident the emitter can spell its way out of:
+/// it needs a fact the projection does not carry today, which is why it is ledgered rather than
+/// fixed.
 ///
 /// 1. **The despecialized NonEmpty in a NESTED position.** A `[+ T]` / `{+ K => V}` reached through
 ///    a named collection rule — as a list ELEMENT or a map KEY — makes the glue `.collect()`
@@ -2407,11 +2407,6 @@ fn component_crate_builds_for_wasm32_wasip2() {
 ///    already in place — `wit_param_validates` resolves through the alias a named collection rule
 ///    registers, so these doors carry the `result<_, string>` such a re-check has to report
 ///    through.
-/// 2. **`.default` fields** (the CDDL control operator; no comment-DSL spelling exists). A
-///    `.default`-carrying field is a PLAIN `T` on the rust side (the default fills
-///    absence in), while the projection still treats it as optional — so the glue reads
-///    `me.b.as_ref()` on a `u64` (E0599) and writes `field = Some(v)` into a `u64` (E0308). The fix
-///    is in the projection's optionality rule, not in the glue.
 ///
 /// A fixture that fails to GENERATE belongs in `snapshot_tests::PROFILE_GENERATION_SKIP` instead;
 /// a fixture whose RUST crate cannot compile standalone belongs in
@@ -2427,28 +2422,6 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
         "nonempty_nested_positions",
         "class 1: same, in both flavors and both nesting positions — a `NonEmptyVec<u64>` list \
          ELEMENT and a `NonEmptyMap<u64, u64>` map KEY",
-    ),
-    (
-        "default_value",
-        "class 2: a `.default`-carrying scalar is a plain `u64`/`String` in the rust struct, but the \
-         projection keeps it optional — `as_ref` on a `u64` (E0599), `= Some(v)` into a `u64` \
-         (E0308) and an unannotated binding (E0282)",
-    ),
-    (
-        "default_array_rep",
-        "class 2: the same plain-`u64`/`String`-vs-optional-projection mismatch, reached through an \
-         ARRAY-representation record instead of a map",
-    ),
-    (
-        "default_scalar_kinds",
-        "class 2: the same mismatch for the remaining default value kinds — a plain `bool`/`f64` in \
-         the rust struct against an optional projection",
-    ),
-    (
-        "default_mandatory",
-        "class 2: the fixture's OPTIONAL members (`? c`, and `? y` through the alias) are the same \
-         plain-`u64`-vs-optional-projection mismatch. Its mandatory-position members are NOT — a \
-         `.default` there is inert and stripped, so they project as ordinary mandatory fields",
     ),
 ];
 

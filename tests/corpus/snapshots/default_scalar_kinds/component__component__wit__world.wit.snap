@@ -11,9 +11,9 @@ interface types {
   resource bool-default {
     constructor(a: u64);
     a: func() -> u64;
-    f: func() -> option<bool>;
+    f: func() -> bool;
     set-f: func(f: bool);
-    g: func() -> option<bool>;
+    g: func() -> bool;
     set-g: func(g: bool);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<bool-default, string>;
@@ -21,7 +21,7 @@ interface types {
   resource bool-default-array {
     constructor(a: u64);
     a: func() -> u64;
-    f: func() -> option<bool>;
+    f: func() -> bool;
     set-f: func(f: bool);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<bool-default-array, string>;
@@ -29,7 +29,7 @@ interface types {
   resource float-default {
     constructor(a: u64);
     a: func() -> u64;
-    f: func() -> option<f64>;
+    f: func() -> f64;
     set-f: func(f: f64);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<float-default, string>;

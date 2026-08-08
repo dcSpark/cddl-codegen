@@ -1565,8 +1565,15 @@ impl Emitter<'_, '_> {
                 lines.push(format!("self.0.borrow_mut().{field} = {arg};"));
             }
             // Setters exist only on OPTIONAL fields and take the BARE type — the getter reports
-            // absence, the setter sets presence — so the assignment wraps in `Some`.
-            WitMemberOp::Setter { field } => {
+            // absence, the setter sets presence — so the assignment wraps in `Some`. A field the
+            // projection marked `plain_storage` (a `.default`-carrying member, whose default fills
+            // the absent case) is stored WITHOUT that presence-`Option`, so its assignment must not
+            // wrap. The bit comes from the projection, which is also what made the getter's result
+            // type bare; re-deriving it here from the IR could disagree with that.
+            WitMemberOp::Setter {
+                field,
+                plain_storage,
+            } => {
                 let param = &member.params[0];
                 // The value window, checked on the boundary value before anything else touches it —
                 // a setter is the one door with no rust constructor between the caller and the
@@ -1576,7 +1583,12 @@ impl Emitter<'_, '_> {
                 let (materialized, args) = self.materialize(std::slice::from_ref(param), alias);
                 // Every argument guard is released by these statements, BEFORE the `borrow_mut`.
                 lines.extend(materialized);
-                lines.push(format!("self.0.borrow_mut().{field} = Some({});", args[0]));
+                let assigned = if *plain_storage {
+                    args[0].clone()
+                } else {
+                    format!("Some({})", args[0])
+                };
+                lines.push(format!("self.0.borrow_mut().{field} = {assigned};"));
                 if member.fallible {
                     lines.push("Ok(())".to_owned());
                 }

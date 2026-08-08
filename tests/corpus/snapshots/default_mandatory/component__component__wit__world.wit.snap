@@ -11,7 +11,7 @@ interface types {
   resource alias-default-positions {
     constructor(x: u64);
     x: func() -> u64;
-    y: func() -> option<u64>;
+    y: func() -> u64;
     set-y: func(y: u64);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<alias-default-positions, string>;
@@ -20,7 +20,7 @@ interface types {
     constructor(a: u64, b: u64);
     a: func() -> u64;
     b: func() -> u64;
-    c: func() -> option<u64>;
+    c: func() -> u64;
     set-c: func(c: u64);
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<mandatory-default, string>;
