@@ -8302,9 +8302,11 @@ fn parse_group_choice(
                     // transparent table alias has no trait-impl site, so it cannot truthfully own
                     // that wire: direct `T::to_cbor_bytes()` would otherwise write the built-in map
                     // while a holder routes through the named pair. Self-nominalize the map through
-                    // the existing wrapper path instead. Unlike explicit `@newtype`, this is the
-                    // pair's representation (and its only accepted table spelling), not a broadening
-                    // of the `@newtype + pair` rejection.
+                    // the existing wrapper path instead. This implicit nominal owner is the pair's
+                    // representation (and its only accepted table spelling); explicit `@newtype`
+                    // remains a separately rejected wrapper placement. Its other wrapper contracts
+                    // (tags, ranges, sets, wire facts, and cross-face behavior) are not broadened
+                    // by this table-only ownership seam.
                     || (rule_metadata.custom_serialize.is_some()
                         && rule_metadata.custom_deserialize.is_some())
                 {

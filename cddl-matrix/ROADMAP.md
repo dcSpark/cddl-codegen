@@ -655,16 +655,13 @@ entry, so the atomicity is the rule).
   support is owned by the float-table-key boundary entry's ordered-float question); flipping either
   row to `ok` requires real support, not a decay back to the old `group_entry_to_field_name`
   panics.
-- **A whole-TABLE custom codec has no spelling.** `@custom_serialize`/`@custom_deserialize` on a
-  table rule is refused (the table lowers to a transparent map alias that owns no codec to
-  override), and the advertised remedies reach only the parts: the row's KEY rule, the row's VALUE
-  rule, or `_CDDL_CODEGEN_EXTERN_TYPE_` for the whole type by hand. Honoring the pair on the rule
-  itself means threading `rule_metadata` through `AliasInfo`, which doc-lookup, the
-  extern-interface projection and alias suppression all read — each needs its own re-audit, which
-  is why the refusal ships first. Reopening signal, measurable by whoever has the problem: a spec
-  whose table needs ONE codec over the whole map (a framing the key and value codecs cannot
-  compose — a length prefix, a whole-map digest, a non-map wire form) and whose author reports
-  reaching for the extern escape to get it.
+- **A complete whole-table custom codec pair is supported.** A named homogeneous table carrying
+  both `@custom_serialize` and `@custom_deserialize` self-nominalizes as its map wrapper, so its
+  direct and embedded APIs delegate to the one whole-item codec (including a non-map wire form).
+  Lone halves and row-entry placements remain rejected. The standing coverage spans loose,
+  duplicate-preserving, non-empty, generic, preserve-encoding, canonical, wasm, component, and
+  opaque extern-interface projections; `@custom_encodings` is rejected on this self-carrying owner
+  because no codec-visible encoding tuple crosses its boundary.
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully, its own entry; table domains and `@newtype` bounds — work; bare values, json,
