@@ -11,6 +11,11 @@
 ; to `for_rust_member`'s panic unnoticed. The parenthesized spelling has its own row again for the
 ; same reason (tests/robustness/fixed_table_value_paren.cddl).
 ;
+; A named fixed rule is deliberately NOT this bare-value shape: `five = 5` gives the generator a
+; nominal singleton `V`, so `{ * uint => five }` is a supported table with the same wire constant
+; and a stored wrapper API. The rejection's remedy names that route; its default and preserve
+; generation are pinned by `fixed_table_value_rejection_advertises_executable_nominal_remedy`.
+;
 ; The KEY domain is deliberately unaffected: per RFC 8610 `{ 1 => uint }` is the same wire entry as
 ; `{ 1: uint }`, so a fixed key diverts to the record path and generates.
 a = { * uint => 5 }

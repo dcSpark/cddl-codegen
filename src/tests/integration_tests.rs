@@ -1026,9 +1026,9 @@ fn resolve_ruby_cddl() -> Option<std::path::PathBuf> {
 // The minted corpus is generated with default flags (no `--preserve-encodings`), so every dumped case
 // is a single, canonical, definite-length CBOR item. Indefinite-length handling below is defensive:
 // both codecs normalize indefinite byte/text strings to their concatenated definite form, so the trees
-// still agree if one ever appears. `undefined` / exotic simple values aren't in the minter's baseline;
-// `ciborium::Value` can't represent them, so if one ever surfaced the differential would (correctly)
-// flag a structural surprise rather than silently pass.
+// still agree if one ever appears. `ciborium::Value` collapses CBOR `undefined` (f7) to `Null` while
+// minicbor preserves `Undefined`; normalize that known value-model loss below so the differential
+// continues to check full decoding and structural agreement for the fixed-undefined corpus case.
 #[derive(Debug, PartialEq)]
 enum CborTree {
     Int(i128),
@@ -1221,16 +1221,14 @@ fn minicbor_item_from(
     })
 }
 
-/// Canonicalize the one place the two codecs legitimately MODEL the same well-formed bytes
-/// differently: RFC 8949 §3.4.3 bignum tags. `ciborium`'s byte-level decoder folds tag 2 (BIGPOS) /
-/// tag 3 (BIGNEG) wrapping a definite byte string of <= 16 bytes into an integer (BIGNEG `b` becomes
-/// `-1 - be(b)`, i.e. `raw ^ !0`), while `minicbor`'s token stream leaves them as `Tag(2/3, Bytes)`.
-/// Both are correct decodings of the same bytes (our `biguint`/`bignint` prelude types encode as
-/// exactly this), so we fold minicbor's tree to match — the divergence is representational, not a
-/// structural regression. Applied to BOTH trees: a no-op on ciborium's already-folded tree. A bignum
-/// that exceeds i128 (never minted by the corpus) is left as `Tag` and would surface as a divergence
-/// to investigate rather than being silently mis-canonicalized.
-fn fold_bignums(t: CborTree) -> CborTree {
+/// Canonicalize the two value-model differences the codecs have for the same well-formed bytes.
+/// RFC 8949 §3.4.3 bignum tags: `ciborium` folds tag 2 (BIGPOS) / tag 3 (BIGNEG) wrapping a definite
+/// byte string of <= 16 bytes into an integer (BIGNEG `b` becomes `-1 - be(b)`, i.e. `raw ^ !0`), while
+/// minicbor leaves them as `Tag(2/3, Bytes)`. CBOR undefined (f7): ciborium collapses it to `Null`,
+/// while minicbor emits `Undefined`. Both normalizations are representational, not structural: the
+/// differential still requires each codec to fully consume the same byte stream. A bignum exceeding
+/// i128 (never minted by the corpus) remains a `Tag` and still surfaces as a divergence.
+fn normalize_reference_codec_tree(t: CborTree) -> CborTree {
     fn folded_int(neg: bool, b: &[u8]) -> Option<CborTree> {
         if b.len() > 16 {
             return None;
@@ -1248,27 +1246,40 @@ fn fold_bignums(t: CborTree) -> CborTree {
             {
                 return folded;
             }
-            CborTree::Tag(tag, Box::new(fold_bignums(*inner)))
+            CborTree::Tag(tag, Box::new(normalize_reference_codec_tree(*inner)))
         }
-        CborTree::Tag(tag, inner) => CborTree::Tag(tag, Box::new(fold_bignums(*inner))),
-        CborTree::Array(items) => CborTree::Array(items.into_iter().map(fold_bignums).collect()),
+        CborTree::Tag(tag, inner) => {
+            CborTree::Tag(tag, Box::new(normalize_reference_codec_tree(*inner)))
+        }
+        CborTree::Array(items) => CborTree::Array(
+            items
+                .into_iter()
+                .map(normalize_reference_codec_tree)
+                .collect(),
+        ),
         CborTree::Map(entries) => CborTree::Map(
             entries
                 .into_iter()
-                .map(|(k, v)| (fold_bignums(k), fold_bignums(v)))
+                .map(|(k, v)| {
+                    (
+                        normalize_reference_codec_tree(k),
+                        normalize_reference_codec_tree(v),
+                    )
+                })
                 .collect(),
         ),
+        CborTree::Undefined => CborTree::Null,
         other => other,
     }
 }
 
 /// Both independent codecs must fully decode `bytes` AND agree on the decoded structure (after
-/// bignum-representation canonicalization, see `fold_bignums`). Any error names which codec failed
-/// and why; a tree mismatch dumps both trees. Anti-vacuity: a truncated (malformed) case must FAIL
-/// this — a decoder that accepts anything can't pass (see the gate's negative control).
+/// the bignum/undefined representational normalization above). Any error names which codec failed and
+/// why; a tree mismatch dumps both trees. Anti-vacuity: a truncated (malformed) case must FAIL this —
+/// a decoder that accepts anything can't pass (see the gate's negative control).
 fn reference_codec_differential(bytes: &[u8]) -> Result<(), String> {
-    let via_cib = fold_bignums(tree_via_ciborium(bytes)?);
-    let via_mini = fold_bignums(tree_via_minicbor(bytes)?);
+    let via_cib = normalize_reference_codec_tree(tree_via_ciborium(bytes)?);
+    let via_mini = normalize_reference_codec_tree(tree_via_minicbor(bytes)?);
     if via_cib != via_mini {
         return Err(format!(
             "ciborium and minicbor disagree on the decoded structure:\n  ciborium: {via_cib:?}\n  minicbor: {via_mini:?}"
@@ -1308,8 +1319,12 @@ fn reference_codec_differential_self_check() {
             ],
         ),
         ("nested [[]]", &[0x81, 0x80]),
+        // ciborium's Value collapses f7 to Null while minicbor preserves Undefined; the deliberate
+        // normalizer above retains the full-decode differential without treating that model gap as a
+        // generated-wire failure.
+        ("undefined", &[0xf7]),
         // bignum tags: ciborium folds tag 2/3 + short bytes into an integer, minicbor keeps them as
-        // Tag(2/3, Bytes); `fold_bignums` reconciles them (the `biguint`/`bignint` prelude case).
+        // Tag(2/3, Bytes); the normalizer reconciles them (the `biguint`/`bignint` prelude case).
         ("biguint tag2 h'00'", &[0xc2, 0x41, 0x00]),
         ("bignint tag3 h'00'", &[0xc3, 0x41, 0x00]),
         ("biguint tag2 h'0100'", &[0xc2, 0x42, 0x01, 0x00]),
@@ -5982,8 +5997,8 @@ fn wasm_collections_index_lists_every_minted_wrapper() {
 /// representative profiles: default flags, and `--preserve-encodings=true --canonical-form=true`.
 /// A third case swaps the input for a minimal scratch-written spec under `--preserve-encodings=true
 /// --annotate-fields=false`, closing the coverage bound that let a `clippy::no_effect` `();` ship
-/// inside this gate's own deny set: the rich fixture spells no verify-only fixed bool/null, in
-/// member or arm position.
+/// inside this gate's own deny set: the rich fixture spells no verify-only fixed bool/null/undefined,
+/// in member or arm position.
 ///
 /// Deny only `clippy::all` plus a curated rustc style-lint set, NOT `-D warnings`: generated code
 /// legitimately over-imports traits/globs (only the concrete collection-type imports are pruned —
@@ -6020,12 +6035,13 @@ fn generated_code_clippy_clean() {
     ];
     const PERMANENT_ALLOWS: &[&str] = &["-A", "clippy::disallowed_names"];
     let rich_input = std::path::PathBuf::from_str("tests/canonical/input.cddl").unwrap();
-    // Third case: the verify-only fixed bool/null shapes, which the rich fixture cannot host. Two
-    // reasons it is a dedicated input rather than more rules in `tests/canonical/input.cddl` (the
-    // route the identity-op provocations took): the MEMBER position only emits its unbound value
-    // under `--annotate-fields=false`, which neither existing profile passes, so the rich fixture
-    // would need a third profile anyway; and that fixture is the whole-program snapshot corpus'
-    // input, so a shape addition lands a blessed diff across consumers with no stake in this lint.
+    // Third case: the verify-only fixed bool/null/undefined shapes, which the rich fixture cannot
+    // host. Two reasons it is a dedicated input rather than more rules in
+    // `tests/canonical/input.cddl` (the route the identity-op provocations took): the MEMBER
+    // position only emits its unbound value under `--annotate-fields=false`, which neither existing
+    // profile passes, so the rich fixture would need a third profile anyway; and that fixture is
+    // the whole-program snapshot corpus' input, so a shape addition lands a blessed diff across
+    // consumers with no stake in this lint.
     // Written into the gate's own scratch dir (same shape as
     // `wasm_collections_index_lists_every_minted_wrapper`), so it carries no fixture-registry or
     // snapshot obligations. `--annotate-fields=false` is what makes ONE case cover all five
@@ -6033,23 +6049,27 @@ fn generated_code_clippy_clean() {
     // the map-rep / array-rep / type-choice arm paths and the BRUTE-FORCE type-choice dispatch
     // (enums.rs), which emit their unbound value under either annotate setting.
     const FIXED_SPECIAL_SPEC: &str = "\
-; Fixed bool/null in MEMBER position: mandatory (zero-information, binds nothing) and optional
-; (a `bool` presence field). Under --preserve-encodings the fixed-value deserialize used to end in
-; a bare `();` statement here — `clippy::no_effect`, inside this gate's own deny set.
+; Fixed bool/null/undefined in MEMBER position: mandatory (zero-information, binds nothing) and
+; optional (a presence field). Under --preserve-encodings the fixed-value deserialize used to end
+; in a bare `();` statement here — `clippy::no_effect`, inside this gate's own deny set.
 arr_member = [v: true, x: uint]
 map_member = {k: false, x: uint}
 null_member = [n: null, y: uint]
 opt_member = [x: uint, ? v: true]
+undefined_member = [u: undefined, z: uint]
+opt_undefined_member = [x: uint, ? u: undefined]
 ; The three ARM positions, whose unbound value is emitted under either --annotate-fields setting.
 map_bool_arm = { flag: true // label: tstr }
 map_null_arm = { absent: null // label: tstr }
+map_undefined_arm = { absent: undefined // label: tstr }
 arr_bool_arm = [ flag: true // label: tstr ]
 arr_null_arm = [ absent: null // label: tstr ]
+arr_undefined_arm = [ absent: undefined // label: tstr ]
 type_choice_bool = true / tstr
-; Two fixed specials in ONE choice: bool and null share CBOR major type 7, so no type-match
-; dispatch can separate the arms and the enum takes the BRUTE-FORCE try-each-arm emission instead
-; — a fifth site, which the single-Special spellings above never reach.
-type_choice_special_brute = true / null / tstr
+; Three fixed specials in ONE choice: bool, null and undefined share CBOR major type 7, so no
+; type-match dispatch can separate the arms and the enum takes the BRUTE-FORCE try-each-arm
+; emission instead — a fifth site, which the single-Special spellings above never reach.
+type_choice_special_brute = true / null / undefined / tstr
 ";
     let cases: &[(&str, &[&str], Option<&str>)] = &[
         ("default", &[][..], None),
@@ -11244,6 +11264,17 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
             other => panic!("oracle_fingerprint.json probe `{name}` has unknown mode `{other}`"),
         }
     }
+    // This is deliberately NOT a normal fingerprint JSON probe: it pins an OPEN validator defect,
+    // not a behavior a correct oracle should preserve. The only per-rule corpus exemption below is
+    // stale the moment this stops rejecting f7 with this exact signature.
+    main_rs.push_str(
+        r#"    match cddl::validate_cbor_from_slice("x = undefined", &[0xf7], None) {
+        Ok(()) => failures.push("  - undefined-validator-gap: unexpectedly accepted spec `x = undefined` CBOR f7; remove RUST_ORACLE_RULE_SKIP and re-arm this probe for the fixed behavior".to_owned()),
+        Err(error) if error.to_string().contains("expected type undefined, got Null") => {}
+        Err(error) => failures.push(format!("  - undefined-validator-gap: expected rejection signature `expected type undefined, got Null` for spec `x = undefined` CBOR f7, got `{error}`; investigate before retaining RUST_ORACLE_RULE_SKIP")),
+    }
+"#,
+    );
     main_rs.push_str(&format!(
         "    if failures.is_empty() {{\n        println!(\"rust cddl crate fingerprint OK ({{}} probes - CDDL_ORACLE_DEP rev {})\", {});\n    }} else {{\n        eprintln!(\"rust cddl crate fingerprint MISMATCH - failing probe(s):\");\n        for failure in failures {{ eprintln!(\"{{failure}}\"); }}\n        std::process::exit(1);\n    }}\n}}\n",
         rev,
@@ -12121,6 +12152,14 @@ fn ir_conformance_corpus() {
         "assignt_extend_ext_first",
         "open_table",
     ];
+    // Per-rule, not fixture-wide: the pinned cddl validator (ac1b98e) parses `undefined` but
+    // misclassifies valid `f7` as Null (`expected type undefined, got Null`). Keep the other seven
+    // fixed-singleton validator calls, all ordinary round trips, dumps, ruby and structural oracles.
+    const RUST_ORACLE_RULE_SKIP: &[(&str, &str, &str)] = &[(
+        "fixed_singletons",
+        "undefined_value",
+        "cddl ac1b98e validates f7 for `undefined` as Null; exact preflight signature pin removes this when fixed",
+    )];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
@@ -12337,6 +12376,25 @@ fn ir_conformance_corpus() {
             rest.starts_with('=') || rest.starts_with("/=") || rest.starts_with("//=")
         })
     };
+    let mut rust_oracle_rule_skip_pairs = std::collections::BTreeSet::new();
+    for (stem, rule, reason) in RUST_ORACLE_RULE_SKIP {
+        assert!(
+            corpus_stems.contains(stem),
+            "RUST_ORACLE_RULE_SKIP fixture `{stem}` is stale"
+        );
+        assert!(
+            rule_defined(stem, rule),
+            "RUST_ORACLE_RULE_SKIP rule `{rule}` in `{stem}` is stale"
+        );
+        assert!(
+            !reason.trim().is_empty(),
+            "RUST_ORACLE_RULE_SKIP `{stem}`/`{rule}` has an empty reason"
+        );
+        assert!(
+            rust_oracle_rule_skip_pairs.insert((*stem, *rule)),
+            "RUST_ORACLE_RULE_SKIP duplicates `{stem}`/`{rule}`"
+        );
+    }
     for (stem, rule, _) in RUBY_EXPECTED_FAIL {
         assert!(
             corpus_stems.contains(stem),
@@ -12415,6 +12473,14 @@ fn ir_conformance_corpus() {
         // rust_oracle: emit the rust `cddl_conformance::validate` half? Off for RUST_ORACLE_SKIP
         // fixtures (rust-validator gap) — they still generate, round-trip, dump, and ruby-sweep.
         let rust_oracle = !RUST_ORACLE_SKIP.contains(&stem);
+        let has_rule_skip = RUST_ORACLE_RULE_SKIP
+            .iter()
+            .any(|(skip_stem, _, _)| *skip_stem == stem);
+        assert!(
+            !has_rule_skip || rust_oracle,
+            "{stem} is on RUST_ORACLE_RULE_SKIP and RUST_ORACLE_SKIP — a per-rule exemption must \
+             keep normal rust conformance generation enabled"
+        );
         let expected_fail = EXPECTED_FAIL.contains(&stem);
         // An EXPECTED_FAIL fixture is judged by the rust oracle's message, so it must have that
         // oracle on — the two lists must stay disjoint.
@@ -12465,7 +12531,34 @@ fn ir_conformance_corpus() {
 
         // The emitted generated-test module (and its `cddl_conformance::validate(..)` calls) lives in
         // the generated root, `generated/mod.rs`, not the thin seed-once `lib.rs`.
-        let lib_src = std::fs::read_to_string(rust_dir.join("src/generated/mod.rs")).unwrap();
+        let mut lib_src = std::fs::read_to_string(rust_dir.join("src/generated/mod.rs")).unwrap();
+        let before_calls = lib_src.matches("cddl_conformance::validate(").count();
+        let mut removed = 0usize;
+        for (skip_stem, rule, _) in RUST_ORACLE_RULE_SKIP {
+            if *skip_stem != stem {
+                continue;
+            }
+            let needle = format!("cddl_conformance::validate(&bytes, \"{rule}\");");
+            let count = lib_src.matches(&needle).count();
+            assert!(
+                count >= 1,
+                "RUST_ORACLE_RULE_SKIP `{stem}`/`{rule}` matched no exact emitted call"
+            );
+            removed += count;
+            lib_src = lib_src.replace(&needle, &format!("/* rust oracle skipped: {rule} */"));
+            assert!(
+                !lib_src.contains(&needle),
+                "RUST_ORACLE_RULE_SKIP `{stem}`/`{rule}` left a call behind"
+            );
+        }
+        assert_eq!(
+            lib_src.matches("cddl_conformance::validate(").count(),
+            before_calls - removed,
+            "RUST_ORACLE_RULE_SKIP changed an unledgered call/count"
+        );
+        if removed > 0 {
+            std::fs::write(rust_dir.join("src/generated/mod.rs"), &lib_src).unwrap();
+        }
         // vacuity: did this fixture actually emit any conformance call? (a fixture whose only
         // round-trip types are transparent array/table aliases emits none — see occurrence). Only
         // meaningful for rust-oracle fixtures; a RUST_ORACLE_SKIP fixture emits none by design.
@@ -12517,7 +12610,9 @@ fn ir_conformance_corpus() {
             (false, false) => failures.push(format!(
                 "{stem}: conformance FAILED for a fixture not on EXPECTED_FAIL — either a new \
                  IR-level miscompile (mints spec-violating bytes), a round-trip failure, or a \
-                 validator gap to document + add to RUST_ORACLE_SKIP:\n{combined}"
+                 validator gap to document and add to the narrowest appropriate ledger \
+                 (RUST_ORACLE_RULE_SKIP before fixture-wide RUST_ORACLE_SKIP, without losing \
+                 unaffected coverage):\n{combined}"
             )),
         }
 

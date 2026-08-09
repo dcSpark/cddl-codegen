@@ -1506,10 +1506,11 @@ cases. Two run the rich extern-free input `flag_value_smoke` uses, under default
 `--preserve-encodings --canonical-form`, generated into the gate's own temp dir (so it can't race
 the fixtures' reused `tests/<dir>/export` outputs). A third swaps the input for a minimal spec the
 gate writes into that same temp dir, under `--preserve-encodings --annotate-fields=false`: verify-only
-fixed bool/null in member position and in all three arm positions (map-rep, array-rep, type-choice).
+fixed bool/null/undefined in member position and in all three arm positions (map-rep, array-rep,
+type-choice), including their mixed-special brute-force dispatch.
 Those shapes are the gate's own coverage floor — the rich fixture spells none of them, and
 `--annotate-fields=false` is what makes the member position emit its unbound value, so one case
-covers all four emission sites. The fourth runs the rich input under `--json-serde-derives
+covers all five emission sites. The fourth runs the rich input under `--json-serde-derives
 --json-schema-export`, the flag pair `ALL_PROFILES` spells for its `json` row, and lints the THIRD
 generated crate: `wasm/json-gen`, whose emitted `add_schemas`/`export_schemas` bodies and
 registration rows no other lint gate reaches (it is an independent nested crate, not a dependency of
@@ -3417,7 +3418,7 @@ the same recovery guidance as the matrix verifier. Then, for every
 an advisory lock (`acquire_scratch_lock`) for its whole run: a second invocation from the same checkout
 waits for the first (printing a grep-stable "waiting for it to finish" message) rather than
 `remove_dir_all`ing its crates mid-run — same-checkout concurrent runs serialize while the shared target
-cache is preserved. Two curated lists, each empirically justified:
+cache is preserved. The fixture loop uses curated ledgers, each empirically justified:
 
 - **`EXPECTED_FAIL`** — fixtures with a known IR bug whose minted value the oracle *must* reject. Their
   `cargo test` must fail **and** the output must carry the oracle's distinctive message (so it failed
@@ -3433,7 +3434,7 @@ cache is preserved. Two curated lists, each empirically justified:
   2-field struct that reads 2 elems; occurrence bounds now live on the ARRAY type — enforced as a
   length check at embed sites and covered by `occurrence_holder`'s minted round-trip + deser-reject
   cases, where they were once misread as element VALUE bounds).
-- **`CONFORMANCE_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
+- **`GEN_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
   (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile
   standalone). `sized_int` is a past resident, off the list twice over: its negative-lower-bound
   range stopped being a validator gap at the fork's `885c61c` non-uint-range fix, and its
@@ -3443,9 +3444,11 @@ cache is preserved. Two curated lists, each empirically justified:
   on it remains an upstream over-rejection gap, scoreboard in
   `draft/cddl-size-on-int-divergence.md`).
 
-Any fixture **not** on either list that fails conformance turns the gate RED with the minted bytes +
-rule named. A vacuity floor asserts a nonzero number of fixtures actually emitted a conformance call,
-so a silent no-op sweep can't pass.
+Outside `EXPECTED_FAIL`, every generated-suite failure turns the gate RED with the minted bytes +
+rule named. `GEN_SKIP` fixtures do not run; fixture-level `RUST_ORACLE_SKIP` disables only the rust
+validator half; and a per-rule exemption neutralizes only its listed exact call — every unledgered
+call and every other test surface remains red. A vacuity floor asserts a nonzero number of fixtures
+actually emitted a conformance call, so a silent no-op sweep can't pass.
 
 **Which rules get rooted at all.** Both oracle halves share one seam —
 `emit_tests.rs::conformance_rule_name` — and it roots every top-level rule EXCEPT a bare-GROUP rule
@@ -3483,7 +3486,8 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   reason**, or — the class this oracle exists to catch — a fork misparse minting spec-violating bytes.
   **Investigate before ledgering.** A ledgered `(fixture, rule)` that stops diverging while still
   being swept turns the gate RED (stale entry), mirroring `EXPECTED_FAIL`.
-- **`GEN_SKIP` vs `RUST_ORACLE_SKIP`** — two distinct exclusions. `GEN_SKIP` (e.g. `dsl_custom`) can't
+- **`GEN_SKIP` vs fixture-level `RUST_ORACLE_SKIP` vs per-rule `RUST_ORACLE_RULE_SKIP`** — three
+  deliberately different scopes. `GEN_SKIP` (e.g. `dsl_custom`) can't
   be generated standalone at all, so it's skipped entirely. `RUST_ORACLE_SKIP` holds fixtures with a
   *rust*-validator gap that still generate, round-trip, and dump fine: they are generated **without**
   `--emit-tests-conformance` (rust validate half off) while their minted bytes are **still** swept by
@@ -3497,6 +3501,21 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   fix shipped (`cddl-matrix/README.md` § "Upstream oracle gaps" gap #6; its ruby half is
   separately on `RUBY_EXPECTED_FAIL` above, so it keeps the decode-side reference-codec
   differential AND the rust conformance half as its checks).
+  `RUST_ORACLE_RULE_SKIP` is intentionally narrower: normal conformance generation remains ON and
+  the scratch generated module neutralizes only the exact emitted
+  `cddl_conformance::validate(&bytes, "undefined_value");` call for
+  `(fixed_singletons, undefined_value)`. At pinned dcSpark/cddl
+  `ac1b98ec07184236517da4511b1bbea239e35190`, valid `x = undefined` bytes `f7` reject with
+  `expected type undefined, got Null`. The cost is exactly **one of fixed_singletons' eight** rust
+  validator calls; its other seven calls, every ordinary round trip, minted-byte dump, ruby sweep,
+  and reference-codec differential remain enforced. Ciborium's generic value model collapses `f7`
+  to null while minicbor preserves undefined, so that differential normalizes this one
+  representational discrepancy after both codecs fully consume the bytes; its `f7` self-check keeps
+  that accommodation explicit. Fixture/rule existence, a nonempty reason,
+  pair uniqueness, one-or-more exact matches, no target left behind, and unchanged unledgered-call
+  count are all guarded. The same scratch preflight directly asserts that reject signature, so an
+  acceptance or signature change fails loudly: remove or re-investigate the one-rule ledger rather
+  than broadening it to the fixture.
 - **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
   hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
   gate unless ledgered in `DUMP_EXEMPT` **with a justification** — so a dump hook that silently stops
@@ -3526,10 +3545,12 @@ our output — a well-formedness regression a spec validator wouldn't see (a val
 a raw decoder chokes on, or vice-versa). What it can't: nothing about spec conformance — that's the two
 cddl oracles' job. It has no external dependency, so it runs for `RUST_ORACLE_SKIP` fixtures and even
 under `CDDL_RUBY_ORACLE=skip`, with its own case floor (`DIFF_CASE_FLOOR`) and a truncation negative
-control (a malformed case must fail both codecs). The one place the codecs legitimately model the same
-bytes differently — RFC 8949 §3.4.3 bignum tags 2/3, which `ciborium` folds into integers and
-`minicbor` leaves as `Tag(2/3, Bytes)` (our `biguint`/`bignint` prelude types) — is canonicalized by
-`fold_bignums` before comparison, so only a genuine structural divergence turns the gate red.
+control (a malformed case must fail both codecs). Two representational discrepancies are canonicalized
+only after both codecs fully consume the bytes: RFC 8949 §3.4.3 bignum tags 2/3, which `ciborium`
+folds into integers and `minicbor` leaves as `Tag(2/3, Bytes)` (our `biguint`/`bignint` prelude
+types), and `undefined` `f7`, which ciborium's generic value model collapses to null while minicbor
+preserves as undefined. The differential's hand-derived self-checks pin both accommodations, so only
+a genuine structural divergence turns the gate red.
 
 **The DIRECTORY-INPUT leg** is the sibling gate `ir_conformance_multifile`, and it asks this oracle's
 question of an input the corpus cannot express: every `tests/corpus/*.cddl` is a single file, so the

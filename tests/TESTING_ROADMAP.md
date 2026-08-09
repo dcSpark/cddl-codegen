@@ -271,9 +271,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
    for the shape that mints them. The gate's third case answers that for shapes the rich fixture
    cannot host at all: a minimal scratch-written spec under `--preserve-encodings
-   --annotate-fields=false` covering verify-only fixed bool/null in member position and in all
-   three arm positions, which is where a `clippy::no_effect` `();` and a `clippy::bool_comparison`
-   `x != true` both shipped inside the deny set while the gate stayed green. The gate's rich input
+   --annotate-fields=false` covering verify-only fixed bool/null/undefined in member position and
+   in all three arm positions, including the mixed-special brute-force dispatch. This is where a
+   `clippy::no_effect` `();` and a `clippy::bool_comparison` `x != true` both shipped inside the
+   deny set while the gate stayed green. The gate's rich input
    (`tests/canonical/input.cddl`) carries the
    identity-op provocations (`clippy_neg_bounded` — a record-field bounded `nint` whose deserialize
    RangeCheck exercises the no-`as i128`-cast path; `clippy_wrapped_map` — a `@newtype` over a map
@@ -556,7 +557,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       claim — for a claims-the-API-does-X sentence that means calling X (a compile-fail probe is an
       execution too) — so the entry cannot drift from the code while its carriers stay green.
 
-    Pickup re-probe remains the enforcement of last resort, not the plan. Nine proven instances,
+    Pickup re-probe remains the enforcement of last resort, not the plan. Ten proven instances,
     each caught only by executing the claim rather than reading it:
     - A refusal's first predicate refused the exact remedy its own message named
       (`{ * uint => [coords] }` — the registry keeps materialized plain groups, so the lookup
@@ -599,6 +600,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       pre-ship — the first refusal family authored since this item whose remedy defect never
       reached a commit — which is the evidence the day-one half of the convention pays for
       itself, not only the sweep half.
+    - The bare fixed-table-VALUE refusal continued to say a named fixed rule was rejected after
+      B3-024A made it a nominal singleton. Reading found the stale sentence; its corrected
+      `five = 5` / `{ * uint => five }` advice is now executed under default and preserve by
+      `fixed_table_value_rejection_advertises_executable_nominal_remedy`.
 
 16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is

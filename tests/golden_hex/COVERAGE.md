@@ -136,7 +136,7 @@ redundant or has no canonical RFC vector.
 
 | RFC bytes | decoded | | test / note |
 |-----------|---------|---|-------------|
-| `f0` | simple(16) | ➖ | unassigned simple value 16 is not a CDDL construct the generator emits; simple-value immediate cell is covered by false/true/null |
+| `f0` | simple(16) | ➖ | unassigned simple value 16 is not a CDDL construct the generator emits; simple-value immediate cell is covered by false/true/null/undefined |
 | `f4` | false | ✅ | `boolean_false` |
 | `f5` | true | ✅ | `boolean_true` |
 | `f6` | null | ✅ | `null_value` |

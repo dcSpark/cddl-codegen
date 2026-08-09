@@ -7899,8 +7899,8 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
     );
 
     // Graceful rejections once on the record path: nint/float get the unsupported-fixed-kind message,
-    // bool mentions its value, a zero-permitting occurrence gets f18d764's occurrence message, and an
-    // aliased literal domain (`one = 1`) rejects (formerly a for_rust_member panic).
+    // bool/undefined name their fixed value, a zero-permitting occurrence gets f18d764's occurrence
+    // message, and an aliased literal domain (`one = 1`) rejects (formerly a for_rust_member panic).
     let nint =
         run("m = { -1 => uint }\n", "nint").expect_err("nint arrow key must reject gracefully");
     assert!(
@@ -7925,6 +7925,12 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
     assert!(
         boolean.contains("Bool"),
         "bool arrow key should mention Bool in its message, got: {boolean}"
+    );
+    let undefined = run("m = { undefined => uint }\n", "undefined")
+        .expect_err("undefined arrow key must reject gracefully");
+    assert!(
+        undefined.contains("unsupported fixed map key") && undefined.contains("Undefined"),
+        "undefined arrow key should retain the unsupported-fixed-key boundary, got: {undefined}"
     );
     let star = run("m = { * 1 => uint }\n", "star").expect_err(
         "a zero-permitting occurrence on a routed arrow key must reject (silent narrowing is wrong)",
@@ -7959,6 +7965,59 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
     run("m = { * (1 => uint) }\n", "table_paren_fixed").expect_err(
         "a parenthesized fixed-value key must reject gracefully, not build a Fixed table",
     );
+}
+
+/// A bare fixed table VALUE has no per-row Rust type, but a named fixed rule is a nominal singleton
+/// with exactly that stored representation. The rejection used to advertise the opposite after
+/// B3-024A nominalized top-level fixed rules. Pin both table-detection spellings' message and execute
+/// the advertised table remedy under default and preserve, so this advice cannot decay into text.
+#[test]
+fn fixed_table_value_rejection_advertises_executable_nominal_remedy() {
+    fn run_with(
+        spec: &str,
+        tag: &str,
+        preserve: bool,
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_fixed_table_value_remedy_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "fixed_table_value_remedy_unused",
+            "--wasm=false",
+        ];
+        if preserve {
+            args.push("--preserve-encodings=true");
+        }
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    for (tag, spec) in [
+        ("bare", "a = { * uint => 5 }\n"),
+        ("paren", "a = { * (uint => 5) }\n"),
+    ] {
+        let msg = run_with(spec, tag, false)
+            .expect_err("a bare fixed table value must reject gracefully");
+        assert!(
+            msg.contains("five = 5") && msg.contains("{ * uint => five }"),
+            "the refusal must print its nominal-singleton remedy, got: {msg}"
+        );
+    }
+
+    for (tag, preserve) in [("default", false), ("preserve", true)] {
+        run_with("five = 5\na = { * uint => five }\n", tag, preserve).unwrap_or_else(|e| {
+            panic!("the printed named-singleton table remedy must generate under {tag}: {e}")
+        });
+    }
 }
 
 /// A no-occurrence type-domain arrow entry — `{ tstr => uint }`, key non-literal — is rejected
