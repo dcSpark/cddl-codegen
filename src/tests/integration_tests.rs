@@ -9670,6 +9670,16 @@ fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
                         maybe_enabled = true / null\n\
                         maybe_enabled_holder = [maybe_enabled]\n\
                         only_null = null / null\n\
+                        maybe_tagged_null = #6.7(null) / null\n\
+                        maybe_tagged_null_rev = null / #6.7(null)\n\
+                        maybe_tagged_null_holder = [x: maybe_tagged_null]\n\
+                        maybe_tagged_null_rev_holder = [x: maybe_tagged_null_rev]\n\
+                        tagged_null_member = [a: #6.7(null) / null, b: null / #6.7(null)]\n\
+                        maybe_cbor_null = bytes .cbor null / null\n\
+                        maybe_cbor_null_rev = null / bytes .cbor null\n\
+                        maybe_cbor_null_holder = [x: maybe_cbor_null]\n\
+                        maybe_cbor_null_rev_holder = [x: maybe_cbor_null_rev]\n\
+                        cbor_null_member = [a: bytes .cbor null / null, b: null / bytes .cbor null]\n\
                         composition = [a: answer, vs: [* answer], ms: {* uint => answer}]\n\
                         tagged_enabled = #6.7(true)\n\
                         cbor_answer = bytes .cbor 42\n";
@@ -9704,6 +9714,27 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     assert_eq!(bytes(&OnlyNull::from_cbor_bytes(&[0xf6]).unwrap()), [0xf6]);
     reject::<OnlyNull>(&[0xf7], "Expected null");
 
+    // Encoded-null is NOT the bare `null / null` one-state case. Both rule orders and member
+    // positions preserve the tagged/CBOR-bytes arm beside bare null; undefined is a third reject.
+    for bytes in [&[0x81, 0xc7, 0xf6][..], &[0x81, 0xf6][..]] {
+        assert!(MaybeTaggedNullHolder::from_cbor_bytes(bytes).is_ok());
+        assert!(MaybeTaggedNullRevHolder::from_cbor_bytes(bytes).is_ok());
+    }
+    assert!(MaybeTaggedNullHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
+    assert!(MaybeTaggedNullRevHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
+    assert!(TaggedNullMember::from_cbor_bytes(&[0x82, 0xc7, 0xf6, 0xf6]).is_ok());
+    assert!(TaggedNullMember::from_cbor_bytes(&[0x82, 0xf6, 0xc7, 0xf6]).is_ok());
+    assert!(TaggedNullMember::from_cbor_bytes(&[0x82, 0xf7, 0xf6]).is_err());
+    for bytes in [&[0x81, 0x41, 0xf6][..], &[0x81, 0xf6][..]] {
+        assert!(MaybeCborNullHolder::from_cbor_bytes(bytes).is_ok());
+        assert!(MaybeCborNullRevHolder::from_cbor_bytes(bytes).is_ok());
+    }
+    assert!(MaybeCborNullHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
+    assert!(MaybeCborNullRevHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
+    assert!(CborNullMember::from_cbor_bytes(&[0x82, 0x41, 0xf6, 0xf6]).is_ok());
+    assert!(CborNullMember::from_cbor_bytes(&[0x82, 0xf6, 0x41, 0xf6]).is_ok());
+    assert!(CborNullMember::from_cbor_bytes(&[0x82, 0xf7, 0xf6]).is_err());
+
     assert_eq!(bytes(&TaggedEnabled::from_cbor_bytes(&[0xc7, 0xf5]).unwrap()), [0xc7, 0xf5]);
     reject::<TaggedEnabled>(&[0xc7, 0xf4], "Expected fixed value true found false");
     assert_eq!(bytes(&CborAnswer::from_cbor_bytes(&[0x42, 0x18, 0x2a]).unwrap()), [0x42, 0x18, 0x2a]);
@@ -9719,6 +9750,8 @@ fn preserve_replays_nonminimal_fixed_tag_and_cbor_heads() {
     replay::<Marker>(&[0x78, 0x01, 0x73]);
     replay::<TaggedEnabled>(&[0xd8, 0x07, 0xf5]);
     replay::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a]);
+    replay::<MaybeTaggedNullHolder>(&[0x81, 0xd8, 0x07, 0xf6]);
+    replay::<MaybeCborNullHolder>(&[0x81, 0x58, 0x01, 0xf6]);
 }
 "#;
     const CANONICAL: &str = r#"
@@ -9730,6 +9763,8 @@ fn canonical_minimizes_the_same_fixed_tag_and_cbor_heads() {
     canonical::<Marker>(&[0x78, 0x01, 0x73], &[0x61, 0x73]);
     canonical::<TaggedEnabled>(&[0xd8, 0x07, 0xf5], &[0xc7, 0xf5]);
     canonical::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a], &[0x42, 0x18, 0x2a]);
+    canonical::<MaybeTaggedNullHolder>(&[0x81, 0xd8, 0x07, 0xf6], &[0x81, 0xc7, 0xf6]);
+    canonical::<MaybeCborNullHolder>(&[0x81, 0x58, 0x01, 0xf6], &[0x81, 0x41, 0xf6]);
 }
 "#;
 

@@ -506,8 +506,10 @@ entry, so the atomicity is the rule).
   `Option<T>`, but when `T` is a fixed value the generator first mints a zero-sized nominal
   singleton: `true / null` is `Option<FixedBoolTrue>`. This is applied at both former collapse
   sites — a rule body and every inline member/element/table-value role — and the singleton owns its
-  constant verification plus any mandatory-tag/`.cbor` wire chain. `null / null` normalizes to the
-  one null singleton rather than exposing `Option<FixedNull>`'s two equivalent states. The coverage
+  constant verification plus any mandatory-tag/`.cbor` wire chain. Only bare `null / null` normalizes
+  to the one null singleton rather than exposing `Option<FixedNull>`'s two equivalent states;
+  encoded null (`#6.N(null) / null` or `bytes .cbor null / null`) keeps both wire arms as
+  `Option<Singleton>`. The coverage
   is `choice_fixed_null_collapse{,_member}` plus the fixed-singleton corpus and decode-conformance
   accepts/reject; the latter pins both legal arms and a reason-bearing third-value rejection.
   `true / false` has no null arm and remains the ordinary multi-value C-style enum path. `undefined`

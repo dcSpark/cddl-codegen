@@ -548,6 +548,8 @@ and the inverse, don't *invent* a gap from a degenerate example.**
 - **Supported fixed values are nominal at the TOP level and inline at MEMBER position.** A named
   scalar/text/bool/null fixed rule (`x = true`, `x = 5`, `x = "v"`) is now a singleton type with a
   standalone codec; the same constants are also supported as array elements and map values:
+  a fixed/null choice nominalizes the fixed arm, and only bare `null / null` is one-state — tagged
+  or `bytes .cbor` null beside bare null remains two distinct wire arms.
   `a = [v: true, x: uint]`, `m = { k: 5, j: uint }`, the bare unkeyed `a = [5, x: uint]`, and the
   optional keyed forms `[x: uint, ? v: 5, label: tstr]` / `{ ? k: 5, j: uint }`. So a reader who
   generalizes the *feature-row* verdict to member position generalizes wrongly — which is what the
