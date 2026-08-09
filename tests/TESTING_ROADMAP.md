@@ -140,13 +140,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-- **Encoded-fixed-null `/ null` is now executed, not merely generated.** The B3-024A singleton
-  e2e covers tagged and `bytes .cbor` null beside bare null at rule and member positions, both
-  source orders, both valid arms, a third reject, plus preserve replay and canonical minimization.
-  The original gap was code-inspection-found: the matrix had a bare fixed/null cell and the e2e
-  varied fixed/tag/`.cbor` roots separately, but neither crossed null-collapse with its wire chain.
-  Keep this cross-product in that executable e2e whenever the collapse or fixed wire identity moves.
-
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
    `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
@@ -530,10 +523,16 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     fixed-singleton owner is the third minting site and initially deduplicated `true` with
     `#6.7(true)` by `FixedValue` alone, making parse order choose the wrong wire codec. The local
     owner check now keys the complete `RustType` wire shape and rejects authored collisions in both
-    source orders, but this is exactly the residual's evidence: it prevents this mint path from
-    overwriting while it does not provide the finalized-IR, all-minter uniqueness floor. Arm that
-    shared registry next; its arming run must measure and name every legitimate re-registration
-    seam before any overwrite is rejected globally.
+    source orders. **The finalized-IR registry proposed above would NOT by itself have caught this
+    semantic collision:** the faulty dedup discarded the second claim before finalization, leaving
+    one unique, spellable `RustIdent`; every reference compiled, but one use got the wrong wire.
+    Add a pre-registration mint-claim predicate to the shared registry: every minter records
+    `(RustIdent, canonical structural/wire identity, mint site)` before lookup/dedup/insert;
+    byte-identical repeat claims are allowed, while two identities claiming one ident fail naming
+    both sites. Its acceptance vectors must reverse claimant order and assert emitted wire bytes,
+    not merely a duplicate-name diagnostic. Keep the finalized-IR spellability/uniqueness checks as
+    separate predicates: they catch bad surviving state, while the claim ledger catches a lossy
+    registration seam that erased the evidence.
 
 15. **A rejection message's remedy string is an executable claim — pin each one with a
     generates-green vector, and execute a findings entry's operative claims at pickup.** The
@@ -2829,9 +2828,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   tagged/`.cbor` null beside bare null keeps both wire arms. The executable
   B3-024A fixture exercises wrong-value reasons, record/Vec/table composition, fixed/null's two
   accepts plus third reject, fixed/tag/`.cbor` non-minimal preserve replay and canonical
-  minimization; projected feature rows and the fixed/null containment cell have reason-bearing
-  decode pins. `undefined` and byte-string literals remain refused: neither is a `FixedValue`, and
-  B3-024B/C own their representation decisions.
+  minimization; its encoded-null leg exhausts the `Tagged` and `CBORBytes` operations currently
+  reachable on a fixed value at both collapse sites and in both source orders (`OptionallyTagged`
+  is collection-only). Projected feature rows and the fixed/null containment cell have
+  reason-bearing decode pins. `undefined` and byte-string literals remain refused: neither is a
+  `FixedValue`, and B3-024B/C own their representation decisions.
 - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
   fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
   `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining
