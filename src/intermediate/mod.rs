@@ -4219,18 +4219,27 @@ impl<'a> IntermediateTypes<'a> {
                     }
                 }
             }
-            // BOTH halves on a record rule is the one accepted rule-position pair (it gets thin
-            // generated impls delegating to the named functions), and it is the one place a
-            // `@custom_encodings` declaration would be read into a rule's metadata and then have
+            // BOTH halves on a record rule, and the complete pair's implicit whole-table map
+            // wrapper, are the accepted rule-position pairs (each gets thin generated impls
+            // delegating to the named functions). They are the only struct owners where a
+            // `@custom_encodings` declaration would be read into rule metadata and then have
             // nowhere to go: a struct carries its encoding metadata INSIDE itself, so no
-            // codec-visible tuple crosses the boundary. Every other struct-minting rule kind already
-            // rejects on the pair above, so this fires once and only for the shape that would
-            // otherwise drop the declaration silently. (A declaration with one half or none is the
-            // parse walk's `reject_custom_encodings_without_pair`, so it cannot double-report here.)
+            // codec-visible tuple crosses the boundary. Other wrapper forms remain rejected by the
+            // pair checks above; this fires once and only for an accepted owner that would otherwise
+            // drop the declaration silently. (A declaration with one half or none is the parse
+            // walk's `reject_custom_encodings_without_pair`, so it cannot double-report here.)
+            let is_complete_pair_map_wrapper = matches!(
+                rust_struct.variant(),
+                RustStructType::Wrapper {
+                    wrapped,
+                    ..
+                } if matches!(wrapped.conceptual_type, ConceptualRustType::Map(_, _))
+            );
             if config.custom_encodings.is_some()
                 && config.custom_serialize.is_some()
                 && config.custom_deserialize.is_some()
-                && matches!(rust_struct.variant(), RustStructType::Record(_))
+                && (matches!(rust_struct.variant(), RustStructType::Record(_))
+                    || is_complete_pair_map_wrapper)
             {
                 custom_codec_rejections.insert(format!(
                     "@custom_encodings on `{ident}`: this rule mints a STRUCT, whose encoding \

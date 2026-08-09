@@ -599,7 +599,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     are the control — but what those refusals close is the two spellings someone happened to probe,
     not the class: every ACCEPTED placement remains unmeasured for round-trip identity.
     Mechanical shape: for each accepted `@custom_serialize`/`@custom_deserialize` placement (field,
-    alias, record rule, both table positions, open-map rest row) × profile (default, preserve,
+    alias, record rule, complete-item table owner, both table positions, open-map rest row) × profile (default, preserve,
     canonical), generate with stub codecs that are true inverses of each other but NOT of the
     default wire (the hex-text pair from the e2e fixtures is the template), then execute
     `from_cbor_bytes(to_cbor_bytes(v)) == v` through a holder. Any placement whose two directions
@@ -608,6 +608,11 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     to enumerate by hand (loose/non-empty/bounded/`@duplicates` collection flavors): a coherence
     sweep that misses a flavor leaves that flavor exactly the silent carrier the pair rejections
     just closed.
+    Add the complete-item-owner × `@custom_encodings`/`@custom_wire_major` modifier axis: each
+    modifier must be honored where its codec-visible channel exists or rejected where it does not.
+    In particular, the whole-table wrapper is self-carrying, so `@custom_encodings` must reject
+    rather than silently claim an absent tuple; `@custom_wire_major` already rejects every
+    struct-owning rule because only a transparent alias keying an open table can consume it.
 
 17. **The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch
     crate outruns `tests/warmup/Cargo.lock` at every upstream release.** Proven 2026-08-06 (the

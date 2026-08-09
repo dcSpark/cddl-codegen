@@ -822,7 +822,18 @@ const GRID: &[Cell] = &[
             must_not: &["pub type T", "serializer.write_map"],
         },
     },
-    // 23g-i / 23g-ii. Each half ALONE on a table rule, rejected on its own — the record rule's
+    // 23g-i. The whole-table pair's implicit map wrapper owns itself rather than a codec-visible
+    // encoding tuple, just like the record-rule owner. A declaration would be silently inert, so
+    // reject it; the preceding no-declaration cell remains the accepted control.
+    Cell {
+        directive: "@custom_encodings",
+        position: "table-rule-complete-pair",
+        spec: "t = {\n  * text => uint\n} ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings len\nholder = [f: t]\n",
+        flags: &["--preserve-encodings=true"],
+        wasm: false,
+        expect: Expect::Reject("@custom_encodings on `T`: this rule mints a STRUCT"),
+    },
+    // 23g-ii / 23g-iii. Each half ALONE on a table rule, rejected on its own — the record rule's
     //      both-halves escape (23o) has no table counterpart, so neither spelling may slip through.
     Cell {
         directive: "@custom_serialize",
