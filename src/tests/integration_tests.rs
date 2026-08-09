@@ -9667,8 +9667,15 @@ fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
                         marker = \"s\"\n\
                         enabled = true\n\
                         absent = null\n\
+                        undefined_value = undefined\n\
                         maybe_enabled = true / null\n\
+                        maybe_undefined = undefined / null\n\
+                        mixed_special = undefined / null / true\n\
                         maybe_enabled_holder = [maybe_enabled]\n\
+                        maybe_undefined_holder = [maybe_undefined]\n\
+                        mixed_special_holder = [mixed_special]\n\
+                        undefined_array_members = [required: undefined, ? optional: undefined]\n\
+                        undefined_map_members = {required: undefined, ? optional: undefined}\n\
                         only_null = null / null\n\
                         maybe_tagged_null = #6.7(null) / null\n\
                         maybe_tagged_null_rev = null / #6.7(null)\n\
@@ -9681,8 +9688,11 @@ fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
                         maybe_cbor_null_rev_holder = [x: maybe_cbor_null_rev]\n\
                         cbor_null_member = [a: bytes .cbor null / null, b: null / bytes .cbor null]\n\
                         composition = [a: answer, vs: [* answer], ms: {* uint => answer}]\n\
+                        undefined_composition = [a: undefined_value, vs: [* undefined_value], ms: {* uint => undefined_value}]\n\
                         tagged_enabled = #6.7(true)\n\
-                        cbor_answer = bytes .cbor 42\n";
+                        tagged_undefined = #6.7(undefined)\n\
+                        cbor_answer = bytes .cbor 42\n\
+                        cbor_undefined = bytes .cbor undefined\n";
 
     const COMMON: &str = r#"
 #[test]
@@ -9693,11 +9703,14 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     assert_eq!(bytes(&Marker::new_value_text73()), [0x61, 0x73]);
     assert_eq!(bytes(&Enabled::new_value_bool_true()), [0xf5]);
     assert_eq!(bytes(&Absent::new_value_null()), [0xf6]);
+    assert_eq!(bytes(&UndefinedValue::new_value_undefined()), [0xf7]);
 
     // A nominal fixed rule composes in a record, Vec and table. Decode rather than construct this
     // value so the same vector covers the default BTreeMap and preserve OrderedHashMap surfaces.
     let composition_bytes = [0x83, 0x18, 0x2a, 0x81, 0x18, 0x2a, 0xa1, 0x01, 0x18, 0x2a];
     assert_eq!(bytes(&Composition::from_cbor_bytes(&composition_bytes).unwrap()), composition_bytes);
+    let undefined_composition_bytes = [0x83, 0xf7, 0x81, 0xf7, 0xa1, 0x01, 0xf7];
+    assert_eq!(bytes(&UndefinedComposition::from_cbor_bytes(&undefined_composition_bytes).unwrap()), undefined_composition_bytes);
 
     reject::<Answer>(&[0x18, 0x2b], "Expected fixed value 42 found 43");
     reject::<Debt>(&[0x27], "Expected fixed value -7 found -8");
@@ -9705,6 +9718,20 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     reject::<Marker>(&[0x61, 0x74], "Expected fixed value");
     reject::<Enabled>(&[0xf4], "Expected fixed value true found false");
     reject::<Absent>(&[0xf7], "Expected null");
+    assert_decode_reject_reason::<UndefinedValue>(&[0xf6], "Expected undefined");
+    assert_decode_reject_reason::<UndefinedValue>(&[0xf4], "Expected undefined");
+    assert_decode_reject_reason::<UndefinedValue>(&[0xf5], "Expected undefined");
+    assert_decode_reject_reason::<UndefinedValue>(&[0xf8, 0x20], "Expected undefined");
+
+    // Fixed undefined members store no payload. An optional one stores only a presence bit in
+    // either record representation; decoding is enough to assert the zero-storage API and wire.
+    for wire in [&[0x81, 0xf7][..], &[0x82, 0xf7, 0xf7][..]] {
+        assert_eq!(bytes(&UndefinedArrayMembers::from_cbor_bytes(wire).unwrap()), wire);
+    }
+    for wire in [&[0xa1, 0x68, b'r', b'e', b'q', b'u', b'i', b'r', b'e', b'd', 0xf7][..],
+                  &[0xa2, 0x68, b'o', b'p', b't', b'i', b'o', b'n', b'a', b'l', 0xf7, 0x68, b'r', b'e', b'q', b'u', b'i', b'r', b'e', b'd', 0xf7][..]] {
+        assert_eq!(bytes(&UndefinedMapMembers::from_cbor_bytes(wire).unwrap()), wire);
+    }
 
     // Both nullable wire arms decode, while a third same-major value does not.  `only_null` is
     // direct and has just the singleton state — its enum cannot expose Option's extra None state.
@@ -9713,6 +9740,16 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     reject::<MaybeEnabledHolder>(&[0x81, 0xf4], "Expected fixed value true found false");
     assert_eq!(bytes(&OnlyNull::from_cbor_bytes(&[0xf6]).unwrap()), [0xf6]);
     reject::<OnlyNull>(&[0xf7], "Expected null");
+
+    // Unlike null/null, undefined/null has two values. A third simple is rejected by the
+    // undefined arm's reason rather than silently collapsing to null.
+    assert_eq!(bytes(&MaybeUndefinedHolder::from_cbor_bytes(&[0x81, 0xf7]).unwrap()), [0x81, 0xf7]);
+    assert_eq!(bytes(&MaybeUndefinedHolder::from_cbor_bytes(&[0x81, 0xf6]).unwrap()), [0x81, 0xf6]);
+    reject::<MaybeUndefinedHolder>(&[0x81, 0xf4], "Expected undefined");
+    for wire in [&[0x81, 0xf7][..], &[0x81, 0xf6][..], &[0x81, 0xf5][..]] {
+        assert_eq!(bytes(&MixedSpecialHolder::from_cbor_bytes(wire).unwrap()), wire);
+    }
+    reject::<MixedSpecialHolder>(&[0x81, 0xf4], "No variant matched");
 
     // Encoded-null is NOT the bare `null / null` one-state case. Both rule orders and member
     // positions preserve the tagged/CBOR-bytes arm beside bare null; undefined is a third reject.
@@ -9739,6 +9776,10 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     reject::<TaggedEnabled>(&[0xc7, 0xf4], "Expected fixed value true found false");
     assert_eq!(bytes(&CborAnswer::from_cbor_bytes(&[0x42, 0x18, 0x2a]).unwrap()), [0x42, 0x18, 0x2a]);
     reject::<CborAnswer>(&[0x42, 0x18, 0x2b], "Expected fixed value 42 found 43");
+    assert_eq!(bytes(&TaggedUndefined::from_cbor_bytes(&[0xc7, 0xf7]).unwrap()), [0xc7, 0xf7]);
+    reject::<TaggedUndefined>(&[0xc7, 0xf6], "Expected undefined");
+    assert_eq!(bytes(&CborUndefined::from_cbor_bytes(&[0x41, 0xf7]).unwrap()), [0x41, 0xf7]);
+    reject::<CborUndefined>(&[0x41, 0xf6], "Expected undefined");
 }
 "#;
     const PRESERVE: &str = r#"
@@ -9752,6 +9793,8 @@ fn preserve_replays_nonminimal_fixed_tag_and_cbor_heads() {
     replay::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a]);
     replay::<MaybeTaggedNullHolder>(&[0x81, 0xd8, 0x07, 0xf6]);
     replay::<MaybeCborNullHolder>(&[0x81, 0x58, 0x01, 0xf6]);
+    replay::<TaggedUndefined>(&[0xd8, 0x07, 0xf7]);
+    replay::<CborUndefined>(&[0x58, 0x01, 0xf7]);
 }
 "#;
     const CANONICAL: &str = r#"
@@ -9765,6 +9808,8 @@ fn canonical_minimizes_the_same_fixed_tag_and_cbor_heads() {
     canonical::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a], &[0x42, 0x18, 0x2a]);
     canonical::<MaybeTaggedNullHolder>(&[0x81, 0xd8, 0x07, 0xf6], &[0x81, 0xc7, 0xf6]);
     canonical::<MaybeCborNullHolder>(&[0x81, 0x58, 0x01, 0xf6], &[0x81, 0x41, 0xf6]);
+    canonical::<TaggedUndefined>(&[0xd8, 0x07, 0xf7], &[0xc7, 0xf7]);
+    canonical::<CborUndefined>(&[0x58, 0x01, 0xf7], &[0x41, 0xf7]);
 }
 "#;
 
@@ -9820,6 +9865,9 @@ use cddl_lib::*;
 fn reject<T: Deserialize + core::fmt::Debug>(bytes: &[u8], expected: &str) {{
     let err = T::from_cbor_bytes(bytes).expect_err("vector unexpectedly decoded");
     assert!(err.to_string().contains(expected), "expected {{expected:?}}, got {{err}}");
+}}
+fn assert_decode_reject_reason<T: Deserialize + core::fmt::Debug>(bytes: &[u8], expected: &str) {{
+    reject::<T>(bytes, expected);
 }}
 {COMMON}
 {profile_helpers}

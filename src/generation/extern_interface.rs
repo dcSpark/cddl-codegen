@@ -609,6 +609,7 @@ fn occurrence_marker(
 fn render_fixed_value(fixed: &FixedValue) -> String {
     match fixed {
         FixedValue::Null => "null".to_string(),
+        FixedValue::Undefined => "undefined".to_string(),
         FixedValue::Bool(true) => "true".to_string(),
         FixedValue::Bool(false) => "false".to_string(),
         FixedValue::Uint(u) => u.to_string(),

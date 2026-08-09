@@ -18,8 +18,9 @@ one_bytes = [v: bstr]
 ; major type 1 (negative integer)
 one_nint  = [n: nint]
 
-; major type 7 (simple: bool, null) and float
+; major type 7 (simple: bool, null, undefined) and float
 one_bool  = [v: bool]
+one_undefined = [v: undefined]
 one_float = [v: float]
 nullable  = [v: uint / null]
 

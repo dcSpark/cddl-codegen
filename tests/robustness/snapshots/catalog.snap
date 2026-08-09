@@ -89,7 +89,6 @@ table_domain_plain_group   error (graceful)
 tagged_literal             ok
 tagged_prelude_constant    ok
 undefined_generic          error (graceful)
-undefined_member           error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)
 unwrap_member              error (graceful)

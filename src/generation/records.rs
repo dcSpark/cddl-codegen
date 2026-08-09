@@ -714,6 +714,7 @@ pub(super) fn generate_array_struct_deserialization(
                         FixedValue::Bool(_)
                         | FixedValue::Nint(_)
                         | FixedValue::Null
+                        | FixedValue::Undefined
                         | FixedValue::Float(_)
                         | FixedValue::Uint(_) => format!(
                             "let {} = {}.unwrap_or({});",
@@ -2926,6 +2927,7 @@ pub(super) fn codegen_struct(
                 ConceptualRustType::Fixed(FixedValue::Uint(u)) => u.to_string(),
                 ConceptualRustType::Fixed(FixedValue::Nint(i)) => i.to_string(),
                 ConceptualRustType::Fixed(FixedValue::Null) => "null".to_owned(),
+                ConceptualRustType::Fixed(FixedValue::Undefined) => "undefined".to_owned(),
                 ConceptualRustType::Fixed(FixedValue::Text(s)) => format!("\"{s}\""),
                 // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal point
                 // (`3.0` -> `3`); the doc string mirrors the CDDL literal (`? f: 2.5`).
@@ -4161,6 +4163,7 @@ pub(super) fn codegen_struct(
                             FixedValue::Bool(_)
                             | FixedValue::Nint(_)
                             | FixedValue::Null
+                            | FixedValue::Undefined
                             | FixedValue::Float(_)
                             | FixedValue::Uint(_) => {
                                 deser_code.content.line(&format!(

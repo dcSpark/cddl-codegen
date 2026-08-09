@@ -1282,9 +1282,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "prelude.undefined",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -1762,9 +1772,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.array-element.prelude.undefined",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -2622,9 +2642,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.map-value.prelude.undefined",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {

@@ -569,6 +569,9 @@ impl GenerationScope {
                         // wasm-bindgen doesn't support const or static vars so we must do a function
                         let (ty, val) = match constant {
                             FixedValue::Null => panic!("null constants not supported"),
+                            FixedValue::Undefined => panic!(
+                                "undefined constants are nominal unit values, not wasm primitives"
+                            ),
                             FixedValue::Bool(b) => ("bool", b.to_string()),
                             FixedValue::Nint(i) => ("i32", i.to_string()),
                             FixedValue::Uint(u) => ("u32", u.to_string()),
@@ -3266,7 +3269,7 @@ fn encoding_fields_impl(
             }
         },
         SerializingRustType::Root(ConceptualRustType::Fixed(f), _cfg) => match f {
-            FixedValue::Bool(_) | FixedValue::Null => vec![],
+            FixedValue::Bool(_) | FixedValue::Null | FixedValue::Undefined => vec![],
             FixedValue::Nint(_) => encoding_fields_impl(
                 types,
                 name,

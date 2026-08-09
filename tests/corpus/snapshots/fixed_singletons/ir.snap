@@ -315,6 +315,53 @@ expression: ir
         },
     },
     RustIdent(
+        "UndefinedValue",
+    ): RustStruct {
+        ident: RustIdent(
+            "UndefinedValue",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: TypeChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "ValueUndefined",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Undefined,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
         "Version",
     ): RustStruct {
         ident: RustIdent(

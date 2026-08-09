@@ -2174,6 +2174,10 @@ impl<'a> IntermediateTypes<'a> {
         insert_alias("null", null_type.clone());
         insert_alias("nil", null_type);
         insert_alias(
+            "undefined",
+            ConceptualRustType::Fixed(FixedValue::Undefined).into(),
+        );
+        insert_alias(
             "true",
             ConceptualRustType::Fixed(FixedValue::Bool(true)).into(),
         );
@@ -2242,10 +2246,6 @@ impl<'a> IntermediateTypes<'a> {
     pub const ANY_CONTENT_PRELUDE_TAGS: &'static [&'static str] =
         &["cbor-any", "eb16", "eb64legacy", "eb64url"];
 
-    /// The prelude name with no representation AT ALL (major type 7, simple value 23), read BY its
-    /// interception arm below. See [`Self::REFUSED_PRELUDE_NAMES`].
-    pub const UNDEFINED_PRELUDE_NAME: &'static str = "undefined";
-
     /// **The refusal inventory**: every prelude name [`Self::new_type`]'s interception arms REFUSE
     /// (`record_rejection` + an inert placeholder), as opposed to resolving to a type. Sorted, so
     /// the list reads as a set.
@@ -2267,7 +2267,7 @@ impl<'a> IntermediateTypes<'a> {
     /// the mirror this design exists to avoid.
     #[allow(dead_code)]
     pub const REFUSED_PRELUDE_NAMES: &'static [&'static str] =
-        &["cbor-any", "eb16", "eb64legacy", "eb64url", "undefined"];
+        &["cbor-any", "eb16", "eb64legacy", "eb64url"];
 
     // note: this is mut so the unregistered-reserved fallback can mark which reserved idents
     // are in the CDDL prelude so we don't generate code for all of them, potentially
@@ -2288,30 +2288,6 @@ impl<'a> IntermediateTypes<'a> {
                 AliasIdent::Reserved(reserved) if reserved == "int" => {
                     // We define an Int rust struct in prelude.rs
                     ConceptualRustType::Rust(RustIdent::new(raw.clone())).into()
-                }
-                // The CDDL prelude constant `undefined` (major type 7, simple value 23). Unlike
-                // `null`/`true`/`false` it has no `FixedValue` and no Rust value to store, so there
-                // is nothing for a member, an element, or a rule body to hold — refuse instead of
-                // aborting. Intercepted HERE, at the same unresolved-reserved fallback as the `any`
-                // arm above, because that is the one seam every position funnels through: a user
-                // rule literally named `undefined` still shadows it (a registered alias resolves in
-                // `resolve_alias` above and never reaches this arm), and the refusal needs the
-                // `IntermediateTypes` handle that `cddl_prelude` — a pure `&str -> Option<&str>` —
-                // does not have. The consequence is that the message is ROLE-NEUTRAL by
-                // construction: this seam knows the name, never the position it was written in.
-                // The `Fixed(FixedValue::Null)` placeholder is the inert stand-in the sibling
-                // rejections in `rust_type_from_type2` use, so the walk continues and `finalize`
-                // reports this alongside anything else it finds.
-                AliasIdent::Reserved(reserved) if reserved == Self::UNDEFINED_PRELUDE_NAME => {
-                    self.record_rejection(
-                        "the CDDL prelude type `undefined` (major type 7, simple value 23) is \
-                         unsupported — it has no representation in generated code. A position that \
-                         only needs to carry an arbitrary CBOR item (`undefined` included) can use \
-                         the supported `any` type; constraining a position specifically to \
-                         `undefined` is not supported."
-                            .to_string(),
-                    );
-                    ConceptualRustType::Fixed(FixedValue::Null).into()
                 }
                 // The four `any`-content prelude tags: `cbor-any` (#6.55799), `eb64url` (#6.21),
                 // `eb64legacy` (#6.22) and `eb16` (#6.23). Each tags an ARBITRARY CBOR item with

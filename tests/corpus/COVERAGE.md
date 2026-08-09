@@ -158,7 +158,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.true` | ✅ | true | `fixed_singletons.cddl` |
 | `prelude.tstr` | ✅ | tstr | `prelude.cddl` |
 | `prelude.uint` | ✅ | uint | `primitives.cddl` |
-| `prelude.undefined` | ➖ | undefined | the `undefined` simple value has no `FixedValue` and no generated representation, so it is rejected gracefully in every position — member and rule body alike  [`the CDDL prelude type `undefined``] |
+| `prelude.undefined` | ✅ | undefined | `fixed_singletons.cddl` |
 | `prelude.unsigned` | ✅ | unsigned | `prelude.cddl` |
 | `prelude.uri` | ✅ | uri | `prelude.cddl` |
 
@@ -406,7 +406,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.true` | · | ✅ | ✅ |  | · | ✅ |  | · |  |  |
 | `prelude.tstr` |  | · | · | · |  | · |  | · |  | · |
 | `prelude.uint` | · | · | · | · | · | · |  | · | · | · |
-| `prelude.undefined` |  | ➖ | ➖ |  |  |  |  |  |  |  |
+| `prelude.undefined` | · | ✅ | ✅ |  |  |  |  |  |  |  |
 | `prelude.unsigned` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.uri` |  | · |  |  |  |  |  |  |  |  |
 | `rangeop.exclusive` |  | · |  |  | · |  |  |  |  |  |
@@ -427,7 +427,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Modelled `(role × feature)` cells: **69** (over 136 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **35**.
-- Exercised by the corpus, modelled by **nothing**: **162** (the `·` cells).
+- Exercised by the corpus, modelled by **nothing**: **163** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **34**.
 
 ## Notable findings
@@ -442,7 +442,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **123** — ✅ 75 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 16 not supported
+- Features: **123** — ✅ 76 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 15 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 101
 

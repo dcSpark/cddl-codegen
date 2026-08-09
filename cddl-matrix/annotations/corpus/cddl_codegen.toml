@@ -73,6 +73,10 @@ fixture = "fixed_singletons.cddl"
 id = "prelude.null"
 fixture = "fixed_singletons.cddl"
 
+[[cover]]
+id = "prelude.undefined"
+fixture = "fixed_singletons.cddl"
+
 # ---- extended prelude (tagged/nested aliases) ----
 [[cover]]
 id = "prelude.biguint"
@@ -488,12 +492,6 @@ id = "prelude.cbor-any"
 status = "unsupported"
 reason = "the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
 code_anchor = "no representation for the advice"
-
-[[note]]
-id = "prelude.undefined"
-status = "unsupported"
-reason = "the `undefined` simple value has no `FixedValue` and no generated representation, so it is rejected gracefully in every position — member and rule body alike"
-code_anchor = "the CDDL prelude type `undefined`"
 
 # Fixed simple-value types are nominal singleton TypeChoices (B3-024A), with direct codecs and
 # preserve metadata ownership just like a non-fixed TypeChoice.

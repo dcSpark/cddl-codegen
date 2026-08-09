@@ -406,6 +406,71 @@ pub enum TrueValueKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct UndefinedValue(pub(crate) cddl_lib::UndefinedValue);
+
+#[wasm_bindgen]
+impl UndefinedValue {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<UndefinedValue, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<UndefinedValue, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_value_undefined() -> Self {
+        Self(cddl_lib::UndefinedValue::new_value_undefined())
+    }
+
+    pub fn kind(&self) -> UndefinedValueKind {
+        match &self.0 {
+            cddl_lib::UndefinedValue::ValueUndefined => UndefinedValueKind::ValueUndefined,
+        }
+    }
+}
+
+impl From<cddl_lib::UndefinedValue> for UndefinedValue {
+    fn from(native: cddl_lib::UndefinedValue) -> Self {
+        Self(native)
+    }
+}
+
+impl From<UndefinedValue> for cddl_lib::UndefinedValue {
+    fn from(wasm: UndefinedValue) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::UndefinedValue> for UndefinedValue {
+    fn as_ref(&self) -> &cddl_lib::UndefinedValue {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum UndefinedValueKind {
+    ValueUndefined,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Version(pub(crate) cddl_lib::Version);
 
 #[wasm_bindgen]

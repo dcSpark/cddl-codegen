@@ -82,6 +82,17 @@ impl TrueValue {
 }
 
 #[derive(Clone, Debug)]
+pub enum UndefinedValue {
+    ValueUndefined,
+}
+
+impl UndefinedValue {
+    pub fn new_value_undefined() -> Self {
+        Self::ValueUndefined
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum Version {
     ValueUint5,
 }

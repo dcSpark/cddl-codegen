@@ -366,7 +366,7 @@ fn standalone_fixed_and_fixed_null_generate_nominal_type_choices() {
     ));
     std::fs::write(
         &path,
-        "five = 5\npresent = true / null\nempty = null / null\n",
+        "five = 5\nundefined_value = undefined\npresent = true / null\nmaybe_undefined = undefined / null\nempty = null / null\n",
     )
     .unwrap();
     let cli = Cli::parse_from([
@@ -386,8 +386,16 @@ fn standalone_fixed_and_fixed_null_generate_nominal_type_choices() {
         "expected a nominal singleton enum: {joined}"
     );
     assert!(
+        joined.contains("pub enum UndefinedValue"),
+        "undefined must be a nominal singleton enum: {joined}"
+    );
+    assert!(
         joined.contains("pub type Present = Option<FixedBoolTrue>"),
         "fixed/null must retain the Option<singleton> API: {joined}"
+    );
+    assert!(
+        joined.contains("pub type MaybeUndefined = Option<FixedUndefined>"),
+        "undefined/null must retain distinct Rust states: {joined}"
     );
     assert!(
         joined.contains("pub enum Empty") && !joined.contains("pub type Empty = Option"),
@@ -697,24 +705,11 @@ fn unsupported_member_type2_rejects_gracefully() {
         }
     }
 }
-/// The CDDL prelude constant `undefined` (major type 7, simple value 23) is rejected BY DESIGN, via
-/// a GRACEFUL `Err`, never a `panic!` — in EVERY position, member and rule-body alike. Unlike
-/// `null`/`true`/`false` it has no `FixedValue`, so there is no value for a member to hold and no
-/// type for a rule to name.
-///
-/// The refusal lives at `IntermediateTypes::new_type`'s unresolved-reserved fallback, the one seam
-/// every position funnels through, which is also why the message is ROLE-NEUTRAL: that seam knows
-/// the NAME, never the position it was written in. So this asserts one message text across all
-/// three vectors rather than a per-role wording.
-///
-/// The remedy it advertises is asserted honest by `all_supported_constructs_generate` (the matrix's
-/// `prelude.any` row) and by `tests/robustness/any_member.cddl` — `any` really does carry an
-/// arbitrary CBOR item, `undefined` included, in member position.
-///
-/// The top-level vector has no fixed-value follow-on: fixed values now have a nominal owner, so an
-/// undefined placeholder must remain a single, focused rejection.
+/// The CDDL prelude constant `undefined` (major type 7, simple value 23) is a fixed, unit-valued
+/// type in every ordinary type position. Rule bodies gain a nominal singleton; array and map
+/// members verify the byte while storing no payload.
 #[test]
-fn undefined_prelude_rejects_gracefully_in_every_position() {
+fn undefined_prelude_generates_in_every_position() {
     let vectors = [
         ("undef_elem", "a = [v: undefined, x: uint]\n"),
         ("undef_map_val", "m = { k: undefined, j: uint }\n"),
@@ -722,34 +717,34 @@ fn undefined_prelude_rejects_gracefully_in_every_position() {
     ];
     for (tag, spec) in vectors {
         for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
-            let msg = expect_graceful_rejection(tag, spec, extra);
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_undefined_{tag}_{}.cddl",
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let mut args = vec![
+                "cddl-codegen".to_owned(),
+                "--input".to_owned(),
+                path.display().to_string(),
+                "--output".to_owned(),
+                "undefined_unused".to_owned(),
+                "--wasm=false".to_owned(),
+            ];
+            args.extend(extra.iter().map(|value| value.to_string()));
+            let cli = Cli::parse_from(args);
+            let output = crate::api::generated_strings(&cli);
+            std::fs::remove_file(&path).ok();
+            let joined = output
+                .unwrap_or_else(|err| panic!("{tag} {extra:?} must generate: {err}"))
+                .into_values()
+                .collect::<Vec<_>>()
+                .join("\n");
             assert!(
-                msg.contains(
-                    "the CDDL prelude type `undefined` (major type 7, simple value 23) is \
-                              unsupported"
-                ),
-                "rejection should name the `undefined` prelude type ({tag}, {extra:?}), got: {msg}"
-            );
-            assert!(
-                msg.contains("the supported `any` type"),
-                "rejection should point at the `any` remedy ({tag}, {extra:?}), got: {msg}"
-            );
-            // The role-neutral seam can NOT name the position, so it must not pretend to.
-            assert!(
-                !msg.contains("as a member") && !msg.contains("as a rule body"),
-                "role-neutral message must not claim a position it cannot know ({tag}, {extra:?}), \
-                 got: {msg}"
+                joined.contains("cbor_event::Special::Undefined"),
+                "{tag} {extra:?} must verify/write the undefined special: {joined}"
             );
         }
     }
-
-    // The rule-body vector remains one focused rejection after fixed values gained their own
-    // nominal representation; do not reintroduce an unrelated fixed-value cascade.
-    let body_msg = expect_graceful_rejection("undef_rule_body_order", "x = undefined\n", &[]);
-    assert!(
-        !body_msg.contains("bare fixed value"),
-        "undefined must not gain a fixed-value cascade, got: {body_msg}"
-    );
 }
 
 /// Every float prelude name generates, in every position, under every profile — and the six names
@@ -961,7 +956,7 @@ fn control_operator_path_maps_every_float_name_and_refuses_unmapped_heads() {
 /// (#6.22), `eb16` (#6.23) — are refused GRACEFULLY in every position, never aborted. Each tags an
 /// arbitrary CBOR item with advice ABOUT that item, so the payload is `any` and the tag constrains
 /// nothing a generated type could hold; there is no representation to emit, which is the same
-/// no-representation shape `undefined_prelude_rejects_gracefully_in_every_position` pins one seam
+/// fixed-simple shape `undefined_prelude_generates_in_every_position` pins one seam
 /// over. They share that seam (`IntermediateTypes::new_type`'s unresolved-reserved fallback), so
 /// the message is likewise ROLE-NEUTRAL — it names the type and its tag, never the position — and
 /// this asserts one wording across all three vectors rather than a per-role one.

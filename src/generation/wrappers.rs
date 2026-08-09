@@ -380,6 +380,9 @@ pub(super) fn generate_wrapper_struct(
                             FixedValue::Float(_) => "Float(inner)",
                             FixedValue::Nint(_) => "Signed(inner as i64)",
                             FixedValue::Null => "Option",
+                            FixedValue::Undefined => unreachable!(
+                                "fixed undefined is a nominal unit value, never a JSON constructor argument"
+                            ),
                             FixedValue::Text(_) => "Str(&inner)",
                             FixedValue::Uint(_) => "Unsigned(inner)",
                         },

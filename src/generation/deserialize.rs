@@ -913,6 +913,27 @@ impl GenerationScope {
                                 }
                             }
                         }
+                        FixedValue::Undefined => {
+                            let mut special_block = Block::new(format!(
+                                "if {}.special()? != cbor_event::Special::Undefined",
+                                deserializer_name
+                            ));
+                            special_block
+                                .line("return Err(DeserializeFailure::ExpectedUndefined.into());");
+                            deser_code.content.push_block(special_block);
+                            if cli.preserve_encodings {
+                                let unit_if_no_encs =
+                                    config.final_exprs.is_empty().then(|| "()".to_owned());
+                                if !(unit_if_no_encs.is_some() && before_after.discards_value()) {
+                                    deser_code.content.line(&format!(
+                                        "{}{}{}",
+                                        before_after.before_str(false),
+                                        final_expr(config.final_exprs, unit_if_no_encs),
+                                        before_after.after_str(false)
+                                    ));
+                                }
+                            }
+                        }
                         FixedValue::Uint(x) => {
                             if cli.preserve_encodings {
                                 deser_code.content.line(&format!(

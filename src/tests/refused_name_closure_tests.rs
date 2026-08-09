@@ -5,7 +5,7 @@
 //! `IntermediateTypes::new_type`'s unresolved-reserved fallback, and `x = float16 .size 4` still
 //! generated an `f32`-backed codec at exit 0 — because a control operator resolves its head through
 //! `parsing::ident_to_primitive` and never calls `new_type` at all. The per-name position sweeps
-//! (`robustness_tests::undefined_prelude_rejects_gracefully_in_every_position` and its siblings) vary
+//! (`robustness_tests::undefined_prelude_generates_in_every_position` and the refusal siblings) vary
 //! the POSITION but hold the resolution MECHANISM constant, so a second resolution path is invisible
 //! to them by construction. This module is the systematic layer.
 //!
@@ -622,12 +622,11 @@ fn refused_name_closure_sweep() {
 /// demands a cell in every context of the sweep above — the shape `KNOWN_RULE_METADATA_TAGS` uses to
 /// make a new directive unclassifiable-by-default.
 ///
-/// The union check below is the other half: the two constants the ARMS read
-/// (`UNDEFINED_PRELUDE_NAME`, `ANY_CONTENT_PRELUDE_TAGS`) must together BE the inventory, so a name
-/// cannot be added to an arm's key without joining the list the sweep runs.
+/// The inventory is keyed directly by `ANY_CONTENT_PRELUDE_TAGS`; every other reserved name is
+/// either alias-resolved or emitted from the prelude.
 #[test]
 fn the_refused_name_axis_is_the_refusal_inventory() {
-    let mut union = vec![IntermediateTypes::UNDEFINED_PRELUDE_NAME];
+    let mut union = vec![];
     union.extend_from_slice(IntermediateTypes::ANY_CONTENT_PRELUDE_TAGS);
     union.sort_unstable();
     assert_eq!(

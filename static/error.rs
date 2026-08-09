@@ -30,6 +30,7 @@ pub enum DeserializeFailure {
     DuplicateKey(Key),
     EndingBreakMissing,
     ExpectedNull,
+    ExpectedUndefined,
     FixedValueMismatch{
         found: Key,
         expected: Key,
@@ -129,6 +130,7 @@ impl DeserializeError {
             DeserializeFailure::DuplicateKey(key) => write!(f, "Duplicate key: {}", key),
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
+            DeserializeFailure::ExpectedUndefined => write!(f, "Expected undefined, found other special value"),
             DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),
             DeserializeFailure::DepthLimitExceeded { limit } => write!(f, "Deserialization recursion depth exceeded the configured limit of {}", limit),
             DeserializeFailure::InvalidStructure(e) => {

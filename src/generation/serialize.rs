@@ -280,8 +280,13 @@ impl<'a> EncodingVarIsCopy for SerializingRustType<'a> {
 impl EncodingVarIsCopy for FixedValue {
     fn encoding_var_is_copy(&self, _types: &IntermediateTypes) -> bool {
         match self {
-            // bool / null have no encoding var
-            Self::Bool(_) | Self::Nint(_) | Self::Null | Self::Float(_) | Self::Uint(_) => true,
+            // bool / null / undefined have no encoding var
+            Self::Bool(_)
+            | Self::Nint(_)
+            | Self::Null
+            | Self::Undefined
+            | Self::Float(_)
+            | Self::Uint(_) => true,
             Self::Text(_) => false,
         }
     }
@@ -852,6 +857,11 @@ impl GenerationScope {
                     FixedValue::Null => {
                         body.line(&format!(
                             "{serializer_use}.write_special(cbor_event::Special::Null){line_ender}"
+                        ));
+                    }
+                    FixedValue::Undefined => {
+                        body.line(&format!(
+                            "{serializer_use}.write_special(cbor_event::Special::Undefined){line_ender}"
                         ));
                     }
                     FixedValue::Bool(b) => {
