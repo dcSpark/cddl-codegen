@@ -200,7 +200,8 @@ tag-11 arm vector is rejected by Ruby but accepted by the pinned rust oracle; it
 exemption and reversible RFC 8610 §3.6 argument are in
 `upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md`. Upstream rust-oracle
 gaps shape what "certified" means per family
-(`query_q4_directional.ts --check` pins the exact green set — and the now-empty unverified set — so
+(`query_q4_directional.ts --check` pins the exact green set and the three-row fixed-byte unverified
+set, as well as the empty over-acceptance set, so
 a decay fails loudly rather than
 silently dropping enforcement evidence): the numeric ops' probe examples target `int` with literal,
 non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) because the rust oracle does not enforce these ops
@@ -513,6 +514,26 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     one-rule ledger. This is an oracle limitation, not a generated-code behavior: the fixture's own
     codec writes and verifies `f7` and rejects null/other special values.
 
+17. **fixed byte-string values panic in the CBOR validator** (OPEN at `ac1b98e`): the pinned
+    parser and compiler accept fixed-byte specifications such as `magic = h'CAFE'` and
+    `a = [v: h'0102', x: uint]`, but `cddl --ci validate` exits 101 at
+    `src/validator/cbor.rs:4840` for their spec-valid byte-string instances. Ruby cddl 0.12.14
+    accepts the same instances. The three matrix rows (`value.bytes`,
+    `contain.array-element.value.bytes`, and `contain.map-value.value.bytes`) consequently keep
+    pinned, vectorless decode-foreign rows; this removes independent decode corroboration and leaves
+    their fixed-equality enforcement `unverified` in Q4 until reject vectors can be independently
+    certified. Generated execution separately establishes their supported status and exact
+    wrong-value rejection, including the
+    Rust/WASM/JSON/WIT/component projection coverage. A standalone full verify PASSed in 29m32s
+    with 109 supported / 13 unsupported / 1 out-of-profile rows, 177 decode-foreign rows and 1513
+    vectors with 0 failures, and 13/13 component probes; decode-foreign never controls status.
+    The same revision has an independent AST-rendering defect: `Display` for `B16ByteString` at
+    `src/ast/mod.rs:1314-1319` treats decoded binary bytes as UTF-8, so `Type::to_string()` fails or
+    panics on `h'CAFE'`. Generator diagnostics therefore use a lazy byte-safe renderer instead of
+    the upstream `Display` path. Re-check both defects when updating the pinned parser/oracle.
+    Repro and exact commands:
+    `draft/b3-024c-rust-cddl-fixed-bytes-validator.md` (local note).
+
 ## Gotchas (read before touching the support seam or probe examples)
 
 The recurring rule: **a panic/compile-failure on minimal *valid* CDDL is a finding to surface
@@ -559,23 +580,25 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
   gracefully (not a panic — `ROADMAP.md` § findings), with the same "name the group" remedy.
 - **Supported fixed values are nominal at the TOP level and inline at MEMBER position.** A named
-  scalar/text/bool/null/undefined fixed rule (`x = true`, `x = undefined`, `x = 5`, `x = "v"`) is now a singleton type with a
+  scalar/text/bytes/bool/null/undefined fixed rule (`x = true`, `x = undefined`, `x = 5`,
+  `x = "v"`, `x = h'CAFE'`, or `x = 'raw'`) is a singleton type with a
   standalone codec; the same constants are also supported as array elements and map values:
   a fixed/null choice nominalizes the fixed arm, and only bare `null / null` is one-state — tagged
   or `bytes .cbor` null beside bare null remains two distinct wire arms.
   `a = [v: true, x: uint]`, `m = { k: 5, j: uint }`, the bare unkeyed `a = [5, x: uint]`, and the
-  optional keyed forms `[x: uint, ? v: 5, label: tstr]` / `{ ? k: 5, j: uint }`. So a reader who
-  generalizes the *feature-row* verdict to member position generalizes wrongly — which is what the
-  per-cell (role × feature) verdict is for. Two kinds do NOT flip and are the reason the cells exist:
-  A byte-string literal (`h'0102'`) stays **unsupported in member position too**, refused gracefully
-  (exit 1, naming the construct) there exactly as at the top level, because it has no `FixedValue`
-  for the member path to verify. `undefined` is instead a supported unit fixed value (`0xf7`) with
-  no inner encoding sidecar; it participates in nominal fixed/null choices without collapsing into
-  null. Cardinality is a
+  optional keyed forms `[x: uint, ? v: h'0102', label: tstr]` / `{ ? k: 'raw', j: uint }` all use
+  the same zero-storage verification model. Fixed bytes exercise same-major and mixed text/bytes
+  choices, `.default` over `bytes`, tags, `.cbor`, preserve replay, and canonical minimization.
+  Their extern-interface spelling is canonical uppercase hex, and they project through Rust, wasm,
+  JSON, WIT, and component surfaces. Fixed **map keys** are the remaining representation boundary:
+  only uint and text literal keys
+  generate; bytes keys are rejected gracefully. The parser separately accepts uppercase hex and
+  raw UTF-8 but still rejects lowercase `h'cafe'` and `b64'…'`. `undefined` is a supported unit
+  fixed value (`0xf7`) with no inner encoding sidecar; it participates in nominal fixed/null choices
+  without collapsing into null. Cardinality is a
   third, independent splitter: an occurrence marker over an UNKEYED fixed value (`[* 5]`, `[? 5]`,
   `[+ 5]`, `{ * uint => 5 }`) is unsupported while the keyed optional forms above generate — which is
-  why `type2.value` × `role.occurrence-target` renders ◐ in the grid. Byte-string literals remain
-  unsupported fixed kinds; B3-024C owns that representation decision.
+  why `type2.value` × `role.occurrence-target` renders ◐ in the grid.
 - **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` /
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs

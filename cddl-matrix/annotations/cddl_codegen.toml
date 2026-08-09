@@ -1066,8 +1066,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "value.bytes"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "value.number"
@@ -1241,8 +1245,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "contain.array-element.value.bytes"
-status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "contain.array-element.value.number"
@@ -1808,8 +1816,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "contain.map-value.value.bytes"
-status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "contain.map-value.value.number"

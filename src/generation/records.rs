@@ -705,7 +705,7 @@ pub(super) fn generate_array_struct_deserialization(
                     // `unwrap_or_else` for the one owned kind, to avoid clippy::or_fun_call —
                     // the same split the map path makes.
                     let collapse = match default_value {
-                        FixedValue::Text(_) => format!(
+                        FixedValue::Text(_) | FixedValue::Bytes(_) => format!(
                             "let {} = {}.unwrap_or_else(|| {});",
                             field.name,
                             field.name,
@@ -2929,6 +2929,13 @@ pub(super) fn codegen_struct(
                 ConceptualRustType::Fixed(FixedValue::Null) => "null".to_owned(),
                 ConceptualRustType::Fixed(FixedValue::Undefined) => "undefined".to_owned(),
                 ConceptualRustType::Fixed(FixedValue::Text(s)) => format!("\"{s}\""),
+                ConceptualRustType::Fixed(FixedValue::Bytes(bytes)) => format!(
+                    "h'{}'",
+                    bytes
+                        .iter()
+                        .map(|byte| format!("{byte:02X}"))
+                        .collect::<String>()
+                ),
                 // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal point
                 // (`3.0` -> `3`); the doc string mirrors the CDDL literal (`? f: 2.5`).
                 ConceptualRustType::Fixed(FixedValue::Float(f)) => float_fixed_literal(*f),
@@ -4151,7 +4158,7 @@ pub(super) fn codegen_struct(
                             deser_code.content.push_block(default_present_check);
                         }
                         match default_value {
-                            FixedValue::Text(_) => {
+                            FixedValue::Text(_) | FixedValue::Bytes(_) => {
                                 // to avoid clippy::or_fun_call
                                 deser_code.content.line(&format!(
                                     "let {} = {}.unwrap_or_else(|| {});",

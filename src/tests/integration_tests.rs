@@ -9685,6 +9685,9 @@ fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
                         debt = -7\n\
                         ratio = 1.5\n\
                         marker = \"s\"\n\
+                        bytes_hex = h'CAFE'\n\
+                        bytes_raw = 'hi'\n\
+                        bytes_empty = h''\n\
                         enabled = true\n\
                         absent = null\n\
                         undefined_value = undefined\n\
@@ -9712,7 +9715,18 @@ fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
                         tagged_enabled = #6.7(true)\n\
                         tagged_undefined = #6.7(undefined)\n\
                         cbor_answer = bytes .cbor 42\n\
-                        cbor_undefined = bytes .cbor undefined\n";
+                        cbor_undefined = bytes .cbor undefined\n\
+                        tagged_bytes = #6.7(h'CAFE')\n\
+                        cbor_bytes = bytes .cbor h'CAFE'\n\
+                        bytes_members = [required: h'CAFE', ? optional: 'hi']\n\
+                        bytes_map_members = {required: h'CAFE', ? optional: 'hi'}\n\
+                        maybe_bytes = h'CAFE' / null\n\
+                        maybe_bytes_holder = [x: maybe_bytes]\n\
+                        byte_choice = h'AA' / h'BB'\n\
+                        byte_choice_holder = [x: byte_choice]\n\
+                        mixed_text_bytes_choice = \"a\" / h'61'\n\
+                        mixed_text_bytes_choice_holder = [x: mixed_text_bytes_choice]\n\
+                        bytes_default = [ ? payload: bytes .default h'CAFE', end: uint ]\n";
 
     const COMMON: &str = r#"
 #[test]
@@ -9721,6 +9735,9 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     assert_eq!(bytes(&Debt::new_value_nint7()), [0x26]);
     assert_eq!(bytes(&Ratio::new_value_float3_ff8000000000000()), [0xf9, 0x3e, 0x00]);
     assert_eq!(bytes(&Marker::new_value_text73()), [0x61, 0x73]);
+    assert_eq!(bytes(&BytesHex::new_value_bytes_cafe()), [0x42, 0xca, 0xfe]);
+    assert_eq!(bytes(&BytesRaw::new_value_bytes6869()), [0x42, 0x68, 0x69]);
+    assert_eq!(bytes(&BytesEmpty::new_value_bytes_empty()), [0x40]);
     assert_eq!(bytes(&Enabled::new_value_bool_true()), [0xf5]);
     assert_eq!(bytes(&Absent::new_value_null()), [0xf6]);
     assert_eq!(bytes(&UndefinedValue::new_value_undefined()), [0xf7]);
@@ -9736,6 +9753,8 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     reject::<Debt>(&[0x27], "Expected fixed value -7 found -8");
     reject::<Ratio>(&[0xf9, 0x41, 0x00], "Expected fixed value");
     reject::<Marker>(&[0x61, 0x74], "Expected fixed value");
+    assert_decode_reject_reason::<BytesHex>(&[0x42, 0xca, 0xff], "Expected fixed value h'CAFE' found h'CAFF'");
+    assert_decode_reject_reason::<BytesHex>(&[0x61, b'x'], "No variant matched");
     reject::<Enabled>(&[0xf4], "Expected fixed value true found false");
     reject::<Absent>(&[0xf7], "Expected null");
     assert_decode_reject_reason::<UndefinedValue>(&[0xf6], "Expected undefined");
@@ -9800,6 +9819,31 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     reject::<TaggedUndefined>(&[0xc7, 0xf6], "Expected undefined");
     assert_eq!(bytes(&CborUndefined::from_cbor_bytes(&[0x41, 0xf7]).unwrap()), [0x41, 0xf7]);
     reject::<CborUndefined>(&[0x41, 0xf6], "Expected undefined");
+    assert_eq!(bytes(&TaggedBytes::from_cbor_bytes(&[0xc7, 0x42, 0xca, 0xfe]).unwrap()), [0xc7, 0x42, 0xca, 0xfe]);
+    assert_eq!(bytes(&CborBytes::from_cbor_bytes(&[0x43, 0x42, 0xca, 0xfe]).unwrap()), [0x43, 0x42, 0xca, 0xfe]);
+    assert_eq!(bytes(&BytesMembers::from_cbor_bytes(&[0x81, 0x42, 0xca, 0xfe]).unwrap()), [0x81, 0x42, 0xca, 0xfe]);
+    assert_eq!(bytes(&BytesMapMembers::from_cbor_bytes(&[0xa1, 0x68, b'r', b'e', b'q', b'u', b'i', b'r', b'e', b'd', 0x42, 0xca, 0xfe]).unwrap()), [0xa1, 0x68, b'r', b'e', b'q', b'u', b'i', b'r', b'e', b'd', 0x42, 0xca, 0xfe]);
+    // Fixed bytes and null occupy distinct wire arms.  A third byte value gets the fixed-value
+    // reason, proving same-major discrimination does not silently treat all bytes as the arm.
+    assert!(MaybeBytesHolder::from_cbor_bytes(&[0x81, 0x42, 0xca, 0xfe]).is_ok());
+    assert!(MaybeBytesHolder::from_cbor_bytes(&[0x81, 0xf6]).is_ok());
+    assert_decode_reject_reason::<MaybeBytesHolder>(&[0x81, 0x42, 0xca, 0xff], "Expected fixed value h'CAFE' found h'CAFF'");
+    for wire in [&[0x81, 0x41, 0xaa][..], &[0x81, 0x41, 0xbb][..]] {
+        assert_eq!(bytes(&ByteChoiceHolder::from_cbor_bytes(wire).unwrap()), wire);
+    }
+    assert_decode_reject_reason::<ByteChoiceHolder>(&[0x81, 0x41, 0xcc], "No variant matched");
+    // Text and bytes have distinct CBOR heads but share the StringEncoding sidecar in the c-style
+    // enum lowering.  Exercise both arms through an embedded holder, not merely enum construction.
+    assert_eq!(bytes(&MixedTextBytesChoiceHolder::from_cbor_bytes(&[0x81, 0x61, b'a']).unwrap()), [0x81, 0x61, b'a']);
+    assert_eq!(bytes(&MixedTextBytesChoiceHolder::from_cbor_bytes(&[0x81, 0x41, b'a']).unwrap()), [0x81, 0x41, b'a']);
+    // Optional fixed fields are zero-storage presence bits; both omitted and present wires remain
+    // legal.  The bytes default, conversely, materializes Vec<u8> after decode.
+    assert!(BytesMembers::from_cbor_bytes(&[0x82, 0x42, 0xca, 0xfe, 0x42, 0x68, 0x69]).is_ok());
+    assert!(BytesMapMembers::from_cbor_bytes(&[0xa2, 0x68, b'r', b'e', b'q', b'u', b'i', b'r', b'e', b'd', 0x42, 0xca, 0xfe, 0x68, b'o', b'p', b't', b'i', b'o', b'n', b'a', b'l', 0x42, 0x68, 0x69]).is_ok());
+    assert_eq!(bytes(&BytesDefault::from_cbor_bytes(&[0x81, 0x00]).unwrap()), [0x81, 0x00]);
+    // Default collapses an equal explicit default; preserve and canonical retain presence, with
+    // canonical minimizing the byte head. The profile assertions below pin those contracts.
+    assert!(BytesDefault::from_cbor_bytes(&[0x82, 0x42, 0xca, 0xfe, 0x00]).is_ok());
 }
 "#;
     const PRESERVE: &str = r#"
@@ -9809,6 +9853,11 @@ fn preserve_replays_nonminimal_fixed_tag_and_cbor_heads() {
     replay::<Debt>(&[0x39, 0x00, 0x06]);
     replay::<Ratio>(&[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     replay::<Marker>(&[0x78, 0x01, 0x73]);
+    replay::<BytesHex>(&[0x58, 0x02, 0xca, 0xfe]);
+    replay::<BytesHex>(&[0x5f, 0x41, 0xca, 0x41, 0xfe, 0xff]);
+    // Preserve distinguishes an explicit equal default from an omitted one and keeps its header.
+    replay::<BytesDefault>(&[0x82, 0x58, 0x02, 0xca, 0xfe, 0x00]);
+    replay::<MixedTextBytesChoiceHolder>(&[0x81, 0x58, 0x01, 0x61]);
     replay::<TaggedEnabled>(&[0xd8, 0x07, 0xf5]);
     replay::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a]);
     replay::<MaybeTaggedNullHolder>(&[0x81, 0xd8, 0x07, 0xf6]);
@@ -9824,6 +9873,10 @@ fn canonical_minimizes_the_same_fixed_tag_and_cbor_heads() {
     canonical::<Debt>(&[0x39, 0x00, 0x06], &[0x26]);
     canonical::<Ratio>(&[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], &[0xf9, 0x3e, 0x00]);
     canonical::<Marker>(&[0x78, 0x01, 0x73], &[0x61, 0x73]);
+    canonical::<BytesHex>(&[0x58, 0x02, 0xca, 0xfe], &[0x42, 0xca, 0xfe]);
+    canonical::<BytesHex>(&[0x5f, 0x41, 0xca, 0x41, 0xfe, 0xff], &[0x42, 0xca, 0xfe]);
+    canonical::<BytesDefault>(&[0x82, 0x58, 0x02, 0xca, 0xfe, 0x00], &[0x82, 0x42, 0xca, 0xfe, 0x00]);
+    canonical::<MixedTextBytesChoiceHolder>(&[0x81, 0x58, 0x01, 0x61], &[0x81, 0x41, 0x61]);
     canonical::<TaggedEnabled>(&[0xd8, 0x07, 0xf5], &[0xc7, 0xf5]);
     canonical::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a], &[0x42, 0x18, 0x2a]);
     canonical::<MaybeTaggedNullHolder>(&[0x81, 0xd8, 0x07, 0xf6], &[0x81, 0xc7, 0xf6]);
@@ -11264,14 +11317,31 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
             other => panic!("oracle_fingerprint.json probe `{name}` has unknown mode `{other}`"),
         }
     }
-    // This is deliberately NOT a normal fingerprint JSON probe: it pins an OPEN validator defect,
-    // not a behavior a correct oracle should preserve. The only per-rule corpus exemption below is
-    // stale the moment this stops rejecting f7 with this exact signature.
+    // These are deliberately NOT normal fingerprint JSON probes: they pin OPEN validator defects,
+    // not behavior a correct oracle should preserve. Their per-rule corpus exemptions below are
+    // stale the moment the exact defect signature changes or the validator starts returning.
     main_rs.push_str(
         r#"    match cddl::validate_cbor_from_slice("x = undefined", &[0xf7], None) {
         Ok(()) => failures.push("  - undefined-validator-gap: unexpectedly accepted spec `x = undefined` CBOR f7; remove RUST_ORACLE_RULE_SKIP and re-arm this probe for the fixed behavior".to_owned()),
         Err(error) if error.to_string().contains("expected type undefined, got Null") => {}
         Err(error) => failures.push(format!("  - undefined-validator-gap: expected rejection signature `expected type undefined, got Null` for spec `x = undefined` CBOR f7, got `{error}`; investigate before retaining RUST_ORACLE_RULE_SKIP")),
+    }
+"#,
+    );
+    main_rs.push_str(
+        r#"    match std::panic::catch_unwind(|| cddl::validate_cbor_from_slice("x = h'CAFE'", &[0x42, 0xca, 0xfe], None)) {
+        Err(payload) => {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|value| (*value).to_owned())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "non-string panic payload".to_owned());
+            if message != "called `Option::unwrap()` on a `None` value" {
+                failures.push(format!("  - fixed-byte-validator-panic: expected rust-cddl ac1b98e src/validator/cbor.rs:4840 `Option::unwrap()` None panic for spec `x = h'CAFE'` CBOR 42cafe, got panic `{message}`; investigate before retaining fixed-byte RUST_ORACLE_RULE_SKIP entries"));
+            }
+        }
+        Ok(Ok(())) => failures.push("  - fixed-byte-validator-panic: unexpectedly accepted spec `x = h'CAFE'` CBOR 42cafe; remove the fixed-byte RUST_ORACLE_RULE_SKIP entries after the validator fix".to_owned()),
+        Ok(Err(error)) => failures.push(format!("  - fixed-byte-validator-panic: expected rust-cddl ac1b98e src/validator/cbor.rs:4840 `Option::unwrap()` None panic for spec `x = h'CAFE'` CBOR 42cafe, got returned error `{error}`; investigate before retaining fixed-byte RUST_ORACLE_RULE_SKIP entries")),
     }
 "#,
     );
@@ -12153,13 +12223,43 @@ fn ir_conformance_corpus() {
         "open_table",
     ];
     // Per-rule, not fixture-wide: the pinned cddl validator (ac1b98e) parses `undefined` but
-    // misclassifies valid `f7` as Null (`expected type undefined, got Null`). Keep the other seven
-    // fixed-singleton validator calls, all ordinary round trips, dumps, ruby and structural oracles.
-    const RUST_ORACLE_RULE_SKIP: &[(&str, &str, &str)] = &[(
-        "fixed_singletons",
-        "undefined_value",
-        "cddl ac1b98e validates f7 for `undefined` as Null; exact preflight signature pin removes this when fixed",
-    )];
+    // misclassifies valid `f7` as Null (`expected type undefined, got Null`). It also panics on a
+    // valid fixed byte string at `src/validator/cbor.rs:4840:29` (`called `Option::unwrap()` on a
+    // `None` value`). The fingerprint preflight probes both exact signatures; each entry below still
+    // has its fixture/rule/exact-emitted-call guards, so an unrelated rule cannot be silently swept
+    // into the validator gap. Keep all unaffected fixed-singleton calls, ordinary round trips,
+    // dumps, ruby and structural oracles live.
+    const FIXED_BYTE_VALIDATOR_PANIC: &str = "pinned rust-cddl local-fixes ac1b98e panics at src/validator/cbor.rs:4840:29 (`called `Option::unwrap()` on a `None` value`) on valid fixed-byte CBOR; the exact h'CAFE' fingerprint probe makes this stale when the validator returns or changes signature — remove this skip after the upstream validator repair";
+    const RUST_ORACLE_RULE_SKIP: &[(&str, &str, &str)] = &[
+        (
+            "fixed_singletons",
+            "undefined_value",
+            "cddl ac1b98e validates f7 for `undefined` as Null; exact preflight signature pin removes this when fixed",
+        ),
+        ("fixed_singletons", "bytes_hex", FIXED_BYTE_VALIDATOR_PANIC),
+        ("fixed_singletons", "bytes_raw", FIXED_BYTE_VALIDATOR_PANIC),
+        (
+            "fixed_singletons",
+            "bytes_empty",
+            FIXED_BYTE_VALIDATOR_PANIC,
+        ),
+        (
+            "fixed_singletons",
+            "bytes_members",
+            FIXED_BYTE_VALIDATOR_PANIC,
+        ),
+        (
+            "fixed_singletons",
+            "bytes_map_members",
+            FIXED_BYTE_VALIDATOR_PANIC,
+        ),
+        (
+            "fixed_singletons",
+            "tagged_bytes",
+            FIXED_BYTE_VALIDATOR_PANIC,
+        ),
+        ("fixed_singletons", "cbor_bytes", FIXED_BYTE_VALIDATOR_PANIC),
+    ];
 
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
@@ -24725,9 +24825,15 @@ fn corpus_decode_replay() {
     // an adjacent-duplicate error location segment (`Foo.Foo`). Empty at HEAD; stale-guarded.
     const DOUBLED_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
     // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test legitimately
-    // DECODES the mutated bytes Ok (an `any`-typed row / an unsampled choice arm). Empty at HEAD;
-    // stale-guarded. A `trunc_head` entry here is a hard error (ill-formed by construction).
-    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[];
+    // DECODES the mutated bytes Ok (an `any`-typed row / an unsampled choice arm). One resident:
+    // the fixed text/bytes choice's byte arm has no vector because the pinned rust-cddl validator
+    // panics on fixed bytes. Stale-guarded. A `trunc_head` entry here is a hard error (ill-formed by
+    // construction).
+    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[(
+        "fixed_singletons.mixed_text_bytes_choice",
+        "wrong_major",
+        "82006161 (holder [0, text \"a\"]) mutates major 3's 0x61 to major 2's 0x41, yielding 82004161, which is the valid h'61' second arm of the text/bytes choice; that byte arm is intentionally unsampled/vectorless because rust-cddl ac1b98e panics at src/validator/cbor.rs:4840:29 on fixed-byte validation",
+    )];
     // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test REJECTS the
     // mutated bytes but the error Display carries NO location naming the decoding type. Empty at HEAD;
     // stale-guarded.

@@ -7,7 +7,7 @@ sidebar_position: 3
 ## Types
 
 * Primitives - `bytes`, `bstr`, `tstr`, `text`, `uint`, `nint`
-* Fixed values - `null`, `nil`, `undefined`, `true`, `false`, integers, floats, and text literals. A named
+* Fixed values - `null`, `nil`, `undefined`, `true`, `false`, integers, floats, text literals, and parseable byte-string literals (`h'CAFE'`, `'raw'`). A named
   fixed-value rule is a nominal singleton with its own CBOR codec (`answer = 42`,
   `enabled = true`, `label = "ok"`); it can consequently be a record member, homogeneous-array
   element, table value, or standalone root. A two-arm `T / null` whose non-null arm is fixed uses
@@ -15,11 +15,14 @@ sidebar_position: 3
   exposing two equivalent Rust states, while an encoded-null arm (`#6.7(null)` or
   `bytes .cbor null`) remains distinct from bare null. `undefined` is its own unit-valued fixed
   singleton (not an alias of null): it writes `0xf7`, has no inner preserve sidecar, and
-  `undefined / null` is `Option<FixedUndefined>`. Byte-string literals remain unsupported.
-* Optional fixed-value members - `foo = [x: uint, ? v: true]`, `{? k: 5, x: uint}` — the one-bit
+  `undefined / null` is `Option<FixedUndefined>`. Byte literals include empty strings, use
+  `FixedValueMismatch`/`Key::Bytes` for a wrong decoded value, and participate in fixed choices,
+  tags, and `.cbor` wrappers. The pinned parser accepts uppercase hex and raw UTF-8 only:
+  lowercase `h'cafe'` and `b64'…'` remain parser refusals.
+* Optional fixed-value members - `foo = [x: uint, ? v: true]`, `{? k: h'CAFE', x: uint}` — the one-bit
   present/absent state is stored as a `bool` presence field (see
   [Output format](output_format#optional-fixed-value-members)); covers bool, null, uint, nint,
-  text, float, and undefined (`[x: uint, ? u: undefined, label: text]`) fixed values in both array and map
+  text, bytes, float, and undefined (`[x: uint, ? u: undefined, label: text]`) fixed values in both array and map
   representations
 * `int` (signed integer, `uint / nint`) - maps to a generated `Int` enum covering the full CBOR
   integer range, in any position: as a member, an array element, a table value, or a bare
@@ -99,7 +102,7 @@ sidebar_position: 3
 * Value ranges - integer (`foo = -10..3`, `bar = int .le 10`) and float (`f = 0.5..10.5`, `g = float64 .lt 10.5`) windows are both enforced (float checks are NaN-safe; see the range note below for the boundaries)
 * cbor in bytes - `foo_bytes = bytes .cbor foo`. The payload may be inline (`bytes .cbor uint`) or a named rule, and a named target is almost any rule — including one that generates a transparent alias (`foo = uint`) rather than a struct. It works in every position a type does: a rule body, a record field, and a type-choice arm (`bytes .cbor foo / tstr`). The payload is decoded from a reader over the byte string's own contents, so a nested value's framing is independent of the enclosing item — including a payload whose own collection elements or map values are themselves `.cbor` payloads (`bytes .cbor [* bytes .cbor uint]`, `bytes .cbor {* uint => bytes .cbor uint}`), and a payload that is a choice of literal values (`ce = 3 / 1 / 4`, `bytes .cbor ce` — the c-style enum lowering, whose encodings live in the owner's sidecar under `--preserve-encodings`). A payload that carries **no value of its own** — a fixed value (`bytes .cbor 42`), or the same behind any number of mandatory tags (`bytes .cbor #6.1(42)`, `bytes .cbor #6.1(#6.2(42))`) — works in every position. A rule-body fixed payload is a nominal singleton whose codec owns the complete `.cbor`/tag chain and preserve metadata; a member or arm fixed payload remains an unstored check, but still verifies the tags and constant and requires the byte string to be exactly consumed. A **non-fixed** `.cbor` rule BODY generates a wrapper struct rather than a transparent alias (see [Type aliases and tagged rules](#type-aliases-and-tagged-rules)); the operator in a member's or arm's own type expression does not. A payload may itself be a `.cbor` payload, to any depth, in either spelling: the INLINE one (`bytes .cbor (bytes .cbor uint)`, both depths in one type expression) and the NAMED one (`inner = bytes .cbor uint`, referenced as `bytes .cbor inner` — a non-fixed `.cbor` rule body is a wrapper struct with its own serialize fn, so this needs no `@newtype` and emits the same nested wire shape). Each `.cbor` level owns its own staging buffer, reader and — under `--preserve-encodings` — its own byte-string encoding member, so the levels round-trip independently: an outer byte string encoded non-minimally keeps its own head width rather than inheriting the inner one. Every level is required to be exactly consumed, so bytes left over inside any of them are rejected at the level they were found in. The nesting composes with the rest of this bullet: a tag between two levels, a value-less payload under the nesting (`bytes .cbor (bytes .cbor 42)`), and the collection form above. The HEAD is restricted too: RFC 8610 §3.8.4 allows `.cbor` only on a byte string, so a non-`bytes` head (`uint .cbor uint`, in rule or member position) is **rejected gracefully at generation**, naming the head.
 * Support for the CDDL standard prelude (using raw CDDL from the RFC) - `biguint`, etc
-* default values - `? key : uint .default 0`. The value may be an integer, a float, a text string, or `true`/`false` (the bool constants are spelled as typenames in CDDL, and are lowered from that spelling). The default is written into the Rust primitive backing the head, so the head must be a primitive that can hold a value of the default's kind; a head with no such primitive (`tdate .default 1`, and bare `int` — which is bignum-capable and resolves to the `Int` struct rather than to a primitive) or of the wrong kind (`tstr .default 1`, `uint .default null`) is **rejected gracefully at generation**, naming the head. A signed default goes on `nint` or on an integer **range**, which does collapse onto a signed primitive (`si = -128..127`, then `? n : si .default -2` → `i8`). An operand that is not a literal at all (`uint .default some_rule`) is likewise **rejected gracefully**, naming the operand. Per RFC 8610 §3.8.2 a default substitutes for an *absent* value, so it is meaningful only on an **optional** occurrence: on a mandatory member (`key : uint .default 0` — including when the control arrives through an alias rule, `d = uint .default 0` referenced as `key : d`) it is **inert**. The tool warns on stderr and emits that member as an ordinary mandatory field, so it keeps its constructor argument on every face; the same alias stays fully defaulted at its optional use sites, which is why this is a per-use-site decision rather than a rejection of the alias. Both **representations** apply it: a defaulted member of an array-representation record (`arr = [ a: uint, ? b: uint .default 7 ]`, final position) is stored plain and filled in on decode exactly as a map member is. Under `--preserve-encodings` a member that was explicitly written on the wire *with* its default value re-emits it, rather than collapsing to the absent form — the round trip is byte-exact either way.
+* default values - `? key : uint .default 0`. The value may be an integer, a float, a text string, a byte string (`? payload: bytes .default h'CAFE'`), or `true`/`false` (the bool constants are spelled as typenames in CDDL, and are lowered from that spelling). The default is written into the Rust primitive backing the head, so the head must be a primitive that can hold a value of the default's kind; a head with no such primitive (`tdate .default 1`, and bare `int` — which is bignum-capable and resolves to the `Int` struct rather than to a primitive) or of the wrong kind (`tstr .default 1`, `uint .default null`) is **rejected gracefully at generation**, naming the head. A signed default goes on `nint` or on an integer **range**, which does collapse onto a signed primitive (`si = -128..127`, then `? n : si .default -2` → `i8`). An operand that is not a literal at all (`uint .default some_rule`) is likewise **rejected gracefully**, naming the operand. Per RFC 8610 §3.8.2 a default substitutes for an *absent* value, so it is meaningful only on an **optional** occurrence: on a mandatory member (`key : uint .default 0` — including when the control arrives through an alias rule, `d = uint .default 0` referenced as `key : d`) it is **inert**. The tool warns on stderr and emits that member as an ordinary mandatory field, so it keeps its constructor argument on every face; the same alias stays fully defaulted at its optional use sites, which is why this is a per-use-site decision rather than a rejection of the alias. Both **representations** apply it: a defaulted member of an array-representation record (`arr = [ a: uint, ? b: uint .default 7 ]`, final position) is stored plain and filled in on decode exactly as a map member is. Under `--preserve-encodings` a member that was explicitly written on the wire *with* its default value re-emits it, rather than collapsing to the absent form — the round trip is byte-exact either way.
 
 We generate getters for all fields, and setters for optional fields. Mandatory fields are set via the generated constructor. All wasm-facing functions are set to take references for non-primitives and clone when needed. Returns are also cloned. This helps make usage from wasm more memory safe.
 
@@ -472,7 +475,6 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | Major-type sigil (#N, #N.n) | `foo = #1.2` | rejected gracefully at parse |
 | Major-type 7 / simple sigil (#7, #7.n) | `foo = #7.20` | rejected gracefully at parse |
 | Unwrap (~) | `bar = [uint]; foo = ~bar` | rejected gracefully at parse |
-| Byte-string literal value | `magic = h'cafe'` | rejected gracefully at parse |
 
 ### Control operators
 
@@ -527,14 +529,12 @@ Every row of "Unsupported constructs" above is probed as a **rule body** (`x = <
 Behavior is that probe's outcome. Member position is a different question with a different answer, in
 both directions, so read a row as "unsupported *as a rule body*" rather than "unusable":
 
-* **Unsupported in both, with different wording.** A byte-string literal is listed above as rejected
-  gracefully, and that holds in member position too — `[v: h'0102', x: uint]`, the unkeyed
-  `[h'0102', x: uint]`, `{k: h'0102', j: uint}` and the UTF-8 spelling `[v: 'text', x: uint]` all
-  exit 1 naming the construct, exactly as `x = h'0102'` does. Only the message differs, because the
-  member-side one can name the role. Widening the member to `bytes` generates but no longer
-  constrains the value, so it is a different spec; carrying the constraint would need a fixed-bytes
-  member representation, tracked in `cddl-matrix/ROADMAP.md` under "A byte-string literal has no
-  fixed-MEMBER representation".
+* **Supported in rule and member positions, but not as a map key.** A byte-string literal works as
+  a named singleton, an array element, and a map value — `[v: h'0102', x: uint]`,
+  `[h'0102', x: uint]`, `{k: h'0102', j: uint}`, and `[v: 'text', x: uint]` all constrain the
+  decoded bytes. Fixed literal **map keys** remain limited to uint and text, so a byte literal in a
+  key position is still rejected gracefully. This is a representation boundary, distinct from the
+  parser's lowercase-hex/base64 spelling limitations above.
 
 The "Contextual gaps" table covers only the constructs that are supported as a rule body *and*
 unsupported in some nesting role. A construct unsupported in both places appears once, above, and its

@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub enum Key {
     Str(String),
+    Bytes(Vec<u8>),
     Uint(u64),
     /// A negative integer key or fixed value. Separate from `Uint` (rather than widening it) so a
     /// mismatch names the value the CDDL AUTHORED (`-7`), not the CBOR nint wire representation
@@ -14,6 +15,11 @@ impl core::fmt::Display for Key {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Key::Str(x) => write!(f, "\"{}\"", x),
+            Key::Bytes(x) => {
+                write!(f, "h'")?;
+                for byte in x { write!(f, "{byte:02X}")?; }
+                write!(f, "'")
+            }
             Key::Uint(x) => write!(f, "{}", x),
             Key::Nint(x) => write!(f, "{}", x),
             Key::Float(x) => write!(f, "{}", x),

@@ -33,7 +33,7 @@ primitive encoding regardless of the `0x81` framing.
 - Legal **leaf** cells: **45** — 20 covered, 25 unexercised:
   - 6 **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)
   - 19 **emittable but no Appendix A vector lands here** (e.g. wide-argument length/count heads) — not a generator gap, just outside the App-A example set
-- Golden tests: 48 default-flags · sibling sets: 63 preserve + 30 canonical (below)
+- Golden tests: 49 default-flags · sibling sets: 63 preserve + 30 canonical (below)
 
 **Sibling golden sets (not in this grid):** the encodings the default-flags set can never
 exercise — the ➖ `.indef` cells, the non-minimal float spellings of a value whose shortest form is narrower, and non-minimal header arguments — have their own spec-anchored
@@ -174,7 +174,7 @@ golden vector asserts. Each declared ref is expanded through the master's parent
 (`cddl-matrix/encodings.toml` — a PARENT row names its leaves in `cells`; a leaf ref is itself).
 
 **The fixture floor comes first.** `input.cddl` is what the golden vectors are generated from, so a
-construct it never mentions has nothing asserted about it at all — **31** of the
+construct it never mentions has nothing asserted about it at all — **30** of the
 48 rows are in that position, marked ✗ below, and their whole legal set is
 untested. This matters because coverage is derived as a union over every `kat!` in the file: without
 the floor, a construct would be credited for a cell some *other* construct's vector happened to land
@@ -217,7 +217,7 @@ construct*, so a globally covered cell is still untested here. An earlier draft 
 agreeing exactly — that was an artifact of crediting every construct for every other construct's
 vectors, and restoring the agreement would mean restoring the over-credit.
 
-- Exercised by `input.cddl`: **17** of 48 (✗ rows below have their full legal set untested)
+- Exercised by `input.cddl`: **18** of 48 (✗ rows below have their full legal set untested)
 - Constructs with at least one untested-and-emittable cell: **40** of 48
 - Both counts are **conservative in one known direction**: a construct the fixture reaches only
   through a wider type the generator narrows at emission (`float` → the `float64` cell) counts as
@@ -271,7 +271,7 @@ vectors, and restoring the agreement would mean restoring the over-credit.
 | `type2.map` | ✓ | 6 | 1 | 1 | `enc.major5.ai24`, `enc.major5.ai25`, `enc.major5.ai26`, `enc.major5.ai27` |
 | `type2.tag` | ✓ | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
 | `type2.tag_head_type` | ✗ | 5 | 0 | 0 | `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm` |
-| `value.bytes` | ✗ | 6 | 0 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27`, `enc.major2.imm` |
+| `value.bytes` | ✓ | 6 | 1 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27` |
 | `value.number` | ✓ | 13 | 12 | 0 | `enc.major1.ai26` |
 | `value.text` | ✗ | 6 | 0 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27`, `enc.major3.imm` |
 

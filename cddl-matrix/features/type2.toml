@@ -100,8 +100,8 @@ alt = "bytes"
 rfc = "RFC8610 §2.1; ABNF value / bytes (h'..' / b64'..' / '..')"
 profile = "RFC8610"
 title = "Byte-string literal value"
-desc = "A byte-string literal (hex/base64/raw) used as a value."
-example = "magic = h'cafe'"
+desc = "A byte-string literal (uppercase hex or raw UTF-8 at the pinned parser revision) used as a value. Lowercase hex and b64'…' remain parser gaps."
+example = "magic = h'CAFE'"
 encodings = ["enc.major2"]
 
 # --- type2 = typename [genericarg] ---

@@ -12,7 +12,6 @@ alias_plain_group_array_element ok
 alias_plain_group_array_field ok
 any_control_op             error (graceful)
 any_member                 ok
-bytes_member               error (graceful)
 cbor_fixed_payload         ok
 cbor_payload_same_chain_alias ok
 cbor_ref_alias_chain       ok

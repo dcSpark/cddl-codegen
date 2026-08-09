@@ -23,7 +23,9 @@ pub enum FixedValue {
     Uint(u64),
     Float(f64),
     Text(String),
-    // UTF byte types not supported
+    /// A decoded CDDL byte-string literal.  Keep bytes, rather than a source spelling, so h'…'
+    /// and '…' share the wire identity and non-text values never pass through UTF-8.
+    Bytes(Vec<u8>),
 }
 
 fn convert_to_alphanumeric(input: &str) -> String {
@@ -34,6 +36,11 @@ fn convert_to_alphanumeric(input: &str) -> String {
 }
 
 impl FixedValue {
+    /// A typed, owned Rust byte-vector literal.  The explicit carrier is needed for `h''`, whose
+    /// bare `vec![]` has no element type in generated serialization code.
+    pub fn bytes_rust_expr(bytes: &[u8]) -> String {
+        format!("Vec::<u8>::from({bytes:?})")
+    }
     /// A total, Rust-identifier-safe spelling for a nominal fixed-value singleton.  This is an
     /// identity, not a display label: text uses UTF-8 bytes and floats use their IEEE bits so that
     /// values which happen to print alike (notably `-0.0`) cannot share an owner.
@@ -55,6 +62,14 @@ impl FixedValue {
                     .map(|byte| format!("{byte:02X}"))
                     .collect::<String>()
             ),
+            Self::Bytes(value) if value.is_empty() => "BytesEmpty".to_owned(),
+            Self::Bytes(value) => format!(
+                "Bytes{}",
+                value
+                    .iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<String>()
+            ),
         }
     }
 
@@ -72,6 +87,14 @@ impl FixedValue {
             FixedValue::Text(s) => {
                 VariantIdent::new_custom(convert_to_alphanumeric(&convert_to_camel_case(s)))
             }
+            FixedValue::Bytes(bytes) if bytes.is_empty() => VariantIdent::new_custom("BytesEmpty"),
+            FixedValue::Bytes(bytes) => VariantIdent::new_custom(format!(
+                "Bytes{}",
+                bytes
+                    .iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<String>()
+            )),
         }
     }
 
@@ -97,6 +120,7 @@ impl FixedValue {
             FixedValue::Uint(u) => buf.write_unsigned_integer(*u),
             FixedValue::Float(f) => buf.write_special(Special::Float(*f)),
             FixedValue::Text(s) => buf.write_text(s),
+            FixedValue::Bytes(bytes) => buf.write_bytes(bytes),
         }
         .expect("Unable to serialize key for canonical ordering");
         buf.finalize()
@@ -119,6 +143,7 @@ impl FixedValue {
             // the target is f32.
             FixedValue::Float(f) => format!("{f:?}"),
             FixedValue::Text(s) => format!("\"{}\".to_owned()", escape_rust_str(s)),
+            FixedValue::Bytes(bytes) => Self::bytes_rust_expr(bytes),
         }
     }
 
@@ -138,6 +163,13 @@ impl FixedValue {
             // would quote `3.0` back to the user as `3`.
             FixedValue::Float(f) => format!("{f:?}"),
             FixedValue::Text(s) => format!("\"{s}\""),
+            FixedValue::Bytes(bytes) => format!(
+                "h'{}'",
+                bytes
+                    .iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<String>()
+            ),
         }
     }
 
@@ -146,6 +178,7 @@ impl FixedValue {
     pub fn to_primitive_str_compare(&self) -> String {
         match self {
             FixedValue::Text(s) => format!("\"{}\"", escape_rust_str(s)),
+            FixedValue::Bytes(_) => self.to_primitive_str_assign(),
             _ => self.to_primitive_str_assign(),
         }
     }
@@ -506,6 +539,7 @@ impl RustType {
                 FixedValue::Null => false,
                 FixedValue::Undefined => false,
                 FixedValue::Text(_) => *p == Primitive::Str,
+                FixedValue::Bytes(_) => *p == Primitive::Bytes,
             }
         } else {
             false
@@ -734,6 +768,7 @@ impl RustType {
                     FixedValue::Nint(_) => CBORType::NegativeInteger,
                     FixedValue::Float(_) => CBORType::Special,
                     FixedValue::Text(_) => CBORType::Text,
+                    FixedValue::Bytes(_) => CBORType::Bytes,
                     FixedValue::Null => CBORType::Special,
                     FixedValue::Undefined => CBORType::Special,
                     FixedValue::Bool(_) => CBORType::Special,

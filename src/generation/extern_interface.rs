@@ -618,6 +618,13 @@ fn render_fixed_value(fixed: &FixedValue) -> String {
         // `{:?}` yields a JSON-ish quoted/escaped literal, matching CDDL text-literal escaping for
         // the common cases (quotes, backslashes).
         FixedValue::Text(s) => format!("{s:?}"),
+        FixedValue::Bytes(bytes) => format!(
+            "h'{}'",
+            bytes
+                .iter()
+                .map(|byte| format!("{byte:02X}"))
+                .collect::<String>()
+        ),
     }
 }
 
@@ -1558,6 +1565,10 @@ mod tests {
         assert_eq!(render_fixed_value(&FixedValue::Nint(-3)), "-3");
         assert_eq!(render_fixed_value(&FixedValue::Float(3.0)), "3.0");
         assert_eq!(render_fixed_value(&FixedValue::Float(1.5)), "1.5");
+        assert_eq!(
+            render_fixed_value(&FixedValue::Bytes(vec![0xca, 0xfe])),
+            "h'CAFE'"
+        );
         assert_eq!(
             render_fixed_value(&FixedValue::Text("abc".to_string())),
             "\"abc\""

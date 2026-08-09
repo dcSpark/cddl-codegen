@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod serialization;
@@ -23,6 +25,109 @@ pub enum Answer {
 impl Answer {
     pub fn new_value_uint42() -> Self {
         Self::ValueUint42
+    }
+}
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum BytesChoice {
+    BytesAA,
+    BytesBB,
+    Null,
+}
+
+#[derive(Clone, Debug)]
+pub struct BytesDefault {
+    pub payload: Vec<u8>,
+    pub end: u64,
+}
+
+impl BytesDefault {
+    pub fn new(end: u64) -> Self {
+        Self {
+            payload: Vec::<u8>::from([202, 254]),
+            end,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BytesEmpty {
+    ValueBytesEmpty,
+}
+
+impl BytesEmpty {
+    pub fn new_value_bytes_empty() -> Self {
+        Self::ValueBytesEmpty
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BytesHex {
+    ValueBytesCAFE,
+}
+
+impl BytesHex {
+    pub fn new_value_bytes_cafe() -> Self {
+        Self::ValueBytesCAFE
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BytesMapMembers {
+    /// Whether the optional fixed value `h'6869'` (CDDL `? optional: h'6869'`) is present; `false` means absent.
+    pub optional: bool,
+}
+
+impl BytesMapMembers {
+    pub fn new() -> Self {
+        Self { optional: false }
+    }
+}
+
+impl Default for BytesMapMembers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BytesMembers {
+    /// Whether the optional fixed value `h'6869'` (CDDL `? optional: h'6869'`) is present; `false` means absent.
+    pub optional: bool,
+}
+
+impl BytesMembers {
+    pub fn new() -> Self {
+        Self { optional: false }
+    }
+}
+
+impl Default for BytesMembers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BytesRaw {
+    ValueBytes6869,
+}
+
+impl BytesRaw {
+    pub fn new_value_bytes6869() -> Self {
+        Self::ValueBytes6869
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum CborBytes {
+    ValueBytesCAFE,
+}
+
+impl CborBytes {
+    pub fn new_value_bytes_cafe() -> Self {
+        Self::ValueBytesCAFE
     }
 }
 
@@ -48,6 +153,13 @@ impl Marker {
     }
 }
 
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum MixedTextBytesChoice {
+    A,
+    Bytes61,
+}
+
 #[derive(Clone, Debug)]
 pub enum NilValue {
     ValueNull,
@@ -67,6 +179,17 @@ pub enum NullValue {
 impl NullValue {
     pub fn new_value_null() -> Self {
         Self::ValueNull
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TaggedBytes {
+    ValueBytesCAFE,
+}
+
+impl TaggedBytes {
+    pub fn new_value_bytes_cafe() -> Self {
+        Self::ValueBytesCAFE
     }
 }
 

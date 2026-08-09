@@ -457,7 +457,7 @@
     },
     {
       "aux": [],
-      "expr": "h'cafe'",
+      "expr": "h'CAFE'",
       "feature": "value.bytes"
     },
     {

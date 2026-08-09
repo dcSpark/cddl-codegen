@@ -1724,6 +1724,40 @@ fn fixed_value_as_written(value: &FixedValue) -> String {
         FixedValue::Uint(u) => u.to_string(),
         FixedValue::Float(f) => f.to_string(),
         FixedValue::Text(t) => format!("\"{t}\""),
+        FixedValue::Bytes(bytes) => format!(
+            "h'{}'",
+            bytes
+                .iter()
+                .map(|byte| format!("{byte:02X}"))
+                .collect::<String>()
+        ),
+    }
+}
+
+/// Render a type in a diagnostic without asking the upstream AST to display a byte literal.
+///
+/// Its byte-string display implementation tries to interpret arbitrary bytes as UTF-8, so
+/// formatting `h'CAFE'` can itself fail before the parser reaches the real support/rejection
+/// decision. Literal types already have an owned, byte-safe IR spelling; all other types retain
+/// the AST's source display.
+fn type_source_desc_for_diagnostic(ty: &Type) -> String {
+    if ty.type_choices.len() == 1
+        && let Some(fixed) = type2_to_fixed_value(&ty.type_choices[0].type1.type2)
+    {
+        return fixed.cddl_source_desc();
+    }
+    ty.to_string()
+}
+
+/// The fixed-occurrence diagnostic only needs an entry's source spelling after the entry has
+/// already been classified as fixed. Keep that formatting lazy: an unrelated supported type must
+/// never be exposed to an upstream AST display implementation merely because it occupies a
+/// one-entry array.
+fn group_entry_source_desc_for_diagnostic(entry: &GroupEntry) -> String {
+    match entry {
+        GroupEntry::ValueMemberKey { ge, .. } => type_source_desc_for_diagnostic(&ge.entry_type),
+        GroupEntry::TypeGroupname { ge, .. } => ge.name.to_string(),
+        GroupEntry::InlineGroup { .. } => unreachable!("inline groups do not lower to Fixed"),
     }
 }
 
@@ -2717,6 +2751,9 @@ fn type2_to_fixed_value(type2: &Type2) -> Option<FixedValue> {
         Type2::IntValue { value, .. } => Some(FixedValue::Nint(*value as i128)),
         Type2::FloatValue { value, .. } => Some(FixedValue::Float(*value)),
         Type2::TextValue { value, .. } => Some(FixedValue::Text(value.to_string())),
+        Type2::B16ByteString { value, .. }
+        | Type2::B64ByteString { value, .. }
+        | Type2::UTF8ByteString { value, .. } => Some(FixedValue::Bytes(value.to_vec())),
         Type2::Typename { ident, .. } if ident.ident == "true" => Some(FixedValue::Bool(true)),
         Type2::Typename { ident, .. } if ident.ident == "false" => Some(FixedValue::Bool(false)),
         Type2::Typename { ident, .. } if ident.ident == "undefined" => Some(FixedValue::Undefined),
@@ -2738,7 +2775,7 @@ fn non_literal_default_operand_rejection(rule_name: Option<&RustIdent>, operand:
     format!(
         "{}`.default {operand}` is not a default VALUE — a default substitutes for an absent value \
          at deserialization, so it must be a literal the head can hold: an integer (`0`, `-2`), a \
-         float (`1.5`), a text string (`\"hi\"`), `true`/`false`, or `null`. Spell the value \
+         float (`1.5`), a text string (`\"hi\"`), a byte string (`h'CAFE'`), `true`/`false`, or `null`. Spell the value \
          literally, or remove the control.",
         reject_rule_prefix(rule_name)
     )
@@ -4383,6 +4420,21 @@ fn parse_type(
                 false,
             );
         }
+        Type2::B16ByteString { value, .. }
+        | Type2::B64ByteString { value, .. }
+        | Type2::UTF8ByteString { value, .. } => {
+            register_fixed_singleton(
+                types,
+                parent_visitor,
+                type_name.clone(),
+                RustType::new(ConceptualRustType::Fixed(FixedValue::Bytes(value.to_vec()))),
+                outer_tag,
+                Some(&rule_metadata),
+                generic_params.as_deref(),
+                cli,
+                false,
+            );
+        }
         Type2::FloatValue { value, .. } => {
             let fallback_type = ConceptualRustType::Fixed(FixedValue::Float(*value));
 
@@ -5028,11 +5080,10 @@ fn parse_group_type<'a>(
             // gracefully rather than panicking on the unsupported element.
             if entries.len() == 1 && !matches!(entries[0].0, GroupEntry::InlineGroup { .. }) {
                 let (entry, _has_comma) = entries[0];
-                let (elem_type, occur, elem_src) = match entry {
+                let (elem_type, occur) = match entry {
                     GroupEntry::ValueMemberKey { ge, .. } => (
                         rust_type(types, parent_visitor, &ge.entry_type, cli),
                         &ge.occur,
-                        ge.entry_type.to_string(),
                     ),
                     GroupEntry::TypeGroupname { ge, .. } => (
                         // Route through the shared helper so a generic instantiation used as a
@@ -5048,7 +5099,6 @@ fn parse_group_type<'a>(
                             cli,
                         ),
                         &ge.occur,
-                        ge.name.to_string(),
                     ),
                     GroupEntry::InlineGroup { .. } => unreachable!("guarded above"),
                 };
@@ -5082,6 +5132,7 @@ fn parse_group_type<'a>(
                         elem_type.conceptual_type.resolve_alias_shallow()
                 {
                     let value_desc = fixed.cddl_source_desc();
+                    let elem_src = group_entry_source_desc_for_diagnostic(entry);
                     let site = rejection_site(types, rule_name, "inline array");
                     types.record_rejection(format!(
                         "{site}: the array element `{elem_src}` is a bare fixed value \
@@ -5905,6 +5956,11 @@ fn rust_type_from_type2(
         Type2::TextValue { value, .. } => {
             ConceptualRustType::Fixed(FixedValue::Text(value.to_string())).into()
         }
+        Type2::B16ByteString { value, .. }
+        | Type2::B64ByteString { value, .. }
+        | Type2::UTF8ByteString { value, .. } => {
+            ConceptualRustType::Fixed(FixedValue::Bytes(value.to_vec())).into()
+        }
         Type2::Typename {
             ident,
             generic_args,
@@ -6155,20 +6211,6 @@ fn rust_type_from_type2(
             // when this one is reworded. Parallel per-site siblings are this repo's pattern for
             // exactly that reason (see the wasm wrapper-name collision detectors).
             let (construct, hint) = match x {
-                // A byte-string literal. All three spellings the grammar has are one class: the
-                // value is fixed by the schema, and a fixed byte string has no generated
-                // representation in a member (`FixedValue` has no bytes variant — a fixed member
-                // is unstored, and there is nothing to unstore here). NB `b64'…'` currently fails
-                // in the upstream parser before reaching us; it is listed so the class stays
-                // complete if that gap closes.
-                Type2::B16ByteString { .. }
-                | Type2::B64ByteString { .. }
-                | Type2::UTF8ByteString { .. } => (
-                    "a byte-string literal (`h'…'` / `b64'…'` / `'…'`)".to_string(),
-                    " — widening the member to `bytes` generates, but it no longer constrains the \
-                     value to that literal, so it is a different spec, not an equivalent one"
-                        .to_string(),
-                ),
                 Type2::Unwrap { .. } => (
                     "an unwrap (`~name`)".to_string(),
                     " — inline the referenced rule's definition manually".to_string(),

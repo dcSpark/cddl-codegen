@@ -2477,7 +2477,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   // vector, draw extra ruby candidates (bounded) and keep the two-oracle-valid ones that cover a MISSING
   // class. On cap exhaustion with a genuinely-uncovered (unledgered) class, exit 1.
   const floor = resolveChoiceArmClasses(example);
-  if (floor) {
+  if (floor && validatedAccept.length > 0) {
     // A genuinely-unmintable arm class (a documented oracle gap) is ledgered exempt — don't pursue it
     // (the two-oracle gate can't admit it, so draws would just exhaust the cap). The drift gate's § 7
     // stale-guards the same ledger, so a class that becomes mintable fails there and gets re-minted.
@@ -2797,7 +2797,7 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   // come from the CORPUS ledger (CORPUS_DECODE_FLOOR_ARM_EXEMPT — corpus keys must never enter the
   // matrix ledger, whose stale-guard iterates matrix row ids only).
   const floor = resolveChoiceArmClasses(corpusArmExample(rule.name, allRules));
-  if (floor) {
+  if (floor && validatedAccept.length > 0) {
     const required = new Set(floor.classes.filter(c => !Object.hasOwn(CORPUS_DECODE_FLOOR_ARM_EXEMPT, `${id}/${c}`)));
     const coveredClasses = () => new Set(validatedAccept.map(c => vectorShapeClass(c.hex, true)));
     const missing = () => [...required].filter(c => !coveredClasses().has(c));

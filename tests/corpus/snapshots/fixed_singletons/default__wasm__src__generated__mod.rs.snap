@@ -12,6 +12,7 @@ expression: content
 )]
 pub mod collections;
 
+pub use cddl_lib::{BytesChoice, MixedTextBytesChoice};
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
@@ -62,6 +63,351 @@ impl AsRef<cddl_lib::Answer> for Answer {
 #[wasm_bindgen]
 pub enum AnswerKind {
     ValueUint42,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesDefault(pub(crate) cddl_lib::BytesDefault);
+
+#[wasm_bindgen]
+impl BytesDefault {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesDefault, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn set_payload(&mut self, payload: Vec<u8>) {
+        self.0.payload = payload
+    }
+
+    pub fn payload(&self) -> Vec<u8> {
+        self.0.payload.clone()
+    }
+
+    pub fn end(&self) -> u64 {
+        self.0.end
+    }
+
+    pub fn new(end: u64) -> Self {
+        Self(cddl_lib::BytesDefault::new(end))
+    }
+}
+
+impl From<cddl_lib::BytesDefault> for BytesDefault {
+    fn from(native: cddl_lib::BytesDefault) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesDefault> for cddl_lib::BytesDefault {
+    fn from(wasm: BytesDefault) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesDefault> for BytesDefault {
+    fn as_ref(&self) -> &cddl_lib::BytesDefault {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesEmpty(pub(crate) cddl_lib::BytesEmpty);
+
+#[wasm_bindgen]
+impl BytesEmpty {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesEmpty, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_value_bytes_empty() -> Self {
+        Self(cddl_lib::BytesEmpty::new_value_bytes_empty())
+    }
+
+    pub fn kind(&self) -> BytesEmptyKind {
+        match &self.0 {
+            cddl_lib::BytesEmpty::ValueBytesEmpty => BytesEmptyKind::ValueBytesEmpty,
+        }
+    }
+}
+
+impl From<cddl_lib::BytesEmpty> for BytesEmpty {
+    fn from(native: cddl_lib::BytesEmpty) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesEmpty> for cddl_lib::BytesEmpty {
+    fn from(wasm: BytesEmpty) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesEmpty> for BytesEmpty {
+    fn as_ref(&self) -> &cddl_lib::BytesEmpty {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum BytesEmptyKind {
+    ValueBytesEmpty,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesHex(pub(crate) cddl_lib::BytesHex);
+
+#[wasm_bindgen]
+impl BytesHex {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesHex, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_value_bytes_cafe() -> Self {
+        Self(cddl_lib::BytesHex::new_value_bytes_cafe())
+    }
+
+    pub fn kind(&self) -> BytesHexKind {
+        match &self.0 {
+            cddl_lib::BytesHex::ValueBytesCAFE => BytesHexKind::ValueBytesCAFE,
+        }
+    }
+}
+
+impl From<cddl_lib::BytesHex> for BytesHex {
+    fn from(native: cddl_lib::BytesHex) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesHex> for cddl_lib::BytesHex {
+    fn from(wasm: BytesHex) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesHex> for BytesHex {
+    fn as_ref(&self) -> &cddl_lib::BytesHex {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum BytesHexKind {
+    ValueBytesCAFE,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesMapMembers(pub(crate) cddl_lib::BytesMapMembers);
+
+#[wasm_bindgen]
+impl BytesMapMembers {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesMapMembers, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn optional(&self) -> bool {
+        self.0.optional
+    }
+
+    pub fn set_optional(&mut self, present: bool) {
+        self.0.optional = present
+    }
+
+    pub fn new() -> Self {
+        Self(cddl_lib::BytesMapMembers::new())
+    }
+}
+
+impl From<cddl_lib::BytesMapMembers> for BytesMapMembers {
+    fn from(native: cddl_lib::BytesMapMembers) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesMapMembers> for cddl_lib::BytesMapMembers {
+    fn from(wasm: BytesMapMembers) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesMapMembers> for BytesMapMembers {
+    fn as_ref(&self) -> &cddl_lib::BytesMapMembers {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesMembers(pub(crate) cddl_lib::BytesMembers);
+
+#[wasm_bindgen]
+impl BytesMembers {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesMembers, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn optional(&self) -> bool {
+        self.0.optional
+    }
+
+    pub fn set_optional(&mut self, present: bool) {
+        self.0.optional = present
+    }
+
+    pub fn new() -> Self {
+        Self(cddl_lib::BytesMembers::new())
+    }
+}
+
+impl From<cddl_lib::BytesMembers> for BytesMembers {
+    fn from(native: cddl_lib::BytesMembers) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesMembers> for cddl_lib::BytesMembers {
+    fn from(wasm: BytesMembers) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesMembers> for BytesMembers {
+    fn as_ref(&self) -> &cddl_lib::BytesMembers {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesRaw(pub(crate) cddl_lib::BytesRaw);
+
+#[wasm_bindgen]
+impl BytesRaw {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BytesRaw, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_value_bytes6869() -> Self {
+        Self(cddl_lib::BytesRaw::new_value_bytes6869())
+    }
+
+    pub fn kind(&self) -> BytesRawKind {
+        match &self.0 {
+            cddl_lib::BytesRaw::ValueBytes6869 => BytesRawKind::ValueBytes6869,
+        }
+    }
+}
+
+impl From<cddl_lib::BytesRaw> for BytesRaw {
+    fn from(native: cddl_lib::BytesRaw) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesRaw> for cddl_lib::BytesRaw {
+    fn from(wasm: BytesRaw) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BytesRaw> for BytesRaw {
+    fn as_ref(&self) -> &cddl_lib::BytesRaw {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum BytesRawKind {
+    ValueBytes6869,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborBytes(pub(crate) cddl_lib::CborBytes);
+
+#[wasm_bindgen]
+impl CborBytes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborBytes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_value_bytes_cafe() -> Self {
+        Self(cddl_lib::CborBytes::new_value_bytes_cafe())
+    }
+
+    pub fn kind(&self) -> CborBytesKind {
+        match &self.0 {
+            cddl_lib::CborBytes::ValueBytesCAFE => CborBytesKind::ValueBytesCAFE,
+        }
+    }
+}
+
+impl From<cddl_lib::CborBytes> for CborBytes {
+    fn from(native: cddl_lib::CborBytes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborBytes> for cddl_lib::CborBytes {
+    fn from(wasm: CborBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborBytes> for CborBytes {
+    fn as_ref(&self) -> &cddl_lib::CborBytes {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum CborBytesKind {
+    ValueBytesCAFE,
 }
 
 #[derive(Clone, Debug)]
@@ -262,6 +608,56 @@ impl AsRef<cddl_lib::NullValue> for NullValue {
 #[wasm_bindgen]
 pub enum NullValueKind {
     ValueNull,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedBytes(pub(crate) cddl_lib::TaggedBytes);
+
+#[wasm_bindgen]
+impl TaggedBytes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedBytes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_value_bytes_cafe() -> Self {
+        Self(cddl_lib::TaggedBytes::new_value_bytes_cafe())
+    }
+
+    pub fn kind(&self) -> TaggedBytesKind {
+        match &self.0 {
+            cddl_lib::TaggedBytes::ValueBytesCAFE => TaggedBytesKind::ValueBytesCAFE,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedBytes> for TaggedBytes {
+    fn from(native: cddl_lib::TaggedBytes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedBytes> for cddl_lib::TaggedBytes {
+    fn from(wasm: TaggedBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedBytes> for TaggedBytes {
+    fn as_ref(&self) -> &cddl_lib::TaggedBytes {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedBytesKind {
+    ValueBytesCAFE,
 }
 
 #[derive(Clone, Debug)]

@@ -25,10 +25,12 @@ round-trip/reject tests to PASS (`cargo test`), falling back to the compile verd
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->104 `class="constraint"` enforcement reject vectors over 84 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
-axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
-rejectable constraint projects `enforce = yes (bounded-reject)` — `+`/`1*` is honored as a non-empty
-container and the other count-permitting table markers
-are rejected gracefully (§ findings); the green, unverified (empty), and over-accepts (empty) sets are
+axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
+every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
+the pinned rust-cddl validator panic prevents the two fixed-byte member rows and their top-level
+feature row from gaining independently certified reject vectors until upstream gap #17 closes.
+`+`/`1*` is honored as a non-empty container and the other count-permitting table markers
+are rejected gracefully (§ findings); the green, three-row unverified, and over-accepts (empty) sets are
 each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
 for the next certified instance).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
@@ -502,29 +504,6 @@ entry, so the atomicity is the rule).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-- **Fixed/null now has a nominal presence representation.** A two-arm `T / null` still lowers to
-  `Option<T>`, but when `T` is a fixed value the generator first mints a zero-sized nominal
-  singleton: `true / null` is `Option<FixedBoolTrue>`. This is applied at both former collapse
-  sites — a rule body and every inline member/element/table-value role — and the singleton owns its
-  constant verification plus any mandatory-tag/`.cbor` wire chain. Only bare `null / null` normalizes
-  to the one null singleton rather than exposing `Option<FixedNull>`'s two equivalent states;
-  encoded null (`#6.N(null) / null` or `bytes .cbor null / null`) keeps both wire arms as
-  `Option<Singleton>`. The generated-shape coverage is
-  `choice_fixed_null_collapse{,_member}` plus the fixed-singleton corpus and decode-conformance
-  accepts/reject; the latter pins both legal bare fixed/null arms and a reason-bearing third-value
-  rejection. `fixed_singletons_execute_across_default_preserve_and_canonical_profiles` separately
-  executes the encoded-null cross-product: `Tagged` and `CBORBytes`, rule and member positions,
-  both source orders and wire arms, reason-bearing rejection, preserve replay and canonical
-  minimization.
-  `true / false` has no null arm and remains the ordinary multi-value C-style enum path.
-- **`undefined` is a supported fixed simple value (B3-024B).** It is a unit-valued
-  `FixedValue::Undefined`: named rules are nominal singletons that write/verify `0xf7`; mandatory
-  members store nothing and optional keyed members carry their presence bit; `undefined / null`
-  keeps two states as `Option<FixedUndefined>`; and mixed-special dispatch, tag and `.cbor` wrapper
-  chains retain the existing fixed-value behavior. It has no encoding-width sidecar of its own, but
-  enclosing tags and byte strings preserve/canonicalize their heads normally. The fixed-singleton
-  execution fixture, decode catalog and golden KAT cover its acceptance and rejection paths. The
-  remaining fixed-value representation work is byte-string literals (B3-024C), not `undefined`.
 - **The `eb*` expected-conversion tags advertise a rendering, not a type, so a spec that uses one
   must widen it by hand.** `eb64url` (`#6.21(any)`), `eb64legacy` (`#6.22`) and `eb16` (`#6.23`)
   each wrap an ARBITRARY CBOR item in a tag whose whole content is advice to a consumer rendering
@@ -547,27 +526,6 @@ entry, so the atomicity is the rule).
   value. Reopening signal on the magnitude axis: a spec brought to us uses one of the three names,
   i.e. the count of rules its owner must widen to `any` to keep generating reaches 1; today the
   entry's evidence is synthetic probes only, and a synthetic probe costs nobody a rewrite.
-- **A byte-string literal has no fixed-MEMBER representation, so a spec that pins a member to a
-  literal must be hand-rewritten.** `[v: h'0102', x: uint]`, the unkeyed `[h'0102', x: uint]`,
-  `{ k: h'0102', j: uint }` and the UTF-8 spelling `[v: 'text', x: uint]` are all refused gracefully
-  (exit 1, naming the construct) in both profiles, as is the rule body `x = h'0102'` — position no
-  longer changes the outcome, only the wording. Member identity is pinned by
-  `unsupported_member_type2_rejects_gracefully` and
-  `tests/robustness/bytes_member.cddl`. The deferred work is the REPRESENTATION: `FixedValue` has no
-  bytes variant, so the fixed-member path the uint / text / bool kinds already use — verify on
-  deserialize, store nothing — has nothing to verify against. Widening the member to `bytes`
-  generates but stops constraining the value, so it is a different spec, not a workaround. The cells
-  `contain.array-element.value.bytes` and `contain.map-value.value.bytes` model both positions. NB
-  two spellings never reach the generator at all — upstream, the rust `cddl` parser rejects `b64'…'`
-  outright and rejects LOWERCASE hex digits inside `h'…'` (`magic = h'cafe'` dies at parse as
-  `Invalid base16 encoding` in every position, though ABNF `HEXDIG` is case-insensitive and the ruby
-  reference accepts it — the evidence class `tests/matrix_reject/value.bytes.cddl` records). That
-  gap caps the represent fork's value: real-world magic constants are typically spelled in lowercase
-  hex, so a `FixedValue::Bytes` delivery generates nothing for them until the fork accepts the
-  spelling — the upstream parser fix is part of the feature's real cost, and belongs in the same
-  delivery or its docs. Reopening signal on the
-  magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the count of members
-  its owner must hand-rewrite reaches 1 — today only synthetic probes reach the site.
 - **Decode-disambiguate a non-final `?` optional array-record field whose CBOR major types OVERLAP
   a later field's.** `a = [ ? f0: uint, f1: uint ]` generates at exit 0 and the crate builds, but
   `f0` gets no decoder: the refusal is recorded (`dont_generate_deserialize`, loud
@@ -631,18 +589,11 @@ entry, so the atomicity is the rule).
   support is owned by the float-table-key boundary entry's ordered-float question); flipping either
   row to `ok` requires real support, not a decay back to the old `group_entry_to_field_name`
   panics.
-  Fixed-literal arrow classification now shares `type2_to_fixed_value` with control-operand
-  lowering instead of duplicating the supported-kind list: uint/text, nint/float, both booleans,
-  `null`/`nil`, and `undefined` are all pinned at the shared seam by
-  `fixed_key_arrow_single_entry_routes_to_record_path`, so a future fixed-literal Type2 joins the
-  map-key classifier when its central lowering lands.
-- **A complete whole-table custom codec pair is supported.** A named homogeneous table carrying
-  both `@custom_serialize` and `@custom_deserialize` self-nominalizes as its map wrapper, so its
-  direct and embedded APIs delegate to the one whole-item codec (including a non-map wire form).
-  Lone halves and row-entry placements remain rejected. The standing coverage spans loose,
-  duplicate-preserving, non-empty, generic, preserve-encoding, canonical, wasm, component, and
-  opaque extern-interface projections; `@custom_encodings` is rejected on this self-carrying owner
-  because no codec-visible encoding tuple crosses its boundary.
+  Fixed-literal arrow classification shares `type2_to_fixed_value` with control-operand lowering
+  instead of duplicating the candidate-kind list. That shared lowering does **not** widen the
+  record-key representation: it is deliberately allowlisted to uint/text, so bytes (as well as the
+  nint/float/special kinds above) remain graceful refusals until a dedicated key representation is
+  designed. `fixed_key_arrow_single_entry_routes_to_record_path` pins the allowlist seam.
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully, its own entry; table domains and `@newtype` bounds — work; bare values, json,
@@ -779,6 +730,18 @@ remains is deleting the notes that explain why we do not have it yet.
   `bun run check.ts full --only ir_conformance_corpus`. The independent Rust `cddl` decoder may
   still collapse `f7`; do not remove its per-rule oracle accommodation unless its own exact probe
   accepts.
+- When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17): first confirm that
+  `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then remove the three pinned
+  decode-foreign rows and re-mint them with
+  `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes`.
+  Re-run the full verify pass so their evidence gains normal two-oracle corroboration, and mint
+  reason-bearing constraint rejects so all three rows move from Q4's unverified set to enforce-green.
+  Then prune README gap #17 and `draft/b3-024c-rust-cddl-fixed-bytes-validator.md`. This closes an
+  independent-certification gap only; do not demote the execution-gated support rows while the external release is
+  being evaluated. Also verify that upstream `B16ByteString` display no longer treats decoded bytes
+  as UTF-8; re-run the fixed-member and recombination regressions before simplifying the generator's
+  lazy byte-safe diagnostic renderer. Until then, generated execution is the equality-enforcement
+  pin; the missing independent oracle certification is explicit rather than inferred as `n/a`.
 - When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
   `ac1b98e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
   `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row

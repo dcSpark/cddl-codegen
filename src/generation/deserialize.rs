@@ -1029,6 +1029,39 @@ impl GenerationScope {
                                 ));
                             }
                         }
+                        FixedValue::Bytes(x) => {
+                            if cli.preserve_encodings {
+                                deser_code.content.line(&format!(
+                                    "let ({}_value, {}_encoding) = {}.bytes_sz()?;",
+                                    config.var_name, config.var_name, deserializer_name
+                                ));
+                            } else {
+                                deser_code.content.line(&format!(
+                                    "let {}_value = {}.bytes()?;",
+                                    config.var_name, deserializer_name
+                                ));
+                            }
+                            let expected = FixedValue::bytes_rust_expr(x);
+                            let mut compare_block =
+                                Block::new(format!("if {}_value != {}", config.var_name, expected));
+                            compare_block.line(format!(
+                                "return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Bytes({}_value), expected: Key::Bytes({}) }}.into());",
+                                config.var_name, expected
+                            ));
+                            deser_code.content.push_block(compare_block);
+                            if cli.preserve_encodings {
+                                config.final_exprs.push(format!(
+                                    "StringEncoding::from({}_encoding)",
+                                    config.var_name
+                                ));
+                                deser_code.content.line(&format!(
+                                    "{}{}{}",
+                                    before_after.before_str(false),
+                                    final_expr(config.final_exprs, None),
+                                    before_after.after_str(false)
+                                ));
+                            }
+                        }
                         FixedValue::Float(x) => {
                             if cli.preserve_encodings {
                                 deser_code.content.line(&format!(

@@ -8,7 +8,9 @@ expression: content
 extern crate alloc;
 use super::*;
 use crate::generated::error::*;
+use alloc::borrow::ToOwned;
 use alloc::string::String;
+use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
@@ -42,6 +44,387 @@ impl Deserialize for Answer {
             }
         })()
         .map_err(|e| e.annotate("Answer"))
+    }
+}
+
+impl cbor_event::se::Serialize for BytesDefault {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            1 + if self.payload != Vec::<u8>::from([202, 254]) {
+                1
+            } else {
+                0
+            },
+        ))?;
+        if self.payload != Vec::<u8>::from([202, 254]) {
+            serializer.write_bytes(&self.payload)?;
+        }
+        serializer.write_unsigned_integer(self.end)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for BytesDefault {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let payload = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Bytes)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    Ok(raw.bytes()?)
+                })()
+                .map_err(|e| e.annotate("payload"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            let payload = payload.unwrap_or_else(|| Vec::<u8>::from([202, 254]));
+            let end =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("end"))?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(BytesDefault { payload, end })
+        })()
+        .map_err(|e| e.annotate("BytesDefault"))
+    }
+}
+
+impl cbor_event::se::Serialize for BytesEmpty {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            BytesEmpty::ValueBytesEmpty => serializer.write_bytes(&Vec::<u8>::from([])),
+        }
+    }
+}
+
+impl Deserialize for BytesEmpty {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Bytes => {
+                    let value_bytes_empty_value = raw.bytes()?;
+                    if value_bytes_empty_value != Vec::<u8>::from([]) {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bytes(value_bytes_empty_value),
+                            expected: Key::Bytes(Vec::<u8>::from([])),
+                        }
+                        .into());
+                    }
+                    Ok(BytesEmpty::ValueBytesEmpty)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("BytesEmpty"))
+    }
+}
+
+impl cbor_event::se::Serialize for BytesHex {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            BytesHex::ValueBytesCAFE => serializer.write_bytes(&Vec::<u8>::from([202, 254])),
+        }
+    }
+}
+
+impl Deserialize for BytesHex {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Bytes => {
+                    let value_bytes_cafe_value = raw.bytes()?;
+                    if value_bytes_cafe_value != Vec::<u8>::from([202, 254]) {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bytes(value_bytes_cafe_value),
+                            expected: Key::Bytes(Vec::<u8>::from([202, 254])),
+                        }
+                        .into());
+                    }
+                    Ok(BytesHex::ValueBytesCAFE)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("BytesHex"))
+    }
+}
+
+impl cbor_event::se::Serialize for BytesMapMembers {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + if self.optional { 1 } else { 0 }))?;
+        if self.optional {
+            serializer.write_text("optional")?;
+            serializer.write_bytes(&Vec::<u8>::from([104, 105]))?;
+        }
+        serializer.write_text("required")?;
+        serializer.write_bytes(&Vec::<u8>::from([202, 254]))?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for BytesMapMembers {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut optional_present = false;
+            let mut required_present = false;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "optional" => {
+                            if optional_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "optional".into(),
+                                ))
+                                .into());
+                            }
+                            optional_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let optional_value = raw.bytes()?;
+                                if optional_value != Vec::<u8>::from([104, 105]) {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Bytes(optional_value),
+                                        expected: Key::Bytes(Vec::<u8>::from([104, 105])),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("optional"))?;
+                        }
+                        "required" => {
+                            if required_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "required".into(),
+                                ))
+                                .into());
+                            }
+                            required_present = (|| -> Result<_, DeserializeError> {
+                                let required_value = raw.bytes()?;
+                                if required_value != Vec::<u8>::from([202, 254]) {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Bytes(required_value),
+                                        expected: Key::Bytes(Vec::<u8>::from([202, 254])),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("required"))?;
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            if !required_present {
+                return Err(
+                    DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("required")))
+                        .into(),
+                );
+            }
+            read_len.finish()?;
+            Ok(Self {
+                optional: optional_present,
+            })
+        })()
+        .map_err(|e| e.annotate("BytesMapMembers"))
+    }
+}
+
+impl cbor_event::se::Serialize for BytesMembers {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1 + if self.optional { 1 } else { 0 }))?;
+        serializer.write_bytes(&Vec::<u8>::from([202, 254]))?;
+        if self.optional {
+            serializer.write_bytes(&Vec::<u8>::from([104, 105]))?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for BytesMembers {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            (|| -> Result<_, DeserializeError> {
+                let required_value = raw.bytes()?;
+                if required_value != Vec::<u8>::from([202, 254]) {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bytes(required_value),
+                        expected: Key::Bytes(Vec::<u8>::from([202, 254])),
+                    }
+                    .into());
+                }
+                Ok(())
+            })()
+            .map_err(|e| e.annotate("required"))?;
+            let optional = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Bytes)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let optional_value = raw.bytes()?;
+                    if optional_value != Vec::<u8>::from([104, 105]) {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bytes(optional_value),
+                            expected: Key::Bytes(Vec::<u8>::from([104, 105])),
+                        }
+                        .into());
+                    }
+                    Ok(true)
+                })()
+                .map_err(|e| e.annotate("optional"))
+            } else {
+                Ok(false)
+            }?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(BytesMembers { optional })
+        })()
+        .map_err(|e| e.annotate("BytesMembers"))
+    }
+}
+
+impl cbor_event::se::Serialize for BytesRaw {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            BytesRaw::ValueBytes6869 => serializer.write_bytes(&Vec::<u8>::from([104, 105])),
+        }
+    }
+}
+
+impl Deserialize for BytesRaw {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Bytes => {
+                    let value_bytes6869_value = raw.bytes()?;
+                    if value_bytes6869_value != Vec::<u8>::from([104, 105]) {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bytes(value_bytes6869_value),
+                            expected: Key::Bytes(Vec::<u8>::from([104, 105])),
+                        }
+                        .into());
+                    }
+                    Ok(BytesRaw::ValueBytes6869)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("BytesRaw"))
+    }
+}
+
+impl cbor_event::se::Serialize for CborBytes {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            CborBytes::ValueBytesCAFE => {
+                let mut value_bytes_cafe_inner_se = Serializer::new_vec();
+                value_bytes_cafe_inner_se.write_bytes(&Vec::<u8>::from([202, 254]))?;
+                let value_bytes_cafe_bytes = value_bytes_cafe_inner_se.finalize();
+                serializer.write_bytes(&value_bytes_cafe_bytes)
+            }
+        }
+    }
+}
+
+impl Deserialize for CborBytes {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Bytes => {
+                    let value_bytes_cafe_bytes = raw.bytes()?;
+                    let inner_de = &mut Deserializer::from(value_bytes_cafe_bytes);
+                    let value_bytes_cafe_value = inner_de.bytes()?;
+                    if value_bytes_cafe_value != Vec::<u8>::from([202, 254]) {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bytes(value_bytes_cafe_value),
+                            expected: Key::Bytes(Vec::<u8>::from([202, 254])),
+                        }
+                        .into());
+                    }
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(CborBytes::ValueBytesCAFE)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("CborBytes"))
     }
 }
 
@@ -166,6 +549,48 @@ impl Deserialize for NullValue {
             }
         })()
         .map_err(|e| e.annotate("NullValue"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedBytes {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_tag(7u64)?;
+        match self {
+            TaggedBytes::ValueBytesCAFE => serializer.write_bytes(&Vec::<u8>::from([202, 254])),
+        }
+    }
+}
+
+impl Deserialize for TaggedBytes {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let tag = raw.tag()?;
+            if tag != 7 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 7,
+                }
+                .into());
+            }
+            match raw.cbor_type()? {
+                cbor_event::Type::Bytes => {
+                    let value_bytes_cafe_value = raw.bytes()?;
+                    if value_bytes_cafe_value != Vec::<u8>::from([202, 254]) {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bytes(value_bytes_cafe_value),
+                            expected: Key::Bytes(Vec::<u8>::from([202, 254])),
+                        }
+                        .into());
+                    }
+                    Ok(TaggedBytes::ValueBytesCAFE)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("TaggedBytes"))
     }
 }
 

@@ -519,11 +519,9 @@ status = "unsupported"
 reason = "`#7` / `#7.n` simple/float sigils — same bare major-type constraint, rejected gracefully in both rule-body and member position"
 code_anchor = "a bare major-type constraint"
 
-[[note]]
+[[cover]]
 id = "value.bytes"
-status = "unsupported"
-reason = "byte-string literal (h'..'/'..') as a value — the value is fixed by the schema and `FixedValue` has no bytes variant, so it is rejected gracefully in both rule-body and member position; widening to `bytes` is a different spec, not an equivalent one (the b64'..' spelling and lowercase hex in h'..' additionally fail in the rust parser before generation: ruby/ABNF accept)"
-code_anchor = "a byte-string literal"
+fixture = "fixed_singletons.cddl"
 
 [[note]]
 id = "type2.unwrap"
