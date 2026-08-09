@@ -4871,10 +4871,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   --emit-tests=true --wasm=false` and `cargo test`. Motivation is a proven escaped regression: a
   preserve-only E0308 on tag-wrapped fixed-value members (`[v: #6.1(null)]`) passed every
   default-profile gate and was caught only by review — a preserve batch over the same compositions
-  fails loudly on it. Classifying under preserve PANICS for classes that are ok/graceful under
-  default (native floats as members; a tag over a type-choice/enum; a tag wrapping `any`); those live
-  in `PRESERVE_ONLY_PANIC_CLASSES` (checked after the shared `KNOWN_PANIC_CLASSES` allowlist, each
-  citing a `cddl-matrix/ROADMAP.md` § findings entry, vacuity-guarded), and a preserve panic matching
+  fails loudly on it. Preserve-only panic classes belong in `PRESERVE_ONLY_PANIC_CLASSES` (checked
+  after the shared `KNOWN_PANIC_CLASSES` allowlist, with entries citing a
+  `cddl-matrix/ROADMAP.md` § findings entry and vacuity-guarded). That ledger is currently empty:
+  every former class gained preserve support or a graceful refusal. A preserve panic matching
   neither ledger is a NEW finding. Per-profile scratch root + `CARGO_TARGET_DIR`
   (`cddl_codegen_recomb_<profile>_<hash>`) keep profiles from clobbering each other. Exclusion set =
   the shared `LAYER2_KNOWN_BAD` ∪ the profile's own `LAYER2_PRESERVE_KNOWN_BAD`; only the profile's
