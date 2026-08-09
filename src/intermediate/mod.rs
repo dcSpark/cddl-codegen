@@ -4058,8 +4058,8 @@ impl<'a> IntermediateTypes<'a> {
         // The `@custom_serialize`/`@custom_deserialize` pair is a TYPE-level override: it replaces
         // the codec of the rust type a rule resolves to. The parse-walk rejections cover the
         // placements that DELETE or BYPASS the node it keys on (`@no_alias`, `@newtype`, an extern /
-        // raw-bytes marker, a row-entry slot). The three below are the placements that MINT a struct
-        // whose generated impls the pair does not displace, so it half-applies or not at all:
+        // raw-bytes marker, a row-entry slot). The struct-kind checks below cover the remaining
+        // placements that cannot honor the pair, while preserving the audited complete-pair owners:
         //
         //   - an ENUM rule (type choice, group choice, or the fixed-value C-style enum): its
         //     serialize side is generated unconditionally while `generate_deserialize`'s
@@ -4073,10 +4073,10 @@ impl<'a> IntermediateTypes<'a> {
         //     BOTH halves on a record rule is deliberately NOT rejected: it suppresses the generated
         //     impls for the author to hand-own, which is unspecified-and-at-risk rather than wrong
         //     (see `docs/docs/comment_dsl.mdx`).
-        //   - a TABLE rule (`t = { * k => v }`). Unlike the record rule, a table mints no impls for
-        //     either half to suppress: it lowers through `AliasInfo::new_manual`, whose
-        //     `rule_metadata` is hardcoded `None`, and BOTH emission sites key on that metadata —
-        //     so each half is equally unhonored and ANY presence rejects, not just a lone one.
+        //   - a TABLE rule (`t = { * k => v }`) carrying a LONE half. A complete pair takes the
+        //     separately audited implicit map-wrapper owner; only a table left as `Table` lowers
+        //     through `AliasInfo::new_manual`, whose `rule_metadata` is hardcoded `None`, so its
+        //     remaining half is unhonored and rejects.
         //
         // Deferred to here rather than the parse walk for the same reason `@no_json_schema_export`
         // above is: the struct KIND decides, and a generic instance only materializes its struct
@@ -4138,10 +4138,10 @@ impl<'a> IntermediateTypes<'a> {
                     };
                     if present {
                         custom_codec_rejections.insert(format!(
-                            "{directive} on `{ident}`: a table rule (`{ident} = {{ * k => v }}`) \
-                             lowers to a transparent map alias that owns no codec for the directive \
-                             to override, so it is dropped rather than honored — in both directions, \
-                             whichever half is written. Put it on the rule that defines the table's \
+                            "{directive} on `{ident}`: this table has only one custom-codec half; a \
+                             complete pair would self-nominalize as the supported whole-table owner, \
+                             but a lone half remains a transparent map alias with no codec to \
+                             override and is dropped rather than honored. Put it on the rule that defines the table's \
                              KEY or VALUE type (`k = bytes ; {directive} …`, then `{ident} = \
                              {{ * k => v }}`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
                              hand-write the type in full."
@@ -4178,16 +4178,13 @@ impl<'a> IntermediateTypes<'a> {
                 }
             }
             // A TAGGED wrapper — a tag-head rule (`x = #6.42(uint)`), and the tag-258 set idiom,
-            // which nominalizes into one — is structurally the `@newtype` wrapper the parse walk
-            // already refuses this pair on, minus the directive: `wrappers.rs` emits its `Serialize`
-            // unconditionally with no custom handling, while `generate_deserialize`'s
-            // `Root(Rust(ident))` arm rewrites every embed site to the named reader. So the halves
-            // land asymmetrically — writing the pair here produced a type that READS the custom
-            // format and WRITES the generated one, which no round-trip test can see. Rejected on tag
-            // presence rather than on the `Wrapper` variant at large, because that is exactly the two
-            // shapes measured; an untagged wrapper (a `.le`/range-bounded primitive) is unswept and
-            // deliberately left alone. `@newtype` wrappers never reach here — their parse-walk
-            // rejection short-circuits `finalize` — so one misplacement still reports once.
+            // which nominalizes into one — is outside the one wrapper contract B3-026 audited: an
+            // implicit, untagged homogeneous-table map owner with a COMPLETE pair. Do not infer the
+            // semantics of tag framing, set policy, encoding preservation, or cross-face projections
+            // from that narrow owner; reject either half here. Rejected on tag presence rather than
+            // on `Wrapper` at large so range-bounded wrappers remain an explicit unexpanded surface.
+            // `@newtype` wrappers never reach here — their parse-walk rejection short-circuits
+            // `finalize` — so one misplacement still reports once.
             if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
                 && (rust_struct.tag().is_some()
                     || wrapped
@@ -4207,10 +4204,11 @@ impl<'a> IntermediateTypes<'a> {
                     };
                     if present {
                         custom_codec_rejections.insert(format!(
-                            "{directive} on `{ident}`: {shape} mints a wrapper struct whose \
-                             `Serialize` impl is generated unconditionally, while the deserialize \
-                             CALL SITES do route through the custom reader — so the pair would make \
-                             the wrapper read one wire format and write another. Declare `{ident}` \
+                            "{directive} on `{ident}`: {shape} is a tagged wrapper, while this \
+                             delivery supports and audits a complete pair only on the implicit \
+                             homogeneous-table map owner. Its custom-codec contract (tag framing, \
+                             encoding preservation, and cross-face behavior) is not defined here. \
+                             Declare `{ident}` \
                              as a {EXTERN_MARKER} rule and hand-write the type in full, or give the \
                              rule a body that resolves to a transparent alias and write the wire \
                              framing in your own codec (`{ident} = <inner> ; @custom_serialize \
@@ -4228,12 +4226,27 @@ impl<'a> IntermediateTypes<'a> {
             // pair checks above; this fires once and only for an accepted owner that would otherwise
             // drop the declaration silently. (A declaration with one half or none is the parse
             // walk's `reject_custom_encodings_without_pair`, so it cannot double-report here.)
+            // Only parsing's complete homogeneous-table path creates an untagged, non-`@newtype`
+            // map wrapper. Explicit/newtype and tagged map wrappers are rejected elsewhere and must
+            // not be treated as this accepted owner merely because they wrap a map.
             let is_complete_pair_map_wrapper = matches!(
                 rust_struct.variant(),
                 RustStructType::Wrapper {
                     wrapped,
                     ..
                 } if matches!(wrapped.conceptual_type, ConceptualRustType::Map(_, _))
+                    && rust_struct.tag().is_none()
+                    && config.newtype_getter.is_none()
+                    && !wrapped
+                        .encodings
+                        .iter()
+                        .any(|op| {
+                            matches!(
+                                op,
+                                CBOREncodingOperation::Tagged(_)
+                                    | CBOREncodingOperation::OptionallyTagged(_)
+                            )
+                        })
             );
             if config.custom_encodings.is_some()
                 && config.custom_serialize.is_some()

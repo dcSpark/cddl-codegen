@@ -3483,16 +3483,17 @@ fn parse_type(
         // because a `pub type` here would carry the aliased type's built-in codec as a standalone
         // wire contradicting the one every embed site writes. Both are honored, and the spelling
         // generates byte-identically either way.
-        // `@newtype` mints a wrapper struct whose `Serialize` impl is generated unconditionally
-        // (`wrappers.rs` has no custom handling) while the DESERIALIZE call sites do route through
-        // the custom reader — so the pair here is not a drop but a round-trip asymmetry: the wrapper
-        // reads one wire format and writes another.
+        // B3-026 audits one wrapper owner only: the implicit, untagged homogeneous-table map wrapper
+        // made by a complete pair. Explicit `@newtype` asks for the general wrapper surface instead,
+        // whose tag/range/set/preserve and Rust/WASM/JSON/WIT contracts were not defined by that
+        // delivery, so keep this placement refused rather than extending the table result by analogy.
         if rule_metadata.newtype.is_some() {
             types.record_rejection(format!(
-                "{directive} together with `@newtype` on `{type_name}`: a `@newtype` wrapper writes \
-                 through its own generated serialize impl while the deserialize CALL SITES do route \
-                 through the custom reader, so the pair would make the wrapper read one wire format \
-                 and write another. Drop `@newtype` and use the plain alias spelling (`<rule> = \
+                "{directive} together with `@newtype` on `{type_name}`: this delivery supports and \
+                 audits a complete pair only on the implicit homogeneous-table map owner; it does not \
+                 define the custom-codec contract for an explicit wrapper (including its tag, range, \
+                 set, preserve-encoding, or cross-face behavior). Drop `@newtype` and use the plain \
+                 alias spelling (`<rule> = \
                  <body> ; @custom_serialize <fn> @custom_deserialize <fn>`), or declare the type \
                  `{EXTERN_MARKER}` and hand-write it in full."
             ));
