@@ -140,6 +140,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
+- **Add decode-execution coverage for encoded-fixed-null `/ null` choices.** B3-024A's initial
+  singleton suite checked bare `null / null` and fixed/non-null Option lowering, but missed that a
+  `FixedValue::Null` arm can carry `Tagged` or `CBORBytes` wire operations. The collapse must
+  normalize only two truly bare null arms; `#6.N(null) / null` and `bytes .cbor null / null` need
+  both wire arms to decode, in both orders and member/rule positions, with preserve/canonical
+  assertions. The regression was found by code review, not an existing matrix/roadmap item.
+
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
    `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
