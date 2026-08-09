@@ -9720,20 +9720,20 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
         assert!(MaybeTaggedNullHolder::from_cbor_bytes(bytes).is_ok());
         assert!(MaybeTaggedNullRevHolder::from_cbor_bytes(bytes).is_ok());
     }
-    assert!(MaybeTaggedNullHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
-    assert!(MaybeTaggedNullRevHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
+    reject::<MaybeTaggedNullHolder>(&[0x81, 0xf7], "Expected null");
+    reject::<MaybeTaggedNullRevHolder>(&[0x81, 0xf7], "Expected null");
     assert!(TaggedNullMember::from_cbor_bytes(&[0x82, 0xc7, 0xf6, 0xf6]).is_ok());
     assert!(TaggedNullMember::from_cbor_bytes(&[0x82, 0xf6, 0xc7, 0xf6]).is_ok());
-    assert!(TaggedNullMember::from_cbor_bytes(&[0x82, 0xf7, 0xf6]).is_err());
+    reject::<TaggedNullMember>(&[0x82, 0xf7, 0xf6], "Expected null");
     for bytes in [&[0x81, 0x41, 0xf6][..], &[0x81, 0xf6][..]] {
         assert!(MaybeCborNullHolder::from_cbor_bytes(bytes).is_ok());
         assert!(MaybeCborNullRevHolder::from_cbor_bytes(bytes).is_ok());
     }
-    assert!(MaybeCborNullHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
-    assert!(MaybeCborNullRevHolder::from_cbor_bytes(&[0x81, 0xf7]).is_err());
+    reject::<MaybeCborNullHolder>(&[0x81, 0xf7], "Expected null");
+    reject::<MaybeCborNullRevHolder>(&[0x81, 0xf7], "Expected null");
     assert!(CborNullMember::from_cbor_bytes(&[0x82, 0x41, 0xf6, 0xf6]).is_ok());
     assert!(CborNullMember::from_cbor_bytes(&[0x82, 0xf6, 0x41, 0xf6]).is_ok());
-    assert!(CborNullMember::from_cbor_bytes(&[0x82, 0xf7, 0xf6]).is_err());
+    reject::<CborNullMember>(&[0x82, 0xf7, 0xf6], "Expected null");
 
     assert_eq!(bytes(&TaggedEnabled::from_cbor_bytes(&[0xc7, 0xf5]).unwrap()), [0xc7, 0xf5]);
     reject::<TaggedEnabled>(&[0xc7, 0xf4], "Expected fixed value true found false");

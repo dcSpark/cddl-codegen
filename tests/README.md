@@ -985,6 +985,17 @@ A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into th
 *wasm* crate and `cargo test`ed there (host target — the wasm-bindgen wrapper types are plain Rust,
 so no node/wasm-pack is needed).
 
+`fixed_singletons_execute_across_default_preserve_and_canonical_profiles` is the executable
+fixed-value ownership cross-product. It generates scratch crates for the default, preserve and
+canonical profiles and exercises direct singleton codecs, composition, fixed/null and bare
+`null / null`, wrong-value reasons, and non-minimal fixed/tag/`.cbor` heads. Its encoded-null leg is
+deliberately class-wide rather than one incident pin: it crosses both non-empty wire operations
+currently reachable on a `FixedValue` (`Tagged` and `CBORBytes`) with both nullable-collapse sites,
+both source orders and both legal wire arms, then checks reason-bearing rejection, preserve replay
+and canonical minimization. `OptionallyTagged` is produced only by the collection tag-set collapse
+and cannot currently inhabit a fixed-value arm; if another encoding operation becomes reachable on
+`FixedValue`, this table is extended in the same change.
+
 **Negative decode vectors carry their rejection REASON, enforced by a ratchet.** A hand-derived
 reject vector asserted with a bare `T::from_cbor_bytes(&bytes).is_err()` passes for ANY failure —
 a vector one byte off fails on the wrong boundary and stays green while the boundary it claims to

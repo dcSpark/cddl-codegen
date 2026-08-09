@@ -11,8 +11,10 @@ sidebar_position: 3
   fixed-value rule is a nominal singleton with its own CBOR codec (`answer = 42`,
   `enabled = true`, `label = "ok"`); it can consequently be a record member, homogeneous-array
   element, table value, or standalone root. A two-arm `T / null` whose non-null arm is fixed uses
-  `Option<ThatSingleton>`; `null / null` normalizes to the one null singleton rather than exposing
-  two equivalent Rust states. `undefined` and byte-string literals remain unsupported fixed kinds.
+  `Option<ThatSingleton>`; bare `null / null` normalizes to the one null singleton rather than
+  exposing two equivalent Rust states, while an encoded-null arm (`#6.7(null)` or
+  `bytes .cbor null`) remains distinct from bare null. `undefined` and byte-string literals remain
+  unsupported fixed kinds.
 * Optional fixed-value members - `foo = [x: uint, ? v: true]`, `{? k: 5, x: uint}` — the one-bit
   present/absent state is stored as a `bool` presence field (see
   [Output format](output_format#optional-fixed-value-members)); covers bool, null, uint, nint,
@@ -525,11 +527,6 @@ Every row of "Unsupported constructs" above is probed as a **rule body** (`x = <
 Behavior is that probe's outcome. Member position is a different question with a different answer, in
 both directions, so read a row as "unsupported *as a rule body*" rather than "unusable":
 
-* **Better as a member.** The fixed prelude constants `true`, `false`, `null` / `nil` are listed
-  above as rejected, yet they are fully supported as fixed-value members — `[x: uint, ? v: true]`,
-  `{? k: false, x: uint}` — which is what "Optional fixed-value members" at the top of this page
-  describes. A constant carries no information, so there is nothing to store as a rule body; as a
-  member it is read and verified on deserialize.
 * **Unsupported in both, with different wording.** A byte-string literal is listed above as rejected
   gracefully, and that holds in member position too — `[v: h'0102', x: uint]`, the unkeyed
   `[h'0102', x: uint]`, `{k: h'0102', j: uint}` and the UTF-8 spelling `[v: 'text', x: uint]` all

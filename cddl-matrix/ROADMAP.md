@@ -509,9 +509,13 @@ entry, so the atomicity is the rule).
   constant verification plus any mandatory-tag/`.cbor` wire chain. Only bare `null / null` normalizes
   to the one null singleton rather than exposing `Option<FixedNull>`'s two equivalent states;
   encoded null (`#6.N(null) / null` or `bytes .cbor null / null`) keeps both wire arms as
-  `Option<Singleton>`. The coverage
-  is `choice_fixed_null_collapse{,_member}` plus the fixed-singleton corpus and decode-conformance
-  accepts/reject; the latter pins both legal arms and a reason-bearing third-value rejection.
+  `Option<Singleton>`. The generated-shape coverage is
+  `choice_fixed_null_collapse{,_member}` plus the fixed-singleton corpus and decode-conformance
+  accepts/reject; the latter pins both legal bare fixed/null arms and a reason-bearing third-value
+  rejection. `fixed_singletons_execute_across_default_preserve_and_canonical_profiles` separately
+  executes the encoded-null cross-product: `Tagged` and `CBORBytes`, rule and member positions,
+  both source orders and wire arms, reason-bearing rejection, preserve replay and canonical
+  minimization.
   `true / false` has no null arm and remains the ordinary multi-value C-style enum path. `undefined`
   and byte-string literal fixed kinds are separate deferred representation work.
 - **`undefined` has no member REPRESENTATION, so a spec that constrains a position to it must be
