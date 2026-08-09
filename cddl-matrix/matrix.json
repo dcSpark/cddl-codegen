@@ -1617,9 +1617,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
         "id": "value.bytes",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -1892,9 +1902,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
         "id": "contain.array-element.value.bytes",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -2747,9 +2767,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
         "id": "contain.map-value.value.bytes",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -6491,11 +6521,11 @@
     },
     {
       "alt": "bytes",
-      "desc": "A byte-string literal (hex/base64/raw) used as a value.",
+      "desc": "A byte-string literal (uppercase hex or raw UTF-8 at the pinned parser revision) used as a value. Lowercase hex and b64'…' remain parser gaps.",
       "encodings": [
         "enc.major2"
       ],
-      "example": "magic = h'cafe'",
+      "example": "magic = h'CAFE'",
       "id": "value.bytes",
       "production": "value",
       "profile": "RFC8610",

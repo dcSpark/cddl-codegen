@@ -21,10 +21,28 @@ expression: content
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
+#[allow(unused_imports)]
+use crate::generated::MixedTextBytesChoice as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::Answer>();
     _assert_deserialize::<crate::generated::Answer>();
+    _assert_serialize::<crate::generated::BytesChoice>();
+    _assert_deserialize::<crate::generated::BytesChoice>();
+    _assert_serialize::<crate::generated::BytesDefault>();
+    _assert_deserialize::<crate::generated::BytesDefault>();
+    _assert_serialize::<crate::generated::BytesEmpty>();
+    _assert_deserialize::<crate::generated::BytesEmpty>();
+    _assert_serialize::<crate::generated::BytesHex>();
+    _assert_deserialize::<crate::generated::BytesHex>();
+    _assert_serialize::<crate::generated::BytesMapMembers>();
+    _assert_deserialize::<crate::generated::BytesMapMembers>();
+    _assert_serialize::<crate::generated::BytesMembers>();
+    _assert_deserialize::<crate::generated::BytesMembers>();
+    _assert_serialize::<crate::generated::BytesRaw>();
+    _assert_deserialize::<crate::generated::BytesRaw>();
+    _assert_serialize::<crate::generated::CborBytes>();
+    _assert_deserialize::<crate::generated::CborBytes>();
     _assert_serialize::<crate::generated::FalseValue>();
     _assert_deserialize::<crate::generated::FalseValue>();
     _assert_serialize::<crate::generated::Marker>();
@@ -33,6 +51,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::NilValue>();
     _assert_serialize::<crate::generated::NullValue>();
     _assert_deserialize::<crate::generated::NullValue>();
+    _assert_serialize::<crate::generated::TaggedBytes>();
+    _assert_deserialize::<crate::generated::TaggedBytes>();
     _assert_serialize::<crate::generated::TrueValue>();
     _assert_deserialize::<crate::generated::TrueValue>();
     _assert_serialize::<crate::generated::UndefinedValue>();

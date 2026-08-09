@@ -203,10 +203,10 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // enforcement evidence instead of reading as a gap):
 //   - `occur.bounded*` — occurrence bounds are a rejectable count constraint (the generated decoder's
 //     Vec len check);
-//   - `value.number*` (and the other `value.*` fixed-value rows' member forms) — a fixed value is a
-//     rejectable equality constraint. (Today all `value.number*` rows are `unsupported`, so they
-//     derive n/a by status — the classification still matters so a future supported+vectorless state
-//     reads `unverified`, not n/a.) The member forms are the CONTAINMENT CELLS carrying those
+//   - `value.*` fixed-literal feature rows — a fixed value is a rejectable equality constraint. The
+//     classification matters even when a row already has a reject vector: a future supported,
+//     vectorless literal kind must read `unverified`, not silently decay to n/a. The member forms are
+//     the CONTAINMENT CELLS carrying those
 //     features, classified by `cellCarriesConstraint` below — the FEATURE-id tests here match no
 //     `contain.*` id, so before that branch existed the classification the sentence claims was
 //     absent from the code, and every fixed-value cell derived `n/a (no constraint)`.
@@ -313,7 +313,7 @@ function cellCarriesConstraint(id: string): boolean {
 function carriesConstraint(id: string): boolean {
   if (id === "ctl.default") return false; // no rejectable constraint (governs an absent field)
   return id.startsWith("ctl.") || id === "memberkey.cut"
-    || id.startsWith("occur.bounded") || id.startsWith("value.number")
+    || id.startsWith("occur.bounded") || id.startsWith("value.")
     || cellCarriesConstraint(id);
 }
 
@@ -540,10 +540,16 @@ function vacuityProblems(rs: Directional[]): string[] {
   // direction): a NEW supported enforcement-bearing row landing vectorless would otherwise slide
   // into `unverified` with no gate noticing — the variation-row lesson (ROADMAP § Expansion) is that an unenumerated/unvectored
   // constraint is an enforcement blind spot, so growing this set must be a conscious pin edit.
-  // EMPTY today: the one former entry (ctl.size.uint, a verified truncation gap) is fixed — the
-  // member decode width-guards the narrowing cast and the row's constraint vector is committed —
-  // so every supported enforcement-bearing row is green. The pin stays as the decay gate.
-  const EXPECTED_ENFORCE_UNVERIFIED: string[] = [];
+  // The three fixed-byte rows are temporarily vectorless because the pinned rust-cddl validator
+  // panics on both valid and invalid instances before it can corroborate the spec verdict. Generated
+  // execution separately pins exact byte equality and reason-bearing rejection; when the upstream
+  // validator repair ships, re-mint both accept and constraint vectors and move these ids into the
+  // green set above (cddl-matrix/README.md upstream gap #17).
+  const EXPECTED_ENFORCE_UNVERIFIED: string[] = [
+    "contain.array-element.value.bytes",
+    "contain.map-value.value.bytes",
+    "value.bytes",
+  ];
   // The over-accepts set is pinned the SAME way: a row carrying a class="over-acceptance" vector
   // projects `enforce = no (over-accepts: M)` — the SHIPPED over-acceptance vector class (catalog pin
   // + rust replay leg asserting "still wrongly accepts" + this projection). EMPTY today: the

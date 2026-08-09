@@ -256,6 +256,7 @@ fn fixed_value_cbor_type(value: &FixedValue) -> CBORType {
         FixedValue::Nint(_) => CBORType::NegativeInteger,
         FixedValue::Float(_) => CBORType::Special,
         FixedValue::Text(_) => CBORType::Text,
+        FixedValue::Bytes(_) => CBORType::Bytes,
         FixedValue::Null => CBORType::Special,
         FixedValue::Undefined => CBORType::Special,
         FixedValue::Bool(_) => CBORType::Special,
@@ -1841,8 +1842,13 @@ pub fn enum_variants_have_same_encoding_var(variants: &[EnumVariant]) -> bool {
                         Some(FixedValue::Uint(_) | FixedValue::Nint(_) | FixedValue::Float(_)),
                         Some(FixedValue::Uint(_) | FixedValue::Nint(_) | FixedValue::Float(_)),
                     ) => acc,
-                    // bytes would go here once it's supported
-                    (Some(FixedValue::Text(_)), Some(FixedValue::Text(_))) => acc,
+                    // Text and byte strings use the same StringEncoding carrier.  Fixed enum
+                    // variants store no value, so their distinct decoded Rust carriers never
+                    // cross this sidecar boundary; a mixed text/bytes choice can share it too.
+                    (
+                        Some(FixedValue::Text(_) | FixedValue::Bytes(_)),
+                        Some(FixedValue::Text(_) | FixedValue::Bytes(_)),
+                    ) => acc,
                     // these don't have any encoding vars
                     (
                         Some(FixedValue::Bool(_) | FixedValue::Null | FixedValue::Undefined),

@@ -2709,17 +2709,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     version finding, while a failure at 1.26.1 on node 22 is a regression the gate should already
     have caught.
 
-- **DELIVERED (B3-026, 2026-08-09): let a TABLE rule's own comment slot carry a complete custom
-  pair.** `t = { * k => v } ; @custom_serialize … @custom_deserialize …` now self-nominalizes the
-  whole map wrapper, so direct and embedded calls share one complete-item owner rather than the
-  key/value override paths. The `dsl_position_tests` placement grid covers loose, generic,
-  `@duplicates preserve`, and non-empty forms while retaining the single-half and row-entry
-  refusals. Core/default + preserve fixtures execute exact entry round-trips and malformed-array /
-  duplicate rejections; the canonical fixture compiles a trailing-`force_canonical` writer and
-  executes direct+embedded behavior; wasm and wasip2 component smoke fixtures compile; and the
-  extern-interface regression pins opaque projection and re-import. The documented preserve rule
-  is self-carrying: a hand codec accepts only bytes it can exactly re-emit.
-
 - **A crate entry that generates only a JSON-schema document (the aggregate package).** An npm
   package composing several generated crates needs one schema document over their union, but is
   often not itself a generated crate — so it carries a hand-written json-gen crate transcribing what
@@ -2833,21 +2822,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   detail — including the `{ k => v }`-as-bounds-`(1, 1)` revisit — lives in the two
   candidate-feature entries in `cddl-matrix/ROADMAP.md` (the "Real bounded `?` / `n*m` table
   cardinality" entry and its two-type sibling).
-- **Top-level scalar/text/bool/null/undefined fixed rules are nominal singleton TypeChoices** (`foo = 5`,
-  `foo = "text"`, `foo = true`/`null`, and their mandatory-tag/`bytes .cbor` forms). They own
-  direct codecs rather than taking the inline-only C-style enum path, so a named constant has the
-  same standalone and embedded wire shape. `T / null` first nominalizes a fixed `T`, preserving the
-  established `Option<Singleton>` surface; only bare `null / null` is one singleton state, while
-  tagged/`.cbor` null beside bare null keeps both wire arms. The executable
-  B3-024A fixture exercises wrong-value reasons, record/Vec/table composition, fixed/null's two
-  accepts plus third reject, fixed/tag/`.cbor` non-minimal preserve replay and canonical
-  minimization; its encoded-null leg exhausts the `Tagged` and `CBORBytes` operations currently
-  reachable on a fixed value at both collapse sites and in both source orders (`OptionallyTagged`
-  is collection-only). Projected feature rows and the fixed/null containment cell have
-  reason-bearing decode pins. B3-024B added `undefined` as its own unit fixed value: it writes and
-  verifies `0xf7`, has no inner sidecar, uses `Option<FixedUndefined>` beside null, and is exercised
-  through array/map members, mixed-special dispatch, tags and `.cbor` wrappers. Byte-string literals
-  remain refused and are B3-024C.
 - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
   fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
   `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining

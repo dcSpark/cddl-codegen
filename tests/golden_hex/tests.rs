@@ -96,6 +96,7 @@ mod golden_hex {
     );
 
     // ---- major type 2: byte string ----
+    kat!(fixed_bytes_cafe, FixedBytes, FixedBytes::new_value_bytes_cafe(), &[0x42, 0xca, 0xfe]);
     kat!(
         bytes_four,
         OneBytes,

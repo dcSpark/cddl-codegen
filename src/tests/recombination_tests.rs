@@ -929,10 +929,9 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // rather than per-construct: the class was the unfinished member half of the completed
     // top-level sweep, so leaving any arm panicking would have re-earned the same finding. Message
     // identity per construct is pinned by `unsupported_member_type2_rejects_gracefully`, and the
-    // outcome category by tests/robustness/bytes_member.cddl and
-    // tests/robustness/unwrap_member.cddl. The `parse_type` table it mirrors is deliberately a
-    // SEPARATE table (its texts are matrix `code_anchor`s), so the two can be reworded
-    // independently.
+    // outcome category by tests/robustness/unwrap_member.cddl. The `parse_type` table it mirrors
+    // is deliberately a SEPARATE table (its texts are matrix `code_anchor`s), so the two can be
+    // reworded independently.
     (
         "non-literal tag heads (#6.<type>(...)) are not supported",
         "type-valued tag head (RFC 9682); pinned by tests/matrix_reject/type2.tag_head_type.cddl (PANIC row in the reject catalog)",

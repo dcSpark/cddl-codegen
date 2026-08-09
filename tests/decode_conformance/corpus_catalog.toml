@@ -4423,6 +4423,122 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "fixed_singletons.bytes_choice"
+axis = "corpus"
+example = "bytes_choice = h'AA' / h'BB' / null"
+fixture = "fixed_singletons"
+rule = "bytes_choice"
+pinned_reason = "all 3 generated candidate(s) failed two-oracle cross-validation (ruby accepted 3/3, rust --ci accepted 0/3 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "fixed_singletons.bytes_default"
+axis = "corpus"
+example = "bytes_default = [ ? payload: bytes .default h'CAFE', end: uint ]"
+fixture = "fixed_singletons"
+rule = "bytes_default"
+spec = "__probe_holder = [0, bytes_default]\nbytes_default = [ ? payload: bytes .default h'CAFE', end: uint ]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008118f1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811904e6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008119056a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190c09"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190d09"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190fd7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082466275796572731902e8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200824a706f73746d6f6465726e190179"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200824b646179647265616d696e671834"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200824b64656c696e7175656e63791910c9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.bytes_empty"
+axis = "corpus"
+example = "bytes_empty = h''"
+fixture = "fixed_singletons"
+rule = "bytes_empty"
+pinned_reason = "all 1 generated candidate(s) failed two-oracle cross-validation (ruby accepted 1/1, rust --ci accepted 0/1 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "fixed_singletons.bytes_hex"
+axis = "corpus"
+example = "bytes_hex = h'CAFE'"
+fixture = "fixed_singletons"
+rule = "bytes_hex"
+pinned_reason = "all 1 generated candidate(s) failed two-oracle cross-validation (ruby accepted 1/1, rust --ci accepted 0/1 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "fixed_singletons.bytes_map_members"
+axis = "corpus"
+example = "bytes_map_members = {required: h'CAFE', ? optional: 'hi'}"
+fixture = "fixed_singletons"
+rule = "bytes_map_members"
+pinned_reason = "all 2 generated candidate(s) failed two-oracle cross-validation (ruby accepted 2/2, rust --ci accepted 0/2 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "fixed_singletons.bytes_members"
+axis = "corpus"
+example = "bytes_members = [required: h'CAFE', ? optional: 'hi']"
+fixture = "fixed_singletons"
+rule = "bytes_members"
+pinned_reason = "all 2 generated candidate(s) failed two-oracle cross-validation (ruby accepted 2/2, rust --ci accepted 0/2 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "fixed_singletons.bytes_raw"
+axis = "corpus"
+example = "bytes_raw = 'hi'"
+fixture = "fixed_singletons"
+rule = "bytes_raw"
+pinned_reason = "all 1 generated candidate(s) failed two-oracle cross-validation (ruby accepted 1/1, rust --ci accepted 0/1 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "fixed_singletons.cbor_bytes"
+axis = "corpus"
+example = "cbor_bytes = bytes .cbor h'CAFE'"
+fixture = "fixed_singletons"
+rule = "cbor_bytes"
+pinned_reason = "all 1 generated candidate(s) failed two-oracle cross-validation (ruby accepted 1/1, rust --ci accepted 0/1 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
 id = "fixed_singletons.false_value"
 axis = "corpus"
 example = "false_value = false"
@@ -4449,6 +4565,21 @@ type_name = "ProbeHolder"
 
 [[row.vector]]
 hex = "8200627631"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.mixed_text_bytes_choice"
+axis = "corpus"
+example = "mixed_text_bytes_choice = \"a\" / h'61'"
+fixture = "fixed_singletons"
+rule = "mixed_text_bytes_choice"
+spec = "__probe_holder = [0, mixed_text_bytes_choice]\nmixed_text_bytes_choice = \"a\" / h'61'"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82006161"
 source = "ruby-generate"
 expect = "accept"
 
@@ -4481,6 +4612,14 @@ type_name = "ProbeHolder"
 hex = "8200f6"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "fixed_singletons.tagged_bytes"
+axis = "corpus"
+example = "tagged_bytes = #6.7(h'CAFE')"
+fixture = "fixed_singletons"
+rule = "tagged_bytes"
+pinned_reason = "all 1 generated candidate(s) failed two-oracle cross-validation (ruby accepted 1/1, rust --ci accepted 0/1 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
 
 [[row]]
 id = "fixed_singletons.true_value"

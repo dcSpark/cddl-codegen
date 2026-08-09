@@ -618,42 +618,12 @@ fn inline_group_choice_arm_rejects_gracefully() {
 /// construct, so a future arm that silently swallows a neighbour's shape fails here rather than
 /// generating something wrong.
 ///
-/// Byte-string literals get three vectors (keyed array element, unkeyed array element, map value)
-/// because the three are separate walk paths into the same arm. The `b64'…'` spelling has no vector:
-/// the upstream `cddl` fork's parser rejects it before generation (a `missing definition for rule
-/// b64` parse error), so it cannot reach this seam today — the arm lists it only so the class stays
-/// complete if that gap closes.
-///
 /// The `#` vector's hint is asserted honest by `tests/robustness/any_member.cddl`: the prelude NAME
 /// `any` is supported in exactly the position the grammar sigil is refused in.
 #[test]
 fn unsupported_member_type2_rejects_gracefully() {
     // (tag, spec, a substring naming the construct, a substring of the honest remedy)
     let vectors = [
-        (
-            "t2_bytes_elem",
-            "a = [v: h'0102', x: uint]\n",
-            "a byte-string literal",
-            "it is a different spec, not an equivalent one",
-        ),
-        (
-            "t2_bytes_elem_unkeyed",
-            "a = [h'0102', x: uint]\n",
-            "a byte-string literal",
-            "it is a different spec, not an equivalent one",
-        ),
-        (
-            "t2_bytes_map_val",
-            "m = { k: h'0102', j: uint }\n",
-            "a byte-string literal",
-            "it is a different spec, not an equivalent one",
-        ),
-        (
-            "t2_bytes_utf8",
-            "a = [v: 'text', x: uint]\n",
-            "a byte-string literal",
-            "it is a different spec, not an equivalent one",
-        ),
         (
             "t2_unwrap",
             "bar = [uint]\nfoo = [v: ~bar, x: uint]\n",
@@ -703,6 +673,26 @@ fn unsupported_member_type2_rejects_gracefully() {
                 "rejection should carry the honest remedy ({tag}, {extra:?}), got: {msg}"
             );
         }
+    }
+}
+
+/// Bare byte literals use the same unstored fixed-member path as `true`/`5`: exactly one member
+/// is supported, while an occurrence that needs a stored element type is refused before generation.
+/// This also protects the diagnostic seam from asking the upstream AST to render arbitrary bytes as
+/// UTF-8 (`h'CAFE'` is deliberately not valid UTF-8).
+#[test]
+fn bare_fixed_byte_member_generates_and_occurrence_rejects_gracefully() {
+    for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+        expect_generates("bare_fixed_bytes", "a = [h'CAFE']\n", extra);
+
+        let msg =
+            expect_graceful_rejection("bare_fixed_bytes_occurrence", "a = [* h'CAFE']\n", extra);
+        assert!(
+            msg.contains("bare fixed value")
+                && msg.contains("h'CAFE'")
+                && msg.contains("count-permitting occurrence"),
+            "the occurrence refusal must name the byte singleton and its unsupported cardinality ({extra:?}), got: {msg}"
+        );
     }
 }
 /// The CDDL prelude constant `undefined` (major type 7, simple value 23) is a fixed, unit-valued
@@ -7886,6 +7876,12 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
         gen_out("m = { \"a\" => uint }\n", "t_arrow"),
         gen_out("m = { \"a\": uint }\n", "t_colon"),
         "a single text arrow key must converge with the colon spelling"
+    );
+    let byte_key = run("m = { h'CAFE' => uint }\n", "bytes_arrow")
+        .expect_err("fixed byte map key must remain rejected");
+    assert!(
+        byte_key.contains("unsupported fixed map key Bytes([202, 254])"),
+        "{byte_key}"
     );
     assert_eq!(
         gen_out("m = { ? 1 => uint }\n", "opt_arrow"),

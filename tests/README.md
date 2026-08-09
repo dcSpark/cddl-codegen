@@ -988,7 +988,11 @@ so no node/wasm-pack is needed).
 `fixed_singletons_execute_across_default_preserve_and_canonical_profiles` is the executable
 fixed-value ownership cross-product. It generates scratch crates for the default, preserve and
 canonical profiles and exercises direct singleton codecs, composition, fixed/null and bare
-`null / null`, wrong-value reasons, and non-minimal fixed/tag/`.cbor` heads. Its encoded-null leg is
+`null / null`, wrong-value reasons, and non-minimal fixed/tag/`.cbor` heads. It also executes
+uppercase-hex, raw UTF-8, and empty fixed bytes; fixed byte members (including optional presence),
+same-major and mixed text/bytes choices, `.default` over `bytes`, and tagged/`.cbor` byte literals.
+Wrong bytes must report `FixedValueMismatch` through `Key::Bytes`; default, preserve, and canonical
+respectively write preferred bytes, replay recorded byte-string heads, and minimize them. Its encoded-null leg is
 deliberately class-wide rather than one incident pin: it crosses both non-empty wire operations
 currently reachable on a `FixedValue` (`Tagged` and `CBORBytes`) with both nullable-collapse sites,
 both source orders and both legal wire arms, then checks reason-bearing rejection, preserve replay

@@ -11,13 +11,17 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
+pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::serialization::StringEncoding;
+use cbor_encodings::{BytesDefaultEncoding, BytesMapMembersEncoding, BytesMembersEncoding};
 
 #[derive(Clone, Debug)]
 pub enum Answer {
@@ -30,6 +34,154 @@ impl Answer {
     pub fn new_value_uint42() -> Self {
         Self::ValueUint42 {
             value_uint42_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BytesChoice {
+    BytesAA { bytes_aa_encoding: StringEncoding },
+    BytesBB { bytes_bb_encoding: StringEncoding },
+    Null,
+}
+
+impl BytesChoice {
+    pub fn new_bytes_aa() -> Self {
+        Self::BytesAA {
+            bytes_aa_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_bytes_bb() -> Self {
+        Self::BytesBB {
+            bytes_bb_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_null() -> Self {
+        Self::Null
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BytesDefault {
+    pub payload: Vec<u8>,
+    pub end: u64,
+    pub encodings: Option<BytesDefaultEncoding>,
+}
+
+impl BytesDefault {
+    pub fn new(end: u64) -> Self {
+        Self {
+            payload: Vec::<u8>::from([202, 254]),
+            end,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BytesEmpty {
+    ValueBytesEmpty {
+        value_bytes_empty_encoding: StringEncoding,
+    },
+}
+
+impl BytesEmpty {
+    pub fn new_value_bytes_empty() -> Self {
+        Self::ValueBytesEmpty {
+            value_bytes_empty_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BytesHex {
+    ValueBytesCAFE {
+        value_bytes_cafe_encoding: StringEncoding,
+    },
+}
+
+impl BytesHex {
+    pub fn new_value_bytes_cafe() -> Self {
+        Self::ValueBytesCAFE {
+            value_bytes_cafe_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BytesMapMembers {
+    /// Whether the optional fixed value `h'6869'` (CDDL `? optional: h'6869'`) is present; `false` means absent.
+    pub optional: bool,
+    pub encodings: Option<BytesMapMembersEncoding>,
+}
+
+impl BytesMapMembers {
+    pub fn new() -> Self {
+        Self {
+            optional: false,
+            encodings: None,
+        }
+    }
+}
+
+impl Default for BytesMapMembers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BytesMembers {
+    /// Whether the optional fixed value `h'6869'` (CDDL `? optional: h'6869'`) is present; `false` means absent.
+    pub optional: bool,
+    pub encodings: Option<BytesMembersEncoding>,
+}
+
+impl BytesMembers {
+    pub fn new() -> Self {
+        Self {
+            optional: false,
+            encodings: None,
+        }
+    }
+}
+
+impl Default for BytesMembers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BytesRaw {
+    ValueBytes6869 {
+        value_bytes6869_encoding: StringEncoding,
+    },
+}
+
+impl BytesRaw {
+    pub fn new_value_bytes6869() -> Self {
+        Self::ValueBytes6869 {
+            value_bytes6869_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum CborBytes {
+    ValueBytesCAFE {
+        value_bytes_cafe_bytes_encoding: StringEncoding,
+        value_bytes_cafe_encoding: StringEncoding,
+    },
+}
+
+impl CborBytes {
+    pub fn new_value_bytes_cafe() -> Self {
+        Self::ValueBytesCAFE {
+            value_bytes_cafe_bytes_encoding: StringEncoding::default(),
+            value_bytes_cafe_encoding: StringEncoding::default(),
         }
     }
 }
@@ -60,6 +212,13 @@ impl Marker {
     }
 }
 
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum MixedTextBytesChoice {
+    A,
+    Bytes61,
+}
+
 #[derive(Clone, Debug)]
 pub enum NilValue {
     ValueNull,
@@ -79,6 +238,23 @@ pub enum NullValue {
 impl NullValue {
     pub fn new_value_null() -> Self {
         Self::ValueNull
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TaggedBytes {
+    ValueBytesCAFE {
+        value_bytes_cafe_encoding: StringEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl TaggedBytes {
+    pub fn new_value_bytes_cafe() -> Self {
+        Self::ValueBytesCAFE {
+            value_bytes_cafe_encoding: StringEncoding::default(),
+            tag_encoding: None,
+        }
     }
 }
 

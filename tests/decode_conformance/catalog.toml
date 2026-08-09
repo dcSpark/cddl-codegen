@@ -817,6 +817,12 @@ reason = "the value 6 is not the fixed value 5 — violates the bare (unkeyed) f
 expect_err = "Expected fixed value 5 found 6"
 
 [[row]]
+id = "contain.array-element.value.bytes"
+axis = "containment"
+example = "a = [v: h'0102', x: uint]"
+pinned_reason = "pinned rust cddl local-fixes ac1b98e validator exits 101/panics at src/validator/cbor.rs:4840 on spec-valid fixed-byte CBOR while Ruby accepts; decode-foreign corroboration is unavailable"
+
+[[row]]
 id = "contain.array-element.value.number"
 axis = "containment"
 example = "a = [v: 5]"
@@ -3366,6 +3372,12 @@ expect = "accept"
 hex = "a2616a19121f616b05"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "contain.map-value.value.bytes"
+axis = "containment"
+example = "m = { k: h'0102', j: uint }"
+pinned_reason = "pinned rust cddl local-fixes ac1b98e validator exits 101/panics at src/validator/cbor.rs:4840 on spec-valid fixed-byte CBOR while Ruby accepts; decode-foreign corroboration is unavailable"
 
 [[row]]
 id = "contain.map-value.value.number"
@@ -9859,6 +9871,12 @@ expect = "reject"
 class = "constraint"
 reason = "43 is not the nominal fixed uint 42 in `answer = 42`; identical uint wire kind isolates the fixed-value comparison"
 expect_err = "Expected fixed value 42 found 43"
+
+[[row]]
+id = "value.bytes"
+axis = "feature"
+example = "magic = h'CAFE'"
+pinned_reason = "pinned rust cddl local-fixes ac1b98e validator exits 101/panics at src/validator/cbor.rs:4840 on spec-valid fixed-byte CBOR while Ruby accepts; decode-foreign corroboration is unavailable"
 
 [[row]]
 id = "value.number"

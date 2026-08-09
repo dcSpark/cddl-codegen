@@ -384,6 +384,7 @@ pub(super) fn generate_wrapper_struct(
                                 "fixed undefined is a nominal unit value, never a JSON constructor argument"
                             ),
                             FixedValue::Text(_) => "Str(&inner)",
+                            FixedValue::Bytes(_) => "Bytes(&inner)",
                             FixedValue::Uint(_) => "Unsigned(inner)",
                         },
                         ConceptualRustType::Map(_, _) => "Map",

@@ -288,6 +288,7 @@ impl EncodingVarIsCopy for FixedValue {
             | Self::Float(_)
             | Self::Uint(_) => true,
             Self::Text(_) => false,
+            Self::Bytes(_) => false,
         }
     }
 }
@@ -947,6 +948,18 @@ impl GenerationScope {
                             serializer_use,
                             &format!("\"{}\"", escape_rust_str(s)),
                             true,
+                            line_ender,
+                            &encoding_var,
+                            cli,
+                        );
+                    }
+                    FixedValue::Bytes(bytes) => {
+                        write_string_sz(
+                            body,
+                            "write_bytes",
+                            serializer_use,
+                            &FixedValue::bytes_rust_expr(bytes),
+                            false,
                             line_ender,
                             &encoding_var,
                             cli,

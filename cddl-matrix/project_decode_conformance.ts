@@ -704,6 +704,7 @@ for (const a of supportedAnnotations) {
 // the matrix § 7 EXPECTED_FLOOR_SCOPE pattern): a resolver change that silently widens/narrows the
 // in-scope set fails got/want. Classes are majors-0/1-merged ("int"). Pinned from the mint's actuals.
 const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
+  "fixed_singletons.mixed_text_bytes_choice": ["2", "3"],
   // Declared-spelling fixture: `delta_coin = int` is the one type choice among its rules (an alias of
   // a nominal, there so the member's deserialize CALL TARGET is exercised) — the uint/nint arm merges
   // to "int", same single-class shape as `int_alias.bare_int`. Its alias/table/record siblings are not

@@ -14,6 +14,7 @@ nested    = [tag: uint, inner: point]
 ; major type 3 (text) and 2 (bytes)
 one_text  = [s: tstr]
 one_bytes = [v: bstr]
+fixed_bytes = h'CAFE'
 
 ; major type 1 (negative integer)
 one_nint  = [n: nint]

@@ -113,7 +113,7 @@ infallible, so the signature tells you whether a value can be refused.
 
 ## Fixed-value singletons are resources
 
-A named fixed-value rule (`answer = 42`, `enabled = true`, or a tagged/`bytes .cbor` fixed rule)
+A named fixed-value rule (`answer = 42`, `magic = h'CAFE'`, `enabled = true`, or a tagged/`bytes .cbor` fixed rule)
 projects as an opaque resource, with its direct CBOR and JSON methods. It is not a WIT enum: there
 is one valid value, and the resource owns the constant verification plus its complete wire framing.
 For `42 / null`, the nullable surface is `option<answer>`; bare `null / null` has only the

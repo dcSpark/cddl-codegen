@@ -17,6 +17,69 @@ interface types {
   enum answer-kind {
     value-uint42,
   }
+  enum bytes-choice {
+    bytes-aa,
+    bytes-bb,
+    null,
+  }
+  resource bytes-default {
+    constructor(end: u64);
+    payload: func() -> list<u8>;
+    set-payload: func(payload: list<u8>);
+    end: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-default, string>;
+  }
+  resource bytes-empty {
+    new-value-bytes-empty: static func() -> bytes-empty;
+    kind: func() -> bytes-empty-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-empty, string>;
+  }
+  enum bytes-empty-kind {
+    value-bytes-empty,
+  }
+  resource bytes-hex {
+    new-value-bytes-cafe: static func() -> bytes-hex;
+    kind: func() -> bytes-hex-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-hex, string>;
+  }
+  enum bytes-hex-kind {
+    value-bytes-cafe,
+  }
+  resource bytes-map-members {
+    constructor();
+    optional: func() -> bool;
+    set-optional: func(present: bool);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-map-members, string>;
+  }
+  resource bytes-members {
+    constructor();
+    optional: func() -> bool;
+    set-optional: func(present: bool);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-members, string>;
+  }
+  resource bytes-raw {
+    new-value-bytes6869: static func() -> bytes-raw;
+    kind: func() -> bytes-raw-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-raw, string>;
+  }
+  enum bytes-raw-kind {
+    value-bytes6869,
+  }
+  resource cbor-bytes {
+    new-value-bytes-cafe: static func() -> cbor-bytes;
+    kind: func() -> cbor-bytes-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-bytes, string>;
+  }
+  enum cbor-bytes-kind {
+    value-bytes-cafe,
+  }
   resource false-value {
     new-value-bool-false: static func() -> false-value;
     kind: func() -> false-value-kind;
@@ -35,6 +98,10 @@ interface types {
   enum marker-kind {
     value-text7631,
   }
+  enum mixed-text-bytes-choice {
+    a,
+    bytes61,
+  }
   resource nil-value {
     new-value-null: static func() -> nil-value;
     kind: func() -> nil-value-kind;
@@ -52,6 +119,15 @@ interface types {
   }
   enum null-value-kind {
     value-null,
+  }
+  resource tagged-bytes {
+    new-value-bytes-cafe: static func() -> tagged-bytes;
+    kind: func() -> tagged-bytes-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<tagged-bytes, string>;
+  }
+  enum tagged-bytes-kind {
+    value-bytes-cafe,
   }
   resource true-value {
     new-value-bool-true: static func() -> true-value;

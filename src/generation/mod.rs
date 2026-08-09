@@ -581,6 +581,9 @@ impl GenerationScope {
                             FixedValue::Text(s) => {
                                 ("String", format!("\"{}\".to_owned()", escape_rust_str(s)))
                             }
+                            FixedValue::Bytes(bytes) => {
+                                ("Vec<u8>", FixedValue::bytes_rust_expr(bytes))
+                            }
                         };
                         self.wasm(types, ident)
                             .new_fn(convert_to_snake_case(ident.as_ref()))
@@ -3301,6 +3304,15 @@ fn encoding_fields_impl(
                 types,
                 name,
                 (&ConceptualRustType::Primitive(Primitive::Str)).into(),
+                cli,
+                tag_depth,
+                cbor_depth,
+                decls,
+            ),
+            FixedValue::Bytes(_) => encoding_fields_impl(
+                types,
+                name,
+                (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
                 cli,
                 tag_depth,
                 cbor_depth,

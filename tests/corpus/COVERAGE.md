@@ -223,7 +223,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/'..') as a value — the value is fixed by the schema and `FixedValue` has no bytes variant, so it is rejected gracefully in both rule-body and member position; widening to `bytes` is a different spec, not an equivalent one (the b64'..' spelling and lowercase hex in h'..' additionally fail in the rust parser before generation: ruby/ABNF accept)  [`a byte-string literal`] |
+| `value.bytes` | ✅ | Byte-string literal value | `fixed_singletons.cddl` |
 | `value.number` | ✅ | Numeric literal value | `fixed_singletons.cddl` — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
 | `value.number.bin` | ➕ | Binary integer literal (0b…) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `value.number.hex` | ➕ | Hexadecimal integer literal (0x…) | supported, no corpus fixture (cddl-codegen exit 0) |
@@ -421,14 +421,14 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `type2.typename` | · | · | · | · | · | · |  | · | · | · |
 | `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
 | `type2.value` | · | ✅ | ✅ | · | · | ✅ | ✅ | ◐ | · | · |
-| `value.bytes` |  | ➖ | ➖ |  |  |  |  |  |  |  |
+| `value.bytes` | · | ✅ | ✅ |  | · | · |  | · | · |  |
 | `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
-| `value.text` | · | ✅ | ✅ | · |  |  |  | · |  |  |
+| `value.text` | · | ✅ | ✅ | · |  | · |  | · |  |  |
 
 - Modelled `(role × feature)` cells: **69** (over 136 shape-granular containment rows).
-- Exercised by the corpus **and** modelled: **35**.
-- Exercised by the corpus, modelled by **nothing**: **163** (the `·` cells).
-- Modelled but not exercised by any corpus fixture: **34**.
+- Exercised by the corpus **and** modelled: **37**.
+- Exercised by the corpus, modelled by **nothing**: **169** (the `·` cells).
+- Modelled but not exercised by any corpus fixture: **32**.
 
 ## Notable findings
 
@@ -442,7 +442,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **123** — ✅ 76 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 15 not supported
+- Features: **123** — ✅ 77 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 14 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 101
 

@@ -520,12 +520,12 @@ function hashHeadClass(tok: string): string | null {
   return maj === 0 || maj === 1 ? "int" : String(maj);
 }
 // A CDDL literal in arm-head position: integer/radix -> int; decimal/hexfloat -> 7 (float); "…" -> 3
-// (text); '…' -> 2 (bytes). null for a non-literal.
+// (text); h'…'/b64'…'/'…' -> 2 (bytes). null for a non-literal.
 function literalHeadClass(tok: string): string | null {
   if (/^-?\d+$/.test(tok) || /^-?0x[0-9a-fA-F]+$/.test(tok) || /^-?0b[01]+$/.test(tok)) return "int";
   if (/^-?\d+\.\d/.test(tok) || /^-?0x[0-9a-fA-F.]+p[+-]?\d+$/i.test(tok)) return "7";
   if (/^"/.test(tok)) return "3";
-  if (/^'/.test(tok)) return "2";
+  if (/^(?:h|b64)?'/.test(tok)) return "2";
   return null;
 }
 
@@ -642,8 +642,10 @@ export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
 // row ids), so it would always read stale there and falsely fail the gate. Shared by the corpus mint
 // (verify.ts `mintCorpusRow` — won't exit 1 / won't waste draws for a ledgered class) and the corpus
 // drift-gate half (project_decode_conformance.ts — coverage floor + its own stale guard). Currently
-// empty: no corpus arm class is ledgered unmintable at HEAD.
-export const CORPUS_DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
+// The fixed-byte validator gap below is the only resident corpus arm exemption at HEAD.
+export const CORPUS_DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {
+  "fixed_singletons.mixed_text_bytes_choice/2": "pinned rust-cddl ac1b98e validator panic at src/validator/cbor.rs:4840 on spec-valid fixed-byte CBOR; Ruby accepts; remove when upstream validator repair permits a two-oracle vector",
+};
 
 // Exemption ledger for a `class="constraint"` reject vector whose spec-invalidity an ORACLE does not
 // see, keyed `"<row id>/<hex>"`. It exists because the two-oracle certification a constraint vector
