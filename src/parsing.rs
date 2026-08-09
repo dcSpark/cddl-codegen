@@ -2707,10 +2707,10 @@ fn try_float_or_reject(
 /// The literal a control operand denotes, or `None` when the operand is not a literal at all.
 ///
 /// `None` is an ordinary user input (`? f: uint .default some_rule`), not a tool bug, so the single
-/// caller records a graceful rejection over it. `true`/`false`/`null`/`nil` are CDDL prelude
-/// CONSTANTS spelled as typenames rather than as their own `Type2` kinds — the same classification
-/// the fixed map-key path makes — so they are lowered here instead of falling into the `None` arm
-/// and reading as "not a value".
+/// caller records a graceful rejection over it. `true`/`false`/`null`/`nil`/`undefined` are CDDL
+/// prelude CONSTANTS spelled as typenames rather than as their own `Type2` kinds — the same
+/// classification the fixed map-key path makes — so they are lowered here instead of falling into
+/// the `None` arm and reading as "not a value".
 fn type2_to_fixed_value(type2: &Type2) -> Option<FixedValue> {
     match type2 {
         Type2::UintValue { value, .. } => Some(FixedValue::Uint(*value as u64)),
@@ -6416,33 +6416,14 @@ fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
             Some(MemberKey::Bareword { ident, .. }) => {
                 MapKeyKind::Fixed(FixedValue::Text(ident.to_string()))
             }
-            Some(MemberKey::Type1 { t1, .. }) => match &t1.type2 {
-                Type2::UintValue { value, .. } => {
-                    MapKeyKind::Fixed(FixedValue::Uint(*value as u64))
-                }
-                Type2::IntValue { value, .. } => {
-                    MapKeyKind::Fixed(FixedValue::Nint(*value as i128))
-                }
-                Type2::TextValue { value, .. } => {
-                    MapKeyKind::Fixed(FixedValue::Text(value.to_string()))
-                }
-                Type2::FloatValue { value, .. } => MapKeyKind::Fixed(FixedValue::Float(*value)),
-                // `true`/`false`/`undefined` are fixed literals spelled as typenames; classify
-                // them as Fixed so a routed `{ true => uint }` or `{ undefined => uint }` gets
-                // the honest unsupported-fixed-map-key rejection instead of the misleading
-                // non-fixed message (this also upgrades the group-choice-arm message for these
-                // keys). Other typename keys stay NonFixed.
-                Type2::Typename { ident, .. } if ident.ident == "true" => {
-                    MapKeyKind::Fixed(FixedValue::Bool(true))
-                }
-                Type2::Typename { ident, .. } if ident.ident == "false" => {
-                    MapKeyKind::Fixed(FixedValue::Bool(false))
-                }
-                Type2::Typename { ident, .. } if ident.ident == "undefined" => {
-                    MapKeyKind::Fixed(FixedValue::Undefined)
-                }
-                _ => MapKeyKind::NonFixed,
-            },
+            // Share the literal lowering with `.default`: it owns every literal-shaped Type2,
+            // including the fixed prelude singletons whose literals are spelled as typenames.
+            // This prevents a new fixed kind from getting a misleading non-fixed-map-key verdict
+            // merely because this seam's duplicate list was not extended. Other typename keys and
+            // non-literal Type2 shapes stay NonFixed.
+            Some(MemberKey::Type1 { t1, .. }) => type2_to_fixed_value(&t1.type2)
+                .map(MapKeyKind::Fixed)
+                .unwrap_or(MapKeyKind::NonFixed),
             Some(MemberKey::NonMemberKey { .. }) => MapKeyKind::NonFixed,
         },
         _ => MapKeyKind::Keyless,

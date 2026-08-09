@@ -631,6 +631,11 @@ entry, so the atomicity is the rule).
   support is owned by the float-table-key boundary entry's ordered-float question); flipping either
   row to `ok` requires real support, not a decay back to the old `group_entry_to_field_name`
   panics.
+  Fixed-literal arrow classification now shares `type2_to_fixed_value` with control-operand
+  lowering instead of duplicating the supported-kind list: uint/text, nint/float, both booleans,
+  `null`/`nil`, and `undefined` are all pinned at the shared seam by
+  `fixed_key_arrow_single_entry_routes_to_record_path`, so a future fixed-literal Type2 joins the
+  map-key classifier when its central lowering lands.
 - **A complete whole-table custom codec pair is supported.** A named homogeneous table carrying
   both `@custom_serialize` and `@custom_deserialize` self-nominalizes as its map wrapper, so its
   direct and embedded APIs delegate to the one whole-item codec (including a non-map wire form).
@@ -766,6 +771,14 @@ remains is deleting the notes that explain why we do not have it yet.
   wording in `tests/README.md` and README gap #16, and delete this close-out entry. A changed
   rejection signature is not a fix: investigate it and retain or revise the ledger only with a
   new exact probe; never promote this one-rule gap to fixture-level `RUST_ORACLE_SKIP`.
+- When ciborium's generic value decoder preserves CBOR `undefined` (`f7`) distinctly instead of
+  returning `Value::Null`, `reference_codec_differential_self_check` should fail stale. Teach
+  `ciborium_value_to_tree` the new variant, remove the sole
+  `CborTree::Undefined => CborTree::Null` normalization, retain `f7` as an ordinary equality
+  self-check, update `tests/README.md` and README gap #16's reference-codec wording, and run
+  `bun run check.ts full --only ir_conformance_corpus`. The independent Rust `cddl` decoder may
+  still collapse `f7`; do not remove its per-rule oracle accommodation unless its own exact probe
+  accepts.
 - When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
   `ac1b98e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
   `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row

@@ -281,9 +281,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    whose rust `From` impl must be `new(inner)`; `clippy_enum_record` — a record with a c-style enum
    field whose wasm ctor/getter cross by value), so a regression re-minting any of those
    `clippy::unnecessary_cast` / `clippy::useless_conversion` shapes is hard-red in both profiles.
-   The still-open work item is the THRESHOLD/shape-dependent default-warn lints the input still
-   can't provoke: it has no `/` choice asymmetric enough for `large_enum_variant`'s 200-byte
-   default (a synthetic provocation needs a ~30-uint-field record variant), and the static
+   One still-open completeness item is an inventory/LOCKSTEP assertion between every unit-like
+   `FixedValue` variant and this fixture's fixed-special cross-product. The current bool/null/
+   undefined list is broad across positions but hand-maintained: the next fixed major-7 special
+   could add a deserialize branch without joining the lint provocation, recreating B3-024B's blind
+   spot. The other still-open work item is the THRESHOLD/shape-dependent default-warn lints the
+   input still can't provoke: it has no `/` choice asymmetric enough for `large_enum_variant`'s
+   200-byte default (a synthetic provocation needs a ~30-uint-field record variant), and the static
    `DeserializeError` sits just under `result_large_err`'s ~128-byte threshold on this input while
    exceeding it in CML's CI. Add a deliberately lint-provoking asymmetric choice so the NEXT
    default-warn lint of that class — e.g. one a toolchain bump introduces — goes red in-repo
@@ -544,6 +548,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     and `plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`'s "the remedy must
     actually work" legs are the pattern applied from day one). Four working rules bound what the
     sweep has to cover:
+
+    **Status: pending family-wide sweep.** The ten individual pins below prove instances and the
+    day-one convention, but they do not complete the sweep of existing refusal remedies.
+
     - A remedy string is executable wherever it lives — in an emitted message it gets a pinned
       generate leg, in a findings entry it gets executed at pickup.
     - EVERY advice-shaped spelling a message prints is a remedy string, not only the strings

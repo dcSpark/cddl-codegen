@@ -7899,8 +7899,11 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
     );
 
     // Graceful rejections once on the record path: nint/float get the unsupported-fixed-kind message,
-    // bool/undefined name their fixed value, a zero-permitting occurrence gets f18d764's occurrence
-    // message, and an aliased literal domain (`one = 1`) rejects (formerly a for_rust_member panic).
+    // Every current fixed-literal class and fixed prelude spelling takes the shared
+    // `type2_to_fixed_value` route and names its fixed value, a zero-permitting occurrence gets
+    // f18d764's occurrence message, and an aliased literal domain (`one = 1`) rejects (formerly a
+    // for_rust_member panic). The shared lowering — rather than a duplicate per-seam match — makes a
+    // future fixed-literal Type2 join this classifier when its central lowering lands.
     let nint =
         run("m = { -1 => uint }\n", "nint").expect_err("nint arrow key must reject gracefully");
     assert!(
@@ -7920,12 +7923,28 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
         !flt.contains("in its own rule") && flt.contains("either form"),
         "float key remedy must not point at the (also-rejected) table form, got: {flt}"
     );
-    let boolean =
-        run("m = { true => uint }\n", "bool").expect_err("bool arrow key must reject gracefully");
-    assert!(
-        boolean.contains("Bool"),
-        "bool arrow key should mention Bool in its message, got: {boolean}"
-    );
+    for spelling in ["true", "false"] {
+        let boolean = run(
+            &format!("m = {{ {spelling} => uint }}\n"),
+            &format!("{spelling}_key"),
+        )
+        .expect_err("bool arrow keys must reject gracefully");
+        assert!(
+            boolean.contains("Bool"),
+            "{spelling} arrow key should mention Bool in its message, got: {boolean}"
+        );
+    }
+    for spelling in ["null", "nil"] {
+        let null = run(
+            &format!("m = {{ {spelling} => uint }}\n"),
+            &format!("{spelling}_key"),
+        )
+        .expect_err("null/nil arrow keys must reject gracefully");
+        assert!(
+            null.contains("unsupported fixed map key") && null.contains("Null"),
+            "{spelling} arrow key should retain the unsupported-fixed-key boundary, got: {null}"
+        );
+    }
     let undefined = run("m = { undefined => uint }\n", "undefined")
         .expect_err("undefined arrow key must reject gracefully");
     assert!(
