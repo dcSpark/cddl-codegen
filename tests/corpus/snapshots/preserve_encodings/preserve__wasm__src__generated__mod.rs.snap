@@ -1051,6 +1051,92 @@ impl AsRef<cddl_lib::CustomRecordHolder> for CustomRecordHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct CustomTable(pub(crate) cddl_lib::CustomTable);
+
+#[wasm_bindgen]
+impl CustomTable {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CustomTable, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &MapTextToU64) -> Self {
+        Self(cddl_lib::CustomTable::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> MapTextToU64 {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::CustomTable> for CustomTable {
+    fn from(native: cddl_lib::CustomTable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CustomTable> for cddl_lib::CustomTable {
+    fn from(wasm: CustomTable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CustomTable> for CustomTable {
+    fn as_ref(&self) -> &cddl_lib::CustomTable {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CustomTableHolder(pub(crate) cddl_lib::CustomTableHolder);
+
+#[wasm_bindgen]
+impl CustomTableHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CustomTableHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn nested(&self) -> CustomTable {
+        self.0.nested.clone().into()
+    }
+
+    pub fn new(nested: &CustomTable) -> Self {
+        Self(cddl_lib::CustomTableHolder::new(nested.clone().into()))
+    }
+}
+
+impl From<cddl_lib::CustomTableHolder> for CustomTableHolder {
+    fn from(native: cddl_lib::CustomTableHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CustomTableHolder> for cddl_lib::CustomTableHolder {
+    fn from(wasm: CustomTableHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CustomTableHolder> for CustomTableHolder {
+    fn as_ref(&self) -> &cddl_lib::CustomTableHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct CustomTablePositions(pub(crate) cddl_lib::CustomTablePositions);
 
 #[wasm_bindgen]

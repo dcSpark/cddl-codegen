@@ -2036,9 +2036,12 @@ spliced into generated trees: `tests/custom_serialization` (core), `tests/custom
   two-functions rule fails LOUDLY rather than as a silently different wire.
 - **Placement axis** — `dsl_position_tests` cells: the rejected placements (extern/raw-bytes
   rules, row-entry slots, `@no_alias`, `@newtype`, enum rules in every spelling, record-rule
-  single-half, table rule in every spelling incl. a generic def's instance) as `Expect::Reject`
-  beside the honored controls, and the record-rule BOTH-set spelling as an accepted-behavior
-  control cell; the alias-of-marker spelling's honored cells (raw-bytes flavor at type level and at
+  single-half, named collection rule in every spelling incl. a generic def's instance) as
+  `Expect::Reject` beside the honored controls. A complete named-table pair is the contrasting
+  accepted control, including generic, preserve-pair-map and non-empty forms; it asserts a nominal
+  wrapper, thin calls in both directions and no structural map write. The record-rule BOTH-set
+  spelling is the other accepted-behavior control; the alias-of-marker spelling's honored cells
+  (raw-bytes flavor at type level and at
   a table key domain, under `--preserve-encodings`) sit beside the marker-rule rejections that are
   their placement controls. Message texts are
   pinned by the `custom_codec`/`single_half_custom_codec` robustness tests.

@@ -8296,8 +8296,19 @@ fn parse_group_choice(
                 // `PairMap`/`NonEmptyPairMap` vec-of-pairs twin and its wasm boundary names the
                 // `PairMapKToV` structural class (minted by the config-aware wasm walk beside the
                 // default-flavored `MapKToV`).
-                if rule_metadata.newtype.is_some() || tag.is_some() {
-                    // generate newtype over map
+                if rule_metadata.newtype.is_some()
+                    || tag.is_some()
+                    // A complete pair owns the WHOLE table item, not either entry position. A
+                    // transparent table alias has no trait-impl site, so it cannot truthfully own
+                    // that wire: direct `T::to_cbor_bytes()` would otherwise write the built-in map
+                    // while a holder routes through the named pair. Self-nominalize the map through
+                    // the existing wrapper path instead. Unlike explicit `@newtype`, this is the
+                    // pair's representation (and its only accepted table spelling), not a broadening
+                    // of the `@newtype + pair` rejection.
+                    || (rule_metadata.custom_serialize.is_some()
+                        && rule_metadata.custom_deserialize.is_some())
+                {
+                    // generate a nominal owner over map
                     let mut map_type: RustType =
                         ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into();
                     if let Some(bounds) = bounds {

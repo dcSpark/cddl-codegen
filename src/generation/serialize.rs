@@ -1135,13 +1135,14 @@ impl GenerationScope {
                     ));
                 }
                 SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
-                    // A named record with a whole-record custom pair owns its complete CBOR item.
+                    // A named record or self-nominalized table with a whole-item custom pair owns
+                    // its complete CBOR item.
                     // Dispatch before the kind walk so an embed site calls the same free writer as
                     // the record's thin Serialize impl; in particular, do not route a plain group
                     // through SerializeEmbeddedGroup or fall back to the ordinary record fields.
                     if matches!(
                         types.rust_struct(t).unwrap().variant(),
-                        RustStructType::Record(_)
+                        RustStructType::Record(_) | RustStructType::Wrapper { .. }
                     ) && let Some(custom_serialize) =
                         &types.rust_struct(t).unwrap().config().custom_serialize
                     {

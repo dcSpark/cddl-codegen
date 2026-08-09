@@ -473,6 +473,19 @@ pub(super) fn generate_wrapper_struct(
         }
     }
     s.vis("pub");
+    // A complete pair makes this wrapper's wire self-carrying. In particular, preserve mode must
+    // not infer the wrapped collection's length/key/value sidecars: they describe the DEFAULT map
+    // wire the pair replaced and would both leak a false hand-code contract and make a decoded
+    // value appear to retain bytes the pair never saw.
+    let custom_pair = match (
+        struct_config.custom_serialize.as_ref(),
+        struct_config.custom_deserialize.as_ref(),
+    ) {
+        (Some(custom_serialize), Some(custom_deserialize)) => {
+            Some((custom_serialize, custom_deserialize))
+        }
+        _ => None,
+    };
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
     let enc_fields = if cli.preserve_encodings {
         // `pub(crate)`, matching the default profile's tuple field: the bound-check boundary that
@@ -492,7 +505,11 @@ pub(super) fn generate_wrapper_struct(
         );
         // DECLARED type (see `EncodingField::type_name`): these become the wrapper's encoding-struct
         // field types, beside the `inner` field spelled from the same `field_type` just above.
-        let enc_fields = encoding_fields(types, "inner", field_type, true, cli);
+        let enc_fields = if custom_pair.is_some() {
+            Vec::new()
+        } else {
+            encoding_fields(types, "inner", field_type, true, cli)
+        };
 
         if !enc_fields.is_empty() {
             // A set nominal derives always-on comparisons (see `create_base_rust_struct` above), so its
@@ -558,17 +575,30 @@ pub(super) fn generate_wrapper_struct(
         }
         s_impl.push_fn(get);
     }
+    // A complete pair on a self-nominalized table owns the COMPLETE item. The wrapper is still a
+    // normal map-wrapper API (`new`/`From`/`get` below), but neither direct bytes APIs nor embedded
+    // references may walk that map structurally: both trait shells call the same free functions.
+    // Like the record precedent, the nominal value itself crosses the custom boundary under
+    // --preserve-encodings; no inferred key/value/length tuple leaks out.
     let mut ser_func = make_serialization_function("serialize", cli);
     let mut ser_impl = make_serialization_impl(type_name.as_ref(), cli);
-    gen_scope.generate_serialize(
-        types,
-        field_type.into(),
-        &mut ser_func,
-        SerializeConfig::new(self_var, "inner")
-            .is_end(true)
-            .encoding_var_in_option_struct("self.encodings"),
-        cli,
-    );
+    if let Some((custom_serialize, _)) = custom_pair {
+        ser_func.line(format!(
+            "{}(serializer, self{})",
+            custom_serialize,
+            canonical_param(cli)
+        ));
+    } else {
+        gen_scope.generate_serialize(
+            types,
+            field_type.into(),
+            &mut ser_func,
+            SerializeConfig::new(self_var, "inner")
+                .is_end(true)
+                .encoding_var_in_option_struct("self.encodings"),
+            cli,
+        );
+    }
     ser_impl.push_fn(ser_func);
     let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut deser_impl = codegen::Impl::new(type_name.to_string());
@@ -814,7 +844,9 @@ pub(super) fn generate_wrapper_struct(
     // closure when annotate_fields is on (giving container/primitive reads a `failed in <T>`
     // location; the in-body range check is already the locationless form so the closure names it
     // exactly once), else push it verbatim (byte-identical to the pre-annotation output).
-    if cli.annotate_fields {
+    if let Some((_, custom_deserialize)) = custom_pair {
+        deser_func.line(format!("{}(raw)", custom_deserialize));
+    } else if cli.annotate_fields {
         let mut error_annotator = make_err_annotate_block(type_name.as_ref(), "", "");
         error_annotator.push_all(deser_body);
         deser_func.push_block(error_annotator);

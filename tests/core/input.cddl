@@ -434,6 +434,11 @@ custom_bytes = bytes ; @custom_serialize custom_serialize_bytes @custom_deserial
 custom_record = [? ignored: uint, value: uint] ; @custom_serialize write_custom_record @custom_deserialize read_custom_record
 custom_record_holder = [ nested: custom_record ]
 
+; A homogeneous table's complete pair similarly owns the WHOLE item. The map representation is
+; still the public constructor/getter surface, but the custom wire deliberately is an ARRAY, not map.
+custom_table = { * text => uint } ; @custom_serialize write_custom_table @custom_deserialize read_custom_table
+custom_table_holder = [ nested: custom_table ]
+
 struct_with_custom_serialization = [
   custom_bytes,
   field: bytes, ; @custom_serialize custom_serialize_bytes @custom_deserialize custom_deserialize_bytes

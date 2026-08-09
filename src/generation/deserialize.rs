@@ -3082,7 +3082,13 @@ impl GenerationScope {
                     // newtypes / transparent aliases whose wire path is the wrapped type's, so a
                     // wrapped type with no deserialize leaves them with none either.
                     RustStructType::Wrapper { wrapped, .. } => {
-                        if !self.deserialize_generated_for_type(&wrapped.conceptual_type) {
+                        // A complete type-level pair owns the whole item. Its reader returns this
+                        // nominal wrapper directly, so its structural map/array inner need not (and
+                        // for a deliberately non-container custom wire, must not) be deserializable.
+                        if !(self.deserialize_generated_for_type(&wrapped.conceptual_type)
+                            || (rust_struct.config().custom_serialize.is_some()
+                                && rust_struct.config().custom_deserialize.is_some()))
+                        {
                             self.dont_generate_deserialize(
                                 ident,
                                 format!(

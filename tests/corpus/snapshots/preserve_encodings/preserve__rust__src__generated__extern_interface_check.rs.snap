@@ -78,6 +78,10 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::CustomRecord>();
     _assert_serialize::<crate::generated::CustomRecordHolder>();
     _assert_deserialize::<crate::generated::CustomRecordHolder>();
+    _assert_serialize::<crate::generated::CustomTable>();
+    _assert_deserialize::<crate::generated::CustomTable>();
+    _assert_serialize::<crate::generated::CustomTableHolder>();
+    _assert_deserialize::<crate::generated::CustomTableHolder>();
     _assert_serialize::<crate::generated::CustomTablePositions>();
     _assert_deserialize::<crate::generated::CustomTablePositions>();
     _assert_serialize::<crate::generated::DeeplyNested>();
