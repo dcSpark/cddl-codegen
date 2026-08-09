@@ -2014,7 +2014,7 @@ fn parse_type_choices(
         let (inner_rust_type, null_singleton) = if let ConceptualRustType::Fixed(fixed) =
             raw_inner_rust_type.conceptual_type.resolve_alias_shallow()
         {
-            if matches!(fixed, FixedValue::Null) {
+            if matches!(fixed, FixedValue::Null) && raw_inner_rust_type.encodings.is_empty() {
                 // Do not register yet: the rest of this branch is the one rule-position directive
                 // reader for `T / null`.  Returning here used to make directives on `null / null`
                 // silently inert.  It has a TypeChoice owner rather than an Option alias, but it
@@ -6260,6 +6260,8 @@ fn rust_type(
                     inner_rust_type.conceptual_type.resolve_alias_shallow()
                 {
                     let fixed = fixed.clone();
+                    let is_bare_null =
+                        matches!(fixed, FixedValue::Null) && inner_rust_type.encodings.is_empty();
                     let singleton = register_fixed_singleton(
                         types,
                         parent_visitor,
@@ -6271,7 +6273,7 @@ fn rust_type(
                         cli,
                         true,
                     );
-                    if matches!(fixed, FixedValue::Null) {
+                    if is_bare_null {
                         return singleton;
                     }
                     return ConceptualRustType::Optional(Box::new(singleton)).into();

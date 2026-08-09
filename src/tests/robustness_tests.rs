@@ -3896,6 +3896,16 @@ fn fixed_inner_null_collapse_generates_nominal_presence_at_both_sites() {
         ),
         ("a = [v: true / null, x: uint]\n", "pub enum FixedBoolTrue"),
         ("a = [x: uint]\nt = null / null\n", "pub enum T"),
+        // Only two *bare* null arms collapse to one state. An encoded null is a distinct wire arm
+        // and must stay an Option singleton beside the bare-null arm (in either source order).
+        (
+            "a = [x: uint]\nt = #6.7(null) / null\n",
+            "pub type T = Option<FixedNull",
+        ),
+        (
+            "a = [x: uint]\nt = null / #6.7(null)\n",
+            "pub type T = Option<FixedNull",
+        ),
         (
             "a = [x: uint]\nt = false / null\n",
             "Option<FixedBoolFalse>",
