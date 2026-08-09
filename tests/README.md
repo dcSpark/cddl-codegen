@@ -1960,13 +1960,14 @@ row; user docs: `docs/docs/output_format.mdx` § "Open arrays", `docs/docs/comme
 ### Custom (de)serializer pairs (`@custom_serialize`/`@custom_deserialize`) — test map
 
 User doc: `docs/docs/comment_dsl.mdx` § `@custom_serialize`/`@custom_deserialize` — the honored
-positions (type-level alias, named record rule, record field, table key/value), the signature contracts (including
+positions (type-level alias, named record rule, record field, whole-table rule, table key/value), the signature contracts (including
 the `force_canonical` trailing argument and the by-value table-position encoding), and the
 "Positions that are rejected" list (every position that parses but cannot be honored is on it —
 there is no accepted-and-unhonored remainder). Hand-fn fragments
 spliced into generated trees: `tests/custom_serialization` (core), `tests/custom_serialization_preserve`
 (preserve, incl. the table-position pair), `tests/custom_serialization_canonical` (canonical
-`force_canonical` signatures).
+`force_canonical` signatures); the component whole-table smoke uses its small dedicated fragment
+because it compiles the guest resource glue rather than the general fixture suite.
 
 - **Field positions, both reps** — `struct_with_custom_serialization` (array-rep) and its map-rep
   twin `map_struct_with_custom_serialization` in BOTH `tests/core` and `tests/preserve-encodings`.
@@ -1984,6 +1985,14 @@ spliced into generated trees: `tests/custom_serialization` (core), `tests/custom
   `a_custom_record_pair_keeps_from_cbor_bytes_despite_ambiguous_fields` separately pins the WIT and
   component-glue doors. This closes the review-found class where generated-field decode verdicts
   leaked through a complete-item custom reader.
+- **Whole-table rule, one nominal owner** — `custom_table` / `custom_table_holder` in the core,
+  preserve, and canonical fixtures prove direct and embedded delegation to the deliberate
+  non-map wire; their vectors include malformed and duplicate polarity, while the position grid
+  covers loose/preserve/non-empty/generic DSL shapes and the self-carrying declaration rejection.
+  `component-custom-table` compiles the WIT/guest resource surface, its default row in
+  `wasm_api_parity` differentials the generated wasm wrapper, and
+  `extern_interface_projects_whole_custom_table_pair_opaque` proves opaque projection plus
+  consumer re-import rather than reconstruction as a transparent map alias.
 - **Named collection boundary (remaining product finding)** —
   `single_half_custom_codec_on_record_rule_rejects_gracefully` also pins that a pair on
   `items = [* uint]` remains inert in both directions, so record delegation cannot accidentally
