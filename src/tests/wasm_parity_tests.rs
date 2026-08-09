@@ -233,6 +233,13 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         &[("default", &[])],
     ),
     (
+        // The component whole-table custom-pair fixture. Its nominal map owner is ordinary CDDL and
+        // has a real wasm wrapper surface, so sweep the committed default profile here; the separate
+        // component build-smoke supplies the hand-written codec definitions and owns guest compile.
+        "component-custom-table",
+        &[("default", &[])],
+    ),
+    (
         "canonical",
         &[(
             "canonical",
