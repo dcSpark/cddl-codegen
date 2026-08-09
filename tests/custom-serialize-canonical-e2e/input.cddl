@@ -37,3 +37,10 @@ open_ext = {
   "zzz": uint,
   * extkey => uint
 }
+
+; --- whole-table rule: the nominal wrapper owns a complete non-map codec ---
+; This one deliberately replaces the table's map wire with an alternating array. It is the table
+; RULE counterpart to the key/value aliases above: the custom pair takes the wrapper itself and,
+; under canonical mode, must receive force_canonical from both direct and embedded trait paths.
+custom_table = { * text => uint } ; @custom_serialize write_custom_table @custom_deserialize read_custom_table
+custom_table_holder = [ table: custom_table ]

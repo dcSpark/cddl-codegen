@@ -91,16 +91,17 @@ use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
     CborInlineNestedPayloadsEncoding, CborNestedPayloadsEncoding, CustomFieldHolderEncoding,
-    CustomRecordEncoding, CustomRecordHolderEncoding, CustomTablePositionsEncoding,
-    DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FloatHeadsEncoding,
-    FooBytesEncoding, FooEncoding, HashEncoding, MapStructWithCustomSerializationEncoding,
-    MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding,
-    OptFixedArrEncoding, OptFixedArrFloatEncoding, OptFixedMapEncoding, OsetPU64Encoding,
-    PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding, SecondEncoding,
-    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
-    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
-    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
-    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
+    CustomRecordEncoding, CustomRecordHolderEncoding, CustomTableHolderEncoding,
+    CustomTablePositionsEncoding, DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding,
+    FirstEncoding, FloatHeadsEncoding, FooBytesEncoding, FooEncoding, HashEncoding,
+    MapStructWithCustomSerializationEncoding, MapWithDefaultsEncoding, NemPreserveEncoding,
+    NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedArrFloatEncoding,
+    OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding, PlainEncoding,
+    RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding,
+    String64Encoding, String1632Encoding, StructWithCustomSerializationEncoding,
+    TableArrMembersEncoding, TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding,
+    TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
+    WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -522,6 +523,48 @@ pub struct CustomRecordHolder {
 
 impl CustomRecordHolder {
     pub fn new(nested: CustomRecord) -> Self {
+        Self {
+            nested,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomTable {
+    pub(crate) inner: OrderedHashMap<String, u64>,
+}
+
+impl CustomTable {
+    pub fn get(&self) -> &OrderedHashMap<String, u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: OrderedHashMap<String, u64>) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<OrderedHashMap<String, u64>> for CustomTable {
+    fn from(inner: OrderedHashMap<String, u64>) -> Self {
+        CustomTable::new(inner)
+    }
+}
+
+impl From<CustomTable> for OrderedHashMap<String, u64> {
+    fn from(wrapper: CustomTable) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomTableHolder {
+    pub nested: CustomTable,
+    pub encodings: Option<CustomTableHolderEncoding>,
+}
+
+impl CustomTableHolder {
+    pub fn new(nested: CustomTable) -> Self {
         Self {
             nested,
             encodings: None,

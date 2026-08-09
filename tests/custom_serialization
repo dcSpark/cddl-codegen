@@ -47,6 +47,54 @@ pub fn read_custom_record(
     Ok(CustomRecord::new(value))
 }
 
+// A whole-table pair deliberately writes a flat ARRAY rather than the declared map. The nominal
+// wrapper's `new`/`From` surface remains usable for constructing the in-memory map; direct and
+// embedded serialization both delegate to this one owner. The alternating text-key/uint-value
+// spelling is visibly non-map while retaining every map entry, in BTreeMap order.
+pub fn write_custom_table<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &CustomTable,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_array(cbor_event::Len::Len((value.get().len() * 2) as u64))?;
+    for (key, item) in value.get() {
+        serializer.write_text(key)?;
+        serializer.write_unsigned_integer(*item)?;
+    }
+    Ok(serializer)
+}
+
+pub fn read_custom_table(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<CustomTable, DeserializeError> {
+    let len = match raw.array_sz()? {
+        cbor_event::LenSz::Len(len, _) if len % 2 == 0 => len,
+        cbor_event::LenSz::Len(_, _) => {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: odd item count".to_owned(),
+            ))
+            .into());
+        }
+        cbor_event::LenSz::Indefinite => {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: indefinite arrays are not emitted".to_owned(),
+            ))
+            .into());
+        }
+    };
+    let mut map = std::collections::BTreeMap::new();
+    for _ in 0..len / 2 {
+        let key = raw.text()?;
+        let value = raw.unsigned_integer()?;
+        if map.insert(key, value).is_some() {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: duplicate key".to_owned(),
+            ))
+            .into());
+        }
+    }
+    Ok(CustomTable::from(map))
+}
+
 // writes as hex text
 pub fn write_hex_string<'se>(
     serializer: &'se mut cbor_event::se::Serializer,

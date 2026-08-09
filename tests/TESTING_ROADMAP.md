@@ -2666,17 +2666,16 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     version finding, while a failure at 1.26.1 on node 22 is a regression the gate should already
     have caught.
 
-- **Let a TABLE rule's own comment slot carry the custom pair.** The pair on
-  `t = { * k => v }` is refused today (the `table-rule` cells in `dsl_position_tests`; the
-  comment-DSL rejected-positions list), because a table lowers to a transparent map alias with no
-  single codec slot to override: honoring it means wrapping the WHOLE map's wire form, a different
-  contract from the per-key/per-value overrides that already work. Mechanically it means threading
-  `rule_metadata` through `AliasInfo` — read by doc-lookup, the extern-interface projection and
-  alias suppression, so each needs its own re-audit — which is why the refusal shipped first and
-  names the three spellings that do work (key rule, value rule, `_CDDL_CODEGEN_EXTERN_TYPE_`).
-  - **Reopening signal:** a consumer asks for a whole-map custom wire form that per-key/per-value
-    pairs cannot express (e.g. a map spelled as something other than a CBOR map on the wire) —
-    until then the per-position pairs cover the known shapes.
+- **DELIVERED (B3-026, 2026-08-09): let a TABLE rule's own comment slot carry a complete custom
+  pair.** `t = { * k => v } ; @custom_serialize … @custom_deserialize …` now self-nominalizes the
+  whole map wrapper, so direct and embedded calls share one complete-item owner rather than the
+  key/value override paths. The `dsl_position_tests` placement grid covers loose, generic,
+  `@duplicates preserve`, and non-empty forms while retaining the single-half and row-entry
+  refusals. Core/default + preserve fixtures execute exact entry round-trips and malformed-array /
+  duplicate rejections; the canonical fixture compiles a trailing-`force_canonical` writer and
+  executes direct+embedded behavior; wasm and wasip2 component smoke fixtures compile; and the
+  extern-interface regression pins opaque projection and re-import. The documented preserve rule
+  is self-carrying: a hand codec accepts only bytes it can exactly re-emit.
 
 - **A crate entry that generates only a JSON-schema document (the aggregate package).** An npm
   package composing several generated crates needs one schema document over their union, but is

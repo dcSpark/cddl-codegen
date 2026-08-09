@@ -1973,6 +1973,54 @@ impl Deserialize for CustomRecordHolder {
     }
 }
 
+impl cbor_event::se::Serialize for CustomTable {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        write_custom_table(serializer, self)
+    }
+}
+
+impl Deserialize for CustomTable {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        read_custom_table(raw)
+    }
+}
+
+impl cbor_event::se::Serialize for CustomTableHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        write_custom_table(serializer, &self.nested)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for CustomTableHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let nested =
+                read_custom_table(raw).map_err(|e: DeserializeError| e.annotate("nested"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CustomTableHolder { nested })
+        })()
+        .map_err(|e| e.annotate("CustomTableHolder"))
+    }
+}
+
 impl cbor_event::se::Serialize for Docs {
     fn serialize<'se>(
         &self,

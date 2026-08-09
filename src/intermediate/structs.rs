@@ -1674,21 +1674,27 @@ impl GenericInstance {
                 // }
                 todo!("we might need to recursively resolve on these");
             }
-            RustStructType::Wrapper { wrapped, .. } if set_nominal => {
-                // A set nominal always wraps a homogeneous occurrence array (`Array(elem)`); resolve
-                // the ELEMENT (the generic param) to the concrete instance type, exactly like the
-                // `Array` arm above. The optional-tag encoding op and occurrence bounds ride on the
-                // wrapped `RustType` unchanged.
-                if let ConceptualRustType::Array(elem) = &mut wrapped.conceptual_type {
-                    **elem = Self::resolve_type(&resolved_args, elem);
-                } else {
-                    unreachable!(
+            RustStructType::Wrapper { wrapped, .. } => {
+                // A generic wrapper can own a collection as a nominal type. The set-nominal branch
+                // was the original instance of this shape; a complete custom codec pair on a named
+                // generic table now self-nominalizes its Map for the same reason (one owner of the
+                // whole wire). Resolve only the collection's immediate generic leaves — encoding
+                // operations and bounds stay on `wrapped`, exactly as the Array/Table arms above.
+                match &mut wrapped.conceptual_type {
+                    ConceptualRustType::Array(element) => {
+                        **element = Self::resolve_type(&resolved_args, element);
+                    }
+                    ConceptualRustType::Map(domain, range) => {
+                        **domain = Self::resolve_type(&resolved_args, domain);
+                        **range = Self::resolve_type(&resolved_args, range);
+                    }
+                    _ if set_nominal => unreachable!(
                         "a generic set nominal always wraps a homogeneous occurrence array"
-                    );
+                    ),
+                    _ => todo!(
+                        "generic wrapper substitution is supported only for homogeneous collection inners"
+                    ),
                 }
-            }
-            RustStructType::Wrapper { .. } => {
-                todo!("should we look this up in types to resolve?");
             }
             RustStructType::Extern => {
                 panic!("generics should not be used on types in the prelude (e.g. int)")

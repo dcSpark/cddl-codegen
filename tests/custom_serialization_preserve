@@ -112,6 +112,68 @@ pub fn read_custom_record(
     Ok(CustomRecord::new(value))
 }
 
+// Whole-table pairs are self-carrying under --preserve-encodings: no inferred table-sidecar tuple
+// crosses this boundary. This codec therefore accepts only the canonical flat ARRAY spelling it can
+// reproduce from the nominal wrapper: alternating text-key/uint-value items in its preserved
+// insertion order. The reader keeps that exact order in OrderedHashMap, so accepted bytes replay.
+pub fn write_custom_table<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &CustomTable,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_array(cbor_event::Len::Len((value.get().len() * 2) as u64))?;
+    for (key, item) in value.get().iter() {
+        serializer.write_text(key)?;
+        serializer.write_unsigned_integer(*item)?;
+    }
+    Ok(serializer)
+}
+
+pub fn read_custom_table(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<CustomTable, DeserializeError> {
+    let len = match raw.array_sz()? {
+        cbor_event::LenSz::Len(len, sz)
+            if len % 2 == 0 && sz == cbor_event::Sz::canonical(len) => len,
+        cbor_event::LenSz::Len(_, _) => {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: non-canonical or odd array length".to_owned(),
+            ))
+            .into());
+        }
+        cbor_event::LenSz::Indefinite => {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: indefinite arrays cannot re-encode to themselves"
+                    .to_owned(),
+            ))
+            .into());
+        }
+    };
+    let mut map = OrderedHashMap::new();
+    for _ in 0..len / 2 {
+        let (key, key_encoding) = raw.text_sz()?;
+        if !matches!(key_encoding, cbor_event::StringLenSz::Len(sz) if sz == cbor_event::Sz::canonical(key.len() as u64)) {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: non-canonical text key encoding".to_owned(),
+            ))
+            .into());
+        }
+        let (value, value_encoding) = raw.unsigned_integer_sz()?;
+        if value_encoding != cbor_event::Sz::canonical(value) {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: non-canonical uint value encoding".to_owned(),
+            ))
+            .into());
+        }
+        if map.insert(key, value).is_some() {
+            return Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: duplicate key".to_owned(),
+            ))
+            .into());
+        }
+    }
+    Ok(CustomTable::from(map))
+}
+
 // writes as hex text
 pub fn write_hex_string<'se>(
     serializer: &'se mut cbor_event::se::Serializer,

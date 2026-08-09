@@ -532,6 +532,42 @@ impl CustomRecordHolder {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CustomTable(pub(crate) BTreeMap<String, u64>);
+
+impl CustomTable {
+    pub fn get(&self) -> &BTreeMap<String, u64> {
+        &self.0
+    }
+
+    pub fn new(inner: BTreeMap<String, u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<BTreeMap<String, u64>> for CustomTable {
+    fn from(inner: BTreeMap<String, u64>) -> Self {
+        CustomTable::new(inner)
+    }
+}
+
+impl From<CustomTable> for BTreeMap<String, u64> {
+    fn from(wrapper: CustomTable) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomTableHolder {
+    pub nested: CustomTable,
+}
+
+impl CustomTableHolder {
+    pub fn new(nested: CustomTable) -> Self {
+        Self { nested }
+    }
+}
+
 pub type DefaultUint = u64;
 
 /// struct documentation here

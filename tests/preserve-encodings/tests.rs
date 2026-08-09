@@ -1655,6 +1655,45 @@ mod tests {
         );
     }
 
+    // The TABLE twin stays self-carrying under preserve encodings: no entry tuple appears in the
+    // hand codec signature, while direct and embedded APIs still have exactly the custom ARRAY wire.
+    #[test]
+    fn custom_table_rule_delegates_direct_and_embedded() {
+        let map = OrderedHashMap::from_iter([("left".to_owned(), 3), ("right".to_owned(), 7)]);
+        let table = CustomTable::from(map);
+        let direct = [arr_def(4), cbor_string("left"), cbor_int(3, Sz::Inline), cbor_string("right"), cbor_int(7, Sz::Inline)].concat();
+        assert_eq!(table.to_cbor_bytes(), direct);
+        assert_eq!(CustomTable::from_cbor_bytes(&direct).unwrap().get(), table.get());
+        assert_decode_reject_reason::<CustomTable>(&[0xa0], "expected `Array' byte received `Map'");
+        assert_decode_reject_reason::<CustomTable>(
+            &[0x98, 0x04, 0x64, b'l', b'e', b'f', b't', 0x03, 0x65, b'r', b'i', b'g', b'h', b't', 0x07],
+            "table-as-array codec: non-canonical or odd array length",
+        );
+        assert_decode_reject_reason::<CustomTable>(
+            &[arr_def(4), vec![0x78, 0x04], b"left".to_vec(), cbor_int(3, Sz::Inline), cbor_string("right"), cbor_int(7, Sz::Inline)].concat(),
+            "table-as-array codec: non-canonical text key encoding",
+        );
+        assert_decode_reject_reason::<CustomTable>(
+            &[arr_def(4), cbor_string("left"), cbor_int(3, Sz::One), cbor_string("right"), cbor_int(7, Sz::Inline)].concat(),
+            "table-as-array codec: non-canonical uint value encoding",
+        );
+        assert_decode_reject_reason::<CustomTable>(
+            &[arr_def(4), cbor_string("left"), cbor_int(3, Sz::Inline), cbor_string("left"), cbor_int(7, Sz::Inline)].concat(),
+            "table-as-array codec: duplicate key",
+        );
+
+        let holder = CustomTableHolder::new(table);
+        let embedded = [arr_def(1), direct.clone()].concat();
+        assert_eq!(holder.to_cbor_bytes(), embedded);
+        assert_eq!(
+            CustomTableHolder::from_cbor_bytes(&embedded)
+                .unwrap()
+                .nested
+                .get(),
+            holder.nested.get()
+        );
+    }
+
     // The MAP-rep twin of `custom_serialization`. A map-rep field's serialize is built from ONE
     // config that also serves the member-key write, and that config used to be built WITHOUT the
     // field's @custom_serialize — so the custom WRITER was dropped while @custom_deserialize kept

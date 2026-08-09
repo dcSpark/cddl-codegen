@@ -450,6 +450,58 @@ fn extern_import_projects_duplicates_preserve_no_cross_crate_skew() {
     let _ = std::fs::remove_dir_all(&skew_root);
 }
 
+/// A complete custom pair on a named homogeneous table self-nominalizes the table: it owns a
+/// whole-item wire that may have no relation to CBOR map framing. The dep-side extern projection
+/// must therefore expose the nominal as OPAQUE, never re-render `{ * text => uint }`; a consumer
+/// rebuilding that transparent spelling would regain the built-in map codec and silently diverge.
+#[test]
+fn extern_interface_projects_whole_custom_table_pair_opaque() {
+    let export = mint_export(
+        "custom_table = { * text => uint } ; @custom_serialize write_custom_table @custom_deserialize read_custom_table\n",
+        "dep",
+        "whole_custom_table_opaque",
+    );
+    let root = &export["extern-interface/dep/mod.cddl"];
+    assert!(
+        root.contains("custom_table = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "a whole custom table pair has a nominal owner and must project opaque:\n{root}"
+    );
+    assert!(
+        !root.contains("custom_table = {"),
+        "the consumer must not reconstruct the table body's default map codec:\n{root}"
+    );
+
+    // The imported marker must remain a usable type reference at a consumer embed site; source
+    // generation is the applicable seam check here because the consumer supplies the opaque dep
+    // implementation (and hence the hand-owned custom codec) in its own crate.
+    let consumer_root = scratch("whole_custom_table_opaque_consumer");
+    write(
+        &consumer_root,
+        "lib.cddl",
+        "holder = [table: custom_table]\n",
+    );
+    let export_root = scratch("whole_custom_table_opaque_export");
+    for (path, content) in &export {
+        write(&export_root, path, content);
+    }
+    let import_arg = format!("dep={}", export_root.join("extern-interface/dep").display());
+    let generated = generate(
+        &consumer_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("an opaque custom table export must re-import at an embed site");
+    let serialization = &generated["rust/src/generated/serialization.rs"];
+    assert!(
+        serialization.contains("self.table.serialize(serializer)?")
+            && serialization.contains("CustomTable::deserialize(raw)"),
+        "the consumer must call the opaque dependency type's Serialize/Deserialize contract rather \
+         than rebuilding a map:\n{serialization}"
+    );
+
+    let _ = std::fs::remove_dir_all(&consumer_root);
+    let _ = std::fs::remove_dir_all(&export_root);
+}
+
 /// Strip every `@rust_name <ident>` pin from a stub body, keeping any other annotations on the
 /// line (`; @no_alias @rust_name Na` -> `; @no_alias`) and dropping a comment tail left empty by
 /// the strip (`coin = uint ; @rust_name Coin` -> `coin = uint`).

@@ -800,21 +800,27 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("together with `@newtype`"),
     },
-    // 23g. REJECT: a TABLE RULE. The rule slot is genuinely read — a rule-trailing
-    //      `@duplicates preserve` on this same shape DOES swap in the PairMap twin — so the comment
-    //      arrives; what is missing is anything for it to override. A table lowers to a transparent
-    //      map alias that owns no codec, so unlike the record rule (23m/23n/23o) there are no impls
-    //      for either half to suppress and BOTH halves are equally unhonored, which is why any
-    //      presence rejects. The row-entry sibling (23d) is the disjoint slot.
+    // 23g. HONORED: a complete pair on a TABLE RULE self-nominalizes the WHOLE map. The rule slot
+    //      is genuinely read — a rule-trailing `@duplicates preserve` on this same shape swaps in
+    //      the PairMap twin — and this pair gives it one truthful owner rather than redirecting its
+    //      keys or values. Direct and holder APIs use the same thin trait impls. The row-entry
+    //      sibling (23d) remains the disjoint, rejected slot.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "table-rule",
         spec: "t = {\n  * text => uint\n} ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: t]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject(
-            "a table rule (`T = { * k => v }`) lowers to a transparent map alias",
-        ),
+        expect: Expect::Effect {
+            must: &[
+                "pub struct T",
+                "Serialize for T",
+                "Deserialize for T",
+                "my_ser(serializer, self)",
+                "my_deser(raw)",
+            ],
+            must_not: &["pub type T", "serializer.write_map"],
+        },
     },
     // 23g-i / 23g-ii. Each half ALONE on a table rule, rejected on its own — the record rule's
     //      both-halves escape (23o) has no table counterpart, so neither spelling may slip through.
@@ -834,18 +840,52 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("@custom_deserialize on `T`: a table rule"),
     },
-    // 23g-iii. GENERIC table def + one instantiation. The kind-walk runs after generic resolution,
-    //      so the instance's materialized struct IS seen and the pair is refused there too. What the
-    //      cell pins is WHICH name the message carries: the monomorphized instance
-    //      (`PtblU64Bytes`), not the def the directive was written on (`ptbl`) — the same naming a
-    //      generic instance gets from every other finalize-seam rejection.
+    // 23g-iii. GENERIC table def + one concrete instantiation. The wrapper's map key/value leaves
+    //      must substitute before code generation, then the concrete nominal owns the complete pair.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "generic-table-def",
         spec: "ptbl<k0, v0> = {\n  * k0 => v0\n} ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: ptbl<uint, bytes>]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("on `PtblU64Bytes`: a table rule"),
+        expect: Expect::Effect {
+            must: &[
+                "pub struct PtblU64Bytes",
+                "BTreeMap<u64, Vec<u8>>",
+                "my_ser(serializer, self)",
+                "my_deser(raw)",
+            ],
+            must_not: &["pub type PtblU64Bytes"],
+        },
+    },
+    // 23g-iv/23g-v. The collection lowering seam serves all homogeneous map flavors. A complete
+    //      pair therefore nominalizes the preserve PairMap and non-empty NonEmptyMap forms too;
+    //      neither may fall back to the default table codec.
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "table-rule-duplicates-preserve",
+        spec: "t = { * text => uint } ; @duplicates preserve @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "pub struct T",
+                "PairMap<String, u64>",
+                "my_ser(serializer, self)",
+            ],
+            must_not: &["pub type T", "serializer.write_map"],
+        },
+    },
+    Cell {
+        directive: "@custom_serialize+deserialize",
+        position: "table-rule-non-empty",
+        spec: "t = {+ text => uint } ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: t]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub struct T", "NonEmptyMap<String, u64>", "my_deser(raw)"],
+            must_not: &["pub type T", "serializer.write_map"],
+        },
     },
     // 23g-iv .. 23g-viii. The ARRAY-bodied siblings of the table rule (23g). A named collection rule
     //      lowers to a transparent collection typedef exactly as a table lowers to a transparent map

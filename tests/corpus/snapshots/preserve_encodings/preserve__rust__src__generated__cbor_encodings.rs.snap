@@ -144,6 +144,11 @@ pub struct CustomRecordHolderEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct CustomTableHolderEncoding {
+    pub len_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct CustomTablePositionsEncoding {
     pub len_encoding: LenEncoding,
     pub keyed_encoding: LenEncoding,

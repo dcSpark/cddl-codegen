@@ -191,4 +191,41 @@ mod custom_serialize_canonical {
             "write arm runs the custom serializer"
         );
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Whole-table rule: a wrapper owns a complete custom codec rather than a table's key/value
+    // aliases owning their positions. This has no inferred encoding tuple; the canonical flag is
+    // nevertheless required by its hand-code signature, and the direct and embedded paths must
+    // both call it.
+    // ---------------------------------------------------------------------------------------
+
+    #[test]
+    fn whole_table_custom_pair_is_canonical_direct_and_embedded() {
+        let map = OrderedHashMap::from_iter([("left".to_owned(), 3), ("right".to_owned(), 7)]);
+        let table = CustomTable::from(map);
+        let direct = bytes("84 646c656674 03 657269676874 07");
+        assert_eq!(table.to_cbor_bytes(), direct, "direct custom table wire");
+        assert_eq!(
+            table.to_canonical_cbor_bytes(),
+            direct,
+            "the canonical wrapper call reaches the complete custom pair"
+        );
+        assert_eq!(
+            CustomTable::from_cbor_bytes(&direct).unwrap().get(),
+            table.get(),
+            "direct custom table decode retains all entries"
+        );
+
+        let holder = CustomTableHolder::new(table);
+        let embedded = bytes("81 84 646c656674 03 657269676874 07");
+        assert_eq!(holder.to_canonical_cbor_bytes(), embedded);
+        assert_eq!(
+            CustomTableHolder::from_cbor_bytes(&embedded)
+                .unwrap()
+                .table
+                .get(),
+            holder.table.get(),
+            "embedded custom table decode retains all entries"
+        );
+    }
 }

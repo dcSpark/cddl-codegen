@@ -1,0 +1,5 @@
+; A component build-smoke fixture for a whole-table custom pair. The nominal wrapper owns a
+; complete alternating-array wire, so WIT and guest glue must reference CustomTable as a resource
+; rather than re-derive a transparent map alias.
+custom_table = { * text => uint } ; @custom_serialize write_custom_table @custom_deserialize read_custom_table
+holder = [table: custom_table]

@@ -1,0 +1,46 @@
+// Appended to rust/src/generated/mod.rs by the component build smoke. The component guest never
+// calls these functions directly; compiling it proves the nominal wrapper's rust trait impls and
+// the resource glue agree on the complete custom-table owner.
+pub fn write_custom_table<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &CustomTable,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_array(cbor_event::Len::Len((value.get().len() * 2) as u64))?;
+    for (key, item) in value.get() {
+        serializer.write_text(key)?;
+        serializer.write_unsigned_integer(*item)?;
+    }
+    Ok(serializer)
+}
+
+pub fn read_custom_table(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<CustomTable, crate::generated::error::DeserializeError> {
+    let len = match raw.array_sz()? {
+        cbor_event::LenSz::Len(len, _) if len % 2 == 0 => len,
+        cbor_event::LenSz::Len(_, _) => {
+            return Err(crate::generated::error::DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: odd item count".to_owned(),
+            ))
+            .into());
+        }
+        cbor_event::LenSz::Indefinite => {
+            return Err(crate::generated::error::DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: indefinite arrays are not emitted".to_owned(),
+            ))
+            .into());
+        }
+    };
+    let mut map = std::collections::BTreeMap::new();
+    for _ in 0..len / 2 {
+        let key = raw.text()?;
+        let value = raw.unsigned_integer()?;
+        if map.insert(key, value).is_some() {
+            return Err(crate::generated::error::DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "table-as-array codec: duplicate key".to_owned(),
+            ))
+            .into());
+        }
+    }
+    Ok(CustomTable::from(map))
+}
