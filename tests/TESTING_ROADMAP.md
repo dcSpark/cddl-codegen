@@ -140,12 +140,12 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-- **Add decode-execution coverage for encoded-fixed-null `/ null` choices.** B3-024A's initial
-  singleton suite checked bare `null / null` and fixed/non-null Option lowering, but missed that a
-  `FixedValue::Null` arm can carry `Tagged` or `CBORBytes` wire operations. The collapse must
-  normalize only two truly bare null arms; `#6.N(null) / null` and `bytes .cbor null / null` need
-  both wire arms to decode, in both orders and member/rule positions, with preserve/canonical
-  assertions. The regression was found by code review, not an existing matrix/roadmap item.
+- **Encoded-fixed-null `/ null` is now executed, not merely generated.** The B3-024A singleton
+  e2e covers tagged and `bytes .cbor` null beside bare null at rule and member positions, both
+  source orders, both valid arms, a third reject, plus preserve replay and canonical minimization.
+  The original gap was code-inspection-found: the matrix had a bare fixed/null cell and the e2e
+  varied fixed/tag/`.cbor` roots separately, but neither crossed null-collapse with its wire chain.
+  Keep this cross-product in that executable e2e whenever the collapse or fixed wire identity moves.
 
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
@@ -2825,7 +2825,8 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `foo = "text"`, `foo = true`/`null`, and their mandatory-tag/`bytes .cbor` forms). They own
   direct codecs rather than taking the inline-only C-style enum path, so a named constant has the
   same standalone and embedded wire shape. `T / null` first nominalizes a fixed `T`, preserving the
-  established `Option<Singleton>` surface; `null / null` is one singleton state. The executable
+  established `Option<Singleton>` surface; only bare `null / null` is one singleton state, while
+  tagged/`.cbor` null beside bare null keeps both wire arms. The executable
   B3-024A fixture exercises wrong-value reasons, record/Vec/table composition, fixed/null's two
   accepts plus third reject, fixed/tag/`.cbor` non-minimal preserve replay and canonical
   minimization; projected feature rows and the fixed/null containment cell have reason-bearing
