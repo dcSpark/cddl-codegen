@@ -841,7 +841,9 @@ const GRID: &[Cell] = &[
         spec: "t = {\n  * text => uint\n} ; @custom_serialize my_ser\nholder = [f: t]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("@custom_serialize on `T`: a table rule"),
+        expect: Expect::Reject(
+            "@custom_serialize on `T`: this table has only one custom-codec half",
+        ),
     },
     Cell {
         directive: "@custom_deserialize",
@@ -849,9 +851,11 @@ const GRID: &[Cell] = &[
         spec: "t = {\n  * text => uint\n} ; @custom_deserialize my_deser\nholder = [f: t]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("@custom_deserialize on `T`: a table rule"),
+        expect: Expect::Reject(
+            "@custom_deserialize on `T`: this table has only one custom-codec half",
+        ),
     },
-    // 23g-iii. GENERIC table def + one concrete instantiation. The wrapper's map key/value leaves
+    // 23g-iv. GENERIC table def + one concrete instantiation. The wrapper's map key/value leaves
     //      must substitute before code generation, then the concrete nominal owns the complete pair.
     Cell {
         directive: "@custom_serialize+deserialize",
@@ -869,7 +873,7 @@ const GRID: &[Cell] = &[
             must_not: &["pub type PtblU64Bytes"],
         },
     },
-    // 23g-iv/23g-v. The collection lowering seam serves all homogeneous map flavors. A complete
+    // 23g-v/23g-vi. The collection lowering seam serves all homogeneous map flavors. A complete
     //      pair therefore nominalizes the preserve PairMap and non-empty NonEmptyMap forms too;
     //      neither may fall back to the default table codec.
     Cell {

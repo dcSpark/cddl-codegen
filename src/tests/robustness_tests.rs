@@ -11327,11 +11327,10 @@ fn no_alias_beside_a_custom_codec_pair_is_accepted_and_generates_byte_identicall
 }
 
 /// `@newtype` together with the custom (de)serializer pair is rejected BY DESIGN, via a GRACEFUL
-/// `Err` (`record_rejection` → drained by `finalize`), never a `panic!`. This one is not a drop but
-/// an ASYMMETRY: the deserialize call sites do route through the custom reader while the wrapper
-/// writes through its generated `Serialize` impl (`wrappers.rs` has no custom handling), so the
-/// generated type reads one wire format and writes another — silent wire divergence that a
-/// generated-crate round-trip cannot expose either.
+/// `Err` (`record_rejection` → drained by `finalize`), never a `panic!`. B3-026 audited only the
+/// implicit untagged homogeneous-table map owner made by a complete pair; it deliberately did not
+/// define custom-codec behavior for the general explicit-wrapper surface (including collection,
+/// bounds, preserve-encoding, and cross-face behavior), so this placement remains refused.
 ///
 /// Both wrapper flavors are covered: the primitive newtype and the collection newtype (`[* uint]`),
 /// which reaches the wrapper through `parse_group_choice` rather than the leaf `parse_type` arm.
@@ -11353,12 +11352,11 @@ fn custom_codec_pair_with_newtype_rejects_gracefully() {
         let err = expect_graceful_rejection(tag, spec, &[]);
         assert!(
             err.contains(
-                "@custom_serialize together with `@newtype` on `Nt`: a `@newtype` wrapper writes \
-                 through its own generated serialize impl while the deserialize CALL SITES do \
-                 route through the custom reader, so the pair would make the wrapper read one wire \
-                 format and write another."
+                "@custom_serialize together with `@newtype` on `Nt`: this delivery supports and \
+                 audits a complete pair only on the implicit homogeneous-table map owner; it does not \
+                 define the custom-codec contract for an explicit wrapper"
             ),
-            "[{tag}] the @newtype rejection must state the round-trip asymmetry, got:\n{err}"
+            "[{tag}] the @newtype rejection must state the table-only audited wrapper scope, got:\n{err}"
         );
         assert!(
             err.contains(
